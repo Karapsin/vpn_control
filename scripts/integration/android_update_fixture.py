@@ -11,14 +11,17 @@ import os
 from pathlib import Path
 import socketserver
 import ssl
+import stat
 import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 
 MANIFEST_PATH = "/Karapsin/vpn_control/releases/latest/download/update-manifest.json"
 APK_PATH = "/Karapsin/vpn_control/releases/download/disposable-session-fixture/update.apk"
 READY_SCHEMA_VERSION = 1
+SUPPORTED_ANDROID_ABIS = ("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
 
 
 class FixtureReadinessError(RuntimeError):
@@ -31,17 +34,46 @@ class ReadyFileIncomplete(ValueError):
     pass
 
 
+def apk_native_abis(apk: Path) -> tuple[str, ...]:
+    """Return each supported ABI with a non-symlink native library entry in *apk*.
+
+    The fixture must advertise the payload it serves.  A manifest that labels an
+    x86_64 native-fixture APK as arm64-v8a can make a newer AVD appear valid
+    while rejecting the intended API29 fixture before download.
+    """
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            native_abis = {
+                parts[1]
+                for entry in archive.infolist()
+                if not entry.is_dir()
+                if not stat.S_ISLNK((entry.external_attr >> 16) & 0o170000)
+                for parts in (entry.filename.split("/"),)
+                if (len(parts) == 3 and parts[0] == "lib" and parts[1] in SUPPORTED_ANDROID_ABIS
+                    and parts[2].endswith(".so") and parts[2] != ".so")
+            }
+    except (OSError, zipfile.BadZipFile) as error:
+        raise ValueError("Fixture APK must be a readable ZIP archive") from error
+    result = tuple(abi for abi in SUPPORTED_ANDROID_ABIS if abi in native_abis)
+    if not result:
+        raise ValueError("Fixture APK contains no supported Android native library ABI")
+    return result
+
+
 def make_manifest(apk: Path, version: str, build: int):
     digest = hashlib.sha256()
     with apk.open("rb") as source:
         for block in iter(lambda: source.read(65536), b""):
             digest.update(block)
+    asset_base = {
+        "platform": "android", "packageType": "apk",
+        "displayVersion": version, "fileName": "update.apk", "downloadUrl": "https://github.com" + APK_PATH,
+        "sha256": digest.hexdigest(), "sizeBytes": apk.stat().st_size,
+    }
     return {
         "schemaVersion": 1, "buildNumber": build, "releaseTag": "disposable-session-fixture",
         "releaseNotesUrl": "https://github.com/Karapsin/vpn_control/releases/tag/disposable-session-fixture",
-        "assets": [{"platform": "android", "architecture": "arm64-v8a", "packageType": "apk",
-                    "displayVersion": version, "fileName": "update.apk", "downloadUrl": "https://github.com" + APK_PATH,
-                    "sha256": digest.hexdigest(), "sizeBytes": apk.stat().st_size}],
+        "assets": [{**asset_base, "architecture": abi} for abi in apk_native_abis(apk)],
     }
 
 

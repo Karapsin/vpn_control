@@ -25,48 +25,82 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint125
+## Current continuation — checkpoint127
 
-Checkpoint125 delivery `fd927ecc37f039b345c1776fcbda94521ab9ddd5` is pushed.
-Its full local prepush passed, but Windows CI35862222810 failed a new POSIX-mode
-test assertion on Windows. The portability correction and installer-harness
-receipt reconciliation are the next coherent slice; exact-SHA CI is not complete.
-Root owns these integration/doc changes. android_cancel_review125 owns only the
-installer lifecycle harness and tests. API29 current6ee manual refresh passed
-through the packaged CLI with one real HTTPS GET, cache0→1, exact cleanup and one
-owner epoch throughout commands; root reviewed the15 envelopes. Linux current6ee
-normal-close and guarded-frontend-crash scenarios both passed110 ordered frames,
-unchanged controller/runtime and clean off/quit; root verified receipts/hashes.
-API35 OS cancellation reconciled its exact receipt to cancelled/installed=false;
-the original operation correctly remains historical handoff. A corrected driver
-rerun remains required. Evidence is in checkpoint125/android29-refresh,
-linux-current125/root-review.json and android35-cancel. Windows ordinary account
-is now visibly selected via one RFB pointer action; login admission continues.
+Checkpoint126 delivery `fcab2d0e531c13663f72be2e0ad1b6d1d5c183f3` is pushed,
+product2.1.15, Unreleased5/10. Full managed prepush and all five required exact-SHA
+workflows passed; receipt: checkpoint126/commit-result.json. Checkpoint125's
+Windows POSIX-mode test failure was corrected without dropping the Windows
+behavior checks. Full parity remains incomplete.
 
-At13:52 Moscow September23, HEAD/origin/dev is
-`6ee249ec0aa4a55b0b1eeacd51231693c4c26c89`, product2.1.15. Full prepush
-and all five required exact-SHA workflows passed (managed watcher46274 exited0).
-The delivered regressions cover retained Linux PTY ownership, controlling-terminal
-admission and QMP negotiation/error propagation. Full parity remains incomplete.
+Current native evidence, independently reviewed by root:
+
+- API29 current6ee base: packaged CLI manual subscription refresh produced one
+  real HTTPS GET and cache0→1, then restored the original source and deleted the
+  exact fixture subscription. Fifteen envelopes share one command owner epoch;
+  cleanup restored UID2000, null proxy and no reverse mappings. Evidence:
+  checkpoint125/android29-refresh/root-review.json. Connected/scheduled refresh,
+  SSH and current48MiB acceptance remain open.
+- API35 current6ee pair: corrected cancellation driver confirmed the exact
+  PackageInstaller receipt as cancelled/installed=false, preserving historical
+  operation handoff. A subsequent real Update installed exact target2.1.15/code16700
+  (SHA1ac2ac0d823bf6f0403f57ea3156c90209a3d91c64ccf4af919132c32af92401).
+  The replacement owner reports installed=true and runtime OFF. That success run
+  lacks pre-approval operation-to-receipt capture: the old in-memory operation is
+  correctly NOT_FOUND after replacement. Do not count it as a fully correlated
+  harness pass or downgrade the now-installed target. Evidence:
+  checkpoint126/android35-cancel and android35-installed. The corrected two-phase driver passes30 focused tests, including main-to-action
+  option forwarding and TTY flow. API29 installation attempt127 stopped before
+  download with UNSUPPORTED: the fixture advertised arm64-v8a for the x86_64 APK.
+  API35 secondary ABI support masked that mismatch. Payload-derived metadata and
+  regression coverage passed. A separate immutable rerun then installed target
+  2.1.15/code16700 with exact1ac2 hash: operation8bdf2f27-c9fe-4eee-b640-8905a85eebff
+  captured receipt f2da3dac-df27-4d19-bef9-6855b0b23b9c/session824108056 before approval;
+  replacement ownerf58c6b37-af10-47ca-aed7-3550228f6cb5 reconciles installed=true.
+  Noninteractive rejection, Unknown Sources grant, exact package bytes and cleanup
+  pass. Root verified24 exported artifacts and recorded the original self-including
+  manifest defect; a separate manifest uses the existing tested helper. Evidence:
+  checkpoint127/android29-installed-rerun/root-review.json. Broader installer
+  failure/process-loss scenarios remain open; both5684 and5682 now retain target.
+- Linux current6ee RPM: normal close and guarded frontend crash each retained
+  one controller/runtime and110 ordered synthetic proxy frames, then public
+  off/quit completed. Root verified hashes and timelines in
+  checkpoint125/linux-current125/root-review.json. The VPN fixture first failed
+  because /tmp is mounted nosuid, suppressing file capabilities. A private
+  home-backed workspace now passes exact-binary mount/capability admission, real
+  public VPN start, TUN UP and one DNS-free synthetic HTTP request via the loopback
+  SOCKS endpoint. Public off/quit succeeded and exact postflight shows no owner/TUN.
+  Evidence: checkpoint126/linux-vpn/vpn_home_result.json. This is basic TUN traffic,
+  not GUI/scheduled continuity in VPN mode or every Linux package format.
+- Windows CP117: native LogonUser validates the protected ordinary-user credential,
+  but the single RFB login attempt failed. A settled nonsecret QMP probe proved
+  all nine characters arrived; immediate frames undercounted them. Three bounded
+  keyboard navigation attempts still did not select vpncp117. No further
+  credential submission occurred. The temporary login policy is restored to0,
+  the failed base MSI task stays disabled, and no replacement is claimed.
+- macOS: the durable monitor retains the running owned guest under normal memory
+  pressure. Fresh ordinary owner330a0ea2-6681-4af6-a1d2-118593354b0d reached READY
+  after renewing only expired private fixture TLS trust. The reviewed harness
+  now has explicit machine receipt authority and strict owner identity (23 tests).
+  Operation78e1a9d4-c1ec-4795-b729-430ecc61f2b1 was accepted; its harness process
+  subsequently ended before staging, so no fault-injection lock remains held.
+  Fresh public status retains job e6bfc9a0-ff67-4047-be27-4220493ea088 as unknown,
+  installed=null and handoffReady=false. Watcher and authorization processes are
+  live. CoreGraphics reports an on-screen protected SecurityAgent window even
+  though screencapture omits it. Public cancellation was accepted as cancelling
+  but a subsequent poll remains unknown; no terminal cancellation is claimed.
+  Root owns guest reconciliation and
+  preserves the operation without replay or late approval. This is the older
+  source pair, not current-source installation acceptance.
 
 | Task | Owner | Exclusive scope / next handoff |
 | --- | --- | --- |
-| Integration125 | root | Shared files, artifact verification, host builds, delivery and evidence review |
-| Android refresh driver | android_refresh_driver124 | Fixture transport/trust review and quick regressions; no guest operator |
-| Android29 refresh125 | android29_refresh125 | Remote5684 only; current base admission and manual subscription refresh |
-| Android35 installer125 | android35_install125 | Remote5682 only; colocated immutable installer cancellation fixture |
-| Linux current125 | linux_current125 | CP120 guest2327 only; verify normal-close evidence, provision6ee package and repeat continuity |
-| Windows restore125 | windows_restore125 | CP117 only; restore temporary login policy and bounded diagnostics, no MSI retry |
-
-Checkpoint125: target APK transfer is terminal and verified. Shared fixture checks
-pass92 tests after root added causal existing-source/upsert admission protection.
-Windows temporary DontDisplayLastUserName policy is restored to DWORD0; the owned
-base task remains disabled/result1601 with no msiexec. Linux6ee RPM reinstall
-completed after OFF owner quit; normal close and reattach report110/110 ordered
-synthetic frames. Crash replay is in progress. API29/API35 operate independently
-with servers, inputs and ADB colocated on Arch. macOS remains stopped pending
-resource admission; raw free-page measurements alone are not proof of unavailable
-RAM, so do not turn that observation into a permanent platform blocker.
+| Integration127 | root | Shared files, artifact verification, host builds, docs, delivery and exact-SHA CI |
+| Android two-phase driver | completed; root owns integration | Thirty focused tests pass; native fixture preparation is separate |
+| Linux VPN126 | completed; root review | CP120 guest2327 idle after real TUN/traffic/off/quit; guard/tests awaiting integrated checks |
+| Windows input125 | completed; guest reserved | CP117; navigation unsuccessful, no credential or MSI retry |
+| macOS rollback127 | root | Exclusive owned Tart guest; reconcile exact unknown operation before further installation |
+| Android29 install127 | completed; root reviewed | Correlated API29 installation passes; both owned AVDs retain target2.1.15 |
 
 The clean6ee source archive produced nondebuggable x86_64 nativeFixture APKs
 for2.1.14/code16680 and2.1.15/code16700. Root verified package identity, versions,
@@ -82,17 +116,10 @@ public quit ended that owner cleanly. Evidence: checkpoint121/linux-lifecycle-id
 Its sourceProvenance field uses a stale directory prefix; the actual frozen pair
 receipt is `.runtime/checkpoint119/linux/fedora2326-fixture-receipt.json`.
 
-macOS remains stopped. Tart rejected a3072MiB setting because this guest requires
-at least4096MiB; configuration remains2CPU/4096MiB. Repeated4GiB boot attempts
-previously raised host memory pressure before installer submission. No installer
-was started by these attempts, and unknown historical jobs remain preserved.
-
-Windows normal login is still incomplete. Persistent VNC observation has not
-established a reliable ordinary-account selection path. Some reconnect attempts
-returned to the lock screen, but causality is unproven. Do not attribute prior
-navigation failures to QMP key timing or the product. No credential may be entered
-until the ordinary account is visibly selected; no MSI retry before its recipient
-guard passes.
+Historical macOS resource attempts: Tart rejected3072MiB because this guest
+requires4096MiB; configuration remains2CPU/4096MiB. Some earlier attempts raised
+host memory pressure, but later normal-pressure observations supersede a blanket
+RAM blocker. Raw free pages alone are not sufficient for resource admission.
 
 Checkpoint124 continuation: CP120 installed d27-package proxy traffic passed,
 then a minimal Xvfb session proved GUI attach, frontend-only crash and reattach

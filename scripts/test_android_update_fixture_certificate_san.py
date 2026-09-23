@@ -6,12 +6,17 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.integration.android_update_fixture import launch_supervised_fixture
 
 
 class AndroidUpdateFixtureCertificateSanTest(unittest.TestCase):
+    def write_fixture_apk(self, path: Path) -> None:
+        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr("lib/x86_64/libfixture.so", b"fixture")
+
     def create_certificate(self, directory: Path, *, san: bool) -> tuple[Path, Path]:
         certificate = directory / "certificate.pem"
         private_key = directory / "private.pem"
@@ -37,7 +42,7 @@ class AndroidUpdateFixtureCertificateSanTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             apk = root / "update.apk"
-            apk.write_bytes(b"fixture")
+            self.write_fixture_apk(apk)
             certificate, private_key = self.create_certificate(root, san=False)
             ready, log, receipt = root / "ready.json", root / "fixture.log", root / "receipt.json"
 
@@ -52,7 +57,7 @@ class AndroidUpdateFixtureCertificateSanTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             apk = root / "update.apk"
-            apk.write_bytes(b"fixture")
+            self.write_fixture_apk(apk)
             certificate, private_key = self.create_certificate(root, san=True)
             ready, log, receipt = root / "ready.json", root / "fixture.log", root / "receipt.json"
             process = launch_supervised_fixture(apk, "2.3.8", 17360, certificate, private_key, ready, log, receipt)

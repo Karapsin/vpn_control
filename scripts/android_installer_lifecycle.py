@@ -74,7 +74,7 @@ def correlated_terminal(record, operation, expected):
         raise ValueError("terminal expectation must be installed or cancelled")
 
 
-def handoff_identity(record, operation, target_version, target_sha256):
+def handoff_identity(record, operation, target_version, target_sha256, controller_id=None):
     response = record["response"]
     data = response.get("data") or {}
     if (record["exit"] != EXIT["OK"] or response.get("ok") is not True or response.get("code") != "OK"
@@ -82,11 +82,12 @@ def handoff_identity(record, operation, target_version, target_sha256):
             or data.get("installerStarted") is not True or data.get("installed") is not None
             or data.get("installPhase") != "handed_off" or data.get("availableVersion") != target_version
             or not isinstance(data.get("installReceiptId"), str) or not data["installReceiptId"]
-            or not valid_session_id(data.get("installSessionId"))):
+            or not valid_session_id(data.get("installSessionId"))
+            or controller_id is not None and response.get("controllerId") != controller_id):
         raise RuntimeError(f"expected immutable historical installer handoff: {record}")
     return {"operationId": operation, "receiptId": data["installReceiptId"],
             "sessionId": data["installSessionId"], "version": target_version,
-            "targetSha256": target_sha256}
+            "targetSha256": target_sha256, "controllerId": response.get("controllerId")}
 
 
 def terminal_identity(record, operation, expected, target_version, target_sha256):
@@ -107,6 +108,7 @@ def reconciled_terminal(record, identity, expected):
     if (record["exit"] != EXIT["OK"] or response.get("ok") is not True or response.get("code") != "OK"
             or response.get("final") is not True
             or not isinstance(current, dict) or current.get("installReceiptId") != identity["receiptId"]
+            or not valid_session_id(current.get("installSessionId"))
             or current.get("installSessionId") != identity["sessionId"]):
         return False
     if expected == "installed":
@@ -170,16 +172,20 @@ def focused_dialog_state(adb):
 
 def checkpoint(args, receipt):
     path = args.probe_output
+    persist_private_json(path, {"callbackReceipt": receipt}, "action checkpoint")
+
+
+def persist_private_json(path, value, label):
     if path.exists():
-        raise RuntimeError("action checkpoint path already exists")
+        raise RuntimeError(f"{label} path already exists")
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as output:
-        json.dump({"callbackReceipt": receipt}, output, sort_keys=True)
+        json.dump(value, output, sort_keys=True)
         output.write("\n")
         output.flush()
         os.fsync(output.fileno())
     if not path.is_file() or path.stat().st_mode & 0o077:
-        raise RuntimeError("action checkpoint was not private/persisted")
+        raise RuntimeError(f"{label} was not private/persisted")
 
 
 def require_private_callback_parent(parent):
@@ -219,6 +225,49 @@ def await_callback(args):
     wait_for_continue_file(callback, args.fixture_parent)
 
 
+def await_handoff_ready(args):
+    callback = getattr(args, "handoff_ready_file", None)
+    if callback is None:
+        if (getattr(args, "expected_terminal", "capture") != "installed"
+                or getattr(args, "continue_file", None) is not None):
+            return False
+        print("Grant Unknown Sources if requested. When the Package Installer update dialog is visible, press Enter before choosing Update or Cancel.", flush=True)
+        input()
+        return True
+    print("Grant Unknown Sources if requested. When the Package Installer update dialog is visible, create the private handoff-ready callback before choosing Update or Cancel.", flush=True)
+    wait_for_continue_file(callback, args.fixture_parent)
+    return True
+
+
+def await_handoff_identity(args, operation, controller_id):
+    timeout = getattr(args, "reconciliation_timeout_seconds", 120.0)
+    interval = getattr(args, "reconciliation_poll_seconds", 1.0)
+    deadline = time.monotonic() + timeout
+    stages = {"operationId": operation, "operationStatus": [], "rawErrors": []}
+    environment = getattr(args, "cli_environment", None)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            stages["outcome"] = "OUTCOME_UNKNOWN"
+            return stages
+        try:
+            status = invoke(args.cli, args.serial, "operations", "status", operation, environment=environment,
+                            timeout_seconds=remaining)
+            stages["operationStatus"].append(status)
+            identity = handoff_identity(status, operation, args.target_version, args.target_sha256, controller_id)
+            stages["identity"] = identity
+            return stages
+        except InvocationFailure as error:
+            stages["rawErrors"].append(error.record)
+        except Exception as error:
+            stages["rawErrors"].append(str(error))
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            stages["outcome"] = "OUTCOME_UNKNOWN"
+            return stages
+        time.sleep(min(interval, remaining))
+
+
 def action(args, adb, receipt):
     if adb.shell_id() != "uid=2000":
         raise RuntimeError("product action requires public UID 2000")
@@ -235,19 +284,45 @@ def action(args, adb, receipt):
     accepted = invoke(args.cli, args.serial, "updates", "install", interactive=True,
                       asynchronous=True, environment=environment)
     operation = accepted["response"].get("operationId")
+    accepted_controller = accepted["response"].get("controllerId")
     if (accepted["exit"] != 0 or accepted["response"].get("code") != "ACCEPTED"
             or accepted["response"].get("final") is not False
-            or not isinstance(operation, str) or not operation):
+            or not isinstance(operation, str) or not operation
+            or not isinstance(accepted_controller, str) or not accepted_controller):
         raise RuntimeError(f"interactive install was not accepted once: {accepted}")
     receipt["installerLifecycle"] = {"check": check, "download": download,
         "noninteractiveRejected": rejected, "interactiveAccepted": accepted,
         "operationId": operation}
     checkpoint(args, receipt)
+    two_phase = await_handoff_ready(args)
+    expected_terminal = getattr(args, "expected_terminal", "capture")
+    if two_phase:
+        handoff = await_handoff_identity(args, operation, accepted_controller)
+        receipt["installerLifecycle"]["handoffCapture"] = handoff
+        if handoff.get("outcome") == "OUTCOME_UNKNOWN":
+            raise RuntimeError(f"installer handoff outcome unknown: {handoff}")
+        persist_private_json(args.probe_output.parent / "handoff.json", {
+            "originalOperation": accepted, "identity": handoff["identity"], "handoffCapture": handoff,
+            "targetSha256": args.target_sha256, "targetVersion": args.target_version,
+            "targetCode": args.target_code}, "installer handoff")
     await_callback(args)
+    if two_phase:
+        if expected_terminal == "capture":
+            receipt["installerLifecycle"]["acceptance"] = "capture-only-nonacceptance"
+            return receipt["installerLifecycle"]
+        reconciliation = await_reconciled_terminal(args, handoff["identity"], expected_terminal)
+        receipt["installerLifecycle"]["originalOperation"] = {"stage": "handed_off",
+            "identity": handoff["identity"], "status": handoff["operationStatus"][-1]}
+        receipt["installerLifecycle"]["reconciliation"] = reconciliation
+        if reconciliation.get("outcome") == "OUTCOME_UNKNOWN":
+            raise RuntimeError(f"installer reconciliation outcome unknown: {reconciliation}")
+        if expected_terminal == "installed":
+            receipt["installerLifecycle"]["installedBaseSha256"] = verify_installed_target(args, adb)
+        receipt["installerLifecycle"]["acceptance"] = "terminal-confirmed"
+        return receipt["installerLifecycle"]
     status = invoke(args.cli, args.serial, "operations", "status", operation, environment=environment)
     waited = invoke(args.cli, args.serial, "--timeout-seconds", "0", "operations", "wait", operation,
                     environment=environment)
-    expected_terminal = getattr(args, "expected_terminal", "capture")
     receipt["installerLifecycle"].update({"statusAfterUi": status, "waitOriginalOperation": waited,
                                             "targetSha256": args.target_sha256,
                                             "terminalExpectation": expected_terminal})
@@ -255,7 +330,7 @@ def action(args, adb, receipt):
         receipt["installerLifecycle"]["acceptance"] = "capture-only-nonacceptance"
         return receipt["installerLifecycle"]
     try:
-        identity = handoff_identity(status, operation, args.target_version, args.target_sha256)
+        identity = handoff_identity(status, operation, args.target_version, args.target_sha256, accepted_controller)
     except RuntimeError:
         # A cancellation can win before handoff. It is valid only when the exact
         # original operation already carries the requested terminal result.
@@ -265,7 +340,7 @@ def action(args, adb, receipt):
         receipt["installerLifecycle"]["originalOperation"] = {"stage": expected_terminal, "identity": identity,
                                                                    "status": status, "wait": waited}
     else:
-        if handoff_identity(waited, operation, args.target_version, args.target_sha256) != identity:
+        if handoff_identity(waited, operation, args.target_version, args.target_sha256, accepted_controller) != identity:
             raise RuntimeError("historical installer handoff identity changed between status and wait")
         receipt["installerLifecycle"]["originalOperation"] = {"stage": "handed_off", "identity": identity,
                                                                    "status": status, "wait": waited}
@@ -289,6 +364,7 @@ def parse_args():
     parser.add_argument("--private-key", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--continue-file", type=Path)
+    parser.add_argument("--handoff-ready-file", type=Path)
     parser.add_argument("--expected-terminal", choices=("capture", "installed", "cancelled"), default="capture",
                         help="capture records an observation only and is not acceptance evidence")
     parser.add_argument("--reconciliation-timeout-seconds", type=float, default=120.0)
@@ -311,6 +387,12 @@ def main():
         raise SystemExit("reconciliation timeout and poll interval must be finite positive values")
     args.cli_environment = tls.public_cli_environment(args.adb, args.cli)
     args.output.mkdir(mode=0o700, parents=True)
+    if (args.continue_file is not None and args.expected_terminal == "installed" and args.handoff_ready_file is None):
+        raise SystemExit("installed callback runs require a distinct handoff-ready callback")
+    if args.handoff_ready_file is not None:
+        if args.handoff_ready_file == args.continue_file:
+            raise SystemExit("handoff-ready callback must be distinct from continue callback")
+        prepare_continue_file(args.handoff_ready_file, args.output)
     if args.continue_file is None:
         tls.require_interactive_stdin()
     else:
@@ -331,6 +413,7 @@ def main():
             expected_avd=args.avd, expected_api=args.api, expected_version=args.base_version,
             expected_code=args.base_code, base_apk=args.base_apk, base_sha256=args.base_sha256,
             target_sha256=args.target_sha256, continue_file=args.continue_file,
+            handoff_ready_file=args.handoff_ready_file,
             target_version=args.target_version, target_code=args.target_code,
             expected_terminal=args.expected_terminal,
             reconciliation_timeout_seconds=args.reconciliation_timeout_seconds,

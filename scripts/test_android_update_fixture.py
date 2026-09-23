@@ -7,6 +7,8 @@ import sys
 import tempfile
 import time
 import unittest
+import zipfile
+import hashlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.integration.android_update_fixture import (
@@ -17,6 +19,11 @@ from scripts.test_android_update_fixture_certificate_san import AndroidUpdateFix
 
 
 class AndroidUpdateFixtureTest(unittest.TestCase):
+    def write_fixture_apk(self, path: Path, *abis: str) -> None:
+        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+            for abi in abis:
+                archive.writestr(f"lib/{abi}/libfixture.so", b"fixture")
+
     def create_certificate_pair(self, directory: Path):
         certificate = directory / "certificate.pem"
         private_key = directory / "private.pem"
@@ -58,18 +65,50 @@ class AndroidUpdateFixtureTest(unittest.TestCase):
     def test_manifest_hashes_exact_artifact_and_keeps_production_trust_prefix(self):
         with tempfile.TemporaryDirectory() as directory:
             apk = Path(directory) / "synthetic.apk"
-            apk.write_bytes(b"abc")
+            self.write_fixture_apk(apk, "x86_64")
+            expected_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
+            expected_size = apk.stat().st_size
             result = make_manifest(apk, "2.1.3", 16460)
         asset = result["assets"][0]
-        self.assertEqual("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", asset["sha256"])
-        self.assertEqual(3, asset["sizeBytes"])
+        self.assertEqual(expected_hash, asset["sha256"])
+        self.assertEqual("x86_64", asset["architecture"])
+        self.assertEqual(expected_size, asset["sizeBytes"])
         self.assertTrue(asset["downloadUrl"].startswith("https://github.com/Karapsin/vpn_control/"))
         self.assertEqual(16460, result["buildNumber"])
+
+    def test_manifest_advertises_every_supported_payload_abi(self):
+        with tempfile.TemporaryDirectory() as directory:
+            apk = Path(directory) / "multi.apk"
+            self.write_fixture_apk(apk, "x86_64", "arm64-v8a")
+            result = make_manifest(apk, "2.1.3", 16460)
+        self.assertEqual(["arm64-v8a", "x86_64"], [asset["architecture"] for asset in result["assets"]])
+        self.assertEqual(1, len({asset["sha256"] for asset in result["assets"]}))
+        self.assertEqual(1, len({asset["sizeBytes"] for asset in result["assets"]}))
+
+    def test_manifest_rejects_malformed_or_unsupported_native_payload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            malformed = root / "malformed.apk"
+            malformed.write_bytes(b"not a zip")
+            with self.assertRaisesRegex(ValueError, "readable ZIP archive"):
+                make_manifest(malformed, "2.1.3", 16460)
+            unsupported = root / "unsupported.apk"
+            self.write_fixture_apk(unsupported, "mips")
+            with self.assertRaisesRegex(ValueError, "no supported Android native library ABI"):
+                make_manifest(unsupported, "2.1.3", 16460)
+            symlink = root / "symlink.apk"
+            with zipfile.ZipFile(symlink, "w", compression=zipfile.ZIP_STORED) as archive:
+                link = zipfile.ZipInfo("lib/x86_64/libfixture.so")
+                link.create_system = 3
+                link.external_attr = 0o120777 << 16
+                archive.writestr(link, b"elsewhere")
+            with self.assertRaisesRegex(ValueError, "no supported Android native library ABI"):
+                make_manifest(symlink, "2.1.3", 16460)
 
     def test_supervisor_cli_retains_live_fixture_after_returning(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            apk = root / "update.apk"; apk.write_bytes(b"fixture")
+            apk = root / "update.apk"; self.write_fixture_apk(apk, "x86_64")
             certificate, private_key = self.create_certificate_pair(root)
             ready, log, receipt, stop = (root / "ready.json", root / "fixture.log",
                                          root / "receipt.json", root / "stop")
@@ -109,7 +148,7 @@ class AndroidUpdateFixtureTest(unittest.TestCase):
     def test_supervisor_records_child_exit_and_log_before_gating_progress(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            apk = root / "update.apk"; apk.write_bytes(b"fixture")
+            apk = root / "update.apk"; self.write_fixture_apk(apk, "x86_64")
             certificate, _ = self.create_certificate_pair(root)
             ready, log, receipt = root / "ready.json", root / "fixture.log", root / "receipt.json"
             with self.assertRaises(FixtureReadinessError) as raised:
@@ -125,7 +164,7 @@ class AndroidUpdateFixtureTest(unittest.TestCase):
     def test_supervisor_waits_for_a_partially_published_ready_file_to_complete(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            apk = root / "update.apk"; apk.write_bytes(b"fixture")
+            apk = root / "update.apk"; self.write_fixture_apk(apk, "x86_64")
             certificate, private_key = self.create_certificate_pair(root)
             fixture = root / "partial_ready_fixture.py"
             fixture.write_text(

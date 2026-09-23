@@ -18,14 +18,15 @@ class Adb:
     def shell(self, *words): self.calls.append(words); return self.windows
 
 
-def record(code, final, operation=None, data=None, ok=None):
-    response = {"code": code, "final": final, "ok": code in {"OK", "ACCEPTED"} if ok is None else ok}
+def record(code, final, operation=None, data=None, ok=None, controller="controller"):
+    response = {"code": code, "final": final, "ok": code in {"OK", "ACCEPTED"} if ok is None else ok,
+                "controllerId": controller}
     if operation: response["operationId"] = operation
     if data is not None: response["data"] = data
     return {"argv": [], "exit": driver.EXIT[code], "response": response, "stderr": ""}
 
 
-def argv(root, output, callback=None, adb=None, expected_terminal=None, extra=()):
+def argv(root, output, callback=None, handoff_ready=None, adb=None, expected_terminal=None, extra=()):
     values = ["driver", "--adb", str(adb or root / "adb"), "--serial", "serial", "--api", "35", "--avd", "avd",
         "--device-port", "45635", "--cli", str(root / "cli"), "--ca-certificate", str(root / "ca.pem"),
         "--leaf-certificate", str(root / "leaf.pem"), "--private-key", str(root / "leaf.key"),
@@ -33,6 +34,7 @@ def argv(root, output, callback=None, adb=None, expected_terminal=None, extra=()
         "--base-version", "2.1.13", "--base-code", "16660", "--target-apk", str(root / "target.apk"),
         "--target-sha256", "target-hash", "--target-version", "2.1.14", "--target-code", "16680"]
     if callback is not None: values.extend(["--continue-file", str(callback)])
+    if handoff_ready is not None: values.extend(["--handoff-ready-file", str(handoff_ready)])
     if expected_terminal is not None: values.extend(["--expected-terminal", expected_terminal])
     values.extend(extra)
     return values
@@ -147,6 +149,43 @@ class InstallerLifecycleTest(unittest.TestCase):
             self.assertEqual([(root / "base.apk", "base-hash"), (root / "target.apk", "target-hash")],
                              [call.args for call in hashed.call_args_list])
 
+    def test_main_forwards_handoff_ready_to_two_phase_action(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); output = root / "output"; callback = output / "continue"; ready = output / "handoff-ready"
+            adb = root / "adb"; adb.write_text("#!/bin/sh\n"); adb.chmod(0o700)
+            observed = {}
+            def launched(*_):
+                for path in (ready, callback):
+                    path.write_text("continue\n")
+                    if os.name != "nt": path.chmod(0o600)
+                return object()
+            def lifecycle(args, action, **_):
+                observed["args"] = args
+                return action(args, self.InstalledAdb(), {})
+            handoff = {"installerStarted": True, "installed": None, "availableVersion": "2.1.14",
+                       "installReceiptId": "receipt", "installSessionId": 17, "installPhase": "handed_off"}
+            installed = {"phase": "idle", "availableVersion": None,
+                         "installReceipt": {"installReceiptId": "receipt", "installSessionId": 17,
+                                            "installPhase": "installed", "installed": True}}
+            replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
+                       record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
+                       record("OK", True, data=installed)]
+            windows_guards = (patch.object(driver, "prepare_continue_file"), patch.object(driver, "wait_for_continue_file")) if os.name == "nt" else (nullcontext(), nullcontext())
+            with windows_guards[0], windows_guards[1], portable_checkpoint_privacy(output / "probe.json"), \
+                 patch.object(sys, "argv", argv(root, output, callback, handoff_ready=ready, adb=adb, expected_terminal="installed")), \
+                 patch.object(driver.tls, "public_cli_environment", return_value={}), \
+                 patch.object(driver.tls, "require_artifact_hash"), \
+                 patch.object(driver.fixture, "launch_supervised_fixture", side_effect=launched), \
+                 patch.object(driver.fixture, "read_ready_file", return_value=12345), \
+                 patch.object(driver.fixture, "make_manifest", return_value={}), \
+                 patch.object(driver.fixture, "_stop_fixture"), \
+                 patch.object(driver.tls, "run_fixture_lifecycle", side_effect=lifecycle), \
+                 patch.object(driver, "invoke", side_effect=replies), \
+                 patch.object(driver.tls, "require_installed_base_hash", return_value="target-hash"):
+                driver.main()
+            self.assertEqual(ready, observed["args"].handoff_ready_file)
+            self.assertTrue((output / "handoff.json").is_file())
+
     def test_bad_base_hash_rejects_before_fixture_launch(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); output = root / "output"; adb = root / "adb"
@@ -168,6 +207,16 @@ class InstallerLifecycleTest(unittest.TestCase):
                 extra=("--reconciliation-timeout-seconds", "nan"))), \
                  patch.object(driver.fixture, "launch_supervised_fixture") as launched:
                 with self.assertRaisesRegex(SystemExit, "finite positive"):
+                    driver.main()
+            launched.assert_not_called()
+
+    def test_installed_callback_requires_distinct_handoff_ready_callback_before_fixture_launch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); output = root / "output"; callback = output / "continue"; adb = root / "adb"
+            adb.write_text("#!/bin/sh\n"); adb.chmod(0o700)
+            with patch.object(sys, "argv", argv(root, output, callback, adb=adb, expected_terminal="installed")), \
+                 patch.object(driver.fixture, "launch_supervised_fixture") as launched:
+                with self.assertRaisesRegex(SystemExit, "handoff-ready"):
                     driver.main()
             launched.assert_not_called()
 
@@ -239,10 +288,11 @@ class InstallerLifecycleTest(unittest.TestCase):
     def test_installed_acceptance_requires_correlated_terminal_and_target_hash(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = self.acceptance_args(temporary)
+            args.continue_file = Path(temporary) / "continue"; args.fixture_parent = Path(temporary)
             with portable_checkpoint_privacy(args.probe_output), \
                  patch.object(driver, "invoke", side_effect=self.accepted_replies("OK")), \
                  patch.object(driver.tls, "require_installed_base_hash", return_value="target-hash") as hashed, \
-                 patch("builtins.input"):
+                 patch.object(driver, "wait_for_continue_file"):
                 result = driver.action(args, self.InstalledAdb(), {})
             self.assertEqual("terminal-confirmed", result["acceptance"])
             self.assertEqual("target-hash", result["installedBaseSha256"])
@@ -251,12 +301,13 @@ class InstallerLifecycleTest(unittest.TestCase):
     def test_installed_acceptance_rejects_cancelled_without_replaying_install(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = self.acceptance_args(temporary)
+            args.continue_file = Path(temporary) / "continue"; args.fixture_parent = Path(temporary)
             calls = []
             def invoke(*values, **kwargs):
                 calls.append(values)
                 return self.accepted_replies("CANCELLED")[len(calls) - 1]
             with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=invoke), \
-                 patch("builtins.input"):
+                 patch.object(driver, "wait_for_continue_file"):
                 with self.assertRaisesRegex(RuntimeError, "confirmed installed"):
                     driver.action(args, self.InstalledAdb(), {})
             self.assertEqual(2, sum(values[2:] == ("updates", "install") for values in calls))
@@ -352,6 +403,116 @@ class InstallerLifecycleTest(unittest.TestCase):
                  patch("builtins.input"):
                 with self.assertRaisesRegex(RuntimeError, "identity changed"):
                     driver.action(args, self.InstalledAdb(), {})
+
+    def test_two_phase_capture_precedes_approval_and_reconciles_after_owner_replacement(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary); parent.chmod(0o700)
+            args = self.acceptance_args(temporary, "installed")
+            args.fixture_parent = parent
+            args.handoff_ready_file = parent / "handoff-ready"
+            args.continue_file = parent / "continue"
+            args.reconciliation_timeout_seconds = 1
+            args.reconciliation_poll_seconds = 0.01
+            handoff = {"installerStarted": True, "installed": None, "availableVersion": "2.1.14",
+                       "installReceiptId": "receipt", "installSessionId": 17, "installPhase": "handed_off"}
+            installed = {"phase": "idle", "availableVersion": None,
+                         "installReceipt": {"installReceiptId": "receipt", "installSessionId": 17,
+                                            "installPhase": "installed", "installed": True}}
+            replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
+                       record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
+                       record("OK", True, data=installed)]
+            events, calls = [], []
+            def wait(path, _): events.append(path.name)
+            def invoke(*values, **kwargs):
+                calls.append(values)
+                if values[2:] == ("operations", "status", "operation"):
+                    self.assertEqual(["handoff-ready"], events)
+                if values[2:] == ("updates", "status"):
+                    self.assertEqual(["handoff-ready", "continue"], events)
+                return replies.pop(0)
+            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "wait_for_continue_file", side_effect=wait), \
+                 patch.object(driver, "invoke", side_effect=invoke), \
+                 patch.object(driver.tls, "require_installed_base_hash", return_value="target-hash") as hashed:
+                result = driver.action(args, self.InstalledAdb(), {})
+            handoff_file = json.loads((parent / "handoff.json").read_text())
+            self.assertEqual("receipt", handoff_file["identity"]["receiptId"])
+            self.assertEqual("terminal-confirmed", result["acceptance"])
+            self.assertEqual(1, sum(values[2:] == ("operations", "status", "operation") for values in calls))
+            self.assertEqual(0, sum(values[2:] == ("operations", "wait", "operation") for values in calls))
+            hashed.assert_called_once()
+
+    def test_tty_installed_run_uses_two_prompts_and_captures_handoff_before_approval(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary); parent.chmod(0o700)
+            args = self.acceptance_args(temporary, "installed")
+            args.fixture_parent = parent; args.handoff_ready_file = None; args.continue_file = None
+            handoff = {"installerStarted": True, "installed": None, "availableVersion": "2.1.14",
+                       "installReceiptId": "receipt", "installSessionId": 17, "installPhase": "handed_off"}
+            installed = {"phase": "idle", "availableVersion": None,
+                         "installReceipt": {"installReceiptId": "receipt", "installSessionId": 17,
+                                            "installPhase": "installed", "installed": True}}
+            replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
+                       record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
+                       record("OK", True, data=installed)]
+            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=replies), \
+                 patch("builtins.input", side_effect=[None, None]) as prompted, \
+                 patch.object(driver.tls, "require_installed_base_hash", return_value="target-hash"):
+                result = driver.action(args, self.InstalledAdb(), {})
+            self.assertEqual(2, prompted.call_count)
+            self.assertTrue((parent / "handoff.json").is_file())
+            self.assertEqual("terminal-confirmed", result["acceptance"])
+
+    def test_two_phase_wrong_replacement_receipt_times_out_without_replay(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary); parent.chmod(0o700)
+            args = self.acceptance_args(temporary, "cancelled")
+            args.fixture_parent = parent; args.handoff_ready_file = parent / "handoff-ready"; args.continue_file = parent / "continue"
+            args.reconciliation_timeout_seconds = 1; args.reconciliation_poll_seconds = 0.01
+            handoff = {"installerStarted": True, "installed": None, "availableVersion": "2.1.14",
+                       "installReceiptId": "receipt", "installSessionId": 17, "installPhase": "handed_off"}
+            wrong = {"phase": "idle", "availableVersion": None,
+                     "installReceipt": {"installReceiptId": "other", "installSessionId": 17,
+                                        "installPhase": "cancelled", "installed": False}}
+            replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
+                       record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
+                       record("OK", True, data=wrong)]
+            calls = []
+            def invoke(*values, **kwargs): calls.append(values); return replies.pop(0)
+            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "wait_for_continue_file"), \
+                 patch.object(driver, "invoke", side_effect=invoke), patch.object(driver.time, "monotonic", side_effect=[0, 0, 0, 0, 2]):
+                with self.assertRaisesRegex(RuntimeError, "reconciliation outcome unknown"):
+                    driver.action(args, self.InstalledAdb(), {})
+            self.assertTrue((parent / "handoff.json").is_file())
+            self.assertEqual(2, sum(values[2:] == ("updates", "install") for values in calls))
+
+    def test_two_phase_foreign_controller_handoff_is_unknown_before_approval_without_replay(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary); parent.chmod(0o700)
+            args = self.acceptance_args(temporary, "installed")
+            args.fixture_parent = parent; args.handoff_ready_file = parent / "handoff-ready"; args.continue_file = parent / "continue"
+            args.reconciliation_timeout_seconds = 1; args.reconciliation_poll_seconds = 0.01
+            handoff = {"installerStarted": True, "installed": None, "availableVersion": "2.1.14",
+                       "installReceiptId": "receipt", "installSessionId": 17, "installPhase": "handed_off"}
+            replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
+                       record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff,
+                       controller="foreign-controller")]
+            calls = []
+            def invoke(*values, **kwargs): calls.append(values); return replies.pop(0)
+            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "wait_for_continue_file"), \
+                 patch.object(driver, "invoke", side_effect=invoke), patch.object(driver.time, "monotonic", side_effect=[0, 0, 2]):
+                with self.assertRaisesRegex(RuntimeError, "handoff outcome unknown"):
+                    driver.action(args, self.InstalledAdb(), {})
+            capture = (parent / "handoff.json")
+            self.assertFalse(capture.exists())
+            self.assertEqual(2, sum(values[2:] == ("updates", "install") for values in calls))
+            self.assertEqual(0, sum(values[2:] == ("updates", "status") for values in calls))
+
+    def test_reconciled_terminal_rejects_boolean_session_id(self):
+        identity = {"operationId": "operation", "receiptId": "receipt", "sessionId": 1,
+                    "version": "2.1.14", "targetSha256": "target-hash"}
+        current = record("OK", True, data={"installReceipt": {"installReceiptId": "receipt",
+            "installSessionId": True, "installPhase": "cancelled", "installed": False}})
+        self.assertFalse(driver.reconciled_terminal(current, identity, "cancelled"))
 
     def test_handoff_identity_rejects_boolean_session_id(self):
         record_with_boolean = record("OK", True, "operation", {"installerStarted": True, "installed": None,

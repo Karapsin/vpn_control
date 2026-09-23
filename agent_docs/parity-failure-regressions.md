@@ -840,3 +840,99 @@ fixes, not Windows ACL validation or product changes. The existing failing tests
 are the reproducer and remain in routine hygiene; exact-SHA Windows CI must prove
 the repaired Windows branch. The bounded failure log is retained under
 `.runtime/parity-evidence/checkpoint125/windows-ci-failed.log`.
+
+### Installation replaces the operation owner — checkpoint127
+
+The API35 installed-target run replaced the application process before the fixture
+captured its handoff identity. The replacement owner's operation list correctly
+returned NOT_FOUND for the old in-memory operation; its current update receipt
+reported installed=true and the exact target APK hash/version were independently
+verified. This was a fixture ordering defect, not loss of a persistent product job.
+
+The installer fixture now uses two phases: after the OS confirmation is visible,
+capture and fsync the accepted controller/operation/receipt/session identity before
+approval; afterward poll the correlated current update receipt and verify installed
+bytes. File callbacks must be distinct; TTY interaction uses two prompts. Actual
+main-to-action regressions caught a dropped callback option. Additional causal
+regressions reject a foreign controller before handoff and Python boolean session
+IDs that would otherwise compare equal to integer1. All30 focused tests pass and
+remain in release hygiene. RED/GREEN logs are retained under
+`.runtime/parity-evidence/checkpoint127/android-handoff-review/`.
+
+Native API35 cancellation passes the corrected prior reconciliation driver.
+The successful target installation proves replacement and next-owner recovery,
+but not complete pre-approval correlation. Keep that limitation and rerun the new
+two-phase driver with an eligible base/target pair; never downgrade or replay an
+already installed target merely to repeat the fixture.
+
+### Linux fixture mount and synthetic DNS prerequisites — checkpoint127
+
+The CP120 VPN fixture extracted its runtime beneath /tmp on a nosuid mount.
+getcap reported effective/permitted NET_ADMIN and NET_RAW, but Linux ignored those
+file capabilities during execution; sing-box failed TUNSETIFF with EPERM. Owner
+NoNewPrivs was0, its capability bounding set included both capabilities, and
+/dev/net/tun was accessible. Moving only the disposable workspace to private
+home-backed btrfs resolved the prerequisite. This is a fixture setup failure,
+not evidence that the product dropped process privileges.
+
+The new linux_vpn_fixture_guard validates the exact binary's mount/options and
+capabilities, retains failed admission records, and rejects foreign-path getcap
+output. Its DNS-free curl probe preserves the fixture Host while explicitly
+resolving to loopback for quick tests or TEST-NET for real TUN acceptance. Eight
+routine tests pass; release hygiene runs test_linux_vpn_fixture_guard.py.
+
+Evidence qualification: the worker's initial RED was only a missing-module error
+and is not causal proof. Original native DNS/SOCKS failure outputs were overwritten
+by its final pass and cannot be reconstructed. Root's controlled getcap-only and
+missing-resolution replays fail behavioral tests; these were performed after the
+fix, not before it. Their logs and exact source hashes are under
+`.runtime/parity-evidence/checkpoint127/linux-regression-review/`. Preserve separate
+immutable directories for each native attempt; never overwrite failed evidence.
+Final current-RPM basic TUN traffic and clean off/quit are independently verified
+in checkpoint126/linux-vpn/root-review.json; broader continuity/package acceptance
+remains separate.
+
+### Machine rollback fixture authority and owner detection — checkpoint127
+
+The retained rollback fixture was written for user-local applications. Review
+before machine-owned installation found it read the owner's Library receipts and
+used unprivileged chflags, whereas the production machine worker uses /Library
+receipts and root-owned staging. The fixture now requires explicit receipt
+authority, keeps public CLI calls ordinary-user, and uses fixed privileged helper
+actions only for the exact machine receipt/candidate. Machine errors never fall
+back to user-local receipts. The armed candidate identity is retained through
+cleanup so a replacement candidate cannot have its flag cleared.
+
+The first native run timed out before installation because its owner predicate
+counted sudo/launchctl wrappers as owners. No install operation or worker was
+created in that attempt. The fixture now reuses the exact process-role parser for
+readiness/liveness. Regressions cover the wrapper-plus-real-owner process table,
+ambiguous real owners, machine/local receipt paths, missing authority, candidate
+replacement, and helper rejection. Windows-shaped paths and mocked Unix identity
+APIs exercise portability before CI. The23-test rollback suite remains in release
+hygiene. Native retry evidence is under checkpoint127/macos-rollback; component
+checks alone do not establish machine rollback/recovery acceptance.
+
+### Android fixture APK architecture mismatch — checkpoint127
+
+API29's current-source installation attempt stopped at updates check with
+UNSUPPORTED before download or installer creation. The fixture advertised
+arm64-v8a for an x86_64-only APK; API35 advertised both ABIs and masked the error.
+Fixture metadata now derives supported ABI entries from the actual APK ZIP native
+library paths, rejects symlink-only/malformed/unsupported payloads, and retains
+exact hash and size checks. Multi-ABI assets reference the same verified payload.
+The existing routine Android update fixture and SAN suites cover these cases.
+
+The failed native attempt is retained in checkpoint127/android29-installed.
+The quick old-code failure was replayed retrospectively in an isolated snapshot,
+not run before the edit; that limitation and GREEN logs are recorded in
+checkpoint127/android-abi-regression. A new immutable native fixture must prove
+eligibility and full two-phase replacement before this acceptance gate closes.
+
+The corrected immutable API29 rerun now proves full preapproval correlation and
+replacement-owner installed reconciliation with exact target bytes. Root reviewed
+24 export artifact hashes. Its ad-hoc export command repeated the earlier
+self-including manifest mistake; preserve that failed manifest and use the existing
+`scripts/native_fixture_manifest.py` writer/verifier, whose routine regressions
+already reject self-inclusion, for every subsequent evidence export. Do not
+replace this tested helper with shell redirection over the output directory.

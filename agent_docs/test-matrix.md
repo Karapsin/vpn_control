@@ -240,10 +240,14 @@ staging entries to the captured certificate-store context; never change system
 certificate files, SELinux policy/enforcement, or host trust.
 
 `scripts/test_android_installer_lifecycle.py` runs in release hygiene. Exercise
-the real argument-to-action path so `--continue-file` reaches the installer
-callback without falling back to stdin. Keep artifact identity, private callback
-admission and cleanup coverage alongside it. This tests fixture coordination,
-not OS confirmation or installer recovery; retain the API29/API35 native cases.
+the real argument-to-action path so both `--continue-file` and
+`--handoff-ready-file` reach the installer callback. Successful replacement runs
+must durably capture the original controller/operation/receipt/session before OS
+approval, then reconcile that exact receipt through the replacement owner without
+querying its old in-memory operation. Cover two TTY prompts, distinct private file
+callbacks, foreign pre-approval owners, typed session IDs, bounded unknown outcomes,
+artifact identity and cleanup. This tests fixture coordination, not OS confirmation
+or installer recovery; retain the API29/API35 native cases.
 
 `scripts/test_android_subscription_refresh_lifecycle.py` runs in release hygiene.
 It checks the public add/refresh/wait/delete sequence, owner binding, an initially
@@ -251,12 +255,29 @@ empty subscription cache, explicit fetch evidence, original source restoration,
 and retention after an uncertain mutation. These fixture regressions do not prove
 device network trust, runtime recovery, or scheduled refresh; retain native cases.
 
+`scripts/test_macos_rollback_fixture.py` also covers explicit receipt authority:
+machine receipts must use the protected /Library root, user-local receipts use the
+specified owner home, and failures never fall back across authorities. Candidate
+flag changes require the retained exact identity. The ordinary owner predicate
+uses the shared process-role parser so sudo/launchctl wrappers do not become extra
+owners. Keep Windows-path/mocked Unix-identity vectors in this portable fixture
+suite and native protected machine rollback as a separate gate.
+
 `scripts/test_macos_fixture_owner_launch.py` runs in release hygiene. The actual
 launcher checks the active console identity and GUI bootstrap session before an
 ordinary-user owner is launched through `launchctl asuser`; failed preflight must
 not start an owner. Remote macOS paths use POSIX semantics on every host. Retain
 the native headless `INTERACTION_REQUIRED` scenario separately from Aqua prompt
 and delayed-cancellation acceptance.
+
+`scripts/test_linux_vpn_fixture_guard.py` runs in release hygiene. The native
+Linux fixture inspects the exact extracted runtime binary with `findmnt` and
+`getcap`: a capability xattr does not confer privileges on a `nosuid` mount.
+Reject unavailable/malformed mount evidence, `nosuid`, `noexec`, capabilities for
+a different path, and missing effective/permitted capabilities before VPN start.
+A local HTTP regression verifies explicit DNS resolution while preserving the
+synthetic Host header; use the same probe builder for the native TUN fixture.
+These checks establish fixture prerequisites, not real TUN or traffic acceptance.
 
 ## Common Combined Checks
 

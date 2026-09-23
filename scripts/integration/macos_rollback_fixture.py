@@ -17,11 +17,16 @@ import os
 import subprocess
 import sys
 import time
+import stat
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Protocol
 from uuid import UUID
+
+_SCRIPT_ROOT = Path(__file__).resolve().parent.parent
+if str(_SCRIPT_ROOT) not in sys.path: sys.path.insert(0, str(_SCRIPT_ROOT))
+from macos_fixture_processes import FixtureProcessObserver, INITIAL_SERVE_OWNER, process_rows
 
 
 class FixtureError(RuntimeError):
@@ -48,6 +53,11 @@ class Step(str, Enum):
     CLEANED = "cleaned"
 
 
+class ReceiptAuthority(str, Enum):
+    USER_LOCAL = "user-local"
+    MACHINE = "machine"
+
+
 @dataclass(frozen=True)
 class Identity:
     device: int
@@ -68,6 +78,8 @@ class FixtureSpec:
     expected_target_package_sha256: str
     expected_target_code_sha256: str
     expected_base_identity: Identity
+    receipt_authority: ReceiptAuthority
+    owner_home: Path
     timeout_seconds: float = 120.0
     poll_seconds: float = 0.2
 
@@ -81,9 +93,9 @@ class Boundary(Protocol):
     def owner_ready(self, app: Path, state_dir: Path) -> int: ...
     def owner_alive(self, owner_pid: int, app: Path, state_dir: Path) -> bool: ...
     def public(self, app: Path, state_dir: Path, *args: str) -> dict[str, Any]: ...
-    def receipt(self, job_id: str) -> dict[str, Any]: ...
-    def arm_immutable(self, candidate: Path) -> None: ...
-    def clear_immutable(self, candidate: Path) -> None: ...
+    def receipt(self, job_id: str, authority: ReceiptAuthority, owner_home: Path) -> dict[str, Any]: ...
+    def arm_immutable(self, candidate: Path, identity: Identity, job_id: str, authority: ReceiptAuthority) -> None: ...
+    def clear_immutable(self, candidate: Path, identity: Identity, job_id: str, authority: ReceiptAuthority) -> None: ...
     def coordinator_absent(self, job_id: str, owner_pid: int) -> bool: ...
     def acquire_shared_launcher_lock(self, launcher: Path) -> object: ...
     def release_shared_launcher_lock(self, token: object) -> None: ...
@@ -125,6 +137,7 @@ class RollbackFixture:
         self.operation_id: str | None = None
         self.controller_id: str | None = None
         self.owner_pid: int | None = None
+        self.armed_identity: Identity | None = None
         self.terminal = False
 
     def record(self, step: Step, **values: Any) -> None:
@@ -190,12 +203,14 @@ class RollbackFixture:
         self.boundary.verify_signature(self.candidate)
         if self.boundary.identity(self.candidate).sha256 != _exact_hash(self.spec.expected_target_code_sha256, "target code"):
             raise FixtureError("candidate code identity changed")
-        receipt = self.boundary.receipt(self.job_id)
+        receipt = self.boundary.receipt(self.job_id, self.spec.receipt_authority, self.spec.owner_home)
         if receipt.get("jobId") != self.job_id or receipt.get("phase") != "WAITING_FOR_EXIT" or receipt.get("code") != "OK":
             raise FixtureError("handoff receipt is not exact protected waiting state")
         self.record(Step.WAITING_FOR_EXIT, jobId=self.job_id, receipt=receipt)
-        self.boundary.arm_immutable(self.candidate)
-        self.record(Step.CANDIDATE_ARMED, candidate=str(self.candidate), candidateIdentity=self.boundary.identity(self.candidate).as_json())
+        candidate_identity = self.boundary.identity(self.candidate)
+        self.boundary.arm_immutable(self.candidate, candidate_identity, self.job_id, self.spec.receipt_authority)
+        self.armed_identity = candidate_identity
+        self.record(Step.CANDIDATE_ARMED, candidate=str(self.candidate), candidateIdentity=candidate_identity.as_json())
         self.record(Step.HANDOFF_ACKNOWLEDGED, operationId=self.operation_id, jobId=self.job_id)
 
         self.wait_for("original owner exit", lambda: not self.boundary.owner_alive(self.owner_pid, self.spec.app, self.spec.state_dir))
@@ -212,7 +227,9 @@ class RollbackFixture:
             raise FixtureError("base bundle was not restored to its exact original identity")
         self.record(Step.BASE_RESTORED, base=restored.as_json())
         self.wait_for("coordinator absence after terminal", lambda: self.boundary.coordinator_absent(self.job_id, self.owner_pid))
-        self.boundary.clear_immutable(self.candidate)
+        if self.armed_identity is None or self.boundary.identity(self.candidate) != self.armed_identity:
+            raise FixtureError("armed candidate identity changed before cleanup")
+        self.boundary.clear_immutable(self.candidate, self.armed_identity, self.job_id, self.spec.receipt_authority)
         self.record(Step.CLEANED, candidate=str(self.candidate))
 
     def _ready_operation(self) -> dict[str, Any] | None:
@@ -229,7 +246,7 @@ class RollbackFixture:
 
     def _failed_receipt(self) -> dict[str, Any] | None:
         assert self.job_id is not None
-        receipt = self.boundary.receipt(self.job_id)
+        receipt = self.boundary.receipt(self.job_id, self.spec.receipt_authority, self.spec.owner_home)
         if receipt and receipt.get("jobId") != self.job_id:
             raise FixtureError("terminal receipt identity changed")
         if receipt.get("jobId") == self.job_id and receipt.get("phase") == "FAILED" and receipt.get("code") == "PERSISTENCE_FAILED":
@@ -272,20 +289,39 @@ class MacBoundary:
     def owner_ready(self, app: Path, state_dir: Path) -> int:
         status = self.public(app, state_dir, "status")
         _require_ok(status, "owner status")
-        raw = subprocess.run(["/bin/ps", "-axo", "pid=,command="], check=True, capture_output=True, text=True).stdout
-        needle = f"{app}/Contents/MacOS/vpn-control --state-dir {state_dir} serve"
-        matches = [line.split(None, 1)[0] for line in raw.splitlines() if needle in line]
-        if len(matches) != 1: return 0
-        return int(matches[0])
+        raw = subprocess.run(["/bin/ps", "-axo", "pid=,lstart=,command="], check=True, capture_output=True, text=True, timeout=self.command_timeout).stdout
+        owner = FixtureProcessObserver((app / "Contents/MacOS/vpn-control").as_posix(), state_dir.as_posix()).identify(process_rows(raw), INITIAL_SERVE_OWNER)
+        return owner.pid if owner is not None else 0
     def owner_alive(self, owner_pid: int, app: Path, state_dir: Path) -> bool:
-        raw = subprocess.run(["/bin/ps", "-p", str(owner_pid), "-o", "command="], check=False, capture_output=True, text=True).stdout
-        return f"{app}/Contents/MacOS/vpn-control --state-dir {state_dir} serve" in raw
-    def receipt(self, job_id: str) -> dict[str, Any]:
-        path = Path.home() / "Library/Application Support/vpn-control-install-jobs" / job_id / "status.json"
+        raw = subprocess.run(["/bin/ps", "-axo", "pid=,lstart=,command="], check=True, capture_output=True, text=True, timeout=self.command_timeout).stdout
+        owner = FixtureProcessObserver((app / "Contents/MacOS/vpn-control").as_posix(), state_dir.as_posix()).identify(process_rows(raw), INITIAL_SERVE_OWNER)
+        return owner is not None and owner.pid == owner_pid
+    def _machine(self, action: str, job_id: str, candidate: Path | None = None, identity: Identity | None = None) -> str:
+        script = Path(__file__).resolve()
+        parser_dependency = script.parent / "macos_fixture_processes.py"
+        for component in (script, parser_dependency, *script.parents):
+            metadata = component.stat()
+            if metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) & 0o022:
+                raise FixtureError("machine helper path must be root-owned and non-writable")
+        argv = ["/usr/bin/sudo", "-n", "/usr/bin/python3", str(script), "--machine-helper", action, "--job-id", job_id]
+        if candidate is not None and identity is not None:
+            argv += ["--candidate", str(candidate), "--identity", f"{identity.device}:{identity.inode}:{identity.sha256}"]
+        return subprocess.run(argv, check=True, capture_output=True, text=True, timeout=self.command_timeout).stdout
+    def receipt(self, job_id: str, authority: ReceiptAuthority, owner_home: Path) -> dict[str, Any]:
+        if authority is ReceiptAuthority.MACHINE:
+            try: return json.loads(self._machine("receipt", job_id))
+            except (subprocess.SubprocessError, json.JSONDecodeError): return {}
+        path = owner_home / "Library/Application Support/vpn-control-install-jobs" / job_id / "status.json"
         try: return json.loads(path.read_text())
         except (OSError, json.JSONDecodeError): return {}
-    def arm_immutable(self, candidate: Path) -> None: subprocess.run(["/usr/bin/chflags", "uchg", str(candidate)], check=True)
-    def clear_immutable(self, candidate: Path) -> None: subprocess.run(["/usr/bin/chflags", "nouchg", str(candidate)], check=True)
+    def arm_immutable(self, candidate: Path, identity: Identity, job_id: str, authority: ReceiptAuthority) -> None:
+        if authority is ReceiptAuthority.MACHINE: self._machine("arm", job_id, candidate, identity)
+        elif self.identity(candidate) == identity: subprocess.run(["/usr/bin/chflags", "uchg", str(candidate)], check=True, timeout=self.command_timeout)
+        else: raise FixtureError("local candidate identity changed")
+    def clear_immutable(self, candidate: Path, identity: Identity, job_id: str, authority: ReceiptAuthority) -> None:
+        if authority is ReceiptAuthority.MACHINE: self._machine("clear", job_id, candidate, identity)
+        elif self.identity(candidate) == identity: subprocess.run(["/usr/bin/chflags", "nouchg", str(candidate)], check=True, timeout=self.command_timeout)
+        else: raise FixtureError("local candidate identity changed")
     def coordinator_absent(self, job_id: str, owner_pid: int) -> bool:
         needle = f"--coordinate {job_id} {owner_pid}"
         raw = subprocess.run(["/bin/ps", "-axo", "command="], check=True, capture_output=True, text=True).stdout
@@ -311,7 +347,31 @@ def _parse_identity(value: str) -> Identity:
         raise argparse.ArgumentTypeError("expected DEVICE:INODE:SHA256") from error
 
 
+def _machine_helper(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--machine-helper", choices=("receipt", "arm", "clear"), required=True)
+    parser.add_argument("--job-id", required=True)
+    parser.add_argument("--candidate", type=Path)
+    parser.add_argument("--identity", type=_parse_identity)
+    args = parser.parse_args(argv)
+    if os.geteuid() != 0 or _canonical_uuid(args.job_id, "machine job") != args.job_id:
+        raise FixtureError("machine helper requires root and canonical job")
+    if args.machine_helper == "receipt":
+        if args.candidate is not None or args.identity is not None: raise FixtureError("receipt accepts no candidate")
+        path = Path("/Library/Application Support/vpn-control-install-jobs") / args.job_id / "status.json"
+        print(json.dumps(json.loads(path.read_text()), sort_keys=True)); return 0
+    candidate, identity = args.candidate, args.identity
+    expected = Path("/Applications") / f".vpn-control-stage-{args.job_id}.app"
+    if candidate != expected or identity is None or MacBoundary().identity(candidate) != identity:
+        raise FixtureError("machine helper candidate identity changed")
+    subprocess.run(["/usr/bin/chflags", "uchg" if args.machine_helper == "arm" else "nouchg", str(candidate)], check=True,
+                   timeout=MacBoundary.command_timeout)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if "--machine-helper" in argv: return _machine_helper(argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", type=Path, required=True, help="owned installed base .app path")
     parser.add_argument("--state-dir", type=Path, required=True, help="new, owned fixture state directory")
@@ -321,6 +381,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target-package-sha256", required=True)
     parser.add_argument("--target-code-sha256", required=True)
     parser.add_argument("--base-identity", type=_parse_identity, required=True, help="DEVICE:INODE:CODE_SHA256")
+    parser.add_argument("--receipt-authority", choices=[item.value for item in ReceiptAuthority], required=True)
+    parser.add_argument("--owner-home", type=Path)
     parser.add_argument("--evidence", type=Path, required=True, help="new evidence JSONL file")
     parser.add_argument("--timeout-seconds", type=float, default=120.0)
     parser.add_argument("--poll-seconds", type=float, default=0.2)
@@ -330,6 +392,8 @@ def main(argv: list[str] | None = None) -> int:
     # state directory is intentionally pre-existing.  The evidence destination is
     # the durable run boundary and must never overwrite another attempt.
     if not args.state_dir.is_dir() or args.evidence.exists(): parser.error("an existing owned state directory and fresh evidence path are required")
+    if (args.receipt_authority == ReceiptAuthority.USER_LOCAL.value) != (args.owner_home is not None):
+        parser.error("--owner-home is required only for user-local receipt authority")
     if args.timeout_seconds <= 0 or args.poll_seconds <= 0: parser.error("timeouts must be positive")
     args.evidence.parent.mkdir(parents=True, exist_ok=True)
     with args.evidence.open("x", encoding="utf-8") as output:
@@ -337,7 +401,8 @@ def main(argv: list[str] | None = None) -> int:
             output.write(json.dumps(event, sort_keys=True) + "\n"); output.flush(); os.fsync(output.fileno())
         spec = FixtureSpec(args.app, args.state_dir, args.base_package, args.target_package,
             args.base_package_sha256, args.target_package_sha256,
-            args.target_code_sha256, args.base_identity, args.timeout_seconds, args.poll_seconds)
+            args.target_code_sha256, args.base_identity, ReceiptAuthority(args.receipt_authority), args.owner_home or Path("/"),
+            args.timeout_seconds, args.poll_seconds)
         fixture = RollbackFixture(spec, MacBoundary(), evidence)
         try: fixture.run()
         finally:
