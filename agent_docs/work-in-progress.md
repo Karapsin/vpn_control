@@ -25,7 +25,52 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint119
+## Current continuation — checkpoint120
+
+Checkpointc4532e3669885e5ec3b132a0be70de0470d59b5a was pushed after full
+prepush and independent review of the stream interruption fix. Its exact-SHA
+watcher26163 is active; prior d27affd passed all five required workflows.
+The causal Android stream test failed expected130/actual2 before the fix; all20
+focused stream tests pass after it. Mutation uncertainty handling is unchanged.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Delivery120 | root | Shared integration, routine wiring, host checks, evidence and delivery |
+| Windows reconciliation | windows_reconcile120 | CP117 single base-task instance and exact frozen helper test; no replay |
+| Android35 export | android_readback117 |5682 public export into trusted private temporary directory |
+| Android29 cancellation | android29_cancel120 |5684 fresh foreground admission and read-only transport diagnosis |
+| Linux RPM acceptance | linux_accept120 | CP120 guest2327 public same-source update after successful base install |
+
+API29 normal benchmark operation65f563b9-6649-4d9b-a462-30dae860a376 succeeded
+with secondaryStatus=ok and secondaryTotalMs=1390.65995. Root verified10 receipt
+hashes and the public status/wait results. Fixture is OFF, empty, source=current-
+locations revision5. Shared preflight files were overwritten by the normal run;
+they do not prove earlier stalled cancellation. Cancellation remains unverified.
+
+API35 large export diagnosis found a correctly rejected destination under the
+non-sticky0777 projects ancestor; transfer completed. Existing causal regression
+covers this admission rule. Retry now uses a trusted0700 /private/tmp parent.
+Retained no-op status/wait each timed out without a terminal outcome; no replay.
+
+Windows CP117 start failures are batch-logon denial, not bad credentials:
+Security4625/type4/status0xC000015B and TaskScheduler101/error0x80070569.
+No installer child started. Temporary Operational logging was restored disabled.
+The deterministic admission helper is wired into Windows package CI. Native denial
+was reproduced before a narrow batch-right repair and admission then passed.
+Exactly one base task instance4C89AAFD-20D3-44CB-8677-6CC9B24AA339 was started;
+its outcome is being reconciled, never replayed after observer timeout.
+
+Linux base2.1.14/target2.1.15 DEB/RPM/Arch packages completed from d27affd source.
+Root checked source fingerprint and equal code fingerprints in the build receipt.
+Existing Fedora2326 owner still reports unknown nonterminal jobbacae2d1-5029-4e39-
+a69a-6cba7407c64c, installed=null. Preserve it and prepare a separate clean guest
+for acceptance. New CP120 Fedora2327 completed cloud-init; native base RPM
+installation acquired xdg-utils and desktop registration succeeded. rpm verification
+and public CLI version2.1.14 passed. The target remains staged for public update.
+Mac remains stopped for host memory pressure. Full native and
+visual acceptance and final delivered-source verification remain incomplete.
+
+## Prior continuation — checkpoint119
 
 At11:56 Moscow September23, HEAD/origin/dev is
 `d27affd35f43b7c033676a76d2cc2b8219ee5b46`, product2.1.15. Its complete

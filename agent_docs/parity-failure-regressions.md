@@ -675,3 +675,37 @@ DesktopAndroidStreamTransportTest runs in the routine desktop test tier.
 The five focused stream suites passed; evidence is checkpoint119/stream-red.xml
 and the retained GREEN XML files. Native terminal SIGINT remains a separate
 acceptance scenario; thread interruption alone does not prove OS signal behavior.
+
+### Windows fixture batch-logon denial — checkpoint120
+
+The CP117 limited Task Scheduler task returned from start but never launched its
+child. Security4625/logon type4/status0xC000015B and TaskScheduler101/error
+0x80070569 established missing batch-logon rights, not invalid credentials. No
+MSI had started. Before scheduling a disposable guest task, dot-source
+scripts/windows_task_admission.ps1 and call Test-BatchLogonAdmission with the
+account and an in-memory SecureString. It uses native batch logon, closes the
+token, zeroes the temporary password buffer and returns only admission/error
+metadata. Never put the credential in process arguments or evidence.
+
+The deterministic PowerShell test distinguishes rights denial from bad credentials,
+checks successful admission and invalid-result token cleanup, and exercises the
+privilege-right parser with PowerShell's short-name alias collision present. The
+Windows package workflow runs it before packaging; absent PowerShell is a failure.
+This is an injected-boundary regression, not proof of native account eligibility.
+The real guest preflight reproduced1385 before repair and returned success after
+adding only its disposable user's batch right while preserving other rights.
+The alias collision occurred in the first repair invocation before policy changes;
+that evidence was retained and the next attempt used the named parser.
+
+A successful admission check does not authorize an installer replay. Reconcile
+task instance, child and receipt before starting, preserve unknown work, and keep
+MSI execution/update/recovery as separate native acceptance scenarios.
+
+Review additionally found incorrect HRESULT_FROM_WIN32 conversion for larger
+DWORD values. The added boundary fixture failed against the old helper and passed
+with low16-bit masking and preservation of already-negative HRESULT values. The
+final generated PowerShell test body passed on the guest; Python was absent, so
+this is exact-body/component evidence rather than Python-launcher execution.
+The Python launcher uses process-only ExecutionPolicy Bypass for its verified
+fixture script, without changing machine policy. Hosted Windows CI must still
+execute that launcher.

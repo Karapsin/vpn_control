@@ -35,6 +35,8 @@ on:
       - "scripts/test_windows_package_helpers.ps1"
       - "scripts/test_packaged_cli.py"
       - "scripts/test_packaged_cli_harness.py"
+      - "scripts/windows_task_admission.ps1"
+      - "scripts/test_windows_task_admission.py"
       - "scripts/windows_install_admission_diagnostic.py"
       - "scripts/test_windows_install_admission_diagnostic.py"
       - "scripts/windows_launcher_utf8.py"
@@ -109,6 +111,9 @@ jobs:
       - name: Check release hygiene
         shell: bash
         run: ./scripts/check_release_hygiene.sh
+
+      - name: Verify batch-logon fixture admission
+        run: python scripts/test_windows_task_admission.py
 
       - name: Verify Windows admission diagnostic behavior
         run: python scripts/test_windows_install_admission_diagnostic.py
