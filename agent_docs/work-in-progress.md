@@ -25,7 +25,32 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint115
+## Current continuation — checkpoint116
+
+Checkpoint77976806328da03f43a7952224ec272d69787a74 was pushed after the
+complete managed prepush tier passed. Its exact-SHA managed CI watcher is live
+(session1593); all five workflows were in progress at10:29 Moscow September23.
+Do not reuse the older9e57 CI receipt as evidence for779.
+
+| Task | Owner | Exclusive scope | Evidence / next step |
+| --- | --- | --- | --- |
+| Delivery116 | root | Docs, metadata, host Gradle, commits, CI | checkpoint115/prepush-result.json; CI watcher1593 |
+| Android baseline115 | native_evidence115 | Owned API35 serial5682 only; ignored evidence | qemu59345, UID2000, nondebuggable2.1.14; packaged CLI read-only commands next |
+| Windows fixture116 | windows_artifacts115 | New manual-only workflow and its test | Build same-source base/target on disposable CI; no dispatch yet |
+| Linux regression116 | linux_regression116 (done) | DesktopLinuxInstallWorkerTest.kt only | Root focused five tests pass; actual shell RPM failure branch |
+
+Android baseline confirms boot of only the existing private AVD at2GiB/2CPU.
+Direct content call status/capabilities returned empty output and are not valid
+provider protocol evidence. Use the packaged adapter. The first launch omitted
+ANDROID_AVD_HOME and failed; its raw error is retained, causal regression still
+required. API29 image files exist but completion receipt is insufficient.
+
+Mac VM remains stopped: root deferred its4GiB reservation with roughly11.5GiB
+physical compressed memory and1.6GiB swap already in use. No unrelated process
+was stopped. Arch had53GiB available before the Android allocation. Keep unknown
+installer records and parked Fedora memory intact.
+
+## Prior continuation — checkpoint115
 
 On 2026-09-23 startup revalidated dev at9e57f01, equal to origin/dev, and
 preserved ten dirty fixture/doc paths. The previous turn was a status estimate,

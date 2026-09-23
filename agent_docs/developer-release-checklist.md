@@ -70,6 +70,16 @@ Windows desktop from a Windows host:
   [The manifest facility requires Windows 10 1903+](https://learn.microsoft.com/en-us/windows/apps/design/globalizing/use-utf8-code-page); earlier Windows Unicode argument
   handling remains unverified and must not be inferred from modern Windows tests.
 
+For disposable Windows update acceptance, dispatch the existing Windows Desktop
+Package workflow on `dev` with `fixture_base_version` set to the intended base
+(for example `2.1.13`). It calls the reusable Windows Update Fixture Pair workflow
+at the same commit and derives the target from canonical metadata. The artifact
+contains both test-only MSI packages, app images, hashes, source fingerprints and
+build logs. No publisher is invoked. Ordinary pushes and manual runs without the
+input retain normal packaging. Failed fixture builds upload diagnostic logs;
+only a successful pair receipt establishes matched artifacts. Native replacement,
+UAC and recovery must still run in the owned disposable Windows guest.
+
 Windows desktop from Linux VM:
 
 - libvirt VM `vpn-control-win11` exists, or pass `--vm-name`.

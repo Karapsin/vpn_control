@@ -71,6 +71,7 @@ python3 scripts/test_macos_install_gate.py
 python3 scripts/test_macos_install_enospc.py
 python3 scripts/test_macos_package_cleanup.py
 python3 scripts/test_macos_aqua_authorization_correlation.py
+python3 scripts/test_windows_update_fixture_workflow.py
 python3 scripts/test_windows_native_helpers.py
 python3 scripts/test_windows_native_fixture.py
 python3 scripts/test_windows_prompt_observation.py

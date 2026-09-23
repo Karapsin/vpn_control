@@ -600,3 +600,16 @@ preserves failed observations. The runner must honor its supplied timeout. The
 original native first-read failure had discarded output: endpoint readiness is
 an inference, not a recovered diagnosis. Routine release hygiene includes
 test_macos_fixture_processes.py.
+
+### RPM transaction rejection response — checkpoint116
+
+Historical CP83 native evidence reached RPM payload-digest rejection after
+public manifest verification and installer handoff. Existing pre-install hash
+checks did not exercise this branch. DesktopLinuxInstallWorkerTest now executes
+the production shell dispatch/result fragment with a failing rpm command and
+asserts exact arguments plus FAILED/RUNTIME_FAILED. It is routine desktop-test
+coverage, not proof of RPM database rollback or current-package base preservation.
+The initial regression fixture accidentally omitted production set +e and exited
+before receipt publication; retaining that line fixes the test, not the product.
+Root's focused suite passes five tests without skips (checkpoint115/
+linux-worker-test-green.log). Native RPM failure/recovery remains required.

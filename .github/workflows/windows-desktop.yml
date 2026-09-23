@@ -2,6 +2,11 @@ name: Windows Desktop Package
 
 on:
   workflow_dispatch:
+    inputs:
+      fixture_base_version:
+        description: Existing product version to package as the immutable update base
+        required: false
+        type: string
   push:
     branches:
       - dev
@@ -42,7 +47,34 @@ on:
       - "scripts/windows_native_packaging.gradle"
 
 jobs:
+  validate-windows-update-fixture:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''
+    name: Validate update fixture input
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIXTURE_BASE_VERSION: ${{ inputs.fixture_base_version }}
+    steps:
+      - name: Checkout selected development source
+        uses: actions/checkout@v4
+
+      - name: Validate fixture base version
+        shell: bash
+        run: |
+          python3 -c 'import os; from scripts.version_metadata import parse_version; parse_version(os.environ["FIXTURE_BASE_VERSION"])'
+
+  build-windows-update-fixture:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''
+    needs: validate-windows-update-fixture
+    name: Build immutable MSI pair
+    permissions:
+      contents: read
+    uses: ./.github/workflows/windows-update-fixture.yml
+    with:
+      base_version: ${{ inputs.fixture_base_version }}
+
   package-windows-desktop:
+    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''
     name: Build EXE and MSI
     runs-on: windows-latest
     timeout-minutes: 45

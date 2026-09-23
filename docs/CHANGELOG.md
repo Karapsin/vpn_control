@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Clear the inherited jpackage launcher marker before macOS installer relaunch, with a native child-process regression.
 - Restore macOS graphical update return through Launch Services and add nondebuggable Android emulator fixtures with native receipt regressions.
 - Bound native evidence reads and readiness checks, and validate update fixture staging dependencies.
+- Build same-source Windows MSI fixture pairs on demand and cover RPM installation failure receipts.
 
 ## 2.1.14 - 2026-09-21
 

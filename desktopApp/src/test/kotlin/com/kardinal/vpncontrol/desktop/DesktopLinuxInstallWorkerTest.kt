@@ -45,6 +45,30 @@ class DesktopLinuxInstallWorkerTest {
             "--reinstall", "install", "--", "/protected/job/package.deb"), output.trim().lines())
     }
 
+    @Test fun rpmInstallFailurePublishesRuntimeFailedReceiptWithExactInvocation() {
+        assumeFalse(System.getProperty("os.name").startsWith("Windows", true))
+        // Execute the production dispatch and result handling with a bounded failing
+        // rpm command. This covers the worker's failure response, not RPM database
+        // rollback, which remains a native package-manager acceptance concern.
+        val install = "set +e\n" + source().substringAfter("set +e\n").substringBefore("\nterminal=1")
+        val script = """
+            set -eu
+            rpm() { printf '%s\n' "rpm" "${'$'}@"; return 17; }
+            publish_receipt() { printf '%s %s\n' "${'$'}1" "${'$'}2"; }
+            package_type=rpm
+            verified_package='/protected/job/package.rpm'
+            arch_install_unknown=0
+            $install
+        """.trimIndent()
+        val process = ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true).start()
+        process.outputStream.close()
+        assertTrue(process.waitFor(10, TimeUnit.SECONDS))
+        val output = process.inputStream.bufferedReader().readText()
+        assertEquals(0, process.exitValue(), output)
+        assertEquals(listOf("rpm", "-Uvh", "--replacepkgs", "--", "/protected/job/package.rpm",
+            "FAILED RUNTIME_FAILED"), output.trim().lines())
+    }
+
     private val job = "00000000-0000-0000-0000-000000000001"
     private fun source() = DesktopLinuxCapturedInstallWorker.arguments(job, 123)[4]
     private fun parser() = source().substringAfter("read_request() {").substringBefore("\n}").let { "read_request() {$it\n}\n" }
