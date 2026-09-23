@@ -971,3 +971,18 @@ in checkpoint128/linux-fixture-causality128; the failed native bundle is preserv
 in checkpoint128/linux-vpn-continuity128. Before retry, the exact corrected native
 server must prove concurrent HTTP and retained echo behavior locally, because the
 existing HTTP-only fixture cannot replace echo behavior implicitly.
+
+### macOS process-row test rendered with Windows separators — checkpoint128
+
+After the Android test repair, Windows CI for a52faf3 passed that selection and
+reached a second portability defect: the macOS owner test interpolated host Path
+objects into simulated guest ps output. On Windows those strings contain
+backslashes, while the real Mac process matcher correctly expects POSIX paths.
+The test now renders explicit POSIX guest strings and exercises both native Path
+and PureWindowsPath variants on every host. The ambiguity test first recognizes
+one owner before rejecting two, avoiding a false pass from malformed input.
+
+The new variants failed twice with the old rendering before the fix; all23 tests
+now pass without skips. Evidence: checkpoint128/mac-test-portability. Failed job
+log: checkpoint128/windows-ci-second-job.log. Product/native installer behavior
+was unchanged; exact-SHA Windows CI still must verify the correction.

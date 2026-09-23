@@ -206,6 +206,17 @@ class RollbackFixtureTest(unittest.TestCase):
 
 
 class MacBoundaryAuthorityTest(unittest.TestCase):
+    @staticmethod
+    def mac_path_variants():
+        return (
+            (Path("/Applications/vpn-control-machine-rollback114.app"), Path("/Users/admin/macos-machine-rollback114/state")),
+            (PureWindowsPath("/Applications/vpn-control-machine-rollback114.app"), PureWindowsPath("/Users/admin/macos-machine-rollback114/state")),
+        )
+
+    @staticmethod
+    def owner_process_command(app, state):
+        return f"{app.as_posix()}/Contents/MacOS/vpn-control --state-dir {state.as_posix()} serve"
+
     def test_owner_ready_uses_macos_paths_even_under_windows_path_semantics(self):
         app = PureWindowsPath("/Applications/vpn-control-machine-rollback114.app")
         state = PureWindowsPath("/Users/admin/macos-machine-rollback114/state")
@@ -217,26 +228,31 @@ class MacBoundaryAuthorityTest(unittest.TestCase):
         self.assertEqual(30, run.call_args.kwargs["timeout"])
 
     def test_owner_ready_rejects_launch_wrappers_and_selects_exact_owner(self):
-        app = Path("/Applications/vpn-control-machine-rollback114.app"); state = Path("/Users/admin/macos-machine-rollback114/state")
-        owner = f"{app}/Contents/MacOS/vpn-control --state-dir {state} serve"
-        raw = "\n".join((
-            f" 743 Tue Sep 23 16:40:00 2026 sudo launchctl asuser 501 sudo -n -u admin {owner}",
-            f" 744 Tue Sep 23 16:40:01 2026 sudo -n -u admin {owner}",
-            f" 745 Tue Sep 23 16:40:02 2026 {owner}",
-        ))
-        boundary = MacBoundary(); boundary.public = lambda *_: {"ok": True}
-        with mock.patch.object(subject.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, raw, "")):
-            self.assertEqual(745, boundary.owner_ready(app, state))
-            self.assertTrue(boundary.owner_alive(745, app, state))
+        for app, state in self.mac_path_variants():
+            with self.subTest(app_type=type(app).__name__):
+                owner = self.owner_process_command(app, state)
+                raw = "\n".join((
+                    f" 743 Tue Sep 23 16:40:00 2026 sudo launchctl asuser 501 sudo -n -u admin {owner}",
+                    f" 744 Tue Sep 23 16:40:01 2026 sudo -n -u admin {owner}",
+                    f" 745 Tue Sep 23 16:40:02 2026 {owner}",
+                ))
+                boundary = MacBoundary(); boundary.public = lambda *_: {"ok": True}
+                with mock.patch.object(subject.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, raw, "")):
+                    self.assertEqual(745, boundary.owner_ready(app, state))
+                    self.assertTrue(boundary.owner_alive(745, app, state))
 
     def test_owner_ready_rejects_ambiguous_exact_owners(self):
-        app = Path("/Applications/vpn-control-machine-rollback114.app"); state = Path("/Users/admin/macos-machine-rollback114/state")
-        owner = f"{app}/Contents/MacOS/vpn-control --state-dir {state} serve"
-        raw = "\n".join((f" 745 Tue Sep 23 16:40:02 2026 {owner}", f" 746 Tue Sep 23 16:40:03 2026 {owner}"))
-        boundary = MacBoundary(); boundary.public = lambda *_: {"ok": True}
-        with mock.patch.object(subject.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, raw, "")):
-            self.assertEqual(0, boundary.owner_ready(app, state))
-            self.assertFalse(boundary.owner_alive(745, app, state))
+        for app, state in self.mac_path_variants():
+            with self.subTest(app_type=type(app).__name__):
+                owner = self.owner_process_command(app, state)
+                one_owner = f" 745 Tue Sep 23 16:40:02 2026 {owner}"
+                raw = "\n".join((one_owner, f" 746 Tue Sep 23 16:40:03 2026 {owner}"))
+                boundary = MacBoundary(); boundary.public = lambda *_: {"ok": True}
+                with mock.patch.object(subject.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, one_owner, "")):
+                    self.assertEqual(745, boundary.owner_ready(app, state))
+                with mock.patch.object(subject.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, raw, "")):
+                    self.assertEqual(0, boundary.owner_ready(app, state))
+                    self.assertFalse(boundary.owner_alive(745, app, state))
 
     def test_cli_rejects_authority_option_mismatch_before_fixture_construction(self):
         with tempfile.TemporaryDirectory() as temporary:

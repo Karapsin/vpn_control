@@ -25,6 +25,26 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
+## Current continuation — checkpoint129
+
+Corrective checkpoint128 a52faf3aabd3a7b92c2f9e240fe890798349a501 passed local
+prepush and is pushed. Windows CI passed the repaired Android tests, then exposed
+a macOS test process-row using host Windows separators. The test-only correction
+now exercises native and PureWindowsPath forms locally, including a non-vacuous
+ambiguity check; causal RED and23-test GREEN evidence are retained. Final metadata,
+prepush and a new exact-SHA CI cycle remain required.
+
+The CP120 installed-RPM retry passes package/capability admission,110 TUN HTTP
+requests,110 ordered raw proxy echoes and preserved controller/runtime through
+GUI close and guarded frontend crash/reattach, followed by off/quit and no TUN or
+runtime process. Root verified the manifest and identities in
+checkpoint128/linux-root-review.json. Per-frame raw proxy timestamps cover close
+and crash; the TUN sampler lacks per-attempt timestamps, so do not claim it proves
+TUN requests overlapped the crash. Full evidence is in
+checkpoint128/linux-vpn-continuity-retry128 and its separate retained export.
+No additional native retry is active. The Mac guest remains stopped after the
+resource monitor's pressure2 event; journal/inputs remain preserved.
+
 ## Current continuation — checkpoint128
 
 Checkpoint127 `a27624a054d888e5004e4511747ab3a97a5e6a1c` is pushed after a
