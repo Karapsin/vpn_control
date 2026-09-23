@@ -66,6 +66,63 @@ environment limitation is not a product defect unless the record says otherwise.
 | macOS native bundle copy returns EIO before rename | Native installer persistence | Exact guest worker log records copyfile output EIO; the underlying I/O cause is unproven. | `test_copyfile_eio_at_production_staging_helper_preserves_terminal_failure_evidence` in `scripts/test_macos_install_enospc.py`; actual macOS package CI executes it before packaging, with explicit skips elsewhere. | `checkpoint51/macos-eio-mutation-red.log`: ignoring the production check fails the expected error assertion. `macos-eio-green.log`:6 tests pass. Earlier surrogate probe was invalid and is superseded. | Exact job2958cf24 retained its original app, protected FAILED/PERSISTENCE_FAILED receipt and partial stage; input cleanup preserved evidence. | Successful full replacement remains unproven; partial-stage disposal policy and underlying I/O cause still need resolution. |
 | Failed immutable fixture deleted during manual retry | Agent execution mistake | A worker bypassed the existing-stage rejection and removed the failed pair directory. | Existing builder admission rejects stage reuse; no additional code regression can be claimed for the manual bypass. | Remaining outer logs record failure/rejection; the pair-contained log and stage were lost. | No package had been produced. New retry3 uses a unique path and the same verified runtime/source. | Never chmod/delete frozen inputs to bypass admission. Use a new path, or a supported verified recovery/disposal operation; retain exact deletion/evidence-loss records. |
 
+## Windows fixture QMP admission — checkpoint121
+
+The ignored login bridge sent keys without QMP capability negotiation and ignored
+error replies, then incorrectly printed an input-sent marker. No authentication
+event or user session followed. The bridge now uses the existing repository
+`capture_visual_windows_qemu.QmpClient` and completes negotiation before reading
+its guest-private credential. This is fixture transport repair, not a product
+login or installer change.
+
+The new `test_capture_visual_windows_qemu.py` drives that actual client against a
+bounded Unix-socket server, checking capabilities before keys, interleaved events,
+and rejected-command propagation. Root replayed separate removed-handshake and
+ignored-error mutations: each relevant test fails; both tests pass with the real
+unchanged client. Logs: checkpoint121/windows-qmp/{handshake-red,error-red,green}.log.
+Release hygiene runs the test. After transport repair the guest displayed a real
+incorrect-credentials message; credential validity versus keyboard delivery is
+still being distinguished. No successful login or MSI update is claimed yet.
+
+## Linux retained PTY master — checkpoint121
+
+A credential-free CP120 guest probe established that reopening a PTY master via
+`/proc/self/fd/<master>` allocated a different PTY. Its marker never reached the
+original slave. Therefore the earlier external password write could not reach the
+polkit prompt; this is a fixture delivery failure, not evidence of an invalid
+password or a product installer defect. The old public job was authoritatively
+cancelled before a new attempt.
+
+`test_reopening_proc_master_creates_distinct_pty_but_retained_fd_delivers` uses a
+raw slave and bounded observation, rejecting reopened-master delivery and proving
+delivery through the original descriptor. Root ran a causal mutation of the new
+write helper in CP120: the original-slave readiness assertion failed, then the
+unmodified full harness passed20 tests with no skips. Evidence is
+`checkpoint121/linux/guest-suite.log`; frozen guest inputs/logs are under
+`/tmp/vpn-pty-regression121.2bnrl66t`. Existing release hygiene runs the harness;
+Linux executes the procfs case, while other hosts explicitly skip it.
+
+The first retained-master driver retry exited INTERACTION_REQUIRED before any
+operation was admitted: passing slave descriptors did not establish a controlling
+terminal for `/dev/tty`. A second real-child regression now proves a session with
+slave descriptors alone fails to open `/dev/tty`, while the tested Linux-only
+setsid/TIOCSCTTY helper succeeds. Root replayed both causal mutations as failures
+and ran the exact21-test harness successfully with no skips in CP120; host checks
+pass with the two Linux-only cases skipped. Evidence:
+checkpoint121/linux/guest-suite-ctty.log, frozen guest inputs
+`/tmp/vpn-pty-regression121.cklqdek2`. No password was delivered or installer
+started in the rejected attempt, retained under
+`/tmp/vpn-rpm-retry121.mz47zhvs` and checkpoint121/linux/observation1.log.
+
+The corrected persistent driver imports those tested helpers, admits the private
+credential file before launch, retains its original descriptor, waits for prompt
+and echo-disable admission, and keeps observing after a timeout. Native rerun
+job02bf3dc0-2404-4e8c-ae66-a7d987afd7bf completed protected SUCCEEDED/OK seq4.
+The replacement owner reports installed=true, cleanupCode=OK and runtime OFF;
+RPM verification and public --version2.1.15 pass. The package pair is source
+d27affd, base2.1.14/target2.1.15; final delivered-source and traffic scenarios
+remain separate. Receipt: checkpoint121/linux/receipt.json.
+
 ## Per-user Windows native image admission — checkpoint93
 
 The public Windows attempt stayed unknown before worker readiness. Read-only

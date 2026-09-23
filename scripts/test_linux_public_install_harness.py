@@ -3,6 +3,7 @@ import io
 import errno
 import os
 import re
+import select
 from pathlib import Path
 import subprocess
 import sys
@@ -17,10 +18,62 @@ from prepare_linux_public_install_image import prepare
 from test_linux_public_install import (launch_fixture_owner, require_package_managed_launcher, run,
                                        observe_terminal_process, terminal_password_prompt_seen, terminal_install_handoff,
                                        terminal_password_input_ready,
+                                       write_password_to_original_master,
+                                       launch_with_controlling_tty,
                                        timed_update_command, verify_recovered_install)
 
 
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith("linux"), "requires Linux controlling terminal semantics")
+    def test_controlling_tty_launch_assigns_dev_tty_while_bare_popen_does_not(self):
+        import pty
+        probe = [sys.executable, "-c", "import os; os.open('/dev/tty', os.O_RDONLY); print('TTY_OK')"]
+        master, slave = pty.openpty()
+        attached = None
+        try:
+            bare = subprocess.run(probe, stdin=slave, stdout=slave, stderr=slave,
+                                  start_new_session=True, timeout=5)
+            self.assertNotEqual(0, bare.returncode)
+            while select.select([master], [], [], 0)[0]:
+                os.read(master, 4096)
+            attached = launch_with_controlling_tty(probe, slave)
+            ready, _, _ = select.select([master], [], [], 1)
+            self.assertTrue(ready)
+            output = os.read(master, 4096)
+            self.assertEqual(0, attached.wait(timeout=5))
+            self.assertIn(b"TTY_OK", output)
+        finally:
+            if attached is not None and attached.poll() is None:
+                attached.kill()
+                attached.wait(timeout=5)
+            os.close(slave)
+            os.close(master)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "requires Linux procfs PTY semantics")
+    def test_reopening_proc_master_creates_distinct_pty_but_retained_fd_delivers(self):
+        import fcntl
+        import pty
+        import struct
+        import tty
+        master, slave = pty.openpty()
+        try:
+            tty.setraw(slave)
+            pty_number = lambda fd: struct.unpack("I", fcntl.ioctl(fd, 0x80045430, struct.pack("I", 0)))[0]
+            original = pty_number(master)
+            reopened = os.open(f"/proc/self/fd/{master}", os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+            try:
+                self.assertNotEqual(original, pty_number(reopened))
+                os.write(reopened, b"wrong\n")
+                self.assertFalse(select.select([slave], [], [], 0.05)[0])
+                write_password_to_original_master(master, b"synthetic-fixture-response")
+                self.assertTrue(select.select([slave], [], [], 0.2)[0])
+                self.assertEqual(b"synthetic-fixture-response\n", os.read(slave, 128))
+            finally:
+                os.close(reopened)
+        finally:
+            os.close(slave)
+            os.close(master)
+
     @unittest.skipUnless(os.name == "posix", "requires a private POSIX PTY")
     def test_password_response_waits_for_terminal_input_flush_and_echo_disable(self):
         import pty

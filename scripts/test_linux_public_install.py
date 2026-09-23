@@ -147,6 +147,29 @@ def terminal_password_input_ready(terminal_bytes, terminal_fd):
         return False
 
 
+def write_password_to_original_master(master_fd, password):
+    """Write only through the PTY master retained by the observing driver."""
+    require(isinstance(password, bytes) and password and b"\n" not in password and b"\r" not in password,
+            "Credential input is invalid")
+    payload = password + b"\n"
+    written = os.write(master_fd, payload)
+    require(written == len(payload), "Credential delivery was partial")
+
+
+def launch_with_controlling_tty(arguments, slave_fd, **kwargs):
+    """Give a single-threaded Linux fixture driver's child its own controlling PTY."""
+    import sys
+    require(sys.platform.startswith("linux"), "Controlling terminal fixture requires Linux")
+    import fcntl
+    import termios
+
+    def attach_tty():
+        os.setsid()
+        fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+    return subprocess.Popen(arguments, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+                            preexec_fn=attach_tty, **kwargs)
+
+
 def terminal_install_handoff(observation):
     """Validate a complete public handoff response without replaying work."""
     # PTY EOF can race process reaping. A complete response plus successful

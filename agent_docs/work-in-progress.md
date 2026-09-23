@@ -25,7 +25,74 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint120
+## Current continuation — checkpoint121
+
+At13:06 Moscow September23, HEAD/origin/dev is
+`fd6eec74ea2f12e7ee500a22aef748a9178f84a9`, product2.1.15, after full
+prepush and reviewed checkpoint delivery. All five required exact-SHA workflows
+passed; managed watcher10179 exited0. The prior
+c4532e3 and d27affd checkpoints passed all five required workflows. Full parity
+remains incomplete; older native packages do not certify the final delivered SHA.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Delivery121 | root | Shared integration, documentation, host checks, delivery and evidence review |
+| Windows interactive admission | windows_reconcile120 | CP117 only; disable failed owned task, refresh login, prove SID1002 ordinary interactive session before any MSI retry |
+| Linux RPM acceptance | root | CP120 same-source replacement/recovery passed; two causal PTY regressions reviewed for delivery |
+| Android29 cancellation | android29_cancel120 |5684 public cancellation scenario, persistent relay, exact operation and cleanup |
+| Android heap admission audit | android35_cold120 | Read-only private AVD configuration/evidence audit; no emulator restart |
+
+API35 private export and existing-destination rejection passed. Cold process
+reopen also returned all56,000 exact routing entries under a new owner epoch.
+Root independently compared full rules; the corrected receipt verifies installed
+APK SHA1af2a6c40afe47bca10d40344f9a33ab7f71b774f710a41c4fdf8780502d00ca.
+Evidence: /private/tmp/vpn-control-android35-cold120.5GKcLn and checkpoint120
+root-review records. The observed heap growth limit was192MiB, not48MiB;
+native48MiB acceptance remains open. Retained wait now passes: concurrent public
+operations list correlated synchronous no-op request8b586b26-7f8a-4bab-b921-
+5896ef768408 to operation38f69731-1212-4d4a-9828-c98c324e69b8 while the first
+large response was draining. Import and wait both exit0 with all56,000 exact
+fixture rules and unchanged revision0. Root independently checked both response
+hashes and every rule field (checkpoint121/android35-wait-root-review.json).
+
+API29 benchmark produced a real secondary measurement. The ten-candidate
+Find Best cancellation now passes on5684: operation
+18f766f7-078a-4b15-a24e-44019b972b8f reached terminal CANCELLED at progress2/10,
+committed=false, RUNTIME_NOT_CHANGED after actual stalled probe traffic. Root
+verified48 evidence hashes under /private/tmp/vpn-control-android29-cancel122.
+All ten synthetic candidates were removed, original batch3/retry1/window5 settings
+restored, revision30 runtime OFF with no selected/active location, and owned relay
+and reverse mapping removed. Earlier short attempts remain timing limitations;
+API29 reports empty heapgrowthlimit and512m heapsize, not48MiB evidence.
+
+Windows CP117 base task is terminal1601, READY with no instances or msiexec.
+MsiInstaller1015 records access denied connecting to the service; batch-context
+causation is not yet proven. The enabled ordinary account vpncp117 is SID1002,
+but the visible login tile is parityagent SID1000. No credential was typed into
+the wrong tile. The failed owned task is being disabled before controlled login
+refresh; MSI retry requires the existing original-recipient admission guard.
+
+Linux CP120 prior public update job9f839ce8-2fff-443f-a700-d8438a7bdd84 was
+publicly cancelled with authoritative final CANCELLED/installed=false, no worker
+remaining. A credential-free guest probe showed reopening a PTY master through
+/proc/self/fd allocated a different PTY and did not deliver its marker to the
+original slave. Earlier password delivery by that method could not reach polkit.
+Causal retained-master and controlling-terminal regressions now pass21 tests in
+the actual Linux guest, after both old behaviors failed. The corrected driver's
+public retry job02bf3dc0-2404-4e8c-ae66-a7d987afd7bf succeeded with protected
+seq4 and next-owner installed=true/cleanupCode=OK. RPM verification and public
+version2.1.15 passed; runtime remains OFF. Frozen packages are d27affd source,
+base2.1.14/target2.1.15; this is not final-source or live-traffic acceptance.
+See checkpoint121/linux/receipt.json. Root owns guest2327; previous unknown
+jobs in other guests are unchanged.
+
+macOS CP114 fresh guest-private TLS fixture completed public check and target
+2.1.14 download. No installer was submitted. Owner was publicly quit and only
+vpn-control-boot-control53 gracefully stopped when host memory pressure rose.
+Its recorded controller epoch is no longer live; next boot requires fresh public
+admission. Machine rollback/recovery and GUI return remain open.
+
+## Prior continuation — checkpoint120
 
 Checkpointc4532e3669885e5ec3b132a0be70de0470d59b5a was pushed after full
 prepush and independent review of the stream interruption fix. Its exact-SHA
