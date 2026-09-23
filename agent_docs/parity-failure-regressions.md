@@ -936,3 +936,38 @@ self-including manifest mistake; preserve that failed manifest and use the exist
 `scripts/native_fixture_manifest.py` writer/verifier, whose routine regressions
 already reject self-inclusion, for every subsequent evidence export. Do not
 replace this tested helper with shell redirection over the output directory.
+
+### Windows execution of Android two-phase fixture tests — checkpoint128
+
+Exact-SHA Windows CI for a27624a failed in the new two-phase flow tests, before
+packaging. The existing Windows test boundary modeled private mode for probe.json
+but omitted the newly introduced handoff.json; a callback-validation test also
+reached real packaged-ADB PATH admission instead of its intended argument check.
+This is a test portability defect, not an Android application failure on Windows.
+
+The flow tests now model both private-file OS boundaries while retaining real
+writes, handoff-before-approval ordering and replacement-owner reconciliation.
+The dedicated POSIX privacy tests retain their existing platform restriction;
+no flow tests were skipped and product privacy enforcement is unchanged. A host
+Windows-stat simulation exercises the actual two-phase action and catches the
+missing handoff boundary. RED/GREEN evidence is in checkpoint128/android-portability;
+the31-test suite passes locally. Actual Windows verification remains an exact-SHA
+CI gate; no guest test execution is claimed.
+
+### Concurrent VPN continuity probes starved by serial fixture — checkpoint128
+
+The installed-RPM continuity attempt preserved controller/runtime identity through
+GUI normal close, crash and reattach, but its TUN sampler completed only83/110
+requests. The reused fixture accepted one SOCKS connection at a time; a persistent
+proxy echo sampler blocked subsequent HTTP probes. An unprivileged local replay
+held the first tunnel and reproduced the second greeting timeout, while the
+existing threaded fixture served the second request immediately. This establishes
+a fixture concurrency defect; the failed native run does not certify uninterrupted
+traffic or demonstrate a product runtime failure.
+
+The routine `test_vpn_integration_fixture.py` suite now holds one open tunnel while
+asserting a second SOCKS/HTTP request completes. All15 tests pass. Evidence lives
+in checkpoint128/linux-fixture-causality128; the failed native bundle is preserved
+in checkpoint128/linux-vpn-continuity128. Before retry, the exact corrected native
+server must prove concurrent HTTP and retained echo behavior locally, because the
+existing HTTP-only fixture cannot replace echo behavior implicitly.

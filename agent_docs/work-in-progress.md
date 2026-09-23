@@ -25,6 +25,40 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
+## Current continuation — checkpoint128
+
+Checkpoint127 `a27624a054d888e5004e4511747ab3a97a5e6a1c` is pushed after a
+successful managed prepush, product2.1.15 / Unreleased6. Windows package CI failed
+in the newly added Android installer flow tests: POSIX private-mode and ADB PATH
+assumptions were not isolated at their OS boundary. Exact failed log:
+checkpoint128/windows-ci-failed.log. A focused test portability correction passes31 local tests including Windows-stat
+simulation; checkpoint127 delivery is not certified. Other workflows are still
+being observed by exact SHA.
+
+API29 document preflight cannot prove48MiB: heapgrowthlimit is empty and heapsize
+is512m. Root's raw recheck with the approved ADB PATH/server5037 returns public
+status and routing show OK under the installed owner, OFF and empty routing.
+The earlier worker's summarized UNAVAILABLE result is not established as a
+product failure. Preserve both checkpoint128-android-preflight and corrected
+checkpoint128/android-document-recheck evidence. No document mutation ran.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration128 | root | Shared docs, exact-SHA CI, Mac guest reconciliation; no late approval of the ended rollback driver |
+| Windows CI portability | completed; root integrating |31 local tests pass; native CP117 Python not available on inspected service PATH; exact-SHA CI required |
+| Linux VPN continuity | linux_vpn_continuity128 | Native attempt retained identities but traffic failed from serial fixture starvation; local corrected-runner proof only before retry |
+| Android document preflight | complete | No48MiB acceptance; current target retained on5684/5682 |
+
+The Mac operation remains unknown after public cancellation. The protected
+SecurityAgent window is present on-screen but omitted by screencapture; the host
+Screen Sharing application times out through UI automation. Manual cancellation
+was requested, then superseded when the durable monitor observed host memory
+pressure2 and gracefully stopped only the owned guest (Tart exit0, stopped state).
+Monitor stop.json/terminal.json and final samples preserve the cause. No terminal
+installer result follows from guest shutdown. Preserve the exact operation and
+inputs; require fresh resource admission and next-owner reconciliation before any
+new installation or retry.
+
 ## Current continuation — checkpoint127
 
 Checkpoint126 delivery `fcab2d0e531c13663f72be2e0ad1b6d1d5c183f3` is pushed,

@@ -21,6 +21,30 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 
 
 class SocksHttpFixtureTest(unittest.TestCase):
+    def test_held_socks_tunnel_does_not_starve_a_second_http_tunnel(self) -> None:
+        """A persistent continuity stream must not serialize later TUN probes."""
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "concurrent.ndjson"
+            server, thread = start_fixture(transcript)
+            try:
+                with socket.create_connection(server.server_address, timeout=3) as held:
+                    held.sendall(b"\x05\x01\x00")
+                    self.assertEqual(b"\x05\x00", receive_exact(held, 2))
+                    held.sendall(b"\x05\x01\x00\x01\xc6\x12\x00\x01\x00\x50")
+                    self.assertEqual(b"\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00", receive_exact(held, 10))
+                    # Keep this connection open without payload: a serial fixture blocks in recv.
+                    with socket.create_connection(server.server_address, timeout=3) as probe:
+                        probe.settimeout(1)
+                        probe.sendall(b"\x05\x01\x00")
+                        self.assertEqual(b"\x05\x00", receive_exact(probe, 2))
+                        probe.sendall(b"\x05\x01\x00\x01\xc6\x12\x00\x01\x00\x50")
+                        self.assertEqual(b"\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00", receive_exact(probe, 10))
+                        probe.sendall(b"GET /probe HTTP/1.1\r\nHost: 198.18.0.1\r\n\r\n")
+                        self.assertTrue(receive_until_close(probe).endswith(b"fixture-token"))
+                self.assertTrue(thread.is_alive())
+            finally:
+                stop_fixture(server, thread)
+
     def test_exact_reader_stops_on_peer_eof(self) -> None:
         class ClosedPeer:
             calls = 0

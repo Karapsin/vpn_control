@@ -40,16 +40,19 @@ def argv(root, output, callback=None, handoff_ready=None, adb=None, expected_ter
     return values
 
 
-def portable_checkpoint_privacy(checkpoint):
-    """Windows does not expose POSIX file modes; retain the actual write path."""
-    if os.name == "nt":
+def portable_private_file_privacy(*paths, windows=None):
+    """Model the private-file OS boundary while retaining real lifecycle writes."""
+    if windows is None:
+        windows = os.name == "nt"
+    if windows:
+        private_paths = set(paths)
         original_stat = Path.stat
-        def checkpoint_stat(path, *args, **kwargs):
+        def private_stat(path, *args, **kwargs):
             info = original_stat(path, *args, **kwargs)
-            if path == checkpoint:
+            if path in private_paths:
                 return os.stat_result((info.st_mode & ~0o077, *info[1:]))
             return info
-        return patch.object(Path, "stat", new=checkpoint_stat)
+        return patch.object(Path, "stat", new=private_stat)
     return nullcontext()
 
 
@@ -67,7 +70,7 @@ class InstallerLifecycleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             checkpoint = Path(temporary) / "checkpoint"
             with patch.object(os, "name", "nt"):
-                context = portable_checkpoint_privacy(checkpoint)
+                context = portable_private_file_privacy(checkpoint)
             with context:
                 with self.assertRaises(FileNotFoundError):
                     checkpoint.stat()
@@ -125,7 +128,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                        record("CANCELLED", True, "operation")]
             windows_callback_guards = (patch.object(driver, "prepare_continue_file"),
                                        patch.object(driver, "wait_for_continue_file")) if os.name == "nt" else (nullcontext(), nullcontext())
-            with windows_callback_guards[0], windows_callback_guards[1], portable_checkpoint_privacy(output / "probe.json"), \
+            with windows_callback_guards[0], windows_callback_guards[1], portable_private_file_privacy(output / "probe.json"), \
                  patch.object(sys, "argv", argv(root, output, callback)), \
                  patch.object(driver.tls, "public_cli_environment", return_value={"PATH": "safe"}), \
                  patch.object(driver.tls, "require_artifact_hash") as hashed, \
@@ -171,7 +174,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                        record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
                        record("OK", True, data=installed)]
             windows_guards = (patch.object(driver, "prepare_continue_file"), patch.object(driver, "wait_for_continue_file")) if os.name == "nt" else (nullcontext(), nullcontext())
-            with windows_guards[0], windows_guards[1], portable_checkpoint_privacy(output / "probe.json"), \
+            with windows_guards[0], windows_guards[1], portable_private_file_privacy(output / "probe.json", output / "handoff.json"), \
                  patch.object(sys, "argv", argv(root, output, callback, handoff_ready=ready, adb=adb, expected_terminal="installed")), \
                  patch.object(driver.tls, "public_cli_environment", return_value={}), \
                  patch.object(driver.tls, "require_artifact_hash"), \
@@ -215,6 +218,7 @@ class InstallerLifecycleTest(unittest.TestCase):
             root = Path(temporary); output = root / "output"; callback = output / "continue"; adb = root / "adb"
             adb.write_text("#!/bin/sh\n"); adb.chmod(0o700)
             with patch.object(sys, "argv", argv(root, output, callback, adb=adb, expected_terminal="installed")), \
+                 patch.object(driver.tls, "public_cli_environment", return_value={}), \
                  patch.object(driver.fixture, "launch_supervised_fixture") as launched:
                 with self.assertRaisesRegex(SystemExit, "handoff-ready"):
                     driver.main()
@@ -260,7 +264,7 @@ class InstallerLifecycleTest(unittest.TestCase):
             def invoke(*call_args, **call_kwargs):
                 calls.append((call_args, call_kwargs))
                 return replies.pop(0)
-            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=invoke), \
+            with portable_private_file_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=invoke), \
                  patch("builtins.input", side_effect=lambda: observed.append(args.probe_output.exists())):
                 driver.action(args, Adb(), {})
             self.assertEqual([True], observed)
@@ -289,7 +293,7 @@ class InstallerLifecycleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             args = self.acceptance_args(temporary)
             args.continue_file = Path(temporary) / "continue"; args.fixture_parent = Path(temporary)
-            with portable_checkpoint_privacy(args.probe_output), \
+            with portable_private_file_privacy(args.probe_output), \
                  patch.object(driver, "invoke", side_effect=self.accepted_replies("OK")), \
                  patch.object(driver.tls, "require_installed_base_hash", return_value="target-hash") as hashed, \
                  patch.object(driver, "wait_for_continue_file"):
@@ -306,7 +310,7 @@ class InstallerLifecycleTest(unittest.TestCase):
             def invoke(*values, **kwargs):
                 calls.append(values)
                 return self.accepted_replies("CANCELLED")[len(calls) - 1]
-            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=invoke), \
+            with portable_private_file_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=invoke), \
                  patch.object(driver, "wait_for_continue_file"):
                 with self.assertRaisesRegex(RuntimeError, "confirmed installed"):
                     driver.action(args, self.InstalledAdb(), {})
@@ -315,7 +319,7 @@ class InstallerLifecycleTest(unittest.TestCase):
     def test_cancelled_acceptance_requires_exact_cancelled_terminal(self):
         with tempfile.TemporaryDirectory() as temporary:
             args = self.acceptance_args(temporary, "cancelled")
-            with portable_checkpoint_privacy(args.probe_output), \
+            with portable_private_file_privacy(args.probe_output), \
                  patch.object(driver, "invoke", side_effect=self.accepted_replies("CANCELLED")), \
                  patch.object(driver.tls, "require_installed_base_hash") as hashed, patch("builtins.input"):
                 result = driver.action(args, self.InstalledAdb(), {})
@@ -340,7 +344,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                        record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
                        record("OK", True, "operation", handoff), record("OK", True, data=pending),
                        record("OK", True, data=cancelled)]
-            with portable_checkpoint_privacy(args.probe_output), \
+            with portable_private_file_privacy(args.probe_output), \
                  patch.object(driver, "invoke", side_effect=replies), patch("builtins.input"), \
                  patch.object(driver.time, "sleep"):
                 result = driver.action(args, self.InstalledAdb(), {})
@@ -366,7 +370,7 @@ class InstallerLifecycleTest(unittest.TestCase):
             def invoke(*values, **kwargs):
                 calls.append(values)
                 return replies.pop(0)
-            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=invoke), \
+            with portable_private_file_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=invoke), \
                  patch("builtins.input"), patch.object(driver.time, "monotonic", side_effect=[0, 0, 2]):
                 with self.assertRaisesRegex(RuntimeError, "outcome unknown"):
                     driver.action(args, self.InstalledAdb(), receipt)
@@ -399,7 +403,7 @@ class InstallerLifecycleTest(unittest.TestCase):
             replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
                        record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
                        record("OK", True, "operation", changed)]
-            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=replies), \
+            with portable_private_file_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=replies), \
                  patch("builtins.input"):
                 with self.assertRaisesRegex(RuntimeError, "identity changed"):
                     driver.action(args, self.InstalledAdb(), {})
@@ -430,7 +434,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                 if values[2:] == ("updates", "status"):
                     self.assertEqual(["handoff-ready", "continue"], events)
                 return replies.pop(0)
-            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "wait_for_continue_file", side_effect=wait), \
+            with portable_private_file_privacy(args.probe_output, parent / "handoff.json"), patch.object(driver, "wait_for_continue_file", side_effect=wait), \
                  patch.object(driver, "invoke", side_effect=invoke), \
                  patch.object(driver.tls, "require_installed_base_hash", return_value="target-hash") as hashed:
                 result = driver.action(args, self.InstalledAdb(), {})
@@ -440,6 +444,36 @@ class InstallerLifecycleTest(unittest.TestCase):
             self.assertEqual(1, sum(values[2:] == ("operations", "status", "operation") for values in calls))
             self.assertEqual(0, sum(values[2:] == ("operations", "wait", "operation") for values in calls))
             hashed.assert_called_once()
+
+    def test_windows_stat_boundary_keeps_two_phase_owner_replacement_flow(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            args = self.acceptance_args(temporary, "installed")
+            args.fixture_parent = parent
+            args.handoff_ready_file = parent / "handoff-ready"
+            args.continue_file = parent / "continue"
+            args.reconciliation_timeout_seconds = 1
+            args.reconciliation_poll_seconds = 0.01
+            handoff = {"installerStarted": True, "installed": None, "availableVersion": "2.1.14",
+                       "installReceiptId": "receipt", "installSessionId": 17, "installPhase": "handed_off"}
+            installed = {"phase": "idle", "availableVersion": None,
+                         "installReceipt": {"installReceiptId": "receipt", "installSessionId": 17,
+                                            "installPhase": "installed", "installed": True}}
+            replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
+                       record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
+                       record("OK", True, data=installed)]
+            original_stat = Path.stat
+            def windows_stat(path, *call_args, **call_kwargs):
+                info = original_stat(path, *call_args, **call_kwargs)
+                return os.stat_result((info.st_mode | 0o077, *info[1:]))
+            with patch.object(Path, "stat", new=windows_stat), \
+                 portable_private_file_privacy(args.probe_output, parent / "handoff.json", windows=True), \
+                 patch.object(driver, "wait_for_continue_file"), \
+                 patch.object(driver, "invoke", side_effect=replies), \
+                 patch.object(driver.tls, "require_installed_base_hash", return_value="target-hash"):
+                result = driver.action(args, self.InstalledAdb(), {})
+            self.assertEqual("terminal-confirmed", result["acceptance"])
+            self.assertEqual("receipt", json.loads((parent / "handoff.json").read_text())["identity"]["receiptId"])
 
     def test_tty_installed_run_uses_two_prompts_and_captures_handoff_before_approval(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -454,7 +488,7 @@ class InstallerLifecycleTest(unittest.TestCase):
             replies = [record("OK", True), record("OK", True), record("INTERACTION_REQUIRED", True),
                        record("ACCEPTED", False, "operation"), record("OK", True, "operation", handoff),
                        record("OK", True, data=installed)]
-            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=replies), \
+            with portable_private_file_privacy(args.probe_output, parent / "handoff.json"), patch.object(driver, "invoke", side_effect=replies), \
                  patch("builtins.input", side_effect=[None, None]) as prompted, \
                  patch.object(driver.tls, "require_installed_base_hash", return_value="target-hash"):
                 result = driver.action(args, self.InstalledAdb(), {})
@@ -478,7 +512,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                        record("OK", True, data=wrong)]
             calls = []
             def invoke(*values, **kwargs): calls.append(values); return replies.pop(0)
-            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "wait_for_continue_file"), \
+            with portable_private_file_privacy(args.probe_output, parent / "handoff.json"), patch.object(driver, "wait_for_continue_file"), \
                  patch.object(driver, "invoke", side_effect=invoke), patch.object(driver.time, "monotonic", side_effect=[0, 0, 0, 0, 2]):
                 with self.assertRaisesRegex(RuntimeError, "reconciliation outcome unknown"):
                     driver.action(args, self.InstalledAdb(), {})
@@ -498,7 +532,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                        controller="foreign-controller")]
             calls = []
             def invoke(*values, **kwargs): calls.append(values); return replies.pop(0)
-            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "wait_for_continue_file"), \
+            with portable_private_file_privacy(args.probe_output), patch.object(driver, "wait_for_continue_file"), \
                  patch.object(driver, "invoke", side_effect=invoke), patch.object(driver.time, "monotonic", side_effect=[0, 0, 2]):
                 with self.assertRaisesRegex(RuntimeError, "handoff outcome unknown"):
                     driver.action(args, self.InstalledAdb(), {})
@@ -558,7 +592,7 @@ class InstallerLifecycleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             args = self.acceptance_args(temporary, "capture")
             replies = self.accepted_replies("CANCELLED")
-            with portable_checkpoint_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=replies), \
+            with portable_private_file_privacy(args.probe_output), patch.object(driver, "invoke", side_effect=replies), \
                  patch("builtins.input"):
                 result = driver.action(args, self.InstalledAdb(), {})
             self.assertEqual("capture-only-nonacceptance", result["acceptance"])
