@@ -25,7 +25,37 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint117
+## Current continuation — checkpoint118
+
+Checkpoint8e0a6b3fbe41ace535abce610737bc64710df074 passed the complete
+prepush tier and all five exact-SHA push workflows; managed watcher91497 exited0.
+The same-source Windows fixture run35835908106 also passed. Root verified the
+archive, base/target MSI hashes, main JARs and shared code fingerprint. Fresh
+Windows CP117 is separate from preserved CP95; no new installer has run yet.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Delivery118 | root | QEMU preflight integration, docs, metadata, checks and delivery |
+| Windows base118 | windows_base118 | New CP117 guest only; ordinary-account setup and verified package transfer |
+| Android29 benchmarks | android29_public117 |5684 only; diagnose failed relay preflight before benchmark mutation |
+| Android35 readback | android_readback117 |5682 only; dedicated gateway multiplexing after proven SSH disconnect |
+| Linux recovery | linux_next117 | Fedora2326 private QEMU/ROM preparation; reviewed second-attempt candidate |
+| QEMU asset guard | completed | Root owns new guard/tests and routine wiring |
+
+API29 initial public status/stats/streams have70 independently verified evidence
+hashes; the original self-including manifest is preserved alongside a corrected
+self-excluding manifest. Its benchmark preflight did not reach the relay, so no
+location was added. API35 readback capture attributes failure to SSH exit255 and
+gateway connection closure; the same controller/revision remains available. No
+import was replayed. Evidence and source identities remain in checkpoint117.
+
+Linux restore first rejected changed host QEMU, then a private matching binary
+failed before migration due to a missing VGA ROM. Original memory and paired
+storage remain preserved; attempt-one intent/log/socket are not erased. The new
+asset guard must precede a separate, reviewed retry. Mac remains stopped because
+of host memory pressure. Full parity and final native/visual gates remain open.
+
+## Prior continuation — checkpoint117
 
 At11:09 Moscow the authoritative worker inventory was empty. The Android large
 import has a successful terminal receipt; its following full-readback client is

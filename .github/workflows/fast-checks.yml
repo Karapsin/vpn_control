@@ -30,6 +30,8 @@ on:
       - "scripts/check_localization.py"
       - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/native_fixture_qemu_assets.py"
+      - "scripts/test_native_fixture_qemu_assets.py"
       - "scripts/check_workflow_syntax.py"
       - "scripts/test_check_workflow_syntax.py"
       - "scripts/prepare_android_native_tools.sh"

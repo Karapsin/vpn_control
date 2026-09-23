@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.15 - 2026-09-23
 
 - Reject stale or changed native authorization prompts before fixture credential input.
 - Harden per-user Windows installer admission and verify native installer fixture outcomes.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Bound native evidence reads and readiness checks, and validate update fixture staging dependencies.
 - Build same-source Windows MSI fixture pairs on demand and cover RPM installation failure receipts.
 - Validate workflow expressions and Android SDK paths before native fixture execution.
+- Check private QEMU firmware assets before starting native test fixtures.
 
 ## 2.1.14 - 2026-09-21
 

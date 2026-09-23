@@ -646,3 +646,18 @@ subdirectory was rejected without mutation. Evidence is checkpoint117/
 android-sdk-native-correct-home.{stdout,stderr,exit}. Before creating or starting
 an owned AVD, invoke the guard with --sdk-root, --avd-home and --system-image;
 use the returned executable paths and all three environment values in the launch.
+
+### Private QEMU missing VGA ROM — checkpoint118
+
+After the host QEMU binary changed, the saved-memory guard correctly rejected
+restore. A private copy of the matching QEMU executable and its common/firmware
+packages passed --version and --help, but VM initialization failed before loading
+saved memory because vgabios-stdvga.bin comes from the separate SeaBIOS package.
+Attempt-one receipts and the parked memory/disk remain preserved. The preflight
+in scripts/native_fixture_qemu_assets.py checks declared relative paths and
+hashes before launch. Its filesystem regression rejects a missing VGA ROM and
+then accepts matching bytes; changed bytes and escaping symlinks also fail.
+Release hygiene runs the regression. Invoke --root PRIVATE_ROOT and repeated
+--asset RELATIVE_PATH=SHA256 for every required binary/ROM immediately before
+launch. This verifies declared assets, not complete dependency discovery or
+compatibility with saved VM state; retain native device realization and restore.
