@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from android_avd_sdk_preflight import PreflightError, safe_avd_environment
+from android_avd_sdk_preflight import PreflightError, safe_avd_environment, safe_emulator_environment
 from test_fixture_environment import symlink_probe_available
 
 
@@ -31,6 +31,65 @@ def add_sdk_tools(sdk: Path, avdmanager_body: str = "exit 0") -> None:
 
 
 class AndroidAvdSdkPreflightTest(unittest.TestCase):
+    def test_existing_emulator_launch_needs_no_avd_creation_tool(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sdk, avd_home = root / "sdk", root / "private-avds"
+            executable(sdk / "emulator/emulator", "exit 0")
+            add_image(sdk)
+            avd_home.mkdir()
+            result = safe_emulator_environment(str(sdk), str(avd_home), IMAGE)
+            self.assertNotIn("avdmanager", result)
+            self.assertEqual({
+                "ANDROID_HOME": str(sdk.resolve()),
+                "ANDROID_SDK_ROOT": str(sdk.resolve()),
+                "ANDROID_AVD_HOME": str(avd_home.resolve()),
+            }, result["environment"])
+            with self.assertRaisesRegex(PreflightError, "avdmanager is missing"):
+                safe_avd_environment(str(sdk), str(avd_home), IMAGE)
+
+    def test_existing_emulator_launch_does_not_use_foreign_creation_tool(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            if not symlink_probe_available(root):
+                self.skipTest("symlink creation is unavailable on this platform")
+            sdk, foreign, avd_home = root / "sdk", root / "foreign-sdk", root / "private-avds"
+            add_sdk_tools(foreign)
+            executable(sdk / "emulator/emulator", "exit 0")
+            link = sdk / "cmdline-tools/latest/bin/avdmanager"
+            link.parent.mkdir(parents=True)
+            link.symlink_to(foreign / "cmdline-tools/latest/bin/avdmanager")
+            add_image(sdk)
+            avd_home.mkdir()
+            result = safe_emulator_environment(str(sdk), str(avd_home), IMAGE)
+            self.assertNotIn("avdmanager", result)
+            self.assertEqual(str(avd_home.resolve()), result["environment"]["ANDROID_AVD_HOME"])
+            with self.assertRaisesRegex(PreflightError, "resolves outside intended SDK root"):
+                safe_avd_environment(str(sdk), str(avd_home), IMAGE)
+
+    def test_launch_only_cli_keeps_private_environment_and_image_validation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sdk, avd_home = root / "sdk", root / "private-avds"
+            executable(sdk / "emulator/emulator", "exit 0")
+            add_image(sdk)
+            avd_home.mkdir()
+            command = [sys.executable, str(Path(__file__).with_name("android_avd_sdk_preflight.py")),
+                       "--launch-only", "--sdk-root", str(sdk), "--avd-home", str(avd_home),
+                       "--system-image", IMAGE]
+            result = subprocess.run(command, text=True, capture_output=True, check=False)
+            self.assertEqual(0, result.returncode, result.stderr)
+            launch = json.loads(result.stdout)
+            self.assertNotIn("avdmanager", launch)
+            self.assertEqual(str(avd_home.resolve()), launch["environment"]["ANDROID_AVD_HOME"])
+            self.assertEqual(str(sdk.resolve()), launch["environment"]["ANDROID_HOME"])
+            self.assertEqual(str(sdk.resolve()), launch["environment"]["ANDROID_SDK_ROOT"])
+            sdk.joinpath(*IMAGE.split(";"), "package.xml").unlink()
+            rejected = subprocess.run(command, text=True, capture_output=True, check=False)
+            self.assertEqual(2, rejected.returncode)
+            self.assertEqual("", rejected.stdout)
+            self.assertIn("metadata is missing", rejected.stderr)
+
     def test_copied_tools_and_private_avd_home_return_complete_launch_environment(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

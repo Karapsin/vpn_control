@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Harden native parity fixtures with APK-derived architectures, correlated installer handoff, machine receipt authority and Linux capability admission.
 - Keep installer flow regressions portable on Windows and detect concurrent native traffic fixture starvation.
 - Exercise macOS installer process fixtures with native and Windows path semantics.
+- Separate existing Android emulator launch admission from AVD creation while preserving private SDK environment checks.
 
 ## 2.1.15 - 2026-09-23
 

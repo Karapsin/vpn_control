@@ -986,3 +986,23 @@ The new variants failed twice with the old rendering before the fix; all23 tests
 now pass without skips. Evidence: checkpoint128/mac-test-portability. Failed job
 log: checkpoint128/windows-ci-second-job.log. Product/native installer behavior
 was unchanged; exact-SHA Windows CI still must verify the correction.
+
+### Existing Android emulator coupled to AVD creation tools — checkpoint131
+
+The remote user SDK contains the emulator and API29 image but its avdmanager
+resolves into a different shared SDK. The creation preflight correctly rejects
+that manager; using it for an existing emulator unnecessarily blocked launch.
+Two quick regressions reproduced missing/foreign-manager rejection before the
+fix by routing the launch entry point through the prior creation preflight.
+The new safe_emulator_environment function and --launch-only CLI mode validate
+the emulator, private AVD home and image metadata while preserving all three
+SDK/AVD environment variables. Creation still rejects foreign avdmanager paths.
+Eleven focused tests pass, including launch-only CLI metadata failure and private
+environment checks; the existing release-hygiene selection runs this suite.
+RED/GREEN evidence: checkpoint131/sdk-launch-regression. Native boot admission
+and the48MiB document scenario remain separate gates.
+
+The preceding hand-built launch omitted ANDROID_AVD_HOME and never booted. Native
+launchers must consume the helper's environment explicitly rather than recreate
+it. Preserve that failed launch receipt; a stopped process is not a successful
+heap-admission result.

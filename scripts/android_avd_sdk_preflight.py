@@ -81,11 +81,10 @@ def _system_image_metadata(sdk_root: Path, system_image: str) -> Path:
     return metadata
 
 
-def safe_avd_environment(sdk_root: str, avd_home: str, system_image: str | None = None) -> dict:
-    """Validate paths without starting SDK tools and return launch-safe commands."""
+def safe_emulator_environment(sdk_root: str, avd_home: str, system_image: str | None = None) -> dict:
+    """Validate an existing emulator's inputs without invoking AVD creation tools."""
     actual_sdk = _resolved_directory(sdk_root, "SDK root")
     actual_avd_home = _resolved_directory(avd_home, "AVD home")
-    avdmanager = _tool_under_sdk(actual_sdk, "cmdline-tools/latest/bin/avdmanager", "avdmanager")
     # The emulator executable may deliberately be a shared-SDK symlink.  It does
     # not derive the package manager root, unlike avdmanager, so retain its exact
     # resolved executable while pinning all SDK and AVD environment variables.
@@ -99,7 +98,6 @@ def safe_avd_environment(sdk_root: str, avd_home: str, system_image: str | None 
     result = {
         "sdkRoot": str(actual_sdk),
         "avdHome": str(actual_avd_home),
-        "avdmanager": str(avdmanager),
         "emulator": str(emulator),
         "environment": environment,
     }
@@ -109,14 +107,24 @@ def safe_avd_environment(sdk_root: str, avd_home: str, system_image: str | None 
     return result
 
 
+def safe_avd_environment(sdk_root: str, avd_home: str, system_image: str | None = None) -> dict:
+    """Also admit avdmanager before creating or managing AVDs."""
+    result = safe_emulator_environment(sdk_root, avd_home, system_image)
+    result["avdmanager"] = str(_tool_under_sdk(
+        Path(result["sdkRoot"]), "cmdline-tools/latest/bin/avdmanager", "avdmanager"))
+    return result
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk-root", required=True, help="intended Android SDK root")
     parser.add_argument("--avd-home", required=True, help="private AVD directory")
     parser.add_argument("--system-image", help="exact package, for example system-images;android-29;google_apis;x86_64")
+    parser.add_argument("--launch-only", action="store_true", help="validate an existing emulator without admitting avdmanager")
     arguments = parser.parse_args(argv)
     try:
-        print(json.dumps(safe_avd_environment(arguments.sdk_root, arguments.avd_home, arguments.system_image), sort_keys=True))
+        preflight = safe_emulator_environment if arguments.launch_only else safe_avd_environment
+        print(json.dumps(preflight(arguments.sdk_root, arguments.avd_home, arguments.system_image), sort_keys=True))
     except PreflightError as error:
         print(f"Android AVD SDK preflight failed: {error}", file=sys.stderr)
         return 2

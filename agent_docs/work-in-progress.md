@@ -25,6 +25,49 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
+## Current continuation — checkpoint131
+
+Checkpoint129 `041000b66c9af241e37e34ebe3b77cfec9205970` is pushed and all five
+required exact-SHA workflows passed. Product version remains2.1.15. Managed
+receipt: checkpoint129/commit-result.json. The overall parity goal remains open.
+
+CP130 installed-Fedora RPM evidence now records206 successful HTTP204 requests
+bound to the TUN interface, with start/end timestamps across GUI close, crash and
+reattachment. Completion counts across the five transition phases are98/44/9/49/6.
+Controller identity is retained through final reattachment/off; runtime identity
+is explicitly queried through crash, before the final reattachment acknowledgment.
+Do not infer a post-ack runtime identity query. Root verified both manifests and
+fresh cleanup (no owner/runtime or TUN; rpm verification succeeds). Evidence:
+checkpoint130/linux-tun-timing, linux-tun-timing130-export and linux-root-review.json.
+
+API29 emulator5684 retained its exact current target and empty/OFF baseline after
+a controlled restart. Emulator36.4.10 rejected the proposed heapgrowthlimit
+property; this is fixture admission failure, not a product failure. A supported
+append-userspace option for maximum heap size is now under native admission.
+No48MiB import acceptance is claimed until the effective limit and public flow
+are verified. Initial failure evidence is under .runtime/checkpoint130/android48-admission
+(outside the usual parity-evidence subtree).
+
+Root separated existing-emulator admission from AVD creation in
+android_avd_sdk_preflight.py. The launch-only path preserves explicit SDK/AVD
+environment and image checks without requiring the unused avdmanager. Creation
+retains its stricter SDK-root rule. Eleven focused tests pass with causal failing
+evidence preserved. Final metadata/prepush and delivery of this new script slice
+remain required; checkpoint129 remains the last fully verified pushed SHA.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration131 | root | Evidence review, documentation, shared files and delivery; checkpoint129 CI complete |
+| Android48 admission | android_heap_boot131 | Owned remote API29 emulator5684 only; verify supported48MiB maximum, no document mutation yet |
+| Linux TUN continuity | complete | One native attempt plus read-only export; guest idle, evidence limits above |
+| Windows broker audit | complete | No code defect found in bounded review; real production-path UAC denial and installed ordinary-user/autostart evidence remain open |
+| macOS | no operator | Guest stopped after memory pressure; preserve pending installer journal and inputs |
+
+Remote fixture execution must use the retained full SSH chain, then validate
+guest username, hostname and OS before mutation. Changing destination text while
+reusing a ControlMaster socket does not retarget that connection. CP130 caught a
+read-only gateway observation before mutation; the corrected runner rejects it.
+
 ## Current continuation — checkpoint129
 
 Corrective checkpoint128 a52faf3aabd3a7b92c2f9e240fe890798349a501 passed local
