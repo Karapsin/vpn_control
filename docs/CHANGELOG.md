@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.16 - 2026-09-23
 
 - Report interrupted Android CLI streams as cancellation without changing uncertain mutation outcomes.
 - Preflight Windows fixture batch-logon admission and verify native errors, token cleanup, and HRESULT conversion in package checks.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep installer flow regressions portable on Windows and detect concurrent native traffic fixture starvation.
 - Exercise macOS installer process fixtures with native and Windows path semantics.
 - Separate existing Android emulator launch admission from AVD creation while preserving private SDK environment checks.
+- Compare full routing evidence without treating generated export timestamps as persisted changes.
 
 ## 2.1.15 - 2026-09-23
 

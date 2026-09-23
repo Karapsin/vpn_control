@@ -502,10 +502,14 @@ make an obsolete test setup pass.
 Native Android domain readback uses `android_routing_evidence.routing_domain_evidence`
 from `scripts/android_routing_evidence.py`. Mutation results use `data.direct-domains`;
 inspection results use `data.routing.rules.direct_domain_suffixes`. The routine
-four-test harness covers both shapes, explicit empty data, malformed/ambiguous
+six-test harness covers both shapes, explicit empty data, malformed/ambiguous
 results, and duplicate-domain order. Never default an absent field to an empty
 list when making a persistence claim. Controller epoch replacement may reset the
 reported revision to zero; compare actual committed payload and owner identity.
+For full transfer-document comparison use `routing_documents_equal`: it ignores
+only generated `exported_at`, preserves every rule and unknown field, and rejects
+incomplete documents. Do not compare export timestamps as persisted settings.
+The same routine script covers changed rules, versions and additional fields.
 
 ## Cancellation And Native Fixture Regressions
 

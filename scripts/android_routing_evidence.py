@@ -1,9 +1,22 @@
-"""Extract domain-sequence evidence from the two public routing result shapes.
+"""Compare transfer documents and extract public routing domain-sequence evidence.
 
-This verifies domains only, not every routing setting or installation identity.
+The domain helper verifies domains only; the document helper compares all content
+except generated export time. Neither establishes installation identity.
 Missing fields must never become a successful zero-domain observation.
 """
 import hashlib
+
+
+def routing_documents_equal(left, right):
+    """Compare complete transfer documents, allowing their generated export time to differ."""
+    for document in (left, right):
+        if (not isinstance(document, dict) or
+                not isinstance(document.get("type"), str) or
+                type(document.get("version")) is not int or
+                not isinstance(document.get("rules"), dict)):
+            raise ValueError("Expected complete routing transfer documents")
+    return ({key: value for key, value in left.items() if key != "exported_at"} ==
+            {key: value for key, value in right.items() if key != "exported_at"})
 
 
 def routing_domain_evidence(response):

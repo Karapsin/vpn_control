@@ -1,6 +1,6 @@
 import hashlib
 import unittest
-from android_routing_evidence import routing_domain_evidence
+from android_routing_evidence import routing_domain_evidence, routing_documents_equal
 
 
 def reply(data):
@@ -8,6 +8,22 @@ def reply(data):
 
 
 class RoutingEvidenceTest(unittest.TestCase):
+    def test_document_comparison_ignores_only_generated_export_timestamp(self):
+        original = {"type": "routing", "version": 7, "exported_at": "first",
+                    "rules": {"direct_domain_suffixes": [], "ignore_rules": False}}
+        later = {**original, "exported_at": "later"}
+        self.assertTrue(routing_documents_equal(original, later))
+        self.assertFalse(routing_documents_equal(original, {**later, "rules": {
+            **later["rules"], "ignore_rules": True}}))
+        self.assertFalse(routing_documents_equal(original, {**later, "version": 8}))
+        self.assertFalse(routing_documents_equal(original, {**later, "future_field": True}))
+
+    def test_document_comparison_rejects_incomplete_evidence(self):
+        for value in [None, {}, {"type": "routing", "version": 7},
+                      {"type": "routing", "version": True, "rules": {}}]:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                routing_documents_equal(value, value)
+
     def test_mutation_and_cold_show_envelopes_prove_identical_domains(self):
         domains = ["one.example", "two.example", "two.example"]
         mutation = reply({"direct-domains": domains})

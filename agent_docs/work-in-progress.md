@@ -25,7 +25,57 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint131
+## Current continuation — checkpoint134
+
+Checkpoint131 `e715284fb85430344b10ffe144264d02a6599467` is pushed with all five
+required exact-SHA workflows successful (managed checkpoint131/commit-result.json).
+Product version remains2.1.15. Product source is unchanged from the frozen6ee249e
+artifacts used below. Full parity remains incomplete; earlier continuation sections
+are historical observations, not the current acceptance ledger.
+
+API29 emulator5684 now proves the effective48MiB maximum heap using the supported
+emulator userspace boot option. With the exact nondebuggable2.1.15 APK, CP132 passed
+the56,000-domain/11,536,164-byte import, full logical readback, retained operation
+wait, new-request no-op, private export and existing-destination rejection. An
+app-only background-process reclamation was followed by a new PID/controller and
+matching complete cold readback. Original routing was restored and runtime stayed
+OFF. Root verified135 manifest entries in checkpoint132/android-documents. The
+status response was observed after commit; it does not prove responsiveness during
+parsing. Export formatting/metadata differs from input bytes; logical content matches.
+
+CP133 additionally replayed the identical large logical request through the public
+authenticated document provider. Both results are exactly equal, including request
+and operation identity; revision advanced1→2 on import and stayed2 on replay.
+Restoration advanced revision to3, runtime remainsOFF, heap remains48m. Root
+verified the exported3831-file bundle in checkpoint133/android-replay; see its
+root-review.json. This did not inject response loss. Remaining security, resource,
+export-race, GUI and API35 scenarios are separate gates.
+
+CP134 public-provider negatives reject wrong lengths, wrong hashes, unsealed
+submission, unavailable results, forged IDs and discarded IDs. Same-context begin
+is idempotent. Routing and revision3 are unchanged; runtime staysOFF. An initial
+evidence comparison incorrectly included generated `exported_at`; preserved raw
+results prove this was the only difference. The full-document comparison helper
+now excludes only that field, with causal1-failure RED and6-test GREEN in the
+routine Android evidence suite. No native rejection scenario was replayed to fix
+the comparison. Evidence: checkpoint134/android-document-negative.
+
+CP132 Linux scheduled-refresh setup failed before fetching or starting VPN because
+the fixture supplied HTTP, which the existing HTTPS-only source validator correctly
+rejects. This is invalid fixture input, not a product defect. No scheduler or TUN
+acceptance is claimed. Public off/quit completed; fresh cleanup found no owner or
+TUN. Failed evidence is preserved in checkpoint132/linux-scheduler. The next run
+must use trusted guest-only HTTPS and preserve hostname/certificate validation.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration134 | root | Shared files, evidence review, metadata, builds and delivery |
+| Android document negatives | root | Owned API29 emulator5684; bounded public-provider rejection checks |
+| Linux HTTPS scheduler preparation | linux_scheduler132 | Ignored checkpoint133/linux-scheduler-https only; no native authorization yet |
+| Windows | no operator | Production UAC/ordinary-user and successful MSI/recovery gates remain open |
+| macOS | no operator | Guest stopped for host resource limits; preserve pending journal and inputs |
+
+## Historical continuation — checkpoint131
 
 Checkpoint129 `041000b66c9af241e37e34ebe3b77cfec9205970` is pushed and all five
 required exact-SHA workflows passed. Product version remains2.1.15. Managed
