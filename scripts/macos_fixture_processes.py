@@ -9,8 +9,12 @@ returns no identity when a role is absent or ambiguous.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import math
 import re
-from typing import Iterable
+import subprocess
+import time
+from typing import Any, Callable, Iterable, Mapping, Sequence
 from uuid import UUID
 
 
@@ -35,11 +39,28 @@ class FixtureProcessError(ValueError):
     """The fixture supplied an observation that cannot safely be interpreted."""
 
 
+class FixtureReadinessTimeout(TimeoutError):
+    """The observed role did not produce a successful read-only status in time."""
+
+    def __init__(self, last_observation: Mapping[str, object] | None):
+        self.last_observation = last_observation
+        super().__init__("timed out waiting for process role and successful public status")
+
+
 @dataclass(frozen=True)
 class ProcessIdentity:
     pid: int
     started: str
     argv: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PublicStatusReadiness:
+    """The role and successful status snapshot admitted by the observer."""
+
+    process: ProcessIdentity
+    status: Mapping[str, Any]
+    stdout: str
 
 
 def _fixed_path(value: str, name: str) -> str:
@@ -104,3 +125,98 @@ class FixtureProcessObserver:
         if current is None or current.pid == prior.pid or current.started == prior.started:
             return None
         return current
+
+
+def wait_for_public_status_readiness(
+    observer: FixtureProcessObserver,
+    rows: Callable[[], Iterable[ProcessIdentity]],
+    role: str,
+    run: Callable[[Sequence[str], float], object],
+    evidence_sink: Callable[[Mapping[str, object]], None],
+    *,
+    frontend_owner: str | None = None,
+    timeout_seconds: float = 30,
+    poll_seconds: float = 0.2,
+    now: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> PublicStatusReadiness:
+    """Wait for one exact role and its read-only public ``status`` response.
+
+    The caller owns evidence persistence.  Every command attempt is sent to
+    ``evidence_sink`` with its argv, exit code, stdout, and stderr, including
+    failures.  This helper invokes only ``--json status`` and never infers that
+    an absent role is dead.
+    """
+    timeout_seconds = _positive_finite_timing(timeout_seconds, "timeout_seconds")
+    poll_seconds = _positive_finite_timing(poll_seconds, "poll_seconds")
+    deadline = now() + timeout_seconds
+    last_observation: Mapping[str, object] | None = None
+    command = (observer.app, "--state-dir", observer.state_dir, "--json", "status")
+
+    while True:
+        remaining_seconds = deadline - now()
+        if remaining_seconds <= 0:
+            raise FixtureReadinessTimeout(last_observation)
+        process = observer.identify(rows(), role, frontend_owner)
+        if process is None:
+            last_observation = {"role": role, "rolePresent": False}
+            evidence_sink(last_observation)
+        else:
+            try:
+                completed = run(command, remaining_seconds)
+            except subprocess.TimeoutExpired as error:
+                exit_code, stdout, stderr, timed_out = None, _timeout_text(error.stdout), _timeout_text(error.stderr), True
+            else:
+                exit_code = getattr(completed, "returncode", None)
+                stdout = getattr(completed, "stdout", None)
+                stderr = getattr(completed, "stderr", None)
+                timed_out = False
+                if not isinstance(exit_code, int) or not isinstance(stdout, str) or not isinstance(stderr, str):
+                    raise FixtureProcessError("public status runner returned an invalid result")
+            status: Mapping[str, Any] | None = None
+            if exit_code == 0:
+                try:
+                    decoded = json.loads(stdout)
+                except json.JSONDecodeError:
+                    decoded = None
+                if isinstance(decoded, dict) and decoded.get("ok") is True:
+                    status = decoded
+            last_observation = {
+                "role": role,
+                "rolePresent": True,
+                "process": {"pid": process.pid, "started": process.started, "argv": list(process.argv)},
+                "command": list(command),
+                "exit": exit_code,
+                "stdout": stdout,
+                "stderr": stderr,
+                "statusOk": status is not None,
+                "timedOut": timed_out,
+            }
+            evidence_sink(last_observation)
+            if status is not None:
+                return PublicStatusReadiness(process, status, stdout)
+
+        remaining_seconds = deadline - now()
+        if remaining_seconds <= 0:
+            raise FixtureReadinessTimeout(last_observation)
+        sleep(min(poll_seconds, remaining_seconds))
+
+
+def _positive_finite_timing(value: float, name: str) -> float:
+    """Accept only timing values that preserve a bounded polling deadline."""
+    if isinstance(value, bool):
+        raise FixtureProcessError(f"{name} must be finite and positive")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as error:
+        raise FixtureProcessError(f"{name} must be finite and positive") from error
+    if not math.isfinite(numeric) or numeric <= 0:
+        raise FixtureProcessError(f"{name} must be finite and positive")
+    return numeric
+
+
+def _timeout_text(value: str | bytes | None) -> str:
+    """Retain subprocess timeout output in the string evidence schema."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value if isinstance(value, str) else ""

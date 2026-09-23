@@ -544,3 +544,59 @@ filters before selecting x86_64 and matching release library variants. The fixtu
 uses production release hooks, never debug-only import hooks. The guard runs in
 release hygiene, but compilation and APK inspection remain separate gates.
 Retained failed build: checkpoint112/android-native-fixture-build.log.
+
+### Timed-out observation retained remote QGA and SSH sessions — checkpoint113
+
+The unbounded makefile.readline in an ignored Windows evidence collector outlived
+its55-second local SSH wrapper. Its remote Python process1600355/start6501856
+still held socket3399978 to the owned CP95 QGA socket. Later read clients queued,
+and the shared SSH connection refused further sessions. Root verified the exact
+read-only collector and stopped that process only; the queue drained without
+stopping any guest process, VM, installer or VPN. Local wrapper absence alone was
+not evidence of remote termination.
+
+native_fixture_qga.py bounds connect/send/read by one deadline, closes its socket
+on every outcome and reports uncertain observations with their command identity.
+Each new stream performs the QEMU guest-sync-delimited handshake before accepting
+a requested result, so stale buffered replies cannot substitute for current data.
+It exposes file reads and process-status observations, not guest process launch or
+installer replay. Six routine Unix-socket tests reproduce the old blocked reader,
+prove connection release after timeout, and cover stale, malformed, oversized and
+fragmented replies. Windows skips this Unix transport suite. Root also used the
+new helper against CP95 to open/read/close the583-byte terminal GREEN receipt;
+its exact hash matched the independent PowerShell export. Evidence is
+checkpoint113/qga-native-result.json. Future collectors must use bounded remote
+I/O and preserve the underlying operation identity after local timeout.
+
+### Fixture server staging omitted direct imports — checkpoint114
+
+CP113 preparation copied prepare_desktop_update_fixture.py without
+fixture_environment.py and macos_packaging_jdk_preflight.py. The server failed
+on import before launching the app or accepting an installation. The retained
+server error and isolated RED/GREEN record are under checkpoint113/macos-return113.
+The production stage-entrypoint command owns the explicit bounded inventory in
+prepare_desktop_update_fixture.py. Its isolated staging regression reproduces
+missing imports. Checkpoint115 review removed a duplicate unused inventory and
+connected a direct-local-import check to the actual staging path. An added local
+import now fails admission instead of silently omitting its module. The routine
+51-test desktop update fixture suite passes; dependencies remain explicit rather
+than recursively discovered. Use stage-entrypoint before transferring the server.
+
+### Bounded observation cleanup and readiness — checkpoint115
+
+Independent review found that the new QGA context manager closed sockets but
+not guest file handles after a read exception. Two causal tests failed before
+repair (missing close call); all eight QGA tests pass after owned handles are
+closed once. An uncertain close is retained in cleanup_errors and never replayed;
+cleanup cannot replace a primary read exception. A lost open response still has
+no known handle to close and remains explicitly unknown. Release hygiene runs
+test_native_fixture_qga.py; native cleanup under guest loss remains separate.
+
+The macOS readiness observer now supplies the remaining deadline to its status
+runner, retains partial stdout/stderr on subprocess timeout, and rejects zero or
+nonfinite timing. Three new regressions failed before repair; ten observer tests
+pass. This prevents a visible PID from being treated as a ready endpoint and
+preserves failed observations. The runner must honor its supplied timeout. The
+original native first-read failure had discarded output: endpoint readiness is
+an inference, not a recovered diagnosis. Routine release hygiene includes
+test_macos_fixture_processes.py.

@@ -6,6 +6,7 @@ inside the coordinator's identified disposable native guest. Both builds use the
 existing vpnControlVersion Gradle property; canonical source metadata is intact.
 """
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -42,6 +43,51 @@ FIXTURE_ENTRYPOINT_MODULES = (
 )
 
 
+def fixture_entrypoint_modules(source_directory):
+    """Return the declared entrypoint inventory after checking direct local imports.
+
+    This intentionally checks only imports made by the entrypoint.  It does not
+    recursively resolve dependencies: each additional sibling module is an
+    explicit update to ``FIXTURE_ENTRYPOINT_MODULES``.
+    """
+    source_directory = Path(source_directory).resolve(strict=True)
+    require(source_directory.is_dir(), "Fixture entrypoint source directory is invalid")
+    entrypoint = source_directory / FIXTURE_ENTRYPOINT_MODULES[0]
+    require(entrypoint.is_file() and not entrypoint.is_symlink(),
+            "Fixture entrypoint is missing or unsafe")
+    try:
+        tree = ast.parse(entrypoint.read_text(encoding="utf-8"), filename=str(entrypoint))
+    except UnicodeDecodeError as error:
+        raise ValueError("Fixture entrypoint must be UTF-8 Python") from error
+    imports = {
+        node.module.split(".", 1)[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module
+    }
+    imports.update(
+        alias.name.split(".", 1)[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    declared = {Path(name).stem for name in FIXTURE_ENTRYPOINT_MODULES[1:]}
+    missing = declared - imports
+    local = {name for name in imports if (source_directory / f"{name}.py").is_file()}
+    undeclared = local - declared
+    if missing or undeclared:
+        details = []
+        if missing:
+            details.append("missing declared imports: " + ", ".join(sorted(missing)))
+        if undeclared:
+            details.append("undeclared local imports: " + ", ".join(sorted(undeclared)))
+        raise ValueError("Fixture entrypoint import inventory is stale: " + "; ".join(details))
+    for name in FIXTURE_ENTRYPOINT_MODULES:
+        path = source_directory / name
+        require(path.is_file() and not path.is_symlink(),
+                "Fixture entrypoint module is missing or unsafe: " + name)
+    return FIXTURE_ENTRYPOINT_MODULES
+
+
 def validate_staged_fixture_entrypoint(directory):
     """Import the staged command from a foreign working directory only."""
     directory = Path(directory).resolve(strict=True)
@@ -75,14 +121,15 @@ def stage_fixture_entrypoint(source_directory, destination):
     destination = Path(destination).absolute()
     require(source_directory.is_dir(), "Fixture entrypoint source directory is invalid")
     require(not destination.exists(), "Fixture entrypoint destination must not already exist")
+    modules = fixture_entrypoint_modules(source_directory)
     destination.mkdir(mode=0o700)
-    for name in FIXTURE_ENTRYPOINT_MODULES:
+    for name in modules:
         source = source_directory / name
         target = destination / name
         require(source.is_file() and not source.is_symlink(), "Fixture entrypoint module is missing or unsafe: " + name)
         shutil.copy2(source, target)
     validate_staged_fixture_entrypoint(destination)
-    return {"directory": str(destination), "modules": list(FIXTURE_ENTRYPOINT_MODULES)}
+    return {"directory": str(destination), "modules": list(modules)}
 
 
 def require_install_ready(status, target_version):

@@ -25,7 +25,91 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint113
+## Current continuation — checkpoint115
+
+On 2026-09-23 startup revalidated dev at9e57f01, equal to origin/dev, and
+preserved ten dirty fixture/doc paths. The previous turn was a status estimate,
+not implementation progress. No previous collaboration workers were live.
+Fresh bounded workers own fixture review (fixture_review115), retained local
+native evidence inspection and exclusive owned API35 discovery/admitted boot
+(native_evidence115), and readiness helper/tests (readiness115, completed).
+Root owns docs, integration, other environments and delivery. Android permission
+is limited to existing vpn-control-parity113-api35, serial5682,2GiB/2CPU after
+10GiB free-memory and unoccupied-port checks, then read-only baseline; no install,
+clear, force-stop or mutation replay is authorized to that worker.
+
+The old Arch SSH control socket refused connections. Root authenticated a new
+session using the authorized key and created a distinct arch115 control socket;
+no guest or installer was restarted. Tart reports the owned macOS boot-control53
+VM stopped; its old IP times out. Historical process identifiers are not live
+state. Reinspect retained operations after any capacity-admitted normal boot.
+
+The dirty batch remains QGA bounded reads, fixture dependency inventory, macOS
+public-status readiness, their causal regressions and routine documentation.
+No current dirty batch pre-push receipt or delivery exists yet.
+
+Current read-only native discovery establishes that Arch is reachable through
+the new authenticated session, with54480MiB available and no qemu/emulator/SDK
+manager process observed. This supersedes historical capacity estimates but does
+not authorize replay of retained installer jobs. The Android CLI113 folder lacks
+raw stdout/stderr/exit receipts, so its prior worker success summary is unverified.
+Mac machine114 exports prove preparation/download only, not installation.
+
+## Previous continuation — checkpoint114
+
+Checkpoint9e57f01f31f66607627606468de773afae99f7fc (product2.1.14) was
+committed and pushed after the complete managed pre-push tier passed. Its exact
+CI watcher completed successfully: all five required workflows passed for that
+exact SHA, as did advisory core VPN Integration. Its managed receipt is
+checkpoint113/commit-result.json. Do not substitute the earlier40307db receipt.
+
+The fresh macOS pair is /private/tmp/vpn-macos-parity113-pair, source fingerprint
+23ada94d67f67ef024c889a29d125b7af99356f4f45a62f06edce32d8cb08cbd and same-code
+fingerprint dee8037d0404750a1d7c96abef65250b9cd42eb827d8981c0885e27fa0b3724a.
+Base2.1.13 DMG631be2d775ea4abf75c8f1d8d1e9fc3b8411540ebacad6ebf2256ce4ae654b46
+and target2.1.14 DMGd90d2cd96d4d7a1cb424cf2dc1e9665372c60818cb8604b2d7add255e643eba7
+passed independent hash and strict signature verification. CP113 submitted one
+operation7a3ab594-00e5-4b4d-849d-bd5a35465190/job8ff62b6a-adbd-4d46-866e-eff279603bd8,
+which reached protected SUCCEEDED/OK sequence4. The observer captured automatic
+GUI17540 and internal owner17543 before any post-terminal public query. Its first
+status read failed and discarded command output; a later read succeeded under
+new epoch ed34bea8-7f35-4f65-b44a-2c4fd595e844, runtime OFF. An endpoint-readiness
+race is an inference, not recovered stderr. Same-job final identity, visibility,
+and recovery now passed: public updates status reports the exact origin request,
+operation and job with installed:true and cleanupCode:OK. Root verified16 manifest
+entries, including the target tree/version/signature, automatic process captures,
+guarded GUI visibility acknowledgment and empty post-cleanup process captures.
+Only the new owner and verified server were stopped. Evidence and limits are
+checkpoint113/macos-return113/root-review.json. This closes current user-local
+replacement/automatic-return/recovery, not machine rollback or interruption.
+
+Windows native image admission is now root-reviewed: old managed component
+rejected the image owner/ACL; the corrected component returned exit0 and its
+success marker. Both ran as parity95/SID1002 with elevated:false. The apphost hash
+is identical between .NET component variants; their managed DLL hashes differ.
+This is not NativeAOT or MSI replacement evidence. Receipts/hashes are under
+checkpoint113/windows-admission-root-review.json and windows-code-hashes.json.
+The actual Windows empty-output receipt regression also passed (QGA child4752,
+exit0), including its old-expression rejection and four direct child exit cases.
+
+Android API35 now has an exclusively owned remote x86_64 AVD:
+vpn-control-parity113-api35/emulator5682, PID1622752/start6569944,2GiB/2CPU,
+private root /home/kardinal/.vpn-control-parity113. The frozen nondebuggable target
+APK is installed; direct UID2000 provider status/capabilities passed with runtime
+stopped. Those reads did not exercise the packaged desktop CLI. Evidence was
+exported to checkpoint113/android-guest113. A fresh worker owns the default CLI
+and stream/document tests. The same-source nondebuggable base2.1.13/code16660 APK
+also built and passed ABI/signer/manifest inspection; its SHA256 is
+75e46211534d6de219e53916483b7f35949d1d28a05da274ca0b3de5cc367bbe. The exact API29
+Google APIs x86_64 system image download is separately running under PID1666739;
+do not create or start another emulator until resource admission and ownership.
+
+Remote relay refusal was caused by an expired read-only QGA collector that
+remained alive after its local wrapper timed out. Root verified and stopped only
+that collector; queued connections drained. The new bounded, synchronized
+read-only QGA helper and causal tests are the next dirty batch. An independent
+native read/open/close passed with exact receipt hash. Existing unknown installer
+jobs, parked Fedora memory and old macOS owner881 remain preserved.
 
 The latest native GUI-return diagnosis separates successful replacement from
 failed return. With the jpackage marker absent, direct launch from SSH still
@@ -83,6 +167,13 @@ Full parity remains incomplete.
 
 | Task ID | Agent | Owned files/subsystem | Shared files reserved | Artifact / environment | Current check / next handoff |
 | --- | --- | --- | --- | --- | --- |
+| Delivery114 | root | Shared integration, metadata, evidence review | Host Gradle, commits and push | 9e57f01 all required CI passed | Review and deliver bounded-observer regression batch |
+| Android CLI113 | android_cli113 | Ignored CLI transport evidence | No tracked edits or other AVDs | Exclusive owned remote emulator5682 | Default packaged CLI streams/documents; provider-only result already passed |
+| Android image113 | passive observer1680016 | Existing SDK download1666739 | No AVD start | Remote exact API29 x86_64 image | Retain same download handle and terminal package metadata |
+| Mac machine114 | mac_machine114 | New private machine rollback fixture | No existing app/job changes | Exclusive owned Tart VM | Prepare exact /Applications fixture; root review before one install |
+| Mac readiness114 | mac_readiness114 | macos_fixture_processes.py and test | No VM or shared docs edits | Deterministic readiness fixture | Preserve attempted read output and wait for endpoint readiness |
+| Windows build114 | windows_build114 | Read-only native build inventory | No installer/runtime commands | Exclusive CP95 QGA | Exact JDK/SDK/NativeAOT prerequisites and same-source MSI build plan |
+| Linux gate114 | linux_gate114 | Read-only failure/recovery coverage audit | No VM/build/edit | Current tests and historical receipts | Distinguish pre-install rejection from transaction failure/recovery |
 | Delivery111 | root | Shared integration, docs, metadata, delivery | Host Gradle and shared product files | Pushed40307db, all five CI passed | Next observer regression batch and native evidence review |
 | Windows image103 | windows_image103 | Coordinator helper image admission, original-user image-pin lifetime and focused tests | No shared Kotlin edits or VM mutation | CP102 read-only evidence | Reviewed fix and RED/GREEN source bundle frozen; native execution pending |
 | macOS native105 | mac_native105 | Private native preparation/evidence | No tracked source edits | Exclusive owned Tart guest | User-local rollback/recovery passed; root verified21 hashes; fixture cleaned |

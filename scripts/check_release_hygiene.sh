@@ -58,6 +58,7 @@ python3 scripts/test_native_python_tests.py
 python3 scripts/test_macos_fixture_owner_launch.py
 python3 scripts/test_macos_fixture_processes.py
 python3 scripts/test_native_fixture_run.py
+python3 scripts/test_native_fixture_qga.py
 python3 scripts/test_macos_packaging_jdk_preflight.py
 python3 scripts/test_macos_install_worker_target.py
 python3 scripts/test_android_routing_evidence.py

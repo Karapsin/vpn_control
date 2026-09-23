@@ -21,7 +21,7 @@ from prepare_desktop_update_fixture import (
     verify_sources, version_build, require_install_ready, discard_completed_stage_directory,
     desktop_install_arguments, require_selected_location, require_active_runtime, fixture_proxy_arguments,
     serve_connection, write_resource_response, FIXTURE_ENTRYPOINT_MODULES,
-    stage_fixture_entrypoint, validate_staged_fixture_entrypoint,
+    fixture_entrypoint_modules, stage_fixture_entrypoint, validate_staged_fixture_entrypoint,
 )
 from test_fixture_environment import symlink_probe_available
 
@@ -996,12 +996,30 @@ class FixtureEntrypointStagingTest(unittest.TestCase):
     def test_staging_copies_all_runtime_modules_and_imports_the_actual_entrypoint(self):
         with tempfile.TemporaryDirectory() as temporary:
             stage = Path(temporary) / "stage"
-            receipt = stage_fixture_entrypoint(Path(prepare_desktop_update_fixture.__file__).parent, stage)
+            source = Path(prepare_desktop_update_fixture.__file__).parent
+            self.assertEqual(FIXTURE_ENTRYPOINT_MODULES, fixture_entrypoint_modules(source))
+            receipt = stage_fixture_entrypoint(source, stage)
             self.assertEqual(list(FIXTURE_ENTRYPOINT_MODULES), receipt["modules"])
             self.assertEqual(set(FIXTURE_ENTRYPOINT_MODULES), {path.name for path in stage.iterdir()})
             # A second check exercises the staged command from another temporary
             # working directory, with no source checkout available on PYTHONPATH.
             validate_staged_fixture_entrypoint(stage)
+
+    def test_undeclared_direct_local_import_is_rejected_before_staging(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "source"
+            source.mkdir()
+            original = Path(prepare_desktop_update_fixture.__file__).parent
+            for name in FIXTURE_ENTRYPOINT_MODULES:
+                shutil.copy2(original / name, source / name)
+            (source / "new_local_dependency.py").write_text("", encoding="utf-8")
+            entrypoint = source / FIXTURE_ENTRYPOINT_MODULES[0]
+            entrypoint.write_text(entrypoint.read_text(encoding="utf-8") + "\nimport new_local_dependency\n",
+                                  encoding="utf-8")
+            stage = Path(temporary) / "stage"
+            with self.assertRaisesRegex(ValueError, r"undeclared local imports: new_local_dependency"):
+                stage_fixture_entrypoint(source, stage)
+            self.assertFalse(stage.exists(), "stale inventory must fail before creating a staging directory")
 
 
 if __name__ == "__main__":
