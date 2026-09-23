@@ -18,13 +18,18 @@ jobs:
     timeout-minutes: 60
     env:
       BASE_VERSION: ${{ inputs.base_version }}
-      FIXTURE_ROOT: ${{ runner.temp }}\vpn-control-windows-update-fixture
 
     steps:
       - name: Checkout selected development source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Initialize fixture workspace
+        shell: pwsh
+        run: |
+          $FixtureRoot = Join-Path $env:RUNNER_TEMP "vpn-control-windows-update-fixture"
+          "FIXTURE_ROOT=$FixtureRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

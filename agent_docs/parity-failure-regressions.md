@@ -613,3 +613,36 @@ The initial regression fixture accidentally omitted production set +e and exited
 before receipt publication; retaining that line fixes the test, not the product.
 Root's focused suite passes five tests without skips (checkpoint115/
 linux-worker-test-green.log). Native RPM failure/recovery remains required.
+
+### GitHub rejects runner context in job environment — checkpoint117
+
+Windows push35833398572 atadd840ad234c23f0588fc1dbc0a0a68c480ecd70 failed
+and fixture dispatch returnedHTTP422 before execution. YAML parsing and text
+checks had accepted runner.temp in job-level env, where GitHub disallows it.
+The fixed workflow computes FIXTURE_ROOT in a PowerShell step using RUNNER_TEMP
+and GITHUB_ENV. The real actionlint regression reconstructs the rejected job env
+and reports the same forbidden runner context; corrected workflows pass.
+A checksum-pinned private cached actionlint now validates all workflows in routine
+release hygiene, without requiring a global installation. Tests also detect and
+repair cached executable bytes that differ from the verified archive and bound
+parser execution. Whole-workflow GREEN and four parser/cache tests passed locally;
+the next exact-SHA Windows push and fixture dispatch still must succeed.
+
+### Android tools resolve a different SDK — checkpoint117
+
+The API29 SDK listed the image, but its symlinked avdmanager resolved under
+/opt/android-sdk and selected a different package root. A previous emulator
+launch also omitted the private ANDROID_AVD_HOME. The quick regression executes
+a representative root-deriving wrapper: the symlink fails to find the image,
+while real tools within the selected SDK succeed. The read-only
+android_avd_sdk_preflight.py rejects foreign avdmanager paths, checks exact image
+package metadata and returns explicit SDK/AVD environment values. Shared emulator
+symlinks remain supported. The tests run in release hygiene; POSIX shell execution
+is explicitly skipped on Windows. This guard does not certify image bytes or boot.
+
+Native recheck on the owned API29 private SDK returned exit0 with its actual AVD
+home at /home/kardinal/.vpn-control-parity116-api29. The earlier assumed /avd
+subdirectory was rejected without mutation. Evidence is checkpoint117/
+android-sdk-native-correct-home.{stdout,stderr,exit}. Before creating or starting
+an owned AVD, invoke the guard with --sdk-root, --avd-home and --system-image;
+use the returned executable paths and all three environment values in the launch.

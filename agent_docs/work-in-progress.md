@@ -25,7 +25,58 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint116
+## Current continuation — checkpoint117
+
+At11:09 Moscow the authoritative worker inventory was empty. The Android large
+import has a successful terminal receipt; its following full-readback client is
+absent and has no exit receipt, so readback remains unverified. Do not repeat the
+import. Root is integrating SDK admission and the workflow parser gate before
+prepush. Prior ownership rows below are historical, not active assignments.
+
+
+77976806328da03f43a7952224ec272d69787a74 passed all five required exact-SHA
+push workflows; managed watcher1593 exited0. The next checkpointadd840ad234c23f0588fc1dbc0a0a68c480ecd70
+was pushed after complete local prepush passed, but Windows push35833398572
+failed and manual fixture dispatch returnedHTTP422: runner.temp is unavailable
+in job-level env. Watcher88997 exited1. This is not a verified delivery.
+The workflow now initializes FIXTURE_ROOT through a PowerShell step/GITHUB_ENV;
+a causal regression failed before repair. A fresh worker workflow_lint117 owns
+only a pinned real actionlint runner and its tests; root will wire it into routine
+checks before another full validation/push. No release/main operation occurred.
+
+API35 packaged status/stats/capabilities and initial watch/follow records passed.
+Root independently verified40 stream evidence hashes and same controller
+0ab99cc7-32e5-47a2-8bda-c5e9416a56cd; local TERM143 stopped only each client.
+First records took12–14 seconds; earlier3-second cutoff was insufficient evidence.
+Full duplicates/rollover/owner-replacement stream scenarios remain open.
+android35_document116 owns only emulator5682 large-document work. Baseline export
+under the repository returned PERSISTENCE_FAILED before mutation; a private
+trusted /private/tmp output path is the next discriminator, not a claimed fix.
+
+API29 worker created only private SDK/AVD vpn-control-parity116-api29 on5684,
+PID67529,2GiB/2CPU. Shared avdmanager symlink resolved to /opt/android-sdk and
+could not see the selected SDK's image; copied real tools under the private SDK
+fixed creation. No shared SDK edit. Target2.1.14 installed once into the fresh
+nondebuggable guest; exact APK hash matches API35. Command observation timed out,
+so the worker checked installed package state instead of retrying installation.
+Private-SDK/AVD admission needs a quick causal regression before reuse.
+
+| Task | Owner | Scope / next step |
+| --- | --- | --- |
+| Delivery117 | root | Workflow parser fix, routine integration, metadata, prepush and exact-SHA CI |
+| Workflow lint117 | workflow_lint117 | New pinned checker and test only; real parser RED/GREEN |
+| Android35 documents116 | android35_document116 | Exclusive5682, synthetic large routing after baseline, no VPN/installer |
+| Android29 baseline116 | completed |5684 remains running; root owns next assignment, no replay |
+| Linux resume116 | completed | Read-only2326 inventory; no resume authorized |
+
+Linux2326 is separately memory-parked at
+/home/kardinal/vpn-control-install-vm-cp83-fedora-20260920,6GiB/4CPU; do not
+cold-boot a parked disk in place of the documented memory restore. CP99 package
+inputs are historical. Its read-only identity/resources are checkpoint116/linux.
+Mac boot remains deferred for local memory headroom. Unknown installation
+correlations and Fedora2316 memory remain preserved.
+
+## Prior continuation — checkpoint116
 
 Checkpoint77976806328da03f43a7952224ec272d69787a74 was pushed after the
 complete managed prepush tier passed. Its exact-SHA managed CI watcher is live

@@ -62,6 +62,12 @@ class WindowsUpdateFixtureWorkflowTest(unittest.TestCase):
         self.assertIn("scripts/prepare_desktop_update_fixture.py build", self.reusable)
         self.assertIn("--confirm-owned-native-host-build", self.reusable)
 
+    def test_runner_temp_is_initialized_in_a_step_not_job_environment(self):
+        self.assertNotIn("FIXTURE_ROOT: ${{ runner.temp }}", self.reusable)
+        self.assertIn("- name: Initialize fixture workspace", self.reusable)
+        self.assertIn("Join-Path $env:RUNNER_TEMP \"vpn-control-windows-update-fixture\"", self.reusable)
+        self.assertIn('"FIXTURE_ROOT=$FixtureRoot" | Out-File -FilePath $env:GITHUB_ENV', self.reusable)
+
     def test_failed_build_retains_diagnostics_without_claiming_pair_success(self):
         failure = self.reusable.split("- name: Preserve failed build diagnostics", 1)[1]
         self.assertIn("if: failure()", failure)
@@ -87,6 +93,7 @@ class WindowsUpdateFixtureWorkflowTest(unittest.TestCase):
         self.assertNotIn("releases/", self.reusable)
         self.assertNotIn("release-publish", self.reusable)
         self.assertNotIn("refs/heads/main", self.reusable)
+
 
 
 if __name__ == "__main__":

@@ -29,6 +29,8 @@ if (( ${#bad_paths[@]} > 0 )); then
   exit 1
 fi
 
+python3 scripts/check_workflow_syntax.py
+python3 scripts/test_check_workflow_syntax.py
 bash scripts/check_docs_hygiene.sh
 bash scripts/test_arch_install_hygiene.sh
 python3 scripts/test_arch_update_permissions.py
@@ -45,6 +47,7 @@ python3 scripts/test_linux_public_install_harness.py
 python3 scripts/test_linux_gui_fixture_guard.py
 python3 scripts/test_prepare_linux_install_vm.py
 python3 scripts/test_prepare_android_native_tools.py
+python3 scripts/test_android_avd_sdk_preflight.py
 python3 scripts/test_android_update_fixture.py
 python3 scripts/test_android_native_fixture_build_type.py
 python3 -m unittest scripts.test_android_benchmark_fixture
