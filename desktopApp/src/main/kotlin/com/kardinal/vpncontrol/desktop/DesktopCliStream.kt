@@ -51,8 +51,11 @@ internal object DesktopCliStream {
                     cursor?.let { put("after", ControlValue.Text(it)) }
                 } else emptyMap()
                 val request = ControlRequest(UUID.randomUUID().toString(), ControlCommand(invocation.operation, arguments), controllerId = ownerId)
-                val response = desktopCliJsonResponse(request,
-                    transport(request, invocation.client.timeoutSeconds))
+                val transportResponse = transport(request, invocation.client.timeoutSeconds)
+                // The Android transport preserves interruption when an in-flight read has no
+                // result. At this read-only stream boundary, Ctrl-C is client cancellation.
+                if (Thread.currentThread().isInterrupted) return failure(ControlCode.CANCELLED)
+                val response = desktopCliJsonResponse(request, transportResponse)
                 val result = ControlDocumentCodec.decodeResult(response.message)
                 if (!result.ok) { emit(result); return result.exitCode }
                 if (result.code != ControlCode.OK || !result.final || result.controllerId.isNullOrBlank() ||

@@ -25,35 +25,47 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint118
+## Current continuation — checkpoint119
 
-Checkpoint8e0a6b3fbe41ace535abce610737bc64710df074 passed the complete
-prepush tier and all five exact-SHA push workflows; managed watcher91497 exited0.
-The same-source Windows fixture run35835908106 also passed. Root verified the
-archive, base/target MSI hashes, main JARs and shared code fingerprint. Fresh
-Windows CP117 is separate from preserved CP95; no new installer has run yet.
+At11:56 Moscow September23, HEAD/origin/dev is
+`d27affd35f43b7c033676a76d2cc2b8219ee5b46`, product2.1.15. Its complete
+prepush passed; Fast, Android, Linux and macOS required workflows passed.
+Windows package remains running; do not claim exact-SHA delivery complete yet.
+The preceding8e0a6b3 checkpoint passed all five workflows. Full parity is incomplete.
 
 | Task | Owner | Exclusive scope / next handoff |
 | --- | --- | --- |
-| Delivery118 | root | QEMU preflight integration, docs, metadata, checks and delivery |
-| Windows base118 | windows_base118 | New CP117 guest only; ordinary-account setup and verified package transfer |
-| Android29 benchmarks | android29_public117 |5684 only; diagnose failed relay preflight before benchmark mutation |
-| Android35 readback | android_readback117 |5682 only; dedicated gateway multiplexing after proven SSH disconnect |
-| Linux recovery | linux_next117 | Fedora2326 private QEMU/ROM preparation; reviewed second-attempt candidate |
-| QEMU asset guard | completed | Root owns new guard/tests and routine wiring |
+| Delivery119 | root | Shared integration, host Gradle, docs, metadata and exact-SHA CI |
+| Stream interruption | stream_audit118 | Shared stream boundary and focused tests; preserve uncertain mutation outcomes |
+| Windows base118 | windows_base118 | CP117 existing task read-only diagnosis; no further launch authorized |
+| Android29 diagnosis | android29_actions118 |5684 benchmark evidence analysis only; fixture cleaned |
+| Android35 export | android_readback117 |5682 retained result and failed private export diagnosis |
+| Linux packages | linux_build118 | Fedora2326 immutable current-source base/target build; preserve existing controller |
 
-API29 initial public status/stats/streams have70 independently verified evidence
-hashes; the original self-including manifest is preserved alongside a corrected
-self-excluding manifest. Its benchmark preflight did not reach the relay, so no
-location was added. API35 readback capture attributes failure to SSH exit255 and
-gateway connection closure; the same controller/revision remains available. No
-import was replayed. Evidence and source identities remain in checkpoint117.
+API35 full readback and new-request no-op import returned all56,000 entries,
+matching the fixture with revision1 unchanged. Large private export returned
+PERSISTENCE_FAILED and requires diagnosis. Original operation status/wait expired
+with NOT_FOUND; no replay. The shared gateway master remains borrowed by platform
+workers and must not be closed while in use. Evidence remains in checkpoint117.
 
-Linux restore first rejected changed host QEMU, then a private matching binary
-failed before migration due to a missing VGA ROM. Original memory and paired
-storage remain preserved; attempt-one intent/log/socket are not erased. The new
-asset guard must precede a separate, reviewed retry. Mac remains stopped because
-of host memory pressure. Full parity and final native/visual gates remain open.
+API29 persistent relay preflight passed and a benchmark reached the stalled relay,
+but completed RUNTIME_FAILED before cancellation, with null timings. This does not
+prove finite measurements or cancellation. Exact synthetic location, relay and
+reverse mapping were removed. Runtime is stopped, locations/subscriptions empty;
+source=current-locations revision3 is an approved disposable fixture deviation.
+
+Linux private QEMU asset preflight and diskless probe passed, and the second
+memory restore completed successfully. Fedora2326 is running with original4GiB/
+2CPU; current-source2.1.14/2.1.15 pair is building inside it. Preserve the existing
+controller serving cp85-rpm-failure; no installation/runtime mutation is authorized
+by the build assignment. Original memory and first-attempt evidence remain intact.
+
+Windows CP117 is isolated from preserved CP95 unknown installer state. Verified
+same-source8e0a6b3 MSI pair is staged, with a nonadministrator fixture account.
+The registered limited task still reports0x41303 (never run) after an explicit
+start returned; no child, MSI or receipt exists. Diagnose rather than repeatedly
+launching. Mac remains stopped for host memory pressure; its machine-owned
+rollback/recovery, other native scenarios and final visual gates remain open.
 
 ## Prior continuation — checkpoint117
 

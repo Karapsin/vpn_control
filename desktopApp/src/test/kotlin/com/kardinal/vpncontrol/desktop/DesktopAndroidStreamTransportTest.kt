@@ -6,6 +6,8 @@ import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.*
 
 /** Exercises the public stream path through the bounded Android document transport. */
@@ -51,9 +53,39 @@ class DesktopAndroidStreamTransportTest {
         }
     }
 
-    private class StreamDocumentTransport(private val failure: String? = null) {
+    @Test fun interruptingInFlightAndroidDocumentWatchCancelsWithoutRepollingOwner() {
+        val transport = StreamDocumentTransport(interruptOnSubmission = 2)
+        val lines = mutableListOf<String>()
+        var exit: Int? = null
+        val worker = Thread {
+            exit = DesktopCli.handleArgs(arrayOf("--android", "--json", "status", "--watch"),
+                printLine = lines::add, requestCommand = { error("desktop owner") },
+                androidRequest = DesktopAndroidAdbClient(transport::execute)::request, streamPause = {})
+        }
+        worker.start()
+        try {
+            assertTrue(transport.interruptedSubmission.await(2, TimeUnit.SECONDS), "second read must be in flight")
+            worker.interrupt()
+            worker.join(2_000)
+            assertFalse(worker.isAlive)
+            assertEquals(130, exit)
+            assertEquals(2, transport.submissions)
+            assertTrue(transport.requests.all { it.command.operation == ControlOperationId.STATUS })
+            assertEquals(listOf(ControlCode.OK, ControlCode.CANCELLED),
+                lines.map(ControlDocumentCodec::decodeResult).map { it.code })
+        } finally {
+            worker.interrupt()
+            worker.join(2_000)
+        }
+    }
+
+    private class StreamDocumentTransport(
+        private val failure: String? = null,
+        private val interruptOnSubmission: Int? = null,
+    ) {
         val requests = mutableListOf<ControlRequest>()
         var submissions = 0
+        val interruptedSubmission = CountDownLatch(1)
         private val upload = ByteArrayOutputStream()
         private var output = byteArrayOf()
         private var currentId = ""
@@ -79,6 +111,10 @@ class DesktopAndroidStreamTransportTest {
                     val request = ControlDocumentCodec.decodeRequest(upload.toString(Charsets.UTF_8))
                     requests += request
                     submissions++
+                    if (submissions == interruptOnSubmission) {
+                        interruptedSubmission.countDown()
+                        Thread.sleep(Long.MAX_VALUE)
+                    }
                     if (failure == "lost" && submissions == 2) throw java.io.IOException("synthetic device loss")
                     val owner = if (failure == "replacement" && submissions == 2) "replacement" else "owner"
                     val code = if (failure == "replacement" && submissions == 2) ControlCode.CONFLICT else ControlCode.OK

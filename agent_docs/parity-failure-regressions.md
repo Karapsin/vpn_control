@@ -661,3 +661,17 @@ Release hygiene runs the regression. Invoke --root PRIVATE_ROOT and repeated
 --asset RELATIVE_PATH=SHA256 for every required binary/ROM immediately before
 launch. This verifies declared assets, not complete dependency discovery or
 compatibility with saved VM state; retain native device realization and restore.
+
+### Android in-flight stream interruption — checkpoint119
+
+The real Android document client preserves interruption while returning
+OUTCOME_UNKNOWN for uncertain requests. A read-only watch forwarded that result
+as exit2 instead of cancellation130. A deterministic public CLI regression blocks
+the second Android document submission, interrupts it, and checks terminal
+CANCELLED, no extra poll and no owner cancellation. Against the old stream code
+it failed with expected130/actual2; the fixed stream checks the preserved interrupt
+flag before rendering the transport result. Mutation handling is unchanged.
+DesktopAndroidStreamTransportTest runs in the routine desktop test tier.
+The five focused stream suites passed; evidence is checkpoint119/stream-red.xml
+and the retained GREEN XML files. Native terminal SIGINT remains a separate
+acceptance scenario; thread interruption alone does not prove OS signal behavior.
