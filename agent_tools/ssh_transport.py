@@ -56,6 +56,7 @@ class SshHost:
     gateway: str | None = None
     remote_host_alias: str | None = None
     remote_control_path: PurePosixPath | None = None
+    fixture_transfer_root: PurePosixPath | None = None
     password: str | None = field(default=None, repr=False, compare=False)
 
 
@@ -176,7 +177,7 @@ def _host_from_entry(alias: str, entry: Any) -> SshHost:
         raise SshConfigError("Private VM inventory contains an invalid host alias.")
     if not isinstance(entry, dict):
         raise SshConfigError("Each VM host entry must be an object.")
-    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath"}
+    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath", "fixtureTransferRoot"}
     required = {"host", "port", "user", "identityFile", "knownHostsFile"}
     if set(entry) - allowed or required - set(entry):
         raise SshConfigError("Private VM inventory contains unsupported or missing host fields.")
@@ -209,6 +210,11 @@ def _host_from_entry(alias: str, entry: Any) -> SshHost:
         _remote_path(entry["knownHostsFile"], "knownHostsFile") if transport == "nested"
         else _path(entry["knownHostsFile"], "knownHostsFile")
     )
+    fixture_root = None
+    if "fixtureTransferRoot" in entry:
+        fixture_root = _remote_path(entry["fixtureTransferRoot"], "fixtureTransferRoot")
+        if fixture_root == PurePosixPath("/") or ".." in fixture_root.parts:
+            raise SshConfigError("fixtureTransferRoot must name a dedicated absolute directory.")
     return SshHost(
         alias=alias,
         host=_ssh_host(entry["host"]),
@@ -221,6 +227,7 @@ def _host_from_entry(alias: str, entry: Any) -> SshHost:
         gateway=gateway,
         remote_host_alias=remote_host_alias,
         remote_control_path=remote_control_path,
+        fixture_transfer_root=fixture_root,
         password=password,
     )
 

@@ -1585,6 +1585,8 @@ def _run(
     timeout: int = 120,
     output_limit: int | None = MAX_OUTPUT_CHARS,
 ) -> dict[str, Any]:
+    environment = dict(os.environ)
+    environment.pop("DYLD_INSERT_LIBRARIES", None)
     try:
         completed = subprocess.run(
             command,
@@ -1594,6 +1596,7 @@ def _run(
             stderr=subprocess.PIPE,
             timeout=timeout,
             check=False,
+            env=environment,
         )
         return {
             "ok": completed.returncode == 0,
@@ -1622,7 +1625,13 @@ def _display(command: list[str]) -> str:
 
 
 def _bounded(value: Any, limit: int | None = MAX_OUTPUT_CHARS) -> str:
-    text = str(value or "").strip()
+    text = str(value or "")
+    text = re.sub(
+        r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ [^\r\n]+\[\d+:\d+\] "
+        r"\[AppleSharpener\] (?:Windows: Loaded enableSharpener: [01], customRadius: [\d.]+|"
+        r"Not in Dock process \(bundle ID: [^\r\n]*\), skipping setup)\r?\n?",
+        "", text, flags=re.MULTILINE,
+    ).strip()
     if limit is None:
         return text
     if len(text) <= limit:
@@ -1679,7 +1688,7 @@ def _json_print(value: dict[str, Any]) -> int:
     return 0 if value.get("ok") else 1
 
 
-def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None) -> dict[str, Any]:
+def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None) -> dict[str, Any]:
     """List private host aliases or perform a bounded, read-only authenticated SSH probe."""
     transport = importlib.import_module(f"{__package__}.ssh_transport" if __package__ else "ssh_transport")
     try:
@@ -1692,6 +1701,22 @@ def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_sec
             try:
                 return {"tool": "ssh_workflow", **jobs.observe(REPO_ROOT, host, identity, timeout_seconds).as_dict()}
             except jobs.SshJobError as error:
+                return _error("ssh_workflow", str(error))
+        if action in ("fixture-publish", "fixture-status") and host:
+            publisher = importlib.import_module(f"{__package__}.ssh_transfer" if __package__ else "ssh_transfer")
+            try:
+                if action == "fixture-status":
+                    result = publisher.status(REPO_ROOT, host, identity or {}, timeout_seconds=timeout_seconds)
+                else:
+                    required = {"sourceDirectory", "owner", "environment", "correlationId"}
+                    if not isinstance(transfer, dict) or set(transfer) != required:
+                        return _error("ssh_workflow", "Fixture publication requires sourceDirectory, owner, environment and correlationId.")
+                    if any(not isinstance(value, str) or not value for value in transfer.values()):
+                        return _error("ssh_workflow", "Fixture publication fields must be nonempty strings.")
+                    result = publisher.publish(REPO_ROOT, host, transfer["sourceDirectory"], transfer["owner"],
+                                               transfer["environment"], transfer["correlationId"], timeout_seconds=timeout_seconds)
+                return {"tool": "ssh_workflow", **result}
+            except publisher.SshTransferError as error:
                 return _error("ssh_workflow", str(error))
         return _error("ssh_workflow", "Use inventory, probe, or job-status with a configured host alias and job identity.")
     except transport.SshConfigError:
@@ -1724,10 +1749,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     subparsers.add_parser("serve")
     ssh_parser = subparsers.add_parser("ssh-workflow")
-    ssh_parser.add_argument("action", choices=("inventory", "probe", "job-status"))
+    ssh_parser.add_argument("action", choices=("inventory", "probe", "job-status", "fixture-publish", "fixture-status"))
     ssh_parser.add_argument("--host")
     ssh_parser.add_argument("--timeout-seconds", type=int, default=15)
     ssh_parser.add_argument("--identity-file")
+    ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
     vm_parser.add_argument("action", choices=("inspect-input", "admit-plan"))
     vm_parser.add_argument("--inputs-file", required=True)
@@ -1779,6 +1805,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "ssh-workflow":
         identity = None
+        transfer = None
         if args.identity_file:
             try:
                 identity = json.loads(Path(args.identity_file).read_text(encoding="utf-8"))
@@ -1786,7 +1813,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     raise ValueError("identity must be an object")
             except (OSError, ValueError):
                 return _json_print(_error("ssh_workflow", "Invalid identity JSON file."))
-        return _json_print(ssh_workflow(args.action, args.host, args.timeout_seconds, identity))
+        if args.transfer_file:
+            try:
+                transfer = json.loads(Path(args.transfer_file).read_text(encoding="utf-8"))
+                if not isinstance(transfer, dict):
+                    raise ValueError("transfer must be an object")
+            except (OSError, ValueError):
+                return _json_print(_error("ssh_workflow", "Invalid transfer JSON file."))
+        return _json_print(ssh_workflow(args.action, args.host, args.timeout_seconds, identity, transfer))
     if args.command == "vm-workflow":
         try:
             inputs = json.loads(Path(args.inputs_file).read_text(encoding="utf-8"))

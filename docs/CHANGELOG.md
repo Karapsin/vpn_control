@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Add private SSH and VM admission tools with correlated job observation and guarded DMG cleanup.
+- Publish verified native fixture helpers with recoverable SSH status and quieter command output.
 
 ## 2.1.17 - 2026-09-24
 

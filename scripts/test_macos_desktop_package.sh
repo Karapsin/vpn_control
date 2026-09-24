@@ -91,9 +91,14 @@ if len(mounts) != 1 or mounts[0].get("mount-point") != mountpoint or mounts[0].g
         return 1
       fi
     fi
-    # Only remove the empty mountpoint after confirmed detach. Never recurse
-    # into a volume that the OS may still have mounted.
-    rmdir "$mount_dir"
+    # hdiutil can report detach success before its mountpoint is released. Only
+    # remove the empty directory, never recurse into a possibly mounted volume.
+    for attempt in 1 2 3 4 5; do
+      if rmdir "$mount_dir"; then return; fi
+      if (( attempt < 5 )); then sleep 1; fi
+    done
+    echo "DMG mountpoint could not be removed after detach; empty fixture preserved at $mount_dir" >&2
+    return 1
   }
   trap cleanup EXIT
 

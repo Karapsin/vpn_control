@@ -127,3 +127,24 @@ ssh-workflow inventory`, `ssh-workflow probe --host <alias>`, or `vm-workflow
 <action> --inputs-file <private-json>`. Do not fall back to ad-hoc SSH routes.
 Agent-tool discovery tests and focused native-tool tests run in the ordinary
 `agent_tools/tests` suite and managed prepush.
+
+### Verified fixture staging
+
+A host may declare `fixtureTransferRoot`, an existing private remote POSIX directory
+owned by the SSH user with mode0700. `ssh_workflow("fixture-publish", host=...,
+transfer={sourceDirectory, owner, environment, correlationId})` stages only the
+canonical desktop update entrypoint and its two required sibling modules. Prepare
+these with `prepare_desktop_update_fixture.py stage-entrypoint`, then generate
+`SHA256SUMS.txt` with `native_fixture_manifest.py`. This first scenario does not
+transfer arbitrary packages or execute the received scripts.
+
+The tool reserves a private local intent before submission and binds it to the
+host, transfer root and unique correlation. The remote destination is exclusive;
+receipt publication follows complete byte/hash verification. After interruption,
+use `fixture-status` with the returned identity. Never resubmit the same correlation
+or create another transfer merely because an observation timed out. Existing
+partial transfers remain evidence. The CLI accepts publication fields through
+`--transfer-file` and recovered identities through `--identity-file`.
+
+Job and transfer observation currently require key/agent profiles on a POSIX
+coordinator. Password-backed connectivity probes remain separate from these actions.

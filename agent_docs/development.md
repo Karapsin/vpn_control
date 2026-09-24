@@ -103,6 +103,13 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   and result counts/skips, source/artifact identity, evidence paths, unresolved cases,
   and cleanup. Send intermediate messages for decisions, completion or actionable
   failures, rather than each setup command. Preserve timely user progress updates.
+- On the current macOS host, start shell commands with the shell builtin
+  `unset DYLD_INSERT_LIBRARIES` so injected AppleSharpener messages do not multiply
+  through child processes. Before displaying captured shell results, remove only
+  timestamped AppleSharpener `Windows: Loaded enableSharpener` and `Not in Dock
+  process ... skipping setup` lines. Preserve every other diagnostic and the exact
+  exit status. Repository MCP command execution applies this narrow filter before
+  output truncation. Do not disable host software or suppress stderr wholesale.
 - Save full redacted logs and machine-readable receipts outside tracked source.
   Return exit status, counts/skips, artifact identity and evidence paths by default;
   read bounded failure excerpts when needed. Do not trim the evidence needed to

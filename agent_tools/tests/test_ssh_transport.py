@@ -28,6 +28,17 @@ class SshTransportTest(unittest.TestCase):
         known_hosts = str((SOURCE / "test-known-hosts").resolve())
         return {"schemaVersion": 1, "hosts": hosts or {"vm": {"host": "127.0.0.1", "port": 22, "user": "tester", "identityFile": key, "knownHostsFile": known_hosts}}}
 
+    def test_transfer_root_is_optional_absolute_remote_and_not_filesystem_root(self):
+        root = Path.cwd()
+        entry = {"host": "example", "port": 22, "user": "tester",
+                 "identityFile": str(root / "key"), "knownHostsFile": str(root / "known"),
+                 "fixtureTransferRoot": "/home/tester/.owned-fixtures"}
+        value = ssh._host_from_entry("vm", entry)
+        self.assertEqual("/home/tester/.owned-fixtures", str(value.fixture_transfer_root))
+        for invalid in ("relative", "/", "/home/tester/../other"):
+            with self.subTest(path=invalid), self.assertRaises(ssh.SshConfigError):
+                ssh._host_from_entry("vm", {**entry, "fixtureTransferRoot": invalid})
+
     def test_inventory_is_aliases_only_and_argv_uses_strict_host_verification(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

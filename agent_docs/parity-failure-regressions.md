@@ -1192,3 +1192,24 @@ not newly established product defects.
   Cleanup verifies the exact owned read-only attachment before a bounded forced
   detach; changed identity or unexpected mounts preserve evidence. Native CI on
   the fixed commit remains required; the cause of the original busy mount is unknown.
+
+## Checkpoint146 — output noise
+
+The user reported repeated injected AppleSharpener startup messages consuming
+context. `test_command_noise_filter_preserves_real_errors_and_exit_status` failed
+before the fix (`checkpoint146/noise-red.log`) and passes with the narrow filter
+(`noise-green.log`). MCP child execution removes the injection environment variable;
+only the two known startup-message formats are omitted before output truncation.
+Unknown AppleSharpener errors and ordinary stdout/stderr/exit status are preserved.
+The agent-tools suite runs this regression in routine prepush and CI.
+
+- Native SSH gateway became unreachable during the first fixture transfer.
+  `test_interrupted_stream_keeps_durable_identity_and_status_never_replays` now
+  distinguishes `ssh_transport_unavailable` while retaining UNKNOWN and the exact
+  identity. Red/green evidence: `checkpoint146/transport-unavailable-{red,green}.log`.
+  Original correlation remains unreplayed; successful remote staging is unproven.
+- macOS exact-SHA CI completed detach but `rmdir` returned Resource busy.
+  `test_empty_mountpoint_is_retried_after_confirmed_detach` fails before the fix and
+  passes with bounded empty-directory removal retries. Seven cleanup tests pass;
+  evidence `checkpoint146/macos-rmdir-{red,green}.log`. No recursive deletion or
+  relaxed attachment identity is introduced. New-SHA native CI remains mandatory.

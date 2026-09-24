@@ -11,7 +11,8 @@ import unittest
 
 @unittest.skipUnless(os.name == "posix", "requires the package shell")
 class MacPackageCleanupTest(unittest.TestCase):
-    def scenario(self, failures, smoke_exit=0, force_succeeds=False, identity_matches=True, extra_mount=False):
+    def scenario(self, failures, smoke_exit=0, force_succeeds=False, identity_matches=True, extra_mount=False,
+                 rmdir_failures=0):
         temporary = tempfile.TemporaryDirectory(prefix="mac cleanup-東京-")
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
@@ -78,6 +79,10 @@ elif name == "rm":
     mount.rmdir()
 elif name == "rmdir":
     assert args == [str(mount)]
+    counter = root / "rmdir-count"
+    count = int(counter.read_text()) + 1 if counter.exists() else 1
+    counter.write_text(str(count))
+    if count <= int(os.environ["RMDIR_FAILURES"]): sys.exit(16)
     mount.rmdir()
 elif name == "sleep": pass
 else: raise AssertionError(name)
@@ -88,7 +93,7 @@ else: raise AssertionError(name)
         environment = dict(os.environ, PATH=str(commands) + os.pathsep + os.environ["PATH"],
                            CLEANUP_FIXTURE=str(root), DETACH_FAILURES=str(failures), SMOKE_EXIT=str(smoke_exit),
                            FORCE_SUCCEEDS=str(force_succeeds).lower(), IDENTITY_MATCHES=str(identity_matches).lower(),
-                           EXTRA_MOUNT=str(extra_mount).lower())
+                           EXTRA_MOUNT=str(extra_mount).lower(), RMDIR_FAILURES=str(rmdir_failures))
         environment.pop("VPN_CONTROL_MACOS_SIGNING_IDENTITY", None)
         result = subprocess.run([shutil.which("bash"), str(script), str(dmg)], env=environment,
                                 capture_output=True, text=True, timeout=15)
@@ -134,6 +139,12 @@ else: raise AssertionError(name)
         self.assertNotEqual(0, result.returncode)
         self.assertTrue((root / "mount/fixture.app").exists())
         self.assertFalse(any(call[:2] == ["hdiutil", "detach"] for call in calls))
+
+    def test_empty_mountpoint_is_retried_after_confirmed_detach(self):
+        root, result, calls = self.scenario(failures=0, rmdir_failures=1)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, sum(call[0] == "rmdir" for call in calls))
+        self.assertFalse((root / "mount").exists())
 
     def test_smoke_failure_still_detaches_without_masking_failure(self):
         root, result, calls = self.scenario(failures=0, smoke_exit=7)
