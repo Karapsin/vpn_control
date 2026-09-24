@@ -9,6 +9,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve owned macOS VM monitoring across observer process-group loss and record uncertain stops.
 - Report safe localized subscription refresh failures consistently across GUI and CLI.
 - Prevent Linux installer fixture setup from creating root-owned user state or losing public trust-store environment.
+- Harden native fixture authorization, stage receipts and build connectivity checks across platforms.
 
 ## 2.1.16 - 2026-09-23
 

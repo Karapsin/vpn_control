@@ -45,6 +45,8 @@ python3 scripts/test_package_linux_deb.py
 python3 scripts/test_package_linux_rpm.py
 python3 scripts/test_linux_public_install_harness.py
 python3 scripts/test_linux_public_install_fixture.py
+python3 scripts/test_windows_fixture_stage_acl.py
+python3 scripts/test_guest_build_connect_proxy.py
 python3 scripts/test_linux_gui_fixture_guard.py
 python3 scripts/test_linux_vpn_fixture_guard.py
 python3 scripts/test_prepare_linux_install_vm.py

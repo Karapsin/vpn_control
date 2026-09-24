@@ -1033,3 +1033,42 @@ truncate and write. This is a test-fixture publication race, not a Tart or produ
 failure. The failing prepush receipt is retained. Atomic synthetic heartbeat publication
 and a routine missing/empty/partial/complete reader regression now pass; the
 process-group survival scenario remains in the seven-test selection.
+
+### Fixture admission and portability — checkpoint139
+
+Windows CI35984122823 exposed a Linux fixture test that used host Windows mode
+bits for its simulated Linux target. The injected Windows-stat vector failed
+before repair;12 tests now pass with explicit target metadata and preserved
+foreign-owner rejection. Evidence: checkpoint139/windows-ci. This is a test
+portability defect; it does not establish a product installer failure.
+
+The CP138 Windows stage receipt lacked recipient RX. The original stderr was not
+retained, so SID translation failure is a hypothesis, not proven causality. The
+new typed-SID generator fails on PowerShell errors and validates the exact
+protected three-principal ACL. Seven routine tests reject the old receipt,
+truncation, nonterminal/nonzero captures and unsafe path aliases. Native CP139
+parser and one ACL application passed; all five hashes and MSI inherited RX were
+verified. Subsequent review exposed missing-output and wrong-stage receipt
+acceptance; causal regressions now require captured QGA output and the requested
+stage path. The original CP139 receipt predates that path field: its stage identity
+is supported by separate pre/post native observations, not the new validator. Evidence: checkpoint139/windows-acl. MSI acceptance is still separate.
+
+The macOS build failed on guest TCP access to Google's repository before TLS.
+The same host URL returned200 with normal certificate validation. A scoped raw
+CONNECT relay restricts one private guest peer and three fixed Gradle repositories.
+Thirteen routine tests cover admission, framing, forwarding and preflight failure.
+Review also reproduced buffer overshoot and plaintext rejection after an accepted
+tunnel before fixing both; evidence: checkpoint139/mac-relay. No TLS trust bypass
+or global proxy setting is introduced. Native build retry remains outstanding.
+
+### Polkit identity selection before password — checkpoint140
+
+CP139's terminal driver recognized only Password and stalled at the polkit
+multiple-account selector. The decision replay in checkpoint140/linux-identity-selector
+fails with the former password-only decision and passes when the helper chooses
+only the explicitly named fixture account from a complete, contiguous selector.
+The routine Linux public-install harness covers wrong, duplicate, partial and
+malformed selections; password admission still requires its separate terminal
+echo-disable check. The remote PTY driver must explicitly consume this helper
+before another admitted native attempt. No current unknown job is replayed or
+cleared by this change, and it does not prove installation success.

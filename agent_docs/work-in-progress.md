@@ -25,7 +25,66 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint138
+## Current continuation — checkpoint139
+
+Checkpoint138 `1ff5bedf0592bf9486ac767ae0daa693b0a2cc21` passed local prepush and
+was pushed, but Windows workflow35984122823 failed in the new Linux fixture tests:
+their simulated Linux actor still used Windows filesystem permission bits. A local
+Windows-stat reproduction fails before the test-only repair;12 focused tests now
+pass. Exact-SHA delivery is not complete. Preserve checkpoint138/commit-result.json
+and checkpoint139/windows-ci logs. Product application source remains ba35.
+
+The Linux helper was exercised on the original bad guest state and rejected it.
+Root verified that both `.local` and `.local/share` were task-created root0755
+ancestors containing only this fixture, changed their ownership through pinned
+file descriptors without recursion or mode changes, then reran the helper
+successfully. Evidence: checkpoint139/linux-repair. The admitted retry reached
+polkit identity selection, but the fixture driver only recognized a password prompt.
+Its driver exited; operation0a8f3ccf-c3e9-4007-a6b5-849b14c3fe9b remains
+OUTCOME_UNKNOWN/nonfinal without a protected receipt. Preserve the owner shell,
+job8af17487-490a-4073-8908-343861e36b0d and inputs; do not replay. RPM remains
+2.1.15 with clean verification. Evidence: checkpoint139/linux-install.
+
+The compatible ba35 Android nativeFixture build succeeded inside CP120:2.1.16,
+code16720, nondebuggable x86_64, retained a43 signer, APK SHA4347e057….
+API29 read-only admission finds the matching old2.1.15 APK and no app-owned VPN or
+foreground service; public status still has unavailable owner metadata. This does
+not establish the operation ledger or configured state. No upgrade has run.
+
+Windows current ba35 pair is staged with matching guest hashes. Review found its
+initial ACL lacked the intended user's RX entry; raw receipts are retained in
+checkpoint138/windows-stage. A typed-SID generator and complete ACL validator are
+verified by native PowerShell parsing and one successful ACL application. All five
+staged hashes remain unchanged; both MSI files inherit recipient RX. Evidence:
+checkpoint139/windows-acl/manifest.json. No installation or login was performed. The original setup did
+not retain its error output, so the precise translation-error mechanism is not proven.
+
+macOS's same-source base build failed before packaging because guest TCP access to
+Google's repository timed out before TLS; the host reaches those same URLs. The
+owned guest was stopped gracefully with child exit0, preserving historical unknown
+installer state. A restricted opaque CONNECT relay and certificate-verified POM
+preflight pass13 focused tests; no relay listener or build retry has started.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration139 | root | Windows CI test correction, shared wiring/docs, review and delivery |
+| Linux selector140 | linux_selector140 | Dedicated fixture regression; no native mutation or replay |
+| Android staging140 | android_stage140 | Export verified APK and read-only API29 admission; no upgrade |
+| Windows stage ACL | completed; root review | Native ACL and unchanged hashes verified; installer/login pending |
+| macOS admission140 | mac_admission140 | Read-only resource/startup plan; root owns reviewed relay files |
+
+Independent review fixed mandatory captured QGA output and exact-stage binding
+in ACL validation, with bounded relay reads in tests. All source ownership has
+returned to root:34 fixture tests pass; the Linux harness runs22 tests with two
+platform-specific skips. CP140/fixture-review and linux-identity-selector retain
+the review/regression evidence. Android staging140 owns one compatible API29
+upgrade; Linux selector140 is now read-only reconciliation; macOS admission140
+owns bounded boot/network preflight. Heavy host checks are serialized behind it.
+
+This intentional batch combines the CI test correction, exact-account terminal
+selection and two reusable native fixture checks. Final review, metadata, full prepush and exact-SHA CI remain required.
+
+## Historical continuation — checkpoint138
 
 Checkpoint137 `ba35d802fba025e326e3fa837f2a1c1f89968f12` is pushed; all five
 required exact-SHA workflows and advisory VPN Integration passed. Version remains

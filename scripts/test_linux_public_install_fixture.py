@@ -19,11 +19,15 @@ class TargetBoundary:
     def __init__(self):
         self.calls = []
         self.foreign = set()
+        self.metadata_platform = os.name
 
     def lstat(self, path):
         info = os.lstat(path)
         uid = 0 if path in self.foreign else self.uid
-        return SimpleNamespace(st_mode=info.st_mode, st_uid=uid, st_gid=uid)
+        # The fake actor models Linux ownership. Windows stat does not describe
+        # Linux permission bits, so model those too on non-POSIX test hosts.
+        mode = info.st_mode if self.metadata_platform == "posix" else stat.S_IFMT(info.st_mode) | 0o700
+        return SimpleNamespace(st_mode=mode, st_uid=uid, st_gid=uid)
 
     def run(self, command, **kwargs):
         self.calls.append(command)
@@ -128,6 +132,18 @@ class FixtureProvisioningTest(unittest.TestCase):
         self.assertNotIn("UNRELATED_TEST_SECRET", environment)
         self.assertEqual({"PATH", subject.PUBLIC_STORE_ENV}, set(environment))
         self.assertEqual("public-ca-only", environment[subject.PUBLIC_STORE_ENV])
+
+    def test_windows_stat_modes_do_not_change_simulated_linux_permissions(self):
+        real_lstat = os.lstat
+        def windows_stat(path):
+            info = real_lstat(path)
+            return SimpleNamespace(st_mode=stat.S_IFMT(info.st_mode) | 0o777)
+        self.boundary.metadata_platform = "nt"
+        with mock.patch.object(os, "lstat", side_effect=windows_stat):
+            self.prepare()
+            self.boundary.foreign.add(self.home / ".local")
+            with self.assertRaisesRegex(subject.FixtureSetupError, "not target-owned"):
+                self.prepare()
 
     def test_cli_keytool_separator_and_account_home_validation(self):
         account = SimpleNamespace(pw_uid=1234, pw_gid=1234, pw_dir=str(self.home))

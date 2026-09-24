@@ -658,3 +658,23 @@ and still runs portable admission checks. Launch the real monitor in a retained
 foreground execution session; do not background it with `nohup ... &`. Keep the
 exact session handle and private evidence directory. A missing monitor receipt
 is an unknown outcome, not permission to boot another copy or replay installation.
+
+### Scoped native fixture preparation
+
+Routine release hygiene runs `test_windows_fixture_stage_acl.py` and
+`test_guest_build_connect_proxy.py`. The former rejects incomplete/truncated QGA
+captures and missing recipient rights, and guards generated typed-SID ACL setup.
+Native PowerShell parsing, actual file inheritance and unchanged package hashes
+remain required. The latter covers peer/destination admission, HTTP CONNECT
+framing, opaque byte forwarding, partial writes, half-close and strict buffer
+bounds, plus certificate-verified repository preflight failure. A passing fake
+transport does not certify the guest network or a successful package build.
+
+`test_linux_public_install_fixture.py` simulates Linux metadata explicitly when
+the host is Windows; its Windows-stat regression must still reject foreign owners.
+Do not interpret host Windows permission bits as Linux target directory modes.
+
+The Linux public-install harness also replays polkit's multiple-account selector.
+Only an explicitly authorized exact account may produce a numbered response;
+selection never admits password input. The native driver must retain the original
+PTY master and wait for the subsequent password/echo-disable gate.

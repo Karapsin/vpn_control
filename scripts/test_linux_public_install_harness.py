@@ -17,6 +17,7 @@ from prepare_desktop_update_fixture import MAIN_CLASS, VERSION_RESOURCE, image_i
 from prepare_linux_public_install_image import prepare
 from test_linux_public_install import (launch_fixture_owner, require_package_managed_launcher, run,
                                        observe_terminal_process, terminal_password_prompt_seen, terminal_install_handoff,
+                                       terminal_authorized_identity_choice,
                                        terminal_password_input_ready,
                                        write_password_to_original_master,
                                        launch_with_controlling_tty,
@@ -131,6 +132,31 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
         self.assertFalse(terminal_password_prompt_seen(received + b"Password: diagnostic text\n"))
         self.assertFalse(terminal_password_prompt_seen(received + b"\x1b[1;31mPass"))
         self.assertTrue(terminal_password_prompt_seen(received + b"\x1b[1;31mPassword: "))
+
+    def test_terminal_identity_selector_chooses_only_the_exact_authorized_fixture_account(self):
+        # CP139 stopped at this selector, before polkit displayed Password. The
+        # old driver only recognized Password and therefore timed out without
+        # sending a selector choice. This response is not a credential.
+        selector = (b"\x1b[1;31m==== AUTHENTICATING FOR org.freedesktop.policykit.exec ====\r\n"
+                    b"\x1b[0mMultiple identities can be used for authentication:\r\n"
+                    b" 1.  vpnfixture\r\n 2.  vpnpolkit137\r\n"
+                    b"Choose identity to authenticate as (1-2): ")
+        # Causal RED replay: this was the complete decision in the retained
+        # driver. It could answer only after Password, so it sent no input at
+        # the selector and the native request became OUTCOME_UNKNOWN.
+        password_only_would_answer = terminal_password_prompt_seen(selector)
+        self.assertFalse(terminal_password_prompt_seen(selector))
+        self.assertFalse(password_only_would_answer)
+        # GREEN: select only the explicitly authorized fixture account; the
+        # actual password remains subject to its separate echo-disable gate.
+        self.assertEqual(b"2", terminal_authorized_identity_choice(selector, "vpnpolkit137"))
+        self.assertEqual(b"1", terminal_authorized_identity_choice(selector, "vpnfixture"))
+        self.assertIsNone(terminal_authorized_identity_choice(selector, "unrelated"))
+        self.assertIsNone(terminal_authorized_identity_choice(selector + b"Password: ", "vpnpolkit137"))
+        self.assertIsNone(terminal_authorized_identity_choice(
+            selector.replace(b" 2.  vpnpolkit137", b" 3.  vpnpolkit137"), "vpnpolkit137"))
+        self.assertIsNone(terminal_authorized_identity_choice(
+            selector.replace(b"vpnpolkit137", b"vpnpolkit137\r\n 3.  vpnpolkit137"), "vpnpolkit137"))
 
     def test_arch_recovery_rejects_alternate_install_path_before_fixture_or_process_access(self):
         linux = types.SimpleNamespace(uname=lambda: types.SimpleNamespace(sysname="Linux"), getuid=lambda: 1000)

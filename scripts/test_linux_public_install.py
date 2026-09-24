@@ -112,6 +112,14 @@ def launch_fixture_owner(launcher, workspace, log, environment):
 
 _ANSI_TERMINAL_ESCAPE = re.compile(rb"\x1b\[[0-?]*[ -/]*[@-~]")
 _PASSWORD_PROMPT = re.compile(rb"(?:^|[\r\n])Password:[ \t]*$")
+_IDENTITY_SELECTOR = re.compile(
+    rb"(?:^|[\r\n])Multiple identities can be used for authentication:\r?\n"
+    rb"(?P<entries>(?:[ \t]*[1-9][0-9]*\.[^\r\n]*\r?\n)+)"
+    rb"Choose identity to authenticate as \((?P<first>[1-9][0-9]*)-"
+    rb"(?P<last>[1-9][0-9]*)\):[ \t]*$"
+)
+_IDENTITY_ENTRY = re.compile(rb"[ \t]*(?P<choice>[1-9][0-9]*)\.[ \t]+(?P<identity>[^\r\n]*?)[ \t]*$")
+_FIXTURE_ACCOUNT = re.compile(r"[a-z_][a-z0-9_-]*\$?\Z")
 
 
 def terminal_password_prompt_seen(terminal_bytes):
@@ -122,6 +130,36 @@ def terminal_password_prompt_seen(terminal_bytes):
     JVM options such as ``trustStorePassword=...`` are not a prompt.
     """
     return _PASSWORD_PROMPT.search(_ANSI_TERMINAL_ESCAPE.sub(b"", terminal_bytes)) is not None
+
+
+def terminal_authorized_identity_choice(terminal_bytes, authorized_identity):
+    """Return only polkit's numbered choice for one explicitly authorized account.
+
+    An identity selector precedes the password prompt on guests with multiple
+    fixture accounts.  It is not credential input: callers must still use
+    ``terminal_password_input_ready`` before writing a password.  The complete,
+    current selector and its contiguous bounded choices are required so text in
+    diagnostics or a partial selector cannot trigger a response.
+    """
+    if not isinstance(authorized_identity, str) or not _FIXTURE_ACCOUNT.fullmatch(authorized_identity):
+        return None
+    selector = _IDENTITY_SELECTOR.search(_ANSI_TERMINAL_ESCAPE.sub(b"", terminal_bytes))
+    if selector is None:
+        return None
+    first, last = int(selector["first"]), int(selector["last"])
+    if first > last or last - first > 32:
+        return None
+    choices = []
+    for line in selector["entries"].splitlines():
+        entry = _IDENTITY_ENTRY.fullmatch(line)
+        if entry is None:
+            return None
+        choices.append((int(entry["choice"]), entry["identity"]))
+    if [choice for choice, _ in choices] != list(range(first, last + 1)):
+        return None
+    expected = authorized_identity.encode("ascii")
+    matches = [choice for choice, identity in choices if identity == expected]
+    return str(matches[0]).encode("ascii") if len(matches) == 1 else None
 
 
 def terminal_password_input_ready(terminal_bytes, terminal_fd):
