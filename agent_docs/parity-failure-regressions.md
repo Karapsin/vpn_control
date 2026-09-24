@@ -1378,3 +1378,27 @@ import and non-Linux rejection checks run independently on every platform.
 Actual POSIX storage/ownership tests remain enabled on Linux and macOS.
 Evidence: checkpoint162/fixture-portability-red.log and
 fixture-portability-green.log; retain Windows CI as platform verification.
+
+## Checkpoint164 — credential probe fixture uses the current interface
+
+Windows CI for `600f83a0eafe19504d3c77c6ec6079fb11a539bb` passed hygiene
+then failed the PowerShell credential-validity fixture. Its obsolete reader-count
+assertion expected a callback that no longer exists: the helper accepts a prepared
+SecureString. The fixture now counts actual native invocations and proves invalid
+admission/caller cases never invoke native authentication, while preserving token
+cleanup assertions. Real PowerShell on Arch reproduced the old assertion failure
+and passed the corrected fixture. Evidence: checkpoint162/pwsh164-red.json and
+pwsh164-green.json. The existing mandatory Windows fixture remains the native
+PowerShell gate; this was a test defect, not rejected valid product credentials.
+
+## Checkpoint164 — wait for the exact fixture owner
+
+The first Fedora GUI lifecycle runner queried status immediately after spawning
+the owner, observed UNAVAILABLE, and stopped before runtime/configuration changes.
+The new linux_fixture_owner_readiness helper retries only read-only readiness
+observations for the same spawned PID/start time/UID/workspace, pins the endpoint
+controller, and fails on replacement, child exit or deadline. Its delayed-child
+regression uses an explicit handshake rather than timing assumptions; foreign
+identity and deadline cases are also checked. The six-test selection runs through
+release hygiene. Evidence: checkpoint162/linux-rpm-lifecycle-readiness; the native
+lifecycle scenario remains required after the fixture correction.

@@ -25,7 +25,37 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint163
+## Current continuation — checkpoint164
+
+Checkpoint `600f83a0eafe19504d3c77c6ec6079fb11a539bb` is pushed after full
+prepush success. Android package CI passed; Windows passed hygiene then exposed
+an obsolete reader-count assertion in the PowerShell credential fixture. The
+corrected fixture proves native invocation admission and token cleanup and passes
+real PowerShell 7.6.4 on Arch (checkpoint162/pwsh164-*). Remaining exact-SHA
+workflows are still being observed; the corrective checkpoint is not yet pushed.
+
+Windows CP117 is signed in as the exact ordinary fixture account; base MSI launch
+is being prepared from verified frozen bytes. Fedora2328 has a successful targeted
+20-package X11 dependency transaction, with no upgrades/removals. Its first
+lifecycle attempt stopped before mutations because status raced owner readiness;
+a guarded read-only readiness helper and causal regression precede the next run.
+API29's initial selection rejection was invalid test usage (missing epoch/revision
+guards and unsupported async), not a product defect. The corrected attempt must
+retain full command outputs and cleanup evidence. No consent outcome is claimed.
+
+macOS remains stopped below its 8 GiB disk reserve. Arch has capacity for verified
+private archival of inactive historical build evidence. Copy/verification may run;
+no local evidence is removed before source/archive/restore checks succeed.
+
+| Task | Agent | Owned files/subsystem | Environment / next gate |
+| --- | --- | --- | --- |
+| Integration | root | PowerShell fixture regression, WIP/ledger, version/CI | Batch checks and exact-SHA delivery |
+| Linux lifecycle | linux_native161 | Owner-readiness helper/test, hygiene invocation | Fedora2328; immutable helper then traffic/GUI lifecycle |
+| Windows MSI | windows_msi_resume163 | Prompt observer/test and sanitized fixtures | CP117; verified ordinary-user MSI launch |
+| Android consent | android_remaining163 | Native evidence only | API29 5684; valid guarded commands and retained outputs |
+| Capacity | archive_capacity164 | Ignored historical evidence archival | Private Arch copy; root reviews before local cleanup |
+
+## Checkpoint163 — portable test admission
 
 Pushed checkpoint `3cf1b2087828cfe4aefd97cd7e03fcf402839092`, version 2.1.18,
 after full local prepush success. Windows package CI exposed a second POSIX-only
@@ -39,7 +69,7 @@ receiptless protected operation must be reconciled before any new installation.
 Linux RPM 2.1.17 installation/recovery proof is locally retained under
 checkpoint162/linux-rpm-recovery; target-package traffic/lifecycle remains open.
 
-## Current continuation — checkpoint162
+## Checkpoint162 — credential recovery
 
 Checkpoint `dd10018a6ded3a68181bbb15f97100038a3f6097` was reviewed, passed the
 complete local prepush tier and pushed to origin/dev. CI is not complete: Fast

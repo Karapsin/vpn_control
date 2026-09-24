@@ -6,7 +6,6 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
-import json
 from pathlib import Path
 
 
@@ -47,24 +46,22 @@ try {{ Test-BatchLogonAdmission -UserName 'fixture-user' -Password $secure -Nati
 $allow = Test-BatchLogonAdmission -UserName 'fixture-user' -Password $secure -NativeInvoker {{ param($u,$p) [pscustomobject]@{{ Success=$true; Win32Error=[uint32]0; Token=[IntPtr]42 }} }} -CloseToken {{ param($t) $script:closed += $t.ToInt64() }}
 if (-not $allow.admitted -or $allow.logonType -ne 4 -or $allow.win32Error -ne 0 -or $allow.hresult -ne 0 -or $closed.Count -ne 1 -or $closed[0] -ne 42) {{ throw 'GREEN batch-logon admission or token close failed' }}
 
-$credentialPath = [IO.Path]::GetTempFileName()
 try {{
-    [IO.File]::WriteAllText($credentialPath, 'fixture-secret', [Text.Encoding]::UTF8)
     $admission = [pscustomobject]@{{
         operation = 'windows-credential-validity-v1'
         accountName = 'fixture-user'
         expectedAccountSid = 'S-1-5-21-1-2-3-1002'
         approvedCallerSid = 'S-1-5-18'
     }}
-    $readCount = 0
+    $nativeCalls = 0
     $closedTokens = @()
     $valid = Test-WindowsCredentialValidityAdmission -Admission $admission `
         -ResolveAccountSid {{ param($name) 'S-1-5-21-1-2-3-1002' }} `
         -GetCallerSid {{ 'S-1-5-18' }} `
         -Credential $secure `
-        -NativeInvoker {{ param($u,$p) [pscustomobject]@{{ Success=$true; Win32Error=[uint32]0; Token=[IntPtr]74 }} }} `
+        -NativeInvoker {{ param($u,$p) $script:nativeCalls++; [pscustomobject]@{{ Success=$true; Win32Error=[uint32]0; Token=[IntPtr]74 }} }} `
         -CloseToken {{ param($token) $script:closedTokens += $token.ToInt64() }}
-    if ($valid.success -ne $true -or $valid.errorCategory -ne 'none' -or $readCount -ne 1 -or $closedTokens.Count -ne 1 -or $closedTokens[0] -ne 74) {{ throw 'credential validity GREEN result or token cleanup failed' }}
+    if ($valid.success -ne $true -or $valid.errorCategory -ne 'none' -or $nativeCalls -ne 1 -or $closedTokens.Count -ne 1 -or $closedTokens[0] -ne 74) {{ throw 'credential validity GREEN result or token cleanup failed' }}
 
     foreach ($case in @(
         @{{ error=[uint32]1326; expected='invalid-credentials' }},
@@ -85,15 +82,15 @@ try {{
         [pscustomobject]@{{ operation='windows-credential-validity-v1'; accountName='fixture-user'; expectedAccountSid='S-1-5-21-1-2-3-1003'; approvedCallerSid='S-1-5-18' }},
         [pscustomobject]@{{ operation='windows-credential-validity-v1'; accountName='fixture-user'; expectedAccountSid='S-1-5-21-1-2-3-1002'; approvedCallerSid='S-1-5-18'; ownedVm=$true }}
     )) {{
-        $readCount = 0
-        try {{ Test-WindowsCredentialValidityAdmission -Admission $bad -Credential $secure -ResolveAccountSid {{ param($name) 'S-1-5-21-1-2-3-1002' }} -GetCallerSid {{ 'S-1-5-18' }}; throw 'invalid credential admission reached reader' }} catch {{ if ($_.Exception.Message -eq 'invalid credential admission reached reader') {{ throw }} }}
-        if ($readCount -ne 0) {{ throw 'invalid credential admission read the credential' }}
+        $nativeCalls = 0
+        try {{ Test-WindowsCredentialValidityAdmission -Admission $bad -Credential $secure -ResolveAccountSid {{ param($name) 'S-1-5-21-1-2-3-1002' }} -GetCallerSid {{ 'S-1-5-18' }} -NativeInvoker {{ $script:nativeCalls++; throw 'native invocation reached' }}; throw 'invalid credential admission reached native invocation' }} catch {{ if ($_.Exception.Message -eq 'invalid credential admission reached native invocation') {{ throw }} }}
+        if ($nativeCalls -ne 0) {{ throw 'invalid credential admission invoked native authentication' }}
     }}
-    $nonSystemReads = 0
-    try {{ Test-WindowsCredentialValidityAdmission -Admission $admission -Credential $secure -ResolveAccountSid {{ param($name) 'S-1-5-21-1-2-3-1002' }} -GetCallerSid {{ 'S-1-5-21-9-8-7-1002' }}; throw 'non-SYSTEM caller reached reader' }} catch {{ if ($_.Exception.Message -eq 'non-SYSTEM caller reached reader') {{ throw }} }}
-    if ($nonSystemReads -ne 0) {{ throw 'non-SYSTEM caller read the credential' }}
+    $nonSystemCalls = 0
+    try {{ Test-WindowsCredentialValidityAdmission -Admission $admission -Credential $secure -ResolveAccountSid {{ param($name) 'S-1-5-21-1-2-3-1002' }} -GetCallerSid {{ 'S-1-5-21-9-8-7-1002' }} -NativeInvoker {{ $script:nonSystemCalls++; throw 'native invocation reached' }}; throw 'non-SYSTEM caller reached native invocation' }} catch {{ if ($_.Exception.Message -eq 'non-SYSTEM caller reached native invocation') {{ throw }} }}
+    if ($nonSystemCalls -ne 0) {{ throw 'non-SYSTEM caller invoked native authentication' }}
 }}
-finally {{ [IO.File]::Delete($credentialPath) }}
+finally {{ $secure.Dispose() }}
 Write-Output 'WINDOWS_TASK_ADMISSION_FIXTURE_OK'
 """
     try:

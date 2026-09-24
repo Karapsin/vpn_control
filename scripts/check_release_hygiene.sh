@@ -44,6 +44,7 @@ python3 scripts/test_linux_package_postinst.py
 python3 scripts/test_package_linux_deb.py
 python3 scripts/test_package_linux_rpm.py
 python3 scripts/test_linux_public_install_harness.py
+python3 scripts/test_linux_fixture_owner_readiness.py
 python3 scripts/test_linux_public_install_fixture.py
 python3 scripts/test_windows_fixture_stage_acl.py
 python3 scripts/test_guest_build_connect_proxy.py

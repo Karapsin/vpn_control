@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Keep Linux credential storage tests platform-scoped while verifying portable admission on Windows.
+- Verify credential admission through native invocation and wait for exact fixture owner readiness.
 
 ## 2.1.18 - 2026-09-24
 
