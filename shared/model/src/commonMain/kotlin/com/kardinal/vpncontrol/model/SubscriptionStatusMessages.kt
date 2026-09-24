@@ -52,6 +52,35 @@ object SubscriptionStatusMessages {
     fun failedToRefresh(failedLabel: String): String =
         StatusMessageCodec.encode(StatusMessageKey.FAILED_TO_REFRESH, failedLabel)
 
+    fun refreshFailure(reason: SubscriptionRefreshFailureReason, failedLabel: String): String =
+        StatusMessageCodec.encode(refreshFailureKey(reason), failedLabel)
+
+    fun refreshFailureReason(storedStatus: String): SubscriptionRefreshFailureReason? {
+        val message = StatusMessageCodec.decode(storedStatus)
+        if (message == null || message.args.size != 1) return null
+        return SubscriptionRefreshFailureReason.entries.firstOrNull { refreshFailureKey(it) == message.key }
+    }
+
+    fun refreshInspectionStatus(storedStatus: String): String = when {
+        storedStatus.isBlank() -> ""
+        refreshFailureReason(storedStatus) != null -> "FAILED"
+        storedStatus == "OK" -> "OK"
+        StatusMessageCodec.decode(storedStatus)?.key in setOf(
+            StatusMessageKey.LOCATION_REFRESHED_COUNT,
+            StatusMessageKey.LOCATIONS_REFRESHED_COUNT,
+        ) -> "OK"
+        else -> "FAILED"
+    }
+
+    private fun refreshFailureKey(reason: SubscriptionRefreshFailureReason): StatusMessageKey = when (reason) {
+        SubscriptionRefreshFailureReason.TLS -> StatusMessageKey.SUBSCRIPTION_REFRESH_TLS_FAILED
+        SubscriptionRefreshFailureReason.CONNECTIVITY -> StatusMessageKey.SUBSCRIPTION_REFRESH_CONNECTIVITY_FAILED
+        SubscriptionRefreshFailureReason.PARSE -> StatusMessageKey.SUBSCRIPTION_REFRESH_PARSE_FAILED
+        SubscriptionRefreshFailureReason.PREPARATION -> StatusMessageKey.SUBSCRIPTION_REFRESH_PREPARATION_FAILED
+        SubscriptionRefreshFailureReason.PERSISTENCE -> StatusMessageKey.SUBSCRIPTION_REFRESH_PERSISTENCE_FAILED
+        SubscriptionRefreshFailureReason.OTHER -> StatusMessageKey.SUBSCRIPTION_REFRESH_OTHER_FAILED
+    }
+
     fun failedToRefreshActiveSubscription(): String =
         StatusMessageCodec.encode(StatusMessageKey.FAILED_TO_REFRESH_ACTIVE_SUBSCRIPTION)
 

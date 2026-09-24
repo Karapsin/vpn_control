@@ -74,6 +74,21 @@ class DesktopHeadlessSessionTest {
     }
 
     @Test
+    fun validatedRefreshPersistenceFailureMapsToOuterPersistenceCode() = runTest {
+        val runner = DesktopOperationRunner(backgroundScope)
+        suspend fun submit() = runner.execute(com.kardinal.vpncontrol.model.ControlOperationId.SUBSCRIPTIONS_REFRESH,
+            DesktopCliCommand.SubscriptionRefresh("all"), requestId = "request", asynchronous = true) {
+            DesktopCliResponse.failure("{\"code\":\"PERSISTENCE_FAILED\",\"failureReason\":\"PERSISTENCE\"}")
+        }
+
+        submit()
+        runCurrent()
+        val completed = com.kardinal.vpncontrol.control.ControlProtocolCodec.decodeResult(submit().message)
+        assertEquals(com.kardinal.vpncontrol.model.ControlCode.PERSISTENCE_FAILED, completed.code)
+        assertEquals(com.kardinal.vpncontrol.model.ControlValue.Text("PERSISTENCE"), completed.data["failureReason"])
+    }
+
+    @Test
     fun asyncResultsCaptureOwnerRevisionAndRetainCompletionMetadata() = runTest {
         var metadata = DesktopControlMetadata(3, false)
         val runner = DesktopOperationRunner(backgroundScope, controllerId = "owner", metadataProvider = { metadata })
@@ -402,7 +417,7 @@ class DesktopHeadlessSessionTest {
         val state = MainUiState(profileSourceMode = ProfileSourceMode.SUBSCRIPTION,
             subscriptions = listOf(SubscriptionSource(id = "test", url = "https://example.test/sub")),
             activeSubscriptionId = "test", subscriptionRefreshPolicy = SubscriptionRefreshPolicy.EVERY_HOUR)
-        val response = """{"code":"OUTCOME_UNKNOWN","refreshCode":"PARTIAL_FAILURE","postRefreshCode":"OUTCOME_UNKNOWN","sources":[{"id":"test","ok":true,"locationCount":1},{"id":"other","ok":false,"locationCount":null}]}"""
+        val response = """{"code":"OUTCOME_UNKNOWN","refreshCode":"PARTIAL_FAILURE","postRefreshCode":"OUTCOME_UNKNOWN","sources":[{"id":"test","ok":true,"locationCount":1,"failureReason":null},{"id":"other","ok":false,"locationCount":null,"failureReason":"CONNECTIVITY"}]}"""
         val session = DesktopHeadlessSession(backgroundScope, { state }, { DesktopCliResponse.success("readable") }, {},
             nowMillis = { testScheduler.currentTime }, hasAutoRefresh = { true },
             prepareAutoRefresh = { suspend { DesktopCliResponse.failure(response, 2) } })

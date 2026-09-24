@@ -11,6 +11,15 @@ import kotlin.test.assertTrue
 
 class SubscriptionSourceLogicTest {
     @Test
+    fun safeSourceLabelNeverUsesUrlUserInfo() {
+        val url = "https://user:SECRET@example.com/subscription"
+        assertEquals("example.com", SubscriptionSourceLogic.safeSourceLabelFor(emptyList(), url))
+        assertEquals("Named", SubscriptionSourceLogic.safeSourceLabelFor(
+            listOf(subscription("id", url, customName = "Named")), url))
+        assertEquals("Subscription", SubscriptionSourceLogic.safeSourceLabelFor(emptyList(), "not-a-url"))
+    }
+
+    @Test
     fun activateAllKeepsProfileUrlAndUsesSubscriptionMode() {
         val state = MainUiState(
             profileUrl = "https://example.com/active",

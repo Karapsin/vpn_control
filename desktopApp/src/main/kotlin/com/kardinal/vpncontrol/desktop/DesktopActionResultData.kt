@@ -31,17 +31,33 @@ internal object DesktopActionResultData {
         val values = ControlDocumentCodec.decodeValues(response.message)
         fun text(name: String) = (values.getValue(name) as ControlValue.Text).value
         if (operation == ControlOperationId.SUBSCRIPTIONS_REFRESH) {
+            if (values.keys == setOf("code", "failureReason")) {
+                val reason = text("failureReason")
+                require(reason in setOf(
+                    SubscriptionRefreshFailureReason.PREPARATION.wireName,
+                    SubscriptionRefreshFailureReason.PERSISTENCE.wireName,
+                ))
+                require(text("code") == if (reason == SubscriptionRefreshFailureReason.PERSISTENCE.wireName)
+                    "PERSISTENCE_FAILED" else "REFRESH_FAILED")
+                require(!response.success && response.exitCode == 1)
+                return values
+            }
             val postRefreshFailure = "postRefreshCode" in values
             require(values.keys == if (postRefreshFailure)
                 setOf("code", "refreshCode", "postRefreshCode", "sources") else setOf("code", "sources"))
             val sources = (values.getValue("sources") as ControlValue.ArrayValue).values.map {
                 (it as ControlValue.ObjectValue).values.also { source ->
-                    require(source.keys == setOf("id", "ok", "locationCount"))
+                    require(source.keys == setOf("id", "ok", "locationCount", "failureReason"))
                     require((source.getValue("id") as ControlValue.Text).value.isNotBlank())
                     require(source.getValue("ok") is ControlValue.BooleanValue)
                     val count = source.getValue("locationCount")
                     require(count == ControlValue.Null || count is ControlValue.IntegerValue && count.value >= 0)
-                    require(source.getValue("ok") != ControlValue.BooleanValue(true) || count != ControlValue.Null)
+                    val failureReason = source.getValue("failureReason")
+                    require(failureReason == ControlValue.Null || failureReason is ControlValue.Text &&
+                        failureReason.value in SubscriptionRefreshFailureReason.entries.map(SubscriptionRefreshFailureReason::wireName))
+                    require(source.getValue("ok") != ControlValue.BooleanValue(true) ||
+                        count != ControlValue.Null && failureReason == ControlValue.Null)
+                    require(source.getValue("ok") != ControlValue.BooleanValue(false) || failureReason != ControlValue.Null)
                 }
             }
             require(sources.map { it.getValue("id") }.distinct().size == sources.size)

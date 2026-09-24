@@ -5,6 +5,7 @@ import com.kardinal.vpncontrol.control.ControlLocationResolution
 import com.kardinal.vpncontrol.control.ControlLocationSelection
 import com.kardinal.vpncontrol.data.LocationConfigs
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
 
 private fun refreshCode(refreshed: DesktopSubscriptionRefreshPayload): String {
     val failed = refreshed.outcomes.count { !it.ok }
@@ -23,9 +24,17 @@ private fun refreshOutput(refreshed: DesktopSubscriptionRefreshPayload, code: St
                     put("id", JsonPrimitive(outcome.id))
                     put("ok", JsonPrimitive(outcome.ok))
                     put("locationCount", JsonPrimitive(outcome.locationCount))
+                    put("failureReason", outcome.failureReason?.let { JsonPrimitive(it.wireName) } ?: JsonNull)
                 }
             }))
         }.toString()
+
+private fun refreshOperationFailureOutput(reason: com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason): String =
+    kotlinx.serialization.json.buildJsonObject {
+        put("code", JsonPrimitive(if (reason == com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason.PERSISTENCE)
+            "PERSISTENCE_FAILED" else "REFRESH_FAILED"))
+        put("failureReason", JsonPrimitive(reason.wireName))
+    }.toString()
 
 internal fun desktopSubscriptionRefreshResponse(
     result: Result<DesktopSubscriptionRefreshPayload>,
@@ -34,7 +43,14 @@ internal fun desktopSubscriptionRefreshResponse(
         val output = refreshOutput(refreshed)
         if (refreshCode(refreshed) == "OK") DesktopCliResponse.success(output) else DesktopCliResponse.failure(output)
     },
-    onFailure = { it.toConnectionFailureResponse() },
+    onFailure = { failure ->
+        val reason = (failure as? com.kardinal.vpncontrol.model.SubscriptionRefreshFailureException)?.reason
+        if (reason in setOf(
+                com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason.PREPARATION,
+                com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason.PERSISTENCE,
+            )) DesktopCliResponse.failure(refreshOperationFailureOutput(requireNotNull(reason)))
+        else failure.toConnectionFailureResponse()
+    },
 )
 
 internal fun desktopAutoRefreshResponse(result: Result<DesktopAutoRefreshResult>): DesktopCliResponse = result.fold(

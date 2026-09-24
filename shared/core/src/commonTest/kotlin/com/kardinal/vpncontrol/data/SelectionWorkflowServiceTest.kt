@@ -1,12 +1,33 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.ProxyProfile
+import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 
 class SelectionWorkflowServiceTest {
+    @Test
+    fun parsedContentFailureHookIsOptInAndLeavesDefaultValidationTypeUntouched() = runTest {
+        val preview = RemoteSourcePreview("Subscription URL", "Example", "", supported = true)
+        val resolve = { _: String -> ResolvedRemoteSource(preview, "https://example.com/subscription") }
+        val content: suspend (String) -> FetchedSubscriptionContent = {
+            FetchedSubscriptionContent(body = "", contentType = "text/plain")
+        }
+
+        assertFailsWith<IllegalStateException> {
+            SelectionWorkflowService.parseRemoteSourceLocations("source", resolve, content)
+        }
+        val wrapped = assertFailsWith<RefreshParseMarker> {
+            SelectionWorkflowService.parseRemoteSourceLocations("source", resolve, content,
+                parsedContentFailure = ::RefreshParseMarker)
+        }
+        assertIs<IllegalStateException>(wrapped.cause)
+    }
+
     @Test
     fun loadProfilesForTargetsHonorsConcurrencyAndPreservesTargetOrder() = runTest {
         val targets = listOf(
@@ -40,6 +61,8 @@ class SelectionWorkflowServiceTest {
         assertEquals(listOf("sub-1", "sub-2", "sub-3"), loaded.profilesById.keys.toList())
     }
 }
+
+private class RefreshParseMarker(cause: Throwable) : Exception(null, cause)
 
 private fun profile(name: String): ProxyProfile = ProxyProfile(
     remarks = name,

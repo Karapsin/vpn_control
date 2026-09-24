@@ -6,6 +6,9 @@ import org.junit.Test
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import com.kardinal.vpncontrol.control.ControlCommitted
+import java.io.IOException
+import java.net.SocketTimeoutException
+import javax.net.ssl.SSLException
 
 class AndroidSubscriptionRefreshControlTest {
     private val sources = listOf(SubscriptionSource(id = "a", url = "https://a.example"), SubscriptionSource(id = "b", url = "https://b.example"))
@@ -80,6 +83,7 @@ class AndroidSubscriptionRefreshControlTest {
         assertEquals(ControlValue.IntegerValue(1), rows[0]["locationCount"])
         assertEquals(ControlValue.Text(ControlCode.CANCELLED.wireName), rows[1]["code"])
         assertTrue(rows.all { it["committed"] == ControlValue.BooleanValue(false) })
+        assertTrue(rows.all { it["failureReason"] == ControlValue.Null })
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -153,6 +157,114 @@ class AndroidSubscriptionRefreshControlTest {
         assertEquals(ControlValue.IntegerValue(2), result.data["failedCount"])
         assertEquals(1, prepared); assertEquals(1, commits)
     }
+
+    @Test fun tlsFetchFailureUsesFixedSafeReasonWithoutLeakingEndpoint() = runTest {
+        val secretEndpoint = "https://fixture.example/subscription?token=not-for-status"
+        val source = SubscriptionSource(id = "tls", url = secretEndpoint, customName = "Fixture")
+        var state = ControlCommitted("owner", 7L, PersistedState(subscriptions = listOf(source)))
+        val control = AndroidSubscriptionRefreshControl("owner", { state }, { _, _ ->
+            throw SSLException("certificate failure for $secretEndpoint")
+        }, { _, _, _ -> state.copy(revision = 8).also { state = it } }, { false }, { _, _ -> })
+
+        val result = control.execute(request(), "tls-operation", { _, _ -> }, { true })
+
+        assertEquals(ControlCode.RUNTIME_FAILED, result.code)
+        val row = ((result.data.getValue("subscriptions") as ControlValue.ArrayValue).values.single() as ControlValue.ObjectValue).values
+        assertEquals(ControlValue.Text("TLS"), row["failureReason"])
+        assertFalse(result.toString().contains(secretEndpoint))
+    }
+
+    @Test fun classifierMapsNestedTlsConnectivityAndOtherWithoutMessages() {
+        assertEquals(SubscriptionRefreshFailureReason.TLS,
+            androidRefreshFailure(IOException("outer", SSLException("https://secret.example/?token=hidden"))).reason)
+        assertEquals(SubscriptionRefreshFailureReason.CONNECTIVITY,
+            androidRefreshFailure(IOException("connection refused")).reason)
+        assertEquals(SubscriptionRefreshFailureReason.CONNECTIVITY,
+            androidRefreshFailure(SocketTimeoutException("private host timed out")).reason)
+        assertEquals(SubscriptionRefreshFailureReason.OTHER,
+            androidRefreshFailure(IllegalArgumentException("https://private.example/?token=hidden")).reason)
+    }
+
+    @Test fun classifierTerminatesForCyclicCauseGraph() {
+        val first = IllegalStateException("first")
+        val second = IllegalStateException("second")
+        first.initCause(second)
+        second.initCause(first)
+
+        assertEquals(SubscriptionRefreshFailureReason.OTHER, androidRefreshFailure(first).reason)
+    }
+
+    @Test fun typedParseFailureIsPreservedWithoutCauseText() = runTest {
+        val secretEndpoint = "https://fixture.example/subscription?token=not-for-status"
+        val source = SubscriptionSource(id = "parse", url = secretEndpoint)
+        var state = ControlCommitted("owner", 7L, PersistedState(subscriptions = listOf(source)))
+        val control = AndroidSubscriptionRefreshControl("owner", { state }, { _, _ ->
+            throw SubscriptionRefreshFailureException(SubscriptionRefreshFailureReason.PARSE,
+                IllegalArgumentException("parse $secretEndpoint"))
+        }, { _, _, _ -> state.copy(revision = 8).also { state = it } }, { false }, { _, _ -> })
+
+        val result = control.execute(request(), "parse-operation", { _, _ -> }, { true })
+
+        val row = ((result.data.getValue("subscriptions") as ControlValue.ArrayValue).values.single() as ControlValue.ObjectValue).values
+        assertEquals(ControlValue.Text("PARSE"), row["failureReason"])
+        assertFalse(result.toString().contains(secretEndpoint))
+    }
+
+    @Test fun failedStatusLabelNeverCarriesSubscriptionUserInfoIntoStorageOrGui() {
+        val source = SubscriptionSource(
+            id = "credentialed",
+            url = "https://fixture-user:fixture-password@fixture.example/subscription",
+        )
+        val status = androidRefreshFailureStatus(listOf(source), source, SubscriptionRefreshFailureReason.TLS)
+
+        assertFalse(status.contains("fixture-user"))
+        assertFalse(status.contains("fixture-password"))
+    }
+
+    @Test fun stalePreparedFetchIsPreparationFailureNotOther() = runTest {
+        val source = SubscriptionSource(id = "stale", url = "https://fixture.example/subscription")
+        var state = ControlCommitted("owner", 7L, PersistedState(subscriptions = listOf(source)))
+        val control = AndroidSubscriptionRefreshControl("owner", { state }, { _, _ -> error("captured fetch required") },
+            { _, _, _ -> state.copy(revision = 8).also { state = it } }, { false }, { _, _ -> },
+            prepareFetch = { _, _ -> { error("RUNTIME_COMMAND_STALE") } })
+
+        val result = control.execute(request(), "stale-operation", { _, _ -> }, { true })
+
+        val row = ((result.data.getValue("subscriptions") as ControlValue.ArrayValue).values.single() as ControlValue.ObjectValue).values
+        assertEquals(ControlValue.Text("PREPARATION"), row["failureReason"])
+    }
+
+    @Test fun persistenceFailureIsTopLevelSafeReasonWithoutClaimingCommit() = runTest {
+        val state = ControlCommitted("owner", 7L, PersistedState(subscriptions = sources))
+        val control = AndroidSubscriptionRefreshControl("owner", { state }, { _, _ -> listOf("location") },
+            { _, _, _ -> error("storage failure at https://private.example/?token=not-for-status") }, { false }, { _, _ -> })
+
+        val result = control.execute(request(), "persistence-operation", { _, _ -> }, { true })
+
+        assertEquals(ControlCode.PERSISTENCE_FAILED, result.code)
+        assertEquals(ControlValue.BooleanValue(false), result.data["committed"])
+        assertEquals(ControlValue.Text("PERSISTENCE"), result.data["failureReason"])
+        assertFalse(result.toString().contains("private.example"))
+    }
+
+    @Test fun postCommitSnapshotFailureKeepsCommittedRevisionAndIsNotPersistenceFailure() = runTest {
+        var snapshots = 0
+        var state = ControlCommitted("owner", 7L, PersistedState(subscriptions = sources))
+        val control = AndroidSubscriptionRefreshControl("owner", {
+            snapshots++
+            if (snapshots == 1) state else error("post-commit observation https://private.example/?token=hidden")
+        }, { _, _ -> listOf("location") }, { _, _, _ -> state.copy(revision = 8).also { state = it } },
+            { false }, { _, _ -> })
+
+        val result = control.execute(request(), "post-commit-snapshot", { _, _ -> }, { true },
+            continuation = { _, _, _ -> emptyList() })
+
+        assertEquals(ControlCode.RUNTIME_FAILED, result.code)
+        assertEquals(8, result.configurationRevision)
+        assertEquals(ControlValue.BooleanValue(true), result.data["committed"])
+        assertEquals(ControlValue.Text("OTHER"), result.data["failureReason"])
+        assertFalse(result.toString().contains("private.example"))
+    }
     @Test fun scheduledRoutePreparationFailureStillSchedulesNextWithoutEffects() = runTest {
         val state = ControlCommitted("owner", 7L, PersistedState(subscriptions = sources))
         var scheduled = 0
@@ -164,6 +276,7 @@ class AndroidSubscriptionRefreshControlTest {
         assertEquals(ControlCode.RUNTIME_FAILED, result.code)
         assertEquals(1, scheduled)
         assertEquals(ControlValue.BooleanValue(false), result.data["committed"])
+        assertEquals(ControlValue.Text("PREPARATION"), result.data["failureReason"])
         assertEquals(ControlCode.CONFLICT, control.execute(request().copy(ifRevision = 6), "stale", { _, _ -> }, { true },
             continuation = { _, _, _ -> emptyList() }).code)
         assertEquals(1, scheduled)

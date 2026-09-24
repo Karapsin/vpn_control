@@ -7,6 +7,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Align HTTPS fixture and SOCKS loopback address selection with packaged JVM clients while retaining IPv6 fallback.
 - Preserve owned macOS VM monitoring across observer process-group loss and record uncertain stops.
+- Report safe localized subscription refresh failures consistently across GUI and CLI.
 
 ## 2.1.16 - 2026-09-23
 

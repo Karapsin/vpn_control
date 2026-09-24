@@ -19,7 +19,12 @@ internal object AndroidRefreshCommitPolicy {
             (all || relevant.any { it.url == before.selectedProfileSourceUrl })
     }
 }
-internal data class AndroidRefreshLoad(val source: SubscriptionSource, val locations: List<String>?, val code: ControlCode)
+internal data class AndroidRefreshLoad(
+    val source: SubscriptionSource,
+    val locations: List<String>?,
+    val code: ControlCode,
+    val failureReason: SubscriptionRefreshFailureReason? = null,
+)
 internal typealias AndroidRefreshContinuation = suspend (PersistedState, SubscriptionRefreshBatchResult, AndroidRuntimeRestorePoint?) -> List<String>
 
 /** One owner lease spans cancellable loading and an indivisible commit/recovery boundary. */
@@ -47,6 +52,7 @@ internal class AndroidSubscriptionRefreshControl(
         var attemptAdmitted = false
         var scheduled = false
         var targetSources = emptyList<SubscriptionSource>()
+        var terminalFailureReason: SubscriptionRefreshFailureReason? = null
         val staged = java.util.concurrent.ConcurrentHashMap<String, AndroidRefreshLoad>()
         fun result(code: ControlCode, warnings: List<String> = emptyList()): ControlResult {
             val restart = durable?.value?.let(pending)
@@ -58,10 +64,12 @@ internal class AndroidSubscriptionRefreshControl(
                     "refreshedCount" to ControlValue.IntegerValue(if (saved) loaded.count { it.code == ControlCode.OK }.toLong() else 0),
                     "failedCount" to ControlValue.IntegerValue(loaded.count { it.code !in setOf(ControlCode.OK, ControlCode.CANCELLED) }.toLong()),
                     "cancelledCount" to ControlValue.IntegerValue(loaded.count { it.code == ControlCode.CANCELLED }.toLong()),
+                    "failureReason" to (terminalFailureReason?.wireName?.let(ControlValue::Text) ?: ControlValue.Null),
                     "subscriptions" to ControlValue.ArrayValue(loaded.map { load -> ControlValue.ObjectValue(mapOf(
                         "id" to ControlValue.Text(load.source.id), "code" to ControlValue.Text(load.code.wireName),
                         "committed" to ControlValue.BooleanValue(saved && load.code == ControlCode.OK),
-                        "locationCount" to (load.locations?.size?.toLong()?.let(ControlValue::IntegerValue) ?: ControlValue.Null))) })))
+                        "locationCount" to (load.locations?.size?.toLong()?.let(ControlValue::IntegerValue) ?: ControlValue.Null),
+                        "failureReason" to (load.failureReason?.wireName?.let(ControlValue::Text) ?: ControlValue.Null))) })))
         }
         suspend fun terminal(code: ControlCode, warnings: List<String> = emptyList()): ControlResult = withContext(NonCancellable) {
             var finalWarnings = warnings
@@ -95,7 +103,12 @@ internal class AndroidSubscriptionRefreshControl(
                                 require(locations.isNotEmpty())
                                 AndroidRefreshLoad(source, locations, ControlCode.OK)
                             } catch (cancel: CancellationException) { throw cancel }
-                            catch (_: Exception) { AndroidRefreshLoad(source, null, ControlCode.RUNTIME_FAILED) }
+                            catch (failure: SubscriptionRefreshFailureException) {
+                                AndroidRefreshLoad(source, null, ControlCode.RUNTIME_FAILED, failure.reason)
+                            }
+                            catch (error: Exception) {
+                                AndroidRefreshLoad(source, null, ControlCode.RUNTIME_FAILED, androidRefreshFailure(error).reason)
+                            }
                             staged[source.id] = item
                             progress(completed.incrementAndGet(), sources.size.toLong())
                             item
@@ -107,7 +120,14 @@ internal class AndroidSubscriptionRefreshControl(
             }
             if (!beginCommit()) return terminal(ControlCode.CANCELLED, listOf("REFRESH_NOT_COMMITTED"))
             return withContext(NonCancellable) {
-                durable = commit(loaded, controllerId, before.revision)
+                durable = try {
+                    commit(loaded, controllerId, before.revision)
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (error: Exception) {
+                    if (error.message in setOf("CONFLICT", "NOT_FOUND", "INVALID_ARGUMENT")) throw error
+                    throw SubscriptionRefreshFailureException(SubscriptionRefreshFailureReason.PERSISTENCE, error)
+                }
                 saved = true
                 val warnings = mutableListOf<String>()
                 val batch = SubscriptionRefreshBatchResult(loaded.count { it.code == ControlCode.OK }, loaded.filter { it.code != ControlCode.OK }.map {
@@ -115,7 +135,10 @@ internal class AndroidSubscriptionRefreshControl(
                 })
                 if (continuation != null) {
                     try { warnings += continuation(before.value, batch, actual); durable = snapshot() }
-                    catch (_: Exception) { warnings += "REFRESH_RUNTIME_RECOVERY_FAILED"; durable = snapshot() }
+                    catch (_: Exception) {
+                        warnings += "REFRESH_RUNTIME_RECOVERY_FAILED"
+                        terminalFailureReason = SubscriptionRefreshFailureReason.OTHER
+                    }
                 }
                 scheduled = true
                 try { schedule(requireNotNull(durable).value, continuation != null) } catch (_: Exception) { warnings += "REFRESH_SCHEDULING_FAILED" }
@@ -126,11 +149,27 @@ internal class AndroidSubscriptionRefreshControl(
             loaded = targetSources.map { staged[it.id] ?: AndroidRefreshLoad(it, null, ControlCode.CANCELLED) }
             return terminal(ControlCode.CANCELLED, listOf(if (saved) "REFRESH_COMMITTED" else "REFRESH_NOT_COMMITTED"))
         }
-        catch (error: Exception) { return terminal(when (error.message) {
-            "CONFLICT" -> ControlCode.CONFLICT; "NOT_FOUND" -> ControlCode.NOT_FOUND; "INVALID_ARGUMENT" -> ControlCode.INVALID_ARGUMENT
-            "RUNTIME_STATE_UNKNOWN", "RUNTIME_COMMAND_STALE", "ACTIVE_MANAGEMENT_ROUTE_UNAVAILABLE" -> ControlCode.RUNTIME_FAILED
-            else -> ControlCode.PERSISTENCE_FAILED
-        }, listOf(if (saved) "REFRESH_COMMITTED" else "REFRESH_NOT_COMMITTED")) }
+        catch (error: Exception) {
+            terminalFailureReason = when (error) {
+                is SubscriptionRefreshFailureException -> error.reason
+                else -> when (error.message) {
+                    "CONFLICT", "NOT_FOUND", "INVALID_ARGUMENT" -> null
+                    "RUNTIME_STATE_UNKNOWN", "RUNTIME_COMMAND_STALE", "ACTIVE_MANAGEMENT_ROUTE_UNAVAILABLE" -> SubscriptionRefreshFailureReason.PREPARATION
+                    else -> SubscriptionRefreshFailureReason.OTHER
+                }
+            }
+            val terminalCode = when (error) {
+                is SubscriptionRefreshFailureException -> if (error.reason == SubscriptionRefreshFailureReason.PERSISTENCE) {
+                    ControlCode.PERSISTENCE_FAILED
+                } else ControlCode.RUNTIME_FAILED
+                else -> when (error.message) {
+                    "CONFLICT" -> ControlCode.CONFLICT; "NOT_FOUND" -> ControlCode.NOT_FOUND; "INVALID_ARGUMENT" -> ControlCode.INVALID_ARGUMENT
+                    "RUNTIME_STATE_UNKNOWN", "RUNTIME_COMMAND_STALE", "ACTIVE_MANAGEMENT_ROUTE_UNAVAILABLE" -> ControlCode.RUNTIME_FAILED
+                    else -> ControlCode.RUNTIME_FAILED
+                }
+            }
+            return terminal(terminalCode, listOf(if (saved) "REFRESH_COMMITTED" else "REFRESH_NOT_COMMITTED"))
+        }
         finally { actual?.close() }
     }
 

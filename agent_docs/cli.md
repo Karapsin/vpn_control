@@ -312,6 +312,13 @@ the retained report. The original export destination is never sent to the owner.
   remapping distinguish actual active identity from pending selected identity.
 - Subscription CRUD/refresh reuse validation, cache invalidation, remapping and
   concurrency limits. Report per-source partial failures, not generic success.
+  Refresh outcomes expose nullable `failureReason`: `TLS`, `CONNECTIVITY`, `PARSE`,
+  `PREPARATION`, `PERSISTENCE` or `OTHER`. Preparation and persistence failures
+  describe the operation; they do not imply a source was fetched or saved.
+  Cancellation retains its existing code. Subscription list/show expose bounded
+  `refreshStatus` (empty, `OK` or `FAILED`) and nullable `failureReason`; legacy
+  unstructured error text must not disclose endpoint credentials. GUI explanations
+  use localized status keys, and native exception messages are not public reasons.
 - Routing uses current `RoutingRulesTransfer` v7 controls: ignore rules, direct
   domains, QUIC UDP443 block, Android proxy-package assignments. Do not revive
   dormant rule-set or bypass-app editors. Do not strip full CUSTOM JSON's own

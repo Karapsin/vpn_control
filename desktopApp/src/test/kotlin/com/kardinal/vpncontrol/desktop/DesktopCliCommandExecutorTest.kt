@@ -2,6 +2,8 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
+import com.kardinal.vpncontrol.model.SubscriptionRefreshFailureException
+import com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason
 import com.kardinal.vpncontrol.data.LocationConfigs
 import java.nio.file.Files
 import kotlin.test.Test
@@ -61,6 +63,22 @@ class DesktopCliCommandExecutorTest {
         assertFalse(response.success)
         assertEquals("OUTCOME_UNKNOWN", response.message)
         assertEquals(2, response.exitCode)
+    }
+
+    @Test
+    fun manualRefreshReportsSafeOperationFailureWithoutSources() {
+        val response = desktopSubscriptionRefreshResponse(Result.failure(
+            SubscriptionRefreshFailureException(SubscriptionRefreshFailureReason.PREPARATION,
+                IllegalStateException("https://private.example/?token=SECRET")),
+        ))
+
+        assertFalse(response.success)
+        assertEquals(1, response.exitCode)
+        assertFalse(response.message.contains("SECRET"))
+        assertEquals(
+            "{\"code\":\"REFRESH_FAILED\",\"failureReason\":\"PREPARATION\"}",
+            response.message,
+        )
     }
 
     @Test

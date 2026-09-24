@@ -109,6 +109,7 @@ object SelectionWorkflowService {
         rawSource: String,
         resolveSource: (String) -> ResolvedRemoteSource,
         fetchedContent: suspend (String) -> FetchedSubscriptionContent,
+        parsedContentFailure: (Throwable) -> Throwable = { it },
     ): List<ProxyProfile> {
         val resolved = resolveSource(rawSource)
         val fetchUrl = resolved.fetchUrl ?: error("Remote source did not produce any locations")
@@ -116,25 +117,23 @@ object SelectionWorkflowService {
         SubscriptionPayloadInspector.detectPayloadError(
             body = downloaded.body,
             contentType = downloaded.contentType,
-        )?.let { error(it) }
+        )?.let { message -> throw parsedContentFailure(IllegalStateException(message)) }
         val profiles = runCatching {
             ProxyParser.parseSubscription(downloaded.body)
         }.getOrElse { error ->
             val baseMessage = SubscriptionPayloadInspector.invalidPayloadMessage(error)
             if (resolved.preview.kindLabel.equals("Subscription URL", ignoreCase = true)) {
-                throw IllegalArgumentException(baseMessage, error)
+                throw parsedContentFailure(IllegalArgumentException(baseMessage, error))
             }
-            throw IllegalArgumentException(
+            throw parsedContentFailure(IllegalArgumentException(
                 "${resolved.preview.kindLabel} resolved successfully, but ${baseMessage.replaceFirstChar(Char::lowercaseChar)}",
                 error,
-            )
+            ))
         }
         SubscriptionPayloadInspector.parsedProfileError(
             profiles = profiles,
             responseHeaders = downloaded.headers,
-        )?.let { message ->
-            throw IllegalArgumentException(message)
-        }
+        )?.let { message -> throw parsedContentFailure(IllegalArgumentException(message)) }
         return profiles
     }
 

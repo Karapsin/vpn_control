@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.data
 
 import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
+import com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason
 import android.content.Context
 import android.net.TrafficStats
 import androidx.datastore.preferences.core.Preferences
@@ -790,7 +791,11 @@ class ProfileStorage(
             val load = updates[old.id] ?: return@map old
             if (load.locations != null) old.copy(cachedLocations = normalizeStoredLocations(load.locations),
                 lastRefreshedAtEpochMillis = System.currentTimeMillis(), lastRefreshStatus = "OK")
-            else old.copy(lastRefreshStatus = load.code.wireName)
+            else old.copy(lastRefreshStatus = com.kardinal.vpncontrol.androidRefreshFailureStatus(
+                before.subscriptions,
+                old,
+                load.failureReason ?: SubscriptionRefreshFailureReason.OTHER,
+            ))
         }
         prefs[Keys.subscriptions] = encodeSubscriptions(subscriptions)
         val active = resolveActiveSubscriptionId(prefs, subscriptions)

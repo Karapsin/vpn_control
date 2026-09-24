@@ -525,11 +525,14 @@ internal class DesktopOperationRunner(
         } else Result.success(emptyMap())
         val actionValues = actionData.getOrNull()
         val structuredPostRefreshCode = (actionValues?.get("postRefreshCode") as? ControlValue.Text)?.value
+        val structuredActionCode = (actionValues?.get("code") as? ControlValue.Text)?.value
         val code = if (values.isFailure || actionData.isFailure) ControlCode.RUNTIME_FAILED else if (response.success) ControlCode.OK
             else ControlCode.entries.firstOrNull { it.wireName == structuredPostRefreshCode && it.exitCode == response.exitCode }
                 ?: if (response.exitCode == 130) ControlCode.CANCELLED
-                else ControlCode.entries.firstOrNull { it.wireName == response.message && it.exitCode == 1 }
-                ?: ControlCode.RUNTIME_FAILED
+                else ControlCode.entries.firstOrNull { it == ControlCode.PERSISTENCE_FAILED &&
+                    it.wireName == structuredActionCode && it.exitCode == response.exitCode }
+                    ?: ControlCode.entries.firstOrNull { it.wireName == response.message && it.exitCode == 1 }
+                    ?: ControlCode.RUNTIME_FAILED
         // Only validated public settings, committed routing/import results, or exact saved IDs are retained.
         // Never infer data from arbitrary human action messages or private import input.
         val metadata = committedMetadata ?: metadataProvider()

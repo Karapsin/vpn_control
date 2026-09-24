@@ -7,6 +7,8 @@ import com.kardinal.vpncontrol.MainCommandLogic
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.model.SubscriptionSource
+import com.kardinal.vpncontrol.model.SubscriptionRefreshFailureException
+import com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason
 
 internal data class DesktopAutoRefreshResult(
     val refreshed: DesktopSubscriptionRefreshPayload,
@@ -123,8 +125,9 @@ internal class DesktopSubscriptionRefreshService(
         ) } catch (cancelled: kotlinx.coroutines.CancellationException) {
             updateState { it.copy(isBusy = false, isRefreshing = false) }
             throw cancelled
-        } catch (_: Exception) {
-            Result.failure(IllegalStateException("REFRESH_FAILED"))
+        } catch (failure: Exception) {
+            if (failure.message in setOf("OUTCOME_UNKNOWN", "CONFLICT")) Result.failure(failure)
+            else Result.failure(SubscriptionRefreshFailureException(SubscriptionRefreshFailureReason.PREPARATION, failure))
         }
         if (refreshResult.isFailure) {
             updateState { it.copy(isBusy = false, isRefreshing = false) }
@@ -174,17 +177,23 @@ internal class DesktopSubscriptionRefreshService(
             }
 
             val latestState = stateProvider()
-            val committed = commitState(
-                latestState.clearSelectedLocationIf(removedSelected && stopVpnIfSelectedRemoved)
-                    .copy(
-                        isBusy = false,
-                        isRefreshing = false,
-                        subscriptionHwid = refreshed.subscriptionHwid,
-                        subscriptions = refreshed.subscriptions,
-                    )
-                    .withStatus(refreshed.statusMessage),
-                refreshed.locations,
-            )
+            val committed = try {
+                commitState(
+                    latestState.clearSelectedLocationIf(removedSelected && stopVpnIfSelectedRemoved)
+                        .copy(
+                            isBusy = false,
+                            isRefreshing = false,
+                            subscriptionHwid = refreshed.subscriptionHwid,
+                            subscriptions = refreshed.subscriptions,
+                        )
+                        .withStatus(refreshed.statusMessage),
+                    refreshed.locations,
+                )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Result.failure(failure)
+            }
             if (committed.isFailure) {
                 if (committed.exceptionOrNull()?.message == "OUTCOME_UNKNOWN") {
                     desktopControlReportPendingOutcome()
@@ -200,7 +209,13 @@ internal class DesktopSubscriptionRefreshService(
                 updateState { it.copy(isBusy = false, isRefreshing = false) }
                 if (rollback?.isFailure == true) return Result.failure(IllegalStateException("ROLLBACK_FAILED"))
             }
-            return committed.map { refreshed }
+            return if (committed.isSuccess) {
+                Result.success(refreshed)
+            } else {
+                val failure = committed.exceptionOrNull()!!
+                if (failure.message == "CONFLICT") Result.failure(failure)
+                else Result.failure(SubscriptionRefreshFailureException(SubscriptionRefreshFailureReason.PERSISTENCE, failure))
+            }
         } finally {
             releaseDesktopRuntimeRestore(restore)
         }

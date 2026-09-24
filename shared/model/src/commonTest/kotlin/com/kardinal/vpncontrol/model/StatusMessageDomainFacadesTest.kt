@@ -61,6 +61,14 @@ class StatusMessageDomainFacadesTest {
             key = StatusMessageKey.BACKGROUND_REFRESH_SWITCHED_PARTIAL_SOURCE,
             args = listOf(AppMode.VPN.name, "Netherlands", "Sub A", "Sub B"),
         )
+        val failure = SubscriptionStatusMessages.refreshFailure(SubscriptionRefreshFailureReason.TLS, "Sub A")
+        assertStructured(
+            message = failure,
+            key = StatusMessageKey.SUBSCRIPTION_REFRESH_TLS_FAILED,
+            args = listOf("Sub A"),
+        )
+        assertEquals(SubscriptionRefreshFailureReason.TLS, SubscriptionStatusMessages.refreshFailureReason(failure))
+        assertEquals("FAILED", SubscriptionStatusMessages.refreshInspectionStatus("https://private/?token=SECRET"))
     }
 
     @Test

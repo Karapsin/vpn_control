@@ -36,13 +36,19 @@ object ControlConfigurationInspection {
                 RoutingRulesTransfer.export(state.routingRules, Instant.fromEpochMilliseconds(nowMillis).toString()).content))
             ControlOperationId.SUBSCRIPTIONS_LIST -> mapOf("subscriptions" to ControlValue.ArrayValue(state.subscriptions.map {
                 ControlValue.ObjectValue(mapOf("id" to ControlValue.Text(it.id), "name" to ControlValue.Text(it.customName),
-                    "cachedLocations" to ControlValue.IntegerValue(it.cachedLocations.size.toLong())))
+                    "cachedLocations" to ControlValue.IntegerValue(it.cachedLocations.size.toLong()),
+                    "refreshStatus" to ControlValue.Text(SubscriptionStatusMessages.refreshInspectionStatus(it.lastRefreshStatus)),
+                    "failureReason" to (SubscriptionStatusMessages.refreshFailureReason(it.lastRefreshStatus)
+                        ?.let { reason -> ControlValue.Text(reason.wireName) } ?: ControlValue.Null)))
             }))
             ControlOperationId.SUBSCRIPTIONS_SHOW -> {
                 val id = (command.arguments.getValue("id") as ControlValue.Text).value
                 val source = state.subscriptions.singleOrNull { it.id == id } ?: throw ControlProtocolException(ControlCode.NOT_FOUND)
                 mapOf("id" to ControlValue.Text(source.id), "name" to ControlValue.Text(source.customName),
-                    "source" to ControlValue.Text(source.url), "cachedLocations" to ControlValue.IntegerValue(source.cachedLocations.size.toLong()))
+                    "source" to ControlValue.Text(source.url), "cachedLocations" to ControlValue.IntegerValue(source.cachedLocations.size.toLong()),
+                    "refreshStatus" to ControlValue.Text(SubscriptionStatusMessages.refreshInspectionStatus(source.lastRefreshStatus)),
+                    "failureReason" to (SubscriptionStatusMessages.refreshFailureReason(source.lastRefreshStatus)
+                        ?.let { reason -> ControlValue.Text(reason.wireName) } ?: ControlValue.Null))
             }
             ControlOperationId.ROUTING_SHOW -> mapOf("routing" to ControlValue.ObjectValue(linkedMapOf(
                 "type" to ControlValue.Text(RoutingRulesTransfer.FORMAT_TYPE),

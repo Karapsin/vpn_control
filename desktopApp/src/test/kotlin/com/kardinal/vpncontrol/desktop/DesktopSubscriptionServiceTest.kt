@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
+import com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
@@ -8,11 +9,33 @@ import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import java.io.IOException
+import java.security.cert.CertificateException
+import javax.net.ssl.SSLException
 
 class DesktopSubscriptionServiceTest {
+    @Test
+    fun refreshFailureReasonClassifiesBoundedNestedCausesWithoutLooping() {
+        assertEquals(SubscriptionRefreshFailureReason.TLS, DesktopSubscriptionRefreshStatus.failureReason(
+            IllegalStateException("outer", SSLException("private")),
+        ))
+        assertEquals(SubscriptionRefreshFailureReason.TLS, DesktopSubscriptionRefreshStatus.failureReason(
+            IllegalStateException("outer", CertificateException("private")),
+        ))
+        assertEquals(SubscriptionRefreshFailureReason.CONNECTIVITY, DesktopSubscriptionRefreshStatus.failureReason(
+            IllegalStateException("outer", IOException("private")),
+        ))
+        val first = IllegalStateException("first")
+        val second = IllegalStateException("second")
+        first.initCause(second)
+        second.initCause(first)
+        assertEquals(SubscriptionRefreshFailureReason.OTHER, DesktopSubscriptionRefreshStatus.failureReason(first))
+    }
+
     @Test
     fun refreshSubscriptionsGeneratesHwidAndRebuildsCachedLocations() = runTest {
         val subscription = SubscriptionSource(
@@ -81,8 +104,44 @@ class DesktopSubscriptionServiceTest {
         assertEquals(0, payload.refreshedCount)
         assertEquals(listOf(existingRaw), payload.locations.map(DesktopLocationRecord::rawLink))
         assertEquals(5678L, payload.subscriptions.single().lastRefreshedAtEpochMillis)
-        assertTrue(payload.subscriptions.single().lastRefreshStatus.contains("Unexpected subscription fetch"))
+        assertEquals(
+            SubscriptionStatusMessages.refreshFailure(SubscriptionRefreshFailureReason.OTHER, "Example"),
+            payload.subscriptions.single().lastRefreshStatus,
+        )
+        assertEquals(SubscriptionRefreshFailureReason.OTHER, payload.outcomes.single().failureReason)
         assertTrue(payload.statusMessage.contains("Example"))
+    }
+
+    @Test
+    fun refreshSubscriptionsDoesNotPersistTlsFailureDetails() = runTest {
+        val subscription = SubscriptionSource(
+            id = "sub",
+            url = "https://example.com/subscription.txt",
+            customName = "Example",
+        )
+        val secretUrl = "https://private.example/?token=SECRET"
+        val service = DesktopSubscriptionService(
+            subscriptionContentFetcher = object : SubscriptionContentFetcher {
+                override suspend fun fetch(url: String, subscriptionHwid: String): FetchedSubscriptionContent {
+                    throw SSLException("TLS failed for $secretUrl")
+                }
+            },
+            hwidGenerator = { "0123456789abcdef0123456789abcdef" },
+        )
+
+        val payload = service.refreshSubscriptions(
+            state = MainUiState(subscriptions = listOf(subscription)),
+            locations = emptyList(),
+            subscriptionsToRefresh = listOf(subscription),
+            onProgress = {},
+        ).getOrThrow()
+
+        assertFalse(payload.subscriptions.single().lastRefreshStatus.contains(secretUrl))
+        assertEquals(SubscriptionRefreshFailureReason.TLS, payload.outcomes.single().failureReason)
+        assertEquals(
+            SubscriptionStatusMessages.refreshFailure(SubscriptionRefreshFailureReason.TLS, "Example"),
+            payload.subscriptions.single().lastRefreshStatus,
+        )
     }
 
     @Test
@@ -140,8 +199,8 @@ class DesktopSubscriptionServiceTest {
             DesktopSubscriptionRefreshStatus.successfulLocationRefresh(2),
         )
         assertEquals(
-            SubscriptionStatusMessages.failedToRefresh("Example"),
-            DesktopSubscriptionRefreshStatus.failedSubscriptionRefresh(subscription, IllegalStateException()),
+            SubscriptionStatusMessages.refreshFailure(SubscriptionRefreshFailureReason.OTHER, "Example"),
+            DesktopSubscriptionRefreshStatus.failedSubscriptionRefresh(subscription, SubscriptionRefreshFailureReason.OTHER),
         )
         assertEquals(
             SubscriptionStatusMessages.subscriptionsRefreshed(),

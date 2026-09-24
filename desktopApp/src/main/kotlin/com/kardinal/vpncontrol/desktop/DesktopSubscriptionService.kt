@@ -11,6 +11,8 @@ import com.kardinal.vpncontrol.data.displayRemoteSourceHost
 import com.kardinal.vpncontrol.data.parseDirectRemoteSource
 import com.kardinal.vpncontrol.model.ProxyProfile
 import com.kardinal.vpncontrol.model.ProxyProtocol
+import com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason
+import com.kardinal.vpncontrol.model.SubscriptionRefreshFailureException
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import java.util.UUID
@@ -29,7 +31,12 @@ internal data class DesktopSubscriptionRefreshPayload(
     val outcomes: List<DesktopSubscriptionRefreshOutcome> = emptyList(),
 )
 
-internal data class DesktopSubscriptionRefreshOutcome(val id: String, val ok: Boolean, val locationCount: Int?)
+internal data class DesktopSubscriptionRefreshOutcome(
+    val id: String,
+    val ok: Boolean,
+    val locationCount: Int?,
+    val failureReason: SubscriptionRefreshFailureReason? = null,
+)
 
 internal class DesktopSubscriptionService(
     private val subscriptionContentFetcher: SubscriptionContentFetcher,
@@ -75,10 +82,11 @@ internal class DesktopSubscriptionService(
                             )
                         },
                         onFailure = { error ->
+                            val reason = DesktopSubscriptionRefreshStatus.failureReason(error)
                             failedLabels += subscriptionDisplayName(source)
                             source.copy(
                                 lastRefreshedAtEpochMillis = now,
-                                lastRefreshStatus = DesktopSubscriptionRefreshStatus.failedSubscriptionRefresh(source, error),
+                                lastRefreshStatus = DesktopSubscriptionRefreshStatus.failedSubscriptionRefresh(source, reason),
                             )
                         },
                     )
@@ -119,6 +127,7 @@ internal class DesktopSubscriptionService(
                 statusMessage = summary,
                 outcomes = results.map { DesktopSubscriptionRefreshOutcome(
                     it.subscription.id, it.result.isSuccess, it.result.getOrNull()?.size,
+                    it.result.exceptionOrNull()?.let(DesktopSubscriptionRefreshStatus::failureReason),
                 ) },
             ),
         )
@@ -163,6 +172,9 @@ internal class DesktopSubscriptionService(
                 }
             },
             fetchedContent = { url -> subscriptionContentFetcher.fetch(url, subscriptionHwid) },
+            parsedContentFailure = { error ->
+                SubscriptionRefreshFailureException(SubscriptionRefreshFailureReason.PARSE, error)
+            },
         )
     }
 

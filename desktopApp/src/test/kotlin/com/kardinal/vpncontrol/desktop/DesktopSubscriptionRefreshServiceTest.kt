@@ -6,16 +6,45 @@ import com.kardinal.vpncontrol.SubscriptionRefreshResultLogic
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
+import com.kardinal.vpncontrol.model.SubscriptionRefreshFailureException
+import com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 class DesktopSubscriptionRefreshServiceTest {
+    @Test
+    fun refreshReportsPreparationFailureWithoutNativeDetails() = runTest {
+        val source = SubscriptionSource(id = "source", url = "https://example.test/sub")
+        var state = MainUiState(subscriptions = listOf(source))
+        var updates = 0
+        val service = DesktopSubscriptionRefreshService(
+            stateProvider = { state }, locationsProvider = { emptyList() },
+            subscriptionService = DesktopSubscriptionService(RefreshSubscriptionFetcher(
+                mapOf(source.url to "socks://127.0.0.1:1080#New"))),
+            isRuntimeRunning = { false }, stopConnection = { error("Must not stop") },
+            findBestAfterRefresh = { error("Must not select") }, commitState = { _, _ -> Result.success(Unit) },
+            updateState = { transform ->
+                updates++
+                if (updates == 2) throw IllegalStateException("https://private.example/?token=SECRET")
+                state = transform(state)
+            },
+        )
+
+        val failure = assertIs<SubscriptionRefreshFailureException>(service.refreshAll().exceptionOrNull())
+        assertEquals(SubscriptionRefreshFailureReason.PREPARATION, failure.reason)
+        assertNull(failure.message)
+        assertFalse(state.isBusy)
+        assertFalse(state.isRefreshing)
+    }
+
     @Test
     fun refreshRestoresStoppedRuntimeOnCommitFailureAndReportsFailedRollback() = runTest {
         for (rollbackFails in listOf(false, true)) {
@@ -45,7 +74,13 @@ class DesktopSubscriptionRefreshServiceTest {
                 },
             )
             val result = service.refreshAll()
-            assertEquals(if (rollbackFails) "ROLLBACK_FAILED" else "PERSISTENCE_FAILED", result.exceptionOrNull()?.message)
+            if (rollbackFails) {
+                assertEquals("ROLLBACK_FAILED", result.exceptionOrNull()?.message)
+            } else {
+                val failure = assertIs<SubscriptionRefreshFailureException>(result.exceptionOrNull())
+                assertEquals(SubscriptionRefreshFailureReason.PERSISTENCE, failure.reason)
+                assertNull(failure.message)
+            }
             assertEquals(1, stops)
             assertEquals(1, restored)
             assertEquals(1, released)
@@ -76,7 +111,9 @@ class DesktopSubscriptionRefreshServiceTest {
             commitState = { _, _ -> commits++; Result.failure(IllegalStateException("PERSISTENCE_FAILED")) },
             updateState = { state = it(state) },
         )
-        assertEquals("PERSISTENCE_FAILED", service.refreshAll().exceptionOrNull()?.message)
+        val persistence = assertIs<SubscriptionRefreshFailureException>(service.refreshAll().exceptionOrNull())
+        assertEquals(SubscriptionRefreshFailureReason.PERSISTENCE, persistence.reason)
+        assertNull(persistence.message)
         assertEquals(1, commits)
         assertEquals(initial.subscriptions, state.subscriptions)
         assertFalse(state.isBusy)
@@ -89,6 +126,33 @@ class DesktopSubscriptionRefreshServiceTest {
         assertEquals(initial.subscriptions, state.subscriptions)
         assertFalse(state.isBusy)
         assertFalse(state.isRefreshing)
+    }
+
+    @Test
+    fun refreshClassifiesThrownCommitFailureButPreservesConflictAndUnknownSignals() = runTest {
+        fun serviceWithCommit(commit: (MainUiState, List<DesktopLocationRecord>) -> Result<Unit>): DesktopSubscriptionRefreshService {
+            val source = SubscriptionSource(id = "source", url = "https://example.test/sub")
+            var state = MainUiState(subscriptions = listOf(source))
+            return DesktopSubscriptionRefreshService(
+                stateProvider = { state }, locationsProvider = { emptyList() },
+                subscriptionService = DesktopSubscriptionService(RefreshSubscriptionFetcher(
+                    mapOf(source.url to "socks://127.0.0.1:1080#New"))),
+                isRuntimeRunning = { false }, stopConnection = { error("Must not stop") },
+                findBestAfterRefresh = { error("Must not select") }, commitState = commit,
+                updateState = { transform -> state = transform(state) },
+            )
+        }
+
+        val thrown = serviceWithCommit { _, _ -> throw IllegalStateException("https://private.example/?token=SECRET") }
+        val persistence = assertIs<SubscriptionRefreshFailureException>(thrown.refreshAll().exceptionOrNull())
+        assertEquals(SubscriptionRefreshFailureReason.PERSISTENCE, persistence.reason)
+        assertNull(persistence.message)
+
+        val conflict = serviceWithCommit { _, _ -> Result.failure(IllegalStateException("CONFLICT")) }
+        assertEquals("CONFLICT", conflict.refreshAll().exceptionOrNull()?.message)
+
+        val unknown = serviceWithCommit { _, _ -> Result.failure(IllegalStateException("OUTCOME_UNKNOWN")) }
+        assertEquals("OUTCOME_UNKNOWN", unknown.refreshAll().exceptionOrNull()?.message)
     }
 
     @Test

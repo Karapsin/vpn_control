@@ -1,5 +1,6 @@
 package com.kardinal.vpncontrol
 
+import com.kardinal.vpncontrol.data.displayRemoteSourceHost
 import com.kardinal.vpncontrol.model.SubscriptionStatusMessages
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.ProfileSourceMode
@@ -28,6 +29,17 @@ data class SubscriptionRenamePlan(
 )
 
 object SubscriptionSourceLogic {
+    fun safeSourceLabelFor(
+        subscriptions: List<SubscriptionSource>,
+        url: String,
+        emptyLabel: String = "Subscription",
+    ): String = subscriptions
+        .firstOrNull { it.url == url }
+        ?.customName
+        ?.takeIf(String::isNotBlank)
+        ?: displayRemoteSourceHost(url)
+        ?: emptyLabel
+
     fun sourceLabelFor(
         subscriptions: List<SubscriptionSource>,
         url: String,

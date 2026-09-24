@@ -4,6 +4,21 @@ import com.kardinal.vpncontrol.model.*
 import kotlin.test.*
 
 class DesktopActionResultDataTest {
+    @Test fun refreshRetainsOnlySafeOperationFailureReasonWithoutSources() {
+        val json = """{"code":"PERSISTENCE_FAILED","failureReason":"PERSISTENCE"}"""
+        val values = assertNotNull(DesktopActionResultData.decode(ControlOperationId.SUBSCRIPTIONS_REFRESH,
+            DesktopCliResponse.failure(json)))
+        assertEquals(ControlValue.Text("PERSISTENCE"), values["failureReason"])
+        assertFalse("sources" in values)
+        for (invalid in listOf(
+            json.replace("PERSISTENCE", "PREPARATION"),
+            json.replace("\"failureReason\":\"PERSISTENCE\"", "\"failureReason\":\"PRIVATE_URL\""),
+            json.replace("\"failureReason\"", "\"sources\""),
+        )) {
+            assertFails { DesktopActionResultData.decode(ControlOperationId.SUBSCRIPTIONS_REFRESH, DesktopCliResponse.failure(invalid)) }
+        }
+    }
+
     @Test fun failedSearchRecoveryRetainsTypedCauseWithoutExceptionText() {
         assertEquals(mapOf("recoveryCode" to ControlValue.Text("ROLLBACK_FAILED")),
             DesktopActionResultData.decode(ControlOperationId.FIND_BEST, DesktopCliResponse.failure("ROLLBACK_FAILED")))
@@ -15,7 +30,7 @@ class DesktopActionResultDataTest {
     }
 
     @Test fun refreshRetainsOnlyCorrelatedSourceOutcomesIncludingPartialFailures() {
-        val json = """{"code":"PARTIAL_FAILURE","sources":[{"id":"a","ok":true,"locationCount":2},{"id":"b","ok":false,"locationCount":null}]}"""
+        val json = """{"code":"PARTIAL_FAILURE","sources":[{"id":"a","ok":true,"locationCount":2,"failureReason":null},{"id":"b","ok":false,"locationCount":null,"failureReason":"TLS"}]}"""
         val response = DesktopCliResponse.failure(json)
         val values = assertNotNull(DesktopActionResultData.decode(ControlOperationId.SUBSCRIPTIONS_REFRESH, response))
         assertEquals(ControlValue.Text("PARTIAL_FAILURE"), values["code"])
@@ -23,14 +38,15 @@ class DesktopActionResultDataTest {
         for (invalid in listOf(json.replace("PARTIAL_FAILURE", "OK"), json.replace("\"b\"", "\"a\""),
             json.replace("\"id\":\"a\"", "\"id\":\"a\",\"source\":\"PRIVATE_URL\""),
             json.replace("\"locationCount\":null", "\"locationCount\":-1"),
-            json.replace("\"locationCount\":2", "\"locationCount\":null"))) {
+            json.replace("\"locationCount\":2", "\"locationCount\":null"),
+            json.replace("\"failureReason\":\"TLS\"", "\"failureReason\":\"PRIVATE_URL\""))) {
             assertFails { DesktopActionResultData.decode(ControlOperationId.SUBSCRIPTIONS_REFRESH, DesktopCliResponse.failure(invalid)) }
         }
         assertFails { DesktopActionResultData.decode(ControlOperationId.SUBSCRIPTIONS_REFRESH, DesktopCliResponse.success(json)) }
     }
 
     @Test fun scheduledRefreshRetainsCommittedSourcesWhenPostRefreshSelectionFails() {
-        val json = """{"code":"ROLLBACK_FAILED","refreshCode":"PARTIAL_FAILURE","postRefreshCode":"ROLLBACK_FAILED","sources":[{"id":"a","ok":true,"locationCount":2},{"id":"b","ok":false,"locationCount":null}]}"""
+        val json = """{"code":"ROLLBACK_FAILED","refreshCode":"PARTIAL_FAILURE","postRefreshCode":"ROLLBACK_FAILED","sources":[{"id":"a","ok":true,"locationCount":2,"failureReason":null},{"id":"b","ok":false,"locationCount":null,"failureReason":"CONNECTIVITY"}]}"""
         val values = assertNotNull(DesktopActionResultData.decode(ControlOperationId.SUBSCRIPTIONS_REFRESH,
             DesktopCliResponse.failure(json)))
         assertEquals(ControlValue.Text("ROLLBACK_FAILED"), values["postRefreshCode"])

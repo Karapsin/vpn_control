@@ -25,37 +25,64 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint136
+## Current continuation — checkpoint137
 
-Checkpoint135 `79a2a35388cdbd7590e43593b75a27d4e733c139` is pushed with all five
-required exact-SHA workflows successful. Version remains2.1.16. CP136 adds the
-owned macOS foreground VM monitor and routine causal regressions; delivery of
-that slice is pending. Seven focused monitor tests pass, including the partial-heartbeat regression
-added after prepush caught a synthetic publication race. Windows explicitly skips
-POSIX process cases and retains the portable admission check.
+Checkpoint136 `934bdbd5ca5ae971f379559b8737bd9d53bc9d61` is pushed with all five
+required exact-SHA workflows and advisory VPN Integration successful. Version is
+2.1.16. Its foreground macOS resource monitor and seven focused regressions passed
+full managed prepush. The retained native monitor recorded pressure2 after25
+seconds, graceful exact-guest stop and child exit0. The installer journal remains
+untouched; do not reboot while this resource condition persists.
 
-The previous background monitor disappeared without a terminal receipt; its
-terminating actor remains unknown. CP136's foreground session survived and
-recorded normal pressure followed by pressure2 after25 seconds. The approved
-resource guard gracefully stopped the sole owned Tart guest; stop returned0,
-child exited0 and Tart reports stopped. Native receipts are under
-checkpoint136/macos-monitor/native-run. No guest command, installer replay or
-authorization occurred. Do not reboot while this resource condition persists.
+API35's frozen replay completed. Root independently verified3699 non-self manifest
+entries, identical first/replayed response bytes, public revisions0/1/2 and full
+restoration of the original56000-domain routing data. Evidence and limits:
+checkpoint136/android35-replay-complete/root-review.json. This uses the recorded
+2.1.15 APK and actual512m heap, not API29's48m or newest-package acceptance.
+The source child manifest's self-reference is preserved and explicitly excluded
+from verification; do not reproduce that manifest-generation mistake.
 
-API35 replay is executing once from its captured56000-domain original. Reviewed
-candidate adds one synthetic domain; it must prove an exact same-request result,
-full candidate readback and guarded restoration to the original56000 domains.
-Only its exact retained process/receipts authorize observation, never replay on
-a timeout. Linux's CP135 scheduler evidence is sealed and independently reviewed.
+API29's one CP136 refresh reached authoritative RUNTIME_FAILED with failedCount1
+and no fixture HTTP request. Its exact subscription and private fixture remain
+preserved for diagnosis; do not replay or remove unknown resources. Public UID2000,
+48m heap, SSH disabled, certificate chain/SAN/validity and recorded reverse/trust
+setup were checked. Empty HTTP logs cannot distinguish TCP versus pre-HTTP TLS
+failure. The product currently discards Android refresh causes; desktop can persist
+raw exception text. CP137 adds causal regressions before safe cross-platform failure
+reporting. Native retry waits for reviewed changes and a new frozen artifact.
+
+Linux's CP135 scheduler evidence is sealed. CP120 completed the immutable934
+same-source base2.1.15/target2.1.16 pair with verified private Linux x64 JDK17.
+The initial builder dependency transaction was rejected before installation; root
+then reviewed and authorized its18 coupled upgrades (not unrelated removals).
+Completed receipt and hashes are in checkpoint136/linux-final-pair. Exact base
+installation/admission and guest-only target HTTPS preparation are now authorized;
+update installation waits for review of the concrete fixture/handoff command.
+Base installation/admission passed; public check/download are now authorized.
+
+Windows CP117's console now works through notarized TigerVNC1.16.2 and the retained
+loopback tunnel; no server authentication or exposure changed. The current test
+account still needs interactive sign-in. A user-entry request is pending; its private
+credential copy is outside repository/evidence and no secret was printed. Root is
+not driving the console while awaiting user entry.
 
 | Task | Owner | Exclusive scope / next handoff |
 | --- | --- | --- |
-| Integration136 | root | Monitor review, routine wiring, metadata, checks and delivery |
-| Android35 replay | android35_install125 | emulator5682 only; one frozen guarded run and evidence export |
-| Android29 refresh | prepared, no operator | Retained5684 stopped; existing harness plan, no native launch |
-| Linux | no active operator | CP120 idle; scheduler evidence sealed |
-| Windows | no active operator | CP117 running; QGA confirms no session/package, disabled base task; console locked |
+| Integration137 | root | WIP, host Gradle RED/GREEN scheduling, review, metadata, checks and delivery |
+| Refresh shared/desktop | windows_base118 | Source and tests implemented; final outer-code mapping follows verified RED |
+| Android refresh | root review; worker retired | Focused GREEN and independent re-review passed; no native replay |
+| Android35 replay | complete, no operator | emulator5682 preserved; reviewed evidence exported |
+| Linux pair | linux_accept120 | CP120 exact base installation/admission and target fixture preparation; no update handoff yet |
+| Windows console | root; user sign-in pending | CP117 only; private credential entry request pending |
+| Localization | completed, workers retired | Three disjoint catalog owners translated all65 non-English catalogs; root checks passed |
 | macOS | root | Guest stopped by recorded pressure guard; preserve installer journal/inputs |
+
+CP137 refresh implementation passed80 focused tests across nine classes with no
+skips; final XML and counts are retained under checkpoint137/refresh-failures.
+Review regressions prove userinfo redaction, stale-route classification and retention
+of known committed state after observation failure. A real operation-runner regression
+also proves the outer PERSISTENCE_FAILED code matches validated failure details.
+All66 catalogs pass localization/status checks. Full prepush and delivery are pending.
 
 ## Historical continuation — checkpoint135
 

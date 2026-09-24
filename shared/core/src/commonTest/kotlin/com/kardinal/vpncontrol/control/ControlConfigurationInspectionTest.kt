@@ -46,6 +46,22 @@ class ControlConfigurationInspectionTest {
         assertFalse(shown.toString().contains("socks://"))
     }
 
+    @Test fun inspectionSanitizesLegacyRefreshFailureButExposesTypedReason() {
+        val legacy = state.copy(subscriptions = listOf(source.copy(lastRefreshStatus = "TLS https://private/?token=SECRET")))
+        val legacyValues = ControlConfigurationInspection.read(legacy, ControlCommand(ControlOperationId.SUBSCRIPTIONS_LIST), 0).getOrThrow()
+        assertFalse(ControlProtocolCodec.encodeValues(legacyValues).contains("SECRET"))
+        val legacyRow = ((legacyValues.getValue("subscriptions") as ControlValue.ArrayValue).values.single() as ControlValue.ObjectValue).values
+        assertEquals(ControlValue.Text("FAILED"), legacyRow["refreshStatus"])
+        assertEquals(ControlValue.Null, legacyRow["failureReason"])
+
+        val typed = state.copy(subscriptions = listOf(source.copy(lastRefreshStatus =
+            SubscriptionStatusMessages.refreshFailure(SubscriptionRefreshFailureReason.TLS, "Work"))))
+        val typedValues = ControlConfigurationInspection.read(typed, ControlCommand(ControlOperationId.SUBSCRIPTIONS_LIST), 0).getOrThrow()
+        val typedRow = ((typedValues.getValue("subscriptions") as ControlValue.ArrayValue).values.single() as ControlValue.ObjectValue).values
+        assertEquals(ControlValue.Text("FAILED"), typedRow["refreshStatus"])
+        assertEquals(ControlValue.Text("TLS"), typedRow["failureReason"])
+    }
+
     @Test fun routingInspectionIsTheSameCurrentTransferSchemaWithDeterministicTimestamp() {
         val result = ControlConfigurationInspection.read(state, ControlCommand(ControlOperationId.ROUTING_SHOW), 0).getOrThrow()
         val routing = (result.getValue("routing") as ControlValue.ObjectValue).values

@@ -279,12 +279,23 @@ internal class AndroidApplicationOwner(context: Context) {
         val rows = (result.data["subscriptions"] as? com.kardinal.vpncontrol.model.ControlValue.ArrayValue)?.values.orEmpty()
             .mapNotNull { (it as? com.kardinal.vpncontrol.model.ControlValue.ObjectValue)?.values }
         val subscriptions = storage.snapshot().subscriptions
-        val failedNames = rows.filter { it["code"] != com.kardinal.vpncontrol.model.ControlValue.Text(com.kardinal.vpncontrol.model.ControlCode.OK.wireName) }
-            .mapNotNull { row -> subscriptions.firstOrNull { row["id"] == com.kardinal.vpncontrol.model.ControlValue.Text(it.id) } }
-            .map { SubscriptionSourceLogic.sourceLabelFor(subscriptions, it.url) }
-        val summary = if (result.data["committed"] == com.kardinal.vpncontrol.model.ControlValue.BooleanValue(true))
-            SubscriptionRefreshResultLogic.genericSummary(refreshed, failedNames, rows.size) else result.code.wireName
-        repository.updateStatus(summary + if (result.warnings.isNotEmpty()) "\n" + result.warnings.joinToString(", ") else "")
+        val failedRows = rows.filter { it["code"] != com.kardinal.vpncontrol.model.ControlValue.Text(com.kardinal.vpncontrol.model.ControlCode.OK.wireName) }
+        val failedSources = failedRows.mapNotNull { row -> subscriptions.firstOrNull { row["id"] == com.kardinal.vpncontrol.model.ControlValue.Text(it.id) } }
+        val failedNames = failedSources.map { SubscriptionSourceLogic.safeSourceLabelFor(subscriptions, it.url) }
+        fun reason(value: com.kardinal.vpncontrol.model.ControlValue?) =
+            (value as? com.kardinal.vpncontrol.model.ControlValue.Text)?.value?.let { wire ->
+                com.kardinal.vpncontrol.model.SubscriptionRefreshFailureReason.entries.firstOrNull { it.wireName == wire }
+            }
+        val singleFailureReason = reason(failedRows.singleOrNull()?.get("failureReason"))
+        val operationFailureReason = reason(result.data["failureReason"])
+        val summary = if (result.data["committed"] == com.kardinal.vpncontrol.model.ControlValue.BooleanValue(true)) {
+            if (refreshed == 0 && failedNames.size == 1 && singleFailureReason != null) {
+                androidRefreshFailureStatus(subscriptions, failedSources.single(), singleFailureReason)
+            } else SubscriptionRefreshResultLogic.genericSummary(refreshed, failedNames, rows.size)
+        } else if (operationFailureReason != null) {
+            com.kardinal.vpncontrol.model.SubscriptionStatusMessages.refreshFailure(operationFailureReason, result.code.wireName)
+        } else result.code.wireName
+        repository.updateStatus(summary)
     } }
 
     fun cancelActiveOperationFromGui() { commands.launch {
