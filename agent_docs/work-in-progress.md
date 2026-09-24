@@ -25,7 +25,50 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint137
+## Current continuation — checkpoint138
+
+Checkpoint137 `ba35d802fba025e326e3fa837f2a1c1f89968f12` is pushed; all five
+required exact-SHA workflows and advisory VPN Integration passed. Version remains
+2.1.16. Managed delivery receipt: checkpoint137/commit-result.json. The full parity
+goal remains incomplete. This batch intentionally combines the Linux fixture
+provisioning regression with continued independent native artifact preparation.
+
+Linux CP137's single public install failed before authorization. The new fixture
+account's `.local` was root-owned0755, and UID1001 cannot write it, preventing
+creation of `.local/state`. No current input/correlation/protected receipt remains;
+do not infer its entire creation history from absence. RPM remains the verified
+base2.1.15. Original public envelopes and effective-access evidence are retained in
+checkpoint137/linux-install. Add causal quick regressions and a reusable target-user
+setup path before repairing the exact fixture directory or retrying. This is a
+fixture provisioning defect, not an established product installer defect.
+
+macOS control53 is running under the resource guard after two positively identified
+idle host Gradle daemons were stopped. The historical rollback114 operation remains
+OUTCOME_UNKNOWN: its legacy correlation selects MACHINE authority, and the exact
+receipt is currently absent from the protected machine root. Source deliberately
+blocks replay and cannot prove not-started after reboot. Preserve its app, owner,
+state and inputs. Sealed evidence: checkpoint137/macos-recovery. A separate clean
+same-source fixture is being prepared in this guest; no new installer is authorized.
+
+Current Android ba35 APK is verified but its official signer differs from the
+retained test base. Do not uninstall or install across the mismatch. Compatible
+fixture signing and the whole current Linux CLI package are under admission.
+Windows current ordinary MSI is verified; test-only same-source pair workflow
+35982037383 was dispatched once for ba35, base2.1.15/target2.1.16. Console sign-in
+remains pending; do not replay installation or expose credentials.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration138 | root | WIP, review, routine-check wiring, host builds and delivery |
+| Linux fixture regression | root; linux_scheduler132 review | Helper/tests implemented;11 focused tests and docs hygiene pass, native repair pending |
+| Linux native | paused; no install operator | CP120 failed attempt preserved; native retry waits for builder release |
+| macOS fixture | mac_admission125 | control53 sole operator; same-source build authorized with private JDK, preserve rollback114 |
+| Android artifacts | android_document_plan131 | CP120 sole operator for isolated SDK/signing preparation; no build or emulator mutation yet |
+| Android acceptance audit | android35_cold120 | Ignored evidence audit including CP132–136; no native actions |
+| Windows pair | windows_base118 | Exact run35982037383 observation/download; no guest actions |
+| Windows console | root | CP117 user sign-in pending |
+
+## Historical continuation — checkpoint137
 
 Checkpoint136 `934bdbd5ca5ae971f379559b8737bd9d53bc9d61` is pushed with all five
 required exact-SHA workflows and advisory VPN Integration successful. Version is

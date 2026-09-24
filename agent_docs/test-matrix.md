@@ -474,6 +474,11 @@ and continued full verification for the supported path in routine hygiene. It ve
 the installed tree against the immutable base archive before owner startup;
 DEB/RPM scenarios still require package-manager ownership. Keep harness source
 hashes distinct from the immutable package fingerprint when testing older packages.
+Use `linux_public_install_fixture.py setup` for target-user fixture directories;
+existing foreign-owned ancestors fail admission without chmod/chown. Its `keytool`
+subcommand explicitly forwards the public CA store environment through sudo and
+runs as the target user. `test_linux_public_install_fixture.py` covers these setup
+boundaries in routine hygiene; it does not replace native authorization/install tests.
 
 The opt-in `scripts/test_macos_install_enospc.py` runs in the macOS package job
 using its assigned temporary fixture directory. It injects ENOSPC after a partial
