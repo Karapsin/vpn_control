@@ -25,6 +25,20 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
+## Current continuation — checkpoint163
+
+Pushed checkpoint `3cf1b2087828cfe4aefd97cd7e03fcf402839092`, version 2.1.18,
+after full local prepush success. Windows package CI exposed a second POSIX-only
+test setup assumption in Linux credential tests. A causal absent-geteuid suite
+regression and independent portable admission/import tests now cover it; the
+other exact-SHA workflows are still being observed. Final delivery remains open.
+Windows CP117 account access is verified and MSI admission is in progress.
+Android API29 consent-denial admission is assigned. macOS boot remains deferred:
+about 1.5 GiB disk free is below the retained fixture's 8 GiB reserve, and its
+receiptless protected operation must be reconciled before any new installation.
+Linux RPM 2.1.17 installation/recovery proof is locally retained under
+checkpoint162/linux-rpm-recovery; target-package traffic/lifecycle remains open.
+
 ## Current continuation — checkpoint162
 
 Checkpoint `dd10018a6ded3a68181bbb15f97100038a3f6097` was reviewed, passed the

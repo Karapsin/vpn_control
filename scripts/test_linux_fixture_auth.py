@@ -54,6 +54,7 @@ class PasswordBaselineRunner(Runner):
         return SimpleNamespace(returncode=0, stdout="")
 
 
+@unittest.skipUnless(os.name == "posix" and hasattr(os, "geteuid"), "POSIX credential storage and ownership")
 class LinuxFixtureAuthTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
@@ -240,6 +241,30 @@ class LinuxFixtureAuthTest(unittest.TestCase):
         with self.assertRaisesRegex(subject.FixtureAuthError, "non-root"):
             subject.status(credential_dir=self.directory, correlation="fedora-2328", purpose=subject.PURPOSE,
                            account_lookup=self.account, platform="linux", geteuid=lambda: self.uid + 1)
+
+
+class PortableFixtureAuthTest(unittest.TestCase):
+    def test_non_linux_rejects_before_account_or_file_access(self):
+        lookup = mock.Mock(side_effect=AssertionError("account lookup must not run"))
+        with self.assertRaisesRegex(subject.FixtureAuthError, "requires Linux"):
+            subject.status(credential_dir=Path("unused-fixture"), correlation="portable-test",
+                           purpose=subject.PURPOSE, platform="win32", account_lookup=lookup)
+        lookup.assert_not_called()
+
+    def test_suite_skips_posix_storage_without_geteuid(self):
+        path = str(Path(__file__).resolve())
+        original = getattr(os, "geteuid", None)
+        try:
+            if original is not None: del os.geteuid
+            namespace = runpy.run_path(path, run_name="fixture_auth_portability_probe")
+            suite = unittest.defaultTestLoader.loadTestsFromTestCase(namespace["LinuxFixtureAuthTest"])
+            result = unittest.TestResult()
+            suite.run(result)
+        finally:
+            if original is not None: os.geteuid = original
+        self.assertEqual([], result.errors)
+        self.assertEqual([], result.failures)
+        self.assertEqual(result.testsRun, len(result.skipped))
 
     def test_import_does_not_require_posix_pwd_or_geteuid(self):
         # This is the routine Windows-import regression: Linux-only APIs are

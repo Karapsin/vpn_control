@@ -1366,3 +1366,15 @@ verification, not Android lifecycle acceptance or remote artifact freshness.
   races, top-level MCP import mode and platform boundaries. One subsequent native
   recovery verified its generated credential before activating the private handle.
   Earlier rejected intent and prior credential reference remain preserved.
+
+## Checkpoint163 — Linux credential tests on Windows
+
+Windows package CI for `3cf1b2087828cfe4aefd97cd7e03fcf402839092` reached
+Linux credential tests whose common setup called `os.geteuid` on Windows.
+The earlier import-only check was inside that same setup and could not run.
+A routine regression now loads and runs the POSIX test selection with that API
+absent: it fails before the fix and confirms explicit skips afterward. Portable
+import and non-Linux rejection checks run independently on every platform.
+Actual POSIX storage/ownership tests remain enabled on Linux and macOS.
+Evidence: checkpoint162/fixture-portability-red.log and
+fixture-portability-green.log; retain Windows CI as platform verification.

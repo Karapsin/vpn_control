@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Keep Linux credential storage tests platform-scoped while verifying portable admission on Windows.
+
 ## 2.1.18 - 2026-09-24
 
 - Add private SSH and VM admission tools with correlated job observation and guarded DMG cleanup.

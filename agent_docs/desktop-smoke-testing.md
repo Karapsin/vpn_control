@@ -17,8 +17,17 @@ Linux VPN mode prerequisites:
 
 Windows VPN mode prerequisites:
 
-- Launch VPN Control as Administrator for VPN mode.
-- Proxy-only mode can be tested without Administrator privileges.
+- Start the installed GUI as the ordinary signed-in user; do not elevate the whole app.
+- Use the installed `vpn-control-cli.exe` console launcher for CLI checks. GUI and CLI are clients of the same ordinary-user controller.
+- Have a disposable UAC-capable account available so both approval and denial can be tested. Only the fixed authenticated VPN broker may request elevation for VPN setup; proxy-only remains available without elevation.
+
+## Windows Installed-Package Acceptance Status
+
+The current automated broker-admission and package checks prove the fixed helper's
+packaged authority and the standard-user ownership boundary. They do not prove
+real UAC interaction, installed GUI/CLI attachment, or live traffic continuity.
+Treat the Windows-specific manual cases below as open native acceptance until a
+receipt from the installed Windows package records them.
 
 ## Automated Package Smoke
 
@@ -72,6 +81,7 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
 5. VPN mode
 
    - Switch runtime mode to VPN.
+   - On Windows, start this from the non-elevated installed GUI and approve UAC only for the VPN broker. Confirm the GUI itself remains an ordinary-user client.
    - Start the connection with the selected location.
    - Confirm ordinary browsing goes through the VPN.
    - Stop and reconnect using the saved selection.
@@ -87,24 +97,31 @@ These scripts run extracted package smoke checks unless `--skip-package-regressi
 7. Scheduled refresh
 
    - Set a short refresh interval of at least 5 minutes.
-   - Leave VPN running through one refresh.
-   - Confirm refresh does not leave VPN stopped. A short restart is acceptable when config changes.
+   - Leave VPN or proxy-only running through one refresh, then repeat with the GUI hidden or detached while the controller remains alive.
+   - Confirm refresh does not leave the active runtime stopped. A short controlled restart is allowed only when the generated active configuration changes; it must preserve the actual active selection and must not apply a pending manual selection.
 
 8. Tray and single instance
 
-   - Close the window and confirm the app hides to tray instead of exiting when the tray icon is visible.
+   - Close the window only after the tray icon is confirmed available, and confirm the app hides to tray instead of exiting.
    - Temporarily run without a tray host, when practical, and confirm close exits or keeps the window accessible instead of hiding it invisibly.
    - Launch the app again and confirm it shows the existing instance instead of opening a second one.
    - Use the tray menu to start/stop and run best-location selection.
    - On Linux, repeat on at least one StatusNotifier/AppIndicator host and one XEmbed-only panel when available.
 
-9. Autostart and reconnect
+9. Windows installed GUI/CLI owner and UAC scope
+
+   - Start the installed GUI as a standard user, connect in proxy-only mode, and prove client traffic. Run `vpn-control-cli.exe status` and another read-only command; confirm they report the GUI's existing controller rather than starting a second owner, GUI, tray, or elevation prompt.
+   - With traffic active, close the GUI to a confirmed tray, use the installed CLI to query the owner, then reopen the GUI. Confirm the same controller and runtime remain active and traffic continues through both GUI detach and reattach.
+   - From the standard-user GUI, stage VPN mode, explicitly restart (or start if disconnected), and deny UAC. Confirm the GUI and CLI remain usable without elevation, the prior runtime state and reconnect intent are preserved, and an active proxy-only connection continues if one was running.
+   - Repeat the explicit VPN start/restart with UAC approved. Confirm only the scoped broker is elevated, VPN traffic works, and the GUI/CLI remain attached to the ordinary-user owner.
+
+10. Autostart and reconnect
 
    - Enable start on boot.
    - With VPN on, reboot and confirm the app starts in tray after the tray icon appears and reconnects to the remembered location.
    - With VPN off, reboot and confirm the app starts without connecting.
 
-10. SSH Routing
+11. SSH Routing
 
    - Prepare the loopback-only relay from `docs/ssh-routing.md`, import a dedicated unencrypted key, and paste the verified host key.
    - Enable the route and connect. Confirm the public address belongs to the selected VPN rather than the local network ISP.
