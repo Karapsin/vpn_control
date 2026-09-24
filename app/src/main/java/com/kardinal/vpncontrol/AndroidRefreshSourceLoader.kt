@@ -59,7 +59,12 @@ internal class AndroidRefreshSourceLoader(private val context: Context, private 
             val port = androidRefreshManagementPort(point.runtimeJson) ?: error("ACTIVE_MANAGEMENT_ROUTE_UNAVAILABLE")
             androidRefreshRouteState(committed, observed, point, port)
         } else androidRefreshRouteState(committed, observed, point, null)
-        val client = SubscriptionDownloadClient("VPNControl/1.0 (Android)", context, stateProvider = { route })
+        val client = SubscriptionDownloadClient(
+            "VPNControl/1.0 (Android)",
+            context,
+            stateProvider = { route },
+            diagnosticsLogger = { message -> DiagnosticsLogger.append(context, message) },
+        )
         val hwid = storage.ensureSubscriptionHwid()
         return { source ->
             if (observer.state.value != observed) {

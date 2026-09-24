@@ -1688,7 +1688,7 @@ def _json_print(value: dict[str, Any]) -> int:
     return 0 if value.get("ok") else 1
 
 
-def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None) -> dict[str, Any]:
+def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
     """List private host aliases or perform a bounded, read-only authenticated SSH probe."""
     transport = importlib.import_module(f"{__package__}.ssh_transport" if __package__ else "ssh_transport")
     try:
@@ -1696,6 +1696,16 @@ def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_sec
             return {"ok": True, "tool": "ssh_workflow", "hosts": list(transport.inventory(REPO_ROOT))}
         if action == "probe" and host:
             return {"tool": "ssh_workflow", **transport.probe(REPO_ROOT, host, timeout_seconds).as_dict()}
+        if action == "android-observe" and host and device:
+            configured = transport.load_config(REPO_ROOT).hosts.get(host)
+            if configured is None or device not in configured.android_devices:
+                return _error("ssh_workflow", "Unknown configured Android device alias.")
+            observer = importlib.import_module(f"{__package__}.android_observation" if __package__ else "android_observation")
+            try:
+                result = observer.observe(REPO_ROOT, host, configured.android_devices[device], timeout_seconds)
+                return {"tool": "ssh_workflow", "ok": result.get("available") is True, **result}
+            except observer.AndroidObservationError as error:
+                return _error("ssh_workflow", str(error))
         if action == "job-status" and host and identity:
             jobs = importlib.import_module(f"{__package__}.ssh_jobs" if __package__ else "ssh_jobs")
             try:
@@ -1749,8 +1759,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     subparsers.add_parser("serve")
     ssh_parser = subparsers.add_parser("ssh-workflow")
-    ssh_parser.add_argument("action", choices=("inventory", "probe", "job-status", "fixture-publish", "fixture-status"))
+    ssh_parser.add_argument("action", choices=("inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe"))
     ssh_parser.add_argument("--host")
+    ssh_parser.add_argument("--device")
     ssh_parser.add_argument("--timeout-seconds", type=int, default=15)
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
@@ -1820,7 +1831,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     raise ValueError("transfer must be an object")
             except (OSError, ValueError):
                 return _json_print(_error("ssh_workflow", "Invalid transfer JSON file."))
-        return _json_print(ssh_workflow(args.action, args.host, args.timeout_seconds, identity, transfer))
+        return _json_print(ssh_workflow(args.action, args.host, args.timeout_seconds, identity, transfer, args.device))
     if args.command == "vm-workflow":
         try:
             inputs = json.loads(Path(args.inputs_file).read_text(encoding="utf-8"))

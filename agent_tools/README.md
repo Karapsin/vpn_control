@@ -128,6 +128,18 @@ ssh-workflow inventory`, `ssh-workflow probe --host <alias>`, or `vm-workflow
 Agent-tool discovery tests and focused native-tool tests run in the ordinary
 `agent_tools/tests` suite and managed prepush.
 
+### Read-only Android observation
+
+A private host entry may include `androidDevices`, mapping a device alias to
+exactly `adb`, `cli`, `serial`, `expectedAvd`, and `api`. Executable paths are
+absolute remote POSIX paths; serial names an owned emulator and API is 29 or 35.
+Use `ssh_workflow("android-observe", host=..., device=...)` or CLI
+`ssh-workflow android-observe --host <alias> --device <alias>`.
+The observer verifies shell UID 2000, API and AVD identity before public CLI reads,
+captures all five global proxy settings, and pins the configured ADB environment
+for status and operation-list reads. It rejects owner replacement. It cannot
+start, stop, install, refresh or modify the device. Transport loss remains unknown.
+
 ### Verified fixture staging
 
 A host may declare `fixtureTransferRoot`, an existing private remote POSIX directory

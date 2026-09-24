@@ -1212,4 +1212,27 @@ The agent-tools suite runs this regression in routine prepush and CI.
   `test_empty_mountpoint_is_retried_after_confirmed_detach` fails before the fix and
   passes with bounded empty-directory removal retries. Seven cleanup tests pass;
   evidence `checkpoint146/macos-rmdir-{red,green}.log`. No recursive deletion or
-  relaxed attachment identity is introduced. New-SHA native CI remains mandatory.
+  relaxed attachment identity is introduced. Checkpoint147 native CI contradicted
+  the sufficiency of this retry fix: all five attempts remained busy. The fixture
+  proves only transient-busy retry behavior, not the native cause or repair.
+
+## Checkpoint147 — diagnostics before attribution
+
+- macOS run36001020956 reached `rmdir` only after the identity-checked detach
+  returned zero. Persistent busy removal remains unexplained. Cleanup now reports
+  attachment state after retry exhaustion; nine quick cleanup tests cover retained
+  attachment and absent attachment observations. The five-attempt limit is unchanged.
+  No native repair is claimed; the next exact-SHA run must provide fresh evidence.
+- API29 refresh still returns CONNECTIVITY after effective global proxy cleanup.
+  `SubscriptionDownloadDiagnosticsTest` first failed against the old unstructured
+  HTTP exception, then passed three diagnostic tests. Review added bounded cause
+  traversal and a fourth cycle test; its initial identity assertion was corrected
+  because coroutine stack recovery may copy exceptions. Four tests now pass in
+  `checkpoint147/android-diagnostics-green-final2.log`, with no skipped tests.
+  Public routing is unchanged. Native attribution remains pending SSH access and
+  a newly built APK. The Android unit-test suite includes these regressions.
+- Android MCP observation regressions exercise actual fake executable invocation
+  with the approved ADB environment, device admission, failed CLI responses and
+  secret-free proxy summaries. They belong to routine agent-tools discovery.
+  The real MCP call remains unknown due to transport failure; fake-executable
+  checks do not establish successful native observation.

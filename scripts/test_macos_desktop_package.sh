@@ -65,6 +65,36 @@ if len(mounts) != 1 or mounts[0].get("mount-point") != mountpoint or mounts[0].g
     raise SystemExit(1)
 ' "$mount_dir" "$dmg" "$attached_device"
   }
+  post_detach_attachment_state() {
+    hdiutil info -plist | python3 -c '
+import plistlib
+import sys
+
+mountpoint, image_path, device = sys.argv[1:]
+document = plistlib.loads(sys.stdin.buffer.read())
+images = document.get("images")
+if not isinstance(images, list):
+    raise SystemExit(1)
+matching_images = [image for image in images if isinstance(image, dict) and image.get("image-path") == image_path]
+if not matching_images:
+    print("absent")
+    raise SystemExit(0)
+if len(matching_images) != 1:
+    print("ambiguous-image")
+    raise SystemExit(0)
+entities = matching_images[0].get("system-entities")
+if not isinstance(entities, list):
+    print("malformed-image")
+    raise SystemExit(0)
+mounts = [entity for entity in entities if isinstance(entity, dict) and entity.get("mount-point") == mountpoint]
+if any(entity.get("dev-entry") == device for entity in mounts):
+    print("still-attached-owned-device")
+elif mounts:
+    print("mountpoint-reused")
+else:
+    print("image-attached-elsewhere")
+' "$mount_dir" "$dmg" "$attached_device"
+  }
   detach_owned() {
     if ! attachment_matches; then
       echo "DMG attachment identity changed; mounted fixture preserved at $mount_dir" >&2
@@ -97,7 +127,11 @@ if len(mounts) != 1 or mounts[0].get("mount-point") != mountpoint or mounts[0].g
       if rmdir "$mount_dir"; then return; fi
       if (( attempt < 5 )); then sleep 1; fi
     done
-    echo "DMG mountpoint could not be removed after detach; empty fixture preserved at $mount_dir" >&2
+    attachment_state="unavailable"
+    if ! attachment_state="$(post_detach_attachment_state)"; then
+      attachment_state="unavailable"
+    fi
+    echo "DMG mountpoint could not be removed after detach; attachment state: $attachment_state; empty fixture preserved at $mount_dir" >&2
     return 1
   }
   trap cleanup EXIT

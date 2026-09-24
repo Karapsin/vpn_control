@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.data
 
 import android.content.Context
+import com.kardinal.vpncontrol.AndroidFailureTrace
 import com.kardinal.vpncontrol.SubscriptionDownloadRoute
 import com.kardinal.vpncontrol.SubscriptionDownloadRouteLogic
 import com.kardinal.vpncontrol.model.PersistedState
@@ -8,6 +9,7 @@ import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionContentFetcher
 import com.kardinal.vpncontrol.shared.storageapi.SubscriptionRequestHeaders
 import java.io.IOException
+import java.util.IdentityHashMap
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.Socket
@@ -26,6 +28,7 @@ class SubscriptionDownloadClient(
     private val context: Context? = null,
     private val stateProvider: (suspend () -> PersistedState)? = null,
     private val callFactory: (OkHttpClient, Request) -> okhttp3.Call = { client, request -> client.newCall(request) },
+    private val diagnosticsLogger: (String) -> Unit = {},
 ) : SubscriptionContentFetcher {
     override suspend fun fetch(url: String, subscriptionHwid: String): FetchedSubscriptionContent {
         return fetch(url, timeoutSeconds = 20, subscriptionHwid = subscriptionHwid)
@@ -44,8 +47,16 @@ class SubscriptionDownloadClient(
         return try {
             fetchUsingRoute(url, timeoutSeconds, subscriptionHwid, routePlan.primary, state)
         } catch (error: IOException) {
-            val fallback = routePlan.transportFailureFallback ?: throw error
-            fetchUsingRoute(url, timeoutSeconds, subscriptionHwid, fallback, state)
+            val fallback = routePlan.transportFailureFallback ?: run {
+                logDownloadFailure(routePlan.primary, error)
+                throw error
+            }
+            try {
+                fetchUsingRoute(url, timeoutSeconds, subscriptionHwid, fallback, state)
+            } catch (fallbackError: IOException) {
+                logDownloadFailure(fallback, fallbackError)
+                throw fallbackError
+            }
         }
     }
 
@@ -108,7 +119,7 @@ class SubscriptionDownloadClient(
                 }
                 override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
                     val result = runCatching { response.use {
-                        if (!it.isSuccessful) throw IOException("Subscription fetch failed: HTTP ${it.code}")
+                        if (!it.isSuccessful) throw SubscriptionHttpStatusException(it.code)
                         FetchedSubscriptionContent(it.body?.string().orEmpty(), it.header("Content-Type"),
                             it.headers.names().associateWith { name -> it.header(name).orEmpty() })
                     } }
@@ -117,7 +128,46 @@ class SubscriptionDownloadClient(
             })
         }
     }
+
+    private fun logDownloadFailure(route: SubscriptionDownloadRoute, error: IOException) {
+        runCatching {
+            val status = httpStatusOrNull(error)
+            diagnosticsLogger(
+                buildString {
+                    append("subscription_refresh_download route=").append(route.name.lowercase())
+                    append(" proxy_mode=").append(
+                        when (route) {
+                            SubscriptionDownloadRoute.DIRECT -> "system-default"
+                            SubscriptionDownloadRoute.ACTIVE_SESSION -> "explicit-loopback"
+                            SubscriptionDownloadRoute.HOME_RELAY -> "bootstrap-loopback"
+                        },
+                    )
+                    status?.let { append(" http_status=").append(it) }
+                    append(' ').append(AndroidFailureTrace.format("subscription-refresh.download", error))
+                },
+            )
+        }
+    }
+
+    private fun httpStatusOrNull(error: IOException): Int? {
+        val seen = IdentityHashMap<Throwable, Unit>()
+        var current: Throwable? = error
+        repeat(MAX_DIAGNOSTIC_CAUSES) {
+            val failure = current ?: return null
+            if (seen.put(failure, Unit) != null) return null
+            if (failure is SubscriptionHttpStatusException) return failure.statusCode
+            current = failure.cause
+        }
+        return null
+    }
+
+    private companion object {
+        const val MAX_DIAGNOSTIC_CAUSES = 8
+    }
 }
+
+/** Typed so private diagnostics can retain an HTTP status without parsing exception text. */
+internal class SubscriptionHttpStatusException(val statusCode: Int) : IOException()
 
 private class AndroidHomeSshBootstrapProxy(
     private val context: Context,

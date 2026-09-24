@@ -25,7 +25,37 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint146
+## Current continuation — checkpoint147
+
+Checkpoint146 `4ead8b79a85df7aeef862be932693d2e6462a21c` was pushed after
+full prepush passed. Its macOS workflow36001020956 failed: mountpoint removal
+remained busy across all five retries. Increasing retries alone does not establish
+the cause; the CI worker is investigating and preserving failure diagnostics.
+Exact-SHA delivery remains incomplete.
+
+The Android observer now has private per-device profiles and a public MCP/CLI
+route. Focused fake-executable tests prove device admission and pinned ADB use;
+review is tightening envelope validation, redaction and bounded remote capture.
+No native observation success is claimed. The retained transfer correlation was
+rechecked through MCP in checkpoint147/transfer-recheck.json and remains UNKNOWN
+with `ssh_transport_unavailable`; it was not resubmitted.
+
+Android refresh diagnostics now preserve typed HTTP status and bounded redacted
+failure traces without changing routing. The original one-test assertion RED and
+three-test GREEN are recorded in checkpoint147. The subsequent cycle-safety test
+now passes after correcting its coroutine exception identity assumption; all four
+focused tests pass in android-diagnostics-green-final2.log.
+These diagnostics enable attribution of the retained CONNECTIVITY native failure;
+they do not prove that the underlying network failure is repaired.
+
+| Task | Agent | Owned subsystem | Dependencies / next handoff |
+| --- | --- | --- | --- |
+| Integration147 | root | Host schema, MCP registration, docs, shared builds, delivery | Final focused union and managed prepush after workers stop editing |
+| Android diagnostics147 | android_connectivity147 | Refresh loader, download client and diagnostic tests | Correct cycle regression; root schedules Gradle |
+| Android observer147 | android_observe147 | Observer module and tests | Bounded capture, typed response validation, safe proxy summary |
+| macOS CI147 | mac_ci147 | Package smoke cleanup and quick regression | Investigate persistent busy mountpoint; no host/VM mount mutation |
+
+## Historical continuation — checkpoint146
 
 The user prioritized reusable VM/SSH MCP workflows before resuming platform
 acceptance, with failure-driven tools and fast regressions. The goal remains full

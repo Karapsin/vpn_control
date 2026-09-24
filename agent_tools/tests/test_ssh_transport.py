@@ -28,6 +28,19 @@ class SshTransportTest(unittest.TestCase):
         known_hosts = str((SOURCE / "test-known-hosts").resolve())
         return {"schemaVersion": 1, "hosts": hosts or {"vm": {"host": "127.0.0.1", "port": 22, "user": "tester", "identityFile": key, "knownHostsFile": known_hosts}}}
 
+    def test_android_profiles_require_complete_explicit_device_identity(self):
+        root = Path.cwd()
+        entry = {"host": "example", "port": 22, "user": "tester",
+                 "identityFile": str(root / "key"), "knownHostsFile": str(root / "known")}
+        device = {"adb": "/opt/android/adb", "cli": "/opt/fixture/vpn-control",
+                  "serial": "emulator-5684", "expectedAvd": "owned-api29", "api": 29}
+        host = ssh._host_from_entry("vm", {**entry, "androidDevices": {"api29": device}})
+        self.assertEqual(device, host.android_devices["api29"])
+        for invalid in ({**device, "api": True}, {**device, "adb": "adb"},
+                        {**device, "serial": "any-device"}, {**device, "extra": "ignored"}):
+            with self.subTest(device=invalid), self.assertRaises(ssh.SshConfigError):
+                ssh._host_from_entry("vm", {**entry, "androidDevices": {"api29": invalid}})
+
     def test_transfer_root_is_optional_absolute_remote_and_not_filesystem_root(self):
         root = Path.cwd()
         entry = {"host": "example", "port": 22, "user": "tester",

@@ -57,6 +57,7 @@ class SshHost:
     remote_host_alias: str | None = None
     remote_control_path: PurePosixPath | None = None
     fixture_transfer_root: PurePosixPath | None = None
+    android_devices: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     password: str | None = field(default=None, repr=False, compare=False)
 
 
@@ -172,12 +173,35 @@ def _ssh_user(value: Any) -> str:
     return user
 
 
+def _android_devices(value: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(value, dict):
+        raise SshConfigError("androidDevices must be an object.")
+    result = {}
+    for alias, profile in value.items():
+        if not isinstance(alias, str) or not _ALIAS_RE.fullmatch(alias):
+            raise SshConfigError("Invalid Android device alias.")
+        if not isinstance(profile, dict) or set(profile) != {"adb", "cli", "serial", "expectedAvd", "api"}:
+            raise SshConfigError("Android device requires explicit executable and device identity fields.")
+        for key in ("adb", "cli"):
+            path = _remote_path(profile[key], key)
+            if path == PurePosixPath("/") or ".." in path.parts:
+                raise SshConfigError("Invalid Android executable path.")
+        if not re.fullmatch(r"emulator-[0-9]+", _string(profile["serial"], "serial")):
+            raise SshConfigError("Invalid Android emulator serial.")
+        if not _ALIAS_RE.fullmatch(_string(profile["expectedAvd"], "expectedAvd")):
+            raise SshConfigError("Invalid Android AVD identity.")
+        if type(profile["api"]) is not int or profile["api"] not in {29, 35}:
+            raise SshConfigError("Unsupported Android fixture API.")
+        result[alias] = dict(profile)
+    return result
+
+
 def _host_from_entry(alias: str, entry: Any) -> SshHost:
     if not _ALIAS_RE.fullmatch(alias):
         raise SshConfigError("Private VM inventory contains an invalid host alias.")
     if not isinstance(entry, dict):
         raise SshConfigError("Each VM host entry must be an object.")
-    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath", "fixtureTransferRoot"}
+    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath", "fixtureTransferRoot", "androidDevices"}
     required = {"host", "port", "user", "identityFile", "knownHostsFile"}
     if set(entry) - allowed or required - set(entry):
         raise SshConfigError("Private VM inventory contains unsupported or missing host fields.")
@@ -228,6 +252,7 @@ def _host_from_entry(alias: str, entry: Any) -> SshHost:
         remote_host_alias=remote_host_alias,
         remote_control_path=remote_control_path,
         fixture_transfer_root=fixture_root,
+        android_devices=_android_devices(entry.get("androidDevices", {})),
         password=password,
     )
 

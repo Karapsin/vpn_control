@@ -10,6 +10,20 @@ from agent_tools import mcp_server
 
 
 class NativeRoutesTest(unittest.TestCase):
+    def test_android_observation_uses_only_configured_device_profile(self):
+        from types import SimpleNamespace
+        from agent_tools import ssh_transport, android_observation
+        profile = {"adb": "/approved/adb", "cli": "/approved/cli", "serial": "emulator-5684",
+                   "expectedAvd": "owned-api29", "api": 29}
+        config = SimpleNamespace(hosts={"vm": SimpleNamespace(android_devices={"api29": profile})})
+        with patch.object(ssh_transport, "load_config", return_value=config), patch.object(
+                android_observation, "observe", return_value={"available": True}) as observe:
+            self.assertTrue(mcp_server.ssh_workflow("android-observe", host="vm", device="api29")["ok"])
+            observe.assert_called_once_with(mcp_server.REPO_ROOT, "vm", profile, 15)
+            observe.reset_mock()
+            self.assertFalse(mcp_server.ssh_workflow("android-observe", host="vm", device="missing")["ok"])
+            observe.assert_not_called()
+
     def test_fixture_publish_requires_exact_fields_before_transport(self):
         from agent_tools import ssh_transfer
         with patch.object(ssh_transfer, "publish") as publish:
