@@ -16,7 +16,7 @@ class NativeScenarioBundleTest(unittest.TestCase):
         self.root = Path(self.temporary.name) / "repository"
         source = self.root / "scripts"
         source.mkdir(parents=True)
-        names = ("test_linux_public_install.py", "arch_public_update.py", "rpm_public_update.py",
+        names = ("test_linux_public_install.py", "linux_fixture_auth.py", "arch_public_update.py", "rpm_public_update.py",
                  "prepare_desktop_update_fixture.py", "fixture_environment.py", "macos_packaging_jdk_preflight.py",
                  "native_fixture_run.sh")
         for name in names:
@@ -29,7 +29,7 @@ class NativeScenarioBundleTest(unittest.TestCase):
         destination = self.root.parent / "frozen"
         receipt = prepare_bundle(self.root, "linux-public-update-driver", destination)
         self.assertEqual(receipt["scenarioId"], "linux-public-update-driver")
-        self.assertEqual(len(receipt["files"]), 7)
+        self.assertEqual(len(receipt["files"]), 8)
         verified = verify_bundle(self.root, destination, receipt["manifestSha256"])
         self.assertEqual(verified["manifestSha256"], receipt["manifestSha256"])
 
@@ -37,7 +37,7 @@ class NativeScenarioBundleTest(unittest.TestCase):
         repository = Path(__file__).resolve().parents[2]
         destination = self.root.parent / "real-driver"
         receipt = prepare_bundle(repository, "linux-public-update-driver", destination)
-        self.assertEqual(len(verify_bundle(repository, destination, receipt["manifestSha256"])["files"]), 7)
+        self.assertEqual(len(verify_bundle(repository, destination, receipt["manifestSha256"])["files"]), 8)
 
     def test_missing_sibling_fails_before_creating_bundle(self):
         (self.root / "scripts/rpm_public_update.py").unlink()

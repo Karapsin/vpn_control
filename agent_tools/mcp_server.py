@@ -1765,6 +1765,20 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     try:
         if not isinstance(inputs, dict):
             return _error("vm_workflow", "VM workflow inputs must be an object.")
+        if action in ("windows-credential-probe-start", "windows-credential-probe-status"):
+            if set(inputs) - {"host", "correlationId", "timeoutSeconds"} or not {"host", "correlationId"} <= set(inputs):
+                return _error("vm_workflow", "Credential probe requires a configured host and correlationId only, with an optional timeoutSeconds.")
+            if any(not isinstance(inputs[key], str) or not inputs[key] for key in ("host", "correlationId")):
+                return _error("vm_workflow", "Credential probe identity fields must be nonempty strings.")
+            timeout = inputs.get("timeoutSeconds", 15)
+            if type(timeout) is not int or not 1 <= timeout <= 60:
+                return _error("vm_workflow", "Credential probe timeout must be between 1 and 60 seconds.")
+            probe = importlib.import_module(f"{__package__}.windows_credential_probe_ssh" if __package__ else "windows_credential_probe_ssh")
+            try:
+                function = probe.start if action.endswith("-start") else probe.status
+                return {"tool": "vm_workflow", **function(REPO_ROOT, inputs["host"], inputs["correlationId"], timeout_seconds=timeout)}
+            except probe.WindowsCredentialProbeSshError:
+                return _error("vm_workflow", "Configured Windows credential probe could not be admitted or observed; private input details are withheld.")
         if action in ("scenario-start", "scenario-status", "scenario-resume", "scenario-collect"):
             execution = importlib.import_module(f"{__package__}.native_scenario_execution" if __package__ else "native_scenario_execution")
             adapter = importlib.import_module(f"{__package__}.native_scenario_ssh" if __package__ else "native_scenario_ssh")
@@ -1926,7 +1940,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect"))
+    vm_parser.add_argument("action", choices=("inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "windows-credential-probe-start", "windows-credential-probe-status"))
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")

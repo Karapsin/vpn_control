@@ -112,6 +112,8 @@ class NativeFixtureQgaTest(unittest.TestCase):
     def test_read_only_file_api_and_invalid_mutation_modes(self):
         with self.assertRaises(ValueError):
             QgaReadOnlyClient("/unused").guest_file_open("C:/evidence.txt", "wb")
+        with self.assertRaisesRegex(ValueError, "read-only scope"):
+            QgaReadOnlyClient("/unused")._call("guest-exec", {"path": "powershell.exe"})
         with tempfile.TemporaryDirectory() as directory:
             path, listener = self._listener(directory)
             received = []

@@ -6,6 +6,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import json
 from pathlib import Path
 
 
@@ -45,6 +46,54 @@ if ($invalidClosed.Count -ne 1 -or $invalidClosed[0] -ne 99) {{ throw 'invalid n
 try {{ Test-BatchLogonAdmission -UserName 'fixture-user' -Password $secure -NativeInvoker {{ param($u,$p) [pscustomobject]@{{ Success=$true; Win32Error=[uint32]0; Token=[IntPtr]::Zero }} }} -CloseToken {{ param($t) throw 'zero success token must not close' }}; throw 'zero-token success was accepted' }} catch {{ if ($_.Exception.Message -eq 'zero-token success was accepted') {{ throw }} }}
 $allow = Test-BatchLogonAdmission -UserName 'fixture-user' -Password $secure -NativeInvoker {{ param($u,$p) [pscustomobject]@{{ Success=$true; Win32Error=[uint32]0; Token=[IntPtr]42 }} }} -CloseToken {{ param($t) $script:closed += $t.ToInt64() }}
 if (-not $allow.admitted -or $allow.logonType -ne 4 -or $allow.win32Error -ne 0 -or $allow.hresult -ne 0 -or $closed.Count -ne 1 -or $closed[0] -ne 42) {{ throw 'GREEN batch-logon admission or token close failed' }}
+
+$credentialPath = [IO.Path]::GetTempFileName()
+try {{
+    [IO.File]::WriteAllText($credentialPath, 'fixture-secret', [Text.Encoding]::UTF8)
+    $admission = [pscustomobject]@{{
+        operation = 'windows-credential-validity-v1'
+        accountName = 'fixture-user'
+        expectedAccountSid = 'S-1-5-21-1-2-3-1002'
+        approvedCallerSid = 'S-1-5-18'
+    }}
+    $readCount = 0
+    $closedTokens = @()
+    $valid = Test-WindowsCredentialValidityAdmission -Admission $admission `
+        -ResolveAccountSid {{ param($name) 'S-1-5-21-1-2-3-1002' }} `
+        -GetCallerSid {{ 'S-1-5-18' }} `
+        -Credential $secure `
+        -NativeInvoker {{ param($u,$p) [pscustomobject]@{{ Success=$true; Win32Error=[uint32]0; Token=[IntPtr]74 }} }} `
+        -CloseToken {{ param($token) $script:closedTokens += $token.ToInt64() }}
+    if ($valid.success -ne $true -or $valid.errorCategory -ne 'none' -or $readCount -ne 1 -or $closedTokens.Count -ne 1 -or $closedTokens[0] -ne 74) {{ throw 'credential validity GREEN result or token cleanup failed' }}
+
+    foreach ($case in @(
+        @{{ error=[uint32]1326; expected='invalid-credentials' }},
+        @{{ error=[uint32]1331; expected='account-restricted' }},
+        @{{ error=[uint32]5; expected='unavailable' }}
+    )) {{
+        $closedTokens = @()
+        $result = Test-WindowsCredentialValidityAdmission -Admission $admission `
+            -ResolveAccountSid {{ param($name) 'S-1-5-21-1-2-3-1002' }} -GetCallerSid {{ 'S-1-5-18' }} `
+            -Credential $secure `
+            -NativeInvoker {{ param($u,$p) [pscustomobject]@{{ Success=$false; Win32Error=$case.error; Token=[IntPtr]75 }} }} `
+            -CloseToken {{ param($token) $script:closedTokens += $token.ToInt64() }}
+        if ($result.success -or $result.errorCategory -ne $case.expected -or $closedTokens.Count -ne 1 -or $closedTokens[0] -ne 75) {{ throw 'credential validity failure category or cleanup failed' }}
+    }}
+
+    foreach ($bad in @(
+        [pscustomobject]@{{ operation='wrong'; accountName='fixture-user'; expectedAccountSid='S-1-5-21-1-2-3-1002'; approvedCallerSid='S-1-5-18' }},
+        [pscustomobject]@{{ operation='windows-credential-validity-v1'; accountName='fixture-user'; expectedAccountSid='S-1-5-21-1-2-3-1003'; approvedCallerSid='S-1-5-18' }},
+        [pscustomobject]@{{ operation='windows-credential-validity-v1'; accountName='fixture-user'; expectedAccountSid='S-1-5-21-1-2-3-1002'; approvedCallerSid='S-1-5-18'; ownedVm=$true }}
+    )) {{
+        $readCount = 0
+        try {{ Test-WindowsCredentialValidityAdmission -Admission $bad -Credential $secure -ResolveAccountSid {{ param($name) 'S-1-5-21-1-2-3-1002' }} -GetCallerSid {{ 'S-1-5-18' }}; throw 'invalid credential admission reached reader' }} catch {{ if ($_.Exception.Message -eq 'invalid credential admission reached reader') {{ throw }} }}
+        if ($readCount -ne 0) {{ throw 'invalid credential admission read the credential' }}
+    }}
+    $nonSystemReads = 0
+    try {{ Test-WindowsCredentialValidityAdmission -Admission $admission -Credential $secure -ResolveAccountSid {{ param($name) 'S-1-5-21-1-2-3-1002' }} -GetCallerSid {{ 'S-1-5-21-9-8-7-1002' }}; throw 'non-SYSTEM caller reached reader' }} catch {{ if ($_.Exception.Message -eq 'non-SYSTEM caller reached reader') {{ throw }} }}
+    if ($nonSystemReads -ne 0) {{ throw 'non-SYSTEM caller read the credential' }}
+}}
+finally {{ [IO.File]::Delete($credentialPath) }}
 Write-Output 'WINDOWS_TASK_ADMISSION_FIXTURE_OK'
 """
     try:
@@ -54,7 +103,9 @@ Write-Output 'WINDOWS_TASK_ADMISSION_FIXTURE_OK'
         return 124
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
-    return result.returncode
+    if result.returncode:
+        return result.returncode
+    return 0
 
 
 if __name__ == "__main__":

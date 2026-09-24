@@ -8,6 +8,7 @@ environment limitation is not a product defect unless the record says otherwise.
 
 | Failure type | Product or fixture | Cause established so far | Proven quick test and routine wiring | RED / GREEN evidence | Native evidence | Unresolved gap |
 | --- | --- | --- | --- | --- | --- | --- |
+| Android emulator allocations remain unknown in Linux VM admission | MCP host observer | The fixed QEMU parser recognized `-m` but not the observed emulator `-memory 2048` syntax; admission correctly withheld an incomplete total. | `test_memory_parser_accepts_android_emulator_memory_mebibytes` and ambiguity/invalid-value vectors execute the actual remote parser in ordinary agent-tools discovery. | The observed2048MiB vector failed before repair; focused suite ran11 tests successfully with one Linux-only skip. Duplicate/mixed forms remain unknown. | Fresh exact-PID/start-tick observation accounts for all five processes, totaling18GiB; both owned Android emulators are2GiB. No VM was started. | Every subsequent start still requires a fresh complete capacity measurement and an exclusive environment reservation. |
 | Successful durable preflight advertises failure evidence | MCP evidence adapter | Generated remote worker always emitted `failurePath`, even for exit0; the end-to-end assertion ran only on Linux and was skipped on the macOS coordinator. | `test_embedded_worker_evidence_marks_failure_only_for_nonzero_exit` executes the actual generated worker with process execution mocked and checks exit0 and nonzero evidence on POSIX; routine agent-tools discovery includes it. | Fast Checks36016454696 on762190454129a9b203bbd5c734f15103b3100c0e reproduced the mismatch. Portable test failed before the conditional-field repair; focused suite ran four tests successfully with one Linux-only skip. | Existing real SSH preflight succeeded; this is a metadata defect, not replay or product installation failure. | Replacement exact-SHA CI must also pass the retained Linux end-to-end disconnect test. |
 | Linux fixture account cannot prepare installer inputs; setup loses public-store environment or reads private metadata as previous user | Fixture provisioning | Root setup created target `.local` as root0755; effective UID1001 cannot create `.local/state`. Earlier setup also lost an environment variable through sudo and inspected a private file as the wrong actor. | `test_linux_public_install_fixture.py` exercises target-user directory creation, rejection without permission repair, sudo environment forwarding, metadata actor/identity, path guards and CLI parsing; wired into release hygiene. | checkpoint138/linux-fixture retains deterministic replays of the unsafe privilege-boundary recipes and focused GREEN before native fixture repair. Missing-module RED is explicitly excluded as noncausal. | checkpoint137/linux-install: original public failure, ownership and effective-access proof; no authorization prompt. | Native repair/retry and full prepush remain pending; these tests do not certify RPM replacement. |
 | Refresh status labels retain URL userinfo; stale and post-commit failures receive misleading reasons | Product defects caught during review | Authority-based source labels retained credentials; raw stale route exceptions became OTHER; a broad commit-stage flag remained set after a successful commit. | AndroidSubscriptionRefreshControlTest exercises the production status helper, prepared fetch failure and failed post-commit snapshot in the routine Android suite. | checkpoint137/refresh-failures/review-red.log/xml: three compiled assertion failures before repair; green.log: affected Android/shared/desktop union succeeds. | No native claim for these review findings. | New APK/native refresh remains required; the original transport failure is still unexplained. |
@@ -1290,3 +1291,46 @@ The new artifact registry was exercised through the actual MCP stdio endpoint:
 checkpoint152/artifact-register-result.json and artifact-verify-result.json bind
 the frozen Android APK to its exact size/hash/source SHA. This proves local byte
 verification, not Android lifecycle acceptance or remote artifact freshness.
+
+## Checkpoint160 — failure-only Android network attribution
+
+- API29 subscription refresh returned errno111 without enough evidence to identify
+  the attempted route. The per-call OkHttp listener now retains only bounded
+  DNS family/scope and connection proxy/family/scope/outcome categories. It emits
+  them only on failure; no endpoint, port, hostname or exception message is kept.
+  The real closed-loopback-port test exercises production listener wiring.
+  `checkpoint160/android-network/red-*.xml` records one intended failure in six
+  diagnostic tests against the old client; `green-*.xml` records all six passing.
+  Four Android failure-trace tests pass in both runs; no tests were skipped.
+  Both classes run in routine Android unit tests. Native refresh must be repeated
+  with a newly frozen APK; these diagnostics do not yet establish the native cause.
+
+- Windows QGA admission compared a pathname inode to a socket-descriptor inode.
+  The real Linux AF_UNIX check in checkpoint160/windows-socket/real-linux-result.json
+  records oldBinding=false, fixedBinding=true and wrongGeneration=false. Admission
+  now binds the exact path through /proc/net/unix to the selected PID's socket FD
+  and start ticks. The agent-tools regression uses a real temporary Unix socket
+  on Linux; host macOS skips that OS-specific assertion. A separate portable test
+  covers length-framed private stdin above the old 16KiB truncation boundary.
+  Neither test establishes successful native Windows credential validation.
+
+## Checkpoint161 — real transport composition
+
+- The Windows credential probe passed mocked transport tests but its fixed multiline
+  Python program failed the real SSH argument validator before submission. The
+  backend regression now invokes the actual argument builder for both start and
+  status, proving raw multiline rejection and escaped fixed-program acceptance.
+  Credential/helper payload bytes remain on private stdin. Root rerun: nine tests,
+  one Linux-only skip, passing; evidence checkpoint161/windows/root-focused.log.
+  This repeats the CP148 failure class and closes its previously missing coverage
+  in this new adapter rather than weakening the shared validator.
+
+- Real Arch execution exposed malformed fake-terminal output that host macOS
+  skips: literal backslash-n prevented identity recognition, then a missing
+  post-authentication newline placed JSON on the password prompt line. Both fake
+  outputs now model actual line boundaries; the strict parser is unchanged.
+  The driver separately gained human-only /dev/tty admission and a deadline
+  regression proving it retains its PTY/child after recording UNKNOWN until the
+  same child completes. Complete isolated Arch verification: auth 19 passing;
+  public-install harness 28 passing, no skips. No real account/install operation
+  was performed. External driver process death still requires reconciliation.

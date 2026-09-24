@@ -69,6 +69,7 @@ python3 scripts/test_macos_fixture_processes.py
 python3 scripts/test_macos_vm_resource_monitor.py
 python3 scripts/test_native_fixture_run.py
 python3 scripts/test_native_fixture_qga.py
+python3 scripts/test_windows_credential_validity_qga.py
 python3 scripts/test_capture_visual_windows_qemu.py
 python3 scripts/test_native_fixture_qemu_assets.py
 python3 scripts/test_macos_packaging_jdk_preflight.py
@@ -80,6 +81,7 @@ python3 scripts/test_fixture_environment.py
 python3 scripts/test_jpackage_launcher_harness.py
 python3 scripts/test_arch_public_update.py
 python3 scripts/test_rpm_public_update.py
+python3 scripts/test_linux_fixture_auth.py
 python3 scripts/test_macos_install_gate.py
 python3 scripts/test_macos_install_enospc.py
 python3 scripts/test_macos_package_cleanup.py

@@ -82,6 +82,25 @@ class NativeHostObservationTest(unittest.TestCase):
         exec(observation._REMOTE_PROGRAM.split('if not sys.platform', 1)[0], namespace)
         self.assertEqual(6144 * 1024 ** 2, namespace["parse_memory"]([b"qemu-system-x86_64", b"-m", b"6144", b"-machine", b"q35"]))
 
+    def test_memory_parser_accepts_android_emulator_memory_mebibytes(self):
+        namespace: dict[str, object] = {"__name__": "not_main"}
+        exec(observation._REMOTE_PROGRAM.split('if not sys.platform', 1)[0], namespace)
+        self.assertEqual(2048 * 1024 ** 2,
+                         namespace["parse_memory"]([b"qemu-system-x86_64-headless", b"-memory", b"2048"]))
+
+    def test_memory_parser_rejects_ambiguous_or_invalid_android_memory(self):
+        namespace: dict[str, object] = {"__name__": "not_main"}
+        exec(observation._REMOTE_PROGRAM.split('if not sys.platform', 1)[0], namespace)
+        parse_memory = namespace["parse_memory"]
+        for argv in ([b"qemu-system-x86_64-headless", b"-memory", b"2048", b"-memory", b"4096"],
+                     [b"qemu-system-x86_64", b"-m", b"2048", b"-m", b"4096"],
+                     [b"qemu-system-x86_64-headless", b"-m", b"2048", b"-memory", b"2048"],
+                     [b"qemu-system-x86_64-headless", b"-memory", b"2048M"],
+                     [b"qemu-system-x86_64-headless", b"-memory"],
+                     [b"qemu-system-x86_64-headless", b"-memory=2048"]):
+            with self.subTest(argv=argv):
+                self.assertIsNone(parse_memory(argv))
+
     @unittest.skipUnless(sys.platform.startswith("linux"), "remote /proc fixture is Linux-only")
     def test_fixed_remote_program_collects_a_real_linux_proc_fixture(self):
         completed = subprocess.run([sys.executable, "-c", observation._REMOTE_ARGUMENT], capture_output=True,

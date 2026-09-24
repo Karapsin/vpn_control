@@ -122,6 +122,77 @@ performs the approved isolated import. A hash-only result is not execution proof
 `admit-plan` accepts explicit memory observations and reservations; its result is
 planning arithmetic, not fresh host observation or permission to start a VM.
 
+### Fixed Windows credential-validity probe
+
+`vm_workflow("windows-credential-probe-start", inputs=...)` and
+`vm_workflow("windows-credential-probe-status", inputs=...)` are the only
+credential-probe actions. Both accept exactly `host`, `correlationId`, and the
+optional `timeoutSeconds`; the first two are nonempty strings, `correlationId`
+must be a UUID, and `timeoutSeconds` is an integer from 1 through 60 (15 by
+default). They do not accept a password, account, SID, QGA command, executable,
+arguments, script, or guest path.
+
+The configured host must have both an absolute `fixtureTransferRoot` and the
+following private `windowsCredentialProbe` object. Its field set is exact; keep
+the inventory mode0600, ignored, and outside version control.
+
+```json
+{
+  "schemaVersion": 1,
+  "hosts": {
+    "<host-alias>": {
+      "host": "<ssh-host>",
+      "port": 22,
+      "user": "<ssh-user>",
+      "identityFile": "/absolute/private/key",
+      "knownHostsFile": "/absolute/private/known_hosts",
+      "fixtureTransferRoot": "/absolute/private/fixture-root",
+      "windowsCredentialProbe": {
+        "environment": "<windows-environment-id>",
+        "qgaSocketPath": "/absolute/qemu-guest-agent.socket",
+        "qemuPid": 12345,
+        "qemuStartTicks": 123456789,
+        "accountName": "<windows-account-name>",
+        "expectedSid": "S-1-5-21-<domain>-<domain>-<domain>-<rid>",
+        "credentialPath": "/absolute/private/credential-bytes"
+      }
+    }
+  }
+}
+```
+
+`credentialPath` names an existing, nonempty owner-only regular file (maximum
+512 bytes); it is never returned or placed in an MCP argument. The probe admits
+the credential, the exact Windows account and expected SID, the live QGA socket,
+and the QEMU process generation before it submits one fixed operation:
+`windows-credential-validity-v1`. It freezes and hashes the approved Python and
+PowerShell helpers, stages them and the credential in exclusive owner-only remote
+directories, and invokes only the fixed PowerShell guest-exec program. The public
+terminal receipt contains only the correlation, boolean success, and one of
+`none`, `invalid-credentials`, `account-restricted`, or `unavailable`.
+
+Start durably records the correlation before SSH submission. Reuse the same
+correlation only to observe its existing operation: use `status` after an
+interruption, timeout, missing receipt, or `unknown` result. Never replay a
+probe with an unknown outcome or create a second operation from the same intent.
+`status` checks the durable binding and observes the existing QGA PID; it does
+not read current helpers or submit guest execution. A terminal receipt is the
+only completion evidence. This interface and its static/unit coverage do not
+establish native Windows/QGA acceptance; native verification remains pending.
+
+```text
+vm_workflow("windows-credential-probe-start", {
+  "host": "<host-alias>",
+  "correlationId": "<new UUID>",
+  "timeoutSeconds": 15
+})
+vm_workflow("windows-credential-probe-status", {
+  "host": "<host-alias>",
+  "correlationId": "<same UUID>",
+  "timeoutSeconds": 15
+})
+```
+
 ### Native artifact, bundle, and environment helpers
 
 The helpers below are local coordination and evidence tools. They never search a

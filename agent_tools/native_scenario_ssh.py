@@ -39,7 +39,7 @@ def _py(program: str, *arguments: str) -> tuple[str, ...]:
 _SUBMIT = r'''import hashlib,json,os,stat,subprocess,sys,time
 root,host,env,scenario,corr,bundle_hash,artifact_json=sys.argv[1:]
 os.umask(0o077)
-names=("scripts/test_linux_public_install.py","scripts/arch_public_update.py","scripts/rpm_public_update.py","scripts/prepare_desktop_update_fixture.py","scripts/fixture_environment.py","scripts/macos_packaging_jdk_preflight.py","scripts/native_fixture_run.sh","native-scenario-manifest.json")
+names=("scripts/test_linux_public_install.py","scripts/linux_fixture_auth.py","scripts/arch_public_update.py","scripts/rpm_public_update.py","scripts/prepare_desktop_update_fixture.py","scripts/fixture_environment.py","scripts/macos_packaging_jdk_preflight.py","scripts/native_fixture_run.sh","native-scenario-manifest.json")
 def bad(reason): print(json.dumps({"state":"unknown","reason":reason},separators=(",",":"))); raise SystemExit(64)
 if scenario!="linux-public-update-preflight": bad("scenario_not_allowed")
 try: artifacts=json.loads(artifact_json)

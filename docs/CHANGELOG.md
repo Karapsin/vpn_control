@@ -11,6 +11,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Recover interrupted nested SSH access safely and fix Android fixture identity and macOS image cleanup.
 - Add verified native MCP workflows, durable recovery evidence, and package-test safeguards.
 - Keep successful native preflight evidence free of failure markers and test generated workers portably.
+- Account for Android emulator memory in native capacity observations while rejecting ambiguous allocations.
+- Harden retained native authentication and credential probes, repair package checks, and add bounded Android network diagnostics.
+- Preserve retained terminal ownership after deadlines and verify native probes through the real SSH transport.
 
 ## 2.1.17 - 2026-09-24
 

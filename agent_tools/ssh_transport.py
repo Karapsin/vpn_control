@@ -44,6 +44,17 @@ class ProbeStatus(str, Enum):
 
 
 @dataclass(frozen=True)
+class WindowsCredentialProbe:
+    environment: str
+    qga_socket_path: PurePosixPath
+    qemu_pid: int
+    qemu_start_ticks: int
+    account_name: str
+    expected_sid: str
+    credential_path: Path
+
+
+@dataclass(frozen=True)
 class SshHost:
     alias: str
     host: str
@@ -59,6 +70,7 @@ class SshHost:
     fixture_transfer_root: PurePosixPath | None = None
     android_devices: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     password: str | None = field(default=None, repr=False, compare=False)
+    windows_credential_probe: WindowsCredentialProbe | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -196,12 +208,31 @@ def _android_devices(value: Any) -> dict[str, dict[str, Any]]:
     return result
 
 
+def _windows_credential_probe(value: Any) -> WindowsCredentialProbe:
+    fields = {"environment", "qgaSocketPath", "qemuPid", "qemuStartTicks", "accountName", "expectedSid", "credentialPath"}
+    if not isinstance(value, dict) or set(value) != fields:
+        raise SshConfigError("Windows probe requires explicit VM and account identity fields.")
+    environment = _string(value["environment"], "environment")
+    if not _ALIAS_RE.fullmatch(environment):
+        raise SshConfigError("Invalid Windows fixture identity.")
+    socket_path = _remote_path(value["qgaSocketPath"], "qgaSocketPath")
+    if socket_path == PurePosixPath("/") or ".." in socket_path.parts:
+        raise SshConfigError("Invalid Windows fixture socket path.")
+    if any(type(value[key]) is not int or value[key] <= 0 for key in ("qemuPid", "qemuStartTicks")):
+        raise SshConfigError("Windows fixture requires a live process generation.")
+    sid = _string(value["expectedSid"], "expectedSid")
+    if not re.fullmatch(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+", sid):
+        raise SshConfigError("Invalid Windows fixture account identity.")
+    return WindowsCredentialProbe(environment, socket_path, value["qemuPid"], value["qemuStartTicks"],
+                                  _ssh_user(value["accountName"]), sid, _path(value["credentialPath"], "credentialPath"))
+
+
 def _host_from_entry(alias: str, entry: Any) -> SshHost:
     if not _ALIAS_RE.fullmatch(alias):
         raise SshConfigError("Private VM inventory contains an invalid host alias.")
     if not isinstance(entry, dict):
         raise SshConfigError("Each VM host entry must be an object.")
-    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath", "fixtureTransferRoot", "androidDevices"}
+    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath", "fixtureTransferRoot", "androidDevices", "windowsCredentialProbe"}
     required = {"host", "port", "user", "identityFile", "knownHostsFile"}
     if set(entry) - allowed or required - set(entry):
         raise SshConfigError("Private VM inventory contains unsupported or missing host fields.")
@@ -254,6 +285,7 @@ def _host_from_entry(alias: str, entry: Any) -> SshHost:
         fixture_transfer_root=fixture_root,
         android_devices=_android_devices(entry.get("androidDevices", {})),
         password=password,
+        windows_credential_probe=_windows_credential_probe(entry["windowsCredentialProbe"]) if "windowsCredentialProbe" in entry else None,
     )
 
 

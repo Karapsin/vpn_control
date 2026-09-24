@@ -125,3 +125,105 @@ function Test-BatchLogonAdmission {
         }
     }
 }
+
+$script:CredentialValidityOperation = 'windows-credential-validity-v1'
+$script:CredentialValidityFields = @(
+    'operation', 'accountName', 'expectedAccountSid', 'approvedCallerSid'
+)
+$script:CredentialValidityCategories = @('none', 'invalid-credentials', 'account-restricted', 'unavailable')
+
+function Throw-CredentialValidityAdmissionRejected {
+    # This boundary can be passed a private credential path.  Do not let an
+    # exception turn that path, account name, or credential into diagnostic text.
+    throw 'Credential validity admission rejected.'
+}
+
+function Assert-CredentialValidityAdmission {
+    param([Parameter(Mandatory = $true)][object]$Admission)
+
+    $names = @($Admission.PSObject.Properties.Name | Sort-Object)
+    $expectedNames = @($script:CredentialValidityFields | Sort-Object)
+    if ($names.Count -ne $expectedNames.Count -or (Compare-Object $names $expectedNames)) {
+        Throw-CredentialValidityAdmissionRejected
+    }
+    if ($Admission.operation -cne $script:CredentialValidityOperation -or
+            [string]::IsNullOrWhiteSpace($Admission.accountName) -or
+            $Admission.expectedAccountSid -cnotmatch '^S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+$' -or
+            $Admission.approvedCallerSid -cne 'S-1-5-18') {
+        Throw-CredentialValidityAdmissionRejected
+    }
+    return $Admission
+}
+
+function Get-CredentialValidityErrorCategory {
+    param([Parameter(Mandatory = $true)][UInt32]$Win32Error)
+
+    if ($Win32Error -eq 1326) { return 'invalid-credentials' }
+    if ($Win32Error -in @(1327, 1331, 1332, 1907)) { return 'account-restricted' }
+    return 'unavailable'
+}
+
+function New-CredentialValidityResult {
+    param(
+        [Parameter(Mandatory = $true)][bool]$Success,
+        [Parameter(Mandatory = $true)][string]$ErrorCategory
+    )
+
+    if ($ErrorCategory -notin $script:CredentialValidityCategories -or
+            ($Success -and $ErrorCategory -ne 'none') -or
+            (-not $Success -and $ErrorCategory -eq 'none')) {
+        throw 'Credential validity result is invalid.'
+    }
+    return [pscustomobject]@{ success = $Success; errorCategory = $ErrorCategory }
+}
+
+function Test-WindowsCredentialValidityAdmission {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][object]$Admission,
+        [Parameter(Mandatory = $true)][Security.SecureString]$Credential,
+        [scriptblock]$ResolveAccountSid = {
+            param([string]$AccountName)
+            ([Security.Principal.NTAccount]::new($AccountName)).Translate([Security.Principal.SecurityIdentifier]).Value
+        },
+        [scriptblock]$GetCallerSid = { [Security.Principal.WindowsIdentity]::GetCurrent().User.Value },
+        [scriptblock]$NativeInvoker = ${function:Invoke-NativeBatchLogon},
+        [scriptblock]$CloseToken = ${function:Close-BatchLogonToken}
+    )
+
+    $admission = Assert-CredentialValidityAdmission -Admission $Admission
+    try {
+        if ((& $ResolveAccountSid $admission.accountName) -cne $admission.expectedAccountSid -or
+                (& $GetCallerSid) -cne $admission.approvedCallerSid) {
+            Throw-CredentialValidityAdmissionRejected
+        }
+        try {
+            if (-not $Credential.IsReadOnly()) { Throw-CredentialValidityAdmissionRejected }
+            $native = & $NativeInvoker $admission.accountName $Credential
+            if ($null -eq $native -or $null -eq $native.Success -or $null -eq $native.Win32Error -or $null -eq $native.Token) {
+                throw 'Native credential validity result is incomplete.'
+            }
+            $token = [IntPtr]$native.Token
+            try {
+                if ([bool]$native.Success) {
+                    if ($token -eq [IntPtr]::Zero -or [UInt32]$native.Win32Error -ne 0) {
+                        throw 'Native credential validity success is invalid.'
+                    }
+                    return New-CredentialValidityResult -Success $true -ErrorCategory 'none'
+                }
+                if ([UInt32]$native.Win32Error -eq 0) { throw 'Native credential validity failure is invalid.' }
+                return New-CredentialValidityResult -Success $false -ErrorCategory (Get-CredentialValidityErrorCategory ([UInt32]$native.Win32Error))
+            }
+            finally {
+                if ($token -ne [IntPtr]::Zero) { & $CloseToken $token }
+            }
+        }
+        finally { }
+    }
+    catch {
+        # The public result is intentionally category-only.  The caller must not
+        # receive private paths, account details, native errors, or token state.
+        if ($_.Exception.Message -eq 'Credential validity admission rejected.') { throw }
+        return New-CredentialValidityResult -Success $false -ErrorCategory 'unavailable'
+    }
+}

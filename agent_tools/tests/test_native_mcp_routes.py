@@ -10,6 +10,21 @@ from agent_tools import mcp_server
 
 
 class NativeRoutesTest(unittest.TestCase):
+    def test_windows_probe_routes_only_configured_identity_and_deadline(self):
+        from agent_tools import windows_credential_probe_ssh as probe
+        request = {"host": "owned", "correlationId": "00000000-0000-0000-0000-000000000001", "timeoutSeconds": 20}
+        with patch.object(probe, "start", return_value={"ok": False, "state": "unknown"}) as start:
+            result = mcp_server.vm_workflow("windows-credential-probe-start", request)
+            self.assertEqual("unknown", result["state"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, "owned", request["correlationId"], timeout_seconds=20)
+            start.reset_mock()
+            self.assertFalse(mcp_server.vm_workflow("windows-credential-probe-start", {**request, "command": "untrusted"})["ok"])
+            start.assert_not_called()
+        with patch.object(probe, "status", side_effect=probe.WindowsCredentialProbeSshError("private sentinel")):
+            result = mcp_server.vm_workflow("windows-credential-probe-status", request)
+            self.assertFalse(result["ok"])
+            self.assertNotIn("private sentinel", json.dumps(result))
+
     def test_apk_publication_requires_exact_fields_before_transport(self):
         from agent_tools import ssh_transfer
         with patch.object(ssh_transfer, "publish_android_apk") as publish:

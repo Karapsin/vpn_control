@@ -21,6 +21,8 @@ from test_linux_public_install import (launch_fixture_owner, require_package_man
                                        terminal_password_input_ready,
                                        write_password_to_original_master,
                                        launch_with_controlling_tty,
+                                       invoke_retained_install,
+                                       require_human_terminal,
                                        timed_update_command, verify_recovered_install)
 
 
@@ -109,6 +111,96 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
             os.close(slave)
             os.close(master)
         self.assertFalse(terminal_password_input_ready(prompt, master))
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "requires Linux retained PTY semantics")
+    def test_retained_driver_repairs_the_ssh_tty_devnull_input_chain_once_after_delayed_echo_off(self):
+        # Causal RED: ssh -tt may create /dev/tty while its upstream stdin is
+        # /dev/null.  The old file-redirected Popen path then had no writable
+        # retained master, so polkit could prompt but never receive input.
+        with tempfile.TemporaryDirectory(prefix="vpn-retained-pty-") as temporary:
+            root = Path(temporary)
+            launcher = root / "fixture-launcher"
+            launcher.write_text("#!" + sys.executable + "\n"
+                                "import json, os, termios, time\n"
+                                "os.write(1, b'Multiple identities can be used for authentication:\\n 1.  vpnfixture\\nChoose identity to authenticate as (1-1): ')\n"
+                                "assert os.read(0, 8) == b'1\\n'\n"
+                                "time.sleep(.12)\n"
+                                "a=termios.tcgetattr(0); a[3] &= ~(termios.ECHO | termios.ECHONL); termios.tcsetattr(0, termios.TCSAFLUSH, a)\n"
+                                "os.write(1, b'Password: ')\n"
+                                "assert os.read(0, 64) == b'synthetic-private-password\\n'\n"
+                                "os.write(1, b'\\n')\n"
+                                "os.write(1, json.dumps({'schemaVersion': 1, 'code': 'ACCEPTED', 'final': False, 'data': {}}).encode() + b'\\n')\n")
+            launcher.chmod(0o700)
+            auth = types.SimpleNamespace(
+                status=lambda **kwargs: {"correlation": kwargs["correlation"], "purpose": kwargs["purpose"],
+                                          "account": "vpnfixture"},
+                # The production helper returns text.  The retained PTY boundary
+                # must encode it only immediately before its single write.
+                read_credential_after_prompt=mock.Mock(return_value="synthetic-private-password"))
+            writes = []
+            original_write = write_password_to_original_master
+            with mock.patch.dict(sys.modules, {"linux_fixture_auth": auth}), \
+                 mock.patch("test_linux_public_install.write_password_to_original_master",
+                            side_effect=lambda master, password: (writes.append(password), original_write(master, password))[1]):
+                exit_code, envelope = invoke_retained_install(
+                    launcher, root / "workspace", dict(os.environ), ("--timeout-seconds", "240", "updates", "install"),
+                    root / "credential", "correlation-156", "linux-public-install-polkit-auth", "vpnfixture", root,
+                    seconds=.05)
+            self.assertEqual(0, exit_code)
+            self.assertEqual("ACCEPTED", envelope["code"])
+            self.assertEqual([b"synthetic-private-password"], writes,
+                             "Delayed prompt/echo-off must admit exactly one credential write")
+            auth.read_credential_after_prompt.assert_called_once()
+            safe = json.loads((root / "retained-terminal-observation.json").read_text())
+            self.assertTrue(safe["identitySelected"] and safe["credentialWritten"])
+            self.assertTrue(safe["deadlineElapsed"],
+                            "A deadline records UNKNOWN evidence but retains the driver to terminal completion")
+            self.assertNotIn("synthetic-private-password", (root / "retained-terminal-observation.json").read_text())
+
+    def test_retained_auth_skips_the_callers_human_tty_requirement(self):
+        opener = mock.Mock()
+        require_human_terminal(True, opener)
+        opener.assert_not_called()
+        opened = mock.MagicMock()
+        opener.return_value = opened
+        require_human_terminal(False, opener)
+        opener.assert_called_once_with("/dev/tty", "rb")
+        opened.__enter__.assert_called_once_with()
+
+    def test_retained_auth_preparation_forwards_only_an_explicit_password_preservation_opt_in(self):
+        auth = types.SimpleNamespace(
+            FIXTURE_ACCOUNT="vpnfixture",
+            OWNED_GUEST_CONFIRMATION="I_CONFIRM_VPNFIXTURE_DISPOSABLE_GUEST",
+            PURPOSE="linux-public-install-polkit-auth",
+            prepare=mock.Mock(return_value={"account": "vpnfixture", "correlation": "correlation-157",
+                                            "purpose": "linux-public-install-polkit-auth"}),
+            status=mock.Mock(return_value={"account": "vpnfixture", "correlation": "correlation-157",
+                                           "purpose": "linux-public-install-polkit-auth"}),
+        )
+        from test_linux_public_install import prepare_retained_fixture_auth
+        with tempfile.TemporaryDirectory(prefix="vpn-retained-opt-in-") as temporary, \
+             mock.patch.dict(sys.modules, {"linux_fixture_auth": auth}):
+            credential, correlation, account, purpose = prepare_retained_fixture_auth(
+                Path(temporary), "correlation-157", preserve_existing_password=True)
+        self.assertEqual(Path(temporary) / "private-fixture-auth", credential)
+        self.assertEqual(("correlation-157", "vpnfixture", "linux-public-install-polkit-auth"),
+                         (correlation, account, purpose))
+        self.assertIs(auth.prepare.call_args.kwargs["preserve_existing_password"], True)
+        self.assertEqual(auth.prepare.call_args.kwargs["guest_confirmation"], auth.OWNED_GUEST_CONFIRMATION)
+
+    def test_retained_driver_rejects_wrong_credential_purpose_before_launch_or_write(self):
+        auth = types.SimpleNamespace(status=mock.Mock(side_effect=RuntimeError("purpose rejected")),
+                                     read_credential_after_prompt=mock.Mock())
+        with tempfile.TemporaryDirectory(prefix="vpn-retained-purpose-") as temporary:
+            root = Path(temporary)
+            with mock.patch.dict(sys.modules, {"linux_fixture_auth": auth}), \
+                 mock.patch("test_linux_public_install.launch_with_controlling_tty") as launch:
+                with self.assertRaisesRegex(RuntimeError, "purpose rejected"):
+                    invoke_retained_install(Path("/not-started"), root / "workspace", {},
+                                            ("--timeout-seconds", "240", "updates", "install"),
+                                            root / "credential", "correlation-156", "wrong-purpose", "vpnfixture", root)
+            launch.assert_not_called()
+            auth.read_credential_after_prompt.assert_not_called()
 
     def test_complete_handoff_survives_terminal_close_race(self):
         job = "b32f0d40-f03f-4af7-8219-808753e05ee8"

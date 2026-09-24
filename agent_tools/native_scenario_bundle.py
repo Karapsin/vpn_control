@@ -22,6 +22,7 @@ MANIFEST_NAME = "native-scenario-manifest.json"
 _SCENARIOS = {
     "linux-public-update-driver": (
         "scripts/test_linux_public_install.py",
+        "scripts/linux_fixture_auth.py",
         "scripts/arch_public_update.py",
         "scripts/rpm_public_update.py",
         "scripts/prepare_desktop_update_fixture.py",

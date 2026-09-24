@@ -111,6 +111,10 @@ class QgaReadOnlyClient:
     def _call(self, command: str, arguments: Mapping[str, Any]) -> Any:
         if command not in _READ_ONLY_COMMANDS:
             raise ValueError(f"QGA command is outside read-only scope: {command}")
+        return self._exchange(command, arguments)
+
+    def _exchange(self, command: str, arguments: Mapping[str, Any]) -> Any:
+        """Run one already-authorized QGA request with the shared bounded framing."""
         operation = {"execute": command, "arguments": dict(arguments)}
         encoded = (json.dumps(operation, separators=(",", ":")) + "\n").encode("utf-8")
         deadline = time.monotonic() + self.timeout_seconds

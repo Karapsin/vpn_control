@@ -3,8 +3,9 @@
 
 Uses the installed public launcher and unchanged production update URL/trust/hash
 checks. Keeps evidence and never kills a package manager, installer, or owner.
-Run from a controlling TTY as the ordinary VM user; enter polkit credentials at
-the native prompt. No credentials are accepted as arguments or written to logs.
+Run as the ordinary VM user.  Native SSH automation with upstream stdin closed
+must use --retained-fixture-auth; it keeps the private fixture credential out of
+arguments and logs.  Direct local terminal use remains available for a human.
 """
 import argparse
 import errno
@@ -13,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import select
+import signal
 import stat
 import subprocess
 import tempfile
@@ -26,6 +28,14 @@ from rpm_public_update import verify_rpm_bundle_base
 
 def timed_update_command(action, seconds):
     return ("--timeout-seconds", str(seconds), "updates", action)
+
+
+def require_human_terminal(retained_fixture_auth, opener=None):
+    """Only direct human prompting depends on the caller's controlling TTY."""
+    if not retained_fixture_auth:
+        opener = open if opener is None else opener
+        with opener("/dev/tty", "rb"):
+            pass
 
 
 def require(value, message):
@@ -265,14 +275,156 @@ def observe_terminal_process(process, terminal_fd, on_output, timeout_seconds=No
         select.select([terminal_fd], [], [], wait)
 
 
+def retained_terminal_master():
+    """Create the one PTY whose master remains owned by this guest-side driver."""
+    import pty
+    master, slave = pty.openpty()
+    try:
+        require(os.isatty(master) and os.isatty(slave), "Retained terminal is not a PTY")
+        require(stat.S_ISCHR(os.fstat(master).st_mode), "Retained terminal master is not a character device")
+        return master, slave
+    except BaseException:
+        os.close(master)
+        os.close(slave)
+        raise
+
+
+def _terminal_json_envelope(terminal_bytes):
+    """Read one public JSON response without retaining a terminal transcript."""
+    values = []
+    for line in terminal_bytes.splitlines():
+        try:
+            candidate = json.loads(line)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if isinstance(candidate, dict) and candidate.get("schemaVersion") == 1:
+            values.append(candidate)
+    require(len(values) == 1, "Retained terminal did not produce one public result envelope")
+    return values[0]
+
+
+def prepare_retained_fixture_auth(evidence, correlation, preserve_existing_password=False):
+    """Create and re-admit the private input before any owner or install starts."""
+    require(preserve_existing_password is True or preserve_existing_password is False,
+            "Existing-password preservation must be explicitly boolean")
+    from linux_fixture_auth import (FIXTURE_ACCOUNT, OWNED_GUEST_CONFIRMATION, PURPOSE, prepare, status)
+
+    credential_directory = evidence / "private-fixture-auth"
+    prepared = prepare(credential_dir=credential_directory, correlation=correlation, purpose=PURPOSE,
+                       guest_confirmation=OWNED_GUEST_CONFIRMATION,
+                       preserve_existing_password=preserve_existing_password)
+    admitted = status(credential_dir=credential_directory, correlation=correlation, purpose=PURPOSE)
+    require(prepared == admitted and admitted.get("account") == FIXTURE_ACCOUNT,
+            "Private fixture credential account admission failed")
+    return credential_directory, correlation, FIXTURE_ACCOUNT, PURPOSE
+
+
+def invoke_retained_install(launcher, workspace, environment, arguments, credential_directory, correlation,
+                            purpose, authorized_identity, evidence, seconds=270, retained_fds=None):
+    """Run the fixed public install command through one retained guest PTY.
+
+    The driver never forwards an arbitrary command or a PTY slave.  It keeps the
+    original master open until the already-started command reaches a terminal
+    result, and it records only a safe observation receipt rather than terminal
+    text. It protects input while this guest-side process remains alive; a
+    separate supervisor is still required to survive process termination.
+    """
+    from linux_fixture_auth import read_credential_after_prompt, status
+
+    require(tuple(arguments) == timed_update_command("install", 240),
+            "Retained terminal driver permits only the fixed public install command")
+    master, slave = retained_fds if retained_fds is not None else retained_terminal_master()
+    output = bytearray()
+    selected = False
+    password_written = False
+    deadline_elapsed = False
+    old_hup = signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    try:
+        # Revalidate the private file immediately before the command starts;
+        # status returns metadata only and never materializes the credential.
+        credential = status(credential_dir=credential_directory, correlation=correlation, purpose=purpose)
+        require(credential.get("correlation") == correlation and credential.get("purpose") == purpose
+                and credential.get("account") == authorized_identity,
+                "Credential admission differs from the retained terminal identity")
+        process = launch_with_controlling_tty(
+            [str(launcher), "--state-dir", str(workspace), "--json", *arguments], slave, env=environment)
+        os.close(slave)
+        slave = None
+        deadline = time.monotonic() + seconds
+        while True:
+            def observe(data):
+                # Do not append unbounded data or write a terminal transcript.
+                output.extend(data)
+                del output[:-65536]
+
+            result = observe_terminal_process(process, master, observe, timeout_seconds=0)
+            if not selected:
+                choice = terminal_authorized_identity_choice(bytes(output), authorized_identity)
+                if choice is not None:
+                    require(os.write(master, choice + b"\n") == len(choice) + 1,
+                            "Identity selection delivery was partial")
+                    selected = True
+            if not password_written and terminal_password_input_ready(bytes(output), master):
+                password = read_credential_after_prompt(credential_dir=credential_directory, correlation=correlation,
+                                                        purpose=purpose, prompt_confirmed=True)
+                try:
+                    require(isinstance(password, str), "Private fixture credential is not text")
+                    write_password_to_original_master(master, password.encode("utf-8"))
+                finally:
+                    # The private byte object is not copied to output/evidence.
+                    del password
+                password_written = True
+            if result["exit"] is not None or result["observationLost"]:
+                break
+            if not deadline_elapsed and time.monotonic() >= deadline:
+                # This deadline ends the caller's expected observation window,
+                # not the already-authorized native command.  Keep the one
+                # master and child owner until a terminal observation arrives.
+                deadline_elapsed = True
+                (evidence / "retained-terminal-observation.json").write_text(json.dumps({
+                    "correlation": correlation, "exit": None, "observationLost": False,
+                    "timedOut": True, "identitySelected": selected,
+                    "credentialWritten": password_written,
+                }, indent=2))
+            time.sleep(0.05)
+        envelope = None
+        envelope_error = None
+        if result["exit"] is not None:
+            try:
+                envelope = _terminal_json_envelope(bytes(output))
+            except RuntimeError as error:
+                envelope_error = str(error)
+        receipt = {"correlation": correlation, "exit": result["exit"],
+                   "observationLost": result["observationLost"], "timedOut": result["timedOut"],
+                   "deadlineElapsed": deadline_elapsed,
+                   "identitySelected": selected, "credentialWritten": password_written}
+        if envelope is not None:
+            # This is a public correlation record, not the raw terminal stream.
+            receipt["envelope"] = envelope
+        if envelope_error is not None:
+            receipt["envelopeError"] = envelope_error
+        (evidence / "retained-terminal-observation.json").write_text(json.dumps(receipt, indent=2))
+        if result["observationLost"] and result["exit"] is None:
+            raise RuntimeError(f"Retained terminal outcome UNKNOWN; process/evidence retained at {evidence}")
+        require(envelope is not None, envelope_error)
+        return result["exit"], envelope
+    finally:
+        signal.signal(signal.SIGHUP, old_hup)
+        if slave is not None:
+            os.close(slave)
+        os.close(master)
+
+
 def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_deb_dependencies=False,
-        arch_source_fixture=None, rpm_source_fixture=None):
+        arch_source_fixture=None, rpm_source_fixture=None, retained_fixture_auth=False,
+        preserve_existing_fixture_password=False):
     require(confirmed and os.uname().sysname == "Linux" and os.getuid() != 0,
             "Explicit owned-disposable-VM confirmation and non-root Linux user required")
-    with open("/dev/tty", "rb"):
-        pass
+    require_human_terminal(retained_fixture_auth)
     require(not (arch_source_fixture is not None and rpm_source_fixture is not None),
             "Arch and RPM source fixtures are mutually exclusive")
+    require(not preserve_existing_fixture_password or retained_fixture_auth,
+            "Existing fixture password preservation requires retained fixture authentication")
     if arch_source_fixture is not None:
         # The privileged Arch adapter admits only this fixed installation root.
         # Reject alternate fixture paths before launching any owner or authorization.
@@ -317,6 +469,21 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
     environment = dict(os.environ)
     environment.pop("DISPLAY", None)
     environment.pop("WAYLAND_DISPLAY", None)
+    credential_directory = None
+    credential_correlation = None
+    retained_fds = None
+    if retained_fixture_auth:
+        credential_correlation = str(uuid.uuid4())
+        # This admission happens before the owner can start or an install can
+        # mutate the guest.  The module's receipt is metadata only.
+        credential_directory, credential_correlation, FIXTURE_ACCOUNT, PURPOSE = prepare_retained_fixture_auth(
+            evidence, credential_correlation, preserve_existing_fixture_password)
+        # Retain exactly this master across owner startup and the install handoff.
+        retained_fds = retained_terminal_master()
+        # The remote observer may disappear while polkit is active. The
+        # guest-side driver owns the master and ignores that observer HUP until
+        # it has written its correlation receipt and restored the fixture lock.
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
     count = 0
 
     def invoke(*arguments, seconds=90):
@@ -364,7 +531,13 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
             f"No newer trusted matching asset for the specified version/VM architecture: {checked}")
     ok(*timed_update_command("download", 600), seconds=630)
     require(ok("updates", "status")["data"].get("phase") == "ready", "Download did not become verified/ready")
-    exit_code, accepted = invoke(*timed_update_command("install", 240), seconds=270)
+    if retained_fixture_auth:
+        exit_code, accepted = invoke_retained_install(
+            launcher, workspace, environment, timed_update_command("install", 240), credential_directory,
+            credential_correlation, PURPOSE, FIXTURE_ACCOUNT, evidence, retained_fds=retained_fds)
+        retained_fds = None
+    else:
+        exit_code, accepted = invoke(*timed_update_command("install", 240), seconds=270)
     job, operation = terminal_install_handoff({"childExit": exit_code, "envelope": accepted})
     owner.wait(timeout=30)
     # Never hold an app admission lock while waiting for replacement, and never kill the installer.
@@ -378,6 +551,25 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
         if receipt and receipt.get("phase") in ("SUCCEEDED", "FAILED", "CANCELLED"):
             break
         time.sleep(0.5)
+    if retained_fixture_auth:
+        from linux_fixture_auth import restore
+        # Only a final protected receipt may relock the account.  Failed and
+        # cancelled terminal outcomes are equally authoritative for cleanup;
+        # missing, pending, or disconnected observations preserve the private
+        # credential directory for exact recovery instead of guessing.
+        terminal_result = {"jobId": receipt.get("jobId") if receipt else None,
+                           "correlation": credential_correlation, "final": bool(receipt),
+                           "phase": receipt.get("phase") if receipt else None}
+
+        def terminal_validator(candidate, expected_correlation):
+            return (isinstance(candidate, dict) and expected_correlation == credential_correlation
+                    and candidate.get("correlation") == credential_correlation
+                    and candidate.get("jobId") == job and candidate.get("final") is True
+                    and candidate.get("phase") in {"SUCCEEDED", "FAILED", "CANCELLED"})
+
+        if receipt and receipt.get("phase") in {"SUCCEEDED", "FAILED", "CANCELLED"}:
+            restore(credential_dir=credential_directory, correlation=credential_correlation,
+                    terminal_receipt=terminal_result, terminal_validator=terminal_validator)
     require(receipt and receipt.get("phase") == "SUCCEEDED" and receipt.get("code") == "OK",
             f"No protected installation success; do not retry/kill pending worker: {receipt}")
     version = subprocess.run([str(launcher), "--version"], capture_output=True, text=True, timeout=30)
@@ -404,7 +596,9 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
     result = {"productionTrustedInstallSucceeded": True, "targetVersion": target_version,
               "accepted": accepted, "protectedReceipt": receipt, "replacementRecoveryObservation": recovery,
               "sameSourceRecoveryProven": same_source_recovery, "sourceFingerprint": fixture.get("sourceFingerprint"),
-              "freshDependencyEvidence": dependency_evidence, "evidence": str(evidence)}
+              "freshDependencyEvidence": dependency_evidence, "evidence": str(evidence),
+              "retainedFixtureAuth": retained_fixture_auth,
+              "preservesExistingFixturePassword": preserve_existing_fixture_password}
     (evidence / "install-result.json").write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2), flush=True)
 
@@ -420,7 +614,11 @@ if __name__ == "__main__":
                         help="Verify an Arch bundle-installed base against this immutable source-pair fixture")
     parser.add_argument("--rpm-source-fixture", type=Path,
                         help="Verify an RPM-installed base against this immutable source-pair fixture")
+    parser.add_argument("--retained-fixture-auth", action="store_true",
+                        help="Use the private disposable-guest credential path and retained polkit PTY")
+    parser.add_argument("--preserve-existing-fixture-password", action="store_true",
+                        help="Explicitly restore a pre-existing P-baseline after retained fixture authentication")
     args = parser.parse_args()
     run(args.launcher, args.expected_target_version, args.confirm_owned_disposable_vm,
         args.require_same_source_recovery, args.require_fresh_deb_dependencies, args.arch_source_fixture,
-        args.rpm_source_fixture)
+        args.rpm_source_fixture, args.retained_fixture_auth, args.preserve_existing_fixture_password)

@@ -1,5 +1,7 @@
 package com.kardinal.vpncontrol
 
+import android.system.ErrnoException
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,6 +39,36 @@ class AndroidFailureTraceTest {
         val cycle = AndroidFailureTrace.format("fixture", first)
         assertTrue(cycle.contains("cause_cycle"))
         assertFalse(cycle.contains("secret-cycle"))
+    }
+
+    @Test fun formatterEmitsBoundedErrnoWithoutFunctionOrExceptionMessages() {
+        val secret = "https://user:password@example.test/path?private-key=secret"
+        val errno = errnoFixture(111)
+        val middle = java.net.ConnectException(secret).apply { initCause(errno) }
+        val root = java.net.ConnectException(secret).apply { initCause(middle) }
+        errno.initCause(root)
+
+        val trace = AndroidFailureTrace.format("subscription-refresh.download", root)
+
+        assertTrue(trace.contains("errno=111"))
+        assertTrue(trace.contains("cause_cycle"))
+        assertTrue(trace.countOccurrences("cause[") <= 4)
+        listOf(secret, "user", "password", "example.test", "connect-private").forEach {
+            assertFalse(trace.contains(it))
+        }
+    }
+
+    @Test fun formatterOmitsOutOfRangeErrnoValues() {
+        listOf(0, -1, 4096).forEach { value ->
+            val trace = AndroidFailureTrace.format("fixture", errnoFixture(value))
+
+            assertFalse("errno=$value must be omitted", trace.contains(" errno="))
+        }
+    }
+
+    private fun errnoFixture(value: Int): ErrnoException = ErrnoException("connect-private", value).also { errno ->
+        ErrnoException::class.java.getField("errno").apply { isAccessible = true }.setInt(errno, value)
+        assertEquals(value, errno.errno)
     }
 
     private fun String.countOccurrences(value: String): Int = windowed(value.length, 1).count { it == value }

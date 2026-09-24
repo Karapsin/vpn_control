@@ -25,7 +25,101 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint155
+## Current continuation — checkpoint160
+
+The goal remains incomplete. HEAD/origin/dev is
+`0701be421949d67d5430df90714df32f3df0058c` (version 2.1.17).
+Its required workflows are terminal: Fast Checks, Android and Windows passed;
+Linux run36017568418 and macOS run36017568724 failed. Local repairs await a
+new complete prepush receipt, reviewed push and exact-SHA CI verification.
+Historical sections below are evidence records, not current ownership or status.
+
+The checkpoint160 full prepush suite passed (prepush-result.json), then further
+review found the Windows real-SSH composition gap and Linux detached-driver
+admission/deadline gaps. That receipt must not certify subsequent edits. The
+Linux delayed-prompt timeout itself was traced to literal backslash-n output in
+the fake child, not to product terminal scheduling. A fresh complete prepush is
+required after these repairs.
+
+The dirty batch intentionally spans MCP/SSH safeguards, native fixture helpers,
+package regression repairs and bounded Android failure diagnostics. No product
+runtime upgrade or release operation is included.
+
+| Task | Owner | Exclusive scope | Current gate |
+| --- | --- | --- | --- |
+| Integration/delivery | root | Shared MCP wiring, schemas, bundles, WIP/ledger, host Gradle, metadata, push | Review all changes and run final managed prepush |
+| Linux auth review | root after linux_auth_review160 handoff | Auth helper, public install driver and their tests | Complete Arch bundle: 19 auth and 28 driver tests pass, no skips; real installer pending |
+| Windows probe review | root after windows_probe_review160 handoff | Fixed SSH/QGA probe, admission helper and tests | Real Linux socket regression passed; native Windows probe pending |
+| MCP documentation | mcp_docs160 | agent_tools/README.md | Document fixed actions/private inventory without claiming native success |
+| Android verification | root | Diagnostic client/collector/tests | Causal RED exit1, GREEN exit0 in checkpoint160/android-network |
+
+Linux: the prior pre-authorization install is terminal CANCELLED; its matched OFF
+owner was subsequently quit through the public API and absence verified. Fedora
+2328 has a P-status fixture account and sudo access. The new opt-in auth helper
+has 19 passing component tests after independent review; the explicit driver opt-in
+is integrated. Complete Arch verification passes 19 auth and 28 driver tests
+with no skips, including retained deadline ownership.
+No temporary password has been provisioned. The target 2.1.17 HTTPS fixture is
+prepared; RPM replacement and next-owner recovery remain unproved.
+
+Windows: the fixed probe executed once through real MCP for CP117, correlation
+`f604974c-5963-4b61-b538-7d2d5ad76c16`, and reached terminal invalid-credentials.
+No account reset, login, UI, MSI or VPN action occurred. Receipts are retained in
+checkpoint161/windows. Recover the owned fixture credential before MSI work;
+do not infer validity from older probes or replay an installer to test it.
+
+Android: the errno-enabled API29 APK installed successfully, but its one refresh
+still failed with errno111. The failure-only network-category collector now has
+causal unit evidence. The newly frozen APK SHA256 is
+`42cbaba1119e642bc4d6a73be7e682282570e9acff4a544778cbc9e10839c5c6`;
+checkpoint160/android-network/build-inputs.json records unchanged build inputs.
+Its first staged install failed before any refresh; that fallback incorrectly
+discarded ADB error text. Read-only signer/session reconciliation and one explicitly
+authorized fully captured retry are in progress. Do not claim a CP160 network result. The
+fixture subscription was removed and runtime remained OFF.
+
+macOS: literal /tmp versus /private/tmp mount identity reproduced on empty HFS+
+and APFS images; canonicalizing the owned directory before attachment fixed both.
+All owned scratch images were detached. This component evidence does not prove
+product replacement; the next CI run must verify the package repair. Latest VM
+capacity admission was below the required 6144MiB, so no VM was booted.
+
+## Historical continuation — checkpoint155
+
+Checkpoint155 repair `0701be421949d67d5430df90714df32f3df0058c` is pushed.
+Fast Checks and Android passed; macOS run36017568724 again failed with a busy
+mountpoint and `image-device-changed`. The prior cleanup change did not establish
+or fix that cause. Linux and Windows package workflows remain under observation.
+
+The next dirty batch intentionally includes the complete Android-emulator memory
+parser, bounded Android errno diagnostics, retained Linux authentication/PTY
+fixtures, and a fixed Windows credential-validity probe. New probe code is not
+eligible for guest execution until its bootstrap, correlation journal and tests
+are complete. No generic QGA execution capability is authorized by this design.
+
+| Task | Writer/operator | Exclusive scope | Current gate |
+| --- | --- | --- | --- |
+| Delivery/integration | root | Shared MCP wiring, bundles, docs, checks, commits | Review completed worker diffs before freeze |
+| Linux auth/PTY | root after linux_auth156/linux_pty156 handoff | Authentication helper and public fixture driver | Reviewed component tests; no password provisioned yet |
+| Linux native | rpm_retained157 | Fedora2328 read-only admission | Actual account lock status before new authentication |
+| Windows probe | windows_probe_finish157 | Fixed QGA probe module/tests | Finish durable execution before native use |
+| macOS cleanup | mac_cleanup156 | Package cleanup script/tests | Establish actual CI cause or add diagnostic evidence |
+| Android native | android_errno156 | Owned API29 emulator5684 | New frozen diagnostic APK and one refresh experiment |
+
+The previous Fedora install was deliberately cancelled through its public API
+after the SSH input channel was lost. Exact operation
+`d2c85157-79a6-4718-a9a7-3bb40e39e778` became terminal CANCELLED, update returned
+to ready, no authenticated worker receipt was created and no installer remained.
+This proves pre-authorization cancellation, not replacement. The account has no
+verified password source; the TLS store password was not used for OS auth.
+
+Android errno tests have causal RED/GREEN evidence in
+checkpoint156/android-errno/causal-{red,green}.{log,xml}: four tests, no skips,
+one intended RED assertion then all GREEN. The earlier constructor-default test
+failure was a test-fixture defect and is not causal evidence. The new nondebuggable
+APK SHA256 is `9cc80d0fb48200b41efdee46311b6f40c2dadd939ad873426c549bebaefaeda9`;
+its recorded source-input fingerprint includes the uncommitted diagnostic patch.
+It is not an exact-commit release artifact.
 
 Checkpoint153 `762190454129a9b203bbd5c734f15103b3100c0e` is committed and
 pushed after a valid full prepush receipt. Fast Checks run36016454696 exposed a

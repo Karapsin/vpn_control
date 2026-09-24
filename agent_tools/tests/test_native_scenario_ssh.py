@@ -146,7 +146,7 @@ class NativeScenarioSshTest(unittest.TestCase):
     def test_payload_uses_frozen_runner_after_checkout_runner_changes(self):
         checkout = self.work / "checkout"
         (checkout / "scripts").mkdir(parents=True)
-        required = ("test_linux_public_install.py", "arch_public_update.py", "rpm_public_update.py",
+        required = ("test_linux_public_install.py", "linux_fixture_auth.py", "arch_public_update.py", "rpm_public_update.py",
                     "prepare_desktop_update_fixture.py", "fixture_environment.py",
                     "macos_packaging_jdk_preflight.py", "native_fixture_run.sh")
         for name in required:

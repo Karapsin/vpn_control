@@ -41,6 +41,20 @@ class SshTransportTest(unittest.TestCase):
             with self.subTest(device=invalid), self.assertRaises(ssh.SshConfigError):
                 ssh._host_from_entry("vm", {**entry, "androidDevices": {"api29": invalid}})
 
+    def test_windows_probe_requires_exact_private_vm_and_account_identity(self):
+        entry = self.config()["hosts"]["vm"]
+        profile = {"environment": "owned-windows", "qgaSocketPath": "/home/tester/owned/qga.sock",
+                   "qemuPid": 123, "qemuStartTicks": 456, "accountName": "fixtureuser",
+                   "expectedSid": "S-1-5-21-1-2-3-1002", "credentialPath": str(Path.cwd() / "private-credential")}
+        host = ssh._host_from_entry("vm", {**entry, "windowsCredentialProbe": profile})
+        self.assertEqual(123, host.windows_credential_probe.qemu_pid)
+        self.assertEqual(profile["expectedSid"], host.windows_credential_probe.expected_sid)
+        for invalid in ({**profile, "qemuPid": True}, {**profile, "qemuStartTicks": 0},
+                        {**profile, "expectedSid": "S-1-5-18"}, {**profile, "credentialPath": "relative"},
+                        {**profile, "qgaSocketPath": "/tmp/../foreign.sock"}, {**profile, "command": "arbitrary"}):
+            with self.subTest(profile=invalid), self.assertRaises(ssh.SshConfigError):
+                ssh._host_from_entry("vm", {**entry, "windowsCredentialProbe": invalid})
+
     def test_transfer_root_is_optional_absolute_remote_and_not_filesystem_root(self):
         root = Path.cwd()
         entry = {"host": "example", "port": 22, "user": "tester",

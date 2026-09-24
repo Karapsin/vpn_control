@@ -59,14 +59,25 @@ def memory():
   return {"observedAtUnixMs":time.time_ns()//1000000,"availableMemoryBytes":data["MemAvailable"],"psi":pressure,"psiSomeAvg10":psi["some"],"psiFullAvg10":psi["full"],"vmstat":{"pswpin":vm["pswpin"],"pswpout":vm["pswpout"],"oomKill":vm["oom_kill"]}},data["MemTotal"],data.get("SwapTotal",0)-data.get("SwapFree",0)
  except (OSError,ValueError,KeyError,UnicodeError): return None,None,None
 def parse_memory(argv):
- value=None
+ values=[]
  for index,item in enumerate(argv):
-  if item==b"-m" and index+1<len(argv): value=argv[index+1]
-  elif item.startswith(b"-m="): value=item[3:]
-  elif item.startswith(b"-m") and len(item)>2 and item[2:3].isdigit(): value=item[2:]
- if value is None: return None
+  if item==b"-m":
+   if index+1>=len(argv): return None
+   values.append((b"qemu",argv[index+1]))
+  elif item.startswith(b"-m="): values.append((b"qemu",item[3:]))
+  elif item.startswith(b"-m") and len(item)>2 and item[2:3].isdigit(): values.append((b"qemu",item[2:]))
+  elif item==b"-memory":
+   if index+1>=len(argv): return None
+   values.append((b"android",argv[index+1]))
+  elif item.startswith(b"-memory="): return None
+ if len(values)!=1: return None
+ kind,value=values[0]
  try:
-  text=value.decode("ascii").upper(); suffix=text[-1:] if text[-1:] in ("K","M","G","T") else ""
+  text=value.decode("ascii").upper()
+  if kind==b"android":
+   if not text.isdigit() or int(text)<=0: return None
+   return int(text)*1048576
+  suffix=text[-1:] if text[-1:] in ("K","M","G","T") else ""
   number=text[:-1] if suffix else text
   if not number.isdigit() or int(number)<=0: return None
   return int(number)*{"":1048576,"K":1024,"M":1048576,"G":1073741824,"T":1099511627776}[suffix]

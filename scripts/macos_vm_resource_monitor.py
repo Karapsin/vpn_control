@@ -109,6 +109,7 @@ def monitor(args: argparse.Namespace) -> int:
                 "vm": args.vm_name,
             },
         )
+        stop_requested = False
         while child.poll() is None:
             try:
                 sample_pressure = pressure(args.sysctl)
@@ -121,7 +122,7 @@ def monitor(args: argparse.Namespace) -> int:
                 evidence / "samples.jsonl",
                 {"childExit": child.poll(), "pressure": sample_pressure, "swap": sample_swap, "time": time.time()},
             )
-            if sample_pressure != NORMAL_PRESSURE:
+            if sample_pressure != NORMAL_PRESSURE and not stop_requested:
                 try:
                     stopped = command(
                         [args.tart, "stop", args.vm_name, "--timeout", "60"],
@@ -135,6 +136,10 @@ def monitor(args: argparse.Namespace) -> int:
                     # The stop request may have reached Tart. Preserve the child
                     # and its receipts rather than issuing a duplicate stop.
                     return 2
+                # A completed stop request is the sole request for this owned
+                # child. It can take a scheduling interval for Tart to reap the
+                # child, during which pressure may remain elevated.
+                stop_requested = True
                 write_json(
                     evidence / "stop.json",
                     {"code": stopped.returncode, "stderr": stopped.stderr, "stdout": stopped.stdout},

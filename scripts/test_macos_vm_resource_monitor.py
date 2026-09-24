@@ -46,9 +46,16 @@ elif args[:1] == ['run']:
         os.replace(temporary, os.path.join(root, 'child.heartbeat'))
         heartbeat += 1
         time.sleep(.01)
+    exit_delay = float(os.environ.get('CHILD_EXIT_DELAY', '0'))
+    if exit_delay:
+        time.sleep(exit_delay)
 elif args[:1] == ['stop']:
-    if os.environ.get('STOP_TIMEOUT'):
-        time.sleep(1)
+    stop_delay = float(os.environ.get('STOP_DELAY', '0'))
+    if stop_delay:
+        time.sleep(stop_delay)
+    if os.environ.get('STOP_BLOCK'):
+        while True:
+            time.sleep(1)
     open(os.path.join(root, 'stop'), 'w').close()
 else:
     raise SystemExit(64)
@@ -92,11 +99,11 @@ class MonitorTest(unittest.TestCase):
         path.chmod(0o700)
         return path
 
-    def start_monitor(self, evidence: Path) -> subprocess.Popen[str]:
+    def start_monitor(self, evidence: Path, stop_timeout_seconds: str = "1") -> subprocess.Popen[str]:
         return subprocess.Popen(
             [sys.executable, str(MONITOR), "--vm-name", "owned-vm", "--evidence-dir", str(evidence),
              "--tart", str(self.tart), "--sysctl", str(self.sysctl), "--interval-seconds", "0.02",
-             "--stop-timeout-seconds", "0.05"],
+             "--stop-timeout-seconds", stop_timeout_seconds],
             text=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -108,6 +115,15 @@ class MonitorTest(unittest.TestCase):
         while not path.exists() and time.monotonic() < deadline:
             time.sleep(.01)
         self.assertTrue(path.exists(), path)
+
+    def assert_monitor_exit(self, monitor: subprocess.Popen[str], expected: int, evidence: Path) -> None:
+        actual = monitor.wait(timeout=3)
+        receipts: dict[str, object] = {}
+        for name in ("stop.json", "stop-uncertain.json", "observation-failure.json", "terminal.json"):
+            path = evidence / name
+            if path.exists():
+                receipts[name] = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(expected, actual, receipts)
 
     def wait_for_heartbeat_after(self, value: int) -> None:
         heartbeat = self.root / "child.heartbeat"
@@ -145,7 +161,7 @@ class MonitorTest(unittest.TestCase):
         process = json.loads((evidence / "process.json").read_text(encoding="utf-8"))
         self.assertNotEqual(process["childSessionId"], process["monitorSessionId"])
         (self.root / "stop").touch()
-        self.assertEqual(0, monitor.wait(timeout=3))
+        self.assert_monitor_exit(monitor, 0, evidence)
         terminal = json.loads((evidence / "terminal.json").read_text(encoding="utf-8"))
         self.assertEqual(0, terminal["childExit"])
         self.assertTrue((evidence / "samples.jsonl").exists())
@@ -156,7 +172,32 @@ class MonitorTest(unittest.TestCase):
         monitor = self.start_monitor(evidence)
         self.wait_for(evidence / "process.json")
         (self.root / "pressure").write_text("2\n", encoding="utf-8")
-        self.assertEqual(0, monitor.wait(timeout=3))
+        self.assert_monitor_exit(monitor, 0, evidence)
+        stopped = json.loads((evidence / "stop.json").read_text(encoding="utf-8"))
+        self.assertEqual(0, stopped["code"])
+        self.assertTrue((evidence / "terminal.json").exists())
+
+    @unittest.skipIf(os.name == "nt", "requires POSIX executable shebang fixture")
+    def test_pressure_stop_is_not_reissued_while_child_exits(self) -> None:
+        """A completed Tart stop may precede its child's observable exit."""
+        evidence = self.root / "single-pressure-stop-evidence"
+        self.environment["CHILD_EXIT_DELAY"] = "0.15"
+        monitor = self.start_monitor(evidence)
+        self.wait_for(evidence / "process.json")
+        (self.root / "pressure").write_text("2\n", encoding="utf-8")
+        self.assert_monitor_exit(monitor, 0, evidence)
+        calls = (self.root / "calls.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(1, sum(json.loads(call)[0] == "stop" for call in calls))
+        self.assertTrue((evidence / "terminal.json").exists())
+
+    @unittest.skipIf(os.name == "nt", "requires POSIX executable shebang fixture")
+    def test_pressure_stop_accepts_a_delayed_successful_invocation(self) -> None:
+        evidence = self.root / "delayed-pressure-stop-evidence"
+        self.environment["STOP_DELAY"] = "0.1"
+        monitor = self.start_monitor(evidence, stop_timeout_seconds="0.5")
+        self.wait_for(evidence / "process.json")
+        (self.root / "pressure").write_text("2\n", encoding="utf-8")
+        self.assert_monitor_exit(monitor, 0, evidence)
         stopped = json.loads((evidence / "stop.json").read_text(encoding="utf-8"))
         self.assertEqual(0, stopped["code"])
         self.assertTrue((evidence / "terminal.json").exists())
@@ -167,7 +208,7 @@ class MonitorTest(unittest.TestCase):
         monitor = self.start_monitor(evidence)
         self.wait_for(evidence / "process.json")
         self.sysctl.unlink()
-        self.assertEqual(2, monitor.wait(timeout=3))
+        self.assert_monitor_exit(monitor, 2, evidence)
         self.wait_for(self.root / "child.pid")
         pid = int((self.root / "child.pid").read_text(encoding="utf-8"))
         os.kill(pid, 0)
@@ -197,11 +238,11 @@ class MonitorTest(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "requires POSIX executable shebang fixture")
     def test_stop_timeout_is_uncertain_and_does_not_retry_or_kill_child(self) -> None:
         evidence = self.root / "timeout-evidence"
-        self.environment["STOP_TIMEOUT"] = "1"
-        monitor = self.start_monitor(evidence)
+        self.environment["STOP_BLOCK"] = "1"
+        monitor = self.start_monitor(evidence, stop_timeout_seconds="0.05")
         self.wait_for(evidence / "process.json")
         (self.root / "pressure").write_text("2\n", encoding="utf-8")
-        self.assertEqual(2, monitor.wait(timeout=3))
+        self.assert_monitor_exit(monitor, 2, evidence)
         child_pid = json.loads((evidence / "process.json").read_text(encoding="utf-8"))["childPid"]
         os.kill(child_pid, 0)
         self.assertTrue((evidence / "stop-uncertain.json").exists())

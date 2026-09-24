@@ -44,17 +44,19 @@ class SubscriptionDownloadClient(
             runtimeIsActive = state?.isVpnRunning == true,
             homeRouteEnabled = state?.homeSshRouteSettings?.enabled == true,
         )
+        val primaryTrace = SubscriptionDownloadNetworkTrace()
         return try {
-            fetchUsingRoute(url, timeoutSeconds, subscriptionHwid, routePlan.primary, state)
+            fetchUsingRoute(url, timeoutSeconds, subscriptionHwid, routePlan.primary, state, primaryTrace)
         } catch (error: IOException) {
             val fallback = routePlan.transportFailureFallback ?: run {
-                logDownloadFailure(routePlan.primary, error)
+                logDownloadFailure(routePlan.primary, error, primaryTrace)
                 throw error
             }
+            val fallbackTrace = SubscriptionDownloadNetworkTrace()
             try {
-                fetchUsingRoute(url, timeoutSeconds, subscriptionHwid, fallback, state)
+                fetchUsingRoute(url, timeoutSeconds, subscriptionHwid, fallback, state, fallbackTrace)
             } catch (fallbackError: IOException) {
-                logDownloadFailure(fallback, fallbackError)
+                logDownloadFailure(fallback, fallbackError, fallbackTrace)
                 throw fallbackError
             }
         }
@@ -66,15 +68,23 @@ class SubscriptionDownloadClient(
         subscriptionHwid: String,
         route: SubscriptionDownloadRoute,
         state: PersistedState?,
+        networkTrace: SubscriptionDownloadNetworkTrace,
     ): FetchedSubscriptionContent {
         return when (route) {
-            SubscriptionDownloadRoute.DIRECT -> execute(url, timeoutSeconds, subscriptionHwid, proxyPort = null)
+            SubscriptionDownloadRoute.DIRECT -> execute(
+                url,
+                timeoutSeconds,
+                subscriptionHwid,
+                proxyPort = null,
+                networkTrace = networkTrace,
+            )
             SubscriptionDownloadRoute.ACTIVE_SESSION -> execute(
                 url,
                 timeoutSeconds,
                 subscriptionHwid,
                 proxyPort = state?.managementProxyPort?.takeIf { it in 1..65535 }
                     ?: throw IOException("Active VPN management proxy is unavailable"),
+                networkTrace = networkTrace,
             )
             SubscriptionDownloadRoute.HOME_RELAY -> {
                 val appContext = context ?: error("SSH Routing is unavailable")
@@ -84,7 +94,7 @@ class SubscriptionDownloadClient(
                 AndroidHomeSshBootstrapProxy(appContext).useProxy(
                     HomeSshRouteRuntimeOptions(settings, keyPath),
                 ) { port ->
-                    execute(url, timeoutSeconds, subscriptionHwid, proxyPort = port)
+                    execute(url, timeoutSeconds, subscriptionHwid, proxyPort = port, networkTrace = networkTrace)
                 }
             }
         }
@@ -95,6 +105,7 @@ class SubscriptionDownloadClient(
         timeoutSeconds: Int,
         subscriptionHwid: String,
         proxyPort: Int?,
+        networkTrace: SubscriptionDownloadNetworkTrace,
     ): FetchedSubscriptionContent {
         val requestBuilder = Request.Builder().url(url)
         SubscriptionRequestHeaders.build(
@@ -107,6 +118,7 @@ class SubscriptionDownloadClient(
         val request = requestBuilder.build()
         val clientBuilder = OkHttpClient.Builder()
             .callTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .eventListener(networkTrace)
         if (proxyPort != null) {
             clientBuilder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", proxyPort)))
         }
@@ -129,7 +141,11 @@ class SubscriptionDownloadClient(
         }
     }
 
-    private fun logDownloadFailure(route: SubscriptionDownloadRoute, error: IOException) {
+    private fun logDownloadFailure(
+        route: SubscriptionDownloadRoute,
+        error: IOException,
+        networkTrace: SubscriptionDownloadNetworkTrace,
+    ) {
         runCatching {
             val status = httpStatusOrNull(error)
             diagnosticsLogger(
@@ -143,6 +159,7 @@ class SubscriptionDownloadClient(
                         },
                     )
                     status?.let { append(" http_status=").append(it) }
+                    append(' ').append(networkTrace.summary())
                     append(' ').append(AndroidFailureTrace.format("subscription-refresh.download", error))
                 },
             )

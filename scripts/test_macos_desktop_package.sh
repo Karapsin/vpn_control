@@ -39,7 +39,9 @@ for dmg in "${dmg_files[@]}"; do
 
   echo "[vpn-control] smoke testing macOS DMG: $dmg"
   mount_dir="$(mktemp -d)"
+  mount_dir="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve(strict=True))' "$mount_dir")"
   attached=false
+  attachment_identity_established=false
   attached_volume_device=""
   attached_device=""
   volume_attachment_matches() {
@@ -114,6 +116,7 @@ raise SystemExit(any(isinstance(image, dict) and image.get("image-path") == imag
   }
   post_detach_attachment_state() {
     hdiutil info -plist | python3 -c '
+import json
 import plistlib
 import sys
 
@@ -134,14 +137,25 @@ if not isinstance(entities, list):
     print("malformed-image")
     raise SystemExit(0)
 devices = [entity.get("dev-entry") for entity in entities if isinstance(entity, dict)]
+observed = [{
+    "writeable": matching_images[0].get("writeable"),
+    "devices": [device for device in devices if isinstance(device, str)],
+    "mountPoints": [
+        "owned" if entity.get("mount-point") == mountpoint else "other"
+        for entity in entities
+        if isinstance(entity, dict) and isinstance(entity.get("mount-point"), str)
+    ],
+}]
+diagnostic = "; expected-image-device=" + image_device + "; observed=" + json.dumps(
+    observed, separators=(",", ":"), sort_keys=True)
 if image_device not in devices:
-    print("image-device-changed")
+    print("image-device-changed" + diagnostic)
     raise SystemExit(0)
 mounts = [entity for entity in entities if isinstance(entity, dict) and entity.get("mount-point") == mountpoint]
 if mounts:
-    print("still-attached-owned-image")
+    print("still-attached-owned-image" + diagnostic)
 else:
-    print("image-attached-elsewhere")
+    print("image-attached-elsewhere" + diagnostic)
 ' "$mount_dir" "$dmg" "$attached_device"
   }
   detach_owned() {
@@ -198,6 +212,10 @@ else:
       if rmdir "$mount_dir"; then return; fi
       if (( attempt < 5 )); then sleep 1; fi
     done
+    if [[ "$attachment_identity_established" != true ]]; then
+      echo "DMG mountpoint could not be removed after attachment identity was not established; fixture preserved at $mount_dir" >&2
+      return 1
+    fi
     attachment_state="unavailable"
     if ! attachment_state="$(post_detach_attachment_state)"; then
       attachment_state="unavailable"
@@ -208,29 +226,43 @@ else:
   trap cleanup EXIT
 
   attachment_devices="$(hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_dir" -plist | python3 -c '
+import json
 import plistlib
 import sys
 
 mountpoint = sys.argv[1]
 document = plistlib.loads(sys.stdin.buffer.read())
 entities = document.get("system-entities")
-if not isinstance(entities, list):
+def observed_entities(values):
+    if not isinstance(values, list):
+        return []
+    return [{
+        "device": entity.get("dev-entry") if isinstance(entity.get("dev-entry"), str) else None,
+        "mountPoint": "owned" if entity.get("mount-point") == mountpoint else
+            "other" if isinstance(entity.get("mount-point"), str) else None,
+    } for entity in values if isinstance(entity, dict)]
+def reject(classification):
+    print("DMG attachment identity rejected: classification=" + classification + "; observed=" +
+          json.dumps(observed_entities(entities), separators=(",", ":"), sort_keys=True), file=sys.stderr)
     raise SystemExit(1)
+if not isinstance(entities, list):
+    reject("entities-not-list")
 mounts = [entity for entity in entities if isinstance(entity, dict) and entity.get("mount-point") == mountpoint]
 if len(mounts) != 1 or not isinstance(mounts[0].get("dev-entry"), str):
-    raise SystemExit(1)
+    reject("owned-mount-count=" + str(len(mounts)))
 mounted_device = mounts[0]["dev-entry"]
 image_devices = [entity.get("dev-entry") for entity in entities if isinstance(entity, dict)
                  and isinstance(entity.get("dev-entry"), str) and mounted_device.startswith(entity["dev-entry"] + "s")]
 if len(image_devices) != 1:
-    raise SystemExit(1)
+    reject("image-parent-count=" + str(len(image_devices)))
 print(mounted_device, image_devices[0])
 ' "$mount_dir")"
   read -r attached_volume_device attached_device <<< "$attachment_devices"
   if [[ -z "$attached_volume_device" || -z "$attached_device" ]]; then
-    echo "DMG attachment did not report an owned volume and image device" >&2
+    echo "DMG attachment identity rejected: empty captured volume or image device" >&2
     exit 1
   fi
+  attachment_identity_established=true
   attached=true
 
   app_path="$(find "$mount_dir" -maxdepth 2 -type d -name '*.app' | head -n 1)"

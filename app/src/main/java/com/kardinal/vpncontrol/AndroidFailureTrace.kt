@@ -1,11 +1,13 @@
 package com.kardinal.vpncontrol
 
+import android.system.ErrnoException
 import java.util.IdentityHashMap
 
 /** Message-free, bounded diagnostic shape for failures that may contain secrets. */
 internal object AndroidFailureTrace {
     private const val MAX_CAUSES = 4
     private const val MAX_FRAMES_PER_CAUSE = 12
+    private const val MAX_SAFE_ERRNO = 4095
 
     fun format(stage: String, failure: Throwable): String = buildString {
         append("stage=").append(stage)
@@ -15,6 +17,10 @@ internal object AndroidFailureTrace {
         while (current != null && cause < MAX_CAUSES && seen.put(current, Unit) == null) {
             append(" cause[").append(cause).append("]=")
             append(current.javaClass.name)
+            (current as? ErrnoException)
+                ?.errno
+                ?.takeIf { it in 1..MAX_SAFE_ERRNO }
+                ?.let { append(" errno=").append(it) }
             current.stackTrace.take(MAX_FRAMES_PER_CAUSE).forEach { frame ->
                 append(" @").append(frame.className).append('#').append(frame.methodName)
                     .append(':').append(frame.lineNumber)
