@@ -21,6 +21,12 @@ class FakeAdb:
     def __init__(self, proxy_failure=False, remove_failures=0):
         self.reverse_map = {}
         self.proxy = 'null'
+        self.proxy_settings = {
+            'global_http_proxy_host': 'null',
+            'global_http_proxy_port': 'null',
+            'global_http_proxy_pac': 'null',
+            'global_http_proxy_exclusion_list': 'null',
+        }
         self.proxy_failure = proxy_failure
         self.remove_failures = remove_failures
         self.rooted = False
@@ -51,6 +57,9 @@ class FakeAdb:
         return b'base'
     def shell(self, *args):
         self.calls.append(('shell', *args))
+        if args[:3] == ('settings', 'get', 'global'):
+            key = args[3]
+            return self.proxy if key == 'http_proxy' else self.proxy_settings[key]
         if args == ('getprop', 'ro.kernel.qemu.avd_name'): return 'avd'
         if args == ('getprop', 'ro.build.version.sdk'): return '29'
         if args == ('dumpsys', 'package', 'com.kardinal.vpncontrol'):
@@ -568,6 +577,27 @@ class PreflightScriptTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'unowned public transport baseline'):
                     preflight.run_fixture_lifecycle(args, lambda *_: self.fail('action must not run'), transport_mode='reverse-only')
             self.assertEqual({45390: 61001}, fake.reverse_map)
+
+    def test_lifecycle_rejects_stale_effective_proxy_before_fixture_mutation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'
+            base.write_bytes(b'base'); cert.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(adb='adb', serial='serial', cli=root/'cli.py', certificate=cert,
+                leaf_certificate=leaf, fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=root/'receipt.json',
+                expected_avd='avd', expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest())
+            fake = FakeAdb()
+            fake.proxy_settings['global_http_proxy_host'] = '127.0.0.1'
+            fake.proxy_settings['global_http_proxy_port'] = '29579'
+            with patch.object(preflight, 'Adb', return_value=fake), \
+                 patch.object(preflight, 'verify_public_baseline') as baseline:
+                with self.assertRaisesRegex(ValueError, 'effective proxy'):
+                    preflight.run_fixture_lifecycle(args, lambda *_: self.fail('action must not run'),
+                                                    transport_mode='reverse-only')
+            baseline.assert_not_called()
+            self.assertNotIn(('root',), fake.calls)
+            self.assertEqual({}, fake.reverse_map)
 
     def test_tls_fixture_cold_action_follows_ca_bind_public_adbd_and_transport(self):
         """The public probe must see the fixture only after its complete cold-start setup."""

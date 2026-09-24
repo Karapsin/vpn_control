@@ -685,3 +685,9 @@ helpers, proving the probe sentinel is not launched after a dropped transfer.
 The verifier itself is an argument, not another unverified transferred file.
 The completion-runner suite also compares malformed generated Python without
 and with `native_fixture_run.sh`, retaining failure receipts without invoking ADB.
+
+The Android fixture preflight selection checks every global proxy component,
+including PAC and exclusions. Its lifecycle regression must reject a stale
+component even when `http_proxy=null`, before any fixture mutation. Keep the
+full disabled baseline in the native receipt and verify effective network state
+after cleanup; settings storage alone does not prove cached routing has changed.

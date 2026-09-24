@@ -1137,3 +1137,22 @@ probe never launches. Routine hygiene retains this causal check. This is fixture
 portability, not an Android or Windows product installation failure. Native
 missing-input rejection and all exact-SHA package workflows remain required.
 CI log: `.runtime/checkpoint141/fixture-review142/windows-hygiene-35991779882-failed.log`.
+
+### Stale Android proxy components behind a null legacy setting — checkpoint143
+
+API29 public subscription refresh terminally failed with CONNECTIVITY even though
+its admission recorded `http_proxy=null`. The emulator still had
+`global_http_proxy_host=127.0.0.1` and port29579; no listener existed, and system
+HTTP/HTTPS probes failed connecting to that endpoint. The test subscription was
+deleted by its returned identity after terminal failure, preserving the original
+source and stopped runtime. This is fixture state, not established product failure.
+
+The effective-proxy guard reads the legacy setting, host, port, PAC and exclusion
+fields. A lifecycle regression proves that the observed stale state is rejected
+before fixture mutation; additional cases cover each active/partial component,
+missing fields and disabled representations. The real no-update TLS/refresh
+lifecycle consumes the guard and records its disabled baseline. All54 focused
+preflight/refresh tests pass in routine release hygiene. Native cleanup must
+revalidate exact task-owned stale values, then verify both stored settings and
+actual effective network state; a null legacy value alone is insufficient.
+Evidence: remote `/home/kardinal/.vpn-control-android-cp142-public-refresh/`.

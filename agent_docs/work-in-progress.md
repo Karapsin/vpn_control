@@ -25,7 +25,36 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint142
+## Current continuation — checkpoint143
+
+Checkpoint142 `043697a1c7e7dfde091bc2101a0afcecf09ac263` is pushed after full
+prepush passed; required exact-SHA CI is still being watched. Version2.1.16,
+Unreleased8 before this batch. The Windows missing-helper diagnostic correction
+has passed that workflow's hygiene step; full package completion remains required.
+
+API29 refresh terminally failed because stale global proxy host/port fields
+survived behind `http_proxy=null`. Targeted subscription cleanup restored the
+original source. A causal effective-proxy admission regression and real lifecycle
+wiring now pass54 focused tests. Native repair is limited to the two revalidated
+task-owned stale settings, with cached network state verification before a new
+refresh scenario. No uncertain operation is replayed.
+
+The macOS memory guard stopped target packaging, then a read-only boot. A strictly
+read-only/noowners offline mount recovered logs and the completed base DMG,
+SHA44ddb727…, with the disk detached afterward. The target reached app-image
+creation but has no DMG; no package-pair success is claimed. Root is assessing
+canonical packaging of that frozen app image without a VM boot. Rollback114 is
+untouched. Export pointer: checkpoint143/mac-artifact-export.json.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration143 | root | Android guard review/docs, CI, shared checks and delivery |
+| Android proxy143 | android_proxy143 | API29 exact stale proxy repair and effective-state evidence; no refresh replay |
+| Linux build143 | linux_build143 | New Fedora2328 build-only dependencies and immutable ba35-equivalent2.1.16/2.1.17 pair; no app replacement |
+| macOS artifact143 | mac_artifact_read143 | Read-only packaging feasibility; VM remains stopped |
+| Windows console | root | Host unlock requested; interactive acceptance pending |
+
+## Historical continuation — checkpoint142
 
 Checkpoint141 `6e3c167fac21b7d6a69369a682d177cfb6fbaec5` was pushed after
 fresh full prepush passed (checkpoint141/prepush-final-result.json). Windows

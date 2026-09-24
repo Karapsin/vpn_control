@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+from android_fixture_preflight import read_effective_proxy, require_disconnected_effective_proxy
 from android_fixture_transport import cleanup_fixture_transport, establish_fixture_transport, parse_reverse_inventory
 from android_fixture_trust import (
     android_ca_store_filename,
@@ -354,8 +355,13 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
     receipt = {"serial": args.serial, "target": args.target, "expectedProxy": expected_proxy,
                "targetInstall": target_install, "cleanupFailures": []}
     previous_proxy = adb.global_proxy()
-    if adb.shell_id() != "uid=2000" or adb.reverse_inventory() or previous_proxy != expected_proxy:
+    effective_proxy = require_disconnected_effective_proxy(
+        read_effective_proxy(lambda field: adb.shell("settings", "get", "global", field))
+    )
+    if (adb.shell_id() != "uid=2000" or adb.reverse_inventory() or previous_proxy != expected_proxy
+            or effective_proxy["http_proxy"] != previous_proxy):
         raise RuntimeError("Public no-update preflight requires an unowned public transport baseline")
+    receipt["effectiveProxyBaseline"] = effective_proxy
     receipt["baseline"] = verify_public_baseline(
         adb, args.cli, args.serial, args.expected_avd, args.expected_api,
         args.expected_version, args.expected_code, args.base_sha256, cli_environment,
