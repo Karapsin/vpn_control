@@ -55,6 +55,21 @@ class SshTransportTest(unittest.TestCase):
             with self.subTest(profile=invalid), self.assertRaises(ssh.SshConfigError):
                 ssh._host_from_entry("vm", {**entry, "windowsCredentialProbe": invalid})
 
+    def test_windows_recovery_admission_requires_complete_task_binding(self):
+        profile = {"environment": "owned-windows", "qgaSocketPath": "/owned/qga.sock",
+                   "qemuPid": 123, "qemuStartTicks": 456, "accountName": "fixtureuser",
+                   "expectedSid": "S-1-5-21-1-2-3-1002", "credentialPath": str(Path.cwd() / "credential")}
+        task = {"taskName": "OwnedTask", "taskPath": "\\", "expectedLastResult": 1601,
+                "expectedTaskExecute": "C:\\Windows\\powershell.exe", "expectedTaskPrincipal": "fixtureuser",
+                "expectedTaskArgumentsSha256": "a" * 64, "expectedTaskState": "Disabled"}
+        admitted = ssh._windows_credential_probe({**profile, "recoveryAdmission": task})
+        self.assertEqual("OwnedTask", admitted.recovery_admission.task_name)
+        self.assertIsNone(ssh._windows_credential_probe(profile).recovery_admission)
+        for invalid in ({}, {**task, "expectedLastResult": True}, {**task, "expectedLastResult": -1},
+                        {**task, "expectedTaskArgumentsSha256": "bad"}, {**task, "expectedTaskState": "Running"}, {**task, "command": "untrusted"}):
+            with self.subTest(admission=invalid), self.assertRaises(ssh.SshConfigError):
+                ssh._windows_credential_probe({**profile, "recoveryAdmission": invalid})
+
     def test_transfer_root_is_optional_absolute_remote_and_not_filesystem_root(self):
         root = Path.cwd()
         entry = {"host": "example", "port": 22, "user": "tester",

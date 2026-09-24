@@ -346,12 +346,21 @@ def _remote_command(program: str, *arguments: str) -> tuple[str, ...]:
     return ("python3", "-c", "exec(" + repr(program) + ")", *arguments)
 
 
-def start(root: Path | str, host: str, correlation_id: str, timeout_seconds: int = ssh_transport.DEFAULT_TIMEOUT_SECONDS) -> dict[str, Any]:
+def start_with_private_secret(root: Path | str, host: str, correlation_id: str, secret: bytes,
+                              timeout_seconds: int = ssh_transport.DEFAULT_TIMEOUT_SECONDS) -> dict[str, Any]:
+    """Internal fixed dispatch for a privately generated fixture credential.
+
+    The MCP route still uses ``start`` and its configured credential file. This
+    entry point keeps the same frozen helper, journal, and QGA operation while a
+    recovery verifies a new store handle before publishing it as active.
+    """
     _correlation(correlation_id); config = _config(root)
     target = config.hosts.get(host)
     if target is None or target.fixture_transfer_root is None: raise WindowsCredentialProbeSshError("Configured fixture transfer root is required.")
-    env, socket, pid, ticks, account, sid, credential = _descriptor(target)
-    helpers, hashes = _capture_helpers(); secret = _private_secret(credential)
+    env, socket, pid, ticks, account, sid, _ = _descriptor(target)
+    if not isinstance(secret, bytes) or not 0 < len(secret) <= _MAX_SECRET:
+        raise WindowsCredentialProbeSshError("Private generated credential is invalid.")
+    helpers, hashes = _capture_helpers()
     root_path = Path(root).resolve()
     record = {"host": host, "environment": env, "socketPath": socket, "pid": pid, "startTicks": ticks, "accountName": account, "expectedSid": sid, "helperHashes": hashes}
     _write_intent(root_path, correlation_id, record)
@@ -359,6 +368,15 @@ def start(root: Path | str, host: str, correlation_id: str, timeout_seconds: int
     secret = b""
     raw = _run_ssh(config, host, _remote_command(_REMOTE_START, str(target.fixture_transfer_root), env, correlation_id), _remote_payload(payload), timeout_seconds)
     return _public(raw, correlation_id)
+
+
+def start(root: Path | str, host: str, correlation_id: str, timeout_seconds: int = ssh_transport.DEFAULT_TIMEOUT_SECONDS) -> dict[str, Any]:
+    config = _config(root)
+    target = config.hosts.get(host)
+    if target is None:
+        raise WindowsCredentialProbeSshError("Configured fixture transfer root is required.")
+    _, _, _, _, _, _, credential = _descriptor(target)
+    return start_with_private_secret(root, host, correlation_id, _private_secret(credential), timeout_seconds)
 
 
 def status(root: Path | str, host: str, correlation_id: str, timeout_seconds: int = ssh_transport.DEFAULT_TIMEOUT_SECONDS) -> dict[str, Any]:

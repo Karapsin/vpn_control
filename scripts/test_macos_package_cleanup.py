@@ -13,10 +13,15 @@ import unittest
 class MacPackageCleanupTest(unittest.TestCase):
     def scenario(self, failures, smoke_exit=0, force_succeeds=False, identity_matches=True, extra_mount=False,
                  rmdir_failures=0, post_detach_state="absent", partition_detach_leaves_image_attached=False,
-                 volume_detach_still_reports_mount=False, initial_attach_mode="normal"):
+                 volume_detach_still_reports_mount=False, initial_attach_mode="normal", aliased_root=False):
         temporary = tempfile.TemporaryDirectory(prefix="mac cleanup-東京-")
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
+        if aliased_root:
+            alias = root.with_name(root.name + "-alias")
+            alias.symlink_to(root.resolve(), target_is_directory=True)
+            self.addCleanup(alias.unlink)
+            root = alias
         commands = root / "commands"
         commands.mkdir()
         mount = root / "mount"
@@ -257,12 +262,11 @@ else: raise AssertionError(name)
         self.assertIn("after attachment identity was not established", result.stderr)
         self.assertNotIn("after detach; attachment state", result.stderr)
 
-    def test_canonical_private_var_mountpoint_matches_hdiutil_attach_entity(self):
-        root, result, calls = self.scenario(failures=0)
+    def test_canonical_aliased_mountpoint_matches_hdiutil_attach_entity(self):
+        root, result, calls = self.scenario(failures=0, aliased_root=True)
         raw_mount = root / "mount"
         canonical_mount = raw_mount.resolve()
-        self.assertTrue(str(raw_mount).startswith("/var/"))
-        self.assertTrue(str(canonical_mount).startswith("/private/var/"))
+        self.assertNotEqual(raw_mount, canonical_mount, "Fixture must exercise a real pathname alias")
         attach = next(call for call in calls if call[:2] == ["hdiutil", "attach"])
         self.assertEqual(str(canonical_mount), attach[attach.index("-mountpoint") + 1])
         self.assertEqual(0, result.returncode, result.stderr)

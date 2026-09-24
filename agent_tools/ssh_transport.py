@@ -44,6 +44,17 @@ class ProbeStatus(str, Enum):
 
 
 @dataclass(frozen=True)
+class WindowsCredentialRecoveryAdmission:
+    task_name: str
+    task_path: str
+    expected_last_result: int
+    expected_task_execute: str
+    expected_task_principal: str
+    expected_task_arguments_sha256: str
+    expected_task_state: str
+
+
+@dataclass(frozen=True)
 class WindowsCredentialProbe:
     environment: str
     qga_socket_path: PurePosixPath
@@ -52,6 +63,7 @@ class WindowsCredentialProbe:
     account_name: str
     expected_sid: str
     credential_path: Path
+    recovery_admission: WindowsCredentialRecoveryAdmission | None = None
 
 
 @dataclass(frozen=True)
@@ -210,7 +222,7 @@ def _android_devices(value: Any) -> dict[str, dict[str, Any]]:
 
 def _windows_credential_probe(value: Any) -> WindowsCredentialProbe:
     fields = {"environment", "qgaSocketPath", "qemuPid", "qemuStartTicks", "accountName", "expectedSid", "credentialPath"}
-    if not isinstance(value, dict) or set(value) != fields:
+    if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"recoveryAdmission"}:
         raise SshConfigError("Windows probe requires explicit VM and account identity fields.")
     environment = _string(value["environment"], "environment")
     if not _ALIAS_RE.fullmatch(environment):
@@ -223,8 +235,25 @@ def _windows_credential_probe(value: Any) -> WindowsCredentialProbe:
     sid = _string(value["expectedSid"], "expectedSid")
     if not re.fullmatch(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+", sid):
         raise SshConfigError("Invalid Windows fixture account identity.")
+    admission = None
+    if "recoveryAdmission" in value:
+        recovery = value["recoveryAdmission"]
+        recovery_fields = {"taskName", "taskPath", "expectedLastResult", "expectedTaskExecute", "expectedTaskPrincipal", "expectedTaskArgumentsSha256", "expectedTaskState"}
+        if not isinstance(recovery, dict) or set(recovery) != recovery_fields:
+            raise SshConfigError("Credential recovery requires an exact task binding.")
+        if type(recovery["expectedLastResult"]) is not int or not 0 <= recovery["expectedLastResult"] <= 0xffffffff:
+            raise SshConfigError("Invalid credential recovery task result.")
+        digest = recovery["expectedTaskArgumentsSha256"]
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise SshConfigError("Invalid credential recovery action digest.")
+        if recovery["expectedTaskState"] not in ("Ready", "Disabled"):
+            raise SshConfigError("Credential recovery requires an inactive task state.")
+        admission = WindowsCredentialRecoveryAdmission(
+            _string(recovery["taskName"], "taskName"), _string(recovery["taskPath"], "taskPath"),
+            recovery["expectedLastResult"], _string(recovery["expectedTaskExecute"], "expectedTaskExecute"),
+            _string(recovery["expectedTaskPrincipal"], "expectedTaskPrincipal"), digest, recovery["expectedTaskState"])
     return WindowsCredentialProbe(environment, socket_path, value["qemuPid"], value["qemuStartTicks"],
-                                  _ssh_user(value["accountName"]), sid, _path(value["credentialPath"], "credentialPath"))
+                                  _ssh_user(value["accountName"]), sid, _path(value["credentialPath"], "credentialPath"), admission)
 
 
 def _host_from_entry(alias: str, entry: Any) -> SshHost:

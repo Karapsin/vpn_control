@@ -193,6 +193,86 @@ vm_workflow("windows-credential-probe-status", {
 })
 ```
 
+### Fixed Windows credential recovery
+
+Credential recovery uses owner-only opaque handles from `NativeCredentialStore`.
+Every handle is bound to the exact `environment`, `accountName`, `expectedSid`,
+purpose `account-login`, and one attempt `correlationId`; a handle cannot be read,
+observed, or made active under another binding. The secret is generated and kept
+under ignored `.runtime/native-credentials`; no secret is accepted in tool
+arguments or returned in stdout/results. Earlier handles remain private audit
+records after a later credential becomes active.
+
+The optional `recoveryAdmission` field belongs inside the private
+`windowsCredentialProbe` object shown above. When present, its field set is exact:
+
+```json
+"recoveryAdmission": {
+  "taskName": "<owned-task-name>",
+  "taskPath": "\\",
+  "expectedLastResult": 0,
+  "expectedTaskState": "Disabled",
+  "expectedTaskExecute": "<approved-task-executable>",
+  "expectedTaskPrincipal": "<approved-task-principal>",
+  "expectedTaskArgumentsSha256": "<64 lowercase hex argument digest>"
+}
+```
+
+These values admit one configured owned task only. The argument digest is stored
+only in ignored private inventory; callers cannot provide task fields, an
+executable, script, arguments, account data, or a credential. The durable recovery
+intent retains the prior private credential reference and refuses publication if
+that reference or the VM/account binding has changed.
+
+`vm_workflow("windows-credential-recover-start", inputs=...)` and
+`vm_workflow("windows-credential-recover-status", inputs=...)` accept exactly
+`host`, `correlationId`, and optional integer `timeoutSeconds` from 1 through 60
+(15 by default). `vm_workflow("credential-status", inputs=...)` accepts exactly
+`host`, `correlationId`, and opaque `handle`; it reports availability plus the
+bound environment, account name, SID, purpose, and correlation, never credential
+bytes. `correlationId` must be a UUID.
+
+```text
+vm_workflow("windows-credential-recover-start", {
+  "host": "<host-alias>", "correlationId": "<new UUID>", "timeoutSeconds": 15
+})
+vm_workflow("windows-credential-recover-status", {
+  "host": "<host-alias>", "correlationId": "<same UUID>", "timeoutSeconds": 15
+})
+vm_workflow("credential-status", {
+  "host": "<host-alias>", "correlationId": "<same UUID>", "handle": "<opaque nc-... handle>"
+})
+```
+
+Start records durable intent before its single fixed reset submission. For a lost
+response, timeout, or `unknown` result, call recovery status with the same
+correlation; never replay the reset. Once reset reaches a successful terminal
+receipt, status may advance the authorized recovery by running the fixed
+credential-validity verification. It observes an existing verification attempt
+when present and does not reissue the password reset. Only successful fixed
+verification updates the private inventory reference and publishes the active
+handle. Inactive task state must match exactly (`Disabled` or `Ready`); queued or
+running tasks are never admitted. A terminal `verified: true` response establishes
+recovery; credential-file existence alone does not. Rejections report a bounded
+admission stage without disclosing raw exceptions or secret values.
+
+### Owned Android stale-proxy recovery
+
+`vm_workflow("android-proxy-recover", inputs=...)` accepts exactly `host`, `device`,
+`expectedPort` (1–65535), and a UUID `correlationId`. It uses the configured owned
+API29 profile and fixed loopback host, requires an OFF owner with no active
+operations, absent stored proxy fields, and fresh independent NetworkMonitor
+refusal at the expected task port. It records private intent before the single
+Android proxy-observer clear. Merely deleting stored settings does not establish
+that Android's cached proxy has cleared.
+
+Completion requires a clear broadcast and successful fresh network validation,
+then restores absent fields only while they still equal the values written by
+the clear operation. `vm_workflow("android-proxy-recovery-status", inputs=...)`
+accepts exactly `host`, `device`, and the returned `identity`. Reused correlations
+only observe; unknown results never trigger another clear. Full command streams
+stay in private evidence; public output contains categorical results and identity.
+
 ### Native artifact, bundle, and environment helpers
 
 The helpers below are local coordination and evidence tools. They never search a

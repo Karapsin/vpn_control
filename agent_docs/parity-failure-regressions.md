@@ -1334,3 +1334,35 @@ verification, not Android lifecycle acceptance or remote artifact freshness.
   same child completes. Complete isolated Arch verification: auth 19 passing;
   public-install harness 28 passing, no skips. No real account/install operation
   was performed. External driver process death still requires reconciliation.
+
+## Checkpoint162 — portable CI and native fixture observations
+
+- The macOS alias regression assumed /var -> /private/var on all POSIX hosts.
+  CI dd10018 exposed the unsupported Linux assumption. The fixture now creates
+  an actual temporary symlink on any POSIX host. Real Arch evidence in
+  checkpoint162/macos-alias-linux.json records old assertion RED and 14 tests GREEN.
+- Windows CI rejected the retained-auth negative test because it imported termios
+  before credential admission. A portable regression makes PTY allocation fail if
+  reached; invalid credentials now reject before platform resources/signals.
+  Evidence: checkpoint162/pty-admission-{red,green}.log.
+- Fedora replacement succeeded but mixed terminal capture did not yield a parsed
+  public envelope. Actual renderer is compact, so multiline output is not a proven
+  cause. Retained stdout is now separated from PTY prompts and decoded as one
+  strict bounded JSON document; native recovery independently established exact
+  SUCCEEDED/OK and restored the original fixture credential. Native rerun of the
+  revised observation path remains required.
+
+- Absent Android global proxy keys did not clear cached system routing. Fresh
+  NetworkMonitor and unrelated apps still used the old task loopback proxy. The
+  supported deprecated http_proxy observer clear generated a null-proxy broadcast
+  and HTTP/HTTPS204; one pinned public refresh then committed successfully. New
+  android_proxy_recovery tests reproduce delete-only failure and require effective
+  clear proof, exact owned profile, guarded restoration and unknown non-replay.
+- Windows fixture credential recovery initially misread scheduled-task numeric1
+  as Ready, so the mutation guard correctly rejected it. Exact string Disabled
+  admission now replaces that interpretation; Running/Queued/numeric values reject.
+  New credential-store/backend regressions cover private ancestry, stable-key
+  collisions, concurrent recovery reservations, correlated outcomes, publication
+  races, top-level MCP import mode and platform boundaries. One subsequent native
+  recovery verified its generated credential before activating the private handle.
+  Earlier rejected intent and prior credential reference remain preserved.

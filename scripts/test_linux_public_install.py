@@ -215,7 +215,8 @@ def launch_with_controlling_tty(arguments, slave_fd, **kwargs):
     def attach_tty():
         os.setsid()
         fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
-    return subprocess.Popen(arguments, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+    stdout = kwargs.pop("stdout", slave_fd)
+    return subprocess.Popen(arguments, stdin=slave_fd, stdout=stdout, stderr=slave_fd,
                             preexec_fn=attach_tty, **kwargs)
 
 
@@ -289,18 +290,17 @@ def retained_terminal_master():
         raise
 
 
-def _terminal_json_envelope(terminal_bytes):
-    """Read one public JSON response without retaining a terminal transcript."""
-    values = []
-    for line in terminal_bytes.splitlines():
-        try:
-            candidate = json.loads(line)
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            continue
-        if isinstance(candidate, dict) and candidate.get("schemaVersion") == 1:
-            values.append(candidate)
-    require(len(values) == 1, "Retained terminal did not produce one public result envelope")
-    return values[0]
+def _terminal_json_envelope(public_stdout):
+    """Decode exactly one CLI stdout document, never terminal prompt text."""
+    if not public_stdout.strip():
+        raise RuntimeError("Retained CLI stdout did not contain one public result envelope (empty)")
+    try:
+        candidate = json.loads(public_stdout)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise RuntimeError("Retained CLI stdout did not contain one public result envelope (invalid JSON)") from None
+    require(isinstance(candidate, dict) and candidate.get("schemaVersion") == 1,
+            "Retained CLI stdout did not contain one public result envelope (wrong schema)")
+    return candidate
 
 
 def prepare_retained_fixture_auth(evidence, correlation, preserve_existing_password=False):
@@ -333,21 +333,27 @@ def invoke_retained_install(launcher, workspace, environment, arguments, credent
 
     require(tuple(arguments) == timed_update_command("install", 240),
             "Retained terminal driver permits only the fixed public install command")
-    master, slave = retained_fds if retained_fds is not None else retained_terminal_master()
+    # Reject invalid credentials before allocating platform resources or changing signals.
+    # Status returns metadata only and never materializes the credential.
+    credential = status(credential_dir=credential_directory, correlation=correlation, purpose=purpose)
+    require(credential.get("correlation") == correlation and credential.get("purpose") == purpose
+            and credential.get("account") == authorized_identity,
+            "Credential admission differs from the retained terminal identity")
+    public_output = tempfile.TemporaryFile(mode="w+b")
+    try:
+        master, slave = retained_fds if retained_fds is not None else retained_terminal_master()
+    except BaseException:
+        public_output.close()
+        raise
     output = bytearray()
     selected = False
     password_written = False
     deadline_elapsed = False
     old_hup = signal.signal(signal.SIGHUP, signal.SIG_IGN)
     try:
-        # Revalidate the private file immediately before the command starts;
-        # status returns metadata only and never materializes the credential.
-        credential = status(credential_dir=credential_directory, correlation=correlation, purpose=purpose)
-        require(credential.get("correlation") == correlation and credential.get("purpose") == purpose
-                and credential.get("account") == authorized_identity,
-                "Credential admission differs from the retained terminal identity")
         process = launch_with_controlling_tty(
-            [str(launcher), "--state-dir", str(workspace), "--json", *arguments], slave, env=environment)
+            [str(launcher), "--state-dir", str(workspace), "--json", *arguments], slave,
+            env=environment, stdout=public_output)
         os.close(slave)
         slave = None
         deadline = time.monotonic() + seconds
@@ -391,7 +397,10 @@ def invoke_retained_install(launcher, workspace, environment, arguments, credent
         envelope_error = None
         if result["exit"] is not None:
             try:
-                envelope = _terminal_json_envelope(bytes(output))
+                public_output.seek(0)
+                public_stdout = public_output.read(65537)
+                require(len(public_stdout) <= 65536, "Retained CLI stdout exceeded the public result limit")
+                envelope = _terminal_json_envelope(public_stdout)
             except RuntimeError as error:
                 envelope_error = str(error)
         receipt = {"correlation": correlation, "exit": result["exit"],
@@ -413,6 +422,7 @@ def invoke_retained_install(launcher, workspace, environment, arguments, credent
         if slave is not None:
             os.close(slave)
         os.close(master)
+        public_output.close()
 
 
 def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_deb_dependencies=False,

@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.18 - 2026-09-24
 
 - Add private SSH and VM admission tools with correlated job observation and guarded DMG cleanup.
 - Publish verified native fixture helpers with recoverable SSH status and quieter command output.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Account for Android emulator memory in native capacity observations while rejecting ambiguous allocations.
 - Harden retained native authentication and credential probes, repair package checks, and add bounded Android network diagnostics.
 - Preserve retained terminal ownership after deadlines and verify native probes through the real SSH transport.
+- Manage native fixture credentials through verified private MCP recovery and repair stale proxy and installer observations.
 
 ## 2.1.17 - 2026-09-24
 

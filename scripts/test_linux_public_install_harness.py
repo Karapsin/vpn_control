@@ -22,11 +22,22 @@ from test_linux_public_install import (launch_fixture_owner, require_package_man
                                        write_password_to_original_master,
                                        launch_with_controlling_tty,
                                        invoke_retained_install,
+                                       _terminal_json_envelope,
                                        require_human_terminal,
                                        timed_update_command, verify_recovered_install)
 
 
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
+    def test_public_envelope_requires_one_complete_stdout_document(self):
+        envelope = {"schemaVersion": 1, "code": "ACCEPTED", "final": False,
+                    "data": {"nested": {"schemaVersion": 1, "status": "accepted"}}}
+        rendered = json.dumps(envelope, indent=2).encode()
+        self.assertEqual(envelope, _terminal_json_envelope(rendered + b"\r\n"))
+        for invalid in (rendered + rendered, b"diagnostic prefix " + rendered,
+                        b"Password: " + rendered, b"", b'{"schemaVersion":2}'):
+            with self.subTest(invalid=invalid[:20]), self.assertRaisesRegex(RuntimeError, "one public result envelope"):
+                _terminal_json_envelope(invalid)
+
     @unittest.skipUnless(sys.platform.startswith("linux"), "requires Linux controlling terminal semantics")
     def test_controlling_tty_launch_assigns_dev_tty_while_bare_popen_does_not(self):
         import pty
@@ -122,14 +133,14 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
             launcher = root / "fixture-launcher"
             launcher.write_text("#!" + sys.executable + "\n"
                                 "import json, os, termios, time\n"
-                                "os.write(1, b'Multiple identities can be used for authentication:\\n 1.  vpnfixture\\nChoose identity to authenticate as (1-1): ')\n"
+                                "tty = os.open('/dev/tty', os.O_RDWR)\n"
+                                "os.write(tty, b'Multiple identities can be used for authentication:\\n 1.  vpnfixture\\nChoose identity to authenticate as (1-1): ')\n"
                                 "assert os.read(0, 8) == b'1\\n'\n"
                                 "time.sleep(.12)\n"
                                 "a=termios.tcgetattr(0); a[3] &= ~(termios.ECHO | termios.ECHONL); termios.tcsetattr(0, termios.TCSAFLUSH, a)\n"
-                                "os.write(1, b'Password: ')\n"
+                                "os.write(tty, b'Password: ')\n"
                                 "assert os.read(0, 64) == b'synthetic-private-password\\n'\n"
-                                "os.write(1, b'\\n')\n"
-                                "os.write(1, json.dumps({'schemaVersion': 1, 'code': 'ACCEPTED', 'final': False, 'data': {}}).encode() + b'\\n')\n")
+                                "os.write(1, json.dumps({'schemaVersion': 1, 'code': 'ACCEPTED', 'final': False, 'data': {'nested': {'schemaVersion': 1}}}, indent=2).encode() + b'\\n')\n")
             launcher.chmod(0o700)
             auth = types.SimpleNamespace(
                 status=lambda **kwargs: {"correlation": kwargs["correlation"], "purpose": kwargs["purpose"],
@@ -194,12 +205,15 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="vpn-retained-purpose-") as temporary:
             root = Path(temporary)
             with mock.patch.dict(sys.modules, {"linux_fixture_auth": auth}), \
-                 mock.patch("test_linux_public_install.launch_with_controlling_tty") as launch:
+                 mock.patch("test_linux_public_install.launch_with_controlling_tty") as launch, \
+                 mock.patch("test_linux_public_install.retained_terminal_master",
+                            side_effect=AssertionError("Invalid credentials reached platform PTY allocation")) as terminal:
                 with self.assertRaisesRegex(RuntimeError, "purpose rejected"):
                     invoke_retained_install(Path("/not-started"), root / "workspace", {},
                                             ("--timeout-seconds", "240", "updates", "install"),
                                             root / "credential", "correlation-156", "wrong-purpose", "vpnfixture", root)
             launch.assert_not_called()
+            terminal.assert_not_called()
             auth.read_credential_after_prompt.assert_not_called()
 
     def test_complete_handoff_survives_terminal_close_race(self):

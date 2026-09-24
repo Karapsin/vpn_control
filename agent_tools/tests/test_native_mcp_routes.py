@@ -25,6 +25,50 @@ class NativeRoutesTest(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertNotIn("private sentinel", json.dumps(result))
 
+    def test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        class PrivateError(ValueError):
+            pass
+        backend = SimpleNamespace(start=Mock(return_value={"state": "submitted"}),
+                                  status=Mock(return_value={"state": "unknown"}),
+                                  credential_status=Mock(return_value={"state": "ready"}),
+                                  WindowsCredentialRecoveryError=PrivateError)
+        request = {"host": "owned", "correlationId": "00000000-0000-0000-0000-000000000001"}
+        original_import = mcp_server.importlib.import_module
+        def load(name):
+            return backend if name.endswith("windows_credential_recovery_ssh") else original_import(name)
+        with patch.object(mcp_server.importlib, "import_module", side_effect=load):
+            self.assertEqual("submitted", mcp_server.vm_workflow("windows-credential-recover-start", request)["state"])
+            backend.start.assert_called_once_with(mcp_server.REPO_ROOT, "owned", request["correlationId"], timeout_seconds=15)
+            for forbidden in ("password", "command", "accountName", "expectedSid", "credentialPath"):
+                backend.start.reset_mock()
+                self.assertFalse(mcp_server.vm_workflow("windows-credential-recover-start", {**request, forbidden: "private"})["ok"])
+                backend.start.assert_not_called()
+            mcp_server.vm_workflow("credential-status", {**request, "handle": "opaque"})
+            backend.credential_status.assert_called_once_with(mcp_server.REPO_ROOT, "owned", "opaque", request["correlationId"])
+            backend.status.side_effect = PrivateError("secret sentinel")
+            result = mcp_server.vm_workflow("windows-credential-recover-status", request)
+            self.assertFalse(result["ok"])
+            self.assertNotIn("secret sentinel", json.dumps(result))
+
+    def test_android_proxy_recovery_accepts_only_fixed_device_and_correlation(self):
+        from agent_tools import android_proxy_recovery as recovery
+        request = {"host": "owned", "device": "api29", "expectedPort": 12345,
+                   "correlationId": "00000000-0000-0000-0000-000000000001"}
+        with patch.object(recovery, "recover_owned_stale_proxy", return_value={"ok": False, "state": "unknown"}) as start:
+            result = mcp_server.vm_workflow("android-proxy-recover", request)
+            self.assertEqual("unknown", result["state"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, "owned", "api29", 12345, request["correlationId"])
+            for invalid in ({**request, "expectedPort": True}, {**request, "command": "settings"}):
+                start.reset_mock()
+                self.assertFalse(mcp_server.vm_workflow("android-proxy-recover", invalid)["ok"])
+                start.assert_not_called()
+        with patch.object(recovery, "observe_recovery", side_effect=recovery.AndroidProxyRecoveryError("private sentinel")):
+            result = mcp_server.vm_workflow("android-proxy-recovery-status", {"host": "owned", "device": "api29", "identity": {}})
+            self.assertFalse(result["ok"])
+            self.assertNotIn("private sentinel", json.dumps(result))
+
     def test_apk_publication_requires_exact_fields_before_transport(self):
         from agent_tools import ssh_transfer
         with patch.object(ssh_transfer, "publish_android_apk") as publish:

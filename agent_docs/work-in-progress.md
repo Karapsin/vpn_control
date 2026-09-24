@@ -25,7 +25,68 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint160
+## Current continuation — checkpoint162
+
+Checkpoint `dd10018a6ded3a68181bbb15f97100038a3f6097` was reviewed, passed the
+complete local prepush tier and pushed to origin/dev. CI is not complete: Fast
+Checks/Android/Linux failed a macOS test assuming every host uses /var temporary
+paths; Windows failed because invalid credentials reached POSIX PTY allocation
+before rejection. Root has causal fixes: explicit temporary symlink alias fixture
+(real Arch RED then all 14 GREEN), and credential rejection before platform
+resources (portable RED/GREEN). macOS package CI run36026211545 completed successfully; all other required
+workflows need a new push containing the portability repairs.
+
+User additionally requires credential handling integrated into MCP. The owned
+Windows fixture's only retained credential was conclusively rejected by native
+LogonUser. Do not ask the user to recover agent-created fixture secrets. Implement
+private handle storage, exact environment/account/SID/purpose binding, durable
+non-replay recovery, and verified atomic active-reference publication. Never put
+passwords in public tool arguments, output, logs or tracked source. The Windows
+reset is restricted to the explicitly configured task account and must preserve
+pending installer work. Recovery correlation `99af1dac-6bec-4202-9b40-a7118c7a7ee1`
+now completed through fresh stdio MCP: one reset, one fixed probe, terminal
+verified=true, and atomic private inventory/active-handle publication. The old
+credential file remains preserved. Earlier correlation fd25f70a-9f78-473c-9a89-0e00edd58de8
+was rejected before mutation because numeric task state1 was misread as Ready;
+it is Disabled. Explicit string-state admission and rejection-stage tests prevent
+that interpretation error. No UI, MSI or VPN action followed the recovery.
+
+| Task | Owner | Scope | Gate |
+| --- | --- | --- | --- |
+| Integration/CI | root | Shared MCP routes, schema, docs, delivery | Review credential backend; rerun full prepush after final edits |
+| Credential recovery | windows_access_recover162 | Store, fixed backend, reset script/tests; owned CP117 | Native reset/probe/publication verified; final integrated checks pending |
+| Android proxy | android_proxy_origin162 | Owned API29 only | Clear exact stale task proxy through supported system observer, then one public refresh |
+| Linux envelope | linux_envelope162 | Driver and tests | Separate stdout from PTY; complete 29-test Arch harness passed |
+
+Fedora2328 native RPM replacement succeeded with frozen base2.1.16/target2.1.17.
+Protected job `7b7b99aa-6401-4289-9bb1-c0d74355269f` is SUCCEEDED/OK. Replacement
+owner `1780cc81-65a6-4284-a424-2178b94e2690` recovered exact origin/request/operation;
+installed image matches frozen pair and rpm -V is clean. Runtime remains OFF.
+Original fixture password hash/aging was restored and private auth directory
+removed. No installer/package manager remains; replacement owner is alive. Guest
+proof is under the frozen cp161 RPM bundle's native-recovery.json. Driver stdout
+parsing failed after success; no installer was replayed. Actual CLI emits compact
+JSON, so earlier pretty-print attribution was unproven. The revised driver uses
+separate private stdout capture rather than parsing mixed terminal prompts.
+
+API29 CP160 APK installed successfully on the fully captured second attempt. One
+pinned fixture refresh failed with dns=none, HTTP loopback proxy and errno111;
+fixture selection/subscription cleanup completed. NetworkMonitor and unrelated
+apps also targeted the old task proxy 127.0.0.1:29579, proving emulator-wide stale
+proxy state despite absent settings. Preserve app system-proxy behavior; cleanup
+must clear effective routing and verify it, not merely delete settings keys.
+The supported http_proxy=:0 observer clear then produced a null-proxy broadcast
+and HTTP/HTTPS204 from NetworkMonitor. The subsequent pinned refresh operation
+`b2d2aca7-0779-41d1-911c-241454fc0259` committed OK (one refreshed, zero failed).
+Original selection was restored, exact fixture removed, runtimeOFF and all ten
+operations terminal. Evidence: checkpoint162/android-refresh and android-proxy-cleanup.
+
+macOS remains stopped. Heavy swap and low disk space prevented admission. Root
+removed only reproducible app/build/intermediates release/nativeFixture native-lib
+outputs after all host builds finished; source, APK outputs and frozen evidence
+remain intact. Free disk increased to about2.18GB; this alone does not admit a VM.
+
+## Historical continuation — checkpoint160
 
 The goal remains incomplete. HEAD/origin/dev is
 `0701be421949d67d5430df90714df32f3df0058c` (version 2.1.17).

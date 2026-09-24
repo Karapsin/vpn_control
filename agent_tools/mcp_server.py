@@ -1765,6 +1765,46 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     try:
         if not isinstance(inputs, dict):
             return _error("vm_workflow", "VM workflow inputs must be an object.")
+        if action in ("android-proxy-recover", "android-proxy-recovery-status"):
+            fields = {"host", "device", "expectedPort", "correlationId"} if action == "android-proxy-recover" else {"host", "device", "identity"}
+            if set(inputs) != fields or any(not isinstance(inputs[key], str) or not inputs[key] for key in ("host", "device")):
+                return _error("vm_workflow", "Proxy recovery requires an exact configured host/device and recovery identity.")
+            if action == "android-proxy-recover" and (type(inputs["expectedPort"]) is not int or not 1 <= inputs["expectedPort"] <= 65535 or not isinstance(inputs["correlationId"], str)):
+                return _error("vm_workflow", "Proxy recovery requires a task port and opaque correlation.")
+            proxy_recovery = importlib.import_module(f"{__package__}.android_proxy_recovery" if __package__ else "android_proxy_recovery")
+            try:
+                if action == "android-proxy-recover":
+                    result = proxy_recovery.recover_owned_stale_proxy(REPO_ROOT, inputs["host"], inputs["device"], inputs["expectedPort"], inputs["correlationId"])
+                else:
+                    result = proxy_recovery.observe_recovery(REPO_ROOT, inputs["host"], inputs["device"], inputs["identity"])
+                return {"tool": "vm_workflow", **result}
+            except proxy_recovery.AndroidProxyRecoveryError:
+                return _error("vm_workflow", "Proxy recovery could not be admitted or observed; private diagnostics are retained locally.")
+        if action in ("windows-credential-recover-start", "windows-credential-recover-status", "credential-status"):
+            required = {"host", "correlationId"}
+            optional = {"timeoutSeconds"}
+            if action == "credential-status":
+                required.add("handle")
+                optional = set()
+            if not required <= set(inputs) or set(inputs) - required - optional:
+                return _error("vm_workflow", "Credential workflow requires only configured identity and an opaque correlation or handle.")
+            if any(not isinstance(inputs[key], str) or not inputs[key] for key in required):
+                return _error("vm_workflow", "Credential workflow identity fields must be nonempty strings.")
+            timeout = inputs.get("timeoutSeconds", 15)
+            if type(timeout) is not int or not 1 <= timeout <= 60:
+                return _error("vm_workflow", "Credential workflow timeout must be between 1 and 60 seconds.")
+            recovery = importlib.import_module(f"{__package__}.windows_credential_recovery_ssh" if __package__ else "windows_credential_recovery_ssh")
+            try:
+                if action == "credential-status":
+                    result = recovery.credential_status(REPO_ROOT, inputs["host"], inputs["handle"], inputs["correlationId"])
+                    accepted = result.get("available") is True
+                else:
+                    function = recovery.start if action.endswith("-start") else recovery.status
+                    result = function(REPO_ROOT, inputs["host"], inputs["correlationId"], timeout_seconds=timeout)
+                    accepted = result.get("state") in {"submitted", "verifying"} or (result.get("state") == "terminal" and result.get("success") is True)
+                return {"tool": "vm_workflow", **result, "ok": accepted}
+            except recovery.WindowsCredentialRecoveryError:
+                return _error("vm_workflow", "Credential workflow could not be admitted or observed; private input details are withheld.")
         if action in ("windows-credential-probe-start", "windows-credential-probe-status"):
             if set(inputs) - {"host", "correlationId", "timeoutSeconds"} or not {"host", "correlationId"} <= set(inputs):
                 return _error("vm_workflow", "Credential probe requires a configured host and correlationId only, with an optional timeoutSeconds.")
@@ -1776,7 +1816,9 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             probe = importlib.import_module(f"{__package__}.windows_credential_probe_ssh" if __package__ else "windows_credential_probe_ssh")
             try:
                 function = probe.start if action.endswith("-start") else probe.status
-                return {"tool": "vm_workflow", **function(REPO_ROOT, inputs["host"], inputs["correlationId"], timeout_seconds=timeout)}
+                result = function(REPO_ROOT, inputs["host"], inputs["correlationId"], timeout_seconds=timeout)
+                accepted = result.get("state") == "submitted" or (result.get("state") == "terminal" and result.get("success") is True)
+                return {"tool": "vm_workflow", **result, "ok": accepted}
             except probe.WindowsCredentialProbeSshError:
                 return _error("vm_workflow", "Configured Windows credential probe could not be admitted or observed; private input details are withheld.")
         if action in ("scenario-start", "scenario-status", "scenario-resume", "scenario-collect"):
@@ -1940,7 +1982,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "windows-credential-probe-start", "windows-credential-probe-status"))
+    vm_parser.add_argument("action", choices=("inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status"))
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")
