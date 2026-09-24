@@ -21,6 +21,16 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 
 
 class SocksHttpFixtureTest(unittest.TestCase):
+    def test_forward_resolution_preserves_ipv6_fallback_and_loopback_rejection(self) -> None:
+        ipv6 = (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("::1", 443, 0, 0))
+        ipv4 = (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 443))
+        external = (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("192.0.2.1", 443))
+        for addresses, expected in [([ipv6, ipv4], ipv4), ([ipv6], ipv6)]:
+            with self.subTest(addresses=addresses), mock.patch("socket.getaddrinfo", return_value=addresses):
+                self.assertEqual(expected, SocksHttpFixtureHandler._owned_loopback_address("localhost", 443))
+        with mock.patch("socket.getaddrinfo", return_value=[ipv4, external]), self.assertRaises(OSError):
+            SocksHttpFixtureHandler._owned_loopback_address("localhost", 443)
+
     def test_held_socks_tunnel_does_not_starve_a_second_http_tunnel(self) -> None:
         """A persistent continuity stream must not serialize later TUN probes."""
         with tempfile.TemporaryDirectory() as directory:

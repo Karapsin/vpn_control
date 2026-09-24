@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Align HTTPS fixture and SOCKS loopback address selection with packaged JVM clients while retaining IPv6 fallback.
+
 ## 2.1.16 - 2026-09-23
 
 - Report interrupted Android CLI streams as cancellation without changing uncertain mutation outcomes.

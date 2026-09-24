@@ -79,7 +79,11 @@ def _localhost_tls_server(context: ssl.SSLContext) -> _TlsThreadingHTTPServer:
     )
     if not addresses or any(not ipaddress.ip_address(item[4][0]).is_loopback for item in addresses):
         raise OSError("localhost must resolve exclusively to loopback addresses")
-    family, _socket_type, _protocol, _canonical_name, address = addresses[0]
+    # Standard JVM clients prefer IPv4 even when the system resolver lists ::1
+    # first. Bind the same loopback family used by the relay's upstream socket.
+    family, _socket_type, _protocol, _canonical_name, address = next(
+        (item for item in addresses if item[0] == socket.AF_INET), addresses[0]
+    )
 
     class LocalhostTlsServer(_TlsThreadingHTTPServer):
         address_family = family

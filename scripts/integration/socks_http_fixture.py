@@ -117,7 +117,9 @@ class SocksHttpFixtureHandler(socketserver.BaseRequestHandler):
         addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
         if not addresses or any(not ipaddress.ip_address(item[4][0]).is_loopback for item in addresses):
             raise OSError("forwarding destination is not loopback")
-        return addresses[0]
+        # Match the HTTPS fixture listener when localhost resolves to both
+        # families; explicit IPv6-only loopback destinations remain supported.
+        return next((item for item in addresses if item[0] == socket.AF_INET), addresses[0])
 
     def _relay(self, upstream: socket.socket) -> None:
         peers = (self.request, upstream)

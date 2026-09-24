@@ -12,11 +12,40 @@ import time
 import unittest
 from pathlib import Path
 from urllib.parse import urlparse
+from unittest.mock import patch
 
 from integration.https_subscription_relay_fixture import HttpsSubscriptionRelayFixture
 
 
 class HttpsSubscriptionRelayFixtureTest(unittest.TestCase):
+    def test_ipv6_first_resolver_still_serves_ipv4_clients_and_socks_forwarding(self) -> None:
+        real_resolve = socket.getaddrinfo
+
+        def ipv6_first(host, port, *args, **kwargs):
+            if host == "localhost":
+                return [
+                    (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("::1", port, 0, 0)),
+                    (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", port)),
+                ]
+            return real_resolve(host, port, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            certificate, private_key = self.create_certificate_pair(root)
+            fixture = HttpsSubscriptionRelayFixture(certificate, private_key, root / "ready.json", "ignored")
+            with patch("socket.getaddrinfo", side_effect=ipv6_first):
+                try:
+                    ready = fixture.start()
+                    expected = f"socks://127.0.0.1:{ready['relayPort']}\n".encode()
+                    context = ssl.create_default_context(cafile=str(certificate))
+                    with socket.create_connection(("127.0.0.1", ready["httpsPort"]), timeout=3) as connection:
+                        with context.wrap_socket(connection, server_hostname="localhost") as tls:
+                            tls.sendall(b"GET /subscription HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                            self.assertEqual(expected, http_body(receive_until_close(tls)))
+                    self.assertEqual(expected, self.fetch_via_socks(certificate, ready["relayPort"], "localhost", ready["httpsPort"]))
+                finally:
+                    fixture.stop()
+
     def create_certificate_pair(self, directory: Path) -> tuple[Path, Path]:
         certificate = directory / "certificate.pem"
         private_key = directory / "private.pem"

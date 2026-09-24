@@ -634,3 +634,11 @@ finalization commands; it does not authorize host installation or test CA trust.
 Use `--discard-completed-builds` only through the builder, which verifies retained
 artifacts before discarding each generated stage. The option is covered by the
 routine desktop update fixture test suite.
+
+### HTTPS fixture address-family admission
+
+Routine `test_https_subscription_relay_fixture.py` covers an IPv6-first resolver
+with a real IPv4 TLS client and SOCKS forwarding through the same fixture.
+`test_vpn_integration_fixture.py` preserves IPv6-only fallback and rejects any
+non-loopback resolution. Use the installed JVM for native resolver diagnostics;
+a system JVM alone does not establish the packaged runtime behavior.

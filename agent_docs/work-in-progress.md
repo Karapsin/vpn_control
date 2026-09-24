@@ -25,7 +25,42 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint134
+## Current continuation — checkpoint135
+
+Checkpoint134 `8fcd7225d84a232db5897763801fc47782c2ffc5` is pushed after the full
+managed prepush tier; version2.1.16. Its exact-SHA package CI is being watched.
+The last fully verified pushed SHA remains checkpoint131 until that watch finishes.
+
+Linux CP133 accepted the HTTPS source but manual refresh persisted Connection
+refused before runtime startup. Its fixture bound only IPv6 localhost, while a
+diagnostic using the installed17.0.20.1 JVM resolves IPv4 first and reproduces the
+refusal. This is fixture address-family mismatch, not a product TLS change. CP135
+prefers IPv4 when available for both the HTTPS listener and the loopback-pinned
+SOCKS upstream, retaining IPv6-only fallback and rejection of non-loopback answers.
+The causal quick test first failed with connection refused; five HTTPS and sixteen
+SOCKS tests now pass. Evidence: checkpoint135/linux-localhost. The original failed
+native attempt is preserved in checkpoint133/linux-scheduler-https.
+
+The corrected CP135 native run has passed manual HTTPS refresh, VPN startup and
+the normalized five-minute setting; its scheduled-refresh/traffic result is still
+pending. Observe its exact durable ticket in checkpoint135/linux-scheduler-ipv4;
+do not replay on observer timeout. It uses the installed6ee/2.1.15 RPM.
+
+API35 admission reidentified only emulator5682, UID2000, nondebuggable2.1.15 APK
+SHA1ac2ac0d823bf6f0403f57ea3156c90209a3d91c64ccf4af919132c32af92401,
+OFF with no proxy/reverse mappings. A newer installed receipt is present; the old
+cancel session is historical. No installation was resumed. Exact large-request
+replay on API35 is a separate bounded task; its actual heap is512m, not48m.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration135 | root | Shared fixture correction, metadata, host builds and delivery |
+| Linux scheduler | root | CP120 Fedora, one CP135 attempt; exact ticket observation and cleanup |
+| Android35 replay | android35_install125 | emulator5682 only; reviewed replay/restore flow, no installer or UI action |
+| Android29 | no active operator | emulator5684 remains restored/OFF after CP134 |
+| Windows/macOS console | no active operator | Host Mac locked; unlock requested; guest installer state untouched |
+
+## Historical continuation — checkpoint134
 
 Checkpoint131 `e715284fb85430344b10ffe144264d02a6599467` is pushed with all five
 required exact-SHA workflows successful (managed checkpoint131/commit-result.json).
