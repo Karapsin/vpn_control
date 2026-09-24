@@ -691,3 +691,16 @@ including PAC and exclusions. Its lifecycle regression must reject a stale
 component even when `http_proxy=null`, before any fixture mutation. Keep the
 full disabled baseline in the native receipt and verify effective network state
 after cleanup; settings storage alone does not prove cached routing has changed.
+
+The desktop update fixture suite rejects missing Git, source archives and Git
+subdirectories before creating output. The Android fixture preflight suite admits
+retained terminal history while rejecting active/unknown/foreign-owner records;
+a terminal restart-required flag does not itself indicate active work.
+
+### Native MCP workflow regressions
+
+Run `python3 -m unittest discover -s agent_tools/tests` for private SSH profile
+validation, strict host-key routing, actual fake-SSH timeout/quoting behavior,
+canonical staged-input isolation, resource planning, and public MCP/CLI dispatch.
+This suite is already included in managed prepush. These checks do not substitute
+for a live authenticated probe, measured host admission, or native product tests.

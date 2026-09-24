@@ -35,20 +35,57 @@ for dmg in "${dmg_files[@]}"; do
     exit 1
   fi
 
+  dmg="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve(strict=True))' "$dmg")"
+
   echo "[vpn-control] smoke testing macOS DMG: $dmg"
   mount_dir="$(mktemp -d)"
   attached=false
+  attached_device=""
+  attachment_matches() {
+    hdiutil info -plist | python3 -c '
+import plistlib
+import sys
+
+mountpoint, image_path, device = sys.argv[1:]
+document = plistlib.loads(sys.stdin.buffer.read())
+images = document.get("images")
+if not isinstance(images, list):
+    raise SystemExit(1)
+matching_images = [image for image in images if isinstance(image, dict) and image.get("image-path") == image_path]
+if len(matching_images) != 1:
+    raise SystemExit(1)
+image = matching_images[0]
+if image.get("writeable") is not False:
+    raise SystemExit(1)
+entities = image.get("system-entities")
+if not isinstance(entities, list):
+    raise SystemExit(1)
+mounts = [entity for entity in entities if isinstance(entity, dict) and "mount-point" in entity]
+if len(mounts) != 1 or mounts[0].get("mount-point") != mountpoint or mounts[0].get("dev-entry") != device:
+    raise SystemExit(1)
+' "$mount_dir" "$dmg" "$attached_device"
+  }
+  detach_owned() {
+    if ! attachment_matches; then
+      echo "DMG attachment identity changed; mounted fixture preserved at $mount_dir" >&2
+      return 1
+    fi
+    hdiutil detach "$attached_device" -quiet
+  }
   cleanup() {
     # Do not repeat cleanup through EXIT if explicit cleanup itself fails.
     trap - EXIT
     if [[ "$attached" == true ]]; then
       for attempt in 1 2 3 4 5; do
-        if hdiutil detach "$mount_dir" -quiet; then
+        if detach_owned; then
           attached=false
           break
         fi
         if (( attempt < 5 )); then sleep 1; fi
       done
+      if [[ "$attached" == true ]] && attachment_matches && hdiutil detach "$attached_device" -force -quiet; then
+        attached=false
+      fi
       if [[ "$attached" == true ]]; then
         echo "DMG could not be detached; mounted fixture preserved at $mount_dir" >&2
         return 1
@@ -60,7 +97,20 @@ for dmg in "${dmg_files[@]}"; do
   }
   trap cleanup EXIT
 
-  hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_dir" -quiet
+  attached_device="$(hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_dir" -plist | python3 -c '
+import plistlib
+import sys
+
+mountpoint = sys.argv[1]
+document = plistlib.loads(sys.stdin.buffer.read())
+entities = document.get("system-entities")
+if not isinstance(entities, list):
+    raise SystemExit(1)
+mounts = [entity for entity in entities if isinstance(entity, dict) and entity.get("mount-point") == mountpoint]
+if len(mounts) != 1 or not isinstance(mounts[0].get("dev-entry"), str):
+    raise SystemExit(1)
+print(mounts[0]["dev-entry"])
+' "$mount_dir")"
   attached=true
 
   app_path="$(find "$mount_dir" -maxdepth 2 -type d -name '*.app' | head -n 1)"

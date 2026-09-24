@@ -272,6 +272,36 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             self.assertEqual(0, (output / "source/gradle.properties").stat().st_mode & 0o222)
             verify_sources(output / "source", snapshot["files"])
 
+    def test_prepare_rejects_missing_git_before_creating_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository, runtime = self.source(root)
+            output = root / "fixture"
+            with patch.dict(os.environ, {"PATH": ""}), \
+                    self.assertRaisesRegex(ValueError, "requires git on PATH"):
+                prepare(repository, output, "2.1.2", "2.1.3", runtime, "linux", "x86_64")
+            self.assertFalse(output.exists())
+
+    def test_prepare_rejects_source_archive_before_creating_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository, runtime = self.source(root)
+            archive = root / "source-archive"
+            shutil.copytree(repository, archive, ignore=shutil.ignore_patterns(".git"))
+            output = root / "fixture"
+            with self.assertRaisesRegex(ValueError, "requires a Git working tree"):
+                prepare(archive, output, "2.1.2", "2.1.3", runtime, "linux", "x86_64")
+            self.assertFalse(output.exists())
+
+    def test_prepare_rejects_git_worktree_subdirectory_before_creating_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository, runtime = self.source(root)
+            output = root / "fixture"
+            with self.assertRaisesRegex(ValueError, "working tree root"):
+                prepare(repository / "scripts", output, "2.1.2", "2.1.3", runtime, "linux", "x86_64")
+            self.assertFalse(output.exists())
+
     def test_rejects_generated_android_native_cache(self):
         with tempfile.TemporaryDirectory() as temporary:
             repository, _ = self.source(Path(temporary))

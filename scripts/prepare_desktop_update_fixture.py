@@ -251,7 +251,23 @@ def gitlink_identity(path, index_commit):
     return identity
 
 
+def require_git_source_repository(repository):
+    require(shutil.which("git") is not None,
+            "Fixture source admission requires git on PATH")
+    admission = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "--is-inside-work-tree"],
+        check=False, capture_output=True, text=True,
+    )
+    require(admission.returncode == 0 and admission.stdout.strip() == "true",
+            "Fixture source admission requires a Git working tree; source archives are not admitted")
+    top = subprocess.run(["git", "-C", str(repository), "rev-parse", "--show-toplevel"],
+                         check=True, capture_output=True, text=True).stdout.strip()
+    require(Path(top).resolve() == Path(repository).resolve(),
+            "Fixture source admission requires the Git working tree root")
+
+
 def source_entries(repository):
+    require_git_source_repository(repository)
     listed = subprocess.run(["git", "-C", str(repository), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
                             check=True, capture_output=True).stdout
     indexed = subprocess.run(["git", "-C", str(repository), "ls-files", "--stage", "-z"],

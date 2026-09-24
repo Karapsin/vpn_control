@@ -186,6 +186,8 @@ class McpProtocolTest(unittest.IsolatedAsyncioTestCase):
                 "visual_workflow",
                 "visual_review",
                 "git_workflow",
+                "ssh_workflow",
+                "vm_workflow",
             },
             {tool.name for tool in result.tools},
         )

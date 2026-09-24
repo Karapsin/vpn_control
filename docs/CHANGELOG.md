@@ -5,6 +5,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Add private SSH and VM admission tools with correlated job observation and guarded DMG cleanup.
+
+## 2.1.17 - 2026-09-24
+
 - Align HTTPS fixture and SOCKS loopback address selection with packaged JVM clients while retaining IPv6 fallback.
 - Preserve owned macOS VM monitoring across observer process-group loss and record uncertain stops.
 - Report safe localized subscription refresh failures consistently across GUI and CLI.
@@ -14,6 +18,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Verify transferred native fixture helpers and support bounded Java dependency tunnels.
 - Report missing native fixture helpers consistently across host platforms.
 - Reject stale Android fixture proxy components before native setup.
+- Validate fixture Git sources and distinguish terminal history from active operations.
 
 ## 2.1.16 - 2026-09-23
 

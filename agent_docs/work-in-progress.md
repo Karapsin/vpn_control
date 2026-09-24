@@ -25,7 +25,43 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint143
+## Current continuation — checkpoint145
+
+The user prioritized reusable VM/SSH MCP workflows before resuming platform
+acceptance. Hosts and credentials belong in private ignored `.vm-hosts.local.json`.
+Every discovered failure must improve the related MCP workflow and retain its
+causal quick regression and native scenario. The first slice now provides private
+SSH inventory/probe/job observation and verified fixture preflight. Verified
+transfer, durable scenario submission and measured environment admission remain
+next tool slices; these initial tools do not certify overall VM automation.
+
+Checkpoint142 passed all five required workflows. Checkpoint143 `7e4344f449e0b74ce216ffaa1bdaa729f1140246`
+has a macOS package CI failure under investigation; it is not certified complete.
+Checkpoint144 full prepush passed before this new tool batch; its receipt cannot
+cover subsequent edits. Existing Git-source and Android terminal-history changes
+remain in this coherent pending batch, with version2.1.17 metadata preserved.
+
+API35 stale proxy cleanup passed same-owner public OFF/empty-operation admission
+and removed only the two identified fields. API29's new refresh still ended with
+CONNECTIVITY after proxy cleanup; the unique added source was removed and the
+original source restored. The generated driver's import-order failure is retained
+for reusable runner preflight regression. No unknown operation is replayed.
+
+Linux's frozen base/target build finished and emitted its canonical fixture receipt;
+installation remains deferred while tools are prioritized. macOS and
+Windows native acceptance wait for host memory/interactive access; preserved
+installer correlations and artifacts remain unchanged.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration145 | root | MCP registration, local profiles, docs, checks and delivery |
+| SSH145 | completed; root | Private profiles, strict nested route, real Arch MCP probe passed |
+| VM145 | completed; root | Canonical staged preflight and explicitly non-authorizing resource plan |
+| CI145 | completed; root | Identity-checked owned DMG cleanup, six regressions passed; native CI pending |
+| SSH jobs145 | completed; root | Existing Linux job observation; real missing-process result stays unknown |
+| Native acceptance | deferred | Resume after tool integration; preserve current jobs |
+
+## Historical continuation — checkpoint143
 
 Checkpoint142 `043697a1c7e7dfde091bc2101a0afcecf09ac263` is pushed after full
 prepush passed; required exact-SHA CI is still being watched. Version2.1.16,

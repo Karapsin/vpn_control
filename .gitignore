@@ -8,6 +8,7 @@
 .agent_venv/
 .rag_index/
 .codex/*
+/.vm-hosts.local.json
 __pycache__/
 *.py[cod]
 build/

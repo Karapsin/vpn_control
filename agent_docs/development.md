@@ -197,6 +197,14 @@ Follow `TEST-001` in `contracts.md` for every distinct failure type found during
 
 Apply the same approach to reproducible harness and infrastructure defects with script or workflow-contract tests. Do not count an opt-in native test skipped by ordinary host checks as the required quick regression.
 
+For native acceptance work, each discovered failure must also improve the related
+repository MCP workflow: add a causal preflight, reliable observation, targeted
+diagnostic, or recovery guard alongside its quick regression. Preserve the actual
+product fix and native scenario. Use named SSH profiles from the private ignored
+`.vm-hosts.local.json`; never copy credentials into tool arguments, tracked code,
+logs, or evidence. Unknown remote outcomes remain unknown until observed, and must
+not trigger an automatic retry of installation or runtime mutations.
+
 The MCP server is agent-only infrastructure. Its environment and index remain ignored in `.agent_venv/` and `.rag_index/`; the application build must not depend on either directory.
 
 ## Runtime Safety

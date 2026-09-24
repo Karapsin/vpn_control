@@ -30,6 +30,8 @@ For implementation, testing, release, or commit work:
 
 | Tool | Purpose |
 | --- | --- |
+| `ssh_workflow(action="inventory", host=None, timeout_seconds=15)` | List private host aliases or run a bounded authenticated connectivity probe. |
+| `vm_workflow(action, inputs)` | Verify fixture bytes/preflight or calculate an explicitly non-authorizing memory plan. |
 | `prepare_start(task, area=None)` | Safe fetch/sync, branch verification, RAG rebuild, and task routing. |
 | `docs(query, mode="search", top_k=3)` | Search or produce a grounded extractive answer with file-and-line citations. |
 | `change_impact(task, area=None, paths=None)` | Combine task routing, changed paths, RAG references, safety constraints, and checks. |
@@ -85,3 +87,43 @@ python3 -m unittest discover -s agent_tools/tests
 ```
 
 The complete local pre-push tier is documented in `agent_docs/test-matrix.md` and is also encoded by `run_checks(level="prepush")`.
+
+## Private Native Hosts And VM Workflows
+
+Store machine-specific connection details in `.vm-hosts.local.json` at the checkout
+root. This file is ignored and rejected by managed staging. On POSIX it must be an
+ordinary non-symlink file owned by the current user with mode0600. Native inventory
+access on Windows fails closed pending ACL-safe handling; Windows guests remain
+reachable from the supported POSIX coordinator. Never pass
+passwords through MCP arguments or command-line flags. `identityFile` points to
+existing private key material; optional `password` stays in this local file.
+
+The version1 schema is `{ "schemaVersion": 1, "hosts": { "alias": { ... } } }`.
+Each host has `host`, integer `port`, `user`, absolute `identityFile` and absolute
+`knownHostsFile`. Host-key checking is strict; establish trusted keys separately.
+A nested route additionally declares `transport: "nested"`, `gateway` (a direct
+host alias), `remoteHostAlias` and an absolute `remoteControlPath`. Its known-hosts
+path refers to the gateway filesystem. Connection details are not an authorization
+to install, elevate, stop a VM, or affect a host VPN.
+
+`ssh_workflow("inventory")` returns aliases only. `ssh_workflow("probe", host=...)`
+executes a bounded read-only check and distinguishes authentication, host-key,
+connection and timeout failures. It never retries a mutation. `job-status` observes an existing Linux job using
+`identity: {jobId, pid, startTicks, receiptPath?}`; only a matching terminal receipt
+establishes completion, and PID reuse or lost observation remains unknown. The CLI
+accepts this mapping through `--identity-file`. No job-status action starts, stops
+or retries remote work.
+
+`vm_workflow("inspect-input", inputs={"input": {"path": "...", "size": 123,
+"sha256": "..."}})` verifies exact nonempty Python input bytes. Optional
+`preflight: "desktop-update-entrypoint"` checks canonical staged siblings and
+performs the approved isolated import. A hash-only result is not execution proof.
+`admit-plan` accepts explicit memory observations and reservations; its result is
+planning arithmetic, not fresh host observation or permission to start a VM.
+
+New MCP registrations require a server/session reload to appear in an existing
+client inventory. Until then, use the same implementation via `mcp_tool.sh
+ssh-workflow inventory`, `ssh-workflow probe --host <alias>`, or `vm-workflow
+<action> --inputs-file <private-json>`. Do not fall back to ad-hoc SSH routes.
+Agent-tool discovery tests and focused native-tool tests run in the ordinary
+`agent_tools/tests` suite and managed prepush.

@@ -148,6 +148,7 @@ PREPUSH_COMMANDS = [
 ]
 
 SENSITIVE_PARTS = {
+    ".vm-hosts.local.json",
     ".agent_venv",
     ".rag_index",
     ".runtime",
@@ -1678,11 +1679,58 @@ def _json_print(value: dict[str, Any]) -> int:
     return 0 if value.get("ok") else 1
 
 
+def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None) -> dict[str, Any]:
+    """List private host aliases or perform a bounded, read-only authenticated SSH probe."""
+    transport = importlib.import_module(f"{__package__}.ssh_transport" if __package__ else "ssh_transport")
+    try:
+        if action == "inventory":
+            return {"ok": True, "tool": "ssh_workflow", "hosts": list(transport.inventory(REPO_ROOT))}
+        if action == "probe" and host:
+            return {"tool": "ssh_workflow", **transport.probe(REPO_ROOT, host, timeout_seconds).as_dict()}
+        if action == "job-status" and host and identity:
+            jobs = importlib.import_module(f"{__package__}.ssh_jobs" if __package__ else "ssh_jobs")
+            try:
+                return {"tool": "ssh_workflow", **jobs.observe(REPO_ROOT, host, identity, timeout_seconds).as_dict()}
+            except jobs.SshJobError as error:
+                return _error("ssh_workflow", str(error))
+        return _error("ssh_workflow", "Use inventory, probe, or job-status with a configured host alias and job identity.")
+    except transport.SshConfigError:
+        return _error("ssh_workflow", "Private host configuration is missing or invalid; check the documented schema and permissions.")
+
+
+def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    """Validate staged inputs or calculate memory admission; neither action starts a VM."""
+    workflow = importlib.import_module(f"{__package__}.vm_workflow" if __package__ else "vm_workflow")
+    try:
+        if action == "inspect-input":
+            result = workflow.inspect_input(inputs.get("input", {}), preflight=inputs.get("preflight"))
+        elif action == "admit-plan":
+            result = workflow.admit_plan(
+                inputs.get("measurement", {}),
+                requested_memory_bytes=inputs.get("requestedMemoryBytes"),
+                headroom_bytes=inputs.get("headroomBytes"),
+                reservations=inputs.get("reservations", []),
+            )
+        else:
+            return _error("vm_workflow", "Unknown VM workflow action.")
+        return {"tool": "vm_workflow", **result}
+    except (workflow.VmWorkflowError, TypeError, OSError) as error:
+        return _error("vm_workflow", str(error))
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="vpn-control-agent")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("serve")
+    ssh_parser = subparsers.add_parser("ssh-workflow")
+    ssh_parser.add_argument("action", choices=("inventory", "probe", "job-status"))
+    ssh_parser.add_argument("--host")
+    ssh_parser.add_argument("--timeout-seconds", type=int, default=15)
+    ssh_parser.add_argument("--identity-file")
+    vm_parser = subparsers.add_parser("vm-workflow")
+    vm_parser.add_argument("action", choices=("inspect-input", "admit-plan"))
+    vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")
     start.add_argument("--area")
@@ -1728,6 +1776,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     git_parser.add_argument("--path", action="append", dest="paths")
     git_parser.add_argument("--sha")
     args = parser.parse_args(argv)
+
+    if args.command == "ssh-workflow":
+        identity = None
+        if args.identity_file:
+            try:
+                identity = json.loads(Path(args.identity_file).read_text(encoding="utf-8"))
+                if not isinstance(identity, dict):
+                    raise ValueError("identity must be an object")
+            except (OSError, ValueError):
+                return _json_print(_error("ssh_workflow", "Invalid identity JSON file."))
+        return _json_print(ssh_workflow(args.action, args.host, args.timeout_seconds, identity))
+    if args.command == "vm-workflow":
+        try:
+            inputs = json.loads(Path(args.inputs_file).read_text(encoding="utf-8"))
+            if not isinstance(inputs, dict):
+                raise ValueError("inputs must be an object")
+        except (OSError, ValueError):
+            return _json_print(_error("vm_workflow", "Invalid inputs JSON file."))
+        return _json_print(vm_workflow(args.action, inputs))
 
     if args.command == "serve":
         if MCP_SERVER is None:
@@ -1783,6 +1850,8 @@ if FastMCP is not None:  # pragma: no branch - depends on the optional launcher 
     MCP_SERVER.tool()(visual_workflow)
     MCP_SERVER.tool()(visual_review)
     MCP_SERVER.tool()(git_workflow)
+    MCP_SERVER.tool()(ssh_workflow)
+    MCP_SERVER.tool()(vm_workflow)
 
 
 if __name__ == "__main__":

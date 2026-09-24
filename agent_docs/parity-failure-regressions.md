@@ -1156,3 +1156,39 @@ preflight/refresh tests pass in routine release hygiene. Native cleanup must
 revalidate exact task-owned stale values, then verify both stored settings and
 actual effective network state; a null legacy value alone is insufficient.
 Evidence: remote `/home/kardinal/.vpn-control-android-cp142-public-refresh/`.
+
+### Git source admission and retained operation history — checkpoint144
+
+The Fedora builder received a source archive where `prepare` requires a real
+Git worktree. Missing Git first prevented enumeration; after installation the
+archive still could not provide an index. The source admission now rejects a
+missing executable, non-worktree archive or non-root directory before output
+creation, with actionable diagnostics. Tests use an actually empty PATH and a
+copied archive, preserving Windows Git-object permissions. The canonical root
+checkout prepared the immutable pair, which was transferred to the guest; no
+synthetic index or reduced source validation was used.
+
+Separately, the ignored Android public-refresh driver's `operations != []`
+condition rejected three retained terminal records as active work. The shared
+fixture preflight now admits same-owner terminal history, including terminal
+failure and restart-required results, while rejecting active, explicitly unknown,
+malformed and foreign-owner records. The actual remote driver consumes it; its
+read-only preflight passes without deleting history or replaying work. Routine
+fixture selections exercise both guards. These are fixture admission errors,
+not newly established product defects.
+
+## Checkpoint145 — native workflow tools
+
+- Missing/empty/altered guest inputs: `test_vm_workflow` reuses the checked-in byte
+  verifier and rejects tampered staged siblings before isolated preflight execution.
+  The earlier generated Android import-order failure remains native evidence; a
+  canonical desktop preflight does not certify an arbitrary Android driver.
+- Wrong SSH credentials/routes and timeout output: `test_ssh_transport` checks
+  private profiles, strict host keys, nested quoting and real fake-SSH timeout
+  behavior. The real MCP Arch probe passed after selecting the observed accepted
+  key reference in the ignored inventory (`checkpoint145/ssh-probe-mcp.json`).
+- macOS DMG remains busy after successful smoke: the new cleanup test first failed
+  (`macos-cleanup-red.log`), then all six cases passed (`macos-cleanup-green.log`).
+  Cleanup verifies the exact owned read-only attachment before a bounded forced
+  detach; changed identity or unexpected mounts preserve evidence. Native CI on
+  the fixed commit remains required; the cause of the original busy mount is unknown.
