@@ -132,7 +132,12 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   to run a fixture.
 - Before launching a generated native runner, syntax-check the complete script
   and validate its final deployed helper paths, interpreter, package attributes,
-  and fixture tools. A packaged minimal JVM need not include JDK tools such as
+  and fixture tools. Reuse `native_fixture_run.sh` for durable child exit/PID
+  receipts instead of generating another launcher. For transferred guest helpers,
+  use `guest_fixture_input.guest_probe_argv` with the expected nonempty byte count
+  and SHA-256. Pass its tuple through the structured guest executor: its verifier
+  travels as a fixed argument, so lost stdin cannot turn an empty verifier into
+  false success. A zero exit from an empty Python file is not a probe result. A packaged minimal JVM need not include JDK tools such as
   keytool; prepare fixture trust with the verified build JDK. Keep scripts in files
   rather than nesting generated heredocs across shells. Start long commands with
   a short initial tool yield (for example1000ms), retain the returned live session,

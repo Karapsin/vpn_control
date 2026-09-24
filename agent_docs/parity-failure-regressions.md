@@ -1072,3 +1072,56 @@ malformed selections; password admission still requires its separate terminal
 echo-disable check. The remote PTY driver must explicitly consume this helper
 before another admitted native attempt. No current unknown job is replayed or
 cleared by this change, and it does not prove installation success.
+
+### CONNECT teardown classified as admission rejection — checkpoint141
+
+An early macOS fixture record claimed a Google AGP POM HTTP200 while the
+relay emitted a header/admission rejection during teardown. The probe claim was
+subsequently withdrawn because helper execution was unverified (see below). The original native
+receipt cannot identify the precise reset origin. A deterministic socket-pair
+regression reproduces an established tunnel forwarding nine bytes before a write
+error, and another preserves the setup-error boundary immediately after CONNECT
+acceptance. Both failed under the prior rejection classification. The relay now
+reports a tunnel error with directional byte counters; pre-admission failures
+remain rejections, and drained closure remains distinct. All14 focused tests pass
+in the existing routine release-hygiene selection. Evidence: checkpoint141/relay-close.
+A new guest network/build run must verify the corrected events. Relay counters
+do not prove TLS or HTTP completion; retain the ordinary-TLS probe result too.
+
+### Guest transfer and Java CONNECT framing — checkpoint141
+
+Tart exec did not forward a piped helper: the CP141 guest file was empty, and
+executing it returned0 without running the intended probe. This invalidates that
+preflight, not just its transport detail. CP140's reconstructed HTTP200 claim is
+not adequate proof of verified helper execution either; retain it as unproven.
+The new fixed-argument verify-and-exec guard requires the expected nonempty size
+and SHA-256 before starting a probe. A dropped-stdin regression verifies that no
+probe sentinel runs; empty or stale input fails explicitly. Its verifier cannot
+itself be bypassed by an empty transferred script. Routine hygiene runs the suite.
+
+After corrected transfer, actual Java17 proxy probing returned403. A loopback
+capture of the same JDK showed `CONNECT dl.google.com:443` with `Host: dl.google.com`.
+The old parser rejected this omitted default port. The causal regression now
+accepts that form only for default443; exact peer/destination admission is unchanged.
+Fifteen relay tests pass, including the earlier setup and partial-transfer errors.
+Evidence: checkpoint141/relay-close. A native Java marker fetch and package build
+remain required; Python probe success alone cannot establish Java compatibility.
+
+CP140 also had a generated Android launcher parse failure before ADB. The
+completion-runner regression compares unwrapped malformed Python (no durable
+receipt) with the existing checked-in runner (nonzero terminal/PID receipts),
+with a fake ADB sentinel absent in both. This is an execution-wrapper comparison,
+not a product installer fix. Native attempts must syntax-check their deployed
+driver and reuse the checked-in runner. Evidence: checkpoint141/prelaunch-regression.
+
+### CONNECT capacity during dependency resolution — checkpoint141
+
+The verified Java probe passed after the header correction, but a subsequent
+Gradle dependency build recorded two relay capacity rejections at the old four
+connection bound. This may explain its unresolved plugin, but native revalidation
+is still required to establish causality. A real TCP regression holds32 admitted
+tunnels, verifies the next connection receives503, and verifies releasing one
+permits another. The relay retains bounded per-direction buffers, exact peer and
+destination checks, and opaque TLS. Sixteen relay tests pass; this fixes the
+observed admission constraint without claiming that the package build passes.
+Evidence: checkpoint141/relay-close/red-capacity-five-connection and green logs.

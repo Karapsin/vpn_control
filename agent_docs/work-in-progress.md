@@ -25,7 +25,60 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint139
+## Current continuation — checkpoint141
+
+Checkpoint140 `cc9a995eb81451f3be6571fd0a54bd37f473d96f` is pushed after
+full managed prepush passed. Version2.1.16, Unreleased5 at that commit. All five
+required exact-SHA workflows and advisory VPN Integration succeeded; receipt is
+checkpoint140/commit-result.json. The checkpoint delivery is verified, but the
+full parity goal remains incomplete.
+
+API29 now has the compatibly signed nondebuggable2.1.16 APK, SHA4347e057…,
+installed with one actual data-preserving adb install-r. A failed wrapper parse
+was proved prelaunch before that invocation. The whole ba35 Linux CLI bundle is
+staged separately; no replacement-JAR mixing. Public status with no owner remains
+UNAVAILABLE and does not imply OFF. Evidence: checkpoint140/android29-upgrade.
+
+macOS's CP140 network success claim is unproven: its reconstructed probe record
+does not establish verified helper execution. CP141 found that Tart did not
+forward piped stdin, creating an empty helper that exited0 without probing.
+Preserve those original records and this correction. A verified replacement
+helper and compiled Java probe now expose a real403 CONNECT-header rejection.
+The verified Java probe subsequently returned HTTP200 after the default-port
+CONNECT correction. A later dependency build encountered relay saturation; the
+capacity is now bounded at32 with an explicit503 overload response and16 passing
+relay tests. The verified Java marker returned HTTP200 and the preserved
+checkout passed `:desktopApp:tasks --all` in1m16s with the new relay. This closes
+the configuration diagnostic, not package compilation or installation. The prior8GiB disk reserve was only an
+estimate, not a repository requirement; fresh capacity monitoring remains needed.
+
+Linux's exact watcher remains observational, without a protected receipt. The
+unknown installation cannot be cleared through cancellation or inferred failure.
+Preserve its original guest and correlation. Independent RPM acceptance requires
+an isolated guest, not another account/workspace bypassing the same barrier.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration141 | root | CI watcher, docs, source review, shared build scheduling |
+| Android refresh141 | completed; root integration | API29 streams observed; public subscription resource/parser test passes, awaiting push for HTTPS refresh |
+| Relay close141 | completed; root integration |16 relay tests pass; fresh full prepush required after final additions |
+| macOS build141 | mac_build141 | Live owned Tart boot-control53; updated relay and dependency diagnostic, then root build gate |
+| Linux recovery141 | completed | New clean guest2328 booted, cloud-init done, frozen package hashes verified; handed to install142 |
+| Windows admission141 | completed; root console | No interactive user; host UI unlock requested. No installer or credentials entered |
+| Android35 current141 | completed | Current APK; pinned status/stats/log streams and client-only SIGINT verified |
+| Guest transfer141 | completed; root integration | Public transfer guard rejects empty/stale/missing helpers;6 tests pass |
+| Linux install142 | linux_install142 | New Fedora2328 base installed; diagnosing existing download, no install admitted |
+
+API35 streams used the current nondebuggable APK and whole packaged CLI with
+explicit ADB environment. Each emitted an owner-pinned record and exited130
+after client-only SIGINT; stderr was empty and subsequent status/operations
+retained controller fb144616… with no operations. This establishes stopped-state
+stream behavior, not live traffic or nonempty incremental logs. Evidence:
+checkpoint141/android35-current/owner-diagnosis/streams15. API29 public HTTPS
+refresh awaits publication of the test-only loopback subscription resource; its
+actual Android parser regression passes.
+
+## Historical continuation — checkpoint139
 
 Checkpoint138 `1ff5bedf0592bf9486ac767ae0daa693b0a2cc21` passed local prepush and
 was pushed, but Windows workflow35984122823 failed in the new Linux fixture tests:

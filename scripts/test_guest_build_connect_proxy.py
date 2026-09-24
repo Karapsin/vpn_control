@@ -78,6 +78,17 @@ class RelayTest(unittest.TestCase):
             relay_upstream.close()
             upstream.close()
 
+    def test_accepts_jdk_https_connect_host_without_default_tls_port(self):
+        class HeaderConnection:
+            def __init__(self):
+                self.remaining = [
+                    b"CONNECT dl.google.com:443 HTTP/1.1\r\nHost: dl.google.com\r\n\r\n",
+                ]
+            def recv(self, size):
+                return self.remaining.pop(0) if self.remaining else b""
+
+        self.assertEqual(("dl.google.com:443", b""), subject.parse_connect_header(HeaderConnection()))
+
     def test_tunnels_tls_bytes_unchanged_without_termination(self):
         request = b"CONNECT dl.google.com:443 HTTP/1.1\r\nHost: dl.google.com:443\r\n\r\n"
         client, relay_upstream, upstream, thread, events = self.socket_pair_tunnel(request)
@@ -236,12 +247,12 @@ class RelayTest(unittest.TestCase):
             relay_client.value.close()
             relay_upstream.value.close()
 
-    def test_tunnel_failure_after_connect_does_not_append_plaintext_rejection(self):
+    def test_tunnel_setup_error_after_connect_does_not_append_plaintext_rejection(self):
         class FailingUpstream:
             def __enter__(self): return self
             def __exit__(self, *args): return False
             def close(self): pass
-            def setblocking(self, enabled): raise OSError("synthetic tunnel failure")
+            def setblocking(self, enabled): raise OSError("synthetic tunnel setup failure")
 
         request = b"CONNECT dl.google.com:443 HTTP/1.1\r\nHost: dl.google.com:443\r\n\r\n"
         client, relay_client = socket.socketpair()
@@ -259,10 +270,117 @@ class RelayTest(unittest.TestCase):
             self.assertEqual(b"HTTP/1.1 200 Connection Established\r\n\r\n",
                              recv_exact(client, len(b"HTTP/1.1 200 Connection Established\r\n\r\n")))
             self.assertEqual(b"", client.recv(256))
-            self.assertEqual([{"event": "rejected", "stage": "header-or-tunnel"}], events)
+            thread.join(1)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual([{"event": "tunnel_error", "destination": "dl.google.com:443",
+                              "bytesToUpstream": 0, "bytesToClient": 0}], events)
         finally:
             client.close()
             thread.join(1)
+
+    def test_tunnel_error_after_connect_reports_transferred_bytes(self):
+        class FailingAfterFirstWrite:
+            def __init__(self, value):
+                self.value = value
+                self.write_count = 0
+            def __enter__(self): return self
+            def __exit__(self, *args):
+                self.close()
+                return False
+            def close(self): self.value.close()
+            def fileno(self): return self.value.fileno()
+            def setblocking(self, enabled): self.value.setblocking(enabled)
+            def recv(self, size): return self.value.recv(size)
+            def shutdown(self, how): self.value.shutdown(how)
+            def send(self, value):
+                if self.write_count:
+                    raise OSError("synthetic tunnel reset")
+                self.write_count += 1
+                return self.value.send(value)
+
+        request = b"CONNECT dl.google.com:443 HTTP/1.1\r\nHost: dl.google.com:443\r\n\r\n"
+        client, relay_client = socket.socketpair()
+        relay_upstream, upstream = socket.socketpair()
+        failing_upstream = FailingAfterFirstWrite(relay_upstream)
+        events = []
+        thread = threading.Thread(
+            target=subject.handle_connection,
+            args=(relay_client, ("10.0.0.2", 1), "10.0.0.2", events.append,
+                  lambda _: failing_upstream),
+            daemon=True,
+        )
+        thread.start()
+        client.sendall(request)
+        client.settimeout(1)
+        upstream.settimeout(1)
+        first_record = b"\x16\x03\x03\x00\x04test"
+        try:
+            self.assertEqual(b"HTTP/1.1 200 Connection Established\r\n\r\n",
+                             recv_exact(client, len(b"HTTP/1.1 200 Connection Established\r\n\r\n")))
+            client.sendall(first_record)
+            self.assertEqual(first_record, recv_exact(upstream, len(first_record)))
+            client.sendall(b"next")
+            self.assertEqual(b"", client.recv(256))
+            thread.join(1)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual([{"event": "tunnel_error", "destination": "dl.google.com:443",
+                              "bytesToUpstream": len(first_record), "bytesToClient": 0}], events)
+        finally:
+            client.close()
+            upstream.close()
+            thread.join(1)
+
+    def test_capacity_returns_503_at_static_bound_and_releases_a_permit(self):
+        request = b"CONNECT dl.google.com:443 HTTP/1.1\r\nHost: dl.google.com:443\r\n\r\n"
+        upstream_peers = []
+
+        def holding_upstream(_):
+            relay_upstream, peer_upstream = socket.socketpair()
+            upstream_peers.append(peer_upstream)
+            return relay_upstream
+
+        events = []
+        server = subject.BoundedConnectServer("127.0.0.1", "127.0.0.1", events.append, holding_upstream)
+        serving = threading.Thread(target=server.serve_forever, daemon=True)
+        serving.start()
+        clients = []
+        try:
+            for _ in range(32):
+                client = socket.create_connection(server.server_address, timeout=SOCKET_TIMEOUT_SECONDS)
+                client.settimeout(SOCKET_TIMEOUT_SECONDS)
+                clients.append(client)
+                client.sendall(request)
+                self.assertEqual(b"HTTP/1.1 200 Connection Established\r\n\r\n",
+                                 recv_exact(client, len(b"HTTP/1.1 200 Connection Established\r\n\r\n")))
+
+            overflow = socket.create_connection(server.server_address, timeout=SOCKET_TIMEOUT_SECONDS)
+            overflow.settimeout(SOCKET_TIMEOUT_SECONDS)
+            overflow.sendall(request)
+            self.assertIn(b"503 Service Unavailable", recv_headers(overflow))
+            overflow.close()
+            self.assertIn({"event": "rejected", "stage": "concurrency"}, events)
+
+            clients[0].shutdown(socket.SHUT_WR)
+            upstream_peers.pop(0).close()
+            deadline = time.monotonic() + SOCKET_TIMEOUT_SECONDS
+            while not any(event["event"] in ("closed", "tunnel_error") for event in events) and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(any(event["event"] in ("closed", "tunnel_error") for event in events))
+
+            replacement = socket.create_connection(server.server_address, timeout=SOCKET_TIMEOUT_SECONDS)
+            replacement.settimeout(SOCKET_TIMEOUT_SECONDS)
+            replacement.sendall(request)
+            self.assertEqual(b"HTTP/1.1 200 Connection Established\r\n\r\n",
+                             recv_exact(replacement, len(b"HTTP/1.1 200 Connection Established\r\n\r\n")))
+            clients.append(replacement)
+        finally:
+            for client in clients:
+                client.close()
+            for peer_upstream in upstream_peers:
+                peer_upstream.close()
+            server.shutdown()
+            server.server_close()
+            serving.join(1)
 
     def test_header_limit_is_bounded(self):
         client, relay_client = socket.socketpair()

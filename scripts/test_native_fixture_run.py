@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -53,6 +54,46 @@ class NativeFixtureRunTest(unittest.TestCase):
             completed = self.run_runner(directory, child)
             self.assertEqual(7, completed.returncode)
             self.assertEqual("7\n", (directory / "child.exit").read_text())
+
+    def test_malformed_python_launcher_is_prelaunch_failure_without_adb_or_lost_receipt(self):
+        """Execution-wrapper regression, not Android product/install coverage."""
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            malformed = directory / "generated-launcher.py"
+            malformed.write_text(
+                "import subprocess\n"
+                "subprocess.run([__import__('os').environ['ADB'], 'install', '-r', 'target.apk'])\n"
+                "if True print('generated launcher parse failure')\n",
+                encoding="utf-8",
+            )
+            adb_marker = directory / "adb-invoked"
+            fake_adb = directory / "adb"
+            fake_adb.write_text("#!/bin/sh\ntouch \"$ADB_MARKER\"\n", encoding="utf-8")
+            fake_adb.chmod(0o700)
+            environment = {**os.environ, "ADB": str(fake_adb), "ADB_MARKER": str(adb_marker)}
+
+            # The historical unwrapped form exposes a parse failure but has no
+            # durable terminal receipt for a later observer to classify.
+            unwrapped_exit = directory / "unwrapped.exit"
+            unwrapped = subprocess.run(
+                [sys.executable, str(malformed)], text=True, capture_output=True,
+                env=environment, check=False,
+            )
+            self.assertNotEqual(0, unwrapped.returncode)
+            self.assertFalse(unwrapped_exit.exists(), "unwrapped launcher has no terminal receipt")
+            self.assertFalse(adb_marker.exists(), "malformed launcher must fail before ADB execution")
+
+            checked_exit = directory / "checked.exit"
+            checked_pid = directory / "checked.pid"
+            checked = subprocess.run(
+                ["/bin/sh", str(RUNNER), "--pid-file", str(checked_pid),
+                 "--exit-file", str(checked_exit), "--", sys.executable, str(malformed)],
+                text=True, capture_output=True, env=environment, check=False,
+            )
+            self.assertNotEqual(0, checked.returncode)
+            self.assertGreater(int(checked_pid.read_text()), 0)
+            self.assertEqual(f"{checked.returncode}\n", checked_exit.read_text())
+            self.assertFalse(adb_marker.exists(), "checked runner must retain prelaunch failure before ADB")
 
     def test_exact_argv_preserves_spaces_without_shell_evaluation(self):
         with tempfile.TemporaryDirectory() as raw:

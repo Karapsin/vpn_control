@@ -678,3 +678,10 @@ The Linux public-install harness also replays polkit's multiple-account selector
 Only an explicitly authorized exact account may produce a numbered response;
 selection never admits password input. The native driver must retain the original
 PTY master and wait for the subsequent password/echo-disable gate.
+
+`test_guest_fixture_input.py` runs in routine release hygiene. It exercises the
+actual generated verify-and-exec argv against empty, stale and missing guest
+helpers, proving the probe sentinel is not launched after a dropped transfer.
+The verifier itself is an argument, not another unverified transferred file.
+The completion-runner suite also compares malformed generated Python without
+and with `native_fixture_run.sh`, retaining failure receipts without invoking ADB.

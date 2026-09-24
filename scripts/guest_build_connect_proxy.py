@@ -28,7 +28,7 @@ DEFAULT_DESTINATIONS = frozenset({
 })
 POM_URL = "https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/8.7.3/gradle-8.7.3.pom"
 MAX_HEADER_BYTES = 8192
-MAX_CONNECTIONS = 4
+MAX_CONNECTIONS = 32
 MAX_TUNNEL_BUFFER_BYTES = 256 * 1024
 IDLE_SECONDS = 15.0
 CONNECT_SECONDS = 10.0
@@ -36,6 +36,13 @@ CONNECT_SECONDS = 10.0
 
 class RelayError(ValueError):
     pass
+
+
+class TunnelError(RelayError):
+    def __init__(self, bytes_to_upstream: int, bytes_to_client: int):
+        super().__init__("opaque tunnel failed")
+        self.bytes_to_upstream = bytes_to_upstream
+        self.bytes_to_client = bytes_to_client
 
 
 class ProbeError(RuntimeError):
@@ -85,8 +92,10 @@ def parse_connect_header(connection: socket.socket) -> tuple[str, bytes]:
     hosts = [line.split(":", 1)[1].strip().lower() for line in lines[1:]
              if line.lower().startswith("host:") and ":" in line]
     normalized = target.lower()
-    valid_host = ((len(hosts) <= 1 and (not hosts or hosts[0] == normalized))
-                  if protocol == "HTTP/1.0" else len(hosts) == 1 and hosts[0] == normalized)
+    expected_host = normalized.rsplit(":", 1)[0] if normalized.endswith(":443") else normalized
+    valid_host_value = lambda host: host == normalized or host == expected_host
+    valid_host = ((len(hosts) <= 1 and (not hosts or valid_host_value(hosts[0])))
+                  if protocol == "HTTP/1.0" else len(hosts) == 1 and valid_host_value(hosts[0]))
     if method != "CONNECT" or protocol not in ("HTTP/1.0", "HTTP/1.1") or not valid_host:
         raise RelayError("CONNECT method or Host is invalid")
     return normalized, initial_tunnel_bytes
@@ -99,48 +108,56 @@ def send_rejection(connection: socket.socket) -> None:
         pass
 
 
+def send_capacity_rejection(connection: socket.socket) -> None:
+    try:
+        connection.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    except OSError:
+        pass
+
+
 def relay_opaque(client: socket.socket, upstream: socket.socket, initial_client_bytes: bytes = b"",
                  idle_seconds: float = IDLE_SECONDS) -> tuple[int, int]:
     """Copy bytes in both directions without parsing or terminating TLS."""
     transferred_to_upstream = 0
     transferred_to_client = 0
-    selector = selectors.DefaultSelector()
-    for value in (client, upstream):
-        value.setblocking(False)
-    to_upstream = bytearray(initial_client_bytes)
-    to_client = bytearray()
-    client_open = True
-    upstream_open = True
-    upstream_write_closed = False
-    client_write_closed = False
-
-    def update_interest() -> None:
-        desired = {
-            client: ((selectors.EVENT_READ if client_open and len(to_upstream) < MAX_TUNNEL_BUFFER_BYTES else 0) |
-                     (selectors.EVENT_WRITE if to_client else 0)),
-            upstream: ((selectors.EVENT_READ if upstream_open and len(to_client) < MAX_TUNNEL_BUFFER_BYTES else 0) |
-                       (selectors.EVENT_WRITE if to_upstream else 0)),
-        }
-        registered = selector.get_map()
-        for value, events in desired.items():
-            if events:
-                if value in registered:
-                    selector.modify(value, events)
-                else:
-                    selector.register(value, events)
-            elif value in registered:
-                selector.unregister(value)
-
-    def close_drained_writes() -> None:
-        nonlocal upstream_write_closed, client_write_closed
-        if not client_open and not to_upstream and not upstream_write_closed:
-            upstream.shutdown(socket.SHUT_WR)
-            upstream_write_closed = True
-        if not upstream_open and not to_client and not client_write_closed:
-            client.shutdown(socket.SHUT_WR)
-            client_write_closed = True
-
+    selector: selectors.BaseSelector | None = None
     try:
+        selector = selectors.DefaultSelector()
+        for value in (client, upstream):
+            value.setblocking(False)
+        to_upstream = bytearray(initial_client_bytes)
+        to_client = bytearray()
+        client_open = True
+        upstream_open = True
+        upstream_write_closed = False
+        client_write_closed = False
+
+        def update_interest() -> None:
+            desired = {
+                client: ((selectors.EVENT_READ if client_open and len(to_upstream) < MAX_TUNNEL_BUFFER_BYTES else 0) |
+                         (selectors.EVENT_WRITE if to_client else 0)),
+                upstream: ((selectors.EVENT_READ if upstream_open and len(to_client) < MAX_TUNNEL_BUFFER_BYTES else 0) |
+                           (selectors.EVENT_WRITE if to_upstream else 0)),
+            }
+            registered = selector.get_map()
+            for value, events in desired.items():
+                if events:
+                    if value in registered:
+                        selector.modify(value, events)
+                    else:
+                        selector.register(value, events)
+                elif value in registered:
+                    selector.unregister(value)
+
+        def close_drained_writes() -> None:
+            nonlocal upstream_write_closed, client_write_closed
+            if not client_open and not to_upstream and not upstream_write_closed:
+                upstream.shutdown(socket.SHUT_WR)
+                upstream_write_closed = True
+            if not upstream_open and not to_client and not client_write_closed:
+                client.shutdown(socket.SHUT_WR)
+                client_write_closed = True
+
         while True:
             close_drained_writes()
             if not client_open and not upstream_open and not to_upstream and not to_client:
@@ -175,8 +192,11 @@ def relay_opaque(client: socket.socket, upstream: socket.socket, initial_client_
                         transferred_to_upstream += sent
                     else:
                         transferred_to_client += sent
+    except (OSError, RelayError) as error:
+        raise TunnelError(transferred_to_upstream, transferred_to_client) from error
     finally:
-        selector.close()
+        if selector is not None:
+            selector.close()
 
 
 def default_upstream(destination: str) -> socket.socket:
@@ -212,6 +232,10 @@ def handle_connection(connection: socket.socket, peer: tuple[str, int], expected
             sent, received = relay_opaque(connection, upstream, initial_tunnel_bytes)
             emit({"event": "closed", "destination": destination,
                   "bytesToUpstream": sent, "bytesToClient": received})
+    except TunnelError as error:
+        emit({"event": "tunnel_error", "destination": destination,
+              "bytesToUpstream": error.bytes_to_upstream,
+              "bytesToClient": error.bytes_to_client})
     except (OSError, RelayError):
         emit({"event": "rejected", "stage": "header-or-tunnel"})
         if not established:
@@ -224,16 +248,18 @@ class BoundedConnectServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = False
     daemon_threads = True
 
-    def __init__(self, bind_address: str, guest_peer: str, emit: Callable[[dict[str, object]], None]):
+    def __init__(self, bind_address: str, guest_peer: str, emit: Callable[[dict[str, object]], None],
+                 upstream_factory: Callable[[str], socket.socket] = default_upstream):
         self.guest_peer = guest_peer
         self.emit = emit
+        self.upstream_factory = upstream_factory
         self._permits = threading.BoundedSemaphore(MAX_CONNECTIONS)
         super().__init__((bind_address, 0), _Handler)
 
     def process_request(self, request, client_address):  # type: ignore[no-untyped-def]
         if not self._permits.acquire(blocking=False):
             self.emit({"event": "rejected", "stage": "concurrency"})
-            send_rejection(request)
+            send_capacity_rejection(request)
             request.close()
             return
         thread = threading.Thread(target=self._process_with_permit, args=(request, client_address), daemon=True)
@@ -249,7 +275,8 @@ class BoundedConnectServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 class _Handler(socketserver.BaseRequestHandler):
     def handle(self) -> None:
         server: BoundedConnectServer = self.server  # type: ignore[assignment]
-        handle_connection(self.request, self.client_address, server.guest_peer, server.emit)
+        handle_connection(self.request, self.client_address, server.guest_peer, server.emit,
+                          server.upstream_factory)
 
 
 def proxy_url(host: str, port: int) -> str:

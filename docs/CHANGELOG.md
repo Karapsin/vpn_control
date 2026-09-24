@@ -10,6 +10,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Report safe localized subscription refresh failures consistently across GUI and CLI.
 - Prevent Linux installer fixture setup from creating root-owned user state or losing public trust-store environment.
 - Harden native fixture authorization, stage receipts and build connectivity checks across platforms.
+- Report established fixture tunnel failures with accurate transfer counters.
+- Verify transferred native fixture helpers and support bounded Java dependency tunnels.
 
 ## 2.1.16 - 2026-09-23
 
