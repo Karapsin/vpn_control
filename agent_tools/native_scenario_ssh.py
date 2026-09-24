@@ -110,7 +110,9 @@ with os.fdopen(efd,"wb") as out:
 identity=intent["identity"]
 receipt={key:intent[key] for key in ("scenarioId","host","environment","bundleHash","artifactIds","correlationId","jobId")}
 receipt.update({"pid":identity["pid"],"startTicks":identity["startTicks"],"exitCode":rc})
-durable("evidence.json",{"evidenceClass":"component","action":"no_product_action","exitCode":rc,"failurePath":err})
+evidence={"evidenceClass":"component","action":"no_product_action","exitCode":rc}
+if rc != 0: evidence["failurePath"]=err
+durable("evidence.json",evidence)
 durable("receipt.json",receipt)
 ''') + r'''
 open(launcher,"w",encoding="utf-8").write(code)

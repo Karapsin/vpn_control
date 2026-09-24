@@ -25,7 +25,40 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint153
+## Current continuation — checkpoint155
+
+Checkpoint153 `762190454129a9b203bbd5c734f15103b3100c0e` is committed and
+pushed after a valid full prepush receipt. Fast Checks run36016454696 exposed a
+Linux-only regression: successful durable preflight evidence includes a
+`failurePath` that its exact success contract rejects. A portable generated-worker
+regression reproduced this before repair; focused checks now pass (four tests,
+one Linux-only skip). Success omits the field and failure retains it. Other required
+package workflows are still being observed; this push is not verified complete.
+
+Current ownership: root owns documentation, metadata and delivery;
+`mcp_review155` owns the SSH scenario adapter and its tests;
+`rpm_stage154` owns Fedora2328 fixture readiness (no target installation yet);
+`android_network_read153` owns one API29 refresh experiment;
+`mac_readiness155` performs read-only local capacity and artifact reconciliation.
+Windows CP154 visibly selected vpncp117 but received incorrect-password;
+historical successful credential probes do not establish current validity.
+No additional credential attempt or account reset is authorized to a worker.
+
+Fedora2328 now has the verified seven-file bundle and passes the frozen RPM base
+guard. Its HTTPS fixture still advertises base2.1.16 rather than target2.1.17;
+fixture-only correction precedes any public installation. API29's CP153 refresh
+failed at connection stage without an HTTP status; later shell TCP443 succeeded.
+This does not prove reachability at the earlier app request or establish its cause.
+The test subscription was deleted and original selection restored after terminal
+failure. Current Linux host memory admission remains unknown because two QEMU
+allocations cannot be established; they are not counted as zero.
+
+Fresh macOS admission sampled available memory5200/5139/5378MiB, below the6144MiB
+required for a4GiB guest plus headroom. No boot occurred. The retained target
+app-image recovery candidate belongs to `vpn-control-boot-control53`, not fixture43;
+it is historical base2.1.15/target2.1.16 and is not current-package acceptance.
+
+The following checkpoint153 baseline is historical where superseded above.
 
 Checkpoint148 `d382767ebb028413739a351f723a33f4d87d6836` is pushed after
 full prepush. Fast Checks, Android and Linux passed for that exact SHA. Windows

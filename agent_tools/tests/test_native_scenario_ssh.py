@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -56,6 +58,53 @@ class NativeScenarioSshTest(unittest.TestCase):
     def make(self):
         os.environ.setdefault("FAKE_SSH_LOG", str(self.log))
         return ssh_driver.NativeScenarioSshDriver(ROOT, lambda plan: self.bundle_info["directory"], ssh_binary=str(self.fake_ssh), configuration_root=self.work)
+
+    def _embedded_worker_evidence(self, exit_code):
+        """Run the generated remote launcher with only process execution mocked."""
+        request = self.request()
+        request["correlationId"] = "embedded-evidence-" + str(exit_code)
+        plan = execution.ScenarioPlan.from_mapping(request)
+        payload = self.make()._payload(Path(self.bundle_info["directory"]))
+        previous_argv, previous_stdin = sys.argv, sys.stdin
+        real_open = open
+
+        class FakeProcess:
+            pid = 417
+
+            def kill(self):
+                pass
+
+        def process_stat(path, *args, **kwargs):
+            if path == "/proc/417/stat":
+                return io.StringIO("417 (launcher) S " + "0 " * 18 + "9917\n")
+            return real_open(path, *args, **kwargs)
+
+        try:
+            sys.argv = ["remote-submit", str(self.remote), plan.host, plan.environment, plan.scenario_id,
+                        plan.correlation_id, plan.bundle_hash,
+                        json.dumps(dict(plan.artifact_ids), sort_keys=True, separators=(",", ":"))]
+            sys.stdin = type("Input", (), {"buffer": io.BytesIO(payload)})()
+            with mock.patch("subprocess.Popen", return_value=FakeProcess()), mock.patch("builtins.open", side_effect=process_stat):
+                exec(ssh_driver._SUBMIT, {})
+        finally:
+            sys.argv, sys.stdin = previous_argv, previous_stdin
+        job = self.remote / "native-scenario-jobs" / plan.environment / plan.scenario_id / plan.correlation_id
+        launch = (job / "launch.py").read_text(encoding="utf-8")
+        previous_argv = sys.argv
+        try:
+            sys.argv = [str(job / "launch.py"), str(job), str(job / "bundle")]
+            with mock.patch("subprocess.call", return_value=exit_code):
+                exec(compile(launch, str(job / "launch.py"), "exec"), {"__name__": "__main__"})
+        finally:
+            sys.argv = previous_argv
+        return json.loads((job / "evidence.json").read_text(encoding="utf-8")), str(job / "failure.stderr")
+
+    def test_embedded_worker_evidence_marks_failure_only_for_nonzero_exit(self):
+        success, _ = self._embedded_worker_evidence(0)
+        self.assertEqual({"evidenceClass": "component", "action": "no_product_action", "exitCode": 0}, success)
+        failed, failure_path = self._embedded_worker_evidence(23)
+        self.assertEqual({"evidenceClass": "component", "action": "no_product_action", "exitCode": 23,
+                          "failurePath": failure_path}, failed)
 
     @unittest.skipUnless(Path("/proc/self/stat").exists(), "remote PID generation test requires Linux /proc")
     def test_local_subprocess_standin_retains_receipt_after_submit_response_disconnect(self):

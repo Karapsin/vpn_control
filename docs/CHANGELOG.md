@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Improve private Android observation and redacted refresh diagnostics; preserve macOS cleanup failure evidence.
 - Recover interrupted nested SSH access safely and fix Android fixture identity and macOS image cleanup.
 - Add verified native MCP workflows, durable recovery evidence, and package-test safeguards.
+- Keep successful native preflight evidence free of failure markers and test generated workers portably.
 
 ## 2.1.17 - 2026-09-24
 
