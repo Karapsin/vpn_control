@@ -1125,3 +1125,15 @@ permits another. The relay retains bounded per-direction buffers, exact peer and
 destination checks, and opaque TLS. Sixteen relay tests pass; this fixes the
 observed admission constraint without claiming that the package build passes.
 Evidence: checkpoint141/relay-close/red-capacity-five-connection and green logs.
+
+### Platform-dependent missing-helper diagnostic — checkpoint142
+
+Windows hygiene35991779882 failed because the new missing-helper test expected
+POSIX `No such file`, while Windows returned its own FileNotFoundError wording.
+The generated verifier now reports a stable missing-helper message. Requiring
+that message failed against the prior verifier on the host, then passed after
+the fix; all6 transfer tests pass while preserving exit64 and proof that the
+probe never launches. Routine hygiene retains this causal check. This is fixture
+portability, not an Android or Windows product installation failure. Native
+missing-input rejection and all exact-SHA package workflows remain required.
+CI log: `.runtime/checkpoint141/fixture-review142/windows-hygiene-35991779882-failed.log`.

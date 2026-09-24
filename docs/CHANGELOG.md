@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Harden native fixture authorization, stage receipts and build connectivity checks across platforms.
 - Report established fixture tunnel failures with accurate transfer counters.
 - Verify transferred native fixture helpers and support bounded Java dependency tunnels.
+- Report missing native fixture helpers consistently across host platforms.
 
 ## 2.1.16 - 2026-09-23
 

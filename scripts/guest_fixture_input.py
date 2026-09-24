@@ -16,7 +16,10 @@ _GUEST_VERIFY_AND_EXEC = """import hashlib, os, stat, sys
 path, expected_size, expected_sha256, *command = sys.argv[1:]
 try:
     expected_size = int(expected_size)
-    info = os.lstat(path)
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        raise ValueError('guest fixture helper is missing')
     if not stat.S_ISREG(info.st_mode):
         raise ValueError('guest fixture helper is not a regular file')
     if info.st_size != expected_size:

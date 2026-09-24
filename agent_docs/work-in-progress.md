@@ -25,7 +25,41 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint141
+## Current continuation — checkpoint142
+
+Checkpoint141 `6e3c167fac21b7d6a69369a682d177cfb6fbaec5` was pushed after
+fresh full prepush passed (checkpoint141/prepush-final-result.json). Windows
+workflow35991779882 failed release hygiene; exact-SHA delivery is incomplete.
+Root owns the CI correction and renewed delivery gate. Version2.1.16,
+Unreleased8 after the missing-helper diagnostic correction. No release is authorized.
+
+The current macOS Java marker and Gradle configuration diagnostic pass; one
+immutable package-pair build is running under mac_build141. Linux's existing
+public download completed once and reached ready; the earlier pending observation
+was taken before its receipt was written. Root reviewed its exact owner/revision
+and terminal selector driver, and admitted one public install in new Fedora2328.
+That install reports a protected SUCCEEDED receipt for jobd1d5a85f… and operation
+7f678925…; the replacement owner reports installed=true with cleanupCode OK and
+runtime off. RPM verification is clean at2.1.16. Root verified the exported
+acceptance JSON hash82c0f0ed… and its receipt/public envelopes at
+checkpoint142/linux-rpm-acceptance.json. This pair uses source934bdbd…, not the
+latest checkpoint SHA; later refresh/operation/shared selection changes prevent
+claiming whole-package current-source coverage.
+The old CP120 unknown installation remains untouched. Android API35 status also
+succeeds with the ADB port unset, so the earlier environment correlation is not
+proof of a port-related product defect. API29 now has an immutable public HTTPS
+fixture URL for its bounded subscription refresh acceptance.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration142 | root | CI correction review, metadata, checks and exact-SHA delivery |
+| Fixture review142 | fixture_review142 | Bounded Windows hygiene failure diagnosis/fix; fixture scripts/tests |
+| macOS build141 | mac_build141 | Same-source package pair only; live Tart/relay, no installation |
+| Linux install142 | linux_install142 | One admitted public install and receipt recovery in Fedora2328 |
+| Android refresh142 | android_refresh142 | API29 test subscription add/refresh/readback/targeted cleanup |
+| Windows console | root | Host remains locked; interactive MSI acceptance pending |
+
+## Historical continuation — checkpoint141
 
 Checkpoint140 `cc9a995eb81451f3be6571fd0a54bd37f473d96f` is pushed after
 full managed prepush passed. Version2.1.16, Unreleased5 at that commit. All five

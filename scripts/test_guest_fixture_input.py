@@ -117,7 +117,7 @@ class GuestFixtureInputTest(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(64, result.returncode)
-            self.assertIn("No such file", result.stderr)
+            self.assertIn("guest fixture helper is missing", result.stderr)
             self.assertFalse(sentinel.exists(), "missing helper must fail before probe-pom launches")
 
     def test_generated_guest_argv_is_structured_and_executes_only_after_verification(self):
