@@ -10,6 +10,14 @@ from agent_tools import mcp_server
 
 
 class NativeRoutesTest(unittest.TestCase):
+    def test_connection_recovery_delegates_only_configured_alias_and_deadline(self):
+        from agent_tools import ssh_connection_recovery
+        with patch.object(ssh_connection_recovery, "recover", return_value={"ok": False, "state": "recovery_intent_pending"}) as recover:
+            result = mcp_server.ssh_workflow("connection-recover", host="vm", timeout_seconds=20)
+        recover.assert_called_once_with(mcp_server.REPO_ROOT, "vm", 20)
+        self.assertFalse(result["ok"])
+        self.assertEqual("recovery_intent_pending", result["state"])
+
     def test_android_observation_uses_only_configured_device_profile(self):
         from types import SimpleNamespace
         from agent_tools import ssh_transport, android_observation

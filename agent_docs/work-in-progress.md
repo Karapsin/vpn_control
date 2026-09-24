@@ -25,7 +25,45 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint147
+## Current continuation — checkpoint148
+
+Checkpoint147 `b835439bb430848f46d6638281491fffb0e66ee7` is pushed after
+fresh full prepush passed. Exact-SHA CI is still running; Android Release APK has
+passed. The frozen local nondebuggable x86_64 APK is version2.1.17/code16740,
+SHA256 `08a09cee6c79900d300ec0731590fe0b74b325505ddb897d0596f53c329e05c2`.
+Its signer matches the installed fixture; it has not been installed or run.
+Manifest: checkpoint147/android-artifact.json.
+
+SSH gateway access has recovered. The nested Arch route now fails authentication,
+and read-only `ssh -O check` found its configured control socket unavailable.
+The authorized passphrase is in the ignored mode0600 host inventory, never source
+or command arguments. Connection recovery now succeeded through the real MCP;
+the new socket was independently probed and adopted in the private inventory.
+The first attempt was proven rejected before subprocess submission because the
+transport forbids raw newlines in argv. Its intent is preserved as not-submitted;
+encoded-script regression now covers the actual transport builder.
+
+Transfer146 status is still unknown/not_published; no resend occurred. API29
+observation reached UID2000/API29 and its expected kernel AVD name with disabled
+proxy settings, but initially rejected the empty secondary boot AVD property.
+After a causal fixture correction, real MCP observation succeeded with the same
+controller in status/operations, zero active operations and disabled proxy fields.
+Evidence: checkpoint148/android29-observe-fixed.json. No product mutation occurred.
+macOS CI36004512051 reported image-attached-elsewhere after partition detach.
+The next patch validates and detaches the whole-image parent, with ten quick
+cleanup tests; native exact-SHA confirmation is still required.
+
+The macOS VM is still stopped. Read-only admission at 2026-09-24 16:23:46+0300
+reported pressure2 and swap1845.88MiB on the 24GiB host, so it was rejected.
+No unrelated processes were stopped and rollback114 remains untouched.
+
+| Task | Agent | Owned subsystem | Dependencies / next handoff |
+| --- | --- | --- | --- |
+| Integration148 | root | MCP registration, docs, review, native admission and exact-SHA CI | Review recovery before invocation; no unknown transfer replay |
+| SSH recovery148 | ssh_recovery148 | Connection recovery module and deterministic tests | Fix response-loss identity, exclusive intent, actual askpass tests |
+| macOS admission148 | completed | Read-only host measurement | Wait for fresh passing resource admission before any guarded boot |
+
+## Historical continuation — checkpoint147
 
 Checkpoint146 `4ead8b79a85df7aeef862be932693d2e6462a21c` was pushed after
 full prepush passed. Its macOS workflow36001020956 failed: mountpoint removal

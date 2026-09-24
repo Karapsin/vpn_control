@@ -46,7 +46,7 @@ for dmg in "${dmg_files[@]}"; do
 import plistlib
 import sys
 
-mountpoint, image_path, device = sys.argv[1:]
+mountpoint, image_path, image_device = sys.argv[1:]
 document = plistlib.loads(sys.stdin.buffer.read())
 images = document.get("images")
 if not isinstance(images, list):
@@ -61,7 +61,14 @@ entities = image.get("system-entities")
 if not isinstance(entities, list):
     raise SystemExit(1)
 mounts = [entity for entity in entities if isinstance(entity, dict) and "mount-point" in entity]
-if len(mounts) != 1 or mounts[0].get("mount-point") != mountpoint or mounts[0].get("dev-entry") != device:
+if len(mounts) != 1 or mounts[0].get("mount-point") != mountpoint:
+    raise SystemExit(1)
+mounted_device = mounts[0].get("dev-entry")
+if not isinstance(mounted_device, str):
+    raise SystemExit(1)
+image_devices = [entity.get("dev-entry") for entity in entities if isinstance(entity, dict)
+                 and isinstance(entity.get("dev-entry"), str) and mounted_device.startswith(entity["dev-entry"] + "s")]
+if image_devices != [image_device]:
     raise SystemExit(1)
 ' "$mount_dir" "$dmg" "$attached_device"
   }
@@ -70,7 +77,7 @@ if len(mounts) != 1 or mounts[0].get("mount-point") != mountpoint or mounts[0].g
 import plistlib
 import sys
 
-mountpoint, image_path, device = sys.argv[1:]
+mountpoint, image_path, image_device = sys.argv[1:]
 document = plistlib.loads(sys.stdin.buffer.read())
 images = document.get("images")
 if not isinstance(images, list):
@@ -86,11 +93,13 @@ entities = matching_images[0].get("system-entities")
 if not isinstance(entities, list):
     print("malformed-image")
     raise SystemExit(0)
+devices = [entity.get("dev-entry") for entity in entities if isinstance(entity, dict)]
+if image_device not in devices:
+    print("image-device-changed")
+    raise SystemExit(0)
 mounts = [entity for entity in entities if isinstance(entity, dict) and entity.get("mount-point") == mountpoint]
-if any(entity.get("dev-entry") == device for entity in mounts):
-    print("still-attached-owned-device")
-elif mounts:
-    print("mountpoint-reused")
+if mounts:
+    print("still-attached-owned-image")
 else:
     print("image-attached-elsewhere")
 ' "$mount_dir" "$dmg" "$attached_device"
@@ -148,7 +157,12 @@ if not isinstance(entities, list):
 mounts = [entity for entity in entities if isinstance(entity, dict) and entity.get("mount-point") == mountpoint]
 if len(mounts) != 1 or not isinstance(mounts[0].get("dev-entry"), str):
     raise SystemExit(1)
-print(mounts[0]["dev-entry"])
+mounted_device = mounts[0]["dev-entry"]
+image_devices = [entity.get("dev-entry") for entity in entities if isinstance(entity, dict)
+                 and isinstance(entity.get("dev-entry"), str) and mounted_device.startswith(entity["dev-entry"] + "s")]
+if len(image_devices) != 1:
+    raise SystemExit(1)
+print(image_devices[0])
 ' "$mount_dir")"
   attached=true
 

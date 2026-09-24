@@ -128,6 +128,20 @@ ssh-workflow inventory`, `ssh-workflow probe --host <alias>`, or `vm-workflow
 Agent-tool discovery tests and focused native-tool tests run in the ordinary
 `agent_tools/tests` suite and managed prepush.
 
+### Nested SSH connection recovery
+
+`ssh_workflow("connection-recover", host=...)` checks the configured nested
+control socket before creating an isolated replacement connection. It is limited
+to configured nested hosts. A nested profile's optional `password` supplies the
+authorized key passphrase through SSH stdin and a temporary private askpass file;
+the value is never a command argument or ordinary tool result.
+
+A private local intent records the exact new socket before submission. A repeated
+call observes that socket and does not create another connection after an uncertain
+result. Existing sockets are never removed or replaced. Recovery does not restart
+any VM, installer, VPN or product process. A ready recovery receipt identifies the
+socket for the coordinator to adopt in its private host inventory after verification.
+
 ### Read-only Android observation
 
 A private host entry may include `androidDevices`, mapping a device alias to

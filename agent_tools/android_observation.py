@@ -137,7 +137,10 @@ def redact_proxy(value):
     return {"state": "set"}
 proxy = {name: redact_proxy(value) for name, value in proxy.items()}
 baseline = {"uid": uid, "sdk": sdk, "kernelAvd": kernel_avd, "bootAvd": boot_avd, "proxy": proxy}
-if uid != "2000" or sdk != str(expected_api) or not kernel_avd or kernel_avd != boot_avd or kernel_avd != expected_avd:
+# Match the canonical fixture admission policy: API 29 may not expose the
+# secondary boot property, while two populated properties must agree.
+avd_identities = {value for value in (kernel_avd, boot_avd) if value}
+if uid != "2000" or sdk != str(expected_api) or len(avd_identities) != 1 or expected_avd not in avd_identities:
     print(json.dumps({"baseline": baseline, "admitted": False}, separators=(",", ":")))
     raise SystemExit(0)
 environment = public_cli_environment(adb, Path(cli))

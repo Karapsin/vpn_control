@@ -90,6 +90,22 @@ class AndroidObservationTest(unittest.TestCase):
                 with self.assertRaises(SystemExit): exec(observation._remote_probe(), {})
             self.assertFalse(called.exists())
     @unittest.skipUnless(os.name == "posix", "fixed remote probe uses POSIX fake executables")
+    def test_api29_single_avd_identity_admits_but_conflicting_or_missing_identity_rejects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); adb = root / "adb"; cli = root / "vpn-control"; called = root / "cli-called"
+            adb.write_text("#!/usr/bin/env python3\nimport os,sys\ncase=os.environ['OBS_CASE']; word=sys.argv[-1]\nvalues={'api29':('2000','29','api29',''),'mismatch':('2000','29','api29','other'),'missing':('2000','29','',''),'wrong-api':('2000','35','api29',''),'wrong-uid':('1000','29','api29','')}[case]\nprint(values[0] if sys.argv[-2:]==['id','-u'] else values[1] if word=='ro.build.version.sdk' else values[2] if word=='ro.kernel.qemu.avd_name' else values[3] if word=='ro.boot.qemu.avd_name' else 'null')\n")
+            cli.write_text("#!/usr/bin/env python3\nimport json\nopen(" + repr(str(called)) + ", 'w').write('called')\nprint(json.dumps({'ok':True,'code':'OK','final':True,'controllerId':'owner','data':{'operations':[]}}))\n")
+            adb.chmod(0o700); cli.chmod(0o700)
+            for case, admitted in (("api29", True), ("mismatch", False), ("missing", False), ("wrong-api", False), ("wrong-uid", False)):
+                called.unlink(missing_ok=True); output = io.StringIO()
+                with self.subTest(case=case), mock.patch.dict(os.environ, {"OBS_CASE":case}), mock.patch.object(sys, "argv", ["probe", str(adb), str(cli), "emulator-5554", "api29", "29", "2"]), contextlib.redirect_stdout(output):
+                    if admitted:
+                        exec(observation._remote_probe(), {})
+                    else:
+                        with self.assertRaises(SystemExit): exec(observation._remote_probe(), {})
+                self.assertEqual(admitted, called.exists())
+                self.assertEqual(admitted, json.loads(output.getvalue())["admitted"])
+    @unittest.skipUnless(os.name == "posix", "fixed remote probe uses POSIX fake executables")
     def test_remote_probe_uses_canonical_pinned_adb_environment(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); adb = root / "adb"; cli = root / "vpn-control"; evidence = root / "evidence"

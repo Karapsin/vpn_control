@@ -1689,13 +1689,16 @@ def _json_print(value: dict[str, Any]) -> int:
 
 
 def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
-    """List private host aliases or perform a bounded, read-only authenticated SSH probe."""
+    """Inspect configured SSH hosts, recover a nested connection, or transfer owned fixture helpers."""
     transport = importlib.import_module(f"{__package__}.ssh_transport" if __package__ else "ssh_transport")
     try:
         if action == "inventory":
             return {"ok": True, "tool": "ssh_workflow", "hosts": list(transport.inventory(REPO_ROOT))}
         if action == "probe" and host:
             return {"tool": "ssh_workflow", **transport.probe(REPO_ROOT, host, timeout_seconds).as_dict()}
+        if action == "connection-recover" and host:
+            recovery = importlib.import_module(f"{__package__}.ssh_connection_recovery" if __package__ else "ssh_connection_recovery")
+            return {"tool": "ssh_workflow", **recovery.recover(REPO_ROOT, host, timeout_seconds)}
         if action == "android-observe" and host and device:
             configured = transport.load_config(REPO_ROOT).hosts.get(host)
             if configured is None or device not in configured.android_devices:
@@ -1759,7 +1762,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     subparsers.add_parser("serve")
     ssh_parser = subparsers.add_parser("ssh-workflow")
-    ssh_parser.add_argument("action", choices=("inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe"))
+    ssh_parser.add_argument("action", choices=("inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover"))
     ssh_parser.add_argument("--host")
     ssh_parser.add_argument("--device")
     ssh_parser.add_argument("--timeout-seconds", type=int, default=15)

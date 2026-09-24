@@ -12,7 +12,7 @@ import unittest
 @unittest.skipUnless(os.name == "posix", "requires the package shell")
 class MacPackageCleanupTest(unittest.TestCase):
     def scenario(self, failures, smoke_exit=0, force_succeeds=False, identity_matches=True, extra_mount=False,
-                 rmdir_failures=0, post_detach_state="absent"):
+                 rmdir_failures=0, post_detach_state="absent", partition_detach_leaves_image_attached=False):
         temporary = tempfile.TemporaryDirectory(prefix="mac cleanup-東京-")
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
@@ -47,20 +47,26 @@ elif name == "hdiutil":
         executable = app / "MacOS/fixture"
         executable.touch()
         executable.chmod(0o700)
-        plistlib.dump({"system-entities": [{"dev-entry": "/dev/disk777s1", "mount-point": str(mount)}]}, sys.stdout.buffer)
+        plistlib.dump({"system-entities": [{"dev-entry": "/dev/disk777"},
+            {"dev-entry": "/dev/disk777s1", "mount-point": str(mount)}]}, sys.stdout.buffer)
     elif args[0] == "info":
         detached = (root / "detached").exists()
+        partition_detached = (root / "partition-detached").exists()
         state = os.environ["POST_DETACH_STATE"] if detached else "attached"
         if state == "absent":
             plistlib.dump({"images": []}, sys.stdout.buffer)
+        elif partition_detached:
+            plistlib.dump({"images": [{"image-path": str((root / "fixture.dmg").resolve()), "writeable": False,
+                "system-entities": [{"dev-entry": "/dev/disk777"}]}]}, sys.stdout.buffer)
         else:
             expected_mount = str(mount) if os.environ["IDENTITY_MATCHES"] == "true" else str(root / "other-mount")
-            entities = [{"dev-entry": "/dev/disk777s1", "mount-point": expected_mount}]
+            entities = [{"dev-entry": "/dev/disk777"},
+                {"dev-entry": "/dev/disk777s1", "mount-point": expected_mount}]
             if os.environ["EXTRA_MOUNT"] == "true": entities.append({"dev-entry": "/dev/disk777s2", "mount-point": str(root / "other-volume")})
             plistlib.dump({"images": [{"image-path": str((root / "fixture.dmg").resolve()), "writeable": False,
                 "system-entities": entities}]}, sys.stdout.buffer)
     else:
-        assert args[1] == "/dev/disk777s1"
+        assert args[1] == "/dev/disk777"
         forced = args[2:] == ["-force", "-quiet"]
         assert forced or args[2:] == ["-quiet"]
         counter = root / "detach-count"
@@ -69,7 +75,10 @@ elif name == "hdiutil":
         if not forced and count <= int(os.environ["DETACH_FAILURES"]): sys.exit(1)
         if forced and os.environ["FORCE_SUCCEEDS"] != "true": sys.exit(1)
         shutil.rmtree(mount / "fixture.app")  # Simulate successful unmount, never an actual mount.
-        (root / "detached").touch()
+        if args[1] == "/dev/disk777s1" and os.environ["PARTITION_DETACH_LEAVES_IMAGE_ATTACHED"] == "true":
+            (root / "partition-detached").touch()
+        else:
+            (root / "detached").touch()
 elif name == "plutil":
     print("2.1.5" if args[1] == "CFBundleShortVersionString" else "fixture")
 elif name == "jar": print("bin/darwin-arm64/sing-box")
@@ -88,6 +97,7 @@ elif name == "rmdir":
     counter = root / "rmdir-count"
     count = int(counter.read_text()) + 1 if counter.exists() else 1
     counter.write_text(str(count))
+    if (root / "partition-detached").exists(): sys.exit(16)
     if count <= int(os.environ["RMDIR_FAILURES"]): sys.exit(16)
     mount.rmdir()
 elif name == "sleep": pass
@@ -100,7 +110,8 @@ else: raise AssertionError(name)
                            CLEANUP_FIXTURE=str(root), DETACH_FAILURES=str(failures), SMOKE_EXIT=str(smoke_exit),
                            FORCE_SUCCEEDS=str(force_succeeds).lower(), IDENTITY_MATCHES=str(identity_matches).lower(),
                            EXTRA_MOUNT=str(extra_mount).lower(), RMDIR_FAILURES=str(rmdir_failures),
-                           POST_DETACH_STATE=post_detach_state)
+                           POST_DETACH_STATE=post_detach_state,
+                           PARTITION_DETACH_LEAVES_IMAGE_ATTACHED=str(partition_detach_leaves_image_attached).lower())
         environment.pop("VPN_CONTROL_MACOS_SIGNING_IDENTITY", None)
         result = subprocess.run([shutil.which("bash"), str(script), str(dmg)], env=environment,
                                 capture_output=True, text=True, timeout=15)
@@ -123,14 +134,14 @@ else: raise AssertionError(name)
         self.assertIn("preserved", result.stderr)
         detach = [call for call in calls if call[:2] == ["hdiutil", "detach"]]
         self.assertEqual(6, len(detach))
-        self.assertEqual(["hdiutil", "detach", "/dev/disk777s1", "-force", "-quiet"], detach[-1])
+        self.assertEqual(["hdiutil", "detach", "/dev/disk777", "-force", "-quiet"], detach[-1])
 
     def test_owned_read_only_image_uses_its_captured_device_for_one_forced_detach_after_retries(self):
         root, result, calls = self.scenario(failures=5, force_succeeds=True)
         self.assertEqual(0, result.returncode, result.stderr)
         detach = [call for call in calls if call[:2] == ["hdiutil", "detach"]]
-        self.assertEqual([["hdiutil", "detach", "/dev/disk777s1", "-quiet"]] * 5 +
-                         [["hdiutil", "detach", "/dev/disk777s1", "-force", "-quiet"]], detach)
+        self.assertEqual([["hdiutil", "detach", "/dev/disk777", "-quiet"]] * 5 +
+                         [["hdiutil", "detach", "/dev/disk777", "-force", "-quiet"]], detach)
         self.assertFalse((root / "mount").exists())
         self.assertFalse((root / "unsafe-recursive-removal").exists())
 
@@ -153,6 +164,13 @@ else: raise AssertionError(name)
         self.assertEqual(2, sum(call[0] == "rmdir" for call in calls))
         self.assertFalse((root / "mount").exists())
 
+    def test_whole_image_detach_releases_mountpoint_when_partition_detach_leaves_image_attached(self):
+        root, result, calls = self.scenario(failures=0, partition_detach_leaves_image_attached=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["hdiutil", "detach", "/dev/disk777", "-quiet"],
+                         next(call for call in calls if call[:2] == ["hdiutil", "detach"]))
+        self.assertFalse((root / "mount").exists())
+
     def test_busy_mountpoint_after_successful_detach_reports_absent_attachment_state(self):
         root, result, calls = self.scenario(failures=0, rmdir_failures=5)
         self.assertNotEqual(0, result.returncode)
@@ -165,7 +183,7 @@ else: raise AssertionError(name)
         self.assertNotEqual(0, result.returncode)
         self.assertEqual(5, sum(call[0] == "rmdir" for call in calls))
         self.assertTrue((root / "mount").exists())
-        self.assertIn("attachment state: still-attached-owned-device", result.stderr)
+        self.assertIn("attachment state: still-attached-owned-image", result.stderr)
 
     def test_smoke_failure_still_detaches_without_masking_failure(self):
         root, result, calls = self.scenario(failures=0, smoke_exit=7)

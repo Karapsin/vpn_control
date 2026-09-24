@@ -1236,3 +1236,27 @@ The agent-tools suite runs this regression in routine prepush and CI.
   secret-free proxy summaries. They belong to routine agent-tools discovery.
   The real MCP call remains unknown due to transport failure; fake-executable
   checks do not establish successful native observation.
+
+## Checkpoint148 — recovered SSH and native fixture attribution
+
+- The nested SSH control socket expired while the gateway remained reachable.
+  Recovery now reserves a unique short socket path before submission and retains
+  an exclusive correlated intent across response loss. Tests cover duplicate
+  creation, safe askpass execution, socket length and bounded observation.
+  The first real request exposed raw multiline Python being rejected by the
+  existing SSH argv validator before any subprocess invocation. A regression now
+  exercises the real builder with encoded Python. The original intent is archived
+  as proven not-submitted; the corrected real MCP call returned ready and the
+  adopted route passed a separate probe. Evidence is in checkpoint148/ssh-*.
+- The macOS diagnostic from CI36004512051 reported image-attached-elsewhere.
+  A fixture now reproduces successful slice detach leaving the whole image and
+  busy mountpoint behind. Cleanup captures and revalidates the unique parent
+  image device before detaching it. Ten quick cleanup tests pass; this remains
+  a candidate repair until the new exact-SHA macOS package workflow succeeds.
+- Real API29 reports the expected kernel AVD property and an empty secondary boot
+  property. The observer incorrectly required both properties populated. Its
+  actual fake-executable regression now admits one matching nonempty identity
+  and rejects disagreement, absence, wrong API or wrong UID before CLI access.
+  Thirteen observer tests pass. The repaired real MCP observation succeeded with
+  one consistent controller and zero active operations in
+  checkpoint148/android29-observe-fixed.json.
