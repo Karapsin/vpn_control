@@ -642,3 +642,14 @@ with a real IPv4 TLS client and SOCKS forwarding through the same fixture.
 `test_vpn_integration_fixture.py` preserves IPv6-only fallback and rejects any
 non-loopback resolution. Use the installed JVM for native resolver diagnostics;
 a system JVM alone does not establish the packaged runtime behavior.
+
+### Owned macOS VM resource monitor
+
+Run `python3 scripts/test_macos_vm_resource_monitor.py` (included in release
+hygiene). POSIX cases use synthetic processes to verify separate child sessions,
+continued work after observer-group termination, pressure-stop receipts and
+unknown-outcome preservation. Windows skips the POSIX process cases explicitly
+and still runs portable admission checks. Launch the real monitor in a retained
+foreground execution session; do not background it with `nohup ... &`. Keep the
+exact session handle and private evidence directory. A missing monitor receipt
+is an unknown outcome, not permission to boot another copy or replay installation.

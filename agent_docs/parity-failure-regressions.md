@@ -1008,3 +1008,24 @@ The preceding hand-built launch omitted ANDROID_AVD_HOME and never booted. Nativ
 launchers must consume the helper's environment explicitly rather than recreate
 it. Preserve that failed launch receipt; a stopped process is not a successful
 heap-admission result.
+
+### macOS monitor lost with its launch context — checkpoint136
+
+The CP135 background monitor and Tart child disappeared after one normal-pressure
+sample, without a terminal, pressure-stop or error receipt. Logs do not establish
+the terminating actor or a guest failure. The `nohup ... &` wrapper and inherited
+child process group left a concrete lifetime weakness. The foreground resource
+monitor now gives its child a separate session and retains process, sample and
+terminal receipts. Failed observation or an uncertain stop records that state
+without another stop request or signalling the unknown child. Routine synthetic
+process tests cover the lifetime and failure boundaries; retain the original
+native failure in `checkpoint136/macos-monitor/original-failed-launch` (copied
+from the original private temporary directory).
+A new native boot/reconciliation remains required; passing these tests alone
+does not establish installer recovery.
+
+CP136 prepush also caught an empty heartbeat read between the synthetic writer's
+truncate and write. This is a test-fixture publication race, not a Tart or product
+failure. The failing prepush receipt is retained. Atomic synthetic heartbeat publication
+and a routine missing/empty/partial/complete reader regression now pass; the
+process-group survival scenario remains in the seven-test selection.

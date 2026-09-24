@@ -62,6 +62,7 @@ python3 scripts/test_android_subscription_refresh_lifecycle.py
 python3 scripts/test_native_python_tests.py
 python3 scripts/test_macos_fixture_owner_launch.py
 python3 scripts/test_macos_fixture_processes.py
+python3 scripts/test_macos_vm_resource_monitor.py
 python3 scripts/test_native_fixture_run.py
 python3 scripts/test_native_fixture_qga.py
 python3 scripts/test_capture_visual_windows_qemu.py

@@ -25,11 +25,45 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint135
+## Current continuation — checkpoint136
 
-Checkpoint134 `8fcd7225d84a232db5897763801fc47782c2ffc5` is pushed after the full
-managed prepush tier; version2.1.16. Its exact-SHA package CI is being watched.
-The last fully verified pushed SHA remains checkpoint131 until that watch finishes.
+Checkpoint135 `79a2a35388cdbd7590e43593b75a27d4e733c139` is pushed with all five
+required exact-SHA workflows successful. Version remains2.1.16. CP136 adds the
+owned macOS foreground VM monitor and routine causal regressions; delivery of
+that slice is pending. Seven focused monitor tests pass, including the partial-heartbeat regression
+added after prepush caught a synthetic publication race. Windows explicitly skips
+POSIX process cases and retains the portable admission check.
+
+The previous background monitor disappeared without a terminal receipt; its
+terminating actor remains unknown. CP136's foreground session survived and
+recorded normal pressure followed by pressure2 after25 seconds. The approved
+resource guard gracefully stopped the sole owned Tart guest; stop returned0,
+child exited0 and Tart reports stopped. Native receipts are under
+checkpoint136/macos-monitor/native-run. No guest command, installer replay or
+authorization occurred. Do not reboot while this resource condition persists.
+
+API35 replay is executing once from its captured56000-domain original. Reviewed
+candidate adds one synthetic domain; it must prove an exact same-request result,
+full candidate readback and guarded restoration to the original56000 domains.
+Only its exact retained process/receipts authorize observation, never replay on
+a timeout. Linux's CP135 scheduler evidence is sealed and independently reviewed.
+
+| Task | Owner | Exclusive scope / next handoff |
+| --- | --- | --- |
+| Integration136 | root | Monitor review, routine wiring, metadata, checks and delivery |
+| Android35 replay | android35_install125 | emulator5682 only; one frozen guarded run and evidence export |
+| Android29 refresh | prepared, no operator | Retained5684 stopped; existing harness plan, no native launch |
+| Linux | no active operator | CP120 idle; scheduler evidence sealed |
+| Windows | no active operator | CP117 running; QGA confirms no session/package, disabled base task; console locked |
+| macOS | root | Guest stopped by recorded pressure guard; preserve installer journal/inputs |
+
+## Historical continuation — checkpoint135
+
+Checkpoint134 `8fcd7225d84a232db5897763801fc47782c2ffc5` passed all five required
+exact-SHA workflows. Checkpoint135 `79a2a35388cdbd7590e43593b75a27d4e733c139` is
+pushed after the full managed prepush tier; version2.1.16. All five required
+exact-SHA workflows and advisory VPN Integration passed; managed receipt is
+checkpoint135/commit-result.json.
 
 Linux CP133 accepted the HTTPS source but manual refresh persisted Connection
 refused before runtime startup. Its fixture bound only IPv6 localhost, while a
@@ -41,24 +75,36 @@ The causal quick test first failed with connection refused; five HTTPS and sixte
 SOCKS tests now pass. Evidence: checkpoint135/linux-localhost. The original failed
 native attempt is preserved in checkpoint133/linux-scheduler-https.
 
-The corrected CP135 native run has passed manual HTTPS refresh, VPN startup and
-the normalized five-minute setting; its scheduled-refresh/traffic result is still
-pending. Observe its exact durable ticket in checkpoint135/linux-scheduler-ipv4;
-do not replay on observer timeout. It uses the installed6ee/2.1.15 RPM.
+The corrected CP135 native run passed scheduled HTTPS refresh at the normalized
+five-minute interval (299.914s between actual product fetches), with1435 successful
+TUN samples and unchanged controller/runtime/active selection/source. Public off
+and quit completed. Root exported and verified the eight-file native evidence
+manifest in checkpoint135/linux-scheduler-ipv4/native-evidence; root-review.json
+records exact identities and limits. Fresh cleanup finds no owner/runtime/TUN and
+RPM verification passes. This is installed6ee/2.1.15 RPM evidence, not a claim for
+the newest2.1.16 package. Arch rebooted after the completed run; the retained guest
+was booted only to retrieve evidence, without replaying the scheduler.
 
 API35 admission reidentified only emulator5682, UID2000, nondebuggable2.1.15 APK
 SHA1ac2ac0d823bf6f0403f57ea3156c90209a3d91c64ccf4af919132c32af92401,
 OFF with no proxy/reverse mappings. A newer installed receipt is present; the old
 cancel session is historical. No installation was resumed. Exact large-request
 replay on API35 is a separate bounded task; its actual heap is512m, not48m.
+After the Arch reboot, the retained API35 AVD was cold-booted with its existing
+userdata. Its public routing query completed with an11.48MB response containing
+56000 domains, contradicting the proposed empty-state prerequisite. The guard
+stopped replay before mutation. Preserve this actual original state; root is
+reviewing a distinct candidate plus exact guarded restoration. Host console access
+briefly returned but CUA subsequently reported the Mac locked again.
 
 | Task | Owner | Exclusive scope / next handoff |
 | --- | --- | --- |
 | Integration135 | root | Shared fixture correction, metadata, host builds and delivery |
-| Linux scheduler | root | CP120 Fedora, one CP135 attempt; exact ticket observation and cleanup |
+| Linux scheduler | complete | CP120 Fedora evidence sealed; guest idle, no owner/runtime/TUN |
 | Android35 replay | android35_install125 | emulator5682 only; reviewed replay/restore flow, no installer or UI action |
-| Android29 | no active operator | emulator5684 remains restored/OFF after CP134 |
-| Windows/macOS console | no active operator | Host Mac locked; unlock requested; guest installer state untouched |
+| Android29 | no active operator | Restored/OFF before Arch reboot; emulator not restarted |
+| Windows readiness | windows_base118 | Retained CP117 booted; read-only QGA snapshot, no installer/task/login |
+| macOS readiness | mac_admission125 | Resource admission and read-only retained-journal reconciliation; no installer replay |
 
 ## Historical continuation — checkpoint134
 
