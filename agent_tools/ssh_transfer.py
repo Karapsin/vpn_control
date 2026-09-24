@@ -29,7 +29,9 @@ except ImportError:  # pragma: no cover
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_ROOT = REPO_ROOT / "scripts"
 SCENARIO_ID = "desktop-update-entrypoint"
+APK_STAGE_SCENARIO_ID = "android-apk-stage"
 MANIFEST_NAME = "SHA256SUMS.txt"
+APK_REMOTE_NAME = "app-nativeFixture.apk"
 CANONICAL_HELPERS = (
     "prepare_desktop_update_fixture.py",
     "fixture_environment.py",
@@ -59,7 +61,7 @@ class TransferIdentity:
         if not isinstance(value, Mapping) or set(value) != required:
             raise SshTransferError("Transfer identity has unsupported or missing fields.")
         scenario = value["scenarioId"]
-        if scenario != SCENARIO_ID:
+        if scenario not in (SCENARIO_ID, APK_STAGE_SCENARIO_ID):
             raise SshTransferError("Transfer scenario is not approved.")
         fields = (("owner", value["owner"]), ("environment", value["environment"]),
                   ("correlationId", value["correlationId"]))
@@ -82,6 +84,21 @@ class CapturedSource:
     identity: TransferIdentity
     contents: Mapping[str, bytes]
     hashes: Mapping[str, str]
+
+
+@dataclass(frozen=True)
+class CapturedApk:
+    """A private, byte-for-byte snapshot of one receipt-bound APK."""
+    identity: TransferIdentity
+    snapshot: Path
+    size: int
+    sha256: str
+
+
+@dataclass(frozen=True)
+class StreamPayload:
+    prefix: bytes
+    path: Path
 
 
 def _sha256(contents: bytes) -> str:
@@ -128,6 +145,87 @@ def _capture_source(source_directory: Path | str, owner: str, environment: str,
     manifest_hash = _sha256(contents[MANIFEST_NAME])
     identity = TransferIdentity(SCENARIO_ID, owner, environment, correlation_id, manifest_hash)
     return CapturedSource(identity, contents, {**helper_hashes, MANIFEST_NAME: manifest_hash})
+
+
+def _apk_snapshot_path(root: Path, correlation_id: str) -> Path:
+    return root / ".rag_index" / "ssh-transfer-apk-snapshots" / f"{correlation_id}.apk"
+
+
+def _read_small_regular(path: Path, label: str) -> bytes:
+    try:
+        info = path.lstat()
+        if path.is_symlink() or not stat.S_ISREG(info.st_mode) or info.st_size < 0 or info.st_size > 8192:
+            raise SshTransferError(f"{label} must be a small regular file.")
+        raw = path.read_bytes()
+    except OSError as error:
+        raise SshTransferError(f"{label} cannot be read.") from error
+    if len(raw) != info.st_size:
+        raise SshTransferError(f"{label} changed while being read.")
+    return raw
+
+
+def _capture_apk(apk_path: Path | str, manifest_path: Path | str, artifact_receipt_path: Path | str,
+                 root: Path | str, owner: str, environment: str, correlation_id: str) -> CapturedApk:
+    """Copy one approved APK once, without holding it in memory or trusting its name."""
+    identity_stub = TransferIdentity.from_mapping({
+        "scenarioId": APK_STAGE_SCENARIO_ID,
+        "owner": owner,
+        "environment": environment,
+        "correlationId": correlation_id,
+        "sourceManifestSha256": "0" * 64,
+    })
+    apk = Path(apk_path)
+    receipt_path = Path(artifact_receipt_path)
+    manifest = _read_small_regular(Path(manifest_path), "APK SHA256SUMS.txt")
+    receipt_raw = _read_small_regular(receipt_path, "Frozen APK receipt")
+    try:
+        receipt = json.loads(receipt_raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise SshTransferError("Frozen APK receipt is invalid.") from error
+    if not isinstance(receipt, dict):
+        raise SshTransferError("Frozen APK receipt is invalid.")
+    declared_file, declared_size, declared_hash = receipt.get("file"), receipt.get("bytes"), receipt.get("sha256")
+    if (not isinstance(declared_file, str) or not Path(declared_file).is_absolute() or
+            type(declared_size) is not int or declared_size <= 0 or declared_size > (2**63 - 1) or
+            not isinstance(declared_hash, str) or not _SHA256.fullmatch(declared_hash)):
+        raise SshTransferError("Frozen APK receipt has invalid byte identity.")
+    if not apk.is_absolute() or str(apk) != declared_file:
+        raise SshTransferError("APK path does not match the frozen APK receipt.")
+    expected_manifest = f"{declared_hash}  {APK_REMOTE_NAME}\n".encode()
+    if manifest != expected_manifest:
+        raise SshTransferError("APK SHA256SUMS.txt does not exactly describe app-nativeFixture.apk.")
+    try:
+        source_info = apk.lstat()
+        if apk.is_symlink() or not stat.S_ISREG(source_info.st_mode) or source_info.st_size != declared_size:
+            raise SshTransferError("APK source is not the declared regular size.")
+        snapshot = _apk_snapshot_path(Path(root).resolve(), correlation_id)
+        snapshot.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        parent_info = snapshot.parent.lstat()
+        if snapshot.parent.is_symlink() or not stat.S_ISDIR(parent_info.st_mode) or parent_info.st_uid != os.getuid() or stat.S_IMODE(parent_info.st_mode) != 0o700:
+            raise SshTransferError("APK snapshot directory is not private.")
+        target_fd = os.open(snapshot, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        digest = hashlib.sha256(); copied = 0
+        source_fd = os.open(apk, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            before = os.fstat(source_fd)
+            if not stat.S_ISREG(before.st_mode) or before.st_size != declared_size:
+                raise SshTransferError("APK source changed before capture.")
+            with os.fdopen(source_fd, "rb", closefd=False) as source, os.fdopen(target_fd, "wb", closefd=True) as target:
+                while chunk := source.read(65536):
+                    copied += len(chunk); digest.update(chunk); target.write(chunk)
+                target.flush(); os.fsync(target.fileno())
+            after = os.fstat(source_fd)
+        finally:
+            os.close(source_fd)
+        if copied != declared_size or before.st_ino != after.st_ino or before.st_size != after.st_size or digest.hexdigest() != declared_hash:
+            raise SshTransferError("APK source differs from the frozen APK receipt.")
+    except FileExistsError as error:
+        raise SshTransferError("Transfer correlation already has an immutable APK snapshot.") from error
+    except OSError as error:
+        raise SshTransferError("APK source cannot be captured.") from error
+    identity = TransferIdentity(APK_STAGE_SCENARIO_ID, identity_stub.owner, identity_stub.environment,
+                                identity_stub.correlation_id, _sha256(manifest))
+    return CapturedApk(identity, snapshot, declared_size, declared_hash)
 
 
 def _intent_path(root: Path, identity: TransferIdentity) -> Path:
@@ -315,11 +413,121 @@ finally:
   if name in globals(): os.close(globals()[name])'''
 
 
+_APK_RECEIVER = r'''import errno,hashlib,json,os,stat,sys
+root,owner,environment,correlation,expected_manifest=sys.argv[1:]
+name="app-nativeFixture.apk"; ident={"scenarioId":"android-apk-stage","owner":owner,"environment":environment,"correlationId":correlation,"sourceManifestSha256":expected_manifest}
+def bad(message): raise ValueError(message)
+F=os.O_RDONLY|os.O_DIRECTORY|getattr(os,"O_NOFOLLOW",0)
+def private(fd):
+ i=os.fstat(fd)
+ if not stat.S_ISDIR(i.st_mode) or i.st_uid!=os.geteuid() or stat.S_IMODE(i.st_mode)!=0o700: bad("unsafe private directory")
+def anchored(path):
+ if not path.startswith("/"): bad("invalid private directory")
+ fd=os.open("/",F)
+ try:
+  for part in path.split("/")[1:]:
+   if not part or part in (".",".."): bad("invalid private directory")
+   child=os.open(part,F,dir_fd=fd); os.close(fd); fd=child
+  private(fd); return fd
+ except Exception: os.close(fd); raise
+def child(parent,n,make=False):
+ try: fd=os.open(n,F,dir_fd=parent)
+ except OSError as e:
+  if not make or e.errno!=errno.ENOENT: raise
+  os.mkdir(n,0o700,dir_fd=parent); fd=os.open(n,F,dir_fd=parent)
+ private(fd); return fd
+root_fd=anchored(root); environment_fd=child(root_fd,environment,True); owner_fd=child(environment_fd,owner,True)
+os.mkdir(correlation,0o700,dir_fd=owner_fd); stage_fd=os.open(correlation,F,dir_fd=owner_fd); private(stage_fd)
+try:
+ header=sys.stdin.buffer.readline(4097)
+ if not header or len(header)>4096: bad("invalid transfer header")
+ value=json.loads(header.decode("utf-8")); files=value.get("files") if isinstance(value,dict) else None
+ if set(value)!={"schema","files"} or value["schema"]!=1 or not isinstance(files,list) or len(files)!=1 or not isinstance(files[0],dict) or set(files[0])!={"name","size","sha256"} or files[0]["name"]!=name: bad("invalid transfer header")
+ size,digest=files[0]["size"],files[0]["sha256"]
+ if type(size) is not int or size<=0 or size>9223372036854775807 or not isinstance(digest,str) or not all(c in "0123456789abcdef" for c in digest) or len(digest)!=64: bad("invalid transfer file metadata")
+ fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,"O_NOFOLLOW",0),0o600,dir_fd=stage_fd); h=hashlib.sha256(); left=size
+ with os.fdopen(fd,"wb") as out:
+  while left:
+   chunk=sys.stdin.buffer.read(min(left,65536))
+   if not chunk: bad("interrupted transfer stream")
+   out.write(chunk); h.update(chunk); left-=len(chunk)
+  out.flush(); os.fsync(out.fileno())
+ if h.hexdigest()!=digest: bad("transferred file hash mismatch")
+ manifest=(digest+"  "+name+"\n").encode()
+ if hashlib.sha256(manifest).hexdigest()!=expected_manifest: bad("manifest hash mismatch")
+ fd=os.open("SHA256SUMS.txt",os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,"O_NOFOLLOW",0),0o600,dir_fd=stage_fd)
+ with os.fdopen(fd,"wb") as out: out.write(manifest); out.flush(); os.fsync(out.fileno())
+ receipt={"identity":ident,"state":"published","hashes":{name:digest,"SHA256SUMS.txt":expected_manifest},"sizes":{name:size}}
+ fd=os.open("receipt.json",os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,"O_NOFOLLOW",0),0o600,dir_fd=stage_fd)
+ with os.fdopen(fd,"w",encoding="utf-8") as out: json.dump(receipt,out,sort_keys=True,separators=(",",":")); out.write("\n"); out.flush(); os.fsync(out.fileno())
+ for fd in (stage_fd,owner_fd,environment_fd,root_fd): os.fsync(fd)
+ print(json.dumps(receipt,sort_keys=True,separators=(",",":")))
+except Exception:
+ print(json.dumps({"state":"unknown","reason":"publish_failed"},separators=(",",":"))); raise SystemExit(64)
+finally:
+ for fd in (stage_fd,owner_fd,environment_fd,root_fd): os.close(fd)'''
+
+
+_APK_STATUS = r'''import hashlib,json,os,stat,sys
+root,owner,environment,correlation,expected=sys.argv[1:]; name="app-nativeFixture.apk"
+def unknown(reason): print(json.dumps({"state":"unknown","reason":reason},separators=(",",":"))); raise SystemExit(0)
+F=os.O_RDONLY|os.O_DIRECTORY|getattr(os,"O_NOFOLLOW",0)
+def private(fd):
+ i=os.fstat(fd)
+ if not stat.S_ISDIR(i.st_mode) or i.st_uid!=os.geteuid() or stat.S_IMODE(i.st_mode)!=0o700: unknown("unsafe_destination")
+def anchored(path):
+ if not path.startswith("/"): unknown("unsafe_destination")
+ fd=os.open("/",F)
+ try:
+  for p in path.split("/")[1:]:
+   if not p or p in (".",".."): unknown("unsafe_destination")
+   child=os.open(p,F,dir_fd=fd); os.close(fd); fd=child
+  private(fd); return fd
+ except Exception: os.close(fd); raise
+def child(parent,n):
+ fd=os.open(n,F,dir_fd=parent); private(fd); return fd
+def small(parent,n):
+ fd=os.open(n,os.O_RDONLY|getattr(os,"O_NOFOLLOW",0)|getattr(os,"O_NONBLOCK",0),dir_fd=parent)
+ try:
+  i=os.fstat(fd)
+  if not stat.S_ISREG(i.st_mode) or i.st_size>8192: unknown("invalid_receipt")
+  return os.read(fd,8193)
+ finally: os.close(fd)
+def digest_file(parent,n,size):
+ fd=os.open(n,os.O_RDONLY|getattr(os,"O_NOFOLLOW",0)|getattr(os,"O_NONBLOCK",0),dir_fd=parent)
+ try:
+  i=os.fstat(fd)
+  if not stat.S_ISREG(i.st_mode) or i.st_size!=size: unknown("destination_hash_mismatch")
+  h=hashlib.sha256(); total=0
+  while True:
+   c=os.read(fd,65536)
+   if not c: break
+   total+=len(c); h.update(c)
+  if total!=size: unknown("destination_hash_mismatch")
+  return h.hexdigest()
+ finally: os.close(fd)
+try:
+ root_fd=anchored(root); environment_fd=child(root_fd,environment); owner_fd=child(environment_fd,owner); parent_fd=child(owner_fd,correlation)
+ value=json.loads(small(parent_fd,"receipt.json").decode()); ident={"scenarioId":"android-apk-stage","owner":owner,"environment":environment,"correlationId":correlation,"sourceManifestSha256":expected}
+ if not isinstance(value,dict) or value.get("state")!="published" or value.get("identity")!=ident: unknown("receipt_mismatch")
+ hashes,sizes=value.get("hashes"),value.get("sizes")
+ if not isinstance(hashes,dict) or hashes.get("SHA256SUMS.txt")!=expected or not isinstance(sizes,dict) or type(sizes.get(name)) is not int or sizes[name]<=0 or sizes[name]>9223372036854775807 or not isinstance(hashes.get(name),str) or len(hashes[name])!=64: unknown("invalid_receipt")
+ if digest_file(parent_fd,name,sizes[name])!=hashes[name]: unknown("destination_hash_mismatch")
+ manifest=(hashes[name]+"  "+name+"\n").encode()
+ if hashlib.sha256(manifest).hexdigest()!=expected or small(parent_fd,"SHA256SUMS.txt")!=manifest: unknown("destination_hash_mismatch")
+ print(json.dumps({"state":"published","identity":ident,"hashes":hashes,"sizes":sizes},sort_keys=True,separators=(",",":")))
+except FileNotFoundError: unknown("not_published")
+except (OSError,ValueError,UnicodeError,json.JSONDecodeError): unknown("invalid_receipt")
+finally:
+ for n in ("parent_fd","owner_fd","environment_fd","root_fd"):
+  if n in globals(): os.close(globals()[n])'''
+
+
 def _python_command(program: str, *arguments: str) -> tuple[str, ...]:
     return ("python3", "-c", "exec(" + repr(program) + ")", *arguments)
 
 
-def _bounded_run(argv: list[str], payload: bytes | None, timeout_seconds: int) -> tuple[int, bytes]:
+def _bounded_run(argv: list[str], payload: bytes | StreamPayload | None, timeout_seconds: int) -> tuple[int, bytes]:
     try:
         process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     except OSError as error:
@@ -328,7 +536,14 @@ def _bounded_run(argv: list[str], payload: bytes | None, timeout_seconds: int) -
     writer_error: list[OSError] = []
     def write_input() -> None:
         try:
-            if payload: process.stdin.write(payload); process.stdin.flush()
+            if isinstance(payload, bytes):
+                process.stdin.write(payload); process.stdin.flush()
+            elif isinstance(payload, StreamPayload):
+                process.stdin.write(payload.prefix)
+                with payload.path.open("rb") as source:
+                    while chunk := source.read(65536):
+                        process.stdin.write(chunk)
+                process.stdin.flush()
         except OSError as error: writer_error.append(error)
         finally:
             try: process.stdin.close()
@@ -427,3 +642,69 @@ def status(root: Path | str, host: str, identity: Mapping[str, Any], timeout_sec
     if returncode != 0 or remote is None or remote.get("state") != "published" or remote.get("identity") != value.as_dict():
         return {"ok": False, "state": "unknown", "reason": remote.get("reason", "interrupted_or_unverified") if remote else "interrupted_or_unverified", "identity": value.as_dict()}
     return {"ok": True, "state": "published", "identity": value.as_dict(), "destinationHashes": remote.get("hashes")}
+
+
+def _apk_payload(source: CapturedApk) -> StreamPayload:
+    header = json.dumps({"schema": 1, "files": [{"name": APK_REMOTE_NAME, "size": source.size,
+                                                     "sha256": source.sha256}]},
+                        sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    return StreamPayload(header, source.snapshot)
+
+
+def publish_android_apk(root: Path | str, host: str, apk_path: Path | str, manifest_path: Path | str,
+                        frozen_artifact_receipt_path: Path | str, owner: str, environment: str,
+                        correlation_id: str, timeout_seconds: int = ssh_transport.DEFAULT_TIMEOUT_SECONDS,
+                        ssh_binary: str = "ssh") -> dict[str, Any]:
+    """Publish receipt-bound APK bytes only; this does not admit or install an APK."""
+    try:
+        source = _capture_apk(apk_path, manifest_path, frozen_artifact_receipt_path, root, owner, environment, correlation_id)
+    except SshTransferError as error:
+        # A reserved snapshot is the APK equivalent of an existing durable intent:
+        # report uncertainty without opening the source again or replaying a send.
+        if str(error) != "Transfer correlation already has an immutable APK snapshot.":
+            raise
+        manifest = _read_small_regular(Path(manifest_path), "APK SHA256SUMS.txt")
+        identity = TransferIdentity(APK_STAGE_SCENARIO_ID, owner, environment, correlation_id, _sha256(manifest))
+        return {"ok": False, "state": "unknown", "reason": str(error), "identity": identity.as_dict()}
+    hashes = {APK_REMOTE_NAME: source.sha256, MANIFEST_NAME: source.identity.source_manifest_sha256}
+    try:
+        config = ssh_transport.load_config(root); remote_root = _transfer_root(config, host)
+        intent = _private_intent(Path(root).resolve(), host, remote_root, source.identity, hashes)
+        argv = ssh_transport.build_ssh_argv(config, host, timeout_seconds,
+            command=_python_command(_APK_RECEIVER, str(remote_root), source.identity.owner, source.identity.environment,
+                                    source.identity.correlation_id, source.identity.source_manifest_sha256), ssh_binary=ssh_binary)
+        returncode, output = _bounded_run(argv, _apk_payload(source), timeout_seconds)
+    except (ssh_transport.SshConfigError, SshTransferError) as error:
+        return {"ok": False, "state": "unknown", "reason": str(error), "identity": source.identity.as_dict(),
+                "intentPath": str(locals().get("intent", ""))}
+    remote = _parse_remote(output)
+    if returncode == 255:
+        return {"ok": False, "state": "unknown", "reason": "ssh_transport_unavailable", "identity": source.identity.as_dict(), "intentPath": str(intent)}
+    if returncode != 0 or remote is None or remote.get("state") != "published" or remote.get("identity") != source.identity.as_dict() or remote.get("hashes") != hashes or remote.get("sizes") != {APK_REMOTE_NAME: source.size}:
+        return {"ok": False, "state": "unknown", "reason": "interrupted_or_unverified", "identity": source.identity.as_dict(), "intentPath": str(intent)}
+    return {"ok": True, "state": "published", "identity": source.identity.as_dict(), "sourceHashes": hashes,
+            "sourceSizes": {APK_REMOTE_NAME: source.size}, "destinationHashes": remote["hashes"],
+            "destinationSizes": remote["sizes"], "intentPath": str(intent)}
+
+
+def android_apk_stage_status(root: Path | str, host: str, identity: Mapping[str, Any],
+                             timeout_seconds: int = ssh_transport.DEFAULT_TIMEOUT_SECONDS,
+                             ssh_binary: str = "ssh") -> dict[str, Any]:
+    value = TransferIdentity.from_mapping(identity)
+    if value.scenario_id != APK_STAGE_SCENARIO_ID:
+        raise SshTransferError("Transfer identity is not an Android APK staging identity.")
+    try:
+        config = ssh_transport.load_config(root); remote_root = _transfer_root(config, host)
+        _require_intent(Path(root).resolve(), host, remote_root, value)
+        argv = ssh_transport.build_ssh_argv(config, host, timeout_seconds,
+            command=_python_command(_APK_STATUS, str(remote_root), value.owner, value.environment, value.correlation_id,
+                                    value.source_manifest_sha256), ssh_binary=ssh_binary)
+        returncode, output = _bounded_run(argv, None, timeout_seconds)
+    except (ssh_transport.SshConfigError, SshTransferError) as error:
+        return {"ok": False, "state": "unknown", "reason": str(error), "identity": value.as_dict()}
+    remote = _parse_remote(output)
+    if returncode == 255:
+        return {"ok": False, "state": "unknown", "reason": "ssh_transport_unavailable", "identity": value.as_dict()}
+    if returncode != 0 or remote is None or remote.get("state") != "published" or remote.get("identity") != value.as_dict():
+        return {"ok": False, "state": "unknown", "reason": remote.get("reason", "interrupted_or_unverified") if remote else "interrupted_or_unverified", "identity": value.as_dict()}
+    return {"ok": True, "state": "published", "identity": value.as_dict(), "destinationHashes": remote.get("hashes"), "destinationSizes": remote.get("sizes")}

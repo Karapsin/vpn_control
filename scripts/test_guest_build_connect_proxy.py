@@ -382,6 +382,79 @@ class RelayTest(unittest.TestCase):
             server.server_close()
             serving.join(1)
 
+    def test_capacity_rejection_gracefully_closes_after_draining_pending_connect_request(self):
+        class WindowsCloseLifecycleSocket:
+            """Model the Winsock abort caused by closing with unread request data."""
+            def __init__(self):
+                self.pending_request = bytearray(
+                    b"CONNECT dl.google.com:443 HTTP/1.1\r\nHost: dl.google.com:443\r\n\r\n"
+                )
+                self.sent = bytearray()
+                self.write_shutdown = False
+                self.closed = False
+                self.aborted = False
+
+            def sendall(self, value):
+                self.sent.extend(value)
+
+            def shutdown(self, how):
+                if how != socket.SHUT_WR:
+                    raise AssertionError(f"expected SHUT_WR, received {how}")
+                self.write_shutdown = True
+
+            def setblocking(self, enabled):
+                if enabled:
+                    raise AssertionError("capacity rejection must only use a nonblocking drain")
+
+            def recv(self, size):
+                if not self.pending_request:
+                    raise BlockingIOError()
+                chunk = self.pending_request[:size]
+                del self.pending_request[:size]
+                return bytes(chunk)
+
+            def close(self):
+                self.closed = True
+                self.aborted = bool(self.pending_request) or not self.write_shutdown
+
+        server = subject.BoundedConnectServer(
+            "127.0.0.1", "127.0.0.1", lambda _: None,
+        )
+        request = WindowsCloseLifecycleSocket()
+        server._permits = threading.BoundedSemaphore(0)
+        try:
+            server.process_request(request, ("127.0.0.1", 32100))
+            self.assertIn(b"503 Service Unavailable", request.sent)
+            self.assertTrue(request.write_shutdown)
+            self.assertEqual(b"", request.pending_request)
+            self.assertTrue(request.closed)
+            self.assertFalse(request.aborted)
+        finally:
+            server.server_close()
+
+    def test_capacity_rejection_drain_is_bounded_for_shutdown_responsiveness(self):
+        class EndlessPendingInput:
+            def __init__(self):
+                self.drained = 0
+                self.closed = False
+
+            def sendall(self, value): pass
+            def shutdown(self, how):
+                if how != socket.SHUT_WR:
+                    raise AssertionError(f"expected SHUT_WR, received {how}")
+            def setblocking(self, enabled):
+                if enabled:
+                    raise AssertionError("capacity rejection must use a nonblocking drain")
+            def recv(self, size):
+                self.drained += size
+                return b"x" * size
+            def close(self): self.closed = True
+
+        connection = EndlessPendingInput()
+        subject.send_capacity_rejection(connection)
+        self.assertEqual(subject.MAX_HEADER_BYTES, connection.drained)
+        self.assertTrue(connection.closed)
+
     def test_header_limit_is_bounded(self):
         client, relay_client = socket.socketpair()
         events = []

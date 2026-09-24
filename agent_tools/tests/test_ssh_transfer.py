@@ -47,6 +47,26 @@ class SshTransferTest(unittest.TestCase):
     def identity(self, stage: Path, correlation: str = "transfer-1") -> dict[str, str]:
         return ssh_transfer._capture_source(stage, "owner-1", "arch-ci", correlation).identity.as_dict()
 
+    def make_apk(self, root: Path, size: int = 1024 * 1024) -> tuple[Path, Path, Path]:
+        apk = root / "frozen.apk"
+        with apk.open("wb") as target:
+            target.truncate(size)  # A sparse fixture exercises the streaming path without repository artifacts.
+        digest = hashlib.sha256()
+        with apk.open("rb") as source:
+            while chunk := source.read(65536):
+                digest.update(chunk)
+        manifest = root / "SHA256SUMS.txt"
+        manifest.write_text(f"{digest.hexdigest()}  {ssh_transfer.APK_REMOTE_NAME}\n", encoding="utf-8")
+        receipt = root / "android-artifact.json"
+        receipt.write_text(json.dumps({"file": str(apk), "bytes": size, "sha256": digest.hexdigest(),
+                                       "sourceSha": "frozen-source"}), encoding="utf-8")
+        return apk, manifest, receipt
+
+    def publish_apk(self, root: Path, destination: Path, apk: Path, manifest: Path, receipt: Path,
+                    correlation: str = "apk-transfer-1", *, ssh: Path | None = None):
+        return ssh_transfer.publish_android_apk(root, "fixture", apk, manifest, receipt, "owner-1", "arch-ci", correlation,
+                                                timeout_seconds=5, ssh_binary=str(ssh or self.fake_ssh(root)))
+
     def test_tampered_source_rejects_before_ssh_or_intent_reservation(self):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw); destination = root / "remote"; destination.mkdir(mode=0o700)
@@ -188,6 +208,61 @@ class SshTransferTest(unittest.TestCase):
                                            ssh_binary=str(self.fake_ssh(root)))
             self.assertEqual((False, "unknown", "invalid_receipt"),
                              (observed["ok"], observed["state"], observed["reason"]))
+
+    def test_android_apk_staging_streams_a_45mb_sparse_fixture_and_rechecks_remote_bytes(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); destination = root / "remote"; destination.mkdir(mode=0o700)
+            self.make_config(root, destination); apk, manifest, receipt = self.make_apk(root, 45 * 1024 * 1024)
+            result = self.publish_apk(root, destination, apk, manifest, receipt)
+            self.assertTrue(result["ok"], result)
+            staged = destination / "arch-ci" / "owner-1" / "apk-transfer-1" / ssh_transfer.APK_REMOTE_NAME
+            self.assertEqual(45 * 1024 * 1024, staged.stat().st_size)
+            observed = ssh_transfer.android_apk_stage_status(root, "fixture", result["identity"], timeout_seconds=5,
+                                                              ssh_binary=str(self.fake_ssh(root)))
+            self.assertEqual((True, "published"), (observed["ok"], observed["state"]))
+            with staged.open("r+b") as target:
+                target.seek(0); target.write(b"x")
+            observed = ssh_transfer.android_apk_stage_status(root, "fixture", result["identity"], timeout_seconds=5,
+                                                              ssh_binary=str(self.fake_ssh(root)))
+            self.assertEqual((False, "unknown", "destination_hash_mismatch"),
+                             (observed["ok"], observed["state"], observed["reason"]))
+
+    def test_android_apk_staging_rejects_source_or_manifest_not_bound_to_receipt(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); destination = root / "remote"; destination.mkdir(mode=0o700)
+            self.make_config(root, destination); apk, manifest, receipt = self.make_apk(root)
+            receipt_data = json.loads(receipt.read_text(encoding="utf-8")); receipt_data["file"] = str(root / "other.apk")
+            receipt.write_text(json.dumps(receipt_data), encoding="utf-8")
+            with self.assertRaisesRegex(ssh_transfer.SshTransferError, "does not match"):
+                self.publish_apk(root, destination, apk, manifest, receipt)
+            self.assertFalse((root / ".rag_index").exists())
+
+    def test_android_apk_staging_rejects_invalid_identity_before_snapshot_creation(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); apk, manifest, receipt = self.make_apk(root)
+            outside_private_arena = root / "private-arena"; outside_private_arena.mkdir(mode=0o700)
+            invalid_inputs = (
+                ("..", "arch-ci", "apk-transfer-owner"),
+                ("owner-1", "..", "apk-transfer-environment"),
+                ("owner-1", "arch-ci", "../../private-arena/escaped"),
+            )
+            for owner, environment, correlation in invalid_inputs:
+                with self.assertRaisesRegex(ssh_transfer.SshTransferError, "identity"):
+                    ssh_transfer._capture_apk(apk, manifest, receipt, root, owner, environment, correlation)
+            self.assertFalse((outside_private_arena / "escaped.apk").exists())
+            self.assertFalse((root / ".rag_index").exists())
+
+    def test_android_apk_unknown_response_preserves_snapshot_and_cannot_retry_or_overwrite(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); destination = root / "remote"; destination.mkdir(mode=0o700)
+            self.make_config(root, destination); apk, manifest, receipt = self.make_apk(root)
+            disconnected = self.fake_ssh(root, 'head -c 1 >/dev/null\nexit 255\n')
+            result = self.publish_apk(root, destination, apk, manifest, receipt, ssh=disconnected)
+            self.assertEqual((False, "unknown", "ssh_transport_unavailable"),
+                             (result["ok"], result["state"], result["reason"]))
+            duplicate = self.publish_apk(root, destination, apk, manifest, receipt)
+            self.assertEqual((False, "unknown"), (duplicate["ok"], duplicate["state"]))
+            self.assertIn("immutable APK snapshot", duplicate["reason"])
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ import uuid
 
 from prepare_desktop_update_fixture import image_identity
 from arch_public_update import verify_arch_bundle_base
+from rpm_public_update import verify_rpm_bundle_base
 
 
 def timed_update_command(action, seconds):
@@ -265,11 +266,13 @@ def observe_terminal_process(process, terminal_fd, on_output, timeout_seconds=No
 
 
 def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_deb_dependencies=False,
-        arch_source_fixture=None):
+        arch_source_fixture=None, rpm_source_fixture=None):
     require(confirmed and os.uname().sysname == "Linux" and os.getuid() != 0,
             "Explicit owned-disposable-VM confirmation and non-root Linux user required")
     with open("/dev/tty", "rb"):
         pass
+    require(not (arch_source_fixture is not None and rpm_source_fixture is not None),
+            "Arch and RPM source fixtures are mutually exclusive")
     if arch_source_fixture is not None:
         # The privileged Arch adapter admits only this fixed installation root.
         # Reject alternate fixture paths before launching any owner or authorization.
@@ -278,6 +281,12 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
         require(same_source_recovery and not fresh_deb_dependencies,
                 "Arch fixture requires same-source recovery without DEB dependency checks")
         fixture = verify_arch_bundle_base(launcher, arch_source_fixture)
+    elif rpm_source_fixture is not None:
+        require(launcher == Path("/opt/vpn-control/bin/vpn-control"),
+                "RPM public installation requires /opt/vpn-control/bin/vpn-control")
+        require(same_source_recovery and not fresh_deb_dependencies,
+                "RPM fixture requires same-source recovery without DEB dependency checks")
+        fixture = verify_rpm_bundle_base(launcher, rpm_source_fixture)
     else:
         launcher = launcher.resolve(strict=True)
         marker = launcher.parent.parent / "TEST-ONLY-INSTALL-FIXTURE.json"
@@ -409,6 +418,9 @@ if __name__ == "__main__":
     parser.add_argument("--require-fresh-deb-dependencies", action="store_true")
     parser.add_argument("--arch-source-fixture", type=Path,
                         help="Verify an Arch bundle-installed base against this immutable source-pair fixture")
+    parser.add_argument("--rpm-source-fixture", type=Path,
+                        help="Verify an RPM-installed base against this immutable source-pair fixture")
     args = parser.parse_args()
     run(args.launcher, args.expected_target_version, args.confirm_owned_disposable_vm,
-        args.require_same_source_recovery, args.require_fresh_deb_dependencies, args.arch_source_fixture)
+        args.require_same_source_recovery, args.require_fresh_deb_dependencies, args.arch_source_fixture,
+        args.rpm_source_fixture)

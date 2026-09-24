@@ -31,7 +31,8 @@ For implementation, testing, release, or commit work:
 | Tool | Purpose |
 | --- | --- |
 | `ssh_workflow(action="inventory", host=None, timeout_seconds=15)` | List private host aliases or run a bounded authenticated connectivity probe. |
-| `vm_workflow(action, inputs)` | Verify fixture bytes/preflight or calculate an explicitly non-authorizing memory plan. |
+| `ssh_workflow(action="forward-open" | "forward-status" | "forward-close", host="archlinux", identity=None)` | Open, observe, or close the one fixed CP117 loopback VNC forward. |
+| `vm_workflow(action, inputs)` | Verify fixture bytes/preflight, maintain native artifact evidence, create fixed scenario bundles, or manage non-authorizing environment reservations. |
 | `prepare_start(task, area=None)` | Safe fetch/sync, branch verification, RAG rebuild, and task routing. |
 | `docs(query, mode="search", top_k=3)` | Search or produce a grounded extractive answer with file-and-line citations. |
 | `change_impact(task, area=None, paths=None)` | Combine task routing, changed paths, RAG references, safety constraints, and checks. |
@@ -121,6 +122,162 @@ performs the approved isolated import. A hash-only result is not execution proof
 `admit-plan` accepts explicit memory observations and reservations; its result is
 planning arithmetic, not fresh host observation or permission to start a VM.
 
+### Native artifact, bundle, and environment helpers
+
+The helpers below are local coordination and evidence tools. They never search a
+host, download an artifact, start a VM, submit a native scenario, or turn a
+historical record into a current observation. A successful response is evidence
+only in the scope stated by that action.
+
+`vm_workflow("artifact-register", inputs=record)` stores immutable, content-derived
+artifact evidence under the checkout's private agent state. A local record must
+name one existing regular file with its exact `sha256` and `size`, and use
+`evidenceClass: "local-verified"`; registration streams those local bytes once.
+Remote metadata uses `evidenceClass: "unverified-remote"` plus a configured host
+alias, an absolute remote POSIX path, and a receipt. It is never contacted or
+verified by this API. Artifact IDs have the form `sha256-<digest>`.
+
+`artifact-find` returns at most 100 historical index matches (20 by default) and
+does not reread artifact bytes. Filter only by registered identity fields such as
+`artifactId`, `platform`, `artifactKind`, `sha256`, `sourceSha`,
+`sourceFingerprint`, or location evidence. Treat every result as historical until
+`artifact-verify` reports `verification: "verified"` for local bytes. Verification
+can instead report `mismatch`, `missing-or-unsafe`, or `unverified-remote`; none
+of those states establishes usable bytes. An artifact may have more than one
+registered location; when no unique local location exists, supply the returned
+`locationId` to verify the intended evidence location.
+
+```text
+vm_workflow("artifact-register", {
+  "platform": "linux", "artifactKind": "desktop-package",
+  "localPath": "/staging/package.tar.gz", "sha256": "<64 lowercase hex>",
+  "size": 123456, "evidenceClass": "local-verified", "sourceSha": "<git sha>"
+})
+vm_workflow("artifact-find", {"platform": "linux", "artifactKind": "desktop-package"})
+vm_workflow("artifact-verify", {"artifactId": "sha256-<64 lowercase hex>"})
+```
+
+`vm_workflow("bundle-prepare", inputs={"scenarioId":
+"linux-public-update-driver", "outputDirectory": "<fresh directory>"})`
+creates an exclusive mode-0700 snapshot of the allowlisted scenario source,
+writes a canonical manifest, and imports the staged entrypoint in isolation. The
+output directory must not already exist. `bundle-verify` rereads a frozen bundle
+against its exact manifest digest and rejects changed, unexpected, symlinked, or
+non-allowlisted files. It does not run the scenario.
+
+```text
+vm_workflow("bundle-prepare", {
+  "scenarioId": "linux-public-update-driver",
+  "outputDirectory": "<fresh-private-bundle-directory>"
+})
+vm_workflow("bundle-verify", {
+  "path": "<prepared-bundle-directory>", "manifestSha256": "<returned digest>"
+})
+```
+
+Without `hostAlias`, `environment-status` summarizes caller-supplied receipts,
+marks them fresh, stale or unknown, and never claims readiness. With a configured
+`hostAlias`, it performs bounded SSH observation; optional `device`, `jobIdentity`
+and `artifactId`/`locationId` add configured Android, existing-job and local-byte
+checks. `requestedProbesReady` applies only to those probes. Use `observeHost: true` for a fixed Linux `/proc` memory and QEMU inventory
+probe; optional `vmIdentity: {pid, startTicks}` verifies a selected live guest.
+Unparseable allocations or incomplete process visibility withhold the admission
+measurement. Caller-supplied facts remain separately labelled and never establish
+readiness. The host receipt feeds `admit-plan` or reservation accounting; observation
+alone does not allocate memory or start a VM.
+`timeoutSeconds` is bounded at30 seconds; unknown outcomes do not cancel jobs.
+`environment-reserve` atomically records capacity for a host/environment/operator
+request, beginning in `pending`; pending reservations count against the host
+budget. An idempotent retry returns the same opaque identity. A reservation may
+move to `running` only with that exact identity and a complete mapping of running
+allocations. Neither state starts a VM or authorizes a native action.
+`environment-release` requires that exact opaque identity and refuses release
+while its correlated active-job evidence is active, unavailable, stale, or
+unknown. A lost observation must remain unknown; do not retry execution to clear
+it.
+
+```text
+vm_workflow("environment-status", {"observations": []})
+vm_workflow("environment-reserve", {
+  "hostAlias": "build-host", "environment": "windows-vm", "operator": "agent-a",
+  "requestedMemoryBytes": 8589934592, "headroomBytes": 4294967296,
+  "measurement": {"physicalMemoryBytes": 34359738368,
+    "runningConfiguredMemoryBytes": 0, "pressure": "normal", "swapUsedBytes": 0}
+})
+vm_workflow("environment-release", {"reservationId": "<returned id>",
+  "token": "<returned token>", "hostAlias": "build-host",
+  "environment": "windows-vm", "operator": "agent-a"})
+```
+
+### Fixed CP117 loopback forward
+
+`ssh_workflow("forward-open", host="archlinux")` is intentionally not a general
+forwarding API. It can only use the configured nested `archlinux` route to expose
+the owned Windows VM's loopback VNC service through the fixed local loopback port
+`45909`; it accepts no destination, port, command, or arbitrary SSH option.
+Opening writes a durable intent before network effects. If the result is pending
+or unavailable, use `forward-status` with the same host; never replay an uncertain
+open. `forward-status` is observation-only and reports `ready` only when the
+recorded local SSH process/control state match and the endpoint returns a valid
+VNC protocol banner. This checks connectivity without entering credentials. `forward-close` requires
+an identity object containing the `correlationId` returned by open and only closes
+a forward owned by this tool. It can return `close_pending` or `owner_unknown`; those are not
+permission to remove sockets or issue ad-hoc SSH commands.
+
+```text
+ssh_workflow("forward-open", host="archlinux")
+ssh_workflow("forward-status", host="archlinux")
+ssh_workflow("forward-close", host="archlinux", identity={"correlationId": "<open result>"})
+```
+
+The corresponding fallback forms are `mcp_tool.sh vm-workflow <action>
+--inputs-file <private-json>` and `mcp_tool.sh ssh-workflow forward-open|forward-status|forward-close
+--host archlinux` (pass `{"correlationId": "<open result>"}` to close through
+`--identity-file`).
+The input and identity files are private operational data; keep them outside
+version control and do not put passwords or secret material in them.
+
+### Durable fixed-scenario execution
+
+`scenario-start`, `scenario-status`, `scenario-resume` and `scenario-collect` are
+registered `vm_workflow` actions. The currently supported execution scenario is
+`linux-public-update-preflight`: it transfers and imports the verified Linux
+public-update driver bundle. It performs no product installation or VPN action;
+its receipt is explicitly component evidence.
+
+Register the prepared `native-scenario-manifest.json` as a local artifact first.
+Start takes exactly `scenarioId`, configured `host`, `environment`, `bundleHash`,
+`artifactIds: {"bundleManifest": "sha256-<manifest digest>"}`, and a unique
+`correlationId`. The other three actions take exactly `{correlationId}`. The
+private adapter resolves the registered manifest rather than accepting command,
+script, executable or remote-directory arguments.
+
+The journal precedes submission. A repeated start never launches a second job;
+resume only observes its existing correlation. Terminal receipt verification binds
+the plan, artifacts and actual process generation. Local bundle removal does not
+prevent observation of an already submitted remote job. Missing or uncertain
+receipts remain unknown. Other execution scenarios are unsupported until they
+have an explicit adapter and native evidence.
+
+### Compact guidance and failure evidence
+
+Native tool responses include `nextAction` with a safe existing observation or
+verification route where known. `replayAllowed: false` forbids treating a timeout
+as permission to repeat a mutation. Unknown states default to evidence inspection.
+
+Failures and uncertain results automatically record allowlisted private evidence
+under `.rag_index/native-failures`. Responses return its ID/path, classification
+and counts. Receipts preserve correlation, available artifact identities and a
+fingerprint of current agent-tool Python modules (including dirty modules), not a
+claim that a product package matches that source. Raw configuration, credentials,
+commands and exception messages are excluded. Failure to save evidence never
+changes the original result. Repeated identical evidence is deduplicated.
+
+Public contract tests start the actual FastMCP stdio server with a temporary root,
+exercise registered actions and validate serialization, verification failures and
+guidance. They run when the optional MCP dependency is installed; ordinary unit
+and native acceptance checks remain required.
+
 New MCP registrations require a server/session reload to appear in an existing
 client inventory. Until then, use the same implementation via `mcp_tool.sh
 ssh-workflow inventory`, `ssh-workflow probe --host <alias>`, or `vm-workflow
@@ -171,6 +328,14 @@ use `fixture-status` with the returned identity. Never resubmit the same correla
 or create another transfer merely because an observation timed out. Existing
 partial transfers remain evidence. The CLI accepts publication fields through
 `--transfer-file` and recovered identities through `--identity-file`.
+
+`ssh_workflow("apk-publish", host=..., transfer={apkPath, manifestPath,
+receiptPath, owner, environment, correlationId})` stages one frozen Android APK
+as `app-nativeFixture.apk`. The source must match its artifact receipt and exact
+manifest bytes. Publication snapshots and streams verified bytes into an exclusive
+private destination; the receipt is written last. It does not install the APK or
+replace Android package/signer admission. Use `apk-status` with the returned
+identity after interruption; a timeout never authorizes another publication.
 
 Job and transfer observation currently require key/agent profiles on a POSIX
 coordinator. Password-backed connectivity probes remain separate from these actions.

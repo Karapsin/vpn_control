@@ -79,6 +79,7 @@ python3 scripts/test_desktop_update_fixture.py
 python3 scripts/test_fixture_environment.py
 python3 scripts/test_jpackage_launcher_harness.py
 python3 scripts/test_arch_public_update.py
+python3 scripts/test_rpm_public_update.py
 python3 scripts/test_macos_install_gate.py
 python3 scripts/test_macos_install_enospc.py
 python3 scripts/test_macos_package_cleanup.py

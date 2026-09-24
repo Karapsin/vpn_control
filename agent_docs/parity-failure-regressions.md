@@ -1260,3 +1260,32 @@ The agent-tools suite runs this regression in routine prepush and CI.
   Thirteen observer tests pass. The repaired real MCP observation succeeded with
   one consistent controller and zero active operations in
   checkpoint148/android29-observe-fixed.json.
+
+## Native MCP recovery — checkpoints151–152
+
+The real SSH job probe shadowed its imported `stat` module with Linux process
+stat text. Reading a receipt while that process existed raised `AttributeError`
+instead of returning correlated completion. A regression executes the actual
+probe with real receipt bytes and controlled process-stat input; it failed before
+the variable rename and the seven-test job-observation suite passes afterward.
+Evidence: checkpoint151/ssh-job-receipt-red.log and ssh-job-receipt-green.log.
+The ordinary agent-tool suite includes this regression.
+
+Forward cleanup returned `closed` without persisting that terminal state, so a
+repeat close falsely became `close_pending`. The regression repeats close and
+status after confirmed teardown; RED/GREEN are in
+checkpoint151/forward-terminal-{red,green}.log. Unknown forwarding outcomes still
+must not authorize cancellation of an unconfirmed listener.
+
+Linux memory planning incorrectly rejected a healthy sample solely because four
+pages were read from existing swap. The new causal test retains capacity, normal
+PSI, available memory, and unchanged swap-out/OOM counters. Only the swap-in-only
+rejection was removed; stale measurements, pressure, insufficient memory,
+swap-out and OOM still reject admission. Evidence:
+checkpoint151/linux-memory-swapin-regression.json. This planner result is not a
+fresh host observation or permission to start a guest.
+
+The new artifact registry was exercised through the actual MCP stdio endpoint:
+checkpoint152/artifact-register-result.json and artifact-verify-result.json bind
+the frozen Android APK to its exact size/hash/source SHA. This proves local byte
+verification, not Android lifecycle acceptance or remote artifact freshness.

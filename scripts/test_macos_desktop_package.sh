@@ -40,13 +40,14 @@ for dmg in "${dmg_files[@]}"; do
   echo "[vpn-control] smoke testing macOS DMG: $dmg"
   mount_dir="$(mktemp -d)"
   attached=false
+  attached_volume_device=""
   attached_device=""
-  attachment_matches() {
+  volume_attachment_matches() {
     hdiutil info -plist | python3 -c '
 import plistlib
 import sys
 
-mountpoint, image_path, image_device = sys.argv[1:]
+mountpoint, image_path, volume_device, image_device = sys.argv[1:]
 document = plistlib.loads(sys.stdin.buffer.read())
 images = document.get("images")
 if not isinstance(images, list):
@@ -64,13 +65,52 @@ mounts = [entity for entity in entities if isinstance(entity, dict) and "mount-p
 if len(mounts) != 1 or mounts[0].get("mount-point") != mountpoint:
     raise SystemExit(1)
 mounted_device = mounts[0].get("dev-entry")
-if not isinstance(mounted_device, str):
+if mounted_device != volume_device:
     raise SystemExit(1)
 image_devices = [entity.get("dev-entry") for entity in entities if isinstance(entity, dict)
                  and isinstance(entity.get("dev-entry"), str) and mounted_device.startswith(entity["dev-entry"] + "s")]
 if image_devices != [image_device]:
     raise SystemExit(1)
-' "$mount_dir" "$dmg" "$attached_device"
+' "$mount_dir" "$dmg" "$attached_volume_device" "$attached_device"
+  }
+  image_attachment_matches() {
+    hdiutil info -plist | python3 -c '
+import plistlib
+import sys
+
+image_path, image_device = sys.argv[1:]
+document = plistlib.loads(sys.stdin.buffer.read())
+images = document.get("images")
+if not isinstance(images, list):
+    raise SystemExit(1)
+matching_images = [image for image in images if isinstance(image, dict) and image.get("image-path") == image_path]
+if len(matching_images) != 1:
+    raise SystemExit(1)
+image = matching_images[0]
+if image.get("writeable") is not False:
+    raise SystemExit(1)
+entities = image.get("system-entities")
+if not isinstance(entities, list):
+    raise SystemExit(1)
+devices = [entity.get("dev-entry") for entity in entities if isinstance(entity, dict)]
+if image_device not in devices:
+    raise SystemExit(1)
+if any(isinstance(entity, dict) and "mount-point" in entity for entity in entities):
+    raise SystemExit(1)
+' "$dmg" "$attached_device"
+  }
+  image_attachment_is_absent() {
+    hdiutil info -plist | python3 -c '
+import plistlib
+import sys
+
+image_path = sys.argv[1]
+document = plistlib.loads(sys.stdin.buffer.read())
+images = document.get("images")
+if not isinstance(images, list):
+    raise SystemExit(1)
+raise SystemExit(any(isinstance(image, dict) and image.get("image-path") == image_path for image in images))
+' "$dmg"
   }
   post_detach_attachment_state() {
     hdiutil info -plist | python3 -c '
@@ -105,11 +145,33 @@ else:
 ' "$mount_dir" "$dmg" "$attached_device"
   }
   detach_owned() {
-    if ! attachment_matches; then
+    if volume_attachment_matches; then
+      hdiutil detach "$attached_volume_device" -quiet || return 1
+    elif ! image_attachment_matches; then
       echo "DMG attachment identity changed; mounted fixture preserved at $mount_dir" >&2
       return 1
     fi
+    # Detach the mounted volume first. A whole-image detach can report success
+    # before macOS releases its volume mount, leaving the private mountpoint busy.
+    if image_attachment_is_absent; then
+      return 0
+    fi
+    if ! image_attachment_matches; then
+      echo "DMG image attachment changed after volume detach; mounted fixture preserved at $mount_dir" >&2
+      return 1
+    fi
     hdiutil detach "$attached_device" -quiet
+  }
+  detach_owned_force() {
+    if volume_attachment_matches; then
+      hdiutil detach "$attached_volume_device" -force -quiet || return 1
+    elif ! image_attachment_matches; then
+      return 1
+    fi
+    if image_attachment_is_absent; then
+      return 0
+    fi
+    image_attachment_matches && hdiutil detach "$attached_device" -force -quiet
   }
   cleanup() {
     # Do not repeat cleanup through EXIT if explicit cleanup itself fails.
@@ -122,7 +184,7 @@ else:
         fi
         if (( attempt < 5 )); then sleep 1; fi
       done
-      if [[ "$attached" == true ]] && attachment_matches && hdiutil detach "$attached_device" -force -quiet; then
+      if [[ "$attached" == true ]] && detach_owned_force; then
         attached=false
       fi
       if [[ "$attached" == true ]]; then
@@ -145,7 +207,7 @@ else:
   }
   trap cleanup EXIT
 
-  attached_device="$(hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_dir" -plist | python3 -c '
+  attachment_devices="$(hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_dir" -plist | python3 -c '
 import plistlib
 import sys
 
@@ -162,8 +224,13 @@ image_devices = [entity.get("dev-entry") for entity in entities if isinstance(en
                  and isinstance(entity.get("dev-entry"), str) and mounted_device.startswith(entity["dev-entry"] + "s")]
 if len(image_devices) != 1:
     raise SystemExit(1)
-print(image_devices[0])
+print(mounted_device, image_devices[0])
 ' "$mount_dir")"
+  read -r attached_volume_device attached_device <<< "$attachment_devices"
+  if [[ -z "$attached_volume_device" || -z "$attached_device" ]]; then
+    echo "DMG attachment did not report an owned volume and image device" >&2
+    exit 1
+  fi
   attached=true
 
   app_path="$(find "$mount_dir" -maxdepth 2 -type d -name '*.app' | head -n 1)"

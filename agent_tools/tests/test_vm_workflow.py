@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -18,6 +19,35 @@ def fixture_input(path: Path) -> dict[str, object]:
 
 
 class VmWorkflowTest(unittest.TestCase):
+    @staticmethod
+    def linux_measurement(*, available_gib: int = 36, pswpin_delta: int = 0, pswpout_delta: int = 0,
+                          oom_kill_delta: int = 0) -> dict[str, object]:
+        gib = 1024 ** 3
+        now = time.time_ns() // 1_000_000
+        return {
+            "platform": "linux",
+            "physicalMemoryBytes": 65 * gib,
+            "availableMemoryBytes": available_gib * gib,
+            "runningConfiguredMemoryBytes": 14 * gib,
+            "pressure": "normal",
+            "swapUsedBytes": int(11.7 * gib),
+            "samples": [
+                {
+                    "observedAtUnixMs": now - 1_000,
+                    "availableMemoryBytes": available_gib * gib,
+                    "psi": "normal",
+                    "vmstat": {"pswpin": 40, "pswpout": 80, "oomKill": 3},
+                },
+                {
+                    "observedAtUnixMs": now,
+                    "availableMemoryBytes": available_gib * gib,
+                    "psi": "normal",
+                    "vmstat": {"pswpin": 40 + pswpin_delta, "pswpout": 80 + pswpout_delta,
+                               "oomKill": 3 + oom_kill_delta},
+                },
+            ],
+        }
+
     def test_empty_missing_and_hash_mismatched_inputs_are_rejected_before_preflight(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -98,6 +128,41 @@ class VmWorkflowTest(unittest.TestCase):
         self.assertFalse(result["reservation"]["persisted"])
         self.assertFalse(result["nativeActionAllowed"])
         self.assertEqual(20, result["requiredMemoryBytes"])
+
+    def test_linux_admission_accepts_historical_swap_and_swap_in_only_with_stable_caller_receipt(self) -> None:
+        # Mirrors checkpoint150's healthy receipt: a four-page swap-in over two
+        # seconds, with no swap-out or OOM activity.
+        measurement = self.linux_measurement(pswpin_delta=4)
+        with self.assertRaisesRegex(vm_workflow.VmWorkflowError, "swap use prevents"):
+            vm_workflow.admit_plan(
+                {key: value for key, value in measurement.items() if key not in {"platform", "samples", "availableMemoryBytes"}},
+                requested_memory_bytes=6 * 1024 ** 3,
+                headroom_bytes=8 * 1024 ** 3,
+            )
+        result = vm_workflow.admit_plan(
+            measurement,
+            requested_memory_bytes=6 * 1024 ** 3,
+            headroom_bytes=8 * 1024 ** 3,
+        )
+        self.assertEqual("linux", result["platform"])
+        self.assertEqual("caller-receipt", result["observationSource"])
+        self.assertEqual(measurement["swapUsedBytes"], result["swapUsedBytes"])
+
+    def test_linux_admission_rejects_low_available_memory_active_paging_oom_and_missing_receipt(self) -> None:
+        gib = 1024 ** 3
+        invalid = (
+            (self.linux_measurement(available_gib=13), "available memory"),
+            (self.linux_measurement(pswpout_delta=1), "swap-out activity"),
+            (self.linux_measurement(oom_kill_delta=1), "swap-out activity"),
+            ({key: value for key, value in self.linux_measurement().items() if key != "samples"}, "exactly two"),
+        )
+        for measurement, message in invalid:
+            with self.subTest(message=message), self.assertRaisesRegex(vm_workflow.VmWorkflowError, message):
+                vm_workflow.admit_plan(
+                    measurement,
+                    requested_memory_bytes=6 * gib,
+                    headroom_bytes=8 * gib,
+                )
 
     def test_mcp_cli_loads_vm_workflow_from_a_foreign_working_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

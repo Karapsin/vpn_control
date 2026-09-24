@@ -1688,7 +1688,7 @@ def _json_print(value: dict[str, Any]) -> int:
     return 0 if value.get("ok") else 1
 
 
-def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
+def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
     """Inspect configured SSH hosts, recover a nested connection, or transfer owned fixture helpers."""
     transport = importlib.import_module(f"{__package__}.ssh_transport" if __package__ else "ssh_transport")
     try:
@@ -1699,6 +1699,29 @@ def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_sec
         if action == "connection-recover" and host:
             recovery = importlib.import_module(f"{__package__}.ssh_connection_recovery" if __package__ else "ssh_connection_recovery")
             return {"tool": "ssh_workflow", **recovery.recover(REPO_ROOT, host, timeout_seconds)}
+        if action in ("forward-open", "forward-status", "forward-close") and host:
+            forward = importlib.import_module(f"{__package__}.ssh_forward" if __package__ else "ssh_forward")
+            if action == "forward-open":
+                result = forward.open_forward(REPO_ROOT, host)
+            elif action == "forward-status":
+                result = forward.status(REPO_ROOT, host)
+            else:
+                result = forward.close(REPO_ROOT, identity or {}, host)
+            return {"tool": "ssh_workflow", **result}
+        if action in ("apk-publish", "apk-status") and host:
+            publisher = importlib.import_module(f"{__package__}.ssh_transfer" if __package__ else "ssh_transfer")
+            try:
+                if action == "apk-status":
+                    result = publisher.android_apk_stage_status(REPO_ROOT, host, identity or {}, timeout_seconds=timeout_seconds)
+                else:
+                    required = {"apkPath", "manifestPath", "receiptPath", "owner", "environment", "correlationId"}
+                    if not isinstance(transfer, dict) or set(transfer) != required or any(not isinstance(value, str) or not value for value in transfer.values()):
+                        return _error("ssh_workflow", "APK publication requires exactly apkPath, manifestPath, receiptPath, owner, environment and correlationId as nonempty strings.")
+                    result = publisher.publish_android_apk(REPO_ROOT, host, transfer["apkPath"], transfer["manifestPath"],
+                        transfer["receiptPath"], transfer["owner"], transfer["environment"], transfer["correlationId"], timeout_seconds=timeout_seconds)
+                return {"tool": "ssh_workflow", **result}
+            except publisher.SshTransferError as error:
+                return _error("ssh_workflow", str(error))
         if action == "android-observe" and host and device:
             configured = transport.load_config(REPO_ROOT).hosts.get(host)
             if configured is None or device not in configured.android_devices:
@@ -1736,10 +1759,84 @@ def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_sec
         return _error("ssh_workflow", "Private host configuration is missing or invalid; check the documented schema and permissions.")
 
 
-def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
+def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Validate staged inputs or calculate memory admission; neither action starts a VM."""
     workflow = importlib.import_module(f"{__package__}.vm_workflow" if __package__ else "vm_workflow")
     try:
+        if not isinstance(inputs, dict):
+            return _error("vm_workflow", "VM workflow inputs must be an object.")
+        if action in ("scenario-start", "scenario-status", "scenario-resume", "scenario-collect"):
+            execution = importlib.import_module(f"{__package__}.native_scenario_execution" if __package__ else "native_scenario_execution")
+            adapter = importlib.import_module(f"{__package__}.native_scenario_ssh" if __package__ else "native_scenario_ssh")
+            registry = importlib.import_module(f"{__package__}.native_artifact_registry" if __package__ else "native_artifact_registry")
+            def resolve_bundle(plan):
+                if set(plan.artifact_ids) != {"bundleManifest"}:
+                    raise ValueError("Preflight requires exactly the registered bundleManifest artifact.")
+                artifact_id = plan.artifact_ids["bundleManifest"]
+                if artifact_id != "sha256-" + plan.bundle_hash:
+                    raise ValueError("Registered bundle artifact differs from the frozen manifest hash.")
+                verified = registry.verify_artifact(REPO_ROOT, artifact_id)
+                if verified.get("verification") != "verified":
+                    raise ValueError("Registered bundle manifest bytes are unavailable or changed.")
+                location = verified["location"]
+                manifest_path = Path(location["localPath"])
+                if manifest_path.name != "native-scenario-manifest.json":
+                    raise ValueError("Registered artifact is not a scenario manifest.")
+                return manifest_path.parent
+            executor = execution.ScenarioExecutor(REPO_ROOT / ".rag_index" / "native-scenario-executions",
+                adapter.NativeScenarioSshDriver(REPO_ROOT, resolve_bundle))
+            try:
+                if action == "scenario-start":
+                    if inputs.get("scenarioId") != adapter.SCENARIO_ID or set(inputs.get("artifactIds", {})) != {"bundleManifest"}:
+                        return _error("vm_workflow", "Only registered Linux bundle import preflight is supported; no product installation is performed.")
+                    result = executor.start(inputs)
+                else:
+                    if set(inputs) != {"correlationId"}:
+                        return _error("vm_workflow", "Scenario observation requires exactly correlationId.")
+                    method = {"scenario-status": executor.status, "scenario-resume": executor.resume, "scenario-collect": executor.collect}[action]
+                    result = method(inputs["correlationId"])
+                accepted = result.get("state") == "submitted" or (result.get("state") == "terminal" and result.get("exitCode") == 0)
+                return {"tool": "vm_workflow", "ok": accepted, "evidenceClass": "component", "productAction": False, **result}
+            except (ValueError, OSError) as error:
+                return _error("vm_workflow", str(error))
+        if action in ("environment-status", "environment-reserve", "environment-release"):
+            environment = importlib.import_module(f"{__package__}.native_environment" if __package__ else "native_environment")
+            try:
+                if action == "environment-reserve":
+                    result = environment.reserve_environment(REPO_ROOT, inputs)
+                elif action == "environment-release":
+                    result = environment.release_environment(REPO_ROOT, inputs)
+                elif inputs.get("hostAlias"):
+                    observer = importlib.import_module(f"{__package__}.native_environment_observation" if __package__ else "native_environment_observation")
+                    result = observer.observe_environment(REPO_ROOT, inputs)
+                else:
+                    result = environment.environment_status(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", "ok": True, **result}
+            except (ValueError, OSError) as error:
+                return _error("vm_workflow", str(error))
+        if action in ("artifact-register", "artifact-find", "artifact-verify"):
+            registry = importlib.import_module(f"{__package__}.native_artifact_registry" if __package__ else "native_artifact_registry")
+            try:
+                if action == "artifact-register":
+                    result = registry.register_artifact(REPO_ROOT, inputs)
+                elif action == "artifact-find":
+                    result = registry.find_artifacts(REPO_ROOT, inputs)
+                else:
+                    result = registry.verify_artifact(REPO_ROOT, inputs.get("artifactId"), inputs.get("locationId"))
+                verified = action != "artifact-verify" or result.get("verification") == "verified"
+                return {"tool": "vm_workflow", "ok": verified, **result}
+            except (ValueError, OSError) as error:
+                return _error("vm_workflow", str(error))
+        if action in ("bundle-prepare", "bundle-verify"):
+            bundle = importlib.import_module(f"{__package__}.native_scenario_bundle" if __package__ else "native_scenario_bundle")
+            try:
+                if action == "bundle-prepare":
+                    result = bundle.prepare_bundle(REPO_ROOT, inputs.get("scenarioId"), inputs.get("outputDirectory"))
+                else:
+                    result = bundle.verify_bundle(REPO_ROOT, inputs.get("path"), inputs.get("manifestSha256"))
+                return {"tool": "vm_workflow", "ok": True, **result}
+            except (ValueError, OSError, TypeError) as error:
+                return _error("vm_workflow", str(error))
         if action == "inspect-input":
             result = workflow.inspect_input(inputs.get("input", {}), preflight=inputs.get("preflight"))
         elif action == "admit-plan":
@@ -1756,20 +1853,80 @@ def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         return _error("vm_workflow", str(error))
 
 
+
+def _native_response(tool: str, action: str, result: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
+    """Add compact guidance and redacted durable failure evidence to native tools."""
+    guidance = importlib.import_module(f"{__package__}.native_next_action" if __package__ else "native_next_action")
+    enriched = dict(result)
+    host = request.get("host") or request.get("hostAlias")
+    if isinstance(host, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", host):
+        enriched.setdefault("host", host)
+    enriched["nextAction"] = guidance.next_action(tool, action, enriched)
+    if enriched.get("ok") is not False and str(enriched.get("state", "")).lower() not in {"unknown", "submitting"}:
+        return enriched
+    recorder = importlib.import_module(f"{__package__}.native_failure_evidence" if __package__ else "native_failure_evidence")
+    context: dict[str, Any] = {"tool": tool, "action": action}
+    safe_token = lambda value: isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", value)
+    environment = enriched.get("environment") or request.get("environment") or host
+    if safe_token(environment):
+        context["environmentAlias"] = environment
+    identity = enriched.get("identity") if isinstance(enriched.get("identity"), dict) else {}
+    correlation = enriched.get("correlationId") or identity.get("correlationId") or request.get("correlationId")
+    if safe_token(correlation):
+        context["operationCorrelation"] = correlation
+    artifacts = enriched.get("artifactIds") or request.get("artifactIds")
+    if isinstance(artifacts, dict) and 0 < len(artifacts) <= 16 and all(safe_token(value) for value in artifacts.values()):
+        context["artifactIds"] = list(artifacts.values())
+    state = str(enriched.get("state", enriched.get("status", "failure")))
+    uncertain = state.lower() in {"unknown", "submitting", "pending", "closing", "close_pending", "owner_unknown", "remote_forward_pending", "local_forward_pending", "recovery_intent_pending"}
+    category = enriched.get("reason") or enriched.get("verification") or state
+    if not safe_token(category):
+        category = "workflow_failure"
+    receipt: dict[str, Any] = {"classification": "nativeUNKNOWN" if uncertain else "terminalFailure", "errorCategory": category}
+    if safe_token(state):
+        receipt["after"] = {"state": state}
+    paths = enriched.get("evidencePaths")
+    if isinstance(paths, list) and all(isinstance(path, str) and path.startswith("/") for path in paths):
+        receipt["evidencePaths"] = paths[:16]
+    try:
+        # This fingerprint covers the tool implementation, including uncommitted
+        # modules; it does not assert the product package was built from HEAD.
+        digest = hashlib.sha256()
+        for path in sorted((REPO_ROOT / "agent_tools").glob("*.py")):
+            digest.update(path.name.encode()); digest.update(path.read_bytes())
+        context["sourceFingerprint"] = digest.hexdigest()
+        enriched["failureEvidence"] = recorder.record_failure(REPO_ROOT, context, receipt)
+    except (ValueError, OSError):
+        # Evidence storage must not replace or reclassify the original outcome.
+        enriched["failureEvidence"] = {"state": "unavailable"}
+    return enriched
+
+
+def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
+    """Observe or perform fixed configured SSH fixture actions with durable evidence and safe next steps."""
+    result = _ssh_workflow_impl(action, host, timeout_seconds, identity, transfer, device)
+    return _native_response("ssh_workflow", action, result, {"host": host, **(transfer or {})})
+
+
+def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    """Manage verified artifacts, reservations, bundles and fixed resumable preflight scenarios."""
+    return _native_response("vm_workflow", action, _vm_workflow_impl(action, inputs), inputs if isinstance(inputs, dict) else {})
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="vpn-control-agent")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("serve")
     ssh_parser = subparsers.add_parser("ssh-workflow")
-    ssh_parser.add_argument("action", choices=("inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover"))
+    ssh_parser.add_argument("action", choices=("inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
     ssh_parser.add_argument("--host")
     ssh_parser.add_argument("--device")
     ssh_parser.add_argument("--timeout-seconds", type=int, default=15)
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("inspect-input", "admit-plan"))
+    vm_parser.add_argument("action", choices=("inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect"))
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")

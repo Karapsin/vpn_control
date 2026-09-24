@@ -25,6 +25,29 @@ jobs = load("ssh_jobs")
 
 
 class SshJobObservationTest(unittest.TestCase):
+    def test_real_probe_reads_receipt_while_process_stat_exists(self):
+        import builtins
+        import contextlib
+        import io
+        import os
+        process_stat = "417 (fixture) S " + " ".join(["0"] * 18 + ["9981"])
+        real_open = builtins.open
+        def controlled_open(path, *args, **kwargs):
+            if path == "/proc/417/stat":
+                return io.StringIO(process_stat)
+            return real_open(path, *args, **kwargs)
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "receipt.json"
+            receipt.write_text(json.dumps({"jobId": "job-17", "exitCode": 0}))
+            output = io.StringIO()
+            with mock.patch("builtins.open", side_effect=controlled_open), mock.patch.object(
+                    sys, "argv", ["probe", "417", str(receipt)]), contextlib.redirect_stdout(output):
+                exec(jobs._REMOTE_PROBE, {})
+            value = json.loads(output.getvalue())
+        self.assertEqual("running", value["process"]["state"])
+        self.assertEqual(9981, value["process"]["startTicks"])
+        self.assertEqual({"present": True, "valid": True, "jobId": "job-17", "exitCode": 0}, value["receipt"])
+
     def write_config(self, root: Path) -> None:
         path = root / ".vm-hosts.local.json"
         path.write_text(json.dumps({"schemaVersion": 1, "hosts": {

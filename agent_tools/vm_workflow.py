@@ -14,12 +14,23 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Any, Mapping, Sequence
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_ROOT = REPO_ROOT / "scripts"
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
+from fixture_environment import vm_admission_reason
+
+
 _SAFE_RESERVATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_MIB = 1024 * 1024
+_LINUX_SAMPLE_COUNT = 2
+_LINUX_MAX_SAMPLE_WINDOW_MS = 30_000
+_LINUX_MAX_SAMPLE_AGE_MS = 60_000
 _DESKTOP_UPDATE_PREFLIGHT = "desktop-update-entrypoint"
 _DESKTOP_UPDATE_MODULES = (
     "prepare_desktop_update_fixture.py",
@@ -166,6 +177,51 @@ def _nonnegative_int(value: Any, label: str) -> int:
     return value
 
 
+def _ceil_mib(value: int) -> int:
+    return (value + _MIB - 1) // _MIB
+
+
+def _linux_samples(measurement: Mapping[str, Any], *, requested: int, headroom: int,
+                   available: int) -> tuple[list[Mapping[str, Any]], int]:
+    """Validate a bounded caller receipt without claiming to observe the host."""
+    samples = measurement.get("samples")
+    if not isinstance(samples, list) or len(samples) != _LINUX_SAMPLE_COUNT:
+        raise VmWorkflowError("Linux admission requires exactly two caller receipt samples")
+    parsed: list[Mapping[str, Any]] = []
+    observed_at: list[int] = []
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            raise VmWorkflowError("Linux admission sample must be an object")
+        timestamp = _positive_int(sample.get("observedAtUnixMs"), "Linux sample timestamp")
+        sample_available = _nonnegative_int(sample.get("availableMemoryBytes"), "Linux sample available memory")
+        if sample_available < requested + headroom:
+            raise VmWorkflowError("Linux sample available memory cannot retain the requested guest and host headroom")
+        if sample.get("psi") != "normal":
+            raise VmWorkflowError("Linux memory PSI is not normal")
+        vmstat = sample.get("vmstat")
+        if not isinstance(vmstat, Mapping):
+            raise VmWorkflowError("Linux admission sample requires vmstat counters")
+        for key in ("pswpin", "pswpout", "oomKill"):
+            _nonnegative_int(vmstat.get(key), f"Linux vmstat {key}")
+        parsed.append(sample)
+        observed_at.append(timestamp)
+    if observed_at[1] <= observed_at[0] or observed_at[1] - observed_at[0] > _LINUX_MAX_SAMPLE_WINDOW_MS:
+        raise VmWorkflowError("Linux caller receipt samples must be ordered within the bounded observation window")
+    now_ms = time.time_ns() // 1_000_000
+    if observed_at[-1] > now_ms or now_ms - observed_at[-1] > _LINUX_MAX_SAMPLE_AGE_MS:
+        raise VmWorkflowError("Linux caller receipt samples are not recent")
+    if available != _nonnegative_int(parsed[-1].get("availableMemoryBytes"), "Linux sample available memory"):
+        raise VmWorkflowError("Linux available memory must match the latest caller receipt sample")
+    first, last = parsed[0]["vmstat"], parsed[-1]["vmstat"]
+    # A swap-in can reclaim a previously swapped page without contemporaneous
+    # allocation pressure. Swap-out or an OOM kill is the admission-time stress
+    # signal; retain validation of every counter above for receipt integrity.
+    if any(last[key] != first[key] for key in ("pswpout", "oomKill")):
+        raise VmWorkflowError("Linux caller receipt records swap-out activity or an OOM kill")
+    return parsed, min(_nonnegative_int(sample.get("availableMemoryBytes"), "Linux sample available memory")
+                       for sample in parsed)
+
+
 def admit_plan(
     measurement: Mapping[str, Any],
     *,
@@ -189,8 +245,6 @@ def admit_plan(
     pressure = measurement.get("pressure")
     if isinstance(pressure, bool) or pressure not in ("normal", "1", 1):
         raise VmWorkflowError("host memory pressure is not normal")
-    if swap != 0:
-        raise VmWorkflowError("host swap use prevents VM admission")
     requested = _positive_int(requested_memory_bytes, "requested memory")
     headroom = _positive_int(headroom_bytes, "host headroom")
 
@@ -206,6 +260,53 @@ def admit_plan(
             raise VmWorkflowError("reservation ids must be unique")
         reservation_ids.append(identifier)
         reserved += _positive_int(reservation.get("memoryBytes"), "reservation memory")
+
+    if measurement.get("platform") == "linux":
+        available = _nonnegative_int(measurement.get("availableMemoryBytes"), "Linux available memory")
+        samples, minimum_available = _linux_samples(
+            measurement, requested=requested, headroom=headroom, available=available,
+        )
+        running_allocations = (
+            ([_ceil_mib(running)] if running else []) +
+            [_ceil_mib(item["memoryBytes"]) for item in reservations]
+        )
+        reason = vm_admission_reason(
+            physical_mib=physical // _MIB,
+            available_mib=minimum_available // _MIB,
+            swap_used_mib=swap // _MIB,
+            pressure_critical=False,
+            running_allocations_mib=running_allocations,
+            requested_mib=_ceil_mib(requested),
+            build_headroom_mib=_ceil_mib(headroom),
+            minimum_available_mib=_ceil_mib(headroom),
+            max_local_vms=len(running_allocations) + 1,
+        )
+        if reason:
+            raise VmWorkflowError(reason)
+        required = running + reserved + requested + headroom
+        return {
+            "ok": True,
+            "state": "planned",
+            "authorization": "none",
+            "measurementSource": "caller-supplied",
+            "observationSource": "caller-receipt",
+            "platform": "linux",
+            "physicalMemoryBytes": physical,
+            "runningConfiguredMemoryBytes": running,
+            "reservedMemoryBytes": reserved,
+            "requestedMemoryBytes": requested,
+            "headroomBytes": headroom,
+            "requiredMemoryBytes": required,
+            "availableMemoryBytes": physical - required,
+            "observedAvailableMemoryBytes": available,
+            "swapUsedBytes": swap,
+            "sampleCount": len(samples),
+            "reservation": {"memoryBytes": requested, "persisted": False},
+            "nativeActionAllowed": False,
+        }
+
+    if swap != 0:
+        raise VmWorkflowError("host swap use prevents VM admission")
 
     required = running + reserved + requested + headroom
     if required > physical:

@@ -111,8 +111,24 @@ def send_rejection(connection: socket.socket) -> None:
 def send_capacity_rejection(connection: socket.socket) -> None:
     try:
         connection.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        # Windows can abort a peer that is waiting for this response when close()
+        # discards its already-queued CONNECT request.  Half-close the response
+        # direction and discard currently pending input before releasing the socket.
+        connection.shutdown(socket.SHUT_WR)
+        connection.setblocking(False)
+        remaining = MAX_HEADER_BYTES
+        while remaining:
+            try:
+                chunk = connection.recv(min(65536, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+            except (BlockingIOError, InterruptedError):
+                break
     except OSError:
         pass
+    finally:
+        connection.close()
 
 
 def relay_opaque(client: socket.socket, upstream: socket.socket, initial_client_bytes: bytes = b"",
@@ -260,7 +276,6 @@ class BoundedConnectServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         if not self._permits.acquire(blocking=False):
             self.emit({"event": "rejected", "stage": "concurrency"})
             send_capacity_rejection(request)
-            request.close()
             return
         thread = threading.Thread(target=self._process_with_permit, args=(request, client_address), daemon=True)
         thread.start()

@@ -180,6 +180,32 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
                     same_source_recovery=True, arch_source_fixture=Path("unused-source-fixture"))
         verify.assert_called_once()
 
+    def test_rpm_recovery_uses_its_typed_fixture_verifier_before_owner_startup(self):
+        linux = types.SimpleNamespace(uname=lambda: types.SimpleNamespace(sysname="Linux"), getuid=lambda: 1000)
+        with mock.patch("test_linux_public_install.os", linux), \
+             mock.patch("builtins.open", return_value=io.BytesIO()), \
+             mock.patch("test_linux_public_install.verify_arch_bundle_base",
+                        side_effect=AssertionError("Arch verifier must not run")) as arch, \
+             mock.patch("test_linux_public_install.verify_rpm_bundle_base",
+                        side_effect=RuntimeError("RPM verification reached")) as rpm:
+            with self.assertRaisesRegex(RuntimeError, "RPM verification reached"):
+                run(Path("/opt/vpn-control/bin/vpn-control"), "2.1.17", True,
+                    same_source_recovery=True, rpm_source_fixture=Path("rpm-pair"))
+        rpm.assert_called_once_with(Path("/opt/vpn-control/bin/vpn-control"), Path("rpm-pair"))
+        arch.assert_not_called()
+
+    def test_source_fixture_kinds_are_mutually_exclusive_before_any_verifier(self):
+        linux = types.SimpleNamespace(uname=lambda: types.SimpleNamespace(sysname="Linux"), getuid=lambda: 1000)
+        with mock.patch("test_linux_public_install.os", linux), \
+             mock.patch("builtins.open", return_value=io.BytesIO()), \
+             mock.patch("test_linux_public_install.verify_arch_bundle_base") as arch, \
+             mock.patch("test_linux_public_install.verify_rpm_bundle_base") as rpm:
+            with self.assertRaisesRegex(RuntimeError, "mutually exclusive"):
+                run(Path("/opt/vpn-control/bin/vpn-control"), "2.1.17", True,
+                    same_source_recovery=True, arch_source_fixture=Path("arch-pair"),
+                    rpm_source_fixture=Path("rpm-pair"))
+        arch.assert_not_called(); rpm.assert_not_called()
+
     def test_terminal_observer_drains_final_output_then_records_known_exit_after_pty_eio(self):
         class Process:
             polls = 0

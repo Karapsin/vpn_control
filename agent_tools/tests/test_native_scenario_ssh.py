@@ -1,0 +1,127 @@
+"""End-to-end local SSH stand-in checks for the fixed preflight adapter."""
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+import time
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SOURCE = ROOT / "agent_tools"
+
+
+def load(name: str):
+    spec = importlib.util.spec_from_file_location(name, SOURCE / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+transport = load("ssh_transport")
+bundle = load("native_scenario_bundle")
+execution = load("native_scenario_execution")
+ssh_driver = load("native_scenario_ssh")
+
+
+class NativeScenarioSshTest(unittest.TestCase):
+    def request(self):
+        return {"scenarioId": "linux-public-update-preflight", "host": "fixture", "environment": "ownedguest",
+                "bundleHash": self.bundle_info["manifestSha256"], "artifactIds": {"fixture": "sha256-" + "a" * 64}, "correlationId": "preflight-17"}
+
+    def setUp(self):
+        if os.name != "posix":
+            self.skipTest("SSH stand-in and private journal tests require POSIX")
+        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.work = Path(self.temp.name)
+        self.remote = self.work / "remote"; self.remote.mkdir(mode=0o700)
+        self.bundle_info = bundle.prepare_bundle(ROOT, "linux-public-update-driver", self.work / "bundle")
+        self.key = self.work / "key"; self.key.write_text("key", encoding="utf-8"); self.key.chmod(0o600)
+        self.known = self.work / "known"; self.known.write_text("known", encoding="utf-8"); self.known.chmod(0o600)
+        self.fake_ssh = self.work / "fake-ssh"
+        self.log = self.work / "fake-ssh.log"
+        self.fake_ssh.write_text("#!/bin/sh\nfor last; do :; done\n: \"${FAKE_SSH_LOG:?}\"\nif [ \"${DROP_RESPONSE:-}\" = 1 ]; then /bin/sh -c \"$last\" > \"$FAKE_SSH_LOG\" 2>&1; exit 255; fi\nexec /bin/sh -c \"$last\"\n", encoding="utf-8")
+        self.fake_ssh.chmod(0o700)
+        config = {"schemaVersion": 1, "hosts": {"fixture": {"host": "fixture", "port": 22, "user": "tester",
+                  "identityFile": str(self.key), "knownHostsFile": str(self.known), "fixtureTransferRoot": str(self.remote)}}}
+        path = self.work / ".vm-hosts.local.json"; path.write_text(json.dumps(config), encoding="utf-8"); path.chmod(0o600)
+
+    def make(self):
+        os.environ.setdefault("FAKE_SSH_LOG", str(self.log))
+        return ssh_driver.NativeScenarioSshDriver(ROOT, lambda plan: self.bundle_info["directory"], ssh_binary=str(self.fake_ssh), configuration_root=self.work)
+
+    @unittest.skipUnless(Path("/proc/self/stat").exists(), "remote PID generation test requires Linux /proc")
+    def test_local_subprocess_standin_retains_receipt_after_submit_response_disconnect(self):
+        request = self.request(); plan = execution.ScenarioPlan.from_mapping(request)
+        old = os.environ.get("DROP_RESPONSE"); old_log = os.environ.get("FAKE_SSH_LOG"); os.environ["DROP_RESPONSE"] = "1"; os.environ["FAKE_SSH_LOG"] = str(self.log)
+        try:
+            first = execution.ScenarioExecutor(self.work / "journal", self.make()).start(request)
+            self.assertEqual(("submitting", "submit_response_unavailable"), (first["state"], first["reason"]))
+        finally:
+            if old is None: os.environ.pop("DROP_RESPONSE", None)
+            else: os.environ["DROP_RESPONSE"] = old
+            if old_log is None: os.environ.pop("FAKE_SSH_LOG", None)
+            else: os.environ["FAKE_SSH_LOG"] = old_log
+        driver = self.make(); resumed = execution.ScenarioExecutor(self.work / "journal", driver)
+        for _ in range(150):
+            result = resumed.resume("preflight-17")
+            if result["state"] == "terminal":
+                    self.assertEqual(0, result["exitCode"])
+                    evidence = json.loads((self.remote / "native-scenario-jobs" / "ownedguest" / "linux-public-update-preflight" / "preflight-17" / "evidence.json").read_text())
+                    self.assertEqual({"evidenceClass": "component", "action": "no_product_action", "exitCode": 0}, evidence)
+                    break
+            time.sleep(.02)
+        else:
+            self.fail("retained remote receipt was not observed: " + self.log.read_text(encoding="utf-8"))
+        job = self.remote / "native-scenario-jobs" / "ownedguest" / "linux-public-update-preflight" / "preflight-17"
+        self.assertTrue((job / "receipt.json").exists())
+        with self.assertRaisesRegex(ssh_driver.NativeScenarioSshError, "unavailable"):
+            self.make().submit(plan)
+
+    def test_adapter_rejects_bundle_scenario_mismatch_before_transport(self):
+        plan = execution.ScenarioPlan.from_mapping(self.request())
+        info = bundle.prepare_bundle(ROOT, "desktop-update-entrypoint", self.work / "wrong")
+        plan_value = self.request(); plan_value["bundleHash"] = info["manifestSha256"]
+        plan = execution.ScenarioPlan.from_mapping(plan_value)
+        driver = ssh_driver.NativeScenarioSshDriver(ROOT, lambda _: info["directory"], ssh_binary=str(self.fake_ssh), configuration_root=self.work)
+        with self.assertRaisesRegex(ssh_driver.NativeScenarioSshError, "fixed preflight"):
+            driver.submit(plan)
+
+    def test_payload_uses_frozen_runner_after_checkout_runner_changes(self):
+        checkout = self.work / "checkout"
+        (checkout / "scripts").mkdir(parents=True)
+        required = ("test_linux_public_install.py", "arch_public_update.py", "rpm_public_update.py",
+                    "prepare_desktop_update_fixture.py", "fixture_environment.py",
+                    "macos_packaging_jdk_preflight.py", "native_fixture_run.sh")
+        for name in required:
+            shutil.copyfile(ROOT / "scripts" / name, checkout / "scripts" / name)
+        frozen = bundle.prepare_bundle(checkout, "linux-public-update-driver", self.work / "frozen-checkout")
+        (checkout / "scripts/native_fixture_run.sh").write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+        request = self.request(); request["bundleHash"] = frozen["manifestSha256"]
+        plan = execution.ScenarioPlan.from_mapping(request)
+        driver = ssh_driver.NativeScenarioSshDriver(checkout, lambda _: frozen["directory"], ssh_binary=str(self.fake_ssh), configuration_root=self.work)
+        payload = driver._payload(Path(frozen["directory"]))
+        header, data = payload.split(b"\n", 1)
+        offset = 0
+        streamed = {}
+        for entry in json.loads(header)["files"]:
+            size = entry["sizeBytes"]
+            streamed[entry["path"]] = data[offset:offset + size]
+            offset += size
+        self.assertEqual(offset, len(data))
+        self.assertEqual((Path(frozen["directory"]) / "scripts/native_fixture_run.sh").read_bytes(),
+                         streamed["scripts/native_fixture_run.sh"])
+        self.assertNotEqual((checkout / "scripts/native_fixture_run.sh").read_bytes(),
+                            streamed["scripts/native_fixture_run.sh"])
+        self.assertEqual(plan.bundle_hash, frozen["manifestSha256"])
+
+
+if __name__ == "__main__":
+    unittest.main()

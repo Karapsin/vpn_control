@@ -25,43 +25,95 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint148
+## Current continuation — checkpoint153
 
-Checkpoint147 `b835439bb430848f46d6638281491fffb0e66ee7` is pushed after
-fresh full prepush passed. Exact-SHA CI is still running; Android Release APK has
-passed. The frozen local nondebuggable x86_64 APK is version2.1.17/code16740,
-SHA256 `08a09cee6c79900d300ec0731590fe0b74b325505ddb897d0596f53c329e05c2`.
-Its signer matches the installed fixture; it has not been installed or run.
-Manifest: checkpoint147/android-artifact.json.
+Checkpoint148 `d382767ebb028413739a351f723a33f4d87d6836` is pushed after
+full prepush. Fast Checks, Android and Linux passed for that exact SHA. Windows
+run36007034411 failed its CONNECT-capacity response test with WinError10053;
+the bounded half-close/drain repair passes focused tests but awaits the next CI.
+macOS run36007033958 still failed cleanup with `image-device-changed` and a busy
+mountpoint. Its cause is under investigation; delivery is not complete.
 
-SSH gateway access has recovered. The nested Arch route now fails authentication,
-and read-only `ssh -O check` found its configured control socket unavailable.
-The authorized passphrase is in the ignored mode0600 host inventory, never source
-or command arguments. Connection recovery now succeeded through the real MCP;
-the new socket was independently probed and adopted in the private inventory.
-The first attempt was proven rejected before subprocess submission because the
-transport forbids raw newlines in argv. Its intent is preserved as not-submitted;
-encoded-script regression now covers the actual transport builder.
+The current dirty batch intentionally combines native-fixture MCP transfer and
+forwarding, Linux memory admission, RPM source-pair admission, Windows relay
+shutdown and routine check wiring. Product versions remain unchanged until the
+coherent checkpoint's final content edit and managed version bump.
 
-Transfer146 status is still unknown/not_published; no resend occurred. API29
-observation reached UID2000/API29 and its expected kernel AVD name with disabled
-proxy settings, but initially rejected the empty secondary boot AVD property.
-After a causal fixture correction, real MCP observation succeeded with the same
-controller in status/operations, zero active operations and disabled proxy fields.
-Evidence: checkpoint148/android29-observe-fixed.json. No product mutation occurred.
-macOS CI36004512051 reported image-attached-elsewhere after partition detach.
-The next patch validates and detaches the whole-image parent, with ten quick
-cleanup tests; native exact-SHA confirmation is still required.
+API29 now runs the frozen nondebuggable version2.1.17/code16740 APK from
+checkpoint147, SHA256
+`08a09cee6c79900d300ec0731590fe0b74b325505ddb897d0596f53c329e05c2`.
+Verified MCP publication and one data-preserving ADB installation succeeded;
+installed signer/hash match and the original subscription survived. Runtime is
+stopped and no operations are active. This is fixture bootstrap, not public update
+acceptance. The desktop ADB client is the older CP140 package, so this is explicitly
+mixed-source evidence. See checkpoint150/android29-native/bootstrap-receipt.json.
+The subsequent refresh diagnostic requires review; no refresh has been submitted.
 
-The macOS VM is still stopped. Read-only admission at 2026-09-24 16:23:46+0300
-reported pressure2 and swap1845.88MiB on the 24GiB host, so it was rejected.
-No unrelated processes were stopped and rollback114 remains untouched.
+On owned Fedora2328, the previous stopped owner exited through public quit.
+An offline reinstall of the frozen base RPM completed with exit0. Installed
+NEVRA/header, clean rpm verification and application image all match the frozen
+base. The target update has not started. See
+checkpoint150/rpm-native/admission-summary.json. Historical guest2327 and its
+unknown installer remain untouched.
+
+Nested SSH access and verified APK staging work. Transfer146 remains
+unknown/not_published and has not been replayed. Windows CP117 has no interactive
+user; exact frozen MSI hashes were rechecked. Its loopback VNC-forward helper is
+being corrected for macOS process identity and Unix-socket path limits before use.
+No Windows credential entry or installer action has occurred in this continuation.
+
+The local macOS VM remains stopped pending fresh resource admission. Remote Arch
+has ample measured capacity and normal PSI, but the new Linux admission rejected
+four swap-in pages during a two-second sample. Independent review identified
+swap-in-only rejection as stricter than the established capacity policy. A causal
+regression and narrow correction are in progress; swap-out, OOM, pressure and
+capacity safeguards remain. No additional VM has started.
+
+Remaining acceptance includes current-package platform installation/recovery,
+runtime and GUI detach traffic, Android action/document lifecycles, and targeted
+visual review. The affected visual set is21 scene/platform pairs: nine Android
+and four each on Linux, Windows and macOS. Full release catalog capture is outside
+this non-release checkpoint. Exact-SHA all-five CI remains mandatory.
+
+The user requested all discussed MCP improvements. Implemented modules now cover
+artifact replicas and byte verification, fixed verified scenario bundles,
+private environment reservations, live read-only observation composition,
+durable execution, compact next-action guidance and automatic redacted failure
+receipts. Real FastMCP stdio tests exercise public registration and serialization.
+Independent review added causal tests for stale artifact paths, lost terminal
+states, PID generation mismatch, reservation release uncertainty and bundle races.
+
+Real MCP evidence in checkpoint152: artifact registration/verification passed;
+the fixed Windows VNC tunnel opened and separately reported ready after an RFB
+banner check. A screenshot confirms access to the owned Windows lock screen; no
+credential entry or MSI action occurred. Tunnel correlation is
+`1e4df347ee3b4c75a327e088c0813b6e` and remains owned/open for Windows work.
+A second preflight with the fully frozen runner succeeded in
+checkpoint153/mcp-final under correlation
+`preflight-a0388f86bd494ac49bce414ff02212e2`. Live host observation reached Arch
+and inventoried five QEMU processes, but withheld admission-compatible memory
+because two allocations could not be established. They were not counted as zero.
+The Linux bundle import preflight submitted once, then a separate resume recovered
+terminal exit0 for correlation `preflight-c545e9fee18348dd97cd97a456a30554`,
+PID2922038/startTicks2941336. This is component preflight evidence, not a product
+update. Other product-changing scenario adapters remain future integration.
+
+API29 diagnostic admission discovered that the preserved original subscription
+actually refers to localhost, not the earlier pinned public GitHub fixture.
+A new explicitly owned public fixture subscription was added successfully, which
+automatically selected it. The exact original source was restored, the new-ID refresh failed terminally
+with CONNECTIVITY, and the owned temporary subscription was deleted. Diagnostics
+show direct/system-default routing and ConnectException before any HTTP status;
+connection setup remains an open native failure. Runtime is off and no operations
+remain active. Unknown
+operations are never replayed. See checkpoint153/android29-refresh receipts.
 
 | Task | Agent | Owned subsystem | Dependencies / next handoff |
 | --- | --- | --- | --- |
-| Integration148 | root | MCP registration, docs, review, native admission and exact-SHA CI | Review recovery before invocation; no unknown transfer replay |
-| SSH recovery148 | ssh_recovery148 | Connection recovery module and deterministic tests | Fix response-loss identity, exclusive intent, actual askpass tests |
-| macOS admission148 | completed | Read-only host measurement | Wait for fresh passing resource admission before any guarded boot |
+| Integration153 | root | MCP registration, docs, metadata, validation and delivery | Final reviewed freeze, prepush, checkpoint push and exact-SHA CI |
+| Android refresh153 | completed | API29 fixture and redacted diagnostics | Original state restored; connection-stage failure awaits causal diagnosis |
+| Public contract153 | completed | Real stdio MCP test | Failure receipts and next-action guidance verified; final full tier pending |
+| Native tools152–153 | completed | Separate reviewed modules and causal tests | Root integration and current endpoint evidence; no deployment claimed |
 
 ## Historical continuation — checkpoint147
 

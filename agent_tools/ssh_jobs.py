@@ -35,8 +35,8 @@ _REMOTE_PROBE = r'''import json,os,stat,sys
 pid=int(sys.argv[1]); receipt_path=sys.argv[2]
 process={"state":"missing"}
 try:
-    stat=open("/proc/%d/stat" % pid,"r",encoding="ascii").read()
-    tail=stat.rsplit(")",1)[1].split()
+    process_stat=open("/proc/%d/stat" % pid,"r",encoding="ascii").read()
+    tail=process_stat.rsplit(")",1)[1].split()
     process={"state":"zombie" if tail[0]=="Z" else "running","startTicks":int(tail[19])}
 except (OSError,IndexError,ValueError,UnicodeError): pass
 receipt={"present":False,"valid":True}

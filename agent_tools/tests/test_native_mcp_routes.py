@@ -10,6 +10,21 @@ from agent_tools import mcp_server
 
 
 class NativeRoutesTest(unittest.TestCase):
+    def test_apk_publication_requires_exact_fields_before_transport(self):
+        from agent_tools import ssh_transfer
+        with patch.object(ssh_transfer, "publish_android_apk") as publish:
+            result = mcp_server.ssh_workflow("apk-publish", host="vm", transfer={"apkPath": "/file.apk"})
+        self.assertFalse(result["ok"])
+        publish.assert_not_called()
+
+    def test_apk_status_preserves_unknown_identity(self):
+        from agent_tools import ssh_transfer
+        identity = {"correlationId": "apk-retained"}
+        with patch.object(ssh_transfer, "android_apk_stage_status", return_value={"ok": False, "state": "unknown", "identity": identity}) as observe:
+            result = mcp_server.ssh_workflow("apk-status", host="vm", identity=identity)
+        self.assertEqual(identity, result["identity"])
+        observe.assert_called_once_with(mcp_server.REPO_ROOT, "vm", identity, timeout_seconds=15)
+
     def test_connection_recovery_delegates_only_configured_alias_and_deadline(self):
         from agent_tools import ssh_connection_recovery
         with patch.object(ssh_connection_recovery, "recover", return_value={"ok": False, "state": "recovery_intent_pending"}) as recover:
@@ -69,7 +84,43 @@ class NativeRoutesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root, patch.object(mcp_server, "REPO_ROOT", Path(root)):
             result = mcp_server.ssh_workflow()
             self.assertFalse(result["ok"])
+            evidence = result.pop("failureEvidence", {})
             self.assertNotIn(root, json.dumps(result))
+            if evidence.get("evidencePath"):
+                self.assertIn("/.rag_index/native-failures/", evidence["evidencePath"])
+                self.assertNotIn(".vm-hosts.local.json", evidence["evidencePath"])
+
+    def test_artifact_mismatch_is_not_successful_verification(self):
+        from agent_tools import native_artifact_registry
+        with patch.object(native_artifact_registry, "verify_artifact", return_value={"verification": "mismatch"}):
+            result = mcp_server.vm_workflow("artifact-verify", {"artifactId": "sha256-" + "a" * 64})
+        self.assertFalse(result["ok"])
+        self.assertEqual("mismatch", result["verification"])
+
+    def test_bundle_route_rejects_unknown_scenario_before_preparation(self):
+        result = mcp_server.vm_workflow("bundle-prepare", {"scenarioId": "arbitrary-command"})
+        self.assertFalse(result["ok"])
+
+    def test_forward_status_is_observation_only(self):
+        from agent_tools import ssh_forward
+        with patch.object(ssh_forward, "status", return_value={"ok": False, "state": "not_open"}) as observe, patch.object(ssh_forward, "open_forward") as start:
+            result = mcp_server.ssh_workflow("forward-status", host="archlinux")
+        observe.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux")
+        start.assert_not_called()
+        self.assertFalse(result["ok"])
+
+    def test_environment_unknown_observation_cannot_claim_ready(self):
+        result = mcp_server.vm_workflow("environment-status", {"observations": []})
+        self.assertFalse(result["ready"])
+
+    def test_scenario_submission_has_public_success_envelope(self):
+        from agent_tools import native_scenario_execution
+        request = {"scenarioId": "linux-public-update-preflight", "artifactIds": {"bundleManifest": "sha256-" + "a" * 64}}
+        with patch.object(native_scenario_execution.ScenarioExecutor, "start", return_value={"state": "submitted", "correlationId": "retained"}):
+            result = mcp_server.vm_workflow("scenario-start", request)
+        self.assertTrue(result.get("ok"))
+        self.assertFalse(result["productAction"])
+        self.assertEqual("retained", result["correlationId"])
 
     def test_vm_unknown_action_is_structured_failure(self):
         self.assertFalse(mcp_server.vm_workflow("restart-unknown-installer", {})["ok"])
