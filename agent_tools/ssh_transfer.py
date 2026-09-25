@@ -577,7 +577,7 @@ def _transfer_root(config: Any, host: str) -> PurePosixPath:
     if host not in config.hosts:
         raise SshTransferError("Unknown VM host alias.")
     target = config.hosts[host]
-    connection = config.hosts[target.gateway] if target.transport == "nested" else target
+    connection = ssh_transport.connection_host(config, host)
     if connection.password is not None:
         raise SshTransferError("Fixture transfer requires a key or agent profile.")
     root = getattr(target, "fixture_transfer_root", None)

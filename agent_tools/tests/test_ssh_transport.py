@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shlex
 import sys
 import tempfile
 import unittest
@@ -114,6 +115,75 @@ class SshTransportTest(unittest.TestCase):
             self.assertEqual(argv[-2], "ssh.example")
             self.assertIn("-S '/home/kardinal/.ssh/control path.sock'", argv[-1])
             self.assertIn("StrictHostKeyChecking=yes", argv[-1])
+
+    @unittest.skipUnless(os.name == "posix", "native private inventory validation")
+    def test_three_host_route_retains_every_hop_and_quotes_guest_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            gateway = self.config()["hosts"]["vm"] | {"host": "gateway.example", "port": 2228, "password": "gateway-secret"}
+            arch = {"host": "unused", "port": 22, "user": "unused", "identityFile": "/unused/key",
+                    "knownHostsFile": "/home/owner/.ssh/known_hosts", "transport": "nested",
+                    "gateway": "gateway", "remoteHostAlias": "archlinux",
+                    "remoteControlPath": "/home/owner/.ssh/arch socket"}
+            fedora = {"host": "unused", "port": 2328, "user": "unused", "identityFile": "/unused/key",
+                      "knownHostsFile": "/home/owner/.ssh/guest_known_hosts", "transport": "nested",
+                      "gateway": "arch", "remoteHostAlias": "fedora",
+                      "remoteConfigFile": "/home/owner/owned fixture/scp-config"}
+            self.write_config(root, self.config({"gateway": gateway, "arch": arch, "fedora": fedora}))
+            config = ssh.load_config(root)
+            self.assertEqual("gateway", ssh.connection_host(config, "fedora").alias)
+            argv = ssh.build_ssh_argv(config, "fedora", command=("printf", "%s", "a; $(touch /tmp/unsafe)"))
+            self.assertEqual("gateway.example", argv[-2])
+            self.assertEqual("BatchMode=no", argv[-3])
+            arch_ssh = shlex.split(argv[-1])
+            self.assertEqual(["ssh", "-S", "/home/owner/.ssh/arch socket"], arch_ssh[:3])
+            self.assertEqual("archlinux", arch_ssh[-2])
+            guest_ssh = shlex.split(arch_ssh[-1])
+            self.assertEqual(["ssh", "-F", "/home/owner/owned fixture/scp-config"], guest_ssh[:3])
+            self.assertNotIn("-S", guest_ssh)
+            self.assertIn("StrictHostKeyChecking=yes", guest_ssh)
+            self.assertIn("UserKnownHostsFile=/home/owner/.ssh/guest_known_hosts", guest_ssh)
+            self.assertEqual("fedora", guest_ssh[-2])
+            self.assertEqual(["printf", "%s", "a; $(touch /tmp/unsafe)"], shlex.split(guest_ssh[-1]))
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            fake_ssh = fake_bin / "ssh"
+            fake_ssh.write_text('#!/bin/sh\nfor last; do :; done\nexec /bin/sh -c "$last"\n', encoding="utf-8")
+            fake_ssh.chmod(0o700)
+            marker = root / "escaped"
+            argument = f"two words; $(touch {marker})"
+            simulated = ssh.build_ssh_argv(config, "fedora", ssh_binary=str(fake_ssh),
+                                            command=("python3", "-c", "import json,sys; print(json.dumps(sys.argv[1:]))", argument))
+            completed = ssh.subprocess.run(simulated, capture_output=True, text=True,
+                                           env={**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}, check=False)
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual([argument], json.loads(completed.stdout))
+            self.assertFalse(marker.exists())
+            with mock.patch.object(ssh.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="", stderr="")) as run:
+                self.assertTrue(ssh.probe(root, "fedora").ok)
+            self.assertIn("VPN_CONTROL_SSH_PASSWORD_FILE", run.call_args.kwargs["env"])
+            self.assertNotIn("gateway-secret", " ".join(run.call_args.args[0]))
+
+    @unittest.skipUnless(os.name == "posix", "native private inventory validation")
+    def test_nested_routes_reject_cycles_excess_hops_and_unsafe_options(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            direct = self.config()["hosts"]["vm"]
+            def nested(gateway, **changes):
+                return {"host": "unused", "port": 22, "user": "unused", "identityFile": "/unused/key",
+                        "knownHostsFile": "/owned/known_hosts", "transport": "nested", "gateway": gateway,
+                        "remoteHostAlias": "safe-alias", "remoteControlPath": "/owned/master.sock", **changes}
+            for hosts in (
+                {"one": nested("two"), "two": nested("one")},
+                {"gateway": direct, "a": nested("gateway"), "b": nested("a"), "c": nested("b"), "d": nested("c")},
+                {"gateway": direct, "guest": nested("gateway", remoteConfigFile="relative/config")},
+                {"gateway": direct, "guest": nested("gateway", remoteConfigFile="/owned/../foreign/config")},
+                {"gateway": direct, "guest": nested("gateway", remoteHostAlias="-oProxyCommand=unsafe")},
+            ):
+                with self.subTest(hosts=tuple(hosts)):
+                    self.write_config(root, self.config(hosts))
+                    with self.assertRaises(ssh.SshConfigError):
+                        ssh.load_config(root)
 
     @unittest.skipUnless(os.name == "posix", "native private inventory validation")
     def test_rejects_malformed_or_unsafe_inventory(self):

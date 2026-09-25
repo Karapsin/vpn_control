@@ -1428,3 +1428,31 @@ through the Kotlin decoder on Windows CI. Evidence is in
 `checkpoint170/windows-receipt-red.log` and `windows-receipt-green.log`.
 The CP117 second installer correlation remains preserved as public unknown until
 current-package recovery establishes its outcome; unit results do not close it.
+
+
+## CP171 — orchestration portability and pre-push coverage
+
+Windows CI36115002773 exposed a guest file-admission helper calling POSIX
+`getuid` from cross-platform tests. The executable portability manifest now runs
+the actual helper with that API absent: it failed before repair and now refuses
+admission without crashing. Settings logic tests use an explicit admission seam;
+real ownership checks never fabricate a user identity on unsupported platforms.
+
+Fast Checks36115002653 found trailing whitespace in a previously untracked Python
+file, which `git diff --check` did not inspect before staging. The new routine
+`check_source_whitespace.py` covers tracked and untracked nonignored source files
+without printing contents. Its causal repository check identified the same file
+before repair. Temporary-repository tests cover untracked files, ignored private
+files, binary content, chunk boundaries, CRLF and final-line whitespace. Evidence:
+`checkpoint171/whitespace-{red,green}.log` and `whitespace-tests.log`.
+
+The actual Linux guest is behind gateway→Arch→Fedora. Two-hop-only validation
+prevented the new batch from reaching it; recursive quoted routing now preserves
+all declared hops and resolves local authentication correctly. Tests first failed
+for the missing config field, and a local fake-SSH execution now proves exact
+argument delivery through three layers without shell injection. Separate causal
+regressions caught raw multiline Python rejected before SSH and missing askpass
+in the scenario driver. Full agent-tool discovery passed337 tests (six skips).
+Fresh MCP probe and direct OS/package identity verified the owned Fedora route;
+`checkpoint171/fedora-probe-result.json` and `fedora-identity.json` are read-only
+transport evidence, not VPN or installer acceptance.

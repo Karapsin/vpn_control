@@ -249,7 +249,7 @@ def observe_host(root: Path | str, host_alias: str, timeout_seconds: int, vm_ide
     try:
         config = ssh_transport.load_config(root)
         target = config.hosts.get(host_alias)
-        if target is None or (config.hosts[target.gateway] if target and target.transport == "nested" else target).password is not None:
+        if target is None or ssh_transport.connection_host(config, host_alias).password is not None:
             return _unknown(timestamp, "transport_unavailable", timeout=timeout_seconds)
         argv = ssh_transport.build_ssh_argv(config, host_alias, timeout_seconds, command=("python3", "-c", _REMOTE_ARGUMENT))
         output = _run(argv, timeout_seconds)

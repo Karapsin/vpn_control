@@ -223,8 +223,7 @@ def observe(root: Path | str, host: str, identity: Mapping[str, Any], timeout_se
     config = ssh_transport.load_config(root)
     if host not in config.hosts:
         raise SshJobError("Unknown VM host alias.")
-    target = config.hosts[host]
-    connection_host = config.hosts[target.gateway] if target.transport == "nested" else target
+    connection_host = ssh_transport.connection_host(config, host)
     if connection_host.password is not None:
         raise SshJobError("SSH job observation requires a key or agent profile.")
     argv = ssh_transport.build_ssh_argv(

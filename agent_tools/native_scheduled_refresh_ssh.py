@@ -67,7 +67,7 @@ try:
  evidence["cleanupState"]=str(cleanup.get("state","unknown"))[:32]
  evidence["scenarioReceiptPath"]=scenario_receipt
  if rc==0 and (item.get("result")!="passed" or cleanup.get("state")!="complete" or cleanup.get("ownerStopped") is not True or cleanup.get("workspaceRemoved") is not True or cleanup.get("protectedPreserved") is not True): rc=1
-except Exception: 
+except Exception:
  if rc==0: rc=1
 if rc!=0: evidence["failurePath"]=err
 durable("evidence.json",evidence)

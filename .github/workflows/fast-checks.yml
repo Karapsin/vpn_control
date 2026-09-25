@@ -35,6 +35,8 @@ on:
       - "gradlew"
       - "scripts/add_language.py"
       - "scripts/check_localization.py"
+      - "scripts/check_source_whitespace.py"
+      - "scripts/test_source_whitespace.py"
       - "scripts/check_python_platform_contracts.py"
       - "scripts/test_python_platform_contracts.py"
       - "scripts/native_fixture_preflight.py"

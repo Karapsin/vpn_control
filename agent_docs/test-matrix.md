@@ -23,7 +23,9 @@ python3 scripts/test_android_instrumentation_signatures.py
 
 ## Native orchestration regressions
 
-Release hygiene runs `scripts/check_python_platform_contracts.py` and its tests,
+Release hygiene first checks tracked and untracked source whitespace with
+`scripts/check_source_whitespace.py` and its temporary-repository regressions.
+It also runs `scripts/check_python_platform_contracts.py` and its tests,
 `scripts/test_native_fixture_preflight_script.py`, and
 `scripts/test_linux_scheduled_refresh_scenario.py`. They exercise absent platform
 APIs, fixture admission, public command ordering, accepted-operation timeouts,

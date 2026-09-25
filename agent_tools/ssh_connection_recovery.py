@@ -185,7 +185,7 @@ def _bounded_run(argv: list[str], timeout_seconds: int, *, input_text: str | Non
 def _gateway_run(config: ssh_transport.SshConfig, target: ssh_transport.SshHost, command: tuple[str, ...], timeout_seconds: int,
                  *, input_text: str | None = None) -> subprocess.CompletedProcess[str] | None:
     assert target.gateway
-    gateway = config.hosts[target.gateway]
+    gateway = ssh_transport.connection_host(config, target.gateway)
     argv = ssh_transport.build_ssh_argv(config, target.gateway, timeout_seconds, command=command)
     if gateway.password is None:
         return _bounded_run(argv, timeout_seconds, input_text=input_text)

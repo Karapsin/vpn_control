@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Run macOS memory-monitor unit checks portably on Windows.
 - Add reusable native acceptance preflights, batches, artifact reuse and VM baselines; decode native Windows installer receipt phases.
 - Keep native orchestration regressions portable and reject unsupported private-journal execution before dispatch.
+- Fix native preflight portability, check untracked source whitespace before push, and support verified nested SSH guest routes.
 
 ## 2.1.18 - 2026-09-24
 

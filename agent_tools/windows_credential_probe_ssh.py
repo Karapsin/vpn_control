@@ -309,7 +309,7 @@ def _run_ssh(config: Any, host: str, command: tuple[str, ...], payload: bytes | 
         argv = ssh_transport.build_ssh_argv(config, host, timeout, command=command)
     except (ssh_transport.SshConfigError, ValueError, TypeError):
         return None
-    target = config.hosts[host]; connection = config.hosts[target.gateway] if target.transport == "nested" else target
+    connection = ssh_transport.connection_host(config, host)
     try:
         if connection.password is not None:
             with tempfile.TemporaryDirectory(prefix="vpn-control-askpass-") as directory:

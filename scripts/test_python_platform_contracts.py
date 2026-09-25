@@ -20,6 +20,10 @@ class ImportProbeTest(unittest.TestCase):
 
 
 class OsMockProbeTest(unittest.TestCase):
+    def test_absent_getuid_probe_exercises_real_guest_file_gate(self):
+        result = subject.probe_absent_getuid()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
     def test_causal_missing_create_fails_when_the_windows_like_os_object_lacks_getsid(self):
         source = '''from types import SimpleNamespace
 from unittest import mock

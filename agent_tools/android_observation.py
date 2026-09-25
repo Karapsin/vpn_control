@@ -245,8 +245,7 @@ def observe(root: Path | str, host: str, device_profile: Mapping[str, Any], time
     try:
         config = ssh_transport.load_config(root)
         if host not in config.hosts: raise AndroidObservationError("Unknown VM host alias.")
-        target = config.hosts[host]
-        connection = config.hosts[target.gateway] if target.transport == "nested" else target
+        connection = ssh_transport.connection_host(config, host)
         if connection.password is not None: raise AndroidObservationError("Android observation requires key or agent SSH authentication.")
         argv = ssh_transport.build_ssh_argv(config, host, timeout_seconds,
             command=("python3", "-c", "exec(" + repr(_remote_probe()) + ")", profile["adb"], profile["cli"], profile["serial"], profile["expectedAvd"], str(profile["api"]), str(timeout_seconds)))

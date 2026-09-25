@@ -59,6 +59,27 @@ class NativeScenarioSshTest(unittest.TestCase):
         os.environ.setdefault("FAKE_SSH_LOG", str(self.log))
         return ssh_driver.NativeScenarioSshDriver(ROOT, lambda plan: self.bundle_info["directory"], ssh_binary=str(self.fake_ssh), configuration_root=self.work)
 
+    def test_driver_uses_local_gateway_askpass_for_nested_guest(self):
+        direct = transport.SshHost("gateway", "gateway.example", 2228, "owner", self.key, self.known,
+                                   password="gateway-secret")
+        arch = transport.SshHost("arch", "unused", 22, "unused", self.key,
+                                 transport.PurePosixPath("/owned/known_hosts"), transport="nested",
+                                 gateway="gateway", remote_host_alias="archlinux",
+                                 remote_control_path=transport.PurePosixPath("/owned/master.sock"),
+                                 password="wrong-intermediate-secret")
+        guest = transport.SshHost("guest", "unused", 2328, "unused", self.key,
+                                  transport.PurePosixPath("/owned/guest_known_hosts"), transport="nested",
+                                  gateway="arch", remote_host_alias="fedora",
+                                  remote_config_file=transport.PurePosixPath("/owned/scp-config"))
+        config = transport.SshConfig(self.work, {"gateway": direct, "arch": arch, "guest": guest})
+        with mock.patch.object(transport, "_askpass_environment", return_value=(self.work / "askpass", {})) as askpass, \
+             mock.patch.object(ssh_driver.subprocess, "run", return_value=mock.Mock(returncode=0, stdout=b'{"ok":true}')) as run:
+            self.assertEqual({"ok": True}, self.make()._run(config, "guest", ("true",), None))
+        self.assertEqual("gateway-secret", askpass.call_args.args[0])
+        self.assertIn("archlinux", run.call_args.args[0][-1])
+        self.assertIn("scp-config", run.call_args.args[0][-1])
+        self.assertNotIn("gateway-secret", " ".join(run.call_args.args[0]))
+
     def _embedded_worker_evidence(self, exit_code):
         """Run the generated remote launcher with only process execution mocked."""
         request = self.request()

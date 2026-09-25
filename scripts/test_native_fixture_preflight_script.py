@@ -6,6 +6,7 @@ from pathlib import Path
 import ssl
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -28,7 +29,8 @@ class NativeFixtureGuestProbeTest(unittest.TestCase):
     def test_wrong_validation_url_blocks_find_best_fixture(self):
         with tempfile.TemporaryDirectory() as raw:
             path = self.workspace(raw, url="https://other.example/test")
-            result = preflight._settings(path, "https://fixture.example/test")
+            with patch.object(preflight, "_regular_user_file", return_value=True):
+                result = preflight._settings(path, "https://fixture.example/test")
         self.assertTrue(result["workspace"])
         self.assertFalse(result["settings"])
         self.assertFalse(result["benchmarkSettings"])
@@ -36,13 +38,21 @@ class NativeFixtureGuestProbeTest(unittest.TestCase):
     def test_disabled_find_best_and_invalid_measurement_knobs_block(self):
         with tempfile.TemporaryDirectory() as raw:
             path = self.workspace(raw, enabled=False)
-            self.assertFalse(preflight._settings(path, "https://fixture.example/test")["settings"])
-            self.assertTrue(preflight._settings(path, "https://fixture.example/test", require_find_best=False)["settings"])
-            value = json.loads(path.read_text())
-            value["find_best_after_subscription_refresh"] = True
-            value["validation_settings"]["batch_size"] = False
-            path.write_text(json.dumps(value))
-            self.assertFalse(preflight._settings(path, "https://fixture.example/test")["benchmarkSettings"])
+            with patch.object(preflight, "_regular_user_file", return_value=True):
+                self.assertFalse(preflight._settings(path, "https://fixture.example/test")["settings"])
+                self.assertTrue(preflight._settings(path, "https://fixture.example/test", require_find_best=False)["settings"])
+                value = json.loads(path.read_text())
+                value["find_best_after_subscription_refresh"] = True
+                value["validation_settings"]["batch_size"] = False
+                path.write_text(json.dumps(value))
+                self.assertFalse(preflight._settings(path, "https://fixture.example/test")["benchmarkSettings"])
+
+    def test_missing_file_owner_api_fails_closed(self):
+        with tempfile.TemporaryDirectory() as raw:
+            path = self.workspace(raw)
+            with patch.object(preflight, "os", SimpleNamespace()):
+                self.assertFalse(preflight._regular_user_file(path, 4 * 1024 * 1024))
+                self.assertFalse(preflight._settings(path, "https://fixture.example/test")["workspace"])
 
     def test_endpoint_rejects_wrong_protocol_before_network(self):
         with patch.object(preflight.socket, "create_connection") as connect:

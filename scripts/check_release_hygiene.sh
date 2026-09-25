@@ -45,6 +45,8 @@ run_check() {
   return 0
 }
 
+run_check python3 scripts/test_source_whitespace.py
+run_check python3 scripts/check_source_whitespace.py
 run_check python3 scripts/check_workflow_syntax.py
 run_check python3 scripts/test_check_workflow_syntax.py
 run_check python3 scripts/test_release_hygiene_runner.py

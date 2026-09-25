@@ -47,6 +47,22 @@ METHOD_PROBES = (
 )
 
 
+def probe_absent_getuid() -> subprocess.CompletedProcess[str]:
+    """Exercise the guest fixture's actual file gate with Windows-like os."""
+    return _run('''from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest.mock import patch
+import native_fixture_preflight as fixture
+with TemporaryDirectory() as raw:
+    path = Path(raw) / "workspace.json"
+    path.write_text("{}", encoding="utf-8")
+    with patch.object(fixture, "os", SimpleNamespace()):
+        assert fixture._regular_user_file(path, 1024) is False
+        assert fixture._settings(path, "https://fixture.example/test")["workspace"] is False
+''')
+
+
 def _run(source: str, *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-c", source], cwd=SCRIPTS, text=True,
@@ -102,6 +118,9 @@ def check_contracts(root: Path = ROOT) -> list[str]:
         result = probe_test_methods(probe)
         if result.returncode:
             errors.append(_failure(f"capability-method {probe.module}", result))
+    result = probe_absent_getuid()
+    if result.returncode:
+        errors.append(_failure("absent-os-getuid native_fixture_preflight", result))
     return errors
 
 
@@ -111,7 +130,7 @@ def main() -> int:
         print("Python platform contract check failed:", file=sys.stderr)
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES)} capability probes)")
+    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 1} capability probes)")
     return 0
 
 

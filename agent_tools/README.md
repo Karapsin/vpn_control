@@ -273,6 +273,24 @@ accepts exactly `host`, `device`, and the returned `identity`. Reused correlatio
 only observe; unknown results never trigger another clear. Full command streams
 stay in private evidence; public output contains categorical results and identity.
 
+### Configured guest routes
+
+Nested host profiles may reference another nested gateway, up to four hosts in
+one declared route. Each hop preserves quoted argument boundaries and strict
+known-host checks; cycles, missing gateways and excessive routes are rejected.
+`remoteConfigFile` is an optional absolute path to an agent-owned SSH config on
+the preceding host. A nested hop requires that field or `remoteControlPath`.
+For example, the private guest profile can use the configured Arch host as its
+`gateway` and the disposable guest alias as `remoteHostAlias`, with its dedicated
+remote config and known-host file. Keep all concrete paths in the ignored
+inventory. This does not modify the remote user's normal SSH configuration.
+
+Password/askpass handling resolves the first local connection host, even through
+multiple hops; intermediate credentials are never substituted for that host.
+Use a fresh MCP process or `mcp_tool.sh` after changing the inventory schema if
+an existing server still has the older module loaded. Probe the exact guest and
+verify its OS/package identity before assigning it a native scenario.
+
 ### Native artifact, bundle, and environment helpers
 
 The helpers below are local coordination and evidence tools. They never search a

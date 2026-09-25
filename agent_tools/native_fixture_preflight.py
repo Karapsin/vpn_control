@@ -113,13 +113,12 @@ def _remote_linux_refresh(root: Path, host: str, expected_url: str, timeout: int
     try:
         config = ssh_transport.load_config(root)
         source = (root / "scripts" / "native_fixture_preflight.py").read_text(encoding="utf-8")
-        command = ["python3", "-c", source, "--expected-url", expected_url,
+        command = ["python3", "-c", f"exec({source!r})", "--expected-url", expected_url,
                    "--timeout", str(min(timeout, 15))]
         if certificate is not None:
             command.extend(("--certificate", str(certificate)))
         argv = ssh_transport.build_ssh_argv(config, host, timeout, command=command)
-        target = config.hosts[host]
-        connection = config.hosts[target.gateway] if target.transport == "nested" else target
+        connection = ssh_transport.connection_host(config, host)
         def run(environment: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
             return subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, env=environment,
@@ -149,9 +148,8 @@ def _remote_linux_static(root: Path, host: str, input_bytes: bytes, timeout: int
         config = ssh_transport.load_config(root)
         source = (root / "scripts" / "native_fixture_preflight.py").read_text(encoding="utf-8")
         argv = ssh_transport.build_ssh_argv(config, host, timeout,
-            command=("python3", "-c", source, "--static-admission"))
-        target = config.hosts[host]
-        connection = config.hosts[target.gateway] if target.transport == "nested" else target
+            command=("python3", "-c", f"exec({source!r})", "--static-admission"))
+        connection = ssh_transport.connection_host(config, host)
         def run(environment: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
             return subprocess.run(argv, input=input_bytes, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, env=environment, timeout=timeout + 2, check=False)
@@ -189,9 +187,8 @@ def _remote_root_status(root: Path, host: str, remote_root: PurePosixPath, timeo
     try:
         config = ssh_transport.load_config(root)
         argv = ssh_transport.build_ssh_argv(config, host, timeout,
-            command=("python3", "-c", _REMOTE_ROOT, str(remote_root)))
-        target = config.hosts[host]
-        connection = config.hosts[target.gateway] if target.transport == "nested" else target
+            command=("python3", "-c", f"exec({_REMOTE_ROOT!r})", str(remote_root)))
+        connection = ssh_transport.connection_host(config, host)
         def run(environment: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
             return subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, env=environment, timeout=timeout + 2, check=False)

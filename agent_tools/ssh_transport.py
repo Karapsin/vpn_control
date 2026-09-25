@@ -23,6 +23,7 @@ CONFIG_FILENAME = ".vm-hosts.local.json"
 CONFIG_SCHEMA_VERSION = 1
 DEFAULT_TIMEOUT_SECONDS = 15
 MAX_TIMEOUT_SECONDS = 60
+MAX_ROUTE_HOSTS = 4
 MAX_OUTPUT_CHARS = 2_000
 _ALIAS_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 _USER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -79,6 +80,7 @@ class SshHost:
     gateway: str | None = None
     remote_host_alias: str | None = None
     remote_control_path: PurePosixPath | None = None
+    remote_config_file: PurePosixPath | None = None
     fixture_transfer_root: PurePosixPath | None = None
     android_devices: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     password: str | None = field(default=None, repr=False, compare=False)
@@ -261,7 +263,7 @@ def _host_from_entry(alias: str, entry: Any) -> SshHost:
         raise SshConfigError("Private VM inventory contains an invalid host alias.")
     if not isinstance(entry, dict):
         raise SshConfigError("Each VM host entry must be an object.")
-    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath", "fixtureTransferRoot", "androidDevices", "windowsCredentialProbe"}
+    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath", "remoteConfigFile", "fixtureTransferRoot", "androidDevices", "windowsCredentialProbe"}
     required = {"host", "port", "user", "identityFile", "knownHostsFile"}
     if set(entry) - allowed or required - set(entry):
         raise SshConfigError("Private VM inventory contains unsupported or missing host fields.")
@@ -282,13 +284,22 @@ def _host_from_entry(alias: str, entry: Any) -> SshHost:
     gateway = entry.get("gateway")
     remote_host_alias = entry.get("remoteHostAlias")
     remote_control_path = entry.get("remoteControlPath")
+    remote_config_file = entry.get("remoteConfigFile")
     if transport == "nested":
         gateway = _string(gateway, "gateway")
         remote_host_alias = _string(remote_host_alias, "remoteHostAlias")
-        remote_control_path = _remote_path(remote_control_path, "remoteControlPath")
+        if remote_control_path is not None:
+            remote_control_path = _remote_path(remote_control_path, "remoteControlPath")
+        if remote_config_file is not None:
+            remote_config_file = _remote_path(remote_config_file, "remoteConfigFile")
+        if remote_control_path is None and remote_config_file is None:
+            raise SshConfigError("Nested transport needs a remote control path or owned SSH config file.")
+        for name, path in (("remoteControlPath", remote_control_path), ("remoteConfigFile", remote_config_file)):
+            if path is not None and (path == PurePosixPath("/") or ".." in path.parts):
+                raise SshConfigError(f"{name} must name a dedicated absolute path.")
         if not _ALIAS_RE.fullmatch(gateway) or not _ALIAS_RE.fullmatch(remote_host_alias):
             raise SshConfigError("Invalid nested transport alias in private VM inventory.")
-    elif any(value is not None for value in (gateway, remote_host_alias, remote_control_path)):
+    elif any(value is not None for value in (gateway, remote_host_alias, remote_control_path, remote_config_file)):
         raise SshConfigError("Direct hosts cannot include nested transport fields.")
     known_hosts_file: Path | PurePosixPath = (
         _remote_path(entry["knownHostsFile"], "knownHostsFile") if transport == "nested"
@@ -311,6 +322,7 @@ def _host_from_entry(alias: str, entry: Any) -> SshHost:
         gateway=gateway,
         remote_host_alias=remote_host_alias,
         remote_control_path=remote_control_path,
+        remote_config_file=remote_config_file,
         fixture_transfer_root=fixture_root,
         android_devices=_android_devices(entry.get("androidDevices", {})),
         password=password,
@@ -322,16 +334,36 @@ def _validate_proxy_graph(hosts: Mapping[str, SshHost]) -> None:
     for host in hosts.values():
         if host.proxy_jump:
             raise SshConfigError("proxyJump is not supported; use an explicit nested transport.")
-        if host.gateway and (host.gateway not in hosts or hosts[host.gateway].transport != "direct"):
-            raise SshConfigError("Nested transport must reference a direct gateway host.")
     for alias in hosts:
-        seen: set[str] = set()
-        current = alias
-        while (jump := hosts[current].proxy_jump) is not None:
-            if jump in seen or jump == alias:
-                raise SshConfigError("Private VM inventory has a proxy jump cycle.")
-            seen.add(current)
-            current = jump
+        _route_hosts(hosts, alias)
+
+
+def _route_hosts(hosts: Mapping[str, SshHost], alias: str) -> tuple[SshHost, ...]:
+    """Resolve the declared route from destination to local connection host."""
+    route: list[SshHost] = []
+    seen: set[str] = set()
+    while True:
+        if alias in seen:
+            raise SshConfigError("Private VM inventory has a nested route cycle.")
+        if alias not in hosts:
+            raise SshConfigError("Nested transport references an unknown gateway host.")
+        seen.add(alias)
+        current = hosts[alias]
+        route.append(current)
+        if len(route) > MAX_ROUTE_HOSTS:
+            raise SshConfigError("Nested transport exceeds the maximum route length.")
+        if current.transport == "direct":
+            return tuple(route)
+        if current.transport != "nested" or not current.gateway:
+            raise SshConfigError("Nested transport has an invalid gateway.")
+        alias = current.gateway
+
+
+def connection_host(config: SshConfig, host: str) -> SshHost:
+    """Return the only host connected to by local SSH (for local authentication)."""
+    if host not in config.hosts:
+        raise SshConfigError("Unknown VM host alias.")
+    return _route_hosts(config.hosts, host)[-1]
 
 
 def load_config(root: Path | str) -> SshConfig:
@@ -366,26 +398,29 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
     if not command or any(not isinstance(part, str) or _CONTROL_RE.search(part) for part in command):
         raise SshConfigError("SSH command must be a non-empty sequence of safe strings.")
     ssh_binary = _string(ssh_binary, "ssh executable")
-    target = config.hosts[host]
-    # A nested route first authenticates to its declared gateway. The remote ssh
-    # command is shell-quoted because OpenSSH sends remote commands as text.
-    # Every component still comes from the validated private inventory.
-    if target.transport == "nested":
-        assert target.gateway and target.remote_host_alias and target.remote_control_path
-        gateway_argv = build_ssh_argv(config, target.gateway, timeout_seconds, command=("true",), ssh_binary=ssh_binary)
-        remote_command = [
-            "ssh", "-S", str(target.remote_control_path), "-o", "BatchMode=yes",
-            "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={target.known_hosts_file}",
-            target.remote_host_alias, shlex.join(command),
-        ]
-        return [*gateway_argv[:-1], " ".join(shlex.quote(part) for part in remote_command)]
-    connection_host = config.hosts[target.gateway] if target.transport == "nested" else target
+    route = _route_hosts(config.hosts, host)
+    # Compose from the destination outward. Each layer quotes one complete argv
+    # for the shell used by that layer's OpenSSH remote command, retaining every
+    # configured intermediate hop instead of replacing the previous last token.
+    for nested in route[:-1]:
+        if not nested.remote_host_alias:
+            raise SshConfigError("Nested transport needs a remote host alias.")
+        remote_command = ["ssh"]
+        if nested.remote_config_file is not None:
+            remote_command.extend(("-F", str(nested.remote_config_file)))
+        if nested.remote_control_path is not None:
+            remote_command.extend(("-S", str(nested.remote_control_path)))
+        remote_command.extend(("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+                               "-o", f"UserKnownHostsFile={nested.known_hosts_file}",
+                               nested.remote_host_alias, shlex.join(command)))
+        command = remote_command
+    target = route[-1]
     argv = [
         ssh_binary, "-p", str(target.port), "-l", target.user,
         "-i", str(target.identity_file), "-o", "IdentitiesOnly=yes",
         "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={target.known_hosts_file}",
         "-o", f"ConnectTimeout={timeout_seconds}", "-o", "NumberOfPasswordPrompts=1",
-        "-o", f"BatchMode={'no' if connection_host.password is not None else 'yes'}",
+        "-o", f"BatchMode={'no' if target.password is not None else 'yes'}",
     ]
     argv.extend([target.host, shlex.join(command)])
     return argv
@@ -437,14 +472,13 @@ def probe(root: Path | str, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SE
         argv = build_ssh_argv(config, host, timeout_seconds, ssh_binary=ssh_binary)
     except SshConfigError as exc:
         return ProbeResult(host=host, status=ProbeStatus.CONFIG_ERROR, output=str(exc))
-    target = config.hosts[host]
-    connection_host = config.hosts[target.gateway] if target.transport == "nested" else target
+    connection = connection_host(config, host)
     passwords = tuple(candidate.password for candidate in config.hosts.values() if candidate.password)
     environment: dict[str, str] | None = None
     try:
-        if connection_host.password is not None:
+        if connection.password is not None:
             with tempfile.TemporaryDirectory(prefix="vpn-control-askpass-") as directory:
-                _, environment = _askpass_environment(connection_host.password, Path(directory))
+                _, environment = _askpass_environment(connection.password, Path(directory))
                 completed = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_seconds + 1, env=environment, check=False)
         else:
             completed = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_seconds + 1, check=False)

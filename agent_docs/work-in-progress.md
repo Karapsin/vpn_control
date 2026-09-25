@@ -25,7 +25,34 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current integration batch — checkpoint170
+## Current integration follow-up — checkpoint171
+
+Checkpoint4554c632e0b41bfb128df72726de5d509a85f761 is pushed after full prepush,
+but is not CI-verified: Windows hygiene exposed an absent-getuid test path and
+Fast Checks found trailing whitespace in a newly tracked file. Both have causal
+local regressions and focused fixes. Linux guest adoption additionally requires
+a configured third SSH hop; the transport owner is implementing quoted recursive
+routing and current auth resolution. Fresh MCP probe and independent OS/package
+identity now confirm Fedora UID1000 and RPM2.1.17 through the exact guest route.
+No guest runtime or installer state changed; all337 agent-tool tests passed with
+six platform-specific skips. The follow-up is frozen for final prepush/delivery.
+
+| Task | Owner | Files/environment | Current check / handoff |
+| --- | --- | --- | --- |
+| CI portability | preflight_batch170, frozen | guest preflight script and portable checks | Missing-getuid RED/GREEN; root integration |
+| SSH guest route | linux_guest_route171 | SSH transport/auth call sites and tests | Configured gateway–Arch–Fedora route; no native mutation |
+| Delivery | root | whitespace check, MCP/docs, version, prepush/CI | Explicit tracked and untracked source coverage |
+| API35 admission | android35_admit171 | owned5682, ignored evidence | Fresh read-only package/status/export backup |
+| API29 admission | android29_admit171, complete | owned5684, ignored evidence | OFF, revision0, ops0, proxy/reverse clear; no install |
+| Windows admission | windows_recovery_admit171, complete | CP117, ignored evidence | Exact VM and credential recovery verified; retained installer unchanged |
+
+Current-source Android nondebuggable x86_64 APK is frozen under checkpoint171;
+its registered artifact set was reverified through MCP. Windows/macOS pair builds
+were dispatched for4554c6; Windows is blocked by the hygiene failure above. No
+new native installer, consent or VPN operation has been submitted. The overall
+parity goal and remaining platform matrix are still incomplete.
+
+## Previous integration batch — checkpoint170
 
 The user explicitly requested all seven development optimizations before resuming
 the remaining parity matrix. Extend existing MCP/scripts rather than introducing

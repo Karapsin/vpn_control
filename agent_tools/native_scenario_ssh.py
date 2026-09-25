@@ -13,6 +13,7 @@ import os
 from pathlib import Path, PurePosixPath
 import stat
 import subprocess
+import tempfile
 from typing import Any, Callable, Mapping
 
 try:
@@ -263,8 +264,17 @@ class NativeScenarioSshDriver:
 
     def _run(self, config, host, command, payload):
         argv = ssh_transport.build_ssh_argv(config, host, self.timeout_seconds, command=command, ssh_binary=self.ssh_binary)
+        connection = ssh_transport.connection_host(config, host)
+        def run(environment=None):
+            return subprocess.run(argv, input=payload, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                  timeout=self.timeout_seconds + 2, env=environment, check=False)
         try:
-            done = subprocess.run(argv, input=payload, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=self.timeout_seconds + 2, check=False)
+            if connection.password is not None:
+                with tempfile.TemporaryDirectory(prefix="vpn-control-askpass-") as directory:
+                    _, environment = ssh_transport._askpass_environment(connection.password, Path(directory))
+                    done = run(environment)
+            else:
+                done = run()
         except (OSError, subprocess.TimeoutExpired):
             return None
         if done.returncode != 0 or len(done.stdout) > _MAX_OUTPUT:

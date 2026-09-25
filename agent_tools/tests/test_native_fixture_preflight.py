@@ -3,11 +3,13 @@ from __future__ import annotations
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 import os
+import json
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from agent_tools import native_fixture_preflight as preflight
+from agent_tools import ssh_transport
 
 
 class Dispatch:
@@ -33,6 +35,30 @@ class NativeFixturePreflightTest(unittest.TestCase):
     def linux_request(self):
         return {"scenarioId": "linux-public-update-preflight", "host": "owned", "environment": "fixture",
                 "bundleManifestArtifactId": "sha256-" + "a" * 64}
+
+    def test_scheduled_static_probe_uses_local_gateway_auth_through_three_hosts(self):
+        root = Path(__file__).resolve().parents[2]
+        direct = ssh_transport.SshHost("gateway", "gateway.example", 2228, "owner", Path("/owned/key"),
+                                       Path("/owned/known_hosts"), password="gateway-secret")
+        arch = ssh_transport.SshHost("arch", "unused", 22, "unused", Path("/unused/key"),
+                                     PurePosixPath("/owned/known_hosts"), transport="nested", gateway="gateway",
+                                     remote_host_alias="archlinux", remote_control_path=PurePosixPath("/owned/master.sock"),
+                                     password="wrong-intermediate-secret")
+        guest = ssh_transport.SshHost("guest", "unused", 2328, "unused", Path("/unused/key"),
+                                      PurePosixPath("/owned/guest_known_hosts"), transport="nested", gateway="arch",
+                                      remote_host_alias="fedora", remote_config_file=PurePosixPath("/owned/scp-config"))
+        config = ssh_transport.SshConfig(root, {"gateway": direct, "arch": arch, "guest": guest})
+        result = Mock(returncode=0, stdout=json.dumps({"profile": "linux-scheduled-refresh-static",
+                                                        "checks": {"package": True, "desktopJar": True,
+                                                                   "protectedOwner": True}}).encode())
+        with patch.object(ssh_transport, "load_config", return_value=config), \
+             patch.object(ssh_transport, "_askpass_environment", return_value=(Path("/unused/askpass"), {})) as askpass, \
+             patch.object(preflight.subprocess, "run", return_value=result) as run:
+            self.assertIsNotNone(preflight._remote_linux_static(root, "guest", b"{}", 5))
+        self.assertEqual("gateway-secret", askpass.call_args.args[0])
+        self.assertIn("archlinux", run.call_args.args[0][-1])
+        self.assertIn("scp-config", run.call_args.args[0][-1])
+        self.assertNotIn("gateway-secret", " ".join(run.call_args.args[0]))
 
     def test_invalid_timeout_fails_before_any_probe_or_intent(self):
         dispatch = Dispatch()

@@ -20,11 +20,14 @@ from urllib.parse import urlsplit
 
 
 def _regular_user_file(path: Path, maximum: int) -> bool:
+    uid = getattr(os, "getuid", None)
+    if not callable(uid):
+        return False
     try:
         info = path.lstat()
     except OSError:
         return False
-    return (stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+    return (stat.S_ISREG(info.st_mode) and info.st_uid == uid()
             and 0 < info.st_size <= maximum)
 
 
