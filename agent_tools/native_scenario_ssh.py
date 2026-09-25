@@ -23,6 +23,10 @@ except ImportError:  # pragma: no cover
 
 SCENARIO_ID = "linux-public-update-preflight"
 BUNDLE_SCENARIO_ID = "linux-public-update-driver"
+SCENARIO_ARTIFACT_KEYS = {
+    SCENARIO_ID: frozenset({"bundleManifest"}),
+    "linux-scheduled-refresh": frozenset({"bundleManifest", "scenarioInput"}),
+}
 _MAX_OUTPUT = 8192
 
 
@@ -158,14 +162,27 @@ except Exception: unknown("status_unavailable")'''
 class NativeScenarioSshDriver:
     """Private adapter; bundle resolution is constructor wiring, never request data."""
     def __init__(self, repository_root: Path | str, bundle_resolver: Callable[[native_scenario_execution.ScenarioPlan], Path | str],
-                 timeout_seconds: int = 30, ssh_binary: str = "ssh", configuration_root: Path | str | None = None):
+                 timeout_seconds: int = 30, ssh_binary: str = "ssh", configuration_root: Path | str | None = None,
+                 input_resolver: Callable[[native_scenario_execution.ScenarioPlan], Path | str] | None = None):
         self.root = Path(repository_root).resolve()
         self.configuration_root = Path(configuration_root).resolve() if configuration_root is not None else self.root
         self.bundle_resolver = bundle_resolver
         self.timeout_seconds = timeout_seconds
         self.ssh_binary = ssh_binary
+        self.input_resolver = input_resolver
 
     def submit(self, plan: native_scenario_execution.ScenarioPlan) -> native_scenario_execution.JobIdentity:
+        if plan.scenario_id == "linux-scheduled-refresh":
+            if self.input_resolver is None:
+                raise NativeScenarioSshError("Scheduled refresh input resolver is unavailable.")
+            try:
+                from . import native_scheduled_refresh_ssh
+            except ImportError:
+                import native_scheduled_refresh_ssh  # type: ignore[no-redef]
+            delegate = native_scheduled_refresh_ssh.NativeScheduledRefreshSshDriver(
+                self.root, self.bundle_resolver, self.input_resolver, self.timeout_seconds,
+                self.ssh_binary, self.configuration_root)
+            return delegate.submit(plan)
         bundle, config, remote_root = self._admit(plan)
         payload = self._payload(bundle)
         result = self._run(config, plan.host, _py(_SUBMIT, str(remote_root), plan.host, plan.environment, plan.scenario_id,
@@ -189,6 +206,21 @@ class NativeScenarioSshDriver:
         if result.get("state") == "running":
             return native_scenario_execution.DriverObservation(native_scenario_execution.ObservationStatus.RUNNING, str(result.get("reason", "live_pid")), observed, evidence_paths=paths)
         return native_scenario_execution.DriverObservation(native_scenario_execution.ObservationStatus.UNKNOWN, str(result.get("reason", "remote_unknown")), observed, evidence_paths=paths)
+
+    def collect(self, plan: native_scenario_execution.ScenarioPlan,
+                identity: native_scenario_execution.JobIdentity) -> Mapping[str, Any] | None:
+        if plan.scenario_id != "linux-scheduled-refresh":
+            return None
+        try:
+            from . import native_scheduled_refresh_ssh
+        except ImportError:
+            import native_scheduled_refresh_ssh  # type: ignore[no-redef]
+        if self.input_resolver is None:
+            return None
+        delegate = native_scheduled_refresh_ssh.NativeScheduledRefreshSshDriver(
+            self.root, self.bundle_resolver, self.input_resolver, self.timeout_seconds,
+            self.ssh_binary, self.configuration_root)
+        return delegate.collect(plan, identity)
 
     def _admit(self, plan):
         if plan.scenario_id != SCENARIO_ID:

@@ -11,6 +11,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve SSH recovery history across adopted connection expiry without replaying uncertain attempts.
 - Preserve Android operation identity after response loss and improve macOS fixture builds and memory monitoring.
 - Run macOS memory-monitor unit checks portably on Windows.
+- Add reusable native acceptance preflights, batches, artifact reuse and VM baselines; decode native Windows installer receipt phases.
+- Keep native orchestration regressions portable and reject unsupported private-journal execution before dispatch.
 
 ## 2.1.18 - 2026-09-24
 

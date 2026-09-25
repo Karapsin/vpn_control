@@ -1,0 +1,376 @@
+{
+  "schemaVersion": 1,
+  "requirements": [
+    {
+      "requirementId": "android-api29-native-cli",
+      "platform": "android",
+      "requiredScenarios": [
+        "api29-nondebuggable-build",
+        "authorized-adb-cli",
+        "unauthorized-caller",
+        "consent-denial",
+        "consent-grant",
+        "on-off-runtime",
+        "process-lifecycle",
+        "documents-positive",
+        "documents-negative"
+      ],
+      "description": "API29 non-debuggable public CLI, caller identity, consent, runtime, document and lifecycle acceptance."
+    },
+    {
+      "requirementId": "android-api35-native-cli",
+      "platform": "android",
+      "requiredScenarios": [
+        "api35-nondebuggable-build",
+        "authorized-adb-cli",
+        "unauthorized-caller",
+        "document-response-recovery",
+        "documents-positive",
+        "documents-negative",
+        "operation-cancellation",
+        "process-lifecycle"
+      ],
+      "description": "API35 non-debuggable public CLI, document response recovery, negative document and lifecycle acceptance."
+    },
+    {
+      "requirementId": "linux-native-cli",
+      "platform": "linux",
+      "requiredScenarios": [
+        "package-installer",
+        "packaged-public-cli",
+        "stdout-stderr-exit",
+        "unicode-space-path",
+        "config-parity",
+        "operation-progress-cancellation",
+        "headless-serve",
+        "gui-attach-detach",
+        "runtime-owner",
+        "traffic-continuity",
+        "scheduled-refresh",
+        "find-best",
+        "ssh-import-routing"
+      ],
+      "description": "Installed Linux public CLI, package, lifecycle, runtime, traffic, refresh, Find Best and SSH acceptance."
+    },
+    {
+      "requirementId": "windows-native-cli",
+      "platform": "windows",
+      "requiredScenarios": [
+        "msi-installer",
+        "public-update",
+        "packaged-public-cli",
+        "stdout-stderr-exit",
+        "unicode-space-path",
+        "config-parity",
+        "operation-progress-cancellation",
+        "ordinary-user",
+        "scoped-elevation",
+        "headless-serve",
+        "gui-attach-detach",
+        "runtime-owner",
+        "traffic-continuity",
+        "find-best",
+        "ssh-import-routing"
+      ],
+      "description": "Installed Windows public CLI, MSI/update, elevation, lifecycle, runtime, Find Best and SSH acceptance."
+    },
+    {
+      "requirementId": "macos-native-cli",
+      "platform": "macos",
+      "requiredScenarios": [
+        "dmg-installer",
+        "packaged-public-cli",
+        "stdout-stderr-exit",
+        "unicode-space-path",
+        "config-parity",
+        "operation-progress-cancellation",
+        "headless-serve",
+        "gui-attach-detach",
+        "runtime-owner",
+        "traffic-continuity",
+        "find-best",
+        "ssh-import-routing"
+      ],
+      "description": "Installed macOS public CLI, DMG, lifecycle, runtime, Find Best and SSH acceptance."
+    },
+    {
+      "requirementId": "android-visual",
+      "platform": "android",
+      "requiredScenarios": [
+        "scene-capture",
+        "geometry-contrast",
+        "agent-verdict"
+      ],
+      "description": "Android visual evidence bound to the exact source and scene manifest."
+    },
+    {
+      "requirementId": "linux-visual",
+      "platform": "linux",
+      "requiredScenarios": [
+        "scene-capture",
+        "geometry-contrast",
+        "agent-verdict"
+      ],
+      "description": "Linux visual evidence bound to the exact source and scene manifest."
+    },
+    {
+      "requirementId": "windows-visual",
+      "platform": "windows",
+      "requiredScenarios": [
+        "scene-capture",
+        "geometry-contrast",
+        "agent-verdict"
+      ],
+      "description": "Windows visual evidence bound to the exact source and scene manifest."
+    },
+    {
+      "requirementId": "macos-visual",
+      "platform": "macos",
+      "requiredScenarios": [
+        "scene-capture",
+        "geometry-contrast",
+        "agent-verdict"
+      ],
+      "description": "macOS visual evidence bound to the exact source and scene manifest."
+    },
+    {
+      "requirementId": "final-dev-ci",
+      "platform": "cross-platform",
+      "requiredScenarios": [
+        "fast-checks",
+        "android-release-apk",
+        "linux-desktop-package",
+        "windows-desktop-package",
+        "macos-desktop-package"
+      ],
+      "description": "All required development workflows completed successfully for the exact delivered SHA."
+    },
+    {
+      "requirementId": "android-api29-installer",
+      "platform": "android",
+      "requiredScenarios": [
+        "noninteractive-rejection",
+        "unknown-source-grant-denial",
+        "confirmation-cancellation",
+        "successful-replacement",
+        "exact-receipt-recovery",
+        "loss-before-commit",
+        "loss-during-confirmation",
+        "loss-after-handoff",
+        "independent-resume",
+        "retry-no-duplicate-session",
+        "terminal-cleanup",
+        "repeated-install-retention",
+        "wrong-signer-package-version",
+        "damaged-apk"
+      ],
+      "description": "API29 PackageInstaller lifecycle and authoritative recovery."
+    },
+    {
+      "requirementId": "android-api29-actions",
+      "platform": "android",
+      "requiredScenarios": [
+        "consent-grant-denial",
+        "foreground-service-activity-recreation",
+        "find-best-traffic",
+        "find-best-cancellation-recovery",
+        "measured-benchmark",
+        "active-a-pending-b",
+        "connected-refresh",
+        "scheduled-refresh",
+        "ssh-key-replacement",
+        "ssh-failure-rollback",
+        "adb-disconnect",
+        "status-stats-watch",
+        "logs-follow",
+        "stale-drafts-picker-retry"
+      ],
+      "description": "API29 native actions, credentials, streams and authoritative state."
+    },
+    {
+      "requirementId": "android-api35-installer",
+      "platform": "android",
+      "requiredScenarios": [
+        "noninteractive-rejection",
+        "unknown-source-grant-denial",
+        "confirmation-cancellation",
+        "successful-replacement",
+        "exact-receipt-recovery",
+        "loss-before-commit",
+        "loss-during-confirmation",
+        "loss-after-handoff",
+        "independent-resume",
+        "retry-no-duplicate-session",
+        "terminal-cleanup",
+        "repeated-install-retention",
+        "wrong-signer-package-version",
+        "damaged-apk"
+      ],
+      "description": "API35 PackageInstaller lifecycle and authoritative recovery."
+    },
+    {
+      "requirementId": "android-api35-actions",
+      "platform": "android",
+      "requiredScenarios": [
+        "consent-grant-denial",
+        "foreground-service-activity-recreation",
+        "find-best-traffic",
+        "find-best-cancellation-recovery",
+        "measured-benchmark",
+        "active-a-pending-b",
+        "connected-refresh",
+        "scheduled-refresh",
+        "ssh-key-replacement",
+        "ssh-failure-rollback",
+        "adb-disconnect",
+        "status-stats-watch",
+        "logs-follow",
+        "stale-drafts-picker-retry"
+      ],
+      "description": "API35 native actions, credentials, streams and authoritative state."
+    },
+    {
+      "requirementId": "linux-installer-lifecycle",
+      "platform": "linux",
+      "requiredScenarios": [
+        "deb-fresh-dependencies-headless",
+        "deb-current-source-recovery",
+        "rpm-success-failure-recovery",
+        "arch-replacement-rollback",
+        "terminal-authorization-cancellation",
+        "async-readiness",
+        "transport-loss-recovery",
+        "private-umask-workspace"
+      ],
+      "description": "linux installed-package replacement and failure/recovery matrix."
+    },
+    {
+      "requirementId": "windows-installer-lifecycle",
+      "platform": "windows",
+      "requiredScenarios": [
+        "msi-uac-grant-denial",
+        "ordinary-elevated-owner",
+        "different-approving-admin",
+        "original-user-worker",
+        "participating-copy-locks",
+        "protected-storage-adversarial",
+        "next-owner-recovery",
+        "reconnect-off-preserved"
+      ],
+      "description": "windows installed-package replacement and failure/recovery matrix."
+    },
+    {
+      "requirementId": "macos-installer-lifecycle",
+      "platform": "macos",
+      "requiredScenarios": [
+        "user-local-replacement",
+        "machine-owned-replacement",
+        "authorization-grant-denial",
+        "native-helper-signing",
+        "dmg-admission",
+        "first-gate-races",
+        "rollback-cleanup",
+        "same-source-recovery-gui-return"
+      ],
+      "description": "macos installed-package replacement and failure/recovery matrix."
+    },
+    {
+      "requirementId": "windows-scoped-vpn",
+      "platform": "windows",
+      "requiredScenarios": [
+        "standard-user-gui-proxy",
+        "scoped-uac-tun-traffic",
+        "denial-preserves-active-a",
+        "prepare-commit-recovery",
+        "exact-child-stop",
+        "generated-custom-config",
+        "large-config",
+        "dns-ws-ssh-cache-resources",
+        "pipe-storage-races",
+        "ordinary-autostart-migration"
+      ],
+      "description": "Production Windows broker privileges, configuration coverage and traffic."
+    },
+    {
+      "requirementId": "linux-owner-lifecycle",
+      "platform": "linux",
+      "requiredScenarios": [
+        "attach-traffic",
+        "hide-show-traffic",
+        "close-detach-traffic",
+        "gui-crash-traffic",
+        "cli-disconnect-long-work",
+        "scheduled-without-gui",
+        "missing-owner-status-no-start",
+        "static-discovery-no-workspace",
+        "transient-query-owner",
+        "disconnected-serve",
+        "explicit-off-intent",
+        "query-owner-gui-reconnect"
+      ],
+      "description": "linux authoritative owner and live traffic lifecycle."
+    },
+    {
+      "requirementId": "windows-owner-lifecycle",
+      "platform": "windows",
+      "requiredScenarios": [
+        "attach-traffic",
+        "hide-show-traffic",
+        "close-detach-traffic",
+        "gui-crash-traffic",
+        "cli-disconnect-long-work",
+        "scheduled-without-gui",
+        "missing-owner-status-no-start",
+        "static-discovery-no-workspace",
+        "transient-query-owner",
+        "disconnected-serve",
+        "explicit-off-intent",
+        "query-owner-gui-reconnect"
+      ],
+      "description": "windows authoritative owner and live traffic lifecycle."
+    },
+    {
+      "requirementId": "macos-owner-lifecycle",
+      "platform": "macos",
+      "requiredScenarios": [
+        "attach-traffic",
+        "hide-show-traffic",
+        "close-detach-traffic",
+        "gui-crash-traffic",
+        "cli-disconnect-long-work",
+        "scheduled-without-gui",
+        "missing-owner-status-no-start",
+        "static-discovery-no-workspace",
+        "transient-query-owner",
+        "disconnected-serve",
+        "explicit-off-intent",
+        "query-owner-gui-reconnect"
+      ],
+      "description": "macos authoritative owner and live traffic lifecycle."
+    },
+    {
+      "requirementId": "document-persistence-transfer",
+      "platform": "cross-platform",
+      "requiredScenarios": [
+        "large-import-readback",
+        "exact-retry-no-op",
+        "retained-result-export",
+        "android-48m-heap",
+        "cold-independent-reopen",
+        "protobuf-newline-compatibility",
+        "cache-digest-bytes",
+        "failed-persistence",
+        "mutable-input-resource-failure",
+        "wrong-principal-owner-context-kind",
+        "expiry-forged-id-hash-length",
+        "interruption-response-loss",
+        "responsive-status-cancel",
+        "private-no-overwrite-export",
+        "racing-parent-destination",
+        "unicode-surrogate",
+        "gui-cli-transfer"
+      ],
+      "description": "Current packaged large-document, persistence and publication acceptance."
+    }
+  ]
+}

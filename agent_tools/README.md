@@ -391,7 +391,7 @@ version control and do not put passwords or secret material in them.
 ### Durable fixed-scenario execution
 
 `scenario-start`, `scenario-status`, `scenario-resume` and `scenario-collect` are
-registered `vm_workflow` actions. The currently supported execution scenario is
+registered `vm_workflow` actions. The component execution scenario
 `linux-public-update-preflight`: it transfers and imports the verified Linux
 public-update driver bundle. It performs no product installation or VPN action;
 its receipt is explicitly component evidence.
@@ -407,8 +407,92 @@ The journal precedes submission. A repeated start never launches a second job;
 resume only observes its existing correlation. Terminal receipt verification binds
 the plan, artifacts and actual process generation. Local bundle removal does not
 prevent observation of an already submitted remote job. Missing or uncertain
-receipts remain unknown. Other execution scenarios are unsupported until they
-have an explicit adapter and native evidence.
+receipts remain unknown. The installed-package recipe below has its own fixed
+adapter; new scenarios require an explicit adapter and native evidence.
+
+### Reusable native acceptance orchestration
+
+All actions below use `vm_workflow(action, inputs)`. Private journals remain under
+`.rag_index`; source packages and evidence retain their original source identity.
+A successful tooling operation does not mean the product acceptance gate passed.
+
+**Artifact sets.** `artifact-set-freeze` takes `sourceSha` (current clean product
+HEAD), `packages` (registered `{artifactId, locationId}` entries), `runtimePaths`
+(explicit repository-relative runtime files), and `provenance` containing
+`architecture` and `signer: {kind: "unsigned"}` or
+`{kind: "certificate", path: "<certificate file>"}`. It derives the build-input
+manifest and version, streams package/runtime bytes and stores an immutable set.
+`artifact-set-verify` and `artifact-reuse-check` take only `{artifactSetId}`.
+Reuse derives changed paths from Git: narrowly allowed docs/test-only changes may
+reuse bytes, while product/build/runtime/unknown changes require rebuilding.
+Original source SHA is never relabelled, and current exact-SHA CI remains required.
+Signer/architecture provenance is an attestation until a trusted native inspector
+verifies it; `nativeAdmissionReady: false` must not be treated as package admission.
+
+**Preflight and batches.** `fixture-preflight` takes a fixed `scenarioId` and its
+strict typed inputs. `linux-scheduled-refresh` requires configured `host`,
+`environment`, `bundleManifestArtifactId`, `scenarioInputArtifactId`, and unique
+UUID `scenarioCorrelationId` (optional `timeoutSeconds`). It checks frozen inputs,
+live access and the exact installed RPM/JAR/protected OFF owner. Endpoint,
+certificate and settings checks occur inside the runner after fixture creation
+and before ON. The separate `linux-scheduled-refresh-fixture-ready` profile checks
+an existing fixture using `expectedTestUrl` and optional `certificateRelativePath`.
+The Windows `windows-credential-validity-v1` profile admits an owned environment
+and opaque private credential; its batch then uses the existing real credential
+probe. A stored credential alone never establishes a working login.
+
+`batch-plan` takes `batchId`, `recipe`, and recipe inputs. For
+`linux-scheduled-refresh`, use the preflight fields above without `scenarioId` or
+`timeoutSeconds`. Prepare a `linux-scheduled-refresh-driver` bundle and register
+its manifest and versioned scenario-input JSON as local artifacts first. Input
+schema is defined in `scripts/integration/linux_scheduled_refresh_scenario.py`;
+it binds the expected RPM/JAR, protected controller, owned root, observation
+window and refresh mode. The fixed runner performs fixture setup, admission,
+benchmark/Find Best, scheduled observation, actual HTTPS traffic and scoped cleanup.
+For `windows-credential-validity-v1`, use `host`, `environment`, and UUID
+`probeCorrelationId`. The component-only `linux-public-update-preflight` recipe
+uses `host`, `environment`, `bundleManifestArtifactId`, `scenarioCorrelationId`.
+
+`batch-start`, `batch-status`, `batch-resume`, and `batch-collect` accept only
+`{batchId}`. Durable node intent precedes submission. Failed prerequisites stop
+dependent work while independent checks continue. Resume observes an accepted or
+uncertain operation; it cannot replace its plan or repeat the mutation. Collection
+preserves failure evidence. Cleanup is recipe-scoped; uncertain runtime ownership
+is preserved for recovery rather than stopped to make a batch appear complete.
+
+**Versioned VM baselines.** Optional `nativeBaselines` in private mode-0600
+`.vm-hosts.local.json` contains `{schemaVersion: 1, sources: {<id>: <entry>}}`.
+Each entry contains `provider` (`tart` or `qemu`), `sourceRoot`, `sourcePath`,
+`generation`, `providerName`, `preparationReceiptPath`, `accessReceiptPath`,
+`dependencyReceiptPath`, and `installerJobReceiptPath`. No credentials or absolute
+host paths belong in tracked configuration.
+
+A trusted preparation run must write private proofs binding source ID, generation
+and exact source digest to actual access/dependency evidence and terminal/no-job
+state. The preparation receipt also binds hashes of those proofs. The adapter
+validates evidence bytes and reobserves provider stopped state; arbitrary JSON
+claiming readiness is not a substitute for a verified preparation run. See
+`native_vm_baseline_config.py` for the strict versioned proof schemas.
+
+`baseline-preflight` takes `{provider, sourceId}`; `baseline-capture` adds
+`baseline` and `generation`. `baseline-verify` takes `{manifest}`;
+`baseline-restore` takes `{manifest, destination}`. Capture seals an immutable
+baseline; restore creates a fresh disposable clone and never overwrites a guest.
+Tart and QEMU use fixed provider operations. Active disks, backing-chain inputs,
+changed proofs, unknown installer outcomes and unsafe paths fail closed. Preserve
+pending/unknown operations instead of capturing or restoring over them. Provider
+unit tests are not native snapshot/restore evidence.
+
+**Acceptance matrix.** `matrix-record` accepts a reviewed observation binding
+`requirementId`, `platform`, `originalSourceSHA`, `immutableArtifactIDs`,
+`evidencePath` (checkout-relative), `evidenceHash`, `environment`, `result`,
+`scenarioResults`, `missingEvidence`, `nextFixedCommand`, `reviewerAttestation`,
+and `evidenceScope`. Hashes and registered local artifact bytes are verified;
+semantic interpretation remains an explicit reviewer responsibility. The tracked
+requirements are in `native_acceptance_requirements.json`. `matrix-status` takes
+optional `sourceSha` (must match current HEAD) and reports remaining scenarios.
+Partial current receipts aggregate; historical/component receipts remain visible,
+conflicts and unknowns remain open, and evidence changes invalidate a pass.
 
 ### Compact guidance and failure evidence
 

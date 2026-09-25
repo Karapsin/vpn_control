@@ -11,6 +11,49 @@ import kotlin.test.*
 class DesktopInstallJobStoreTest {
     private val id = UUID.randomUUID().toString()
 
+    @Test fun nativeWindowsReceiptPhasesDecodeWithExactWireNames() {
+        // The protected Windows helper encodes its C# Phase enum with ToString(). The
+        // Cancelled spelling was captured from the second public install attempt.
+        val nativePhases = listOf(
+            "Preparing" to DesktopInstallJobPhase.PREPARING,
+            "Authorized" to DesktopInstallJobPhase.AUTHORIZED,
+            "WaitingForExit" to DesktopInstallJobPhase.WAITING_FOR_EXIT,
+            "Installing" to DesktopInstallJobPhase.INSTALLING,
+            "Succeeded" to DesktopInstallJobPhase.SUCCEEDED,
+            "Failed" to DesktopInstallJobPhase.FAILED,
+            "Cancelled" to DesktopInstallJobPhase.CANCELLED,
+        )
+        nativePhases.forEachIndexed { sequence, (wirePhase, phase) ->
+            val code = when (phase) {
+                DesktopInstallJobPhase.CANCELLED -> ControlCode.CANCELLED
+                DesktopInstallJobPhase.FAILED -> ControlCode.RUNTIME_FAILED
+                else -> ControlCode.OK
+            }
+            val bytes = """{"version":1,"jobId":"$id","sequence":$sequence,"phase":"$wirePhase","code":"${code.name}"}""".encodeToByteArray()
+            assertEquals(DesktopInstallJobReceipt(id, sequence.toLong(), phase, code), DesktopInstallJobReceipt.decode(bytes))
+        }
+
+        val captured = """{"version":1,"jobId":"fb1c7d9e-de2b-462a-923b-d07b19818dad","sequence":2,"phase":"Cancelled","code":"CANCELLED"}"""
+        assertEquals(DesktopInstallJobPhase.CANCELLED, DesktopInstallJobReceipt.decode(captured.encodeToByteArray()).phase)
+    }
+
+    @Test fun nativePhaseCompatibilityRejectsUnknownSpellingsAndKeepsCanonicalUppercaseWriter() {
+        val receipt = DesktopInstallJobReceipt(id, 1, DesktopInstallJobPhase.AUTHORIZED, ControlCode.OK)
+        assertEquals(receipt, DesktopInstallJobReceipt.decode(receipt.encode()))
+        assertTrue(receipt.encode().decodeToString().contains("\"phase\":\"AUTHORIZED\""))
+        val authorized = """{"version":1,"jobId":"$id","sequence":1,"phase":"Authorized","code":"OK"}"""
+        for (phase in listOf("authorized", "AUTHORIZEDd", "Authorised", "Waiting_For_Exit", "WaitingForEXIT", "Unknown")) {
+            assertFailsWith<Exception> {
+                DesktopInstallJobReceipt.decode(authorized.replace("Authorized", phase).encodeToByteArray())
+            }
+        }
+        val otherJob = UUID.randomUUID().toString()
+        val tracker = DesktopInstallJobReceiptTracker(id)
+        tracker.accept(DesktopInstallJobReceipt.decode(authorized.encodeToByteArray()))
+        assertFailsWith<Exception> { tracker.accept(DesktopInstallJobReceipt.decode(authorized.replace(id, otherJob).encodeToByteArray())) }
+        assertFailsWith<Exception> { tracker.accept(DesktopInstallJobReceipt.decode(authorized.replace("\"sequence\":1", "\"sequence\":0").encodeToByteArray())) }
+    }
+
     @Test fun strictReceiptRejectsMalformedUnknownDuplicatedOversizedAndInvalidTypedValues() {
         val receipt = DesktopInstallJobReceipt(id, 0, DesktopInstallJobPhase.PREPARING, ControlCode.OK)
         assertEquals(receipt, DesktopInstallJobReceipt.decode(receipt.encode()))

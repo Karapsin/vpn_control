@@ -21,6 +21,17 @@ python3 scripts/check_contract_docs.py
 python3 scripts/test_android_instrumentation_signatures.py
 ```
 
+## Native orchestration regressions
+
+Release hygiene runs `scripts/check_python_platform_contracts.py` and its tests,
+`scripts/test_native_fixture_preflight_script.py`, and
+`scripts/test_linux_scheduled_refresh_scenario.py`. They exercise absent platform
+APIs, fixture admission, public command ordering, accepted-operation timeouts,
+listener changes and cleanup ownership before expensive guest scenarios.
+The normal `agent_tools/tests` discovery covers artifact equivalence, configured
+VM baselines, durable batch recovery and acceptance evidence aggregation. These
+checks do not replace native package, traffic, installer or visual acceptance.
+
 ## Validation Tiers
 
 Use the smallest tier that gives meaningful coverage for the touched boundary.

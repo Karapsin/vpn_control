@@ -99,6 +99,7 @@ class DesktopWindowsInstallHelperProtocolTest {
         val directory = Files.createTempDirectory("vpn-install-helper-protocol-")
         val files = listOf(
             "windows-install-native.cs", "windows-install-helper-protocol.cs", "windows-install-helper-roles.cs",
+            "windows-install-helper-receipt-fixture.cs",
         ).map { name ->
             directory.resolve(name).also { path ->
                 javaClass.getResourceAsStream("/$name")!!.use { Files.copy(it, path) }
@@ -150,6 +151,9 @@ class DesktopWindowsInstallHelperProtocolTest {
                 foreach(${'$'}bad in @($invalidRequests)) { Reject { [VpnInstallHelperProtocol]::ParseRequest([Convert]::FromBase64String(${'$'}bad)) } }
                 Write-Output ('STATE_BASE64:'+ [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(${'$'}request.StateDirectory)))
                 Write-Output ('READY_BASE64:'+ [Convert]::ToBase64String([VpnInstallHelperProtocol]::EncodeWorkerReady('$job',912,[long]$created,'$sid','${"a".repeat(64)}')))
+                foreach(${'$'}receipt in [VpnInstallHelperReceiptFixture]::EncodeAll('$job')) {
+                    Write-Output ('RECEIPT_BASE64:' + ${'$'}receipt)
+                }
                 Write-Output 'NATIVE_INSTALL_HELPER_PROTOCOL_OK'
             """.trimIndent()
             assertTrue(script.all { it.code < 128 } && script.length < 30000)
@@ -164,6 +168,19 @@ class DesktopWindowsInstallHelperProtocolTest {
                 val nativeState = output.lineSequence().single { it.startsWith("STATE_BASE64:") }.substringAfter(':')
                 assertEquals(ready(), DesktopWindowsInstallWorkerReady.decode(Base64.getDecoder().decode(nativeReady)))
                 assertEquals(request.stateDirectory, Base64.getDecoder().decode(nativeState).decodeToString())
+                val nativeReceipts = output.lineSequence().filter { it.startsWith("RECEIPT_BASE64:") }
+                    .map { Base64.getDecoder().decode(it.substringAfter(':')) }.toList()
+                assertEquals(DesktopInstallJobPhase.entries.size, nativeReceipts.size)
+                nativeReceipts.forEachIndexed { index, bytes ->
+                    val phase = DesktopInstallJobPhase.entries[index]
+                    val code = when (phase) {
+                        DesktopInstallJobPhase.CANCELLED -> com.kardinal.vpncontrol.model.ControlCode.CANCELLED
+                        DesktopInstallJobPhase.FAILED -> com.kardinal.vpncontrol.model.ControlCode.RUNTIME_FAILED
+                        else -> com.kardinal.vpncontrol.model.ControlCode.OK
+                    }
+                    assertEquals(DesktopInstallJobReceipt(job, index.toLong(), phase, code),
+                        DesktopInstallJobReceipt.decode(bytes))
+                }
             } finally { if (process.isAlive) process.destroyForcibly() }
         } finally {
             files.forEach(Files::delete)

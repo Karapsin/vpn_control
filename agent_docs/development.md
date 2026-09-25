@@ -94,6 +94,35 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   code, difficult unresolved failures, shared design decisions and focused independent
   review. Preserve an explicit user model override. Do not restart an effective
   worker merely to change models; transfer at a coherent handoff.
+- Give each worker one bounded implementation or native scenario outcome. Retire
+  it after a coherent handoff; use a fresh worker when the next task crosses a
+  subsystem boundary or accumulated context obscures current facts. Do not stop
+  an accepted native operation merely to rotate its worker: transfer its exact
+  process/job identities, receipts, ownership and remaining cleanup first. Reject
+  incomplete scaffolds and routine tool errors as completion; the owner resolves
+  them or explicitly hands off unfinished work before another writer starts.
+- Run the portable Python capability manifest through release hygiene before a
+  push. New platform failures extend executable absent-module/API probes; do not
+  add a source-text rule requiring APIs that a test never executes. Keep the real
+  platform CI and native scenario as separate gates.
+- Freeze an immutable artifact set once per coherent product build. Reuse tools
+  must derive changed paths from Git, recheck package/runtime bytes and preserve
+  the original source SHA. Documentation/test-only equivalence is an explicit
+  attestation, not a new package provenance claim. It does not waive exact-SHA CI
+  or signer, architecture, runtime and native admission checks.
+- Before an expensive native scenario, use its applicable fixed preflight to
+  inspect current identity, credentials/prompt readiness, certificate/endpoint
+  behavior and settings. Unknown or stale observations do not establish readiness.
+  A durable batch may continue independent nodes after a failure, but blocks their
+  dependents and never resubmits an uncertain accepted mutation.
+- Versioned VM baselines are immutable snapshots of verified clean, stopped,
+  task-owned fixtures. Restore into a fresh disposable clone or overlay; never
+  overwrite a live fixture or a pending/unknown installer record. Baseline proof
+  records must come from actual preparation checks, not authored success flags.
+- Consult the native acceptance matrix for requirement, source/artifact, missing
+  scenario and next-action scope. Keep component, historical and partial evidence
+  visible without promoting them to current full acceptance. Preserve conflicting
+  or unknown outcomes until authoritative evidence resolves them.
 - Give workers a focused brief: outcome, owned/reserved files, applicable contracts,
   interfaces, exact checks, environment/permission boundaries and evidence locations.
   Aim for about 500 words; include additional essential constraints when needed.

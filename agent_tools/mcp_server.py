@@ -1759,12 +1759,72 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
         return _error("ssh_workflow", "Private host configuration is missing or invalid; check the documented schema and permissions.")
 
 
+def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    """Dispatch only existing fixed adapters; batches cannot invoke arbitrary tools."""
+    vm_actions = {"artifact-verify", "bundle-verify", "environment-status", "credential-status",
+                  "windows-credential-probe-start", "windows-credential-probe-status",
+                  "scenario-start", "scenario-status", "scenario-resume", "scenario-collect"}
+    ssh_actions = {"inventory", "probe", "job-status", "android-observe"}
+    if surface == "vm" and action in vm_actions:
+        return _vm_workflow_impl(action, inputs)
+    if surface == "ssh" and action in ssh_actions:
+        if set(inputs) - {"host", "timeout_seconds", "identity", "device"}:
+            raise ValueError("Fixed SSH adapter received unsupported fields.")
+        return _ssh_workflow_impl(action=action, **inputs)
+    raise ValueError("Native batch adapter is not allowlisted.")
+
+
 def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Validate staged inputs or calculate memory admission; neither action starts a VM."""
     workflow = importlib.import_module(f"{__package__}.vm_workflow" if __package__ else "vm_workflow")
     try:
         if not isinstance(inputs, dict):
             return _error("vm_workflow", "VM workflow inputs must be an object.")
+        if action in {"baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight"}:
+            baselines = importlib.import_module(f"{__package__}.native_vm_baseline_config" if __package__ else "native_vm_baseline_config")
+            result = baselines.handle(REPO_ROOT, action, inputs)
+            return {"tool": "vm_workflow", "ok": True, **result}
+        if action in {"matrix-record", "matrix-status"}:
+            matrix = importlib.import_module(f"{__package__}.native_acceptance_matrix" if __package__ else "native_acceptance_matrix")
+            if action == "matrix-record":
+                result = matrix.matrix_record(REPO_ROOT, inputs)
+            else:
+                if set(inputs) - {"sourceSha"}:
+                    return _error("vm_workflow", "Matrix status accepts only an optional sourceSha.")
+                source = subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip()
+                if inputs.get("sourceSha", source) != source:
+                    return _error("vm_workflow", "Acceptance status must use current HEAD; historical receipts remain visible in its report.")
+                result = matrix.matrix_status(REPO_ROOT, source)
+            return {"tool": "vm_workflow", "ok": True, **result}
+        if action == "fixture-preflight":
+            preflight = importlib.import_module(f"{__package__}.native_fixture_preflight" if __package__ else "native_fixture_preflight")
+            result = preflight.check(REPO_ROOT, inputs, _native_fixed_dispatch)
+            return {"tool": "vm_workflow", "ok": result.get("ready") is True, **result}
+        if action in {"batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect"}:
+            batch_module = importlib.import_module(f"{__package__}.native_scenario_batch" if __package__ else "native_scenario_batch")
+            batch = batch_module.NativeScenarioBatch(REPO_ROOT / ".rag_index" / "native-batches",
+                                                     _native_fixed_dispatch, repository_root=REPO_ROOT)
+            if action == "batch-plan":
+                result = batch.plan(inputs)
+            else:
+                if set(inputs) != {"batchId"} or not isinstance(inputs["batchId"], str):
+                    return _error("vm_workflow", "Batch observation/execution requires only its immutable batchId.")
+                result = getattr(batch, action.removeprefix("batch-"))(inputs["batchId"])
+            return {"tool": "vm_workflow", "ok": result.get("state") not in {"failed", "blocked", "unknown"}, **result}
+        if action in {"artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check"}:
+            reuse = importlib.import_module(f"{__package__}.native_artifact_reuse" if __package__ else "native_artifact_reuse")
+            if action == "artifact-set-freeze":
+                result = reuse.artifact_set_freeze(REPO_ROOT, inputs)
+            elif action == "artifact-set-verify":
+                if set(inputs) != {"artifactSetId"}:
+                    return _error("vm_workflow", "Artifact set verification requires only artifactSetId.")
+                result = reuse.artifact_set_verify(REPO_ROOT, inputs["artifactSetId"])
+            else:
+                result = reuse.artifact_reuse_check(REPO_ROOT, inputs)
+            accepted = result.get("verification") != "mismatch" and result.get("decision") != "rebuild-required"
+            return {"tool": "vm_workflow", "ok": accepted,
+                    "evidenceScope": "artifact-byte-reuse" if action == "artifact-reuse-check" else "artifact-bytes", **result}
         if action in ("android-proxy-recover", "android-proxy-recovery-status"):
             fields = {"host", "device", "expectedPort", "correlationId"} if action == "android-proxy-recover" else {"host", "device", "identity"}
             if set(inputs) != fields or any(not isinstance(inputs[key], str) or not inputs[key] for key in ("host", "device")):
@@ -1826,8 +1886,8 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             adapter = importlib.import_module(f"{__package__}.native_scenario_ssh" if __package__ else "native_scenario_ssh")
             registry = importlib.import_module(f"{__package__}.native_artifact_registry" if __package__ else "native_artifact_registry")
             def resolve_bundle(plan):
-                if set(plan.artifact_ids) != {"bundleManifest"}:
-                    raise ValueError("Preflight requires exactly the registered bundleManifest artifact.")
+                if set(plan.artifact_ids) != adapter.SCENARIO_ARTIFACT_KEYS.get(plan.scenario_id):
+                    raise ValueError("Native scenario artifacts do not match its fixed recipe.")
                 artifact_id = plan.artifact_ids["bundleManifest"]
                 if artifact_id != "sha256-" + plan.bundle_hash:
                     raise ValueError("Registered bundle artifact differs from the frozen manifest hash.")
@@ -1839,12 +1899,18 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 if manifest_path.name != "native-scenario-manifest.json":
                     raise ValueError("Registered artifact is not a scenario manifest.")
                 return manifest_path.parent
+            def resolve_input(plan):
+                verified = registry.verify_artifact(REPO_ROOT, plan.artifact_ids.get("scenarioInput"))
+                if verified.get("verification") != "verified":
+                    raise ValueError("Registered scenario input bytes are unavailable or changed.")
+                return Path(verified["location"]["localPath"])
             executor = execution.ScenarioExecutor(REPO_ROOT / ".rag_index" / "native-scenario-executions",
-                adapter.NativeScenarioSshDriver(REPO_ROOT, resolve_bundle))
+                adapter.NativeScenarioSshDriver(REPO_ROOT, resolve_bundle, input_resolver=resolve_input))
             try:
                 if action == "scenario-start":
-                    if inputs.get("scenarioId") != adapter.SCENARIO_ID or set(inputs.get("artifactIds", {})) != {"bundleManifest"}:
-                        return _error("vm_workflow", "Only registered Linux bundle import preflight is supported; no product installation is performed.")
+                    expected = adapter.SCENARIO_ARTIFACT_KEYS.get(inputs.get("scenarioId"))
+                    if expected is None or set(inputs.get("artifactIds", {})) != expected:
+                        return _error("vm_workflow", "Scenario is unsupported or its registered artifacts do not match the fixed recipe.")
                     result = executor.start(inputs)
                 else:
                     if set(inputs) != {"correlationId"}:
@@ -1852,7 +1918,10 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     method = {"scenario-status": executor.status, "scenario-resume": executor.resume, "scenario-collect": executor.collect}[action]
                     result = method(inputs["correlationId"])
                 accepted = result.get("state") == "submitted" or (result.get("state") == "terminal" and result.get("exitCode") == 0)
-                return {"tool": "vm_workflow", "ok": accepted, "evidenceClass": "component", "productAction": False, **result}
+                product_action = result.get("scenarioId") == "linux-scheduled-refresh"
+                return {"tool": "vm_workflow", "ok": accepted,
+                        "evidenceClass": "installed-package" if product_action else "component",
+                        "productAction": product_action, **result}
             except (ValueError, OSError) as error:
                 return _error("vm_workflow", str(error))
         if action in ("environment-status", "environment-reserve", "environment-release"):
@@ -1905,7 +1974,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         else:
             return _error("vm_workflow", "Unknown VM workflow action.")
         return {"tool": "vm_workflow", **result}
-    except (workflow.VmWorkflowError, TypeError, OSError) as error:
+    except (workflow.VmWorkflowError, ValueError, TypeError, OSError) as error:
         return _error("vm_workflow", str(error))
 
 
@@ -1982,7 +2051,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status"))
+    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-status", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status"))
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")

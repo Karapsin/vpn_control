@@ -26,12 +26,25 @@ internal data class DesktopInstallJobReceipt(
 
     companion object {
         const val MAX_BYTES = 4096
-        private val format = Regex("""\{"version":1,"jobId":"([a-f0-9-]{36})","sequence":(0|[1-9][0-9]{0,18}),"phase":"([A-Z_]+)","code":"([A-Z_]+)"\}""")
+        private val format = Regex("""\{"version":1,"jobId":"([a-f0-9-]{36})","sequence":(0|[1-9][0-9]{0,18}),"phase":"([A-Za-z_]+)","code":"([A-Z_]+)"\}""")
+        // The fixed Windows helper writes its C# enum names. Keep this exact set
+        // alongside the canonical uppercase names written by the other helpers.
+        private val nativeWindowsPhases = mapOf(
+            "Preparing" to DesktopInstallJobPhase.PREPARING,
+            "Authorized" to DesktopInstallJobPhase.AUTHORIZED,
+            "WaitingForExit" to DesktopInstallJobPhase.WAITING_FOR_EXIT,
+            "Installing" to DesktopInstallJobPhase.INSTALLING,
+            "Succeeded" to DesktopInstallJobPhase.SUCCEEDED,
+            "Failed" to DesktopInstallJobPhase.FAILED,
+            "Cancelled" to DesktopInstallJobPhase.CANCELLED,
+        )
         fun decode(bytes: ByteArray): DesktopInstallJobReceipt {
             require(bytes.size <= MAX_BYTES)
             val match = requireNotNull(format.matchEntire(bytes.decodeToString(throwOnInvalidSequence = true)))
+            val wirePhase = match.groupValues[3]
             return DesktopInstallJobReceipt(match.groupValues[1], match.groupValues[2].toLong(),
-                DesktopInstallJobPhase.valueOf(match.groupValues[3]), ControlCode.valueOf(match.groupValues[4]))
+                nativeWindowsPhases[wirePhase] ?: DesktopInstallJobPhase.valueOf(wirePhase),
+                ControlCode.valueOf(match.groupValues[4]))
         }
     }
 }

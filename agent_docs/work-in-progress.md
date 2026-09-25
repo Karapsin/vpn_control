@@ -25,46 +25,54 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current integration batch — checkpoint169
+## Current integration batch — checkpoint170
 
-Checkpoint f6599f2 is pushed after full prepush. Windows CI36109544592 exposed
-two mocked Mac monitor tests assuming POSIX os.getsid exists on Windows. A local
-missing-method facade reproduced both errors before the mock repair; all13 monitor
-tests now pass. This test-only correction awaits a fresh prepush/push and exact-SHA
-CI. The immutable Mac pair build36109565762 and verified nondebuggable x86_64 APK
-in checkpoint169/android-current are bound to f6599f2; do not silently relabel them.
+The user explicitly requested all seven development optimizations before resuming
+the remaining parity matrix. Extend existing MCP/scripts rather than introducing
+another execution stack. Current native operations retain their exact ownership
+and may finish safely; no pending installer or personal environment is reset.
 
-Both pushed checkpoints0bcf54e and8d7748c passed all five required exact-SHA
-workflows. Current dirty work intentionally combines the causally tested Mac
-resource guard, optional same-source DMG fixture CI/signing verification, and
-Android document response-loss identity repair. Focused Android client/provider checks pass40 tests with no skips. Mac fixture
-workflow/signing checks pass13 tests, and resource-monitor checks pass13 tests.
-Final metadata/prepush/push remain; historical green receipts do not cover this batch.
-
-Native API35 response loss committed exactly once and identical-request provider
-retry returned the same operation/result. Full56,000-domain restoration was
-independently checked in checkpoint166/android35-document-response-loss/root-review.json.
-The packaged client lost a known authenticated controller identity; a failing
-regression confirms it. New authenticated read-only document-result-status metadata
-is being added without changing existing strict transfer envelopes. It supplies
-actual published operation identity for uncertain-result recovery, never inferred
-success. Focused testing also caught a known operation-wait identity being replaced
-by inconsistent metadata and unintended continuation of uncertain results. Both
-are repaired and covered; native acceptance needs a new same-source APK/CLI pair.
-
-Windows' first accepted update is authoritatively CANCELLED/final, installed=false,
-with the base retained. A new request is permitted only after its UAC driver is
-prepared. Linux fixture setup used invalid selector/order commands; original owner
-remains protected. Stronger worker linux_schedule169 takes over, first resolving a
-fourth staging attempt whose response was empty and outcome therefore unknown.
-
-| Task | Owner | Exclusive files/environment | Next gate |
+| Task | Exclusive owner | Files/environment | Acceptance |
 | --- | --- | --- | --- |
-| Integration | root | Monitor/tests, docs/hygiene/Fast Checks, builds and delivery | Coherent focused union then full prepush |
-| Android response identity | android35_document166 | Document client/provider/storage and focused tests | Preserve known identities; metadata recovery tests |
-| Mac fixture CI | mac_fixture_ci168 | macOS workflows, signing helper/recorder/tests | Root review and manual dev-only pair dispatch |
-| Windows update | windows_public_update166 | CP117 native operator | Ready UAC driver, then fresh guarded install |
-| Linux scheduled refresh | linux_schedule169 | Fedora2328 native operator | Resolve uncertain staging, complete isolated traffic scenario |
+| Portable checks | root integrating windows_reconcile120 work | Python platform checker/tests | Executable absent-API regressions in routine checks |
+| Artifact reuse | artifact_impl170 | native_artifact_reuse.py and its tests | Verified bytes/build inputs and Git-derived equivalence; original source retained |
+| VM baselines | baseline_impl170 | native_vm_baseline.py and its tests | Typed immutable capture and fresh restore; live/unknown fixtures rejected |
+| Preflight/batches | preflight_batch170 | native_fixture_preflight.py, native_scenario_batch.py and tests | Current prerequisites, dependency handling, no uncertain replay, scoped collection |
+| Matrix/integration | root | MCP registration, acceptance matrix, docs/hygiene | Requirement/evidence/next-action view plus bounded worker handoffs |
+| Windows receipt repair | root integrating windows_receipt_fix170 | InstallJobStore and protocol tests | C# PascalCase phases decode; native CP117 unknown preserved |
+| Linux reusable scenario | linux_schedule169 | integration runner and tests | Preflight, benchmark, scheduled refresh, listener traffic and scoped cleanup |
+
+The earlier e9c6ea1 test-portability correction is pushed with its own valid
+prepush receipt; all five required exact-SHA workflows passed. Its parent f6599f2 native
+APK and macOS pair retain their original source identities. The new infrastructure
+batch is frozen for integrated validation. The full agent-tools selection passed
+333 tests with six platform-specific skips; the Windows decoder selection passed
+14 executed tests with its real C# encoder test reserved for Windows CI. Fresh
+stdio MCP matrix inspection passed. Root reviewed the implementations and added
+regressions for stale-SHA acceptance and misleading batch outcomes. Final prepush
+and the new exact-SHA delivery loop remain.
+
+All seven requested optimizations now have implementation/policy coverage. The
+fixed native batch recipes are Linux scheduled refresh, Linux bundle preflight,
+and Windows credential validity; they are not arbitrary scenario executors.
+Baseline provider components are tested, but actual capture/restore still needs
+a known-quiescent disposable fixture with verified preparation evidence. No
+unknown installer was reset. The Windows CP117 second install remains public
+unknown; preserve its correlation and recover it with the corrected package.
+Native parity resumes after this infrastructure checkpoint is validated.
+
+## Previous integration batch — checkpoint169
+
+Checkpoint f6599f2 delivered Android document response-loss identity repair, Mac
+resource guards and optional same-source DMG fixture CI/signing verification.
+Its Windows CI exposed two test mocks assuming POSIX os.getsid exists on Windows;
+the causal portability correction is delivered by e9c6ea1 with all five required
+workflows green. Earlier checkpoints0bcf54e and8d7748c also passed all five.
+
+The immutable Mac pair build36109565762 and verified nondebuggable x86_64 APK
+in checkpoint169/android-current remain bound to f6599f2; do not relabel them.
+Focused Android client/provider tests passed40, Mac fixture workflow/signing
+checks13, and monitor checks13. Historical results do not certify checkpoint170.
 
 ## Checkpoint168 — resource admission and native continuation
 

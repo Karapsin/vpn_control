@@ -28,6 +28,17 @@ class SshTransportTest(unittest.TestCase):
         known_hosts = str((SOURCE / "test-known-hosts").resolve())
         return {"schemaVersion": 1, "hosts": hosts or {"vm": {"host": "127.0.0.1", "port": 22, "user": "tester", "identityFile": key, "knownHostsFile": known_hosts}}}
 
+    @unittest.skipUnless(os.name == "posix", "native private inventory validation")
+    def test_optional_baseline_inventory_does_not_change_ssh_host_authority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            value = {**self.config(), "nativeBaselines": {"schemaVersion": 1, "sources": {}}}
+            self.write_config(root, value)
+            self.assertEqual(("vm",), ssh.inventory(root))
+            self.write_config(root, {**value, "nativeBaselines": "not-an-object"})
+            with self.assertRaises(ssh.SshConfigError):
+                ssh.load_config(root)
+
     def test_android_profiles_require_complete_explicit_device_identity(self):
         root = Path.cwd()
         entry = {"host": "example", "port": 22, "user": "tester",

@@ -30,7 +30,7 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _ARTIFACT_ID = re.compile(r"^sha256-[0-9a-f]{64}$")
 _JOURNAL_VERSION = 1
 _FAILURE_EXCERPT_LIMIT = 1_024
-_SCENARIOS = {"linux-public-update-preflight"}
+_SCENARIOS = {"linux-public-update-preflight", "linux-scheduled-refresh"}
 
 
 class ScenarioExecutionError(ValueError):
@@ -219,7 +219,20 @@ class ScenarioExecutor:
             result["evidencePaths"] = list(record.get("evidencePaths", []))
             if include_failure_excerpt and isinstance(record.get("failureExcerpt"), str):
                 result["failureExcerpt"] = record["failureExcerpt"]
-            return result
+        # Fixed drivers may expose a bounded, typed summary of their own
+        # terminal receipt. Do the read-only remote collection outside the
+        # journal lock; failure never changes terminal execution evidence.
+        if record["state"] == ExecutionState.TERMINAL.value:
+            collector = getattr(self.driver, "collect", None)
+            if callable(collector) and record.get("identity") is not None:
+                try:
+                    evidence = collector(ScenarioPlan.from_mapping(record["plan"]),
+                        JobIdentity.from_mapping(record["identity"]))
+                    if isinstance(evidence, Mapping) and evidence.get("correlationId") == correlation_id:
+                        result["scenarioEvidence"] = dict(evidence)
+                except (OSError, ValueError):
+                    pass
+        return result
 
     def _observe(self, record: dict[str, Any]) -> dict[str, Any]:
         plan = ScenarioPlan.from_mapping(record["plan"])

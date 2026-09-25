@@ -341,7 +341,9 @@ def load_config(root: Path | str) -> SshConfig:
         raw = json.loads(_read_private_config(path), object_pairs_hook=_reject_duplicate_keys)
     except json.JSONDecodeError as exc:
         raise SshConfigError("Private VM inventory is not valid JSON.") from exc
-    if not isinstance(raw, dict) or set(raw) != {"schemaVersion", "hosts"}:
+    if (not isinstance(raw, dict) or not {"schemaVersion", "hosts"} <= set(raw)
+            or set(raw) - {"schemaVersion", "hosts", "nativeBaselines"}
+            or ("nativeBaselines" in raw and not isinstance(raw["nativeBaselines"], dict))):
         raise SshConfigError("Private VM inventory has unsupported fields.")
     if isinstance(raw["schemaVersion"], bool) or raw["schemaVersion"] != CONFIG_SCHEMA_VERSION or not isinstance(raw["hosts"], dict):
         raise SshConfigError("Private VM inventory has an unsupported schema.")

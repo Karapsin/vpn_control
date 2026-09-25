@@ -1411,3 +1411,20 @@ regression uses an explicit handshake rather than timing assumptions; foreign
 identity and deadline cases are also checked. The six-test selection runs through
 release hygiene. Evidence: checkpoint162/linux-rpm-lifecycle-readiness; the native
 lifecycle scenario remains required after the fixture correction.
+
+
+## CP170 — Windows native receipt phase compatibility
+
+The protected C# helper emits PascalCase phases, while the Kotlin receipt parser
+accepted uppercase only. After actual UAC approval, authorization/recovery could
+not decode `Cancelled`, leaving the public result unknown. The exact seven native
+phase spellings now map to existing enum values; uppercase compatibility remains
+and unexpected variants are rejected.
+
+Before repair, the focused desktop selection failed two decoder tests. After
+repair, 14 executed tests passed and the Windows-only native encoder test skipped
+on macOS. That test compiles the production C# receipt encoder and passes its bytes
+through the Kotlin decoder on Windows CI. Evidence is in
+`checkpoint170/windows-receipt-red.log` and `windows-receipt-green.log`.
+The CP117 second installer correlation remains preserved as public unknown until
+current-package recovery establishes its outcome; unit results do not close it.

@@ -86,6 +86,10 @@ run_check python3 scripts/test_native_python_tests.py
 run_check python3 scripts/test_macos_fixture_owner_launch.py
 run_check python3 scripts/test_macos_fixture_processes.py
 run_check python3 scripts/test_macos_vm_resource_monitor.py
+run_check python3 scripts/test_python_platform_contracts.py
+run_check python3 scripts/check_python_platform_contracts.py
+run_check python3 scripts/test_native_fixture_preflight_script.py
+run_check python3 scripts/test_linux_scheduled_refresh_scenario.py
 run_check python3 scripts/test_native_fixture_run.py
 run_check python3 scripts/test_native_fixture_qga.py
 run_check python3 scripts/test_windows_credential_validity_qga.py

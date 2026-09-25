@@ -39,6 +39,19 @@ class NativeScenarioBundleTest(unittest.TestCase):
         receipt = prepare_bundle(repository, "linux-public-update-driver", destination)
         self.assertEqual(len(verify_bundle(repository, destination, receipt["manifestSha256"])["files"]), 8)
 
+    def test_nested_scheduled_driver_imports_only_its_frozen_parent_sibling(self):
+        source = self.root / "scripts"
+        nested = source / "integration"
+        nested.mkdir()
+        (nested / "linux_scheduled_refresh_scenario.py").write_text(
+            "from native_fixture_preflight import READY\nfrom socks_http_fixture import FIXTURE\n"
+            "assert READY and FIXTURE\n", encoding="utf-8")
+        (nested / "socks_http_fixture.py").write_text("FIXTURE = True\n", encoding="utf-8")
+        (source / "native_fixture_preflight.py").write_text("READY = True\n", encoding="utf-8")
+        destination = self.root.parent / "scheduled"
+        receipt = prepare_bundle(self.root, "linux-scheduled-refresh-driver", destination)
+        self.assertEqual(4, len(verify_bundle(self.root, destination, receipt["manifestSha256"])["files"]))
+
     def test_missing_sibling_fails_before_creating_bundle(self):
         (self.root / "scripts/rpm_public_update.py").unlink()
         destination = self.root.parent / "frozen"

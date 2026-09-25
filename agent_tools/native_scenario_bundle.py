@@ -35,6 +35,12 @@ _SCENARIOS = {
         "scripts/fixture_environment.py",
         "scripts/macos_packaging_jdk_preflight.py",
     ),
+    "linux-scheduled-refresh-driver": (
+        "scripts/integration/linux_scheduled_refresh_scenario.py",
+        "scripts/integration/socks_http_fixture.py",
+        "scripts/native_fixture_preflight.py",
+        "scripts/native_fixture_run.sh",
+    ),
 }
 
 
@@ -146,6 +152,7 @@ def _isolated_import(bundle: Path, entrypoint: str) -> None:
     command = (
         "import importlib.util,pathlib,sys;"
         "entrypoint=pathlib.Path(sys.argv[1]);"
+        "sys.path.insert(0,str(entrypoint.parent.parent));"
         "sys.path.insert(0,str(entrypoint.parent));"
         "spec=importlib.util.spec_from_file_location('native_scenario_driver',entrypoint);"
         "module=importlib.util.module_from_spec(spec);"
