@@ -446,7 +446,7 @@ the value is never a command argument or ordinary tool result.
 
 A private local intent records the exact new socket before submission. A repeated
 call observes that socket and does not create another connection after an uncertain
-result. Existing sockets are never removed or replaced. Recovery does not restart
+result. Existing sockets are never removed or replaced. Recovery intents are keyed by the configured route identity, so adopting a ready recovered socket does not make its later expiry collide with the previous intent. Completed legacy receipts remain preserved; unknown or foreign legacy receipts fail closed. Recovery does not restart
 any VM, installer, VPN or product process. A ready recovery receipt identifies the
 socket for the coordinator to adopt in its private host inventory after verification.
 

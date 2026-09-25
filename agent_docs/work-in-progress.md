@@ -25,6 +25,29 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
+## Checkpoint167 — active verification
+
+Checkpoint `0bcf54eea8a905721d2e7989d968e49cc400717f` is pushed after full
+prepush success; all five required workflows are being observed for that SHA.
+The next small correction covers SSH recovery after adopting a recovered socket:
+the prior host-only intent kept the old configured identity and blocked renewal.
+A causal RED preceded route-keyed intent storage; legacy receipts remain intact
+and pending/foreign legacy outcomes remain fail-closed. This correction is not
+yet included in the pushed checkpoint.
+
+Arch access is restored. API29 denial is proven and the original consent/source
+state is restored with runtime OFF; the interrupted grant operation expired, so
+its outcome remains unknown. API35 read timeouts were traced to sequential transfer
+of an existing11.48MB document, not a stuck provider; a longer baseline export is
+running before any response-loss mutation. Windows public update prerequisite
+admission passed with an exact temporary fixture administrator.
+
+Five historical local trees were independently checked against private archives,
+restored modes/content and current source manifests, then removed with sibling
+RESTORE.md pointers. Receipts are in checkpoint166/archive-review. Disk reserve
+is now about9GiB. The macOS VM remains stopped because fresh host pressure level2
+fails its normal-pressure admission; no installer replay or host VPN action occurs.
+
 ## Current continuation — checkpoint166
 
 HEAD/origin/dev is `b542ecaef78fae0577365baeeb5749559e1840bf`, version

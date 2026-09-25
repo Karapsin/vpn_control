@@ -1,3 +1,4 @@
+from dataclasses import replace
 import importlib.util
 import json
 import os
@@ -32,6 +33,44 @@ class SshConnectionRecoveryTest(unittest.TestCase):
                                   transport="nested", gateway="gateway", remote_host_alias="archlinux",
                                   remote_control_path=transport.PurePosixPath("/remote/configured.sock"), password="nested-passphrase-value")
         return transport.SshConfig(Path.cwd(), {"gateway": gateway, "archlinux": nested})
+
+    def test_adopted_ready_master_can_recover_after_expiry_without_replacing_history(self):
+        config = self.config()
+        old = config.hosts["archlinux"]
+        adopted = replace(old, remote_control_path=transport.PurePosixPath("/remote/recovered/m"))
+        config = replace(config, hosts={**config.hosts, "archlinux": adopted})
+        with tempfile.TemporaryDirectory() as directory:
+            legacy = Path(directory) / ".rag_index/ssh-recovery/archlinux.json"
+            legacy.parent.mkdir(parents=True)
+            history = recovery._intent_value("archlinux", old, "previous", "ready", str(adopted.remote_control_path))
+            legacy.write_text(json.dumps(history))
+            def response(*args, **kwargs):
+                return mock.Mock(stdout=json.dumps({"state": "ready", "control_path": args[2][-1]}))
+            with mock.patch.object(recovery.ssh_transport, "load_config", return_value=config), \
+                    mock.patch.object(recovery, "_socket_state", return_value="absent"), \
+                    mock.patch.object(recovery, "_gateway_run", side_effect=response) as run:
+                result = recovery.recover(directory, "archlinux")
+            self.assertEqual({"ok": True, "state": "recovery_master_ready"}, result)
+            self.assertEqual(history, json.loads(legacy.read_text()))
+            self.assertEqual(1, run.call_count)
+            with mock.patch.object(recovery.ssh_transport, "load_config", return_value=config), \
+                    mock.patch.object(recovery, "_socket_state", side_effect=("absent", "unknown")), \
+                    mock.patch.object(recovery, "_gateway_run") as replay:
+                self.assertEqual("recovery_intent_pending", recovery.recover(directory, "archlinux")["state"])
+                replay.assert_not_called()
+
+    def test_unknown_or_foreign_legacy_recovery_cannot_be_bypassed(self):
+        old = self.config().hosts["archlinux"]
+        adopted = replace(old, remote_control_path=transport.PurePosixPath("/remote/adopted/m"))
+        for state, gateway in (("pending", old.gateway), ("ready", "other-gateway")):
+            with self.subTest(state=state, gateway=gateway), tempfile.TemporaryDirectory() as directory:
+                legacy = Path(directory) / ".rag_index/ssh-recovery/archlinux.json"
+                legacy.parent.mkdir(parents=True)
+                history = recovery._intent_value("archlinux", old, "previous", state, str(adopted.remote_control_path))
+                history["gateway"] = gateway
+                legacy.write_text(json.dumps(history))
+                with self.assertRaises(recovery.RecoveryError):
+                    recovery._read_intent(Path(directory), "archlinux", adopted)
 
     def test_ready_configured_master_does_not_create_or_write_intent(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(recovery.ssh_transport, "load_config", return_value=self.config()), \

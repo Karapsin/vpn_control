@@ -9,6 +9,7 @@ starting another master after an interrupted observation.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -37,8 +38,10 @@ class RecoveryError(ValueError):
     """The requested recovery cannot safely proceed."""
 
 
-def _intent_path(root: Path, host: str) -> Path:
-    return root / _INTENT_DIRECTORY / f"{host}.json"
+def _intent_path(root: Path, host: str, target: ssh_transport.SshHost) -> Path:
+    identity = json.dumps(_identity(target), sort_keys=True).encode("utf-8")
+    digest = hashlib.sha256(identity).hexdigest()
+    return root / _INTENT_DIRECTORY / f"{host}-{digest}.json"
 
 
 def _recovery_socket_path(target: ssh_transport.SshHost, correlation_id: str) -> tuple[PurePosixPath, PurePosixPath] | None:
@@ -59,7 +62,11 @@ def _identity(target: ssh_transport.SshHost) -> dict[str, str]:
 
 
 def _read_intent(root: Path, host: str, target: ssh_transport.SshHost) -> dict[str, str] | None:
-    path = _intent_path(root, host)
+    path = _intent_path(root, host, target)
+    legacy = False
+    if not path.exists():
+        path = root / _INTENT_DIRECTORY / f"{host}.json"
+        legacy = True
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -69,10 +76,18 @@ def _read_intent(root: Path, host: str, target: ssh_transport.SshHost) -> dict[s
     required = {"schemaVersion", "host", "correlationId", "state", "controlPath", *(_identity(target))}
     if not isinstance(value, dict) or set(value) != required:
         raise RecoveryError("Existing SSH recovery intent has an unsupported format.")
-    if value.get("schemaVersion") != 1 or value.get("host") != host or any(value.get(key) != expected for key, expected in _identity(target).items()):
-        raise RecoveryError("Existing SSH recovery intent does not match this host.")
     if not all(isinstance(value.get(key), str) and value[key] for key in ("correlationId", "state", "controlPath")):
         raise RecoveryError("Existing SSH recovery intent is incomplete.")
+    identity = _identity(target)
+    if value.get("schemaVersion") != 1 or value.get("host") != host or any(
+            value.get(key) != expected for key, expected in identity.items() if key != "configuredControlPath"):
+        raise RecoveryError("Existing SSH recovery intent does not match this host.")
+    if value.get("configuredControlPath") != identity["configuredControlPath"]:
+        # A completed legacy recovery remains immutable history after the user
+        # adopts a new configured socket. Unknown legacy outcomes stay blocked.
+        if legacy and value.get("state") == "ready":
+            return None
+        raise RecoveryError("Existing SSH recovery intent does not match this host.")
     return {key: value[key] for key in required if key != "schemaVersion"}
 
 
@@ -82,12 +97,12 @@ def _intent_value(host: str, target: ssh_transport.SshHost, correlation_id: str,
 
 
 def _create_intent(root: Path, host: str, target: ssh_transport.SshHost, correlation_id: str, control_path: str) -> None:
-    directory = _intent_path(root, host).parent
+    directory = _intent_path(root, host, target).parent
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     try:
         if not directory.is_dir() or directory.is_symlink():
             raise RecoveryError("SSH recovery intent directory is unsafe.")
-        path = _intent_path(root, host)
+        path = _intent_path(root, host, target)
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8", closefd=True) as handle:
             json.dump(_intent_value(host, target, correlation_id, "pending", control_path), handle, sort_keys=True)
@@ -101,7 +116,7 @@ def _create_intent(root: Path, host: str, target: ssh_transport.SshHost, correla
 
 
 def _update_intent(root: Path, host: str, target: ssh_transport.SshHost, correlation_id: str, state: str, control_path: str) -> None:
-    directory = _intent_path(root, host).parent
+    directory = _intent_path(root, host, target).parent
     try:
         descriptor, temporary = tempfile.mkstemp(prefix=f".{host}.", suffix=".tmp", dir=directory)
         with os.fdopen(descriptor, "w", encoding="utf-8", closefd=True) as handle:
@@ -110,7 +125,7 @@ def _update_intent(root: Path, host: str, target: ssh_transport.SshHost, correla
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, _intent_path(root, host))
+        os.replace(temporary, _intent_path(root, host, target))
     except OSError as error:
         raise RecoveryError("SSH recovery intent cannot be updated safely.") from error
 

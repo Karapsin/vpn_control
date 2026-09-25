@@ -8,6 +8,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep Linux credential storage tests platform-scoped while verifying portable admission on Windows.
 - Verify credential admission through native invocation and wait for exact fixture owner readiness.
 - Harden native fixture restoration and login checks, bound relay rejection draining, and aggregate independent hygiene failures.
+- Preserve SSH recovery history across adopted connection expiry without replaying uncertain attempts.
 
 ## 2.1.18 - 2026-09-24
 
