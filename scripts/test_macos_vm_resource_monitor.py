@@ -15,6 +15,7 @@ import tempfile
 import textwrap
 import time
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parent
@@ -79,6 +80,7 @@ class MonitorTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.tart = self.write_executable("fake-tart", FAKE_TART)
         self.sysctl = self.write_executable("fake-sysctl", FAKE_SYSCTL)
+        self.vm_stat = self.write_executable("fake-vm-stat", "#!/usr/bin/env python3\nprint(\"Mach Virtual Memory Statistics: (page size of 16384 bytes)\\nPages free: 100.\\nPages inactive: 200.\\nPages speculative: 300.\")\n")
         (self.root / "pressure").write_text("1\n", encoding="utf-8")
         self.environment = dict(os.environ, FAKE_ROOT=str(self.root))
 
@@ -102,7 +104,7 @@ class MonitorTest(unittest.TestCase):
     def start_monitor(self, evidence: Path, stop_timeout_seconds: str = "1") -> subprocess.Popen[str]:
         return subprocess.Popen(
             [sys.executable, str(MONITOR), "--vm-name", "owned-vm", "--evidence-dir", str(evidence),
-             "--tart", str(self.tart), "--sysctl", str(self.sysctl), "--interval-seconds", "0.02",
+             "--tart", str(self.tart), "--sysctl", str(self.sysctl), "--vm-stat", str(self.vm_stat), "--interval-seconds", "0.02",
              "--stop-timeout-seconds", stop_timeout_seconds],
             text=True,
             stdout=subprocess.DEVNULL,
@@ -171,7 +173,7 @@ class MonitorTest(unittest.TestCase):
         evidence = self.root / "pressure-evidence"
         monitor = self.start_monitor(evidence)
         self.wait_for(evidence / "process.json")
-        (self.root / "pressure").write_text("2\n", encoding="utf-8")
+        (self.root / "pressure").write_text("4\n", encoding="utf-8")
         self.assert_monitor_exit(monitor, 0, evidence)
         stopped = json.loads((evidence / "stop.json").read_text(encoding="utf-8"))
         self.assertEqual(0, stopped["code"])
@@ -184,7 +186,7 @@ class MonitorTest(unittest.TestCase):
         self.environment["CHILD_EXIT_DELAY"] = "0.15"
         monitor = self.start_monitor(evidence)
         self.wait_for(evidence / "process.json")
-        (self.root / "pressure").write_text("2\n", encoding="utf-8")
+        (self.root / "pressure").write_text("4\n", encoding="utf-8")
         self.assert_monitor_exit(monitor, 0, evidence)
         calls = (self.root / "calls.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(1, sum(json.loads(call)[0] == "stop" for call in calls))
@@ -196,7 +198,7 @@ class MonitorTest(unittest.TestCase):
         self.environment["STOP_DELAY"] = "0.1"
         monitor = self.start_monitor(evidence, stop_timeout_seconds="0.5")
         self.wait_for(evidence / "process.json")
-        (self.root / "pressure").write_text("2\n", encoding="utf-8")
+        (self.root / "pressure").write_text("4\n", encoding="utf-8")
         self.assert_monitor_exit(monitor, 0, evidence)
         stopped = json.loads((evidence / "stop.json").read_text(encoding="utf-8"))
         self.assertEqual(0, stopped["code"])
@@ -220,7 +222,7 @@ class MonitorTest(unittest.TestCase):
         evidence = self.root / "group-evidence"
         monitor = subprocess.Popen(
             [sys.executable, str(MONITOR), "--vm-name", "owned-vm", "--evidence-dir", str(evidence),
-             "--tart", str(self.tart), "--sysctl", str(self.sysctl), "--interval-seconds", "0.02"],
+             "--tart", str(self.tart), "--sysctl", str(self.sysctl), "--vm-stat", str(self.vm_stat), "--interval-seconds", "0.02"],
             text=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -241,13 +243,68 @@ class MonitorTest(unittest.TestCase):
         self.environment["STOP_BLOCK"] = "1"
         monitor = self.start_monitor(evidence, stop_timeout_seconds="0.05")
         self.wait_for(evidence / "process.json")
-        (self.root / "pressure").write_text("2\n", encoding="utf-8")
+        (self.root / "pressure").write_text("4\n", encoding="utf-8")
         self.assert_monitor_exit(monitor, 2, evidence)
         child_pid = json.loads((evidence / "process.json").read_text(encoding="utf-8"))["childPid"]
         os.kill(child_pid, 0)
         self.assertTrue((evidence / "stop-uncertain.json").exists())
         calls = (self.root / "calls.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(1, sum(json.loads(call)[0] == "stop" for call in calls))
+
+    def test_transient_warning_does_not_stop_owned_vm(self) -> None:
+        evidence = self.root / "warning-evidence"
+        child = mock.Mock(pid=123, poll=mock.Mock(side_effect=[None, None, None, None, 0]), wait=mock.Mock(return_value=0))
+        args = argparse.Namespace(evidence_dir=str(evidence), tart="tart", sysctl="sysctl", vm_stat="vm_stat", vm_name="owned-vm", interval_seconds=5, stop_timeout_seconds=75)
+        with mock.patch.object(MONITOR_MODULE, "validate_admission"), \
+                mock.patch.object(MONITOR_MODULE.subprocess, "Popen", return_value=child), \
+                mock.patch.object(MONITOR_MODULE.os, "getsid", return_value=123), \
+                mock.patch.object(MONITOR_MODULE, "pressure", side_effect=["2", "1"]), \
+                mock.patch.object(MONITOR_MODULE, "memory_headroom", return_value=4 * 2**30), \
+                mock.patch.object(MONITOR_MODULE, "swap", return_value="synthetic"), \
+                mock.patch.object(MONITOR_MODULE, "command", return_value=subprocess.CompletedProcess([], 0, "", "")) as command, \
+                mock.patch.object(MONITOR_MODULE, "tart_state", return_value={"State": "stopped"}), \
+                mock.patch.object(MONITOR_MODULE.time, "sleep"):
+            self.assertEqual(0, MONITOR_MODULE.monitor(args))
+        command.assert_not_called()
+        self.assertFalse((evidence / "stop.json").exists())
+
+    def test_sustained_warning_with_headroom_does_not_stop(self) -> None:
+        evidence = self.root / "headroom-evidence"
+        child = mock.Mock(pid=123, poll=mock.Mock(side_effect=[None, None, None, None, 0]), wait=mock.Mock(return_value=0))
+        args = argparse.Namespace(evidence_dir=str(evidence), tart="tart", sysctl="sysctl", vm_stat="vm_stat", vm_name="owned-vm", interval_seconds=5, stop_timeout_seconds=75)
+        with mock.patch.object(MONITOR_MODULE, "validate_admission"), \
+                mock.patch.object(MONITOR_MODULE.subprocess, "Popen", return_value=child), \
+                mock.patch.object(MONITOR_MODULE.os, "getsid", return_value=123), \
+                mock.patch.object(MONITOR_MODULE, "pressure", side_effect=["2", "2"]), \
+                mock.patch.object(MONITOR_MODULE, "memory_headroom", return_value=4 * 2**30, create=True), \
+                mock.patch.object(MONITOR_MODULE, "swap", return_value="synthetic"), \
+                mock.patch.object(MONITOR_MODULE, "command", return_value=subprocess.CompletedProcess([], 0, "", "")) as command, \
+                mock.patch.object(MONITOR_MODULE, "tart_state", return_value={"State": "stopped"}), \
+                mock.patch.object(MONITOR_MODULE.time, "monotonic", side_effect=[0, 31]), \
+                mock.patch.object(MONITOR_MODULE.time, "sleep"):
+            self.assertEqual(0, MONITOR_MODULE.monitor(args))
+        command.assert_not_called()
+
+    def test_sustained_warning_and_critical_pressure_still_stop(self) -> None:
+        stop, since = MONITOR_MODULE.pressure_stop("2", 10.0, None)
+        self.assertFalse(stop)
+        self.assertEqual((False, since), MONITOR_MODULE.pressure_stop("2", 39.9, since))
+        self.assertEqual((True, since), MONITOR_MODULE.pressure_stop("2", 40.0, since))
+        self.assertEqual((False, None), MONITOR_MODULE.pressure_stop("1", 41.0, since))
+        self.assertEqual((False, 42.0), MONITOR_MODULE.pressure_stop("2", 42.0, None))
+        self.assertTrue(MONITOR_MODULE.pressure_stop("4", 42.1, 42.0)[0])
+
+    def test_headroom_parser_counts_only_explicit_page_categories(self) -> None:
+        text = "Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free: 100.\nPages inactive: 200.\nPages speculative: 300.\nPages purgeable: 999999.\n"
+        with mock.patch.object(MONITOR_MODULE, "command", return_value=subprocess.CompletedProcess([], 0, text, "")):
+            self.assertEqual(600 * 16384, MONITOR_MODULE.memory_headroom("vm_stat"))
+        for invalid in ("", text.replace("Pages inactive:", "Missing:"), text.replace("16384", "0")):
+            with mock.patch.object(MONITOR_MODULE, "command", return_value=subprocess.CompletedProcess([], 0, invalid, "")):
+                with self.assertRaises(MONITOR_MODULE.ObservationError):
+                    MONITOR_MODULE.memory_headroom("vm_stat")
+        self.assertFalse(MONITOR_MODULE.pressure_stop("2", 40, 0, 2 * 2**30)[0])
+        self.assertTrue(MONITOR_MODULE.pressure_stop("2", 40, 0, 2 * 2**30 - 1)[0])
+        self.assertTrue(MONITOR_MODULE.pressure_stop("4", 0, None, 8 * 2**30)[0])
 
     def test_partial_heartbeat_is_not_evidence_of_survival(self) -> None:
         heartbeat = self.root / "child.heartbeat"

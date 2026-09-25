@@ -55,6 +55,57 @@ class DesktopAndroidDocumentClientTest {
         assertEquals(1, fixture.discards)
     }
 
+    @Test fun committedDocumentReadLossRetainsAuthenticatedOwnerAndRequestWithoutInventingOperation() {
+        val fixture = Fixture("payload", "read-loss")
+        val request = ControlRequest("lost-read", ControlCommand(ControlOperationId.ROUTING_SET,
+            mapOf("key" to ControlValue.Text("ignore-rules"), "value" to ControlValue.Text("true"))),
+            controllerId = "owner", ifRevision = 41)
+        val result = ControlDocumentCodec.decodeResult(DesktopAndroidAdbClient(fixture::execute).request(request, "test", 20).message)
+        assertEquals(ControlCode.OUTCOME_UNKNOWN, result.code)
+        assertFalse(result.final)
+        assertEquals("lost-read", result.requestId)
+        assertEquals("owner", result.controllerId)
+        assertNull(result.operationId) // The provider exposes it only in the unread result document.
+        assertEquals(1, fixture.submissions)
+        assertEquals(1, fixture.discards)
+        assertEquals(1, fixture.commands.count { "document-read" in it })
+    }
+
+    @Test fun committedDocumentReadLossRecoversOnlyMatchingPublishedOperationMetadata() {
+        for (mode in listOf("read-loss-metadata", "read-loss-owner", "read-loss-request",
+            "read-loss-transfer", "read-loss-operation", "read-loss-revision")) {
+            val fixture = Fixture("payload", mode)
+            val request = ControlRequest("lost-read", ControlCommand(ControlOperationId.ROUTING_SET,
+                mapOf("key" to ControlValue.Text("ignore-rules"), "value" to ControlValue.Text("true"))),
+                controllerId = "owner", ifRevision = 41)
+            val result = ControlDocumentCodec.decodeResult(DesktopAndroidAdbClient(fixture::execute).request(request, "test", 20).message)
+            assertEquals(ControlCode.OUTCOME_UNKNOWN, result.code, mode)
+            assertFalse(result.final, mode)
+            assertEquals("lost-read", result.requestId, mode)
+            assertEquals("owner", result.controllerId, mode)
+            assertEquals(if (mode == "read-loss-metadata") OUTPUT else null, result.operationId, mode)
+            assertEquals(if (mode == "read-loss-metadata") 42L else 0L, result.configurationRevision, mode)
+            assertEquals(1, fixture.submissions, mode)
+            assertEquals(1, fixture.discards, mode)
+            assertEquals(1, fixture.commands.count { "document-result-status" in it }, mode)
+        }
+    }
+
+    @Test fun expiredDocumentReadKeepsKnownWaitOperationWithoutContinuing() {
+        val fixture = Fixture("payload", "read-loss-expired")
+        val request = ControlRequest("expired-read", ControlCommand(ControlOperationId.OPERATIONS_WAIT,
+            mapOf("id" to ControlValue.Text(INPUT))), controllerId = "owner")
+        val result = ControlDocumentCodec.decodeResult(DesktopAndroidAdbClient(fixture::execute).request(request, "test", 1).message)
+        assertEquals(ControlCode.TIMEOUT, result.code)
+        assertEquals("owner", result.controllerId)
+        assertEquals("expired-read", result.requestId)
+        assertEquals(INPUT, result.operationId)
+        assertFalse(result.final)
+        assertEquals(1, fixture.submissions)
+        assertEquals(1, fixture.commands.count { "document-result-status" in it })
+        assertEquals(1, fixture.discards)
+    }
+
     @Test fun explicitStaleOwnerIsNotReboundAndCurrentOwnerConflictIsPreserved() {
         val fixture = Fixture("payload", "conflict")
         val request = request().copy(controllerId = "stale", ifRevision = 9)
@@ -118,7 +169,7 @@ class DesktopAndroidDocumentClientTest {
                         if (mode == "request-id") "different" else requireNotNull(request).requestId,
                         if (continuation) { if (begins == 1) ControlCode.ACCEPTED else ControlCode.CONFLICT }
                             else if (mode == "conflict") ControlCode.CONFLICT else ControlCode.OK, 42,
-                        final = !continuation || begins > 1, operationId = if (continuation) OUTPUT else null,
+                        final = !continuation || begins > 1, operationId = if (continuation || mode.startsWith("read-loss")) OUTPUT else null,
                         data = mapOf("document" to ControlValue.Text(document)))
                     output = if (mode == "utf8") byteArrayOf(0xc3.toByte(), 0x28) else ControlDocumentCodec.encodeResult(result).toByteArray()
                     bundle("state" to "complete")
@@ -126,7 +177,19 @@ class DesktopAndroidDocumentClientTest {
                 "document-result" -> bundle("id" to OUTPUT,
                     "byteCount" to if (mode == "descriptor-overflow") "9223372036854775808" else output.size.toString(),
                     "sha256" to if (mode == "digest") "0".repeat(64) else hash(output), "chunkBytes" to "65536")
+                "document-result-status" -> {
+                    if (mode == "read-loss") return DesktopAdbProcessResult(1, byteArrayOf(),
+                        "java.lang.IllegalArgumentException: UNSUPPORTED".toByteArray())
+                    if (mode == "timeout") return response(bundle("id" to INPUT, "state" to "pending"))
+                    bundle("id" to if (mode == "read-loss-transfer") OUTPUT else INPUT,
+                        "state" to "complete", "controllerId" to if (mode == "read-loss-owner") "replacement" else "owner",
+                        "requestId" to if (mode == "read-loss-request") "different" else requireNotNull(request).requestId,
+                        "configurationRevision" to if (mode == "read-loss-revision") "bad" else "42",
+                        "operationId" to if (mode == "read-loss-operation") "not-an-id" else OUTPUT)
+                }
                 "document-read" -> {
+                    if (mode == "read-loss-expired") { Thread.sleep(1100); throw TimeoutException() }
+                    if (mode.startsWith("read-loss")) return DesktopAdbProcessResult(74, byteArrayOf(), "response lost".toByteArray())
                     val parts = args.last().split(':'); val offset = parts[1].toInt(); val length = parts[2].toInt()
                     assertEquals(INPUT, parts[0]); assertTrue(length in 1..65536)
                     bundle("id" to if (mode == "output-id") INPUT else OUTPUT,

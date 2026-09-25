@@ -2,23 +2,53 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.control.ControlDocumentCodec
 import com.kardinal.vpncontrol.model.ControlCode
+import com.kardinal.vpncontrol.model.ControlOperationId
 import com.kardinal.vpncontrol.model.ControlRequest
 import com.kardinal.vpncontrol.model.ControlResult
+import com.kardinal.vpncontrol.model.ControlValue
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.TimeoutException
 
 /** Bounded ADB frames carry one immutable logical request/result; no private content enters argv. */
 internal class DesktopAndroidDocumentClient(
     private val content: (List<String>, ByteArray, Boolean) -> String,
     private val remaining: () -> Long,
 ) {
+    internal class Uncertain(val result: ControlResult) : Exception(result.code.wireName)
+
     fun exchange(bindOwner: (String) -> ControlRequest, submitted: () -> Unit): ControlResult? {
         var inputId: String? = null
+        var boundRequest: ControlRequest? = null
+        var documentOwner: String? = null
+        var submissionAttempted = false
         var bytes = byteArrayOf()
         fun call(method: String, argument: String, cleanup: Boolean = false) =
             content(listOf("call", "--uri", URI, "--method", method, "--arg", argument), byteArrayOf(), cleanup)
+        fun uncertain(code: ControlCode): ControlResult? {
+            val id = inputId ?: return null
+            val request = boundRequest ?: return null
+            val owner = documentOwner ?: return null
+            if (!submissionAttempted || request.controllerId != null && request.controllerId != owner) return null
+            // The original deadline may have expired. One independent, bounded observation
+            // can recover immutable identity, but never turns an unread result into success.
+            val metadata = runCatching { bundle(call("document-result-status", id, cleanup = true)) }.getOrNull()
+            val required = setOf("id", "state", "controllerId", "requestId", "configurationRevision")
+            val valid = metadata != null && metadata.keys in setOf(required, required + "operationId") &&
+                metadata["id"] == id && metadata["state"] == "complete" &&
+                metadata["controllerId"] == owner && metadata["requestId"] == request.requestId
+            val revision = if (valid) runCatching { number(metadata!!.getValue("configurationRevision")) }.getOrNull() else null
+            val operation = if (revision != null) metadata?.get("operationId")?.let { runCatching { opaque(it) }.getOrNull() } else null
+            val knownOperation = if (request.command.operation in setOf(ControlOperationId.OPERATIONS_WAIT,
+                    ControlOperationId.OPERATIONS_STATUS, ControlOperationId.OPERATIONS_CANCEL))
+                (request.command.arguments["id"] as? ControlValue.Text)?.value else null
+            val metadataValid = revision != null && (metadata?.containsKey("operationId") != true || operation != null) &&
+                (knownOperation == null || operation == null || operation == knownOperation)
+            return ControlResult(owner, request.requestId, code, if (metadataValid) revision!! else 0,
+                final = false, operationId = knownOperation ?: if (metadataValid) operation else null)
+        }
         try {
             val begin = try { bundle(call("document-begin", UUID.randomUUID().toString())) }
                 catch (error: DesktopAndroidAdbClient.AdbFailure) {
@@ -29,8 +59,10 @@ internal class DesktopAndroidDocumentClient(
             val id = opaque(begin.getValue("id")); inputId = id
             val owner = begin.getValue("controllerId")
             check(owner.isNotBlank() && owner.length <= 256 && owner.none(Char::isISOControl))
+            documentOwner = owner
             val chunkSize = number(begin.getValue("chunkBytes")).also { check(it in 1..65536) }.toInt()
             val request = bindOwner(owner)
+            boundRequest = request
             bytes = ControlDocumentCodec.encodeRequest(request).toByteArray(Charsets.UTF_8)
             var offset = 0
             while (offset < bytes.size) {
@@ -47,6 +79,7 @@ internal class DesktopAndroidDocumentClient(
             check(sealed["id"] == id && number(sealed.getValue("byteCount")) == bytes.size.toLong() &&
                 sealed["sha256"] == inputHash && number(sealed.getValue("chunkBytes")) == chunkSize.toLong())
             submitted()
+            submissionAttempted = true
             var state = bundle(call("document-submit", id))
             while (true) {
                 requireKeys(state, "state")
@@ -85,6 +118,12 @@ internal class DesktopAndroidDocumentClient(
                 catch (_: IllegalArgumentException) { incompatible() } finally { document.fill(0) }
             check(result.controllerId == owner && result.requestId == request.requestId)
             return result
+        } catch (error: DesktopAndroidAdbClient.AdbFailure) {
+            if (error.code == ControlCode.OUTCOME_UNKNOWN) uncertain(error.code)?.let { throw Uncertain(it) }
+            throw error
+        } catch (error: TimeoutException) {
+            uncertain(ControlCode.TIMEOUT)?.let { throw Uncertain(it) }
+            throw error
         } finally {
             bytes.fill(0)
             // BUSY during accepted domain work is deliberate: disconnect does not cancel it.

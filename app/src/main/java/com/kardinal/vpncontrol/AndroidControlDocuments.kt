@@ -6,6 +6,19 @@ import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 
+internal data class AndroidControlDocumentResultStatus(
+    val id: String,
+    val state: String,
+    val metadata: AndroidControlDocumentResultMetadata?,
+)
+
+internal data class AndroidControlDocumentResultMetadata(
+    val controllerId: String,
+    val requestId: String,
+    val operationId: String?,
+    val configurationRevision: Long,
+)
+
 /** Protected provider transfer state only. Domain guards and retries stay in the owner ledger. */
 internal class AndroidControlDocuments(
     val controllerId: String,
@@ -20,6 +33,7 @@ internal class AndroidControlDocuments(
         var phase = "uploading"
         var sealed: ControlTransferManifest? = null
         var output: ControlTransferManifest? = null
+        var resultMetadata: AndroidControlDocumentResultMetadata? = null
     }
     private val entries = mutableMapOf<String, Entry>()
     private var closed = false
@@ -98,17 +112,17 @@ internal class AndroidControlDocuments(
 
     @Synchronized fun complete(uid: Int, id: String, response: ByteArray) = publish(uid, id) { it.write(response) }
 
-    @Synchronized fun complete(uid: Int, id: String, response: ControlResult) = publish(uid, id) { stream ->
+    @Synchronized fun complete(uid: Int, id: String, response: ControlResult) = publish(uid, id, response) { stream ->
         java.io.OutputStreamWriter(stream, Charsets.UTF_8).buffered(8192).use { writer ->
             ControlDocumentCodec.writeResult(response, writer)
         }
     }
 
-    @Synchronized fun complete(uid: Int, id: String, response: AndroidControlDocumentResponse) = publish(uid, id) { stream ->
+    @Synchronized fun complete(uid: Int, id: String, response: AndroidControlDocumentResponse) = publish(uid, id, response.result) { stream ->
         java.io.OutputStreamWriter(stream, Charsets.UTF_8).buffered(8192).use(response::writeTo)
     }
 
-    private fun publish(uid: Int, id: String, write: (java.io.OutputStream) -> Unit) {
+    private fun publish(uid: Int, id: String, response: ControlResult? = null, write: (java.io.OutputStream) -> Unit) {
         val entry = entry(uid, id)
         check(entry.phase == "pending") { "CONFLICT" }
         val binding = binding(entry, true)
@@ -152,6 +166,9 @@ internal class AndroidControlDocuments(
             write(stream)
             stream.flush()
             output = runBlocking { store.seal(binding, manifest.id, offset, hash.digest().joinToString("") { "%02x".format(it) }) }
+            entry.resultMetadata = response?.takeIf { it.controllerId == controllerId && it.requestId.isNotBlank() }?.let {
+                AndroidControlDocumentResultMetadata(controllerId, it.requestId, it.operationId, it.configurationRevision)
+            }
             entry.output = output
             entry.phase = "complete"
             published = true
@@ -171,6 +188,12 @@ internal class AndroidControlDocuments(
     }
 
     @Synchronized fun state(uid: Int, id: String): String = entry(uid, id).phase
+
+    @Synchronized fun resultStatus(uid: Int, id: String): AndroidControlDocumentResultStatus {
+        val entry = entry(uid, id)
+        return AndroidControlDocumentResultStatus(id, entry.phase,
+            if (entry.phase == "complete") entry.resultMetadata else null)
+    }
 
     @Synchronized fun result(uid: Int, id: String): ControlTransferManifest {
         val entry = entry(uid, id)

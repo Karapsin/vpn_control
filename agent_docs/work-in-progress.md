@@ -25,6 +25,62 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
+## Current integration batch — checkpoint169
+
+Both pushed checkpoints0bcf54e and8d7748c passed all five required exact-SHA
+workflows. Current dirty work intentionally combines the causally tested Mac
+resource guard, optional same-source DMG fixture CI/signing verification, and
+Android document response-loss identity repair. Focused Android client/provider checks pass40 tests with no skips. Mac fixture
+workflow/signing checks pass13 tests, and resource-monitor checks pass13 tests.
+Final metadata/prepush/push remain; historical green receipts do not cover this batch.
+
+Native API35 response loss committed exactly once and identical-request provider
+retry returned the same operation/result. Full56,000-domain restoration was
+independently checked in checkpoint166/android35-document-response-loss/root-review.json.
+The packaged client lost a known authenticated controller identity; a failing
+regression confirms it. New authenticated read-only document-result-status metadata
+is being added without changing existing strict transfer envelopes. It supplies
+actual published operation identity for uncertain-result recovery, never inferred
+success. Focused testing also caught a known operation-wait identity being replaced
+by inconsistent metadata and unintended continuation of uncertain results. Both
+are repaired and covered; native acceptance needs a new same-source APK/CLI pair.
+
+Windows' first accepted update is authoritatively CANCELLED/final, installed=false,
+with the base retained. A new request is permitted only after its UAC driver is
+prepared. Linux fixture setup used invalid selector/order commands; original owner
+remains protected. Stronger worker linux_schedule169 takes over, first resolving a
+fourth staging attempt whose response was empty and outcome therefore unknown.
+
+| Task | Owner | Exclusive files/environment | Next gate |
+| --- | --- | --- | --- |
+| Integration | root | Monitor/tests, docs/hygiene/Fast Checks, builds and delivery | Coherent focused union then full prepush |
+| Android response identity | android35_document166 | Document client/provider/storage and focused tests | Preserve known identities; metadata recovery tests |
+| Mac fixture CI | mac_fixture_ci168 | macOS workflows, signing helper/recorder/tests | Root review and manual dev-only pair dispatch |
+| Windows update | windows_public_update166 | CP117 native operator | Ready UAC driver, then fresh guarded install |
+| Linux scheduled refresh | linux_schedule169 | Fedora2328 native operator | Resolve uncertain staging, complete isolated traffic scenario |
+
+## Checkpoint168 — resource admission and native continuation
+
+All five required workflows passed for `0bcf54eea8a905721d2e7989d968e49cc400717f`.
+The SSH correction is pushed as `8d7748c127ad3bc57d4770dc5a7c3783921003de` after
+full prepush; exact-SHA Linux/Windows package checks are still running, with Fast,
+Android and macOS successful at the last observation. Native acceptance remains open.
+
+The macOS monitor previously stopped the owned guest on one warning sample. A
+causal regression now covers warning then normal, and the guard requires30 seconds
+of continuous warning plus less than2GiB free/inactive/speculative page headroom,
+while retaining immediate critical/unknown-pressure stops. All13 focused tests pass. A fresh boot was admitted with7.46GiB free/inactive/
+speculative pages, normal pressure and more than8GiB disk reserve; its live monitor
+is checkpoint168/macos-resume. The retained legacy installation remains unknown;
+no replay occurred. A separate worker owns optional CI same-source Mac fixture-pair
+packaging to remove host build pressure. Root owns monitor/tests/docs/hygiene.
+
+Windows public check/download passed and one guarded installation is accepted,
+operation b1e72b34-8289-4232-95fa-accefd6639b9; real UAC approval is in progress.
+Android API35 completed its56,000-domain baseline export before a guarded small
+routing-setting response-loss test. Linux's next gate is fresh Fedora2328 admission
+and scheduled refresh, preserving the original recovery owner and receipts.
+
 ## Checkpoint167 — active verification
 
 Checkpoint `0bcf54eea8a905721d2e7989d968e49cc400717f` is pushed after full

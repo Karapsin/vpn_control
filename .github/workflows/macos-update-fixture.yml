@@ -1,0 +1,116 @@
+name: macOS Update Fixture Pair
+
+on:
+  workflow_call:
+    inputs:
+      base_version:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos-update-fixture:
+    if: github.ref == 'refs/heads/dev'
+    name: Build immutable DMG pair
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      BASE_VERSION: ${{ inputs.base_version }}
+      VPN_CONTROL_MACOS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.MACOS_SIGNING_CERTIFICATE_BASE64 }}
+      VPN_CONTROL_MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+      VPN_CONTROL_MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      VPN_CONTROL_MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      VPN_CONTROL_MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.MACOS_NOTARIZATION_APPLE_ID }}
+      VPN_CONTROL_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+      VPN_CONTROL_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
+
+    steps:
+      - name: Checkout selected development source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Initialize fixture workspace
+        shell: bash
+        run: |
+          fixture_root="$RUNNER_TEMP/vpn-control-macos-update-fixture"
+          printf 'FIXTURE_ROOT=%s\n' "$fixture_root" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check release hygiene
+        run: ./scripts/check_release_hygiene.sh
+
+      - name: Check native installer admission and persistence
+        shell: bash
+        run: |
+          gate_fixture_dir="$(mktemp -d /private/tmp/vpn-parity-gate-ci.XXXXXX)"
+          trap 'rmdir "$gate_fixture_dir"' EXIT
+          VPN_CONTROL_MAC_INSTALL_GATE_TEST_ROOT="$gate_fixture_dir" python3 scripts/test_macos_install_gate.py
+          VPN_CONTROL_MAC_INSTALL_ENOSPC_TEST_ROOT="$gate_fixture_dir" python3 scripts/test_macos_install_enospc.py
+
+      - name: Prepare frozen runtime and immutable fixture plan
+        shell: bash
+        run: |
+          ./scripts/prepare_sing_box_macos_runtime.sh
+          target_version="$(python3 scripts/version_metadata.py --field version)"
+          case "$(uname -m)" in
+            arm64) fixture_architecture=arm64 ;;
+            x86_64) fixture_architecture=x86_64 ;;
+            *) echo "Unsupported macOS fixture architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          python3 scripts/prepare_desktop_update_fixture.py prepare \
+            --repository "$PWD" \
+            --output "$FIXTURE_ROOT" \
+            --base-version "$BASE_VERSION" \
+            --target-version "$target_version" \
+            --runtime "desktopApp/src/main/resources/bin/darwin-$fixture_architecture/sing-box" \
+            --platform macos \
+            --architecture "$fixture_architecture"
+
+      - name: Build and verify immutable DMG pair
+        shell: bash
+        run: |
+          python3 scripts/prepare_desktop_update_fixture.py build \
+            --directory "$FIXTURE_ROOT" \
+            --confirm-owned-native-host-build
+
+      - name: Record signing metadata for immutable DMG pair
+        shell: bash
+        run: python3 scripts/record_macos_fixture_signing.py --directory "$FIXTURE_ROOT"
+
+      - name: Upload immutable fixture pair and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-control-macos-update-fixture-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/fixture-receipt.json
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/snapshot.json
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/build-plan.json
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/signing-metadata.json
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/base-build.log
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/target-build.log
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/packages/base/**
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/packages/target/**
+          if-no-files-found: error
+
+      - name: Preserve failed build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-control-macos-update-fixture-failure-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/snapshot.json
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/build-plan.json
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/base-build.log
+            ${{ runner.temp }}/vpn-control-macos-update-fixture/target-build.log
+          if-no-files-found: warn

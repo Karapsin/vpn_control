@@ -12,6 +12,37 @@ import org.junit.Test
 class AndroidControlDocumentsTest {
     private fun hash(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
+    @Test fun resultStatusExposesOnlyPublishedBoundIdentityToOriginalUid() {
+        val directory = Files.createTempDirectory("android-documents-result-status")
+        try {
+            AndroidControlDocuments("owner", { AndroidControlTransferSpool.create(directory) }).use { documents ->
+                fun claim(): String {
+                    val input = documents.begin(2000, UUID.randomUUID().toString())
+                    val request = "{}".toByteArray()
+                    documents.append(2000, input.id, 0, request)
+                    documents.seal(2000, input.id, request.size.toLong(), hash(request))
+                    requireNotNull(documents.claim(2000, input.id)).close()
+                    return input.id
+                }
+                val id = claim()
+                assertEquals(AndroidControlDocumentResultStatus(id, "pending", null), documents.resultStatus(2000, id))
+                assertThrows(SecurityException::class.java) { documents.resultStatus(10123, id) }
+                val operation = UUID.randomUUID().toString()
+                documents.complete(2000, id, AndroidControlDocumentResponse(
+                    ControlResult("owner", "request", ControlCode.OK, 7, operationId = operation)))
+                assertEquals(AndroidControlDocumentResultStatus(id, "complete",
+                    AndroidControlDocumentResultMetadata("owner", "request", operation, 7)),
+                    documents.resultStatus(2000, id))
+                assertThrows(SecurityException::class.java) { documents.resultStatus(10123, id) }
+
+                val foreign = claim()
+                documents.complete(2000, foreign, ControlResult("replacement", "other", ControlCode.OK, 8))
+                assertEquals(AndroidControlDocumentResultStatus(foreign, "complete", null),
+                    documents.resultStatus(2000, foreign))
+            }
+        } finally { directory.toFile().deleteRecursively() }
+    }
+
     @Test fun streamingResultMatchesLegacyBytesAcrossUnicodeAndChunkBoundaries() {
         val directory = Files.createTempDirectory("android-documents-streaming")
         try {

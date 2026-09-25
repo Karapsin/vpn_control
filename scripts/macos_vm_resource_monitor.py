@@ -15,6 +15,9 @@ from typing import Any
 
 
 NORMAL_PRESSURE = "1"
+WARNING_PRESSURE = "2"
+WARNING_GRACE_SECONDS = 30.0
+MIN_HEADROOM_BYTES = 2 * 1024**3
 VM_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
@@ -84,6 +87,30 @@ def validate_admission(tart: str, sysctl: str, vm_name: str) -> None:
         raise ObservationError("host memory pressure is not normal")
 
 
+def memory_headroom(vm_stat: str) -> int:
+    result = command([vm_stat])
+    size = re.search(r"page size of (\d+) bytes", result.stdout)
+    counts = [re.search(r"^" + name + r":\s+(\d+)", result.stdout, re.MULTILINE)
+              for name in ("Pages free", "Pages inactive", "Pages speculative")]
+    if result.returncode != 0 or size is None or any(value is None for value in counts):
+        raise ObservationError("unable to observe memory headroom")
+    page_size = int(size.group(1))
+    if page_size <= 0:
+        raise ObservationError("invalid memory page size")
+    return page_size * sum(int(value.group(1)) for value in counts if value is not None)
+
+
+def pressure_stop(sample: str, now: float, warning_since: float | None, headroom_bytes: int = 0) -> tuple[bool, float | None]:
+    """Allow warning pressure with headroom; stop immediately for critical pressure."""
+    if sample == NORMAL_PRESSURE:
+        return False, None
+    if sample == WARNING_PRESSURE:
+        since = now if warning_since is None else warning_since
+        return now - since >= WARNING_GRACE_SECONDS and headroom_bytes < MIN_HEADROOM_BYTES, since
+    # Unknown nonnormal pressure retains the previous conservative stop policy.
+    return True, warning_since
+
+
 def monitor(args: argparse.Namespace) -> int:
     evidence = Path(args.evidence_dir)
     if evidence.exists():
@@ -110,19 +137,22 @@ def monitor(args: argparse.Namespace) -> int:
             },
         )
         stop_requested = False
+        warning_since: float | None = None
         while child.poll() is None:
             try:
                 sample_pressure = pressure(args.sysctl)
                 sample_swap = swap(args.sysctl)
+                headroom = memory_headroom(args.vm_stat) if sample_pressure in {NORMAL_PRESSURE, WARNING_PRESSURE} else 0
             except ObservationError as error:
                 write_json(evidence / "observation-failure.json", {"error": str(error), "childPid": child.pid})
                 # The child may be an unknown real VM. Do not stop or signal it.
                 return 2
             append_json(
                 evidence / "samples.jsonl",
-                {"childExit": child.poll(), "pressure": sample_pressure, "swap": sample_swap, "time": time.time()},
+                {"childExit": child.poll(), "pressure": sample_pressure, "headroomBytes": headroom, "swap": sample_swap, "time": time.time()},
             )
-            if sample_pressure != NORMAL_PRESSURE and not stop_requested:
+            should_stop, warning_since = pressure_stop(sample_pressure, time.monotonic(), warning_since, headroom)
+            if should_stop and not stop_requested:
                 try:
                     stopped = command(
                         [args.tart, "stop", args.vm_name, "--timeout", "60"],
@@ -166,6 +196,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--evidence-dir", required=True)
     parser.add_argument("--tart", default="tart")
     parser.add_argument("--sysctl", default="sysctl")
+    parser.add_argument("--vm-stat", default="vm_stat")
     parser.add_argument("--interval-seconds", type=float, default=5.0)
     parser.add_argument("--stop-timeout-seconds", type=float, default=75.0)
     parsed = parser.parse_args()

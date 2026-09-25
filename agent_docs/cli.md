@@ -687,6 +687,23 @@ default private spool has native Windows/macOS proof; adversarial temporary-pare
 ancestry/replacement still needs an explicit fail-closed/pinning audit before broad
 adapter use. Domain parsers still materialize Strings independently of spool IO.
 
+Android document-response loss preserves the controller authenticated at transfer
+creation and the original request identity. A new read-only provider method,
+`document-result-status`, returns the input transfer `id` and `state`; a published
+result additionally exposes its actual `controllerId`, `requestId`,
+`configurationRevision`, and optional `operationId`. Existing transfer envelopes
+remain unchanged. Metadata is published atomically with the sealed result and
+uses the same caller/transfer authorization as other document reads.
+
+After post-submission transport loss, the CLI makes at most one independently
+bounded metadata observation before transport cleanup. It checks the complete
+transfer/owner/request binding and retains an operation ID only when authoritative;
+a request's already-known operation cannot be replaced by conflicting metadata.
+Older providers fall back to known owner/request identity without an invented
+operation ID. Unread payloads remain TIMEOUT or OUTCOME_UNKNOWN, never inferred
+success. Transport uncertainty does not automatically submit another command;
+normal provider-returned wait timeouts retain their established polling behavior.
+
 ## Android Typed Refresh
 
 `SUBSCRIPTIONS_REFRESH` is implemented by the application owner. GUI and

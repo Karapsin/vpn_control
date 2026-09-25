@@ -2,12 +2,18 @@ name: macOS Desktop Package
 
 on:
   workflow_dispatch:
+    inputs:
+      fixture_base_version:
+        description: Existing product version to package as the immutable update base
+        required: false
+        type: string
   push:
     branches:
       - dev
   pull_request:
     paths:
       - ".github/workflows/macos-desktop.yml"
+      - ".github/workflows/macos-update-fixture.yml"
       - "desktopApp/**"
       - "shared/**"
       - "gradle/**"
@@ -21,6 +27,7 @@ on:
       - "scripts/test_macos_install_gate.py"
       - "scripts/test_macos_install_enospc.py"
       - "scripts/setup_macos_signing.sh"
+      - "scripts/test_setup_macos_signing.py"
       - "scripts/check_release_hygiene.sh"
       - "scripts/version_metadata.py"
       - "scripts/check_release_metadata.py"
@@ -28,9 +35,40 @@ on:
       - "scripts/test_macos_desktop_package.sh"
       - "scripts/test_packaged_cli.py"
       - "scripts/test_packaged_cli_harness.py"
+      - "scripts/record_macos_fixture_signing.py"
+      - "scripts/test_macos_update_fixture_workflow.py"
+      - "scripts/test_record_macos_fixture_signing.py"
 
 jobs:
+  validate-macos-update-fixture:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''
+    name: Validate update fixture input
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIXTURE_BASE_VERSION: ${{ inputs.fixture_base_version }}
+    steps:
+      - name: Checkout selected development source
+        uses: actions/checkout@v4
+
+      - name: Validate fixture base version
+        shell: bash
+        run: |
+          python3 -c 'import os; from scripts.version_metadata import parse_version; parse_version(os.environ["FIXTURE_BASE_VERSION"])'
+
+  build-macos-update-fixture:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''
+    needs: validate-macos-update-fixture
+    name: Build immutable DMG pair
+    permissions:
+      contents: read
+    uses: ./.github/workflows/macos-update-fixture.yml
+    with:
+      base_version: ${{ inputs.fixture_base_version }}
+    secrets: inherit
+
   package-macos-desktop:
+    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''
     name: Build DMG
     runs-on: macos-latest
     timeout-minutes: 45

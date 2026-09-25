@@ -710,3 +710,11 @@ Native acceptance helper changes also run `scripts/test_linux_fixture_runtime_co
 `scripts/test_guest_build_connect_proxy.py` and `scripts/test_windows_prompt_observation.py`.
 All are wired into release hygiene. Independent hygiene failures are aggregated;
 cancellation still stops the runner. Unit results never replace installed-package evidence.
+
+Optional macOS immutable-update pair workflow changes run
+`scripts/test_macos_update_fixture_workflow.py`,
+`scripts/test_record_macos_fixture_signing.py`, and
+`scripts/test_setup_macos_signing.py` through release hygiene. The signing helper's
+real Bash/shebang fixture checks are POSIX-only; macOS/Linux run them, while
+Windows reports explicit skips. Workflow dispatch produces test artifacts only
+and does not replace guest installation/recovery acceptance.

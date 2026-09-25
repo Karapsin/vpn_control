@@ -9,6 +9,13 @@ on:
     paths:
       - ".github/workflows/fast-checks.yml"
       - ".github/workflows/windows-update-fixture.yml"
+      - ".github/workflows/macos-update-fixture.yml"
+      - ".github/workflows/macos-desktop.yml"
+      - "scripts/record_macos_fixture_signing.py"
+      - "scripts/test_record_macos_fixture_signing.py"
+      - "scripts/test_macos_update_fixture_workflow.py"
+      - "scripts/setup_macos_signing.sh"
+      - "scripts/test_setup_macos_signing.py"
       - ".github/workflows/windows-desktop.yml"
       - "scripts/test_windows_update_fixture_workflow.py"
       - ".github/required-workflows.json"

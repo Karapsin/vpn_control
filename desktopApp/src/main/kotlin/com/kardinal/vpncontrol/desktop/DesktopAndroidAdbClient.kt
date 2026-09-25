@@ -155,6 +155,9 @@ internal class DesktopAndroidAdbClient(
                 result = result.copy(requestId = request.requestId)
             }
             return DesktopCliResponse(result.ok, ControlDocumentCodec.encodeResult(result), result.exitCode)
+        } catch (error: DesktopAndroidDocumentClient.Uncertain) {
+            val result = error.result
+            return DesktopCliResponse(result.ok, ControlDocumentCodec.encodeResult(result), result.exitCode)
         } catch (error: Exception) {
             val code = when (error) {
                 is AdbFailure -> error.code

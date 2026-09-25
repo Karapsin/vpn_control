@@ -61,6 +61,17 @@ internal class AndroidControlDocumentProvider(
                 bundle("state" to documents.state(uid, id))
             }
             "document-status" -> bundle("state" to documents.state(uid, id()))
+            "document-result-status" -> {
+                val status = documents.resultStatus(uid, id())
+                val fields = mutableListOf("id" to status.id, "state" to status.state)
+                status.metadata?.let { metadata ->
+                    fields += "controllerId" to metadata.controllerId
+                    fields += "requestId" to metadata.requestId
+                    fields += "configurationRevision" to metadata.configurationRevision.toString()
+                    metadata.operationId?.let { fields += "operationId" to it }
+                }
+                bundle(*fields.toTypedArray())
+            }
             "document-result" -> manifest(documents.result(uid, id()))
             "document-read" -> {
                 val fields = fields(3)
@@ -130,7 +141,7 @@ internal class AndroidControlDocumentProvider(
         throw IllegalStateException(code)
     }
     companion object {
-        private val METHODS = setOf("document-begin", "document-seal", "document-submit", "document-status",
+        private val METHODS = setOf("document-begin", "document-seal", "document-submit", "document-status", "document-result-status",
             "document-result", "document-read", "document-discard")
     }
 }
