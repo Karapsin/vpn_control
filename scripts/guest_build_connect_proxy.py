@@ -16,6 +16,7 @@ import socket
 import socketserver
 import ssl
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -32,6 +33,7 @@ MAX_CONNECTIONS = 32
 MAX_TUNNEL_BUFFER_BYTES = 256 * 1024
 IDLE_SECONDS = 15.0
 CONNECT_SECONDS = 10.0
+CAPACITY_REQUEST_SECONDS = 1.0
 
 
 class RelayError(ValueError):
@@ -108,23 +110,47 @@ def send_rejection(connection: socket.socket) -> None:
         pass
 
 
-def send_capacity_rejection(connection: socket.socket) -> None:
+def drain_capacity_request(connection: socket.socket) -> None:
+    """Consume the bounded CONNECT request before a capacity-close response."""
+    request = bytearray()
     try:
-        connection.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
-        # Windows can abort a peer that is waiting for this response when close()
-        # discards its already-queued CONNECT request.  Half-close the response
-        # direction and discard currently pending input before releasing the socket.
-        connection.shutdown(socket.SHUT_WR)
+        deadline = time.monotonic() + CAPACITY_REQUEST_SECONDS
+        while len(request) < MAX_HEADER_BYTES:
+            remaining_seconds = deadline - time.monotonic()
+            if remaining_seconds <= 0:
+                break
+            connection.settimeout(remaining_seconds)
+            chunk = connection.recv(min(1024, MAX_HEADER_BYTES - len(request)))
+            if not chunk:
+                return
+            request.extend(chunk)
+            if b"\r\n\r\n" in request:
+                break
+        # A client can coalesce TLS bytes with CONNECT.  Discard only data that
+        # has already arrived, retaining the static bound for a saturated relay.
         connection.setblocking(False)
-        remaining = MAX_HEADER_BYTES
-        while remaining:
+        while len(request) < MAX_HEADER_BYTES:
             try:
-                chunk = connection.recv(min(65536, remaining))
-                if not chunk:
-                    break
-                remaining -= len(chunk)
+                chunk = connection.recv(min(65536, MAX_HEADER_BYTES - len(request)))
             except (BlockingIOError, InterruptedError):
                 break
+            if not chunk:
+                break
+            request.extend(chunk)
+    except OSError:
+        pass
+
+
+def send_capacity_rejection(connection: socket.socket) -> None:
+    try:
+        # On Windows, closing with an unread CONNECT request can abort the peer
+        # before its queued 503 response is delivered.  Wait briefly for and
+        # consume the request before replying; the bounded drain cannot occupy
+        # the saturated admission path indefinitely.
+        drain_capacity_request(connection)
+        connection.settimeout(CAPACITY_REQUEST_SECONDS)
+        connection.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        connection.shutdown(socket.SHUT_WR)
     except OSError:
         pass
     finally:

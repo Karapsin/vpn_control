@@ -382,7 +382,7 @@ class RelayTest(unittest.TestCase):
             server.server_close()
             serving.join(1)
 
-    def test_capacity_rejection_gracefully_closes_after_draining_pending_connect_request(self):
+    def test_capacity_rejection_reads_connect_before_replying_to_avoid_windows_abort(self):
         class WindowsCloseLifecycleSocket:
             """Model the Winsock abort caused by closing with unread request data."""
             def __init__(self):
@@ -393,9 +393,15 @@ class RelayTest(unittest.TestCase):
                 self.write_shutdown = False
                 self.closed = False
                 self.aborted = False
+                self.read_timeout = None
 
             def sendall(self, value):
+                if self.pending_request:
+                    raise AssertionError("503 must wait until the CONNECT request is consumed")
                 self.sent.extend(value)
+
+            def settimeout(self, timeout):
+                self.read_timeout = timeout
 
             def shutdown(self, how):
                 if how != socket.SHUT_WR:
@@ -425,6 +431,7 @@ class RelayTest(unittest.TestCase):
         try:
             server.process_request(request, ("127.0.0.1", 32100))
             self.assertIn(b"503 Service Unavailable", request.sent)
+            self.assertEqual(subject.CAPACITY_REQUEST_SECONDS, request.read_timeout)
             self.assertTrue(request.write_shutdown)
             self.assertEqual(b"", request.pending_request)
             self.assertTrue(request.closed)
@@ -439,6 +446,7 @@ class RelayTest(unittest.TestCase):
                 self.closed = False
 
             def sendall(self, value): pass
+            def settimeout(self, timeout): pass
             def shutdown(self, how):
                 if how != socket.SHUT_WR:
                     raise AssertionError(f"expected SHUT_WR, received {how}")
@@ -453,6 +461,40 @@ class RelayTest(unittest.TestCase):
         connection = EndlessPendingInput()
         subject.send_capacity_rejection(connection)
         self.assertEqual(subject.MAX_HEADER_BYTES, connection.drained)
+        self.assertTrue(connection.closed)
+
+    def test_capacity_rejection_uses_one_absolute_deadline_for_drip_fed_request(self):
+        class DripFedRequest:
+            def __init__(self):
+                self.timeouts = []
+                self.blocking_reads = 0
+                self.nonblocking = False
+                self.closed = False
+
+            def settimeout(self, timeout):
+                self.timeouts.append(timeout)
+                self.nonblocking = False
+
+            def setblocking(self, enabled):
+                self.nonblocking = not enabled
+
+            def recv(self, size):
+                if self.nonblocking:
+                    raise BlockingIOError()
+                self.blocking_reads += 1
+                return b"x"
+
+            def sendall(self, value): pass
+            def shutdown(self, how):
+                if how != socket.SHUT_WR:
+                    raise AssertionError(f"expected SHUT_WR, received {how}")
+            def close(self): self.closed = True
+
+        connection = DripFedRequest()
+        with mock.patch.object(subject.time, "monotonic", side_effect=(0.0, 0.0, 0.75, 1.0)):
+            subject.send_capacity_rejection(connection)
+        self.assertEqual(2, connection.blocking_reads)
+        self.assertEqual([1.0, 0.25, 1.0], connection.timeouts)
         self.assertTrue(connection.closed)
 
     def test_header_limit_is_bounded(self):

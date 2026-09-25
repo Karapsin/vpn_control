@@ -38,7 +38,7 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 
 | Touched Area | Run |
 | --- | --- |
-| Native fixture manifests, staging and rollback drivers | Run the corresponding `scripts/test_native_fixture_manifest.py`, `scripts/test_native_fixture_payload.py`, `scripts/test_macos_rollback_fixture.py`, `scripts/test_macos_fixture_processes.py` and `scripts/test_windows_prompt_observation.py` suites (also in release hygiene). Keep native package acceptance separate from fixture-unit results. |
+| Native fixture manifests, staging and rollback drivers | Run the corresponding `scripts/test_native_fixture_manifest.py`, `scripts/test_native_fixture_archive.py`, `scripts/test_native_fixture_payload.py`, `scripts/test_macos_rollback_fixture.py`, `scripts/test_macos_fixture_processes.py` and `scripts/test_windows_prompt_observation.py` suites (also in release hygiene). Keep native package acceptance separate from fixture-unit results. |
 | Native fixture completion receipts | `scripts/test_native_fixture_run.py` executes real POSIX children, nonzero exits and competing receipt claims in routine hygiene; Windows explicitly skips this POSIX-only runner. |
 | QGA fixture observations | `scripts/test_native_fixture_qga.py` uses actual Unix sockets to cover stalled collectors, stale-response synchronization, bounded/fragmented replies, and read-only file operations. Windows skips this Unix transport suite. Keep guest-exec mutations outside this reader and never replay an installer after observation timeout. |
 | Windows native output receipts | `scripts/test_windows_native_fixture.py` runs real PowerShell children and checks empty/nonempty output plus direct exit codes; Windows behavioral cases explicitly skip where PowerShell is unavailable. |
@@ -704,3 +704,9 @@ validation, strict host-key routing, actual fake-SSH timeout/quoting behavior,
 canonical staged-input isolation, resource planning, and public MCP/CLI dispatch.
 This suite is already included in managed prepush. These checks do not substitute
 for a live authenticated probe, measured host admission, or native product tests.
+
+Native acceptance helper changes also run `scripts/test_linux_fixture_runtime_config.py`,
+`scripts/test_release_hygiene_runner.py`,
+`scripts/test_guest_build_connect_proxy.py` and `scripts/test_windows_prompt_observation.py`.
+All are wired into release hygiene. Independent hygiene failures are aggregated;
+cancellation still stops the runner. Unit results never replace installed-package evidence.

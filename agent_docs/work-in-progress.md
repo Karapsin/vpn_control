@@ -25,35 +25,47 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current continuation — checkpoint164
+## Current continuation — checkpoint166
 
-Checkpoint `600f83a0eafe19504d3c77c6ec6079fb11a539bb` is pushed after full
-prepush success. Android package CI passed; Windows passed hygiene then exposed
-an obsolete reader-count assertion in the PowerShell credential fixture. The
-corrected fixture proves native invocation admission and token cleanup and passes
-real PowerShell 7.6.4 on Arch (checkpoint162/pwsh164-*). Remaining exact-SHA
-workflows are still being observed; the corrective checkpoint is not yet pushed.
+HEAD/origin/dev is `b542ecaef78fae0577365baeeb5749559e1840bf`, version
+2.1.18. Its full local prepush passed; Windows CI36033866043 failed a CONNECT
+capacity-response close race. The bounded request-drain repair now includes an
+absolute one-second deadline and causal regressions. It awaits the next full
+prepush and exact-SHA CI. No final delivery claim is supported.
 
-Windows CP117 is signed in as the exact ordinary fixture account; base MSI launch
-is being prepared from verified frozen bytes. Fedora2328 has a successful targeted
-20-package X11 dependency transaction, with no upgrades/removals. Its first
-lifecycle attempt stopped before mutations because status raced owner readiness;
-a guarded read-only readiness helper and causal regression precede the next run.
-API29's initial selection rejection was invalid test usage (missing epoch/revision
-guards and unsupported async), not a product defect. The corrected attempt must
-retain full command outputs and cleanup evidence. No consent outcome is claimed.
+Installed Fedora RPM2.1.17 passed proxy traffic through GUI close, frontend crash
+and reattach: all300 ordered frames arrived and controller/runtime identities
+remained unchanged. Public OFF/quit succeeded; the original recovery owner remains
+OFF. Root independently reviewed checkpoint162/linux-rpm-lifecycle/root-review.json.
+This proves the frozen installed RPM scenario, not final-source VPN or scheduled
+refresh. New runtime-config discovery follows the owned process and mixed-in tag;
+causal tests reject the former static filename and all-mixed-inbound assumptions.
 
-macOS remains stopped below its 8 GiB disk reserve. Arch has capacity for verified
-private archival of inactive historical build evidence. Copy/verification may run;
-no local evidence is removed before source/archive/restore checks succeed.
+Windows CP117 ordinary-user base MSI2.1.15 installed successfully (native MSI log
+exit0). The next step is the app's public update to the frozen2.1.16 target, after
+TLS, artifact, ordinary-user and administrator-credential admission. Direct target
+MSI installation would bypass the required product path and is prohibited.
+
+API29 CP165 public ON/OFF succeeded with the frozen2.1.17 nondebuggable APK;
+root verified all56 retained evidence hashes. CP166 subsequently showed a real
+system consent dialog and denial returned PERMISSION_DENIED with runtime OFF.
+The grant operation da74c879... remains pending at the last observation: nested
+Arch SSH failed while gateway access worked. Preserve its identity, fixture and
+consent state; do not replay ON. API35 document response-loss acceptance is separate.
+
+macOS remains stopped below its8GiB disk reserve. Five historical archives were
+copied privately to Arch. Initial extraction lost permission bits; corrected
+preserved-mode restores compare successfully. Root is reviewing the reusable
+verifier and must recheck local sources before any exact-path cleanup. No local
+archive candidates have been deleted; the pending macOS installer is not replayed.
 
 | Task | Agent | Owned files/subsystem | Environment / next gate |
 | --- | --- | --- | --- |
-| Integration | root | PowerShell fixture regression, WIP/ledger, version/CI | Batch checks and exact-SHA delivery |
-| Linux lifecycle | linux_native161 | Owner-readiness helper/test, hygiene invocation | Fedora2328; immutable helper then traffic/GUI lifecycle |
-| Windows MSI | windows_msi_resume163 | Prompt observer/test and sanitized fixtures | CP117; verified ordinary-user MSI launch |
-| Android consent | android_remaining163 | Native evidence only | API29 5684; valid guarded commands and retained outputs |
-| Capacity | archive_capacity164 | Ignored historical evidence archival | Private Arch copy; root reviews before local cleanup |
+| Integration | root | Hygiene, docs, version/CI | Review portable regressions, full prepush, exact-SHA delivery |
+| Windows update | windows_public_update166 | Native evidence only | CP117; public update after prerequisite admission |
+| Android consent | android_consent165 | Native evidence only | API29 5684; recover exact pending grant and restore fixture |
+| Android document | android35_document166 | Native evidence / private device alias | API35 5682; owner-bound response-loss proof |
+| Archive verifier | archive_verify166 | native_fixture_archive.py and test | Portable/path-mode review; no local cleanup |
 
 ## Checkpoint163 — portable test admission
 
