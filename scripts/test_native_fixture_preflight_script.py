@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 from pathlib import Path
 import ssl
 import subprocess
@@ -89,7 +90,8 @@ class NativeFixtureGuestProbeTest(unittest.TestCase):
             for case in (
                     self.test_real_persisted_workspace_settings_admit_without_exposing_values,
                     self.test_wrong_validation_url_blocks_find_best_fixture,
-                    self.test_disabled_find_best_and_invalid_measurement_knobs_block):
+                    self.test_disabled_find_best_and_invalid_measurement_knobs_block,
+                    self.test_static_admission_requires_exact_package_jar_and_stopped_protected_owner):
                 with self.subTest(case=case.__name__):
                     case()
 
@@ -122,26 +124,60 @@ class NativeFixtureGuestProbeTest(unittest.TestCase):
         self.assertFalse(result["endpoint"])
 
     def test_static_admission_requires_exact_package_jar_and_stopped_protected_owner(self):
-        with tempfile.TemporaryDirectory() as raw:
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
             jar = Path(raw) / "desktopApp-fixed.jar"
             jar.write_bytes(b"frozen")
+            workspace = Path(raw) / "owned-workspace"
+            workspace.mkdir()
             typed = {"expectedPackageNevra": "vpn-control-2.2.1-1.x86_64",
                      "expectedDesktopJarSha256": hashlib.sha256(b"frozen").hexdigest(),
-                     "protectedStateDir": "/owned/state", "protectedControllerId": "owner-17"}
+                     "protectedStateDir": "/owned/state", "protectedControllerId": "owner-17",
+                     "ownedWorkspaceRoot": str(workspace)}
             replies = [subprocess.CompletedProcess([], 0, "vpn-control-2.2.1-1.x86_64\n", ""),
                        subprocess.CompletedProcess([], 0, "", ""),
                        subprocess.CompletedProcess([], 0, json.dumps({"controllerId": "owner-17",
                            "data": {"runtimeRunning": False}}), "")]
             with patch.object(preflight.subprocess, "run", side_effect=replies), \
+                 patch.object(preflight, "_owned_workspace_admitted", return_value=True), \
                  patch.object(Path, "glob", return_value=[jar]):
                 self.assertTrue(preflight.linux_scheduled_static(typed)["ready"])
             replies[-1] = subprocess.CompletedProcess([], 0, json.dumps({"controllerId": "owner-18",
                 "data": {"runtimeRunning": False}}), "")
             with patch.object(preflight.subprocess, "run", side_effect=replies), \
+                 patch.object(preflight, "_owned_workspace_admitted", return_value=True), \
                  patch.object(Path, "glob", return_value=[jar]):
                 failed = preflight.linux_scheduled_static(typed)
             self.assertFalse(failed["ready"])
             self.assertFalse(failed["checks"]["protectedOwner"])
+
+    @unittest.skipUnless(os.name == "posix" and hasattr(os, "getuid"), "POSIX filesystem admission")
+    def test_static_admission_rejects_workspace_runner_would_reject(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+            base = Path(raw)
+            owned = base / "owned"
+            owned.mkdir()
+            protected = base / "protected"
+            protected.mkdir()
+            self.assertTrue(preflight._owned_workspace_admitted(str(owned), str(protected)))
+            self.assertFalse(preflight._owned_workspace_admitted(str(base / "missing"), str(protected)))
+            link = base / "owned-link"
+            link.symlink_to(owned, target_is_directory=True)
+            self.assertFalse(preflight._owned_workspace_admitted(str(link), str(protected)))
+            with patch.object(preflight.os, "getuid", return_value=owned.stat().st_uid + 1):
+                self.assertFalse(preflight._owned_workspace_admitted(str(owned), str(protected)))
+            self.assertFalse(preflight._owned_workspace_admitted(str(owned), str(owned / "child")))
+            self.assertFalse(preflight._owned_workspace_admitted(str(owned), str(owned)))
+
+    def test_static_admission_fails_missing_workspace_before_package_probe(self):
+        typed = {"expectedPackageNevra": "vpn-control-2.2.1-1.x86_64",
+                 "expectedDesktopJarSha256": hashlib.sha256(b"frozen").hexdigest(),
+                 "protectedStateDir": "/owned/state", "protectedControllerId": "owner-17",
+                 "ownedWorkspaceRoot": "/missing-owned-workspace"}
+        with patch.object(preflight.subprocess, "run") as command:
+            result = preflight.linux_scheduled_static(typed)
+        self.assertFalse(result["ready"])
+        self.assertFalse(any(result["checks"].values()))
+        command.assert_not_called()
 
 
 if __name__ == "__main__":

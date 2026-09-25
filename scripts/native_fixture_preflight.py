@@ -120,16 +120,41 @@ def linux_scheduled_refresh(expected_url: str, timeout: int, certificate_path: P
             "settingsDiagnostics": diagnostics, "ready": all(checks.values())}
 
 
+def _owned_workspace_admitted(owned_workspace: object, protected_state: object) -> bool:
+    """Match the runner's non-mutating workspace admission constraints."""
+    uid = getattr(os, "getuid", None)
+    if not callable(uid) or not isinstance(owned_workspace, str) or not isinstance(protected_state, str):
+        return False
+    if not owned_workspace.startswith("/") or not protected_state.startswith("/"):
+        return False
+    root = Path(owned_workspace)
+    protected = Path(protected_state)
+    if (".." in root.parts or ".." in protected.parts or str(root) != owned_workspace
+            or str(protected) != protected_state):
+        return False
+    try:
+        if (root.is_symlink() or not root.is_dir() or root.resolve() != root
+                or root.stat().st_uid != uid()):
+            return False
+    except OSError:
+        return False
+    return protected != root and root not in protected.parents and protected not in root.parents
+
+
 def linux_scheduled_static(typed_input: dict[str, object]) -> dict[str, object]:
     """Probe installed bytes and a protected, stopped controller before staging."""
-    checks = {"package": False, "desktopJar": False, "protectedOwner": False}
+    checks = {"package": False, "desktopJar": False, "protectedOwner": False, "ownedWorkspace": False}
     expected_package = typed_input.get("expectedPackageNevra")
     expected_jar = typed_input.get("expectedDesktopJarSha256")
     protected = typed_input.get("protectedStateDir")
     controller = typed_input.get("protectedControllerId")
+    owned_workspace = typed_input.get("ownedWorkspaceRoot")
     if (not isinstance(expected_package, str) or not isinstance(expected_jar, str)
             or not isinstance(protected, str) or not protected.startswith("/")
             or not isinstance(controller, str)):
+        return {"profile": "linux-scheduled-refresh-static", "checks": checks, "ready": False}
+    checks["ownedWorkspace"] = _owned_workspace_admitted(owned_workspace, protected)
+    if not checks["ownedWorkspace"]:
         return {"profile": "linux-scheduled-refresh-static", "checks": checks, "ready": False}
     try:
         package = subprocess.run(["rpm", "-q", "vpn-control"], capture_output=True, text=True,
@@ -176,7 +201,8 @@ def main() -> int:
             result = linux_scheduled_static(value)
         except (ValueError, UnicodeError):
             result = {"profile": "linux-scheduled-refresh-static", "checks":
-                      {"package": False, "desktopJar": False, "protectedOwner": False}, "ready": False}
+                      {"package": False, "desktopJar": False, "protectedOwner": False,
+                       "ownedWorkspace": False}, "ready": False}
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         return 0 if result["ready"] else 1
     parser = argparse.ArgumentParser()

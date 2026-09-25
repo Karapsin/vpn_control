@@ -50,7 +50,8 @@ class NativeFixturePreflightTest(unittest.TestCase):
         config = ssh_transport.SshConfig(root, {"gateway": direct, "arch": arch, "guest": guest})
         result = Mock(returncode=0, stdout=json.dumps({"profile": "linux-scheduled-refresh-static",
                                                         "checks": {"package": True, "desktopJar": True,
-                                                                   "protectedOwner": True}}).encode())
+                                                                   "protectedOwner": True,
+                                                                   "ownedWorkspace": True}}).encode())
         with patch.object(ssh_transport, "load_config", return_value=config), \
              patch.object(ssh_transport, "_askpass_environment", return_value=(Path("/unused/askpass"), {})) as askpass, \
              patch.object(preflight.subprocess, "run", return_value=result) as run:
@@ -116,7 +117,8 @@ class NativeFixturePreflightTest(unittest.TestCase):
                     if action == "bundle-verify":
                         return {"ok": True, "scenarioId": "linux-scheduled-refresh-driver"}
                     return super().__call__(surface, action, inputs)
-            checks = {"package": True, "desktopJar": True, "protectedOwner": True}
+            checks = {"package": True, "desktopJar": True, "protectedOwner": True,
+                      "ownedWorkspace": True}
             with patch.object(preflight, "_configured", return_value=host), \
                  patch.object(preflight, "_remote_root_status", return_value=True), \
                  patch.object(preflight, "_remote_linux_static", return_value={"checks": checks}):
@@ -124,6 +126,14 @@ class NativeFixturePreflightTest(unittest.TestCase):
             self.assertTrue(result["ready"])
             self.assertEqual("deferred", result["requirements"]["certificate"]["state"])
             self.assertEqual("ready", result["requirements"]["protectedOwner"]["state"])
+            self.assertEqual("ready", result["requirements"]["ownedWorkspace"]["state"])
+            checks["ownedWorkspace"] = False
+            with patch.object(preflight, "_configured", return_value=host), \
+                 patch.object(preflight, "_remote_root_status", return_value=True), \
+                 patch.object(preflight, "_remote_linux_static", return_value={"checks": checks}):
+                failed = preflight.check("/unused", request, ScheduledDispatch())
+            self.assertFalse(failed["ready"])
+            self.assertEqual("failed", failed["requirements"]["ownedWorkspace"]["state"])
 
     @unittest.skipUnless(os.name == "posix", "Private credential mode checks require POSIX.")
     def test_private_credential_input_is_scoped_to_exact_environment_and_vm(self):

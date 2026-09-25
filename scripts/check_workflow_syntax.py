@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import os
 from pathlib import Path
@@ -13,12 +14,16 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
+import urllib.error
 import urllib.request
 import zipfile
 
 
 VERSION = "1.7.12"
 RELEASE = f"https://github.com/rhysd/actionlint/releases/download/v{VERSION}"
+DOWNLOAD_ATTEMPTS = 3
+DOWNLOAD_BACKOFF_SECONDS = 1
 ASSETS = {
     ("Linux", "x86_64"): ("actionlint_1.7.12_linux_amd64.tar.gz", "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"),
     ("Linux", "aarch64"): ("actionlint_1.7.12_linux_arm64.tar.gz", "325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6"),
@@ -60,13 +65,49 @@ def cache_root() -> Path:
     return Path(__file__).resolve().parent.parent / ".runtime" / "tool-cache" / f"actionlint-{VERSION}"
 
 
+def retryable_transport_error(error: OSError) -> bool:
+    reason = error.reason if isinstance(error, urllib.error.URLError) else error
+    if isinstance(reason, (ConnectionResetError, TimeoutError)):
+        return True
+    return isinstance(reason, OSError) and reason.errno in {
+        errno.ECONNABORTED,
+        errno.ECONNRESET,
+        errno.EPIPE,
+        errno.ETIMEDOUT,
+    }
+
+
 def download(url: str, destination: Path) -> None:
     request = urllib.request.Request(url, headers={"User-Agent": f"vpn-control-actionlint/{VERSION}"})
+    for attempt in range(DOWNLOAD_ATTEMPTS):
+        staged_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent, delete=False) as staged:
+                staged_path = Path(staged.name)
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    shutil.copyfileobj(response, staged)
+            os.replace(staged_path, destination)
+            return
+        except OSError as error:
+            if staged_path is not None:
+                staged_path.unlink(missing_ok=True)
+            if not retryable_transport_error(error) or attempt == DOWNLOAD_ATTEMPTS - 1:
+                suffix = f" after {DOWNLOAD_ATTEMPTS} attempts" if retryable_transport_error(error) else ""
+                raise RuntimeError(f"could not download pinned actionlint from {url}{suffix}: {error}") from error
+            time.sleep(DOWNLOAD_BACKOFF_SECONDS * (attempt + 1))
+
+
+def publish_archive(root: Path, archive: Path, staged: Path) -> None:
+    staged_archive: Path | None = None
     try:
-        with urllib.request.urlopen(request, timeout=30) as response, destination.open("wb") as output:
-            shutil.copyfileobj(response, output)
-    except OSError as error:
-        raise RuntimeError(f"could not download pinned actionlint from {url}: {error}") from error
+        with tempfile.NamedTemporaryFile(prefix=f".{archive.name}.", suffix=".tmp", dir=root, delete=False) as output:
+            staged_archive = Path(output.name)
+            with staged.open("rb") as source:
+                shutil.copyfileobj(source, output)
+        os.replace(staged_archive, archive)
+    finally:
+        if staged_archive is not None:
+            staged_archive.unlink(missing_ok=True)
 
 
 def executable_bytes(archive: Path, is_zip: bool, executable_name: str) -> bytes:
@@ -116,9 +157,7 @@ def actionlint_path() -> Path:
             expected_executable = executable_bytes(staged, asset.endswith(".zip"), executable.name)
         except (KeyError, tarfile.TarError, zipfile.BadZipFile) as error:
             raise RuntimeError(f"pinned actionlint archive {asset} could not provide {executable.name}: {error}") from error
-        staged_archive = root / f".{asset}.tmp"
-        shutil.copy2(staged, staged_archive)
-        os.replace(staged_archive, archive)
+        publish_archive(root, archive, staged)
         install_executable(root, executable, expected_executable)
     return executable
 

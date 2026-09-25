@@ -25,42 +25,53 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current integration follow-up — checkpoint172
+## Current integration follow-up — checkpoint173
 
-All seven requested optimization areas are implemented in reusable MCP/scripts
-and policy. Checkpoint5cebf153039c7540952b5b0278c04054bc15d65c is pushed after
-full managed prepush; exact-SHA required CI is still being verified. Android CI
-has passed. Same-source Windows/macOS fixture pairs are building separately.
+The full parity goal remains incomplete. The seven requested optimization areas
+are implemented; native adoption is exposing integration gaps which receive
+quick causal regressions before repair. Checkpoint5cebf153039c7540952b5b0278c04054bc15d65c
+passed all five required workflows. Its successor d19652524a135ce0f8c6bd463cf5c5961e8fe413
+(version2.1.19) is pushed after full prepush. Fast Checks encountered an actionlint
+download connection reset; one exact-SHA rerun is in progress and a bounded
+transport retry correction is in the current batch. Do not claim this SHA verified.
 
-The first fixed Linux scheduled-refresh batch reached the owned Fedora guest
-through the configured three-hop SSH route. Static package/owner admission and
-TLS checks passed. Dynamic settings admission stopped before VPN activation
-because it read settings at the workspace root instead of persisted_state.
-The corrected helper uses the actual DesktopStateStore schema and exposes only
-boolean diagnostic fields. Quick schema and absent-getuid regressions pass24
-focused tests. Routine hygiene already includes these suites.
-
-The failed batch86194a4c-c82f-4c6d-a152-a53632c05cf0 is terminal and must not be
-replayed. Its receipt proves disposable owner stopped, workspace removed,
-protected owner preserved and RPM verification clean. Evidence is under
-checkpoint172/linux-batch. It uses installed2.1.17 and is mixed-artifact fixture
-evidence, not final native acceptance. A new immutable bundle and correlation
-are required after this correction is delivered.
+Current corrections are a package-qualified MCP adapter import strategy and
+workspace admission in the fixed Linux preflight. Script-mode imports had selected
+the guest helper instead of the MCP adapter; both preflight and batch-plan paths
+have a causal regression covering all13 native adapter imports. The initial
+post-fix batch then exited at input validation because its requested workspace
+parent did not exist. Its correlation a1f33191-4f6d-41dc-aa1e-cbc4c6029282 is terminal;
+do not replay it. The collector has no scenario receipt and reports unknown
+cleanup/traffic. Read-only traceback diagnosis identifies the pre-run input error.
+Evidence is under checkpoint173/linux-batch; the installed2.1.17 package means
+this is mixed-artifact fixture evidence, not current-package acceptance.
 
 | Task | Owner | Files/environment | Current check / handoff |
 | --- | --- | --- | --- |
-| Settings preflight | root, worker handoff complete | native_fixture_preflight.py and tests | Schema regression and local Windows simulation pass |
-| Delivery | root | docs, metadata, prepush, exact-SHA CI | CP172 reviewed fix awaiting managed validation |
-| Linux native batch | unassigned until freeze | Fedora2328 | Terminal failure cleaned; new correlation required |
-| Android admission | completed workers | owned5682/API35 and5684/API29 | Both OFF; API35 full56000-domain backup retained |
-| Windows recovery | root pending pair | CP117 | Credential admission verified; retained installer remains unknown |
-| macOS recovery | root pending pair/resource admission | boot-control53 | Preserve rollback114; no new installer submitted |
+| MCP imports | root, worker handoff complete | mcp_server.py and test_vm_workflow.py | All13 adapters use qualified imports;338 agent tests pass,4 skips |
+| Download resilience | root, worker handoff complete | check_workflow_syntax.py and tests |8 focused tests; causal pre-change replay retained |
+| Workspace admission | root, handoff complete | guest/MCP preflight and focused tests | Missing/unowned/symlink/overlap rejected;39 focused tests pass |
+| Linux native rerun | linux_refresh174 | Fedora2328; checkpoint174/linux-refresh | New immutable bundle and correlation; existing admitted parent |
+| Windows recovery | windows_recovery173 | CP117, ignored evidence | Same stopped owner/terminal protected cancellation admitted; immutable pair downloading |
+| macOS fixture | macos_fixture173 | boot-control53, isolated173 namespace | Aqua/sudo/capacity admitted; waiting for immutable pair;114 untouched |
+| Android documents | android35_documents173 | owned5682, ignored evidence | Matched complete CLI/APK staging and response-loss scenario |
+| Delivery | root | docs, metadata, single host build, push/CI | Batch coherent freeze precedes final prepush |
 
-Current-source Android nondebuggable x86_64 APK is frozen under
-checkpoint172/android-current with source5cebf15 and its own hash. It has not
-been installed. No native acceptance is inferred from artifact verification.
-Safe VM baseline components are implemented, but native capture/restore awaits
-a quiescent disposable fixture; no unknown installer may be reset.
+Frozen Windows/macOS pairs use source5cebf15, base2.1.17 and target2.1.18; their
+identity must not be relabelled as2.1.19. Current-source Android APK under
+checkpoint172/android-current likewise retains5cebf15 provenance. Final package
+acceptance and exact-SHA CI remain separate gates. The Android API35 full backup
+contains56000 domains, original ignorefalse; preserve it before any device mutation.
+
+User-authorized storage cleanup reclaimed the Mac's required100GB headroom:
+112.5GB free was verified. The obsolete stopped local Windows ARM visual/component
+VM and its READY marker were retired; recreate explicitly before any future local
+Windows visual run. The active remote Windows CP117 and every unknown installer
+input remain preserved. Arch cleanup reclaimed112.27GB from Trash/build caches
+plus2.23GB from unused Pacman downloads, leaving297.10GB on home and6.12GB on root.
+All five active remote VM process generations were reverified unchanged. Cleanup
+receipts and fixed allowlisted scripts are under checkpoint173/arch-cleanup;
+current packages, source, personal data, active AI models and Steam remain intact.
 
 ## Previous integration batch — checkpoint170
 

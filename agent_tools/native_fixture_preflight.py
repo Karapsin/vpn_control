@@ -32,7 +32,7 @@ _SCENARIOS = {
     "windows-credential-validity-v1": frozenset({"host", "environment"}),
 }
 _FIELDS = ("artifact", "bundle", "host", "fixtureRoot", "vmIdentity", "credentialInput",
-           "scenarioInput", "package", "desktopJar", "protectedOwner", "endpoint", "certificate",
+           "scenarioInput", "package", "desktopJar", "protectedOwner", "ownedWorkspace", "endpoint", "certificate",
            "settings", "benchmarkSettings", "workspace", "protocol", "prompt")
 _RELATIVE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./-]{0,191}$")
 
@@ -164,7 +164,7 @@ def _remote_linux_static(root: Path, host: str, input_bytes: bytes, timeout: int
         value = json.loads(done.stdout.decode("utf-8"))
         if (not isinstance(value, dict) or value.get("profile") != "linux-scheduled-refresh-static"
                 or not isinstance(value.get("checks"), dict)
-                or set(value["checks"]) != {"package", "desktopJar", "protectedOwner"}
+                or set(value["checks"]) != {"package", "desktopJar", "protectedOwner", "ownedWorkspace"}
                 or any(type(item) is not bool for item in value["checks"].values())):
             return None
         return value
@@ -272,7 +272,7 @@ def check(root: Path | str, request: Mapping[str, Any], dispatcher: Dispatch) ->
             "current_typed_input_bytes" if input_ready else "scenario_input_unavailable_or_mismatched", "registered-local-artifact")
         static = _remote_linux_static(Path(root), asked["host"], input_bytes, asked["timeoutSeconds"]) if input_bytes else None
         checks = static.get("checks", {}) if static else {}
-        for name in ("package", "desktopJar", "protectedOwner"):
+        for name in ("package", "desktopJar", "protectedOwner", "ownedWorkspace"):
             state = "ready" if checks.get(name) is True else "failed" if checks.get(name) is False else "unknown"
             requirements[name] = _requirement(state, "current_guest_probe" if state == "ready" else
                 "guest_probe_failed" if state == "failed" else "guest_probe_unavailable", "read-only-guest-probe")

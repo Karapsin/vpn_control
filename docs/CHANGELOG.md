@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Harden native batch admission and script-mode MCP imports, and retry transient pinned-tool downloads.
+
 ## 2.1.19 - 2026-09-25
 
 - Keep Linux credential storage tests platform-scoped while verifying portable admission on Windows.

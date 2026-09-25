@@ -182,6 +182,60 @@ class VmWorkflowTest(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertTrue(json.loads(result.stdout)["ok"])
 
+    def test_script_mode_native_adapters_ignore_guest_helper_module_shadow(self) -> None:
+        """The MCP script must import adapters, not scripts/ guest helpers."""
+        preflight_request = {
+            "scenarioId": "linux-scheduled-refresh-fixture-ready",
+            "host": "missing-host",
+            "environment": "test",
+            "expectedTestUrl": "https://fixture.example/test",
+        }
+        batch_request = {
+            "batchId": "script-mode-import-sweep",
+            "recipe": "linux-scheduled-refresh",
+            "host": "missing-host",
+            "environment": "test",
+            "bundleManifestArtifactId": "sha256-" + "a" * 64,
+            "scenarioInputArtifactId": "sha256-" + "b" * 64,
+            "scenarioCorrelationId": "00000000-0000-4000-8000-000000000173",
+        }
+        server = vm_workflow.REPO_ROOT / "agent_tools" / "mcp_server.py"
+        source = f'''import importlib
+import importlib.util
+import sys
+from pathlib import Path
+
+repository = Path({str(vm_workflow.REPO_ROOT)!r})
+sys.path[:0] = [str(repository / "scripts"), str(repository / "agent_tools"), str(repository)]
+spec = importlib.util.spec_from_file_location("mcp_server", {str(server)!r})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+for name in module._VM_NATIVE_ADAPTERS:
+    adapter = module._agent_module(name)
+    assert adapter.__name__ == "agent_tools." + name, adapter
+result = module.vm_workflow("fixture-preflight", {preflight_request!r})
+assert result["tool"] == "vm_workflow", result
+assert "AttributeError" not in str(result), result
+batch_module = importlib.import_module("agent_tools.native_scenario_batch")
+class VerifyOnlyBatch:
+    def __init__(self, *_args, **_kwargs): pass
+    def plan(self, request):
+        batch_module._plan(request)
+        return {{"state": "planned"}}
+batch_module.NativeScenarioBatch = VerifyOnlyBatch
+result = module.vm_workflow("batch-plan", {batch_request!r})
+assert result["state"] == "planned", result
+assert "AttributeError" not in str(result), result
+'''
+        result = subprocess.run(
+            [sys.executable, "-c", source],
+            cwd=vm_workflow.REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

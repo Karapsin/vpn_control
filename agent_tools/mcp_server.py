@@ -15,6 +15,12 @@ import time
 from pathlib import Path
 from typing import Any, Sequence
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+# Direct CLI/MCP execution has no package context.  Make the checked-in
+# package available so fixed adapters can use qualified imports rather than
+# resolving same-named guest fixture helpers from an inherited script path.
+if not __package__ and str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 docs_assistant = importlib.import_module(
     f"{__package__}.docs_assistant" if __package__ else "docs_assistant"
@@ -26,7 +32,6 @@ except ImportError:  # pragma: no cover - covered by launcher/integration smoke 
     FastMCP = None  # type: ignore[assignment]
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 INDEX_DIR = REPO_ROOT / docs_assistant.DEFAULT_INDEX_DIR
 AGENT_TEST_PYTHON = next(
     (
@@ -1774,6 +1779,22 @@ def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) ->
     raise ValueError("Native batch adapter is not allowlisted.")
 
 
+_VM_NATIVE_ADAPTERS = (
+    "native_vm_baseline_config", "native_acceptance_matrix", "native_fixture_preflight",
+    "native_scenario_batch", "native_artifact_reuse", "native_scenario_execution",
+    "native_scenario_ssh", "native_artifact_registry", "native_environment",
+    "native_environment_observation", "native_scenario_bundle", "native_next_action",
+    "native_failure_evidence",
+)
+
+
+def _agent_module(name: str) -> Any:
+    """Load a fixed native adapter from this repository's package."""
+    if name not in _VM_NATIVE_ADAPTERS:
+        raise ValueError("Unknown fixed native adapter.")
+    return importlib.import_module(f"{__package__ or 'agent_tools'}.{name}")
+
+
 def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Validate staged inputs or calculate memory admission; neither action starts a VM."""
     workflow = importlib.import_module(f"{__package__}.vm_workflow" if __package__ else "vm_workflow")
@@ -1781,11 +1802,11 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(inputs, dict):
             return _error("vm_workflow", "VM workflow inputs must be an object.")
         if action in {"baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight"}:
-            baselines = importlib.import_module(f"{__package__}.native_vm_baseline_config" if __package__ else "native_vm_baseline_config")
+            baselines = _agent_module("native_vm_baseline_config")
             result = baselines.handle(REPO_ROOT, action, inputs)
             return {"tool": "vm_workflow", "ok": True, **result}
         if action in {"matrix-record", "matrix-status"}:
-            matrix = importlib.import_module(f"{__package__}.native_acceptance_matrix" if __package__ else "native_acceptance_matrix")
+            matrix = _agent_module("native_acceptance_matrix")
             if action == "matrix-record":
                 result = matrix.matrix_record(REPO_ROOT, inputs)
             else:
@@ -1798,11 +1819,11 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 result = matrix.matrix_status(REPO_ROOT, source)
             return {"tool": "vm_workflow", "ok": True, **result}
         if action == "fixture-preflight":
-            preflight = importlib.import_module(f"{__package__}.native_fixture_preflight" if __package__ else "native_fixture_preflight")
+            preflight = _agent_module("native_fixture_preflight")
             result = preflight.check(REPO_ROOT, inputs, _native_fixed_dispatch)
             return {"tool": "vm_workflow", "ok": result.get("ready") is True, **result}
         if action in {"batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect"}:
-            batch_module = importlib.import_module(f"{__package__}.native_scenario_batch" if __package__ else "native_scenario_batch")
+            batch_module = _agent_module("native_scenario_batch")
             batch = batch_module.NativeScenarioBatch(REPO_ROOT / ".rag_index" / "native-batches",
                                                      _native_fixed_dispatch, repository_root=REPO_ROOT)
             if action == "batch-plan":
@@ -1813,7 +1834,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 result = getattr(batch, action.removeprefix("batch-"))(inputs["batchId"])
             return {"tool": "vm_workflow", "ok": result.get("state") not in {"failed", "blocked", "unknown"}, **result}
         if action in {"artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check"}:
-            reuse = importlib.import_module(f"{__package__}.native_artifact_reuse" if __package__ else "native_artifact_reuse")
+            reuse = _agent_module("native_artifact_reuse")
             if action == "artifact-set-freeze":
                 result = reuse.artifact_set_freeze(REPO_ROOT, inputs)
             elif action == "artifact-set-verify":
@@ -1882,9 +1903,9 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except probe.WindowsCredentialProbeSshError:
                 return _error("vm_workflow", "Configured Windows credential probe could not be admitted or observed; private input details are withheld.")
         if action in ("scenario-start", "scenario-status", "scenario-resume", "scenario-collect"):
-            execution = importlib.import_module(f"{__package__}.native_scenario_execution" if __package__ else "native_scenario_execution")
-            adapter = importlib.import_module(f"{__package__}.native_scenario_ssh" if __package__ else "native_scenario_ssh")
-            registry = importlib.import_module(f"{__package__}.native_artifact_registry" if __package__ else "native_artifact_registry")
+            execution = _agent_module("native_scenario_execution")
+            adapter = _agent_module("native_scenario_ssh")
+            registry = _agent_module("native_artifact_registry")
             def resolve_bundle(plan):
                 if set(plan.artifact_ids) != adapter.SCENARIO_ARTIFACT_KEYS.get(plan.scenario_id):
                     raise ValueError("Native scenario artifacts do not match its fixed recipe.")
@@ -1925,14 +1946,14 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError) as error:
                 return _error("vm_workflow", str(error))
         if action in ("environment-status", "environment-reserve", "environment-release"):
-            environment = importlib.import_module(f"{__package__}.native_environment" if __package__ else "native_environment")
+            environment = _agent_module("native_environment")
             try:
                 if action == "environment-reserve":
                     result = environment.reserve_environment(REPO_ROOT, inputs)
                 elif action == "environment-release":
                     result = environment.release_environment(REPO_ROOT, inputs)
                 elif inputs.get("hostAlias"):
-                    observer = importlib.import_module(f"{__package__}.native_environment_observation" if __package__ else "native_environment_observation")
+                    observer = _agent_module("native_environment_observation")
                     result = observer.observe_environment(REPO_ROOT, inputs)
                 else:
                     result = environment.environment_status(REPO_ROOT, inputs)
@@ -1940,7 +1961,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError) as error:
                 return _error("vm_workflow", str(error))
         if action in ("artifact-register", "artifact-find", "artifact-verify"):
-            registry = importlib.import_module(f"{__package__}.native_artifact_registry" if __package__ else "native_artifact_registry")
+            registry = _agent_module("native_artifact_registry")
             try:
                 if action == "artifact-register":
                     result = registry.register_artifact(REPO_ROOT, inputs)
@@ -1953,7 +1974,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError) as error:
                 return _error("vm_workflow", str(error))
         if action in ("bundle-prepare", "bundle-verify"):
-            bundle = importlib.import_module(f"{__package__}.native_scenario_bundle" if __package__ else "native_scenario_bundle")
+            bundle = _agent_module("native_scenario_bundle")
             try:
                 if action == "bundle-prepare":
                     result = bundle.prepare_bundle(REPO_ROOT, inputs.get("scenarioId"), inputs.get("outputDirectory"))
@@ -1981,7 +2002,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
 
 def _native_response(tool: str, action: str, result: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
     """Add compact guidance and redacted durable failure evidence to native tools."""
-    guidance = importlib.import_module(f"{__package__}.native_next_action" if __package__ else "native_next_action")
+    guidance = _agent_module("native_next_action")
     enriched = dict(result)
     host = request.get("host") or request.get("hostAlias")
     if isinstance(host, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", host):
@@ -1989,7 +2010,7 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
     enriched["nextAction"] = guidance.next_action(tool, action, enriched)
     if enriched.get("ok") is not False and str(enriched.get("state", "")).lower() not in {"unknown", "submitting"}:
         return enriched
-    recorder = importlib.import_module(f"{__package__}.native_failure_evidence" if __package__ else "native_failure_evidence")
+    recorder = _agent_module("native_failure_evidence")
     context: dict[str, Any] = {"tool": tool, "action": action}
     safe_token = lambda value: isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", value)
     environment = enriched.get("environment") or request.get("environment") or host
