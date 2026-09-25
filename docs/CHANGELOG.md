@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.1.19 - 2026-09-25
 
 - Keep Linux credential storage tests platform-scoped while verifying portable admission on Windows.
 - Verify credential admission through native invocation and wait for exact fixture owner readiness.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Add reusable native acceptance preflights, batches, artifact reuse and VM baselines; decode native Windows installer receipt phases.
 - Keep native orchestration regressions portable and reject unsupported private-journal execution before dispatch.
 - Fix native preflight portability, check untracked source whitespace before push, and support verified nested SSH guest routes.
+- Validate native fixture settings against the persisted workspace schema and simulate Windows admission in fast regressions.
 
 ## 2.1.18 - 2026-09-24
 

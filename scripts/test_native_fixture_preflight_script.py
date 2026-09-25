@@ -19,21 +19,45 @@ except ModuleNotFoundError:  # Direct script invocation puts scripts/ on sys.pat
 class NativeFixtureGuestProbeTest(unittest.TestCase):
     def workspace(self, directory: str, *, url="https://fixture.example/test", enabled=True):
         path = Path(directory) / "workspace.json"
-        path.write_text(json.dumps({"subscription_refresh_policy": "EVERY_HOUR",
+        # DesktopStateStore writes settings inside persisted_state.
+        path.write_text(json.dumps({"persisted_state": {
+            "subscription_refresh_policy": "EVERY_HOUR",
             "find_best_after_subscription_refresh": enabled,
             "validation_settings": {"test_url": url, "batch_size": 3,
                 "subscription_refresh_concurrency": 2, "retry_count": 1,
-                "active_verification_window_size": 4}}), encoding="utf-8")
+                "active_verification_window_size": 4}}, "locations": [],
+                "resume_connection_on_launch": False}), encoding="utf-8")
         return path
+
+    def test_real_persisted_workspace_settings_admit_without_exposing_values(self):
+        with tempfile.TemporaryDirectory() as raw:
+            path = self.workspace(raw)
+            with patch.object(preflight, "_regular_user_file", return_value=True):
+                result = preflight._settings(path, "https://fixture.example/test")
+                self.assertEqual(result, {"workspace": True, "settings": True,
+                                          "benchmarkSettings": True})
+                with patch.object(preflight, "_endpoint", return_value={
+                        "protocol": True, "certificate": True, "endpoint": True}):
+                    receipt = preflight.linux_scheduled_refresh(
+                        "https://fixture.example/test", 2, workspace=path)
+            self.assertTrue(receipt["ready"])
+            self.assertEqual(receipt["settingsDiagnostics"], {
+                "persistedState": True, "validationSettings": True,
+                "testUrlMatches": True, "refreshPolicyEnabled": True,
+                "findBestMatches": True, "benchmarkKnobsValid": True})
+            self.assertNotIn("fixture.example", json.dumps(receipt))
 
     def test_wrong_validation_url_blocks_find_best_fixture(self):
         with tempfile.TemporaryDirectory() as raw:
             path = self.workspace(raw, url="https://other.example/test")
+            diagnostics = {}
             with patch.object(preflight, "_regular_user_file", return_value=True):
-                result = preflight._settings(path, "https://fixture.example/test")
+                result = preflight._settings(path, "https://fixture.example/test", diagnostics=diagnostics)
         self.assertTrue(result["workspace"])
         self.assertFalse(result["settings"])
         self.assertFalse(result["benchmarkSettings"])
+        self.assertFalse(diagnostics["testUrlMatches"])
+        self.assertTrue(diagnostics["refreshPolicyEnabled"])
 
     def test_disabled_find_best_and_invalid_measurement_knobs_block(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -42,10 +66,32 @@ class NativeFixtureGuestProbeTest(unittest.TestCase):
                 self.assertFalse(preflight._settings(path, "https://fixture.example/test")["settings"])
                 self.assertTrue(preflight._settings(path, "https://fixture.example/test", require_find_best=False)["settings"])
                 value = json.loads(path.read_text())
-                value["find_best_after_subscription_refresh"] = True
-                value["validation_settings"]["batch_size"] = False
+                value["persisted_state"]["find_best_after_subscription_refresh"] = True
+                value["persisted_state"]["validation_settings"]["batch_size"] = False
                 path.write_text(json.dumps(value))
-                self.assertFalse(preflight._settings(path, "https://fixture.example/test")["benchmarkSettings"])
+                diagnostics = {}
+                self.assertFalse(preflight._settings(path, "https://fixture.example/test",
+                                                       diagnostics=diagnostics)["benchmarkSettings"])
+            self.assertFalse(diagnostics["benchmarkKnobsValid"])
+
+    def test_persisted_settings_logic_runs_without_getuid_after_file_admission(self):
+        with tempfile.TemporaryDirectory() as raw:
+            path = self.workspace(raw)
+            with patch.object(preflight, "os", SimpleNamespace()):
+                self.assertFalse(preflight._settings(path, "https://fixture.example/test")["workspace"])
+                with patch.object(preflight, "_regular_user_file", return_value=True):
+                    result = preflight._settings(path, "https://fixture.example/test")
+            self.assertEqual(result, {"workspace": True, "settings": True,
+                                      "benchmarkSettings": True})
+        # Run the actual portable cases too: removing their admission seam must
+        # fail locally rather than waiting for Windows CI to discover it.
+        with patch.object(preflight, "os", SimpleNamespace()):
+            for case in (
+                    self.test_real_persisted_workspace_settings_admit_without_exposing_values,
+                    self.test_wrong_validation_url_blocks_find_best_fixture,
+                    self.test_disabled_find_best_and_invalid_measurement_knobs_block):
+                with self.subTest(case=case.__name__):
+                    case()
 
     def test_missing_file_owner_api_fails_closed(self):
         with tempfile.TemporaryDirectory() as raw:

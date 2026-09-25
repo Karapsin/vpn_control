@@ -31,22 +31,42 @@ def _regular_user_file(path: Path, maximum: int) -> bool:
             and 0 < info.st_size <= maximum)
 
 
-def _settings(path: Path, expected_url: str, require_find_best: bool = True) -> dict[str, bool]:
+def _settings(path: Path, expected_url: str, require_find_best: bool = True,
+              diagnostics: dict[str, bool] | None = None) -> dict[str, bool]:
+    details = {key: False for key in ("persistedState", "validationSettings",
+               "testUrlMatches", "refreshPolicyEnabled", "findBestMatches", "benchmarkKnobsValid")}
+    if diagnostics is not None:
+        diagnostics.update(details)
     if not _regular_user_file(path, 4 * 1024 * 1024):
         return {"workspace": False, "settings": False, "benchmarkSettings": False}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        validation = data["validation_settings"]
-        policy = data["subscription_refresh_policy"]
-        enabled = data["find_best_after_subscription_refresh"]
-        numeric = tuple(validation[key] for key in ("batch_size", "subscription_refresh_concurrency",
-                                                  "retry_count", "active_verification_window_size"))
+        persisted = data["persisted_state"]
+        if not isinstance(persisted, dict):
+            raise TypeError("persisted state is not an object")
+        details["persistedState"] = True
+        validation = persisted["validation_settings"]
+        if not isinstance(validation, dict):
+            raise TypeError("validation settings are not an object")
+        details["validationSettings"] = True
+        policy = persisted.get("subscription_refresh_policy")
+        enabled = persisted.get("find_best_after_subscription_refresh")
+        numeric = tuple(validation.get(key) for key in ("batch_size", "subscription_refresh_concurrency",
+                                                      "retry_count", "active_verification_window_size"))
     except (OSError, UnicodeError, ValueError, KeyError, TypeError):
+        if diagnostics is not None:
+            diagnostics.update(details)
         return {"workspace": True, "settings": False, "benchmarkSettings": False}
-    settings = (isinstance(validation, dict) and validation.get("test_url") == expected_url
-                and isinstance(policy, str) and policy != "OFF" and enabled is require_find_best)
-    benchmark = (settings and all(type(item) is int for item in numeric)
-                 and numeric[0] > 0 and numeric[1] > 0 and numeric[2] >= 0 and numeric[3] > 0)
+    details["testUrlMatches"] = validation.get("test_url") == expected_url
+    details["refreshPolicyEnabled"] = isinstance(policy, str) and policy != "OFF"
+    details["findBestMatches"] = enabled is require_find_best
+    details["benchmarkKnobsValid"] = (all(type(item) is int for item in numeric)
+        and numeric[0] > 0 and numeric[1] > 0 and numeric[2] >= 0 and numeric[3] > 0)
+    if diagnostics is not None:
+        diagnostics.update(details)
+    settings = (details["testUrlMatches"] and details["refreshPolicyEnabled"]
+                and details["findBestMatches"])
+    benchmark = settings and details["benchmarkKnobsValid"]
     return {"workspace": True, "settings": settings, "benchmarkSettings": benchmark}
 
 
@@ -93,10 +113,11 @@ def linux_scheduled_refresh(expected_url: str, timeout: int, certificate_path: P
     if type(timeout) is not int or not 1 <= timeout <= 15:
         raise ValueError("Timeout must be 1..15 seconds")
     path = workspace if workspace is not None else Path.home() / ".vpn-control-desktop" / "workspace.json"
-    checks = _settings(path, expected_url, require_find_best)
+    diagnostics: dict[str, bool] = {}
+    checks = _settings(path, expected_url, require_find_best, diagnostics)
     checks.update(_endpoint(expected_url, timeout, certificate_path))
     return {"profile": "linux-scheduled-refresh", "checks": checks,
-            "ready": all(checks.values())}
+            "settingsDiagnostics": diagnostics, "ready": all(checks.values())}
 
 
 def linux_scheduled_static(typed_input: dict[str, object]) -> dict[str, object]:
