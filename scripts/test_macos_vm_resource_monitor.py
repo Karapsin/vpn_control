@@ -14,6 +14,7 @@ import sys
 import tempfile
 import textwrap
 import time
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -252,12 +253,14 @@ class MonitorTest(unittest.TestCase):
         self.assertEqual(1, sum(json.loads(call)[0] == "stop" for call in calls))
 
     def test_transient_warning_does_not_stop_owned_vm(self) -> None:
+        # Model Windows' missing getsid even on POSIX hosts; the mock supplies it.
         evidence = self.root / "warning-evidence"
         child = mock.Mock(pid=123, poll=mock.Mock(side_effect=[None, None, None, None, 0]), wait=mock.Mock(return_value=0))
         args = argparse.Namespace(evidence_dir=str(evidence), tart="tart", sysctl="sysctl", vm_stat="vm_stat", vm_name="owned-vm", interval_seconds=5, stop_timeout_seconds=75)
-        with mock.patch.object(MONITOR_MODULE, "validate_admission"), \
+        with mock.patch.object(MONITOR_MODULE, "os", SimpleNamespace(fsync=os.fsync, getpid=os.getpid)), \
+                mock.patch.object(MONITOR_MODULE, "validate_admission"), \
                 mock.patch.object(MONITOR_MODULE.subprocess, "Popen", return_value=child), \
-                mock.patch.object(MONITOR_MODULE.os, "getsid", return_value=123), \
+                mock.patch.object(MONITOR_MODULE.os, "getsid", return_value=123, create=True), \
                 mock.patch.object(MONITOR_MODULE, "pressure", side_effect=["2", "1"]), \
                 mock.patch.object(MONITOR_MODULE, "memory_headroom", return_value=4 * 2**30), \
                 mock.patch.object(MONITOR_MODULE, "swap", return_value="synthetic"), \
@@ -272,9 +275,10 @@ class MonitorTest(unittest.TestCase):
         evidence = self.root / "headroom-evidence"
         child = mock.Mock(pid=123, poll=mock.Mock(side_effect=[None, None, None, None, 0]), wait=mock.Mock(return_value=0))
         args = argparse.Namespace(evidence_dir=str(evidence), tart="tart", sysctl="sysctl", vm_stat="vm_stat", vm_name="owned-vm", interval_seconds=5, stop_timeout_seconds=75)
-        with mock.patch.object(MONITOR_MODULE, "validate_admission"), \
+        with mock.patch.object(MONITOR_MODULE, "os", SimpleNamespace(fsync=os.fsync, getpid=os.getpid)), \
+                mock.patch.object(MONITOR_MODULE, "validate_admission"), \
                 mock.patch.object(MONITOR_MODULE.subprocess, "Popen", return_value=child), \
-                mock.patch.object(MONITOR_MODULE.os, "getsid", return_value=123), \
+                mock.patch.object(MONITOR_MODULE.os, "getsid", return_value=123, create=True), \
                 mock.patch.object(MONITOR_MODULE, "pressure", side_effect=["2", "2"]), \
                 mock.patch.object(MONITOR_MODULE, "memory_headroom", return_value=4 * 2**30, create=True), \
                 mock.patch.object(MONITOR_MODULE, "swap", return_value="synthetic"), \

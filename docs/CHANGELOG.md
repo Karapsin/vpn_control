@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Harden native fixture restoration and login checks, bound relay rejection draining, and aggregate independent hygiene failures.
 - Preserve SSH recovery history across adopted connection expiry without replaying uncertain attempts.
 - Preserve Android operation identity after response loss and improve macOS fixture builds and memory monitoring.
+- Run macOS memory-monitor unit checks portably on Windows.
 
 ## 2.1.18 - 2026-09-24
 

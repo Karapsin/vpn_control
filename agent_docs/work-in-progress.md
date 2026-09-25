@@ -27,6 +27,13 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current integration batch — checkpoint169
 
+Checkpoint f6599f2 is pushed after full prepush. Windows CI36109544592 exposed
+two mocked Mac monitor tests assuming POSIX os.getsid exists on Windows. A local
+missing-method facade reproduced both errors before the mock repair; all13 monitor
+tests now pass. This test-only correction awaits a fresh prepush/push and exact-SHA
+CI. The immutable Mac pair build36109565762 and verified nondebuggable x86_64 APK
+in checkpoint169/android-current are bound to f6599f2; do not silently relabel them.
+
 Both pushed checkpoints0bcf54e and8d7748c passed all five required exact-SHA
 workflows. Current dirty work intentionally combines the causally tested Mac
 resource guard, optional same-source DMG fixture CI/signing verification, and
