@@ -252,6 +252,17 @@ class SshTransferTest(unittest.TestCase):
             self.assertFalse((outside_private_arena / "escaped.apk").exists())
             self.assertFalse((root / ".rag_index").exists())
 
+    def test_android_apk_staging_rejects_invalid_timeout_before_snapshot_or_intent(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); destination = root / "remote"; destination.mkdir(mode=0o700)
+            self.make_config(root, destination); apk, manifest, receipt = self.make_apk(root)
+            for timeout in (0, 61, True):
+                with self.assertRaisesRegex(ssh_transfer.SshTransferError, "timeout"):
+                    ssh_transfer.publish_android_apk(root, "fixture", apk, manifest, receipt,
+                        "owner-1", "arch-ci", "invalid-timeout", timeout_seconds=timeout,
+                        ssh_binary=str(self.fake_ssh(root)))
+                self.assertFalse((root / ".rag_index").exists())
+
     def test_android_apk_unknown_response_preserves_snapshot_and_cannot_retry_or_overwrite(self):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw); destination = root / "remote"; destination.mkdir(mode=0o700)

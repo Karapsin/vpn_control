@@ -27,6 +27,64 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Second continuation checkpoint and active native admission — 2026-09-28
+
+`25aa22e1cdefe0417dc1f56ce159c4fe8a7b592f` is the second reviewed
+continuation checkpoint on `origin/dev`, version `2.2.0`. Managed prepush passed.
+The user requested one required-workflow CI review on the final delivered SHA,
+so checkpoint pushes are not being treated as final CI acceptance. The matrix
+currently has zero complete current-source rows, 20 open groups and two
+historical groups. The corrected Mac receipt and its immutable retraction
+remain preserved. No release is authorized.
+
+The checkpoint fixed bare subscription source selection for GUI/CLI parity,
+added Android durable admission, and supplied guarded Linux/Windows native
+fixture routes. Exact-source `25aa22e` Android APK and Linux RPM, Windows MSI,
+and Mac DMG pairs were built or registered with byte, version, signer, helper
+and source checks as applicable. Later tool and visual-fixture edits are dirty,
+so these pairs remain source-scoped component evidence; the conservative
+artifact-reuse policy requires fresh final-source builds after the next push.
+
+Android API35's third detached readback correlation
+`45a4066c-265a-40ea-8a44-731f0c44ad4e` completed admission with owner
+`d51f6046`/revision 2, no operations, and a private 11,872,243-byte backup
+SHA256 `9f67f574e40c5623d24b038d687aed4e96675a51b014b578887fc486f2bf1160`.
+API29 later completed a separate read-only admission and 239-byte private
+backup under correlation `952b9ba6-4f4c-409b-aebc-70b581a2ab58`; its
+installed 2.1.17 APK was located by exact bytes and registered. Neither API
+has undergone a new install or VPN interruption. New guarded Android installer
+and bounded public-inspection adapters have causal tests; the installer start
+waits for the next source checkpoint so the older installed baseline remains
+available for one monotonic replacement.
+
+Linux's exact 25aa 2.1.19-to-2.2.0 RPM pair was independently verified and
+registered. Fedora2328's guarded base-install preflight blocks on live
+`vpn-control` PID 18367/startTicks 2078693. Read-only public status reports
+configured VPN mode but runtime OFF, no selected or active location, and no
+runtime ID. The owner has not been stopped; guest-only stop approval was
+requested under AGENTS.md. No separate owned Fedora guest was identified.
+Windows's 25aa 2.1.19-to-2.2.0 MSI pair was verified and registered; CP117's
+inert PowerShell 5 preflight passed. A reviewed durable base-preparation route
+is ready, but the single native base install is deferred until final-source
+fixture selection. CP117 has not been mutated in this continuation.
+
+Mac's 25aa DMG pair passed strict signing/embedded-worker checks. A native
+user-local fault rollback restored the exact base; reviewed component summary
+SHA256 is `3a94dcc8ec1098fd44fc31505b9f4011b9ed2f75cb5a4ad1880b0050388bd05a`.
+Machine authorization denial was not submitted because the host Mac is locked
+and the approved GUI surface cannot observe SecurityAgent. The Tart VM and
+monitor are stopped/released; the old unknown job remains untouched.
+
+Visual capture at 25aa completed Android 74/74 scenes. Comparator found 62
+passes and 12 diffs, including an ordinary location fixture with inconsistent
+selected references; causal host RED/GREEN fixed that fixture for next-source
+recapture. Three hosted desktop runs reached one scene, then failed on a
+synthetic runtime/presentation mismatch; a visual-only desktop preview fix has
+causal RED/GREEN and full desktop-test pass. The six desktop add/edit location
+baselines remain missing. Notification OS-header mask drift, QR symbols and a
+routing-error scroll difference remain under review. No new baselines have been
+accepted, and all four visual matrix rows remain open.
+
 ### Active continuation after first delivery — 2026-09-28
 
 The first continuation checkpoint is `4aa0658bdc69ffd12b4f30d66988b7ccb4720dd6`

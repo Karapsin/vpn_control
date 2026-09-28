@@ -566,6 +566,18 @@ retracted ID and excludes that claim while leaving its original file auditable.
 Record a corrected observation separately with the original source/artifact
 identity. Do not edit or delete the original receipt.
 
+**Continuation native adapters.** `vm_workflow` exposes narrow, journaled
+`android-package-install-start/status/collect`, `linux-rpm-base-prepare-start/status`,
+and `windows-msi-base-start/status` actions. Each start binds an owned device or
+guest, registered exact package bytes, the opening owner/package state, and a
+correlation before submission. An unknown outcome is not replayable; status and
+collect observe only the same correlation. Read-only admission actions are
+`android-public-inspect`, `linux-rpm-base-prepare-preflight`,
+`linux-rpm-owner-observe`, and `windows-msi-base-preflight`. The Android install
+collect result is package evidence only until a fresh post-install mutation
+guard succeeds. Use the exact input schemas enforced by the fixed adapters and
+the CLI fallback when a long-running MCP server has an older action inventory.
+
 `vm_workflow("rpm-proc-observe", inputs={"host":"fedora2328","environment":"fedora2328"})`
 is a fixed read-only process-visibility check for the disposable RPM guest. It
 returns bounded same-UID PID generations and the phase of any unreadable process

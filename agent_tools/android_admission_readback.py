@@ -69,7 +69,13 @@ def _run_stream_probe(argv: list[str], timeout_seconds: int) -> tuple[int | None
                     raise RuntimeError("malformed_stage_event")
                 lines.append(event)
                 if not event["ok"]: return None, lines, False
-        return process.poll(), lines, timed_out
+        if timed_out:
+            return process.poll(), lines, True
+        try:
+            code = process.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            return None, lines, True
+        return code, lines, False
     finally:
         if process.poll() is None: process.kill()
         process.wait()

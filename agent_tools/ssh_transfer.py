@@ -656,6 +656,9 @@ def publish_android_apk(root: Path | str, host: str, apk_path: Path | str, manif
                         correlation_id: str, timeout_seconds: int = ssh_transport.DEFAULT_TIMEOUT_SECONDS,
                         ssh_binary: str = "ssh") -> dict[str, Any]:
     """Publish receipt-bound APK bytes only; this does not admit or install an APK."""
+    if (isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or
+            not 1 <= timeout_seconds <= ssh_transport.MAX_TIMEOUT_SECONDS):
+        raise SshTransferError("SSH timeout must be between 1 and 60 seconds.")
     try:
         source = _capture_apk(apk_path, manifest_path, frozen_artifact_receipt_path, root, owner, environment, correlation_id)
     except SshTransferError as error:

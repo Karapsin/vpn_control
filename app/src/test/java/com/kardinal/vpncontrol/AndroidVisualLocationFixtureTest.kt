@@ -7,6 +7,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidVisualLocationFixtureTest {
+    @Test fun ordinaryLocationSceneUsesTheSameSelectedStoredReferenceAsItsVisibleRow() {
+        val raw = "socks://127.0.0.1:1080#Berlin"
+        val state = MainUiState(currentScreen = AppScreen.LOCATIONS,
+            profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+            currentLocations = listOf(raw), selectedProfileRawLink = raw,
+            selectedProfileJson = "{\"outbounds\":[]}", selectedProfileName = "Berlin",
+            locationBenchmarkDetails = mapOf(raw to "tcp=42ms"))
+
+        val frame = androidVisualCaptureFrame(state)
+        val row = androidLocationRows(frame.state, AppStrings(AppLanguage.ENGLISH), frame.locations).single()
+
+        assertEquals(LocationConfigs.normalizeStoredReference(raw), frame.state.selectedProfileJson)
+        assertEquals(LocationConfigs.normalizeStoredReference(raw), frame.state.currentLocations.single())
+        assertEquals(true, row.selection?.selected)
+        assertEquals("tcp=42ms", row.benchmarkDetail)
+        assertFalse(frame.state.isVpnRunning)
+        assertEquals("{\"outbounds\":[]}", state.selectedProfileJson)
+    }
+
     @Test fun syntheticSelectedSceneUsesCanonicalRowAndItsOwnActiveProjection() {
         val raw = "socks://127.0.0.1:1080#Berlin"
         val state = MainUiState(profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,

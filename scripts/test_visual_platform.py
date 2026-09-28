@@ -339,6 +339,15 @@ class VisualPlatformTest(unittest.TestCase):
         run.assert_not_called()
         self.assertIn("sdkmanager", result["commands"][0])
 
+    def test_android_resource_admission_reads_emulator_gigabyte_memory(self) -> None:
+        """The owned Pixel 6 AVD writes hw.ramSize=2G, not an integer MiB value."""
+        with tempfile.TemporaryDirectory() as temporary:
+            avd = Path(temporary) / "vpn-control-visual-api35.avd"
+            avd.mkdir()
+            (avd / "config.ini").write_text("hw.ramSize=2G\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {"ANDROID_AVD_HOME": temporary}):
+                self.assertEqual(2048, visual_platform._android_memory_mib("vpn-control-visual-api35"))
+
     def test_android_probe_requires_named_isolated_avd(self) -> None:
         with (
             mock.patch.object(visual_platform, "_android_tool", return_value="/sdk/tool"),

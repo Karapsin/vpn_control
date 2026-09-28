@@ -1,0 +1,124 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from agent_tools import windows_msi_base_prepare as base
+
+
+CORR = "05fd80ad-b93f-4450-a3e5-a67d14f24478"
+SOURCE = "a" * 40
+ARTIFACT = "sha256-" + "b" * 64
+REQUEST = {"host": "archlinux", "correlationId": CORR, "sourceSha": SOURCE,
+           "fixtureReceiptArtifactId": ARTIFACT, "baseMsiArtifactId": ARTIFACT,
+           "targetMsiArtifactId": ARTIFACT, "expectedCurrentVersion": "2.1.17"}
+PAIR = {"sourceSha": SOURCE, "sourceFingerprint": "c" * 64,
+        "receiptArtifactId": ARTIFACT, "baseArtifactId": ARTIFACT,
+        "targetArtifactId": ARTIFACT, "baseVersion": "2.1.19", "targetVersion": "2.2.0",
+        "baseCliSha256": "d" * 64, "baseAppJarSha256": "e" * 64,
+        "baseHelperSha256": "f" * 64, "baseAppJarName": "desktopApp-2.1.19.jar"}
+
+
+class BasePrepareTests(unittest.TestCase):
+    def test_exact_request_and_canonical_correlation(self):
+        self.assertEqual(base._request(REQUEST), REQUEST)
+        for change in ({"host": "other"}, {"extra": 1}, {"correlationId": CORR.upper()},
+                       {"baseMsiArtifactId": "b" * 64}):
+            value = dict(REQUEST, **change)
+            with self.assertRaises(base.WindowsMsiBasePrepareError):
+                base._request(value)
+
+    def test_original_user_task_binds_msi_and_installed_bytes(self):
+        body = base._task(CORR, PAIR, "2.1.17", "S-1-5-21-1-2-3-1002")
+        for token in ("SessionId", "RunLevel Limited", "msiexec.exe", "MSIINSTALLPERUSER=1",
+                      "S-1-5-21-1-2-3-1002", PAIR["baseCliSha256"], PAIR["baseHelperSha256"],
+                      "Get-FileHash", "DisplayVersion"):
+            if token == "RunLevel Limited":
+                self.assertIn("RunLevel Limited", base._bootstrap(CORR, PAIR, "2.1.17", "S-1-5-21-1-2-3-1002"))
+            else:
+                self.assertIn(token, body)
+        self.assertIn("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", body)
+
+    def test_product_inventory_accepts_only_one_exact_hklm_or_hkcu_registration(self):
+        product = {"version": "2.1.19", "productCode": "{6C1D6870-76CD-3552-9176-F6AE1A3E268E}",
+                   "installLocation": "C:\\Users\\vpncp117\\AppData\\Local\\vpn-control\\", "hive": "HKCU"}
+        self.assertTrue(base._unique_product([product], "2.1.19"))
+        self.assertFalse(base._unique_product([product, dict(product, hive="HKLM")], "2.1.19"))
+        self.assertFalse(base._unique_product([dict(product, version="2.1.17")], "2.1.19"))
+        self.assertFalse(base._unique_product([dict(product, installLocation="C:\\Other")], "2.1.19"))
+
+    def test_downgrade_is_rejected_before_transfer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            newer = dict(REQUEST, expectedCurrentVersion="2.2.0")
+            with patch.object(base.windows_msi_public_scenario, "_admit_pair", return_value=PAIR):
+                with self.assertRaisesRegex(base.WindowsMsiBasePrepareError, "newer"):
+                    base._admit(Path(directory), newer)
+
+    def test_transfer_timeout_is_bounded_and_unknown(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory) / "base.msi"
+            package.write_bytes(b"source")
+            with patch.object(base.windows_credential_probe_ssh, "_remote_command", return_value=("python3", "-c", "pass")), \
+                 patch.object(base.ssh_transport, "build_ssh_argv", return_value=["ssh", "archlinux"]), \
+                 patch.object(base.subprocess, "run", side_effect=subprocess.TimeoutExpired("ssh", 1800)) as run:
+                self.assertIsNone(base._remote(object(), "", (), package, 1800))
+                self.assertEqual(run.call_args.kwargs["timeout"], 1800)
+                self.assertTrue(run.call_args.kwargs["stdin"].closed)
+
+    def test_preflight_is_inert_and_bounded(self):
+        script = base._powershell_preflight_script()
+        self.assertIn("Parser]::ParseInput", script)
+        self.assertNotIn("Start-ScheduledTask", script)
+        self.assertNotIn("msiexec.exe", script)
+        self.assertLess(len(__import__("base64").b64encode(script.encode("utf-16le"))), 30000)
+
+    def test_unknown_submission_reserves_once_and_never_replays(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "base.msi"
+            package.write_bytes(b"x")
+            class Target:
+                fixture_transfer_root = Path("/private/cp117")
+            with patch.object(base, "_admit", return_value=(PAIR, package, 1)), \
+                 patch.object(base, "_descriptor", return_value=(object(), Target(),
+                     ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002"))), \
+                 patch.object(base, "_remote", return_value=None) as remote:
+                result = base.start(root, REQUEST)
+                self.assertEqual(result["state"], "unknown")
+                self.assertFalse(result["replayAllowed"])
+                self.assertEqual(base.start(root, REQUEST)["state"], "unknown")
+                self.assertEqual(remote.call_count, 1)
+                self.assertEqual(base._private_intent(root, CORR)["request"], REQUEST)
+
+    def test_second_correlation_is_blocked_after_unknown(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base._reserve(root, {"request": REQUEST, "pair": PAIR})
+            another = dict(REQUEST, correlationId="70fa550a-a622-4123-b89c-f68a087ce808")
+            with self.assertRaises(base.WindowsMsiBasePrepareError):
+                base._reserve(root, {"request": another, "pair": PAIR})
+
+    def test_status_rejects_forged_passed_readback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            intent = {"request": REQUEST, "pair": PAIR, "environment": "windows-cp117",
+                      "socketPath": "/qga.sock", "pid": 589342, "startTicks": 520739,
+                      "expectedSid": "S-1-5-21-1-2-3-1002", "commandSha256": "0" * 64}
+            base._reserve(root, intent)
+            class Target:
+                fixture_transfer_root = Path("/private/cp117")
+            forged = {"state": "observed", "correlationId": CORR,
+                      "result": {"version": 1, "correlationId": CORR, "stage": "READBACK",
+                                 "result": "PASSED", "exitCode": 0}}
+            with patch.object(base, "_descriptor", return_value=(object(), Target(),
+                 ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002"))), \
+                 patch.object(base, "_remote", return_value=json.dumps(forged).encode()):
+                self.assertEqual(base.status(root, {"correlationId": CORR})["state"], "unknown")
+
+
+if __name__ == "__main__":
+    unittest.main()

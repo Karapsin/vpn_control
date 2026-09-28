@@ -10,6 +10,7 @@ import json
 import locale
 import os
 import platform as host_platform
+import re
 import shlex
 import shutil
 import socket
@@ -308,7 +309,11 @@ def _android_memory_mib(avd_name: str) -> int:
         values = dict(
             line.split("=", 1) for line in config.read_text(encoding="utf-8").splitlines() if "=" in line
         )
-        memory = int(values["hw.ramSize"])
+        configured = values["hw.ramSize"].strip()
+        match = re.fullmatch(r"([0-9]+)([MmGg]?)", configured)
+        if match is None:
+            raise ValueError("invalid Android AVD memory")
+        memory = int(match.group(1)) * (1024 if match.group(2).lower() == "g" else 1)
     except (OSError, KeyError, ValueError):
         raise VisualPlatformError("resource admission needs the owned Android AVD hw.ramSize")
     if memory <= 0:

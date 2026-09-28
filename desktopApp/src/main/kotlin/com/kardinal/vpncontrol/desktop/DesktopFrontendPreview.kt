@@ -4,8 +4,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.awt.ComposeWindow
 import com.kardinal.vpncontrol.control.ControlSession
+import com.kardinal.vpncontrol.control.toControlValues
 import com.kardinal.vpncontrol.model.*
 import kotlinx.coroutines.flow.MutableStateFlow
+
+internal fun visualPreviewFrame(service: DesktopAppService, owner: String): Pair<ControlSnapshot, DesktopPresentationSnapshot> {
+    val realRuntime = service.controlSnapshot(owner)
+    val visualState = service.state
+    // Visual scenes simulate connection state without starting sing-box. Keep the fixture's
+    // runtime and statistics fields consistent so the normal strict frontend decoder applies.
+    val previewRuntime = realRuntime.copy(
+        runtimeRunning = visualState.isVpnRunning,
+        activeMode = visualState.appMode.takeIf { visualState.isVpnRunning },
+        activeLocationId = realRuntime.selectedLocationId.takeIf { visualState.isVpnRunning },
+        runtimeStartedAt = visualState.sessionStartedAtEpochMillis.takeIf { visualState.isVpnRunning && it > 0 },
+    )
+    val frame = service.controlPresentationSnapshot(owner)
+    val previewFrame = frame.copy(values = frame.values +
+        ("runtime" to ControlValue.ObjectValue(previewRuntime.toControlValues())))
+    return previewRuntime to previewFrame
+}
 
 /** Explicit visual-fixture adapter only. Never used by normal startup and never executes effects. */
 @Composable
@@ -13,9 +31,9 @@ internal fun DesktopVpnControlApp(windowProvider: () -> ComposeWindow, service: 
     onCheckAndDownloadUpdate: () -> Unit, onDismissOrCancelUpdate: () -> Unit, onInstallUpdate: () -> Unit) {
     val client = remember(service) {
         val owner = "visual-preview"
-        val snapshot = service.controlPresentationSnapshot(owner)
+        val (runtimeSnapshot, snapshot) = visualPreviewFrame(service, owner)
         val session = object : ControlSession {
-            override val snapshots = MutableStateFlow(service.controlSnapshot(owner))
+            override val snapshots = MutableStateFlow(runtimeSnapshot)
             override suspend fun submit(request: ControlRequest): ControlResult {
                 if (request.command.operation == ControlOperationId.SETTINGS_SHOW) {
                     val read = service.controlSettingsSnapshot()

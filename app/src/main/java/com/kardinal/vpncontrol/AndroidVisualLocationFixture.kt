@@ -7,12 +7,24 @@ import com.kardinal.vpncontrol.model.ProfileSourceMode
 internal class AndroidVisualCaptureFrame(val state: MainUiState, val locations: AndroidLocationVisualState)
 
 internal fun androidVisualCaptureFrame(state: MainUiState): AndroidVisualCaptureFrame {
-    val reference = state.selectedProfileRawLink.ifBlank { state.selectedProfileJson }
-    return AndroidVisualCaptureFrame(state, AndroidLocationVisualState(
-        activeLocationKey = reference.takeIf { state.isVpnRunning && it.isNotBlank() }?.let {
-            androidLocationVisualKey(it, if (state.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS) "" else state.selectedProfileSourceUrl)
+    val selected = LocationConfigs.normalizeStoredReference(state.selectedProfileRawLink)
+    val frameState = if (state.currentScreen == AppScreen.LOCATIONS && selected.isNotBlank() &&
+        state.currentLocations.any { LocationConfigs.normalizeStoredReference(it) == selected }
+    ) {
+        state.copy(
+            currentLocations = state.currentLocations.map(LocationConfigs::normalizeStoredReference),
+            selectedProfileJson = selected,
+            locationBenchmarkDetails = state.locationBenchmarkDetails.mapKeys {
+                LocationConfigs.normalizeStoredReference(it.key)
+            },
+        )
+    } else state
+    val reference = frameState.selectedProfileRawLink.ifBlank { frameState.selectedProfileJson }
+    return AndroidVisualCaptureFrame(frameState, AndroidLocationVisualState(
+        activeLocationKey = reference.takeIf { frameState.isVpnRunning && it.isNotBlank() }?.let {
+            androidLocationVisualKey(it, if (frameState.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS) "" else frameState.selectedProfileSourceUrl)
         },
-        restartRequired = state.homeSshRestartPending && state.isVpnRunning,
+        restartRequired = frameState.homeSshRestartPending && frameState.isVpnRunning,
     ))
 }
 

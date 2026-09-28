@@ -59,6 +59,45 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         with patch.object(linux_update_fixture_workflow, "status", side_effect=ValueError("Invalid inputs")):
             self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-fixture-status", {"correlationId": request["correlationId"], "shell": "id"})["ok"])
 
+    def test_linux_base_prepare_route_preserves_no_replay_and_terminal_failure(self):
+        from agent_tools import linux_rpm_base_prepare
+        preflight = {"host": "fedora2328", "environment": "fedora2328",
+                     "expectedCurrentNevra": "vpn-control-2.1.17-1.x86_64"}
+        with patch.object(linux_rpm_base_prepare, "preflight", return_value={"state": "ready"}) as observe:
+            result = mcp_server._vm_workflow_impl("linux-rpm-base-prepare-preflight", preflight)
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["productAction"])
+            observe.assert_called_once_with(mcp_server.REPO_ROOT, preflight)
+        request = {"host": "fedora2328", "environment": "fedora2328", "baseArtifactId": "sha256-" + "a" * 64,
+                   "sourceSha": "b" * 40, "sourceFingerprint": "c" * 64,
+                   "expectedCurrentNevra": "vpn-control-2.1.17-1.x86_64",
+                   "expectedBaseNevra": "vpn-control-2.1.19-1.x86_64",
+                   "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+        with patch.object(linux_rpm_base_prepare, "start", return_value={"state": "unknown", "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("linux-rpm-base-prepare-start", request)
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, request)
+        with patch.object(linux_rpm_base_prepare, "status", return_value={"state": "terminal", "result": "failed"}) as status:
+            result = mcp_server._vm_workflow_impl("linux-rpm-base-prepare-status", {"correlationId": request["correlationId"]})
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["productAction"])
+            status.assert_called_once_with(mcp_server.REPO_ROOT, {"correlationId": request["correlationId"]})
+        with patch.object(linux_rpm_base_prepare, "status", side_effect=ValueError("Invalid fields")) as status:
+            self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-base-prepare-status", {"correlationId": request["correlationId"], "command": "rpm"})["ok"])
+            status.assert_called_once_with(mcp_server.REPO_ROOT, {"correlationId": request["correlationId"], "command": "rpm"})
+
+    def test_linux_owner_observation_is_read_only_and_requires_observed_state(self):
+        from agent_tools import linux_rpm_base_prepare
+        request = {"host": "fedora2328", "environment": "fedora2328", "pid": 18367, "startTicks": 2078693}
+        with patch.object(linux_rpm_base_prepare, "observe_owner", return_value={"state": "unknown"}) as observe:
+            result = mcp_server._vm_workflow_impl("linux-rpm-owner-observe", request)
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["productAction"])
+            observe.assert_called_once_with(mcp_server.REPO_ROOT, request)
+        with patch.object(linux_rpm_base_prepare, "observe_owner", return_value={"state": "observed", "runtimeRunning": False}):
+            self.assertTrue(mcp_server._vm_workflow_impl("linux-rpm-owner-observe", request)["ok"])
+
     def test_android_admission_readback_requires_exact_inputs_and_actual_admission(self):
         from agent_tools import android_admission_readback
         request = {"host": "archlinux", "device": "api35", "correlationId": "ad399bdd-25cb-4f71-857e-34ad18ae0399"}
@@ -126,6 +165,46 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             self.assertFalse(result["productAction"])
             collect.assert_called_once_with(mcp_server.REPO_ROOT, correlation)
 
+    def test_android_package_install_route_never_promotes_unknown_or_collect_to_mutation_admission(self):
+        from agent_tools import android_package_install
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "device": "api35", "correlationId": correlation,
+                   "artifactId": "sha256-" + "b" * 64, "stageIdentity": {"correlationId": "stage"},
+                   "backupCorrelationId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                   "expectedBackupSha256": "d" * 64, "expectedOldBaseSha256": "e" * 64,
+                   "expectedOwner": "owner", "expectedRevision": 2}
+        with patch.object(android_package_install, "start", return_value={"ok": False, "state": "unknown", "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("android-package-install-start", request)
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            start.assert_called_once()
+        with patch.object(android_package_install, "start") as start:
+            self.assertFalse(mcp_server._vm_workflow_impl("android-package-install-start", {**request, "shell": "id"})["ok"])
+            start.assert_not_called()
+        with patch.object(android_package_install, "collect", return_value={"ok": True, "state": "complete", "admissionReady": False}) as collect:
+            result = mcp_server._vm_workflow_impl("android-package-install-collect", {"correlationId": correlation})
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["admissionReady"])
+            self.assertFalse(result["productAction"])
+            collect.assert_called_once_with(mcp_server.REPO_ROOT, correlation)
+
+    def test_android_public_inspect_routes_only_bounded_readonly_request(self):
+        from agent_tools import android_public_inspect
+        request = {"host": "archlinux", "device": "api29", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                   "expectedBaseSha256": "b" * 64, "expectedOwner": "owner", "expectedRevision": 0}
+        with patch.object(android_public_inspect, "inspect", return_value={"ok": True, "outcome": "admitted", "nativeMutationAllowed": False}) as inspect:
+            result = mcp_server._vm_workflow_impl("android-public-inspect", request)
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["productAction"])
+            self.assertFalse(result["nativeMutationAllowed"])
+            inspect.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", "api29", request["correlationId"],
+                "b" * 64, "owner", 0, timeout_seconds=60)
+        with patch.object(android_public_inspect, "inspect", return_value={"ok": False, "outcome": "unknown", "nativeMutationAllowed": False}):
+            self.assertFalse(mcp_server._vm_workflow_impl("android-public-inspect", request)["ok"])
+        with patch.object(android_public_inspect, "inspect") as inspect:
+            self.assertFalse(mcp_server._vm_workflow_impl("android-public-inspect", {**request, "command": "on"})["ok"])
+            inspect.assert_not_called()
+
     def test_windows_msi_preinstall_status_only_accepts_exact_readonly_job(self):
         from agent_tools import windows_msi_public_scenario
         request = {"host": "archlinux", "jobId": "9107428f-9c80-4284-9f4e-926350105a59"}
@@ -168,6 +247,28 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             self.assertFalse(result["installedVerified"])
         with patch.object(windows_msi_public_scenario, "collect", return_value={"state": "observed", "collected": True, "installedVerified": False}):
             self.assertFalse(mcp_server._vm_workflow_impl("windows-msi-public-collect", {"host": "archlinux", "correlationId": start_request["correlationId"]})["installedVerified"])
+
+    def test_windows_base_route_requires_inert_preflight_and_never_replays_unknown(self):
+        from agent_tools import windows_msi_base_prepare
+        request = {"host": "archlinux", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                   "sourceSha": "a" * 40, "fixtureReceiptArtifactId": "sha256-" + "b" * 64,
+                   "baseMsiArtifactId": "sha256-" + "c" * 64,
+                   "targetMsiArtifactId": "sha256-" + "d" * 64, "expectedCurrentVersion": "2.1.17"}
+        with patch.object(windows_msi_base_prepare, "powershell_preflight", return_value={"state": "passed"}) as preflight:
+            result = mcp_server._vm_workflow_impl("windows-msi-base-preflight", {"host": "archlinux"})
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["productAction"])
+            preflight.assert_called_once_with(mcp_server.REPO_ROOT, {"host": "archlinux"})
+        with patch.object(windows_msi_base_prepare, "start", return_value={"state": "unknown", "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("windows-msi-base-start", request)
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, request)
+        with patch.object(windows_msi_base_prepare, "status", return_value={"state": "terminal", "result": "FAILED"}) as status:
+            result = mcp_server._vm_workflow_impl("windows-msi-base-status", {"correlationId": request["correlationId"]})
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["productAction"])
+            status.assert_called_once_with(mcp_server.REPO_ROOT, {"correlationId": request["correlationId"]})
 
     def test_batch_observation_does_not_accept_replacement_plan(self):
         from agent_tools import native_scenario_batch

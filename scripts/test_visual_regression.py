@@ -21,6 +21,15 @@ SPEC.loader.exec_module(visual_regression)
 
 
 class VisualRegressionTest(unittest.TestCase):
+    def test_android_notification_date_exclusion_covers_header_without_hiding_subject(self) -> None:
+        manifest = json.loads(visual_regression.DEFAULT_MANIFEST.read_text(encoding="utf-8"))
+        scene = next(item for item in manifest["scenes"] if item["id"] == "android-vpn-notification")
+        ignored = visual_regression._ignored_pixels(1080, 2400, scene["ignore_regions"])
+        # Native API 35 capture moved the date across this entire observed header span.
+        for x, y in ((53, 48), (180, 62), (390, 62), (402, 75)):
+            self.assertEqual(1, ignored[y * 1080 + x], (x, y))
+        self.assertEqual(0, ignored[600 * 1080 + 200])
+
     def test_geometry_target_size_uses_capture_density(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             geometry = Path(temporary) / "scene.geometry.json"

@@ -124,6 +124,16 @@ subprocess.Popen=lambda *args,**kwargs: FakeProcess()
         self.assertEqual(["uid"],[item["stage"] for item in stages])
         self.assertLess(time.monotonic()-start, 4)
 
+    def test_stream_probe_waits_for_exit_after_all_stage_output_reaches_eof(self):
+        stages = list(admission._PREFLIGHT_STAGES)
+        script = ("import json,os,time\n"+
+            "for stage in "+repr(stages)+": print(json.dumps({'stage':stage,'ok':True,'elapsedMs':1}),flush=True)\n"+
+            "os.close(1); time.sleep(1)\n")
+        code, observed, timed_out = admission._run_stream_probe([sys.executable,"-c",script], 2)
+        self.assertEqual(0,code)
+        self.assertFalse(timed_out)
+        self.assertEqual(stages,[item["stage"] for item in observed])
+
     def test_nested_password_profile_uses_key_authenticated_connection_host(self):
         profile = {"adb":"/remote/adb", "cli":"/remote/vpn-control", "serial":"emulator-5554",
                    "expectedAvd":"owned-api35", "api":35}

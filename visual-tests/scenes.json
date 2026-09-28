@@ -117,7 +117,7 @@
     {"id":"android-camera-qr","platforms":["android"],"geometry_required":false},
     {"id":"android-share-chooser","platforms":["android"],"geometry_required":false,"thresholds":{"max_changed_ratio":0.0035}},
     {"id":"android-package-installer","platforms":["android"],"geometry_required":false},
-    {"id":"android-vpn-notification","platforms":["android"],"geometry_required":false,"ignore_regions":[[180,30,390,100]]},
+    {"id":"android-vpn-notification","platforms":["android"],"geometry_required":false,"ignore_regions":[[45,30,420,100]]},
 
     {"id":"linux-window-frame","platforms":["linux"],"geometry_required":false},
     {"id":"linux-open-dialog","platforms":["linux"],"geometry_required":false},

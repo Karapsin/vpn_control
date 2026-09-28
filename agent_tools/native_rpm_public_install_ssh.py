@@ -673,7 +673,7 @@ class RpmPublicInstallSshDriver:
         return hashes
 
     def _remote(self, config: Any, host: str, program: str, args: tuple[str, ...], payload: Path | None = None,
-                *, privileged: bool = False) -> Mapping[str, Any] | None:
+                *, privileged: bool = False, diagnostic: bool = False) -> Mapping[str, Any] | None:
         import subprocess
         import threading
         from contextlib import nullcontext
@@ -684,9 +684,13 @@ class RpmPublicInstallSshDriver:
         context = tempfile.TemporaryDirectory(prefix='vpn-rpm-askpass-') if connection.password is not None else nullcontext(None)
         with context as temporary:
             environment = ssh_transport._askpass_environment(connection.password, Path(temporary))[1] if temporary is not None else None
+            diagnostic_file = tempfile.TemporaryFile() if diagnostic else None
             try:
-                process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=environment)
+                process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                           stderr=diagnostic_file if diagnostic_file is not None else subprocess.DEVNULL,
+                                           env=environment)
             except OSError:
+                if diagnostic_file is not None: diagnostic_file.close()
                 return None
             errors: list[Exception] = []
             def write() -> None:
@@ -717,7 +721,19 @@ class RpmPublicInstallSshDriver:
                 process.stdout.close()
             writer.join(timeout=1)
             if expired.is_set() or errors or process.returncode != 0 or len(output) > 8192:
+                if diagnostic_file is not None:
+                    diagnostic_file.seek(0)
+                    tail = diagnostic_file.read(4096).decode('utf-8', 'replace')
+                    diagnostic_file.close()
+                    category = ('sudo-denied' if 'sudo:' in tail else
+                                'python-syntax' if 'SyntaxError' in tail or 'IndentationError' in tail else
+                                'python-exception' if 'Traceback' in tail else
+                                'ssh-auth' if 'Permission denied' in tail else
+                                'remote-exit')
+                    return {'state': 'unknown', 'reason': category,
+                            'remoteExitCode': process.returncode if type(process.returncode) is int else None}
                 return None
+            if diagnostic_file is not None: diagnostic_file.close()
             try:
                 value = json.loads(output)
                 return value if isinstance(value, dict) else None
