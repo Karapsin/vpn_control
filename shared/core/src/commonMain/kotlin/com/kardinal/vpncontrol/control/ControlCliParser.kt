@@ -54,6 +54,7 @@ object ControlCliParser {
         SOURCE_SET -> ControlArgumentSchema(listOf("source", "subscription-id"), 1)
         SUBSCRIPTIONS_SHOW, SUBSCRIPTIONS_DELETE, SUBSCRIPTIONS_REFRESH,
         OPERATIONS_STATUS, OPERATIONS_CANCEL -> ControlArgumentSchema(listOf("id"))
+        UPDATES_TRANSPORT_PROBE -> ControlArgumentSchema(listOf("correlation-id"))
         OPERATIONS_WAIT -> ControlArgumentSchema(listOf("id"), valuedOptions = setOf("--output"))
         SUBSCRIPTIONS_ADD -> ControlArgumentSchema(valuedOptions = input + setOf("--source", "--name"))
         SUBSCRIPTIONS_UPDATE -> ControlArgumentSchema(listOf("id"), valuedOptions = setOf("--source", "--input", "--name"))
@@ -175,6 +176,11 @@ object ControlCliParser {
             normalizedPositionals.any { it.isBlank() }) return invalid("Incorrect command arguments.")
         if (client.asynchronous && !descriptor.supportsAsync) return invalid("This command does not support asynchronous execution.")
         if (client.ifRevision != null && !descriptor.mutates) return invalid("Revision guards apply only to mutations.")
+        if (descriptor.id == UPDATES_TRANSPORT_PROBE &&
+            (client.android || client.controllerId == null || client.interactive || client.asynchronous ||
+                normalizedPositionals.firstOrNull()?.let { raw ->
+                    Regex("[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}").matches(raw)
+                } != true)) return invalid("Transport probe requires a canonical correlation ID and observed desktop controller.")
         if (client.json && options["--output"] == "-") return invalid("JSON output cannot be combined with a raw stdout export.")
         if ("--format" in options && options["--format"] !in setOf("json", "qr-png")) return invalid("Unsupported export format.")
         if ("--limit" in options && (options["--limit"]?.toIntOrNull()?.let { it >= 0 } != true)) return invalid("Log limit must be a non-negative integer.")

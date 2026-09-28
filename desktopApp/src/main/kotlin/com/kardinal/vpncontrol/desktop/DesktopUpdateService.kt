@@ -18,6 +18,7 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.Locale
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -34,6 +35,65 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeoutOrNull
 
 internal data class DesktopUpdateCheck(val updateAvailable: Boolean, val asset: UpdateAsset?, val releaseNotesUrl: String)
+
+internal data class DesktopUpdateTransportProbe(
+    val correlationId: String,
+    val manifestSha256: String,
+    val peerCertificateSha256: String,
+    val manifestBuildNumber: Int,
+    val availableVersion: String?,
+    val assetSha256: String?,
+    val assetSizeBytes: Long?,
+)
+
+private const val MAX_PROBE_MANIFEST_BYTES = 1024 * 1024
+
+/** Reads the response from the same HTTP client as check(), including its accepted TLS peer. */
+internal suspend fun readDesktopUpdateTransportProbe(
+    response: CompletableFuture<HttpResponse<InputStream>>,
+    expectedUri: URI,
+    correlationId: String,
+    trustUrl: (String) -> Boolean,
+    currentBuildNumber: Int,
+    platform: UpdatePlatform,
+    packageTypes: List<UpdatePackageType>,
+    architecture: String,
+): DesktopUpdateTransportProbe {
+    val caller = currentCoroutineContext()
+    return try {
+        coroutineScope {
+            val lease = DesktopUpdateResponseLease(response)
+            val reader = async(Dispatchers.IO) {
+                runInterruptible {
+                    val received = response.get()
+                    val input = lease.acquire(received)
+                    if (received.statusCode() != 200 || received.previousResponse().isPresent ||
+                        received.uri() != expectedUri ||
+                        received.request().uri() != expectedUri || expectedUri.scheme != "https") {
+                        error("Update transport response is not the exact HTTPS manifest")
+                    }
+                    val peer = received.sslSession().orElseThrow {
+                        IllegalStateException("Update transport response has no TLS session")
+                    }.peerCertificates.firstOrNull() ?: error("Update transport response has no peer certificate")
+                    val bytes = input.use { it.readNBytes(MAX_PROBE_MANIFEST_BYTES + 1) }
+                    require(bytes.size <= MAX_PROBE_MANIFEST_BYTES) { "Update transport manifest exceeds the probe limit" }
+                    val manifest = AppUpdateLogic.parseManifest(bytes.toString(Charsets.UTF_8), trustUrl)
+                    val asset = if (AppUpdateLogic.isUpdateAvailable(currentBuildNumber, manifest))
+                        AppUpdateLogic.selectAsset(manifest, platform, setOf(architecture), packageTypes) else null
+                    DesktopUpdateTransportProbe(correlationId, bytes.updateProbeSha256(), peer.encoded.updateProbeSha256(),
+                        manifest.buildNumber, asset?.displayVersion, asset?.sha256, asset?.sizeBytes)
+                }
+            }
+            try { reader.await() } finally { lease.close() }
+        }
+    } catch (failure: Exception) {
+        caller.ensureActive()
+        throw failure
+    }
+}
+
+private fun ByteArray.updateProbeSha256(): String = MessageDigest.getInstance("SHA-256")
+    .digest(this).joinToString("") { "%02x".format(it) }
 
 private val ARCH_LINUX_IDS = setOf("arch", "archlinux")
 private val DEBIAN_LINUX_IDS = setOf("debian", "ubuntu")
@@ -117,6 +177,7 @@ internal class DesktopUpdateService(
     private val macInstallerFactory: (Path) -> DesktopMacInstallAdapter = { DesktopMacInstaller(it) },
     private val linuxOsReleaseReader: () -> String = { Files.readString(Path.of("/etc/os-release")) },
     private val linuxCommandExists: ((String) -> Boolean)? = null,
+    private val probeResponseFactory: ((HttpRequest) -> CompletableFuture<HttpResponse<InputStream>>)? = null,
 ) {
     private var preparedPackage: Path? = null
     private var installerCancelFile: Path? = null
@@ -277,6 +338,30 @@ internal class DesktopUpdateService(
 
     /** Manifest-only operation: no package download, installer, or runtime effect. */
     suspend fun check(): Result<DesktopUpdateCheck> = exclusive { checkInternal() }
+
+    /** A read-only, bounded owner transport observation; it never changes update state. */
+    suspend fun probeTransport(correlationId: String): Result<DesktopUpdateTransportProbe> = exclusive {
+        if (runCatching { UUID.fromString(correlationId).toString() }.getOrNull() != correlationId)
+            return@exclusive Result.failure(IllegalArgumentException("INVALID_ARGUMENT"))
+        val uri = URI.create(manifestUrl)
+        if (uri.scheme != "https" || !trustUrl(manifestUrl))
+            return@exclusive Result.failure(IllegalArgumentException("INVALID_ARGUMENT"))
+        try {
+            val selection = currentPlatformSelection()
+            val request = updateRequest(manifestUrl, "application/json", correlationId)
+            val response = probeResponseFactory?.invoke(request)
+                ?: httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
+            val probe = withTimeoutOrNull(300_000) {
+                readDesktopUpdateTransportProbe(response, uri, correlationId, trustUrl, buildInfo.buildNumber,
+                    selection.platform, selection.packageTypes, osArchitecture)
+            } ?: error("Update transport probe timed out")
+            Result.success(probe)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            Result.failure(IllegalStateException("UPDATE_TRANSPORT_PROBE_FAILED"))
+        }
+    }
 
     private suspend fun checkInternal(): Result<DesktopUpdateCheck> {
         checkedUpdate = null
@@ -660,9 +745,10 @@ internal class DesktopUpdateService(
         return response.body()
     }
 
-    private fun updateRequest(url: String, accept: String): HttpRequest = HttpRequest.newBuilder(URI.create(url))
-        .timeout(Duration.ofMinutes(5)).header("Accept", accept)
-        .header("User-Agent", "VPNControlDesktop/${buildInfo.displayVersion}").GET().build()
+    private fun updateRequest(url: String, accept: String, probeId: String? = null): HttpRequest =
+        HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofMinutes(5)).header("Accept", accept)
+            .header("User-Agent", "VPNControlDesktop/${buildInfo.displayVersion}")
+            .apply { if (probeId != null) header("X-VPN-Control-Probe-Id", probeId) }.GET().build()
 
     private fun Path.sha256(): String {
         val digest = MessageDigest.getInstance("SHA-256")

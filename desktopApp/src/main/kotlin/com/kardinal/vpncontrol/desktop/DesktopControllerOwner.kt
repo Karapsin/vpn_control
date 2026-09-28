@@ -54,7 +54,8 @@ internal class DesktopControllerOwner(
                 installHandoff?.releaseAfterTerminal(receipt)
             } }),
         inspectStatus = service::controlSnapshot, inspectRead = service::controlReadSnapshot,
-        inspectPresentation = service::controlPresentationSnapshot)
+        inspectPresentation = service::controlPresentationSnapshot,
+        probeUpdateTransport = service::probeControlUpdateTransport)
 
     internal val frontends = DesktopOwnerFrontendLifecycle(controllerId, scope,
         initialize = { session.initialize { service.resumePreviousConnectionIfNeeded() } },

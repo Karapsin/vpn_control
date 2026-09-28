@@ -6,6 +6,9 @@ on:
       base_version:
         required: true
         type: string
+      correlation_id:
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -18,12 +21,24 @@ jobs:
     timeout-minutes: 60
     env:
       BASE_VERSION: ${{ inputs.base_version }}
+      FIXTURE_CORRELATION_ID: ${{ inputs.correlation_id }}
 
     steps:
       - name: Checkout selected development source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Validate optional fixture correlation
+        shell: pwsh
+        run: |
+          if ($env:FIXTURE_CORRELATION_ID) {
+            $parsed = [Guid]::Empty
+            if (-not [Guid]::TryParseExact($env:FIXTURE_CORRELATION_ID, 'D', [ref]$parsed) -or
+                $parsed.ToString('D') -cne $env:FIXTURE_CORRELATION_ID) {
+              throw 'correlation_id must be canonical UUID'
+            }
+          }
 
       - name: Initialize fixture workspace
         shell: pwsh
@@ -105,7 +120,7 @@ jobs:
       - name: Upload immutable fixture pair and provenance
         uses: actions/upload-artifact@v4
         with:
-          name: vpn-control-windows-update-fixture-${{ github.sha }}
+          name: ${{ inputs.correlation_id != '' && format('vpn-control-windows-update-fixture-{0}', inputs.correlation_id) || format('vpn-control-windows-update-fixture-{0}', github.sha) }}
           path: |
             ${{ runner.temp }}/vpn-control-windows-update-fixture/fixture-receipt.json
             ${{ runner.temp }}/vpn-control-windows-update-fixture/snapshot.json
@@ -120,7 +135,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: vpn-control-windows-update-fixture-failure-${{ github.sha }}
+          name: ${{ inputs.correlation_id != '' && format('vpn-control-windows-update-fixture-failure-{0}', inputs.correlation_id) || format('vpn-control-windows-update-fixture-failure-{0}', github.sha) }}
           path: |
             ${{ runner.temp }}/vpn-control-windows-update-fixture/snapshot.json
             ${{ runner.temp }}/vpn-control-windows-update-fixture/build-plan.json

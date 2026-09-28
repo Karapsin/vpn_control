@@ -1,8 +1,10 @@
 import hashlib
+import base64
 import io
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import sys
@@ -10,6 +12,7 @@ import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+import uuid
 import zipfile
 import ssl
 
@@ -71,10 +74,11 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             ready_file = directory / "ready.json"
-            (directory / "fixture-receipt.json").write_text(json.dumps({
-                "sourceFingerprint": "f" * 64}))
             manifest = {"schemaVersion": 1, "assets": [{"fileName": "target.msi"}],
                         "buildNumber": 16800}
+            fixture_receipt = directory / "fixture-receipt.json"
+            fixture_receipt.write_text(json.dumps({
+                "sourceFingerprint": "f" * 64, "manifest": manifest}))
             served_body = json.dumps(manifest, separators=(",", ":")).encode()
 
             class FakeServer:
@@ -91,6 +95,14 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                     ready = json.loads(ready_file.read_text())
                     self_assert.assertEqual(hashlib.sha256(served_body).hexdigest(),
                                             ready.get("manifestSha256"))
+                    self_assert.assertEqual("a6285846-10e4-45c5-9cf7-b138a5beb222",
+                                            ready.get("serverInstanceId"))
+                    self_assert.assertEqual("c" * 64, ready.get("peerCertificateSha256"))
+                    self_assert.assertEqual(hashlib.sha256(fixture_receipt.read_bytes()).hexdigest(),
+                                            ready.get("fixtureReceiptSha256"))
+                    self_assert.assertEqual(1234, ready.get("serverPid"))
+                    self_assert.assertEqual("darwin:100:123", ready.get("serverProcessStartIdentity"))
+                    self_assert.assertEqual(0o600, ready_file.stat().st_mode & 0o777)
                     self_assert.assertEqual(["-Dhttps.proxyHost=127.0.0.1",
                                              "-Dhttps.proxyPort=53633",
                                              "-Dhttp.proxyHost=127.0.0.1",
@@ -100,10 +112,176 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             self_assert = self
             with patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
                     patch("prepare_desktop_update_fixture.load_resources", return_value=(manifest, {})), \
+                    patch("prepare_desktop_update_fixture.probe_certificate_sha256", return_value="c" * 64), \
+                    patch("prepare_desktop_update_fixture.server_process_identity",
+                          return_value={"serverPid": 1234,
+                                        "serverProcessStartIdentity": "darwin:100:123"}), \
+                    patch("prepare_desktop_update_fixture.uuid.uuid4",
+                          return_value=uuid.UUID("a6285846-10e4-45c5-9cf7-b138a5beb222")), \
                     patch("prepare_desktop_update_fixture.ssl.SSLContext"), \
                     patch("prepare_desktop_update_fixture.socketserver.ThreadingTCPServer", FakeServer):
                 prepare_desktop_update_fixture.serve(
                     directory, directory / "server.pem", directory / "server.key", ready_file, True)
+
+    def test_server_process_identity_uses_stable_native_creation_time(self):
+        first = prepare_desktop_update_fixture.server_process_identity()
+        second = prepare_desktop_update_fixture.server_process_identity()
+        self.assertEqual(first, second)
+        self.assertEqual(os.getpid(), first["serverPid"])
+        self.assertTrue(first["serverProcessStartIdentity"].startswith(
+            {"Linux": "linux:", "Darwin": "darwin:", "Windows": "windows:"}[platform.system()]))
+        with patch("prepare_desktop_update_fixture.platform.system", return_value="unsupported"):
+            with self.assertRaisesRegex(ValueError, "unsupported"):
+                prepare_desktop_update_fixture.server_process_identity()
+
+    def test_serve_refuses_changed_fixture_receipt_before_ready_publish(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            ready_file = directory / "ready.json"
+            (directory / "fixture-receipt.json").write_text(json.dumps({
+                "sourceFingerprint": "f" * 64, "manifest": {"assets": ["changed"]}}))
+            with patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
+                    patch("prepare_desktop_update_fixture.load_resources",
+                          return_value=({"assets": []}, {})), \
+                    patch("prepare_desktop_update_fixture.probe_certificate_sha256",
+                          return_value="c" * 64):
+                with self.assertRaisesRegex(ValueError, "receipt changed"):
+                    prepare_desktop_update_fixture.serve(
+                        directory, directory / "server.pem", directory / "server.key", ready_file, True)
+            self.assertFalse(ready_file.exists())
+
+    def test_serve_refuses_same_manifest_receipt_swap_during_resource_admission(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            ready_file = directory / "ready.json"
+            receipt = directory / "fixture-receipt.json"
+            manifest = {"assets": []}
+            receipt.write_text(json.dumps({"sourceFingerprint": "a" * 64,
+                                           "manifest": manifest, "builds": ["A"]}))
+
+            def swapped_resources(_directory, *, receipt_bytes):
+                receipt.write_text(json.dumps({"sourceFingerprint": "a" * 64,
+                                               "manifest": manifest, "builds": ["B"]}))
+                return manifest, {}
+
+            class NoListener:
+                def __init__(self, *_):
+                    raise AssertionError("swapped receipt reached listener")
+
+            with patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
+                    patch("prepare_desktop_update_fixture.load_resources",
+                          side_effect=swapped_resources), \
+                    patch("prepare_desktop_update_fixture.probe_certificate_sha256",
+                          return_value="c" * 64), \
+                    patch("prepare_desktop_update_fixture.ssl.SSLContext"), \
+                    patch("prepare_desktop_update_fixture.socketserver.ThreadingTCPServer", NoListener):
+                with self.assertRaisesRegex(ValueError, "receipt changed"):
+                    prepare_desktop_update_fixture.serve(
+                        directory, directory / "server.pem", directory / "server.key", ready_file, True)
+            self.assertFalse(ready_file.exists())
+
+    def test_serve_refuses_certificate_swap_during_tls_chain_load(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            ready_file = directory / "ready.json"
+            manifest = {"assets": []}
+            (directory / "fixture-receipt.json").write_text(json.dumps({
+                "sourceFingerprint": "a" * 64, "manifest": manifest}))
+            certificate = directory / "server.pem"
+            def pem(value):
+                return ("-----BEGIN CERTIFICATE-----\n" +
+                        base64.b64encode(value).decode("ascii") +
+                        "\n-----END CERTIFICATE-----\n")
+            certificate.write_text(pem(b"first DER"))
+
+            class ReplacingTls:
+                def load_cert_chain(self, *_):
+                    certificate.write_text(pem(b"second DER"))
+
+            class NoListener:
+                def __init__(self, *_):
+                    raise AssertionError("swapped certificate reached listener")
+
+            with patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
+                    patch("prepare_desktop_update_fixture.load_resources",
+                          return_value=(manifest, {})), \
+                    patch("prepare_desktop_update_fixture.ssl.SSLContext",
+                          return_value=ReplacingTls()), \
+                    patch("prepare_desktop_update_fixture.socketserver.ThreadingTCPServer", NoListener):
+                with self.assertRaisesRegex(ValueError, "certificate changed"):
+                    prepare_desktop_update_fixture.serve(
+                        directory, certificate, directory / "server.key", ready_file, True)
+            self.assertFalse(ready_file.exists())
+
+    def test_windows_stage_and_private_child_acl_reject_extra_principals(self):
+        system, admins, recipient = "S-1-5-18", "S-1-5-32-544", "S-1-5-21-1-2-3-4"
+        def entry(sid, rights, inheritance):
+            return {"sid": sid, "rights": rights, "inheritance": inheritance,
+                    "propagation": 0, "type": "Allow", "inherited": False}
+        stage = {"protected": True, "currentSid": system, "isDirectory": True,
+                 "acl": [entry(system, 0x1F01FF, 3), entry(admins, 0x1F01FF, 3),
+                         entry(recipient, 0x1200A9, 3)]}
+        private = {"protected": True, "currentSid": system, "isDirectory": False,
+                   "acl": [entry(system, 0x1F01FF, 0), entry(admins, 0x1F01FF, 0)]}
+        with patch("prepare_desktop_update_fixture.windows_acl_receipt", return_value=stage):
+            prepare_desktop_update_fixture.require_windows_private_acl(
+                Path("C:/fixture"), private=False, directory=True)
+            with self.assertRaisesRegex(ValueError, "protection"):
+                stage["protected"] = False
+                prepare_desktop_update_fixture.require_windows_private_acl(
+                    Path("C:/fixture"), private=False, directory=True)
+        with patch("prepare_desktop_update_fixture.windows_acl_receipt", return_value=private):
+            prepare_desktop_update_fixture.require_windows_private_acl(
+                Path("C:/fixture/ready.json"), private=True, directory=False)
+            private["acl"].append(entry("S-1-1-0", 0x1200A9, 0))
+            with self.assertRaisesRegex(ValueError, "principals or rights"):
+                prepare_desktop_update_fixture.require_windows_private_acl(
+                    Path("C:/fixture/ready.json"), private=True, directory=False)
+
+    def test_windows_serve_requires_live_stage_acl_before_fixture_resources(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            ready_file = directory / "ready.json"
+            with patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
+                    patch("prepare_desktop_update_fixture.platform.system", return_value="Windows"), \
+                    patch("prepare_desktop_update_fixture.require_windows_private_acl",
+                          side_effect=ValueError("unsafe Windows stage")), \
+                    patch("prepare_desktop_update_fixture.load_resources",
+                          side_effect=AssertionError("unsafe stage reached resources")):
+                with self.assertRaisesRegex(ValueError, "unsafe Windows stage"):
+                    prepare_desktop_update_fixture.serve(
+                        directory, directory / "server.pem", directory / "server.key", ready_file, True)
+            self.assertFalse(ready_file.exists())
+            self.assertFalse((directory / "probe-events").exists())
+
+    def test_windows_ready_publish_fails_closed_without_private_file_acl(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            ready_file = Path(temporary) / "ready.json"
+            with patch("prepare_desktop_update_fixture.platform.system", return_value="Windows"), \
+                    patch("prepare_desktop_update_fixture.require_windows_private_acl",
+                          side_effect=ValueError("unsafe ready ACL")):
+                with self.assertRaisesRegex(ValueError, "unsafe ready ACL"):
+                    prepare_desktop_update_fixture.write_private_ready_json(
+                        ready_file, {"port": 53633})
+            self.assertFalse(ready_file.exists())
+            self.assertEqual([], list(Path(temporary).iterdir()))
+
+    def test_windows_ready_temp_is_private_before_receipt_bytes_are_written(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            ready_file = Path(temporary) / "ready.json"
+            observed = []
+            def inspect_acl_input(path, *, private, directory):
+                self.assertTrue(private)
+                self.assertFalse(directory)
+                observed.append((Path(path).name, Path(path).read_bytes()))
+            with patch("prepare_desktop_update_fixture.platform.system", return_value="Windows"), \
+                    patch("prepare_desktop_update_fixture.require_windows_private_acl",
+                          side_effect=inspect_acl_input):
+                prepare_desktop_update_fixture.write_private_ready_json(
+                    ready_file, {"port": 53633, "fixtureReceiptSha256": "a" * 64})
+            self.assertEqual(b"", observed[0][1])
+            self.assertEqual(2, len(observed))
+            self.assertIn(b"fixtureReceiptSha256", observed[1][1])
 
     def test_missing_selected_identity_is_rejected_before_runtime_start(self):
         # Native malformed-DMG preparation added a location but did not select it;
@@ -998,6 +1176,120 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                 if tunneled is not None:
                     self.assertEqual(1, tunneled.closed)
                 self.assertNotIn("private fixture detail", json.dumps(diagnostics))
+
+    def test_probe_event_requires_exact_manifest_get_and_is_immutable(self):
+        probe_id = "34c822fc-3b71-4c34-b765-02f3e6db745b"
+        manifest_body = b'{"schemaVersion":1,"assets":[]}'
+        manifest_hash = hashlib.sha256(manifest_body).hexdigest()
+        certificate_hash = "c" * 64
+        connect = b"CONNECT github.com:443 HTTP/1.1\r\nHost: github.com:443\r\n\r\n"
+
+        class Connection:
+            def __init__(self, data):
+                self.data = data
+                self.position = 0
+                self.sent = bytearray()
+
+            def recv(self, length):
+                value = self.data[self.position:self.position + length]
+                self.position += len(value)
+                return value
+
+            def sendall(self, value):
+                self.sent.extend(value)
+
+            def close(self):
+                pass
+
+        class Tls:
+            def __init__(self, inner):
+                self.inner = inner
+
+            def wrap_socket(self, request, server_side):
+                return self.inner
+
+        def request(path=MANIFEST_PATH, probe=probe_id):
+            return (f"GET {path} HTTP/1.1\r\nHost: github.com\r\n"
+                    f"X-VPN-Control-Probe-Id: {probe}\r\n\r\n").encode()
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            def exchange(path=MANIFEST_PATH, probe=probe_id):
+                inner = Connection(request(path, probe))
+                diagnostics = []
+                serve_connection(Connection(connect), Tls(inner), {"assets": []}, {},
+                                 manifest_body, diagnostics.append,
+                                 probe_events_directory=directory,
+                                 certificate_sha256=certificate_hash,
+                                 server_instance_id="a6285846-10e4-45c5-9cf7-b138a5beb222")
+                return inner, diagnostics
+
+            inner, diagnostics = exchange()
+            self.assertEqual([], diagnostics)
+            self.assertIn(manifest_body, inner.sent)
+            event_path = directory / "probe-events" / (probe_id + ".json")
+            event = json.loads(event_path.read_text())
+            self.assertEqual({"schemaVersion": 1, "correlationId": probe_id,
+                              "serverInstanceId": "a6285846-10e4-45c5-9cf7-b138a5beb222",
+                              "connectAccepted": True, "tlsSucceeded": True,
+                              "exactManifestGet": True, "manifestSha256": manifest_hash,
+                              "peerCertificateSha256": certificate_hash,
+                              "servedBytes": len(manifest_body)}, event)
+            self.assertEqual(0o700, (event_path.parent.stat().st_mode & 0o777))
+            self.assertEqual(0o600, (event_path.stat().st_mode & 0o777))
+            original = event_path.read_bytes()
+            _, diagnostics = exchange()
+            self.assertEqual("ValueError", diagnostics[0]["exceptionType"])
+            self.assertEqual(original, event_path.read_bytes())
+            for path, probe in (("/wrong", "ac628584-610e-45c5-9cf7-b138a5beb222"),
+                                (MANIFEST_PATH, "NOT-CANONICAL"),
+                                (MANIFEST_PATH, "ac628584-610e-45c5-9cf7-b138a5beb222\r\n"
+                                 "X-VPN-Control-Probe-Id: ac628584-610e-45c5-9cf7-b138a5beb222")):
+                with self.subTest(path=path, probe=probe):
+                    _, diagnostics = exchange(path, probe)
+                    self.assertEqual("ValueError", diagnostics[0]["exceptionType"])
+            self.assertEqual([probe_id + ".claim", probe_id + ".json"],
+                             sorted(path.name for path in event_path.parent.iterdir()))
+
+    def test_probe_event_is_absent_when_tls_handshake_fails(self):
+        class Connection:
+            def __init__(self, data):
+                self.data = bytearray(data)
+                self.sent = bytearray()
+
+            def recv(self, length):
+                value = bytes(self.data[:length])
+                del self.data[:length]
+                return value
+
+            def sendall(self, value):
+                self.sent.extend(value)
+
+        class FailedTls:
+            def wrap_socket(self, request, server_side):
+                raise ssl.SSLError("private handshake detail")
+
+        connect = Connection(b"CONNECT github.com:443 HTTP/1.1\r\nHost: github.com:443\r\n\r\n")
+        with tempfile.TemporaryDirectory() as temporary:
+            diagnostics = []
+            serve_connection(connect, FailedTls(), {"assets": []}, {}, b"{}",
+                             diagnostics.append, probe_events_directory=Path(temporary),
+                             certificate_sha256="c" * 64)
+            self.assertEqual("tls-handshake", diagnostics[0]["stage"])
+            self.assertFalse((Path(temporary) / "probe-events").exists())
+            self.assertNotIn("private handshake detail", json.dumps(diagnostics))
+
+    def test_probe_certificate_digest_uses_first_der_leaf_not_pem_chain(self):
+        leaf, issuer = b"leaf certificate DER", b"issuer certificate DER"
+        def pem(value):
+            return ("-----BEGIN CERTIFICATE-----\n" +
+                    base64.b64encode(value).decode("ascii") +
+                    "\n-----END CERTIFICATE-----\n")
+        with tempfile.TemporaryDirectory() as temporary:
+            certificate = Path(temporary) / "chain.pem"
+            certificate.write_text(pem(leaf) + pem(issuer))
+            self.assertEqual(hashlib.sha256(leaf).hexdigest(),
+                             prepare_desktop_update_fixture.probe_certificate_sha256(certificate))
 
 
 

@@ -33,6 +33,14 @@ class WindowsUpdateFixtureWorkflowTest(unittest.TestCase):
         self.assertIn("needs: validate-windows-update-fixture", self.caller)
         self.assertIn("contents: read", self.caller)
         self.assertIn("base_version: ${{ inputs.fixture_base_version }}", self.caller)
+        self.assertIn("correlation_id: ${{ inputs.correlation_id }}", self.caller)
+
+    def test_correlation_binds_dispatch_run_and_uploaded_pair(self):
+        self.assertIn("format('Windows MSI fixture {0}', inputs.correlation_id)", self.caller)
+        self.assertIn('str(uuid.UUID(value)) == value', self.caller)
+        self.assertIn("format('vpn-control-windows-update-fixture-{0}', inputs.correlation_id)", self.reusable)
+        self.assertIn("[Guid]::TryParseExact", self.reusable)
+        self.assertIn("format('vpn-control-windows-update-fixture-failure-{0}', inputs.correlation_id)", self.reusable)
 
     def test_uses_pinned_windows_packaging_prerequisites(self):
         for value in (
@@ -79,7 +87,7 @@ class WindowsUpdateFixtureWorkflowTest(unittest.TestCase):
     def test_upload_is_limited_to_pair_and_hash_provenance(self):
         for value in (
             "actions/upload-artifact@v4",
-            "vpn-control-windows-update-fixture-${{ github.sha }}",
+            "format('vpn-control-windows-update-fixture-{0}', inputs.correlation_id)",
             "fixture-receipt.json",
             "snapshot.json",
             "build-plan.json",

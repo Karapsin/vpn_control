@@ -267,6 +267,8 @@ class DesktopAppService internal constructor(
     }
 
     internal suspend fun checkControlUpdate(): Result<DesktopUpdateCheck> = updateService.check()
+    internal suspend fun probeControlUpdateTransport(correlationId: String): Result<DesktopUpdateTransportProbe> =
+        updateService.probeTransport(correlationId)
     internal suspend fun downloadControlUpdate(): Result<Unit> = updateService.downloadChecked()
     internal fun checkedControlUpdate(): DesktopUpdateCheck? = updateService.checkedStatus()
     internal fun dismissControlUpdate(): Result<Unit> = updateService.dismiss()

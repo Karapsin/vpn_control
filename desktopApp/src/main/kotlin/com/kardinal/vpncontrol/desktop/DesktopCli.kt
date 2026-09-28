@@ -215,5 +215,5 @@ internal object DesktopCli {
 
     private val noStartupOperations = setOf(ControlOperationId.STATUS, ControlOperationId.GUI_HIDE, ControlOperationId.QUIT,
         ControlOperationId.OPERATIONS_LIST, ControlOperationId.OPERATIONS_STATUS, ControlOperationId.OPERATIONS_WAIT,
-        ControlOperationId.OPERATIONS_CANCEL)
+        ControlOperationId.OPERATIONS_CANCEL, ControlOperationId.UPDATES_TRANSPORT_PROBE)
 }

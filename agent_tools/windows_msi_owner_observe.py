@@ -59,6 +59,23 @@ def _intent_path(root: Path, correlation: str) -> Path:
     return root / _GROUP / (correlation + ".json")
 
 
+def _closed_marker(root: Path, correlation: str) -> Path:
+    return root / _GROUP / (correlation + ".closed.json")
+
+
+def _read_private_json(path: Path) -> dict[str, Any]:
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(fd, "rb") as file:
+        info = os.fstat(file.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > 8192):
+            raise WindowsMsiOwnerObserveError("Owner observation receipt is unsafe.")
+        result = json.load(file)
+    if not isinstance(result, dict):
+        raise WindowsMsiOwnerObserveError("Owner observation receipt is invalid.")
+    return result
+
+
 def _read_intent(root: Path, correlation: str) -> dict[str, Any] | None:
     path = _intent_path(root, correlation)
     try: fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
@@ -82,8 +99,24 @@ def _reserve(root: Path, record: dict[str, Any]) -> None:
     lock = os.open(directory / ".environment.lock", os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if any(item.suffix == ".json" for item in directory.iterdir()):
-            raise WindowsMsiOwnerObserveError("CP117 has an active or unknown owner observation.")
+        entries = {item.name: item for item in directory.iterdir()}
+        for item in entries.values():
+            if item.name == ".environment.lock": continue
+            if item.name.endswith((".cleanup.json", ".closed.json")):
+                suffix = ".cleanup.json" if item.name.endswith(".cleanup.json") else ".closed.json"
+                prior = item.name.removesuffix(suffix)
+                if not _UUID.fullmatch(prior) or prior + ".json" not in entries:
+                    raise WindowsMsiOwnerObserveError("CP117 owner observation journal has an orphan receipt.")
+                continue
+            if item.suffix != ".json" or not _UUID.fullmatch(item.stem):
+                raise WindowsMsiOwnerObserveError("CP117 owner observation journal has an unknown entry.")
+            previous = _read_intent(root, item.stem)
+            closed = _read_private_json(_closed_marker(root, item.stem)) if _closed_marker(root, item.stem).exists() else None
+            cleanup = _read_private_json(_cleanup_marker(root, item.stem)) if _cleanup_marker(root, item.stem).exists() else None
+            if previous is None or closed != {"correlationId": item.stem,
+                    "commandSha256": previous.get("commandSha256"), "state": "cleaned"} or cleanup != {
+                    "correlationId": item.stem, "commandSha256": previous.get("commandSha256")}:
+                raise WindowsMsiOwnerObserveError("CP117 has an active or unknown owner observation.")
         fd = os.open(_intent_path(root, record["request"]["correlationId"]),
                      os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(fd, "wb") as file:
@@ -93,6 +126,22 @@ def _reserve(root: Path, record: dict[str, Any]) -> None:
         try: os.fsync(parent_fd)
         finally: os.close(parent_fd)
     finally: os.close(lock)
+
+
+def _record_closed(root: Path, correlation: str, command_hash: str) -> None:
+    marker = _closed_marker(root, correlation)
+    expected = {"correlationId": correlation, "commandSha256": command_hash, "state": "cleaned"}
+    try:
+        fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "wb") as file:
+            file.write((json.dumps(expected, sort_keys=True, separators=(",", ":")) + "\n").encode())
+            file.flush(); os.fsync(file.fileno())
+        directory_fd = os.open(marker.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try: os.fsync(directory_fd)
+        finally: os.close(directory_fd)
+    except FileExistsError:
+        if _read_private_json(marker) != expected:
+            raise WindowsMsiOwnerObserveError("Owner observation closed receipt changed.")
 
 
 def _task(correlation: str, request: Mapping[str, Any], sid: str) -> str:
@@ -252,7 +301,56 @@ def powershell_preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str
             "failed" if "failed" in states else "unknown", "productAction": False}
 
 
-_REMOTE_START = windows_msi_public_scenario._REMOTE_START.replace("'windows-msi-public'", "'windows-msi-owner-observe'")
+_REMOTE_START_TEMPLATE = windows_msi_public_scenario._REMOTE_START.replace(
+    "'windows-msi-public'", "'windows-msi-owner-observe'")
+_REMOTE_GROUP_EXCLUSIVE = "if any(name!='.environment.lock' for name in os.listdir(group)): raise FileExistsError()"
+_REMOTE_CLOSED_CHECK = r'''for name in os.listdir(group):
+   if name=='.environment.lock':continue
+   if len(name)!=36 or str(__import__('uuid').UUID(name))!=name:raise ValueError()
+   prior=os.path.join(group,name)
+   if not safe_dir(prior):raise ValueError()
+   with open(os.path.join(prior,'binding.json'),encoding='utf-8') as file:old_binding=json.load(file)
+   if set(old_binding)!={'socketPath','pid','startTicks','sourceSha','artifactIds','commandSha256'} or old_binding['artifactIds']!=[]:raise ValueError()
+   with open(os.path.join(prior,'cleanup-intent.json'),encoding='utf-8') as file:old_intent=json.load(file)
+   with open(os.path.join(prior,'cleanup-result.json'),encoding='utf-8') as file:old_result=json.load(file)
+   task='VpnControlMcpOwnerObserve-'+name
+   if old_intent!={'correlationId':name,'taskName':task} or old_result!={'version':1,'correlationId':name,'state':'cleaned','taskName':task}:raise ValueError()
+  '''
+if _REMOTE_GROUP_EXCLUSIVE not in _REMOTE_START_TEMPLATE:
+    raise WindowsMsiOwnerObserveError("Owner observation remote admission template changed.")
+_REMOTE_START = _REMOTE_START_TEMPLATE.replace(_REMOTE_GROUP_EXCLUSIVE, _REMOTE_CLOSED_CHECK.strip())
+
+
+def _close_prior(root: Path, config: Any, target: Any, descriptor: tuple[Any, ...]) -> None:
+    directory = root / _GROUP
+    if not directory.exists(): return
+    info = directory.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or directory.is_symlink() or info.st_uid != os.getuid()
+            or stat.S_IMODE(info.st_mode) != 0o700):
+        raise WindowsMsiOwnerObserveError("Owner observation journal is unsafe.")
+    env, socket, pid, ticks, sid = descriptor
+    for item in directory.iterdir():
+        if not item.name.endswith(".json") or item.name.endswith((".cleanup.json", ".closed.json")):
+            continue
+        correlation = item.stem
+        if not _UUID.fullmatch(correlation):
+            raise WindowsMsiOwnerObserveError("Prior owner observation identity is invalid.")
+        intent = _read_intent(root, correlation)
+        if intent is None or any(intent.get(key) != observed for key, observed in (
+                ("environment", env), ("socketPath", socket), ("pid", pid),
+                ("startTicks", ticks), ("expectedSid", sid))):
+            raise WindowsMsiOwnerObserveError("Prior owner observation guest identity changed.")
+        cleanup = _read_private_json(_cleanup_marker(root, correlation))
+        if cleanup != {"correlationId": correlation, "commandSha256": intent.get("commandSha256")}:
+            raise WindowsMsiOwnerObserveError("Prior owner observation cleanup intent changed.")
+        raw = windows_msi_base_prepare._remote(config, _REMOTE_CLEANUP_STATUS,
+            (str(target.fixture_transfer_root), env, correlation, intent["request"]["sourceSha"],
+             intent["commandSha256"]), None, 30)
+        try: result = json.loads(raw) if raw is not None else {}
+        except (TypeError, ValueError): result = {}
+        if result != {"state": "cleaned", "correlationId": correlation}:
+            raise WindowsMsiOwnerObserveError("Prior owner observation has no exact remote cleanup receipt.")
+        _record_closed(root, correlation, intent["commandSha256"])
 
 
 def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -262,6 +360,7 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         if existing.get("request") != request: raise WindowsMsiOwnerObserveError("Correlation binds another owner observation.")
         return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
     config, target, (env, socket, pid, ticks, sid) = windows_msi_base_prepare._descriptor(root)
+    _close_prior(root, config, target, (env, socket, pid, ticks, sid))
     command = _bootstrap(corr, request, sid)
     encoded = base64.b64encode(command.encode("utf-16le")).decode()
     if len(encoded) >= 30000: raise WindowsMsiOwnerObserveError("Fixed owner observation exceeds command admission.")
@@ -506,4 +605,5 @@ def collect(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     try: result = json.loads(raw) if raw is not None else {}
     except (TypeError, ValueError): result = {}
     cleanup = "complete" if isinstance(result, dict) and result.get("state") == "cleaned" and result.get("correlationId") == corr else "unknown"
+    if cleanup == "complete": _record_closed(root, corr, intent["commandSha256"])
     return {**observation, "cleanupState": cleanup, "cleanupReplayAllowed": False}

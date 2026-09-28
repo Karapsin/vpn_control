@@ -24,6 +24,7 @@ enum class ControlOperationId(val wireName: String) {
     OPERATIONS_LIST("operations.list"), OPERATIONS_STATUS("operations.status"),
     OPERATIONS_WAIT("operations.wait"), OPERATIONS_CANCEL("operations.cancel"),
     UPDATES_STATUS("updates.status"), UPDATES_CHECK("updates.check"),
+    UPDATES_TRANSPORT_PROBE("updates.transport-probe"),
     UPDATES_DOWNLOAD("updates.download"), UPDATES_INSTALL("updates.install"),
     UPDATES_CANCEL("updates.cancel"), UPDATES_DISMISS("updates.dismiss"),
     SERVE("serve"), GUI_SHOW("gui.show"), GUI_HIDE("gui.hide"), QUIT("quit"),

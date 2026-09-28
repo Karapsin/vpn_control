@@ -4,7 +4,9 @@ import json
 import base64
 import contextlib
 import io
+import os
 import subprocess
+import stat
 import sys
 import tempfile
 import unittest
@@ -119,6 +121,88 @@ class OwnerObserveTests(unittest.TestCase):
             self.assertEqual(owner._read_intent(root, CORR), INTENT)
             with self.assertRaises(owner.WindowsMsiOwnerObserveError):
                 owner._reserve(root, dict(INTENT, request=dict(REQUEST, correlationId="13416223-825b-4b75-8da5-ce3c51cc331a")))
+
+    def test_new_intent_requires_closed_prior_observation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            previous = dict(INTENT, commandSha256="c" * 64)
+            next_corr = "13416223-825b-4b75-8da5-ce3c51cc331a"
+            next_record = dict(previous, request=dict(REQUEST, correlationId=next_corr))
+            owner._reserve(root, previous)
+            with self.assertRaises(owner.WindowsMsiOwnerObserveError):
+                owner._reserve(root, next_record)
+            closed = root / owner._GROUP / (CORR + ".closed.json")
+            closed.write_text(json.dumps({"correlationId": CORR,
+                "commandSha256": previous["commandSha256"], "state": "cleaned"}), encoding="utf-8")
+            closed.chmod(0o600)
+            cleanup = root / owner._GROUP / (CORR + ".cleanup.json")
+            cleanup.write_text(json.dumps({"correlationId": CORR,
+                "commandSha256": previous["commandSha256"]}), encoding="utf-8")
+            cleanup.chmod(0o600)
+            owner._reserve(root, next_record)
+
+    def test_orphan_closed_receipt_does_not_bypass_environment_guard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            group = root / owner._GROUP
+            group.mkdir(parents=True, mode=0o700)
+            (group / (CORR + ".closed.json")).write_text("{}", encoding="utf-8")
+            with self.assertRaises(owner.WindowsMsiOwnerObserveError):
+                owner._reserve(root, dict(INTENT, commandSha256="c" * 64))
+
+    def test_prior_closure_requires_exact_remote_cleanup_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            previous = dict(INTENT, environment="windows-cp117", socketPath="/qga.sock",
+                            pid=589342, startTicks=520739, commandSha256="c" * 64)
+            owner._reserve(root, previous)
+            marker = root / owner._GROUP / (CORR + ".cleanup.json")
+            marker.write_text(json.dumps({"correlationId": CORR,
+                "commandSha256": previous["commandSha256"]}), encoding="utf-8")
+            marker.chmod(0o600)
+            class Target:
+                fixture_transfer_root = Path("/private/cp117")
+            descriptor = ("windows-cp117", "/qga.sock", 589342, 520739, INTENT["expectedSid"])
+            with patch.object(owner.windows_msi_base_prepare, "_remote",
+                              return_value=b'{"state":"unknown"}'):
+                with self.assertRaises(owner.WindowsMsiOwnerObserveError):
+                    owner._close_prior(root, object(), Target(), descriptor)
+            self.assertFalse(owner._closed_marker(root, CORR).exists())
+            with patch.object(owner.windows_msi_base_prepare, "_remote",
+                              return_value=json.dumps({"state": "cleaned", "correlationId": CORR}).encode()) as remote:
+                owner._close_prior(root, object(), Target(), descriptor)
+                self.assertIs(remote.call_args.args[1], owner._REMOTE_CLEANUP_STATUS)
+            self.assertEqual(owner._read_private_json(owner._closed_marker(root, CORR)),
+                             {"correlationId": CORR, "commandSha256": "c" * 64, "state": "cleaned"})
+
+    def test_remote_group_admits_only_exact_cleaned_prior_stage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            group = Path(directory) / "windows-msi-owner-observe"
+            prior = group / CORR
+            prior.mkdir(parents=True, mode=0o700)
+            prior.chmod(0o700)
+            binding = {"socketPath": "/qga.sock", "pid": 589342, "startTicks": 520739,
+                       "sourceSha": REQUEST["sourceSha"], "artifactIds": [], "commandSha256": "c" * 64}
+            (prior / "binding.json").write_text(json.dumps(binding), encoding="utf-8")
+            task = "VpnControlMcpOwnerObserve-" + CORR
+            (prior / "cleanup-intent.json").write_text(json.dumps({"correlationId": CORR,
+                "taskName": task}), encoding="utf-8")
+            def safe_dir(path):
+                info = os.lstat(path)
+                return stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and \
+                    stat.S_IMODE(info.st_mode) == 0o700
+            def admit():
+                exec(owner._REMOTE_CLOSED_CHECK.strip(), {"group": str(group), "os": os,
+                    "json": json, "safe_dir": safe_dir})
+            with self.assertRaises(FileNotFoundError): admit()
+            result = prior / "cleanup-result.json"
+            result.write_text(json.dumps({"version": 1, "correlationId": CORR,
+                "state": "cleaned", "taskName": task}), encoding="utf-8")
+            admit()
+            result.write_text(json.dumps({"version": 1, "correlationId": CORR,
+                "state": "cleaned", "taskName": "another-task"}), encoding="utf-8")
+            with self.assertRaises(ValueError): admit()
+            self.assertIn(owner._REMOTE_CLOSED_CHECK.strip(), owner._REMOTE_START)
 
     def test_lost_cleanup_response_never_resubmits_task_removal(self):
         with tempfile.TemporaryDirectory() as directory:

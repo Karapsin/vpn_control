@@ -20,8 +20,17 @@ internal fun visualPreviewFrame(service: DesktopAppService, owner: String): Pair
         runtimeStartedAt = visualState.sessionStartedAtEpochMillis.takeIf { visualState.isVpnRunning && it > 0 },
     )
     val frame = service.controlPresentationSnapshot(owner)
-    val previewFrame = frame.copy(values = frame.values +
-        ("runtime" to ControlValue.ObjectValue(previewRuntime.toControlValues())))
+    val previewLocations = (frame.values.getValue("locations") as ControlValue.ArrayValue).values.map { row ->
+        val values = (row as ControlValue.ObjectValue).values
+        val id = (values["id"] as? ControlValue.Text)?.value
+        ControlValue.ObjectValue(values + ("active" to ControlValue.BooleanValue(
+            id != null && id == previewRuntime.activeLocationId,
+        )))
+    }
+    val previewFrame = frame.copy(values = frame.values + mapOf(
+        "runtime" to ControlValue.ObjectValue(previewRuntime.toControlValues()),
+        "locations" to ControlValue.ArrayValue(previewLocations),
+    ))
     return previewRuntime to previewFrame
 }
 

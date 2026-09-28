@@ -15,7 +15,8 @@ internal object DesktopControlSupport {
         SUBSCRIPTIONS_ADD, SUBSCRIPTIONS_UPDATE, LOCATIONS_DELETE, LOCATIONS_IMPORT, UPDATES_INSTALL, DIAGNOSTICS_EXPORT)
     val cancellableOperations = setOf(FIND_BEST, LOCATIONS_BENCHMARK, SUBSCRIPTIONS_REFRESH, UPDATES_CHECK, UPDATES_DOWNLOAD, UPDATES_INSTALL)
     val jsonOperations = asynchronousOperations + DesktopControlInspection.operations + DesktopControlMutations.operations + DesktopControlExports.operations + setOf(SETTINGS_SHOW, SETTINGS_SET, SETTINGS_APPLY,
-        OPERATIONS_LIST, OPERATIONS_STATUS, OPERATIONS_WAIT, OPERATIONS_CANCEL, UPDATES_CANCEL, QUIT, GUI_SHOW, GUI_HIDE, CAPABILITIES, STATUS)
+        OPERATIONS_LIST, OPERATIONS_STATUS, OPERATIONS_WAIT, OPERATIONS_CANCEL, UPDATES_CANCEL,
+        UPDATES_TRANSPORT_PROBE, QUIT, GUI_SHOW, GUI_HIDE, CAPABILITIES, STATUS)
 
     fun describe(platform: ControlPlatform): Map<String, ControlValue> = mapOf(
         "scope" to ControlValue.Text("static-desktop-json-adapter"),

@@ -59,6 +59,43 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         with patch.object(linux_update_fixture_workflow, "status", side_effect=ValueError("Invalid inputs")):
             self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-fixture-status", {"correlationId": request["correlationId"], "shell": "id"})["ok"])
 
+    def test_windows_fixture_route_requires_correlated_artifact_collection(self):
+        from agent_tools import windows_update_fixture_workflow
+        request = {"sourceSha": "a" * 40, "baseVersion": "2.1.19",
+                   "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+        with patch.object(windows_update_fixture_workflow, "dispatch", return_value={"state": "unknown", "replayAllowed": False}) as dispatch:
+            result = mcp_server._vm_workflow_impl("windows-msi-fixture-dispatch", request)
+            self.assertFalse(result["ok"])
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT, request)
+        status_request = {"correlationId": request["correlationId"]}
+        with patch.object(windows_update_fixture_workflow, "status", return_value={"state": "complete", "replayAllowed": False}) as status:
+            self.assertTrue(mcp_server._vm_workflow_impl("windows-msi-fixture-status", status_request)["ok"])
+            status.assert_called_once_with(mcp_server.REPO_ROOT, status_request)
+        with patch.object(windows_update_fixture_workflow, "collect", return_value={"state": "unknown", "replayAllowed": False}) as collect:
+            self.assertFalse(mcp_server._vm_workflow_impl("windows-msi-fixture-collect", status_request)["ok"])
+            collect.assert_called_once_with(mcp_server.REPO_ROOT, status_request)
+        with patch.object(windows_update_fixture_workflow, "collect", return_value={"state": "collected", "replayAllowed": False}):
+            self.assertTrue(mcp_server._vm_workflow_impl("windows-msi-fixture-collect", status_request)["ok"])
+
+    def test_linux_public_owner_quit_route_keeps_uncertain_exit_unverified(self):
+        from agent_tools import linux_owner_public_quit
+        request = {"host": "fedora2328", "environment": "fedora2328", "pid": 18367,
+                   "startTicks": 2078693, "controllerId": "1780cc81-65a6-4284-a424-2178b94e2690",
+                   "approval": "explicit-user-approved-disposable-owner-quit",
+                   "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+        with patch.object(linux_owner_public_quit, "start", return_value={"state": "unknown", "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("linux-owner-public-quit-start", request)
+            self.assertFalse(result["ok"])
+            self.assertTrue(result["productAction"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, request)
+        observation = {"correlationId": request["correlationId"]}
+        with patch.object(linux_owner_public_quit, "status", return_value={"state": "terminal", "result": "passed", "ownerGenerationGone": True}) as status:
+            self.assertTrue(mcp_server._vm_workflow_impl("linux-owner-public-quit-status", observation)["ok"])
+            status.assert_called_once_with(mcp_server.REPO_ROOT, observation)
+        with patch.object(linux_owner_public_quit, "collect", return_value={"state": "failed", "replayAllowed": False}) as collect:
+            self.assertFalse(mcp_server._vm_workflow_impl("linux-owner-public-quit-collect", observation)["ok"])
+            collect.assert_called_once_with(mcp_server.REPO_ROOT, observation)
+
     def test_linux_base_prepare_route_preserves_no_replay_and_terminal_failure(self):
         from agent_tools import linux_rpm_base_prepare
         preflight = {"host": "fedora2328", "environment": "fedora2328",

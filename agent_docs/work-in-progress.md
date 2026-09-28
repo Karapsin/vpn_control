@@ -27,6 +27,53 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Fourth continuation checkpoint and next source work — 2026-09-28
+
+`1b0cc06d0964763fadba5137652498355501eeb5` is pushed on `origin/dev`.
+The user requested one required-workflow CI review at the **final delivered
+SHA**; intermediate pushes and fixture workflows supply source-scoped evidence,
+not final acceptance. Full parity and every platform's native/visual matrix
+remain open. No release is authorized.
+
+The exact-`1b0cc06` Android native-fixture APK is frozen with SHA256
+`a16a91ecb7034dd4a6520475849979c1a9344bdf9573e802e7707d0051007a8e`
+(`1b0cc06-android/frozen-apk-receipt.json`); install remains held. Independently
+verified Linux 2.1.19/2.2.0 RPMs are recorded in
+`continuation-linux-1b0cc06/hosted-rpm-fixture/local-verification.json`, and
+strictly signed Mac arm64 2.1.19/2.2.0 DMGs in
+`continuation-macos/fixture-1b0cc06/reviewed-package-summary.json`. These are
+**component package receipts only**. Windows still has the earlier verified
+`58b5695` MSI pair; no current-source Windows install or owner-lifecycle proof
+follows from package bytes.
+
+Windows owner observation on the `1b0cc06` route stopped at a pre-submission
+guard; the QGA closed-receipt causal fix is in the next dirty batch and awaits a
+new SHA. The exact older `c8351cb2-162e-489e-91a1-3a75d7b49fb5` UNKNOWN
+observation remains cleaned up and unreplayed. Target preparation still requires
+an admitted live CP117 fixture HTTPS server/proxy and an exclusive shared lease;
+the legacy CP176 job remains terminal historical failure evidence. No Windows
+target install has been submitted. Android and Linux installs also remain held,
+and Mac native installation awaits host GUI unlock and fresh resource admission.
+
+The user explicitly approved a **guest-only public quit** of Fedora2328's
+task-owned `vpn-control` controller
+`1780cc81-65a6-4284-a424-2178b94e2690`, PID `18367`/startTicks
+`2078693`. A fresh MCP observation found `runtimeRunning=false` and no active
+location. Approval is scoped to that identified guest owner; the quit has **not**
+been sent. A narrow public-quit adapter, tests and MCP route are awaiting
+independent review and the next source push. Base RPM installation remains held
+until the exact quit and cleanup are authoritatively observed on that source.
+
+Android visual comparison reached 71/74 on this source. Three remaining diffs
+are intentional baseline candidates requiring individual screenshot review and
+a next-SHA recapture after any approved baseline change; they are not accepted
+yet. Hosted desktop capture exposed a selected-row fixture failure; its causal
+fix is dirty and likewise needs the next source capture. The dirty next
+checkpoint also includes a product transport probe plus fixture event and a
+correlated Windows fixture workflow. None is native acceptance until its
+source-bound tests, package inputs and protected guest outcomes are reviewed.
+Preserve previous captures, package receipts and unknown correlations.
+
 ### Third continuation checkpoint and pending acceptance — 2026-09-28
 
 `58b569559184cfbb24f588d5ac46aa4884690dc3` is the latest pushed

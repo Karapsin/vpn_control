@@ -118,13 +118,31 @@ class ControlCliParserTest {
             listOf("stats", "--watch"), listOf("logs", "--follow", "--limit", "10"),
             listOf("diagnostics", "export", "--output", "-"), listOf("operations", "list"),
             listOf("operations", "status", "id"), listOf("operations", "wait", "id", "--output", "report.txt"), listOf("operations", "cancel", "id"),
-            listOf("updates", "status"), listOf("updates", "check"), listOf("updates", "download"),
+            listOf("updates", "status"), listOf("updates", "check"),
+            listOf("--controller-id", "observed-owner", "updates", "transport-probe", "11111111-1111-4111-8111-111111111111"),
+            listOf("updates", "download"),
             listOf("updates", "install"), listOf("updates", "cancel"), listOf("updates", "dismiss"),
             listOf("serve"), listOf("gui", "show"), listOf("gui", "hide"), listOf("quit"), listOf("capabilities"),
         )
         val parsed = examples.map { assertIs<ControlCliParseResult.Invocation>(ControlCliParser.parse(it), it.first()) }
         assertEquals(ControlOperationId.entries.toSet(), parsed.map { it.operation }.toSet())
         assertEquals(ControlOperationId.entries.size, parsed.size)
+    }
+
+    @Test
+    fun transportProbeRequiresDesktopObservedOwnerAndCanonicalCorrelation() {
+        val id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        for (args in listOf(
+            listOf("updates", "transport-probe", id),
+            listOf("--controller-id", "owner", "--android", "updates", "transport-probe", id),
+            listOf("--controller-id", "owner", "--async", "updates", "transport-probe", id),
+            listOf("--controller-id", "owner", "updates", "transport-probe", id.uppercase()),
+            listOf("--controller-id", "owner", "updates", "transport-probe", "invalid"),
+        )) assertIs<ControlCliParseResult.Invalid>(ControlCliParser.parse(args), args.joinToString(" "))
+        val valid = assertIs<ControlCliParseResult.Invocation>(ControlCliParser.parse(
+            listOf("--controller-id", "owner", "updates", "transport-probe", id)))
+        assertEquals(ControlOperationId.UPDATES_TRANSPORT_PROBE, valid.operation)
+        assertEquals("owner", valid.client.controllerId)
     }
 
     @Test

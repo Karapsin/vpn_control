@@ -1,10 +1,15 @@
 name: Windows Desktop Package
+run-name: ${{ github.event_name == 'workflow_dispatch' && inputs.fixture_base_version != '' && inputs.correlation_id != '' && format('Windows MSI fixture {0}', inputs.correlation_id) || github.event.head_commit.message || github.event.pull_request.title || github.workflow }}
 
 on:
   workflow_dispatch:
     inputs:
       fixture_base_version:
         description: Existing product version to package as the immutable update base
+        required: false
+        type: string
+      correlation_id:
+        description: Canonical UUID binding one immutable MSI fixture dispatch
         required: false
         type: string
   push:
@@ -60,6 +65,7 @@ jobs:
     timeout-minutes: 5
     env:
       FIXTURE_BASE_VERSION: ${{ inputs.fixture_base_version }}
+      FIXTURE_CORRELATION_ID: ${{ inputs.correlation_id }}
     steps:
       - name: Checkout selected development source
         uses: actions/checkout@v4
@@ -68,6 +74,11 @@ jobs:
         shell: bash
         run: |
           python3 -c 'import os; from scripts.version_metadata import parse_version; parse_version(os.environ["FIXTURE_BASE_VERSION"])'
+
+      - name: Validate optional fixture correlation
+        shell: bash
+        run: |
+          python3 -c 'import os,uuid; value=os.environ["FIXTURE_CORRELATION_ID"]; assert not value or str(uuid.UUID(value)) == value, "correlation_id must be canonical UUID"'
 
   build-windows-update-fixture:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''
@@ -78,6 +89,7 @@ jobs:
     uses: ./.github/workflows/windows-update-fixture.yml
     with:
       base_version: ${{ inputs.fixture_base_version }}
+      correlation_id: ${{ inputs.correlation_id }}
 
   package-windows-desktop:
     if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''

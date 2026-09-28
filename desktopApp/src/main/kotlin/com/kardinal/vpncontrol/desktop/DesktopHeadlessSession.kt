@@ -34,6 +34,7 @@ internal class DesktopHeadlessSession(
     private val mutateConfiguration: (suspend (DesktopCliCommand, Long?) -> DesktopControlWriteResponse)? = null,
     private val quitOwner: (suspend (String, Long?) -> DesktopControlWriteResponse)? = null,
     private val install: DesktopControlInstallActions? = null,
+    private val probeUpdateTransport: (suspend (String) -> Result<DesktopUpdateTransportProbe>)? = null,
 ) : AutoCloseable {
     private val mutations = Mutex()
     private val operations = DesktopOperationRunner(scope, controllerId, metadataProvider = metadataProvider,
@@ -148,6 +149,38 @@ internal class DesktopHeadlessSession(
 
     private suspend fun submitInternal(request: com.kardinal.vpncontrol.model.ControlRequest): DesktopCliResponse {
         if (request.controllerId != controllerId) return DesktopCliResponse.failure("CONFLICT")
+        if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_TRANSPORT_PROBE) {
+            val raw = (request.command.arguments["correlation-id"] as? com.kardinal.vpncontrol.model.ControlValue.Text)?.value
+            if (request.interactive || request.asynchronous || request.ifRevision != null ||
+                request.command.arguments.keys != setOf("correlation-id") ||
+                raw == null || runCatching { java.util.UUID.fromString(raw).toString() }.getOrNull() != raw)
+                return DesktopCliResponse.failure("INVALID_ARGUMENT")
+            val probe = probeUpdateTransport?.invoke(raw) ?: return DesktopCliResponse.failure("UNSUPPORTED")
+            val failure = probe.exceptionOrNull()
+            val code = when (failure?.message) {
+                null -> com.kardinal.vpncontrol.model.ControlCode.OK
+                "BUSY" -> com.kardinal.vpncontrol.model.ControlCode.BUSY
+                "INVALID_ARGUMENT" -> com.kardinal.vpncontrol.model.ControlCode.INVALID_ARGUMENT
+                else -> com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE
+            }
+            val value = probe.getOrNull()
+            val data = if (value == null) emptyMap() else mapOf(
+                "correlationId" to com.kardinal.vpncontrol.model.ControlValue.Text(value.correlationId),
+                "manifestSha256" to com.kardinal.vpncontrol.model.ControlValue.Text(value.manifestSha256),
+                "peerCertificateSha256" to com.kardinal.vpncontrol.model.ControlValue.Text(value.peerCertificateSha256),
+                "manifestBuildNumber" to com.kardinal.vpncontrol.model.ControlValue.IntegerValue(value.manifestBuildNumber.toLong()),
+                "availableVersion" to (value.availableVersion?.let(com.kardinal.vpncontrol.model.ControlValue::Text)
+                    ?: com.kardinal.vpncontrol.model.ControlValue.Null),
+                "assetSha256" to (value.assetSha256?.let(com.kardinal.vpncontrol.model.ControlValue::Text)
+                    ?: com.kardinal.vpncontrol.model.ControlValue.Null),
+                "assetSizeBytes" to (value.assetSizeBytes?.let(com.kardinal.vpncontrol.model.ControlValue::IntegerValue)
+                    ?: com.kardinal.vpncontrol.model.ControlValue.Null),
+            )
+            val result = com.kardinal.vpncontrol.model.ControlResult(controllerId, request.requestId, code,
+                metadataProvider().configurationRevision, data = data)
+            return DesktopCliResponse(result.ok,
+                com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result), result.exitCode)
+        }
         if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.UPDATES_INSTALL) {
             if (request.requestId.isBlank() || request.requestId.length > 256 ||
                 request.requestId.any { it.code < 32 } || request.command.arguments.isNotEmpty() || request.interactive)

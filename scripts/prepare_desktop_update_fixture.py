@@ -7,10 +7,13 @@ existing vpnControlVersion Gradle property; canonical source metadata is intact.
 """
 import argparse
 import ast
+import base64
+import ctypes
 import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import re
 import shutil
 import socketserver
@@ -21,6 +24,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import uuid
 import zipfile
 
 from fixture_environment import extract_readonly_archive, require_jdk17
@@ -949,8 +953,9 @@ def select_resource(method, target, host, manifest):
     return None
 
 
-def load_resources(directory):
-    receipt = json.loads((directory / "fixture-receipt.json").read_text())
+def load_resources(directory, *, receipt_bytes=None):
+    receipt = json.loads(receipt_bytes if receipt_bytes is not None else
+                         (directory / "fixture-receipt.json").read_bytes())
     require(receipt["testOnly"] is True and receipt["productionTrustChanged"] is False, "Not a verified fixture")
     base, target = receipt["builds"]
     require(base["sourceFingerprint"] == target["sourceFingerprint"] == receipt["sourceFingerprint"] and
@@ -969,7 +974,7 @@ def load_resources(directory):
     return manifest, resources
 
 
-def read_request_header(request):
+def read_request_header(request, *, include_probe=False):
     data = bytearray()
     while not data.endswith(b"\r\n\r\n"):
         value = request.recv(1)
@@ -982,6 +987,10 @@ def read_request_header(request):
     require(protocol == "HTTP/1.1", "Unsupported fixture HTTP version")
     hosts = [line.split(":", 1)[1].strip() for line in lines[1:] if line.lower().startswith("host:")]
     require(len(hosts) == 1, "Expected one Host header")
+    if include_probe:
+        probes = [line.split(":", 1)[1].strip() for line in lines[1:]
+                  if line.lower().startswith("x-vpn-control-probe-id:")]
+        return method, target, hosts[0], probes
     return method, target, hosts[0]
 
 
@@ -1030,7 +1039,303 @@ def require_fixture_certificate_current(certificate, now=None):
     require(current_time <= valid_until, "Fixture TLS certificate is expired")
 
 
-def serve_connection(request, tls, manifest, resources, manifest_body, emit):
+def probe_certificate_sha256(certificate):
+    """Hash only the first public DER certificate loaded by the TLS context."""
+    pem = Path(certificate).read_text(encoding="ascii")
+    match = re.search(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", pem, re.S)
+    require(match is not None, "Fixture TLS leaf certificate is missing")
+    return hashlib.sha256(ssl.PEM_cert_to_DER_cert(match.group())).hexdigest()
+
+
+def probe_events_path(directory):
+    """Keep probe evidence in a private fixture-owned directory."""
+    events = Path(directory) / "probe-events"
+    try:
+        events.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    require(events.is_dir() and not events.is_symlink(), "Fixture probe event directory is unsafe")
+    if os.name == "posix":
+        require(events.stat().st_uid == os.getuid() and events.stat().st_mode & 0o777 == 0o700,
+                "Fixture probe event directory is not private")
+    if platform.system() == "Windows":
+        require_windows_private_acl(events, private=True, directory=True)
+    return events
+
+
+def fsync_probe_directory(directory):
+    if os.name == "posix":
+        descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+
+def windows_acl_receipt(path, *, private):
+    """Ask the OS to verify the protected fixture stage or secure one child."""
+    require(platform.system() == "Windows", "Windows fixture ACL check is unavailable")
+    system32 = ctypes.create_unicode_buffer(32768)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetSystemDirectoryW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32]
+    kernel32.GetSystemDirectoryW.restype = ctypes.c_uint32
+    length = kernel32.GetSystemDirectoryW(system32, len(system32))
+    require(0 < length < len(system32), "Windows system directory is unavailable")
+    powershell = Path(system32.value) / "WindowsPowerShell/v1.0/powershell.exe"
+    require(powershell.is_file(), "Windows PowerShell ACL verifier is unavailable")
+    encoded_path = base64.b64encode(str(path).encode("utf-16le")).decode("ascii")
+    action = "private" if private else "stage"
+    script = f'''$ErrorActionPreference = 'Stop'
+$path = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{encoded_path}'))
+$item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+for ($ancestor = $item; $null -ne $ancestor; $ancestor = $ancestor.Parent) {{
+  if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {{ throw 'fixture ACL path contains a reparse point' }}
+}}
+$system = 'S-1-5-18'
+$administrators = 'S-1-5-32-544'
+$current = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$acl = Get-Acl -LiteralPath $path -ErrorAction Stop
+if ('{action}' -eq 'private') {{
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($entry in @($acl.Access)) {{ [void]$acl.RemoveAccessRuleSpecific($entry) }}
+  $inheritance = if ($item.PSIsContainer) {{
+    [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
+  }} else {{ [Security.AccessControl.InheritanceFlags]::None }}
+  $principals = @($system, $administrators, $current) | Select-Object -Unique
+  foreach ($sid in $principals) {{
+    $rule = [Security.AccessControl.FileSystemAccessRule]::new(
+      [Security.Principal.SecurityIdentifier]::new($sid),
+      [Security.AccessControl.FileSystemRights]::FullControl,
+      $inheritance, [Security.AccessControl.PropagationFlags]::None,
+      [Security.AccessControl.AccessControlType]::Allow)
+    [void]$acl.AddAccessRule($rule)
+  }}
+  Set-Acl -LiteralPath $path -AclObject $acl -ErrorAction Stop
+  $acl = Get-Acl -LiteralPath $path -ErrorAction Stop
+}}
+$records = @($acl.Access | ForEach-Object {{
+  [ordered]@{{sid=$_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value;
+             rights=[int]$_.FileSystemRights; type=$_.AccessControlType.ToString();
+             inherited=$_.IsInherited; inheritance=[int]$_.InheritanceFlags;
+             propagation=[int]$_.PropagationFlags}}
+}})
+[ordered]@{{protected=$acl.AreAccessRulesProtected; currentSid=$current;
+            isDirectory=[bool]$item.PSIsContainer; acl=$records}} | ConvertTo-Json -Compress -Depth 4
+'''
+    result = subprocess.run(
+        [str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+         "-EncodedCommand", base64.b64encode(script.encode("utf-16le")).decode("ascii")],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    require(result.returncode == 0 and len(result.stdout) <= 16384,
+            "Windows fixture ACL verification failed")
+    try:
+        observed = json.loads(result.stdout.strip())
+    except json.JSONDecodeError as error:
+        raise ValueError("Windows fixture ACL receipt is invalid") from error
+    return observed
+
+
+def require_windows_private_acl(path, *, private, directory):
+    """Require the live stage DACL or set/check a private ready/probe child."""
+    observed = windows_acl_receipt(path, private=private)
+    require(isinstance(observed, dict) and observed.get("protected") is True and
+            observed.get("isDirectory") is directory and isinstance(observed.get("acl"), list),
+            "Windows fixture ACL protection is invalid")
+    current = observed.get("currentSid")
+    require(isinstance(current, str) and re.fullmatch(r"S-1-(?:[0-9]+-)*[0-9]+", current) is not None,
+            "Windows fixture ACL current SID is invalid")
+    entries = {}
+    for entry in observed["acl"]:
+        require(isinstance(entry, dict) and entry.get("type") == "Allow" and
+                entry.get("inherited") is False and entry.get("propagation") == 0 and
+                isinstance(entry.get("sid"), str) and type(entry.get("rights")) is int and
+                type(entry.get("inheritance")) is int and entry["sid"] not in entries,
+                "Windows fixture ACL entry is unsafe")
+        entries[entry["sid"]] = (entry["rights"], entry["inheritance"])
+    full = 0x1F01FF
+    if private:
+        expected = {sid: (full, 3 if directory else 0)
+                    for sid in ("S-1-5-18", "S-1-5-32-544", current)}
+    else:
+        recipient = [sid for sid in entries if sid not in {"S-1-5-18", "S-1-5-32-544"}]
+        require(len(recipient) == 1 and
+                re.fullmatch(r"S-1-5-21-(?:[0-9]+-){3}[0-9]+", recipient[0]) is not None,
+                "Windows fixture stage recipient is invalid")
+        expected = {"S-1-5-18": (full, 3), "S-1-5-32-544": (full, 3),
+                    recipient[0]: (0x1200A9, 3)}
+    require(entries == expected, "Windows fixture ACL principals or rights are unsafe")
+
+
+def write_private_ready_json(path, value):
+    """Publish one 0600 ready receipt atomically, with durable file and parent."""
+    path = Path(path)
+    temporary = path.with_name("." + path.name + "." + uuid.uuid4().hex + ".tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                         getattr(os, "O_NOFOLLOW", 0), 0o600)
+    linked = False
+    try:
+        if platform.system() == "Windows":
+            require_windows_private_acl(temporary, private=True, directory=False)
+        destination = os.fdopen(descriptor, "w", encoding="utf-8")
+        descriptor = None
+        with destination:
+            json.dump(value, destination, sort_keys=True, separators=(",", ":"))
+            destination.write("\n")
+            destination.flush()
+            os.fsync(destination.fileno())
+        os.link(temporary, path)
+        linked = True
+        if platform.system() == "Windows":
+            require_windows_private_acl(path, private=True, directory=False)
+        fsync_probe_directory(path.parent)
+    except Exception:
+        if linked:
+            path.unlink(missing_ok=True)
+        raise
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+
+
+def server_process_identity():
+    """Use the native kernel creation identity for this serving process."""
+    pid = os.getpid()
+    system = platform.system()
+    if system == "Linux":
+        stat_text = Path("/proc/self/stat").read_text(encoding="ascii")
+        remainder = stat_text.rsplit(") ", 1)
+        require(len(remainder) == 2 and int(remainder[0].split("(", 1)[0]) == pid,
+                "Fixture server Linux process identity is invalid")
+        fields = remainder[1].split()
+        require(len(fields) > 19 and fields[19].isdigit() and int(fields[19]) > 0,
+                "Fixture server Linux start ticks are unavailable")
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+        require(str(uuid.UUID(boot_id)) == boot_id,
+                "Fixture server Linux boot ID is invalid")
+        start = f"linux:{boot_id}:{fields[19]}"
+    elif system == "Darwin":
+        class ProcBsdInfo(ctypes.Structure):
+            _fields_ = [
+                ("pbi_flags", ctypes.c_uint32), ("pbi_status", ctypes.c_uint32),
+                ("pbi_xstatus", ctypes.c_uint32), ("pbi_pid", ctypes.c_uint32),
+                ("pbi_ppid", ctypes.c_uint32), ("pbi_uid", ctypes.c_uint32),
+                ("pbi_gid", ctypes.c_uint32), ("pbi_ruid", ctypes.c_uint32),
+                ("pbi_rgid", ctypes.c_uint32), ("pbi_svuid", ctypes.c_uint32),
+                ("pbi_svgid", ctypes.c_uint32), ("rfu_1", ctypes.c_uint32),
+                ("pbi_comm", ctypes.c_char * 16), ("pbi_name", ctypes.c_char * 32),
+                ("pbi_nfiles", ctypes.c_uint32), ("pbi_pgid", ctypes.c_uint32),
+                ("pbi_pjobc", ctypes.c_uint32), ("e_tdev", ctypes.c_uint32),
+                ("e_tpgid", ctypes.c_uint32), ("pbi_nice", ctypes.c_int32),
+                ("pbi_start_tvsec", ctypes.c_uint64),
+                ("pbi_start_tvusec", ctypes.c_uint64),
+            ]
+        proc_pidinfo = ctypes.CDLL("/usr/lib/libproc.dylib").proc_pidinfo
+        proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
+                                 ctypes.c_void_p, ctypes.c_int]
+        proc_pidinfo.restype = ctypes.c_int
+        info = ProcBsdInfo()
+        size = proc_pidinfo(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info))
+        require(size == ctypes.sizeof(info) and info.pbi_pid == pid and
+                info.pbi_start_tvsec > 0 and info.pbi_start_tvusec < 1_000_000,
+                "Fixture server Darwin start time is unavailable")
+        start = f"darwin:{info.pbi_start_tvsec}:{info.pbi_start_tvusec}"
+    elif system == "Windows":
+        class FileTime(ctypes.Structure):
+            _fields_ = [("low", ctypes.c_uint32), ("high", ctypes.c_uint32)]
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.GetProcessTimes.argtypes = [ctypes.c_void_p] + [ctypes.POINTER(FileTime)] * 4
+        kernel32.GetProcessTimes.restype = ctypes.c_int
+        created, exited, kernel, user = (FileTime() for _ in range(4))
+        success = kernel32.GetProcessTimes(kernel32.GetCurrentProcess(),
+                                           ctypes.byref(created), ctypes.byref(exited),
+                                           ctypes.byref(kernel), ctypes.byref(user))
+        ticks = (created.high << 32) | created.low
+        require(success != 0 and ticks > 0,
+                "Fixture server Windows creation time is unavailable")
+        start = f"windows:{ticks}"
+    else:
+        raise ValueError("Fixture server process identity is unsupported on this host")
+    return {"serverPid": pid, "serverProcessStartIdentity": start}
+
+
+def claim_probe_event(directory, correlation_id):
+    """Reserve one canonical probe ID, including uncertain interrupted attempts."""
+    try:
+        canonical = str(uuid.UUID(correlation_id))
+    except (TypeError, ValueError) as error:
+        raise ValueError("Fixture probe ID is invalid") from error
+    require(canonical == correlation_id, "Fixture probe ID is not canonical")
+    events = probe_events_path(directory)
+    claim = events / (correlation_id + ".claim")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(claim, flags, 0o600)
+    except FileExistsError as error:
+        raise ValueError("Fixture probe ID was already used") from error
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    if platform.system() == "Windows":
+        require_windows_private_acl(claim, private=True, directory=False)
+    fsync_probe_directory(events)
+    return events
+
+
+def write_probe_event(events, correlation_id, manifest_body, certificate_sha256,
+                      server_instance_id):
+    """Atomically publish bounded private evidence after the manifest is sent."""
+    require(isinstance(certificate_sha256, str) and
+            re.fullmatch(r"[0-9a-f]{64}", certificate_sha256) is not None,
+            "Fixture probe certificate digest is invalid")
+    try:
+        canonical_instance = str(uuid.UUID(server_instance_id))
+    except (TypeError, ValueError) as error:
+        raise ValueError("Fixture server instance ID is invalid") from error
+    require(canonical_instance == server_instance_id,
+            "Fixture server instance ID is invalid")
+    event = {"schemaVersion": 1, "correlationId": correlation_id,
+             "serverInstanceId": server_instance_id,
+             "connectAccepted": True, "tlsSucceeded": True, "exactManifestGet": True,
+             "manifestSha256": hashlib.sha256(manifest_body).hexdigest(),
+             "peerCertificateSha256": certificate_sha256, "servedBytes": len(manifest_body)}
+    temporary = events / ("." + correlation_id + "." + uuid.uuid4().hex + ".tmp")
+    final = events / (correlation_id + ".json")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                         getattr(os, "O_NOFOLLOW", 0), 0o600)
+    linked = False
+    try:
+        if platform.system() == "Windows":
+            require_windows_private_acl(temporary, private=True, directory=False)
+        destination = os.fdopen(descriptor, "w", encoding="utf-8")
+        descriptor = None
+        with destination:
+            json.dump(event, destination, sort_keys=True, separators=(",", ":"))
+            destination.write("\n")
+            destination.flush()
+            os.fsync(destination.fileno())
+        os.link(temporary, final)
+        linked = True
+        if platform.system() == "Windows":
+            require_windows_private_acl(final, private=True, directory=False)
+        fsync_probe_directory(events)
+    except Exception:
+        if linked:
+            final.unlink(missing_ok=True)
+        raise
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+    return event
+
+
+def serve_connection(request, tls, manifest, resources, manifest_body, emit, *,
+                     probe_events_directory=None, certificate_sha256=None,
+                     server_instance_id=None):
     """Serve one canonical HTTPS-proxy connection with bounded failure evidence."""
     stage = "connect-admission"
     tunneled = None
@@ -1043,11 +1348,21 @@ def serve_connection(request, tls, manifest, resources, manifest_body, emit):
         stage = "tls-handshake"
         tunneled = tls.wrap_socket(request, server_side=True)
         stage = "tunneled-get"
-        resource = select_resource(*read_request_header(tunneled), manifest)
+        method, target, host, probe_ids = read_request_header(tunneled, include_probe=True)
+        resource = select_resource(method, target, host, manifest)
+        if probe_ids:
+            require(len(probe_ids) == 1 and resource == "manifest" and target == MANIFEST_PATH,
+                    "Fixture probe does not target the exact manifest")
+            require(probe_events_directory is not None,
+                    "Fixture probe evidence directory is unavailable")
+            events = claim_probe_event(probe_events_directory, probe_ids[0])
         if resource is None:
             tunneled.sendall(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
             return
         length = write_resource_response(tunneled, resource, manifest, resources, manifest_body)
+        if probe_ids:
+            write_probe_event(events, probe_ids[0], manifest_body, certificate_sha256,
+                              server_instance_id)
         print(json.dumps({"served": resource, "bytes": length}), flush=True)
     except (OSError, EOFError, ValueError) as error:
         # Deliberately retain only the stage and type: exception text can contain
@@ -1064,28 +1379,59 @@ def serve_connection(request, tls, manifest, resources, manifest_body, emit):
 def serve(directory, certificate, private_key, ready_file, confirmed):
     require(confirmed, "Explicit owned-disposable-guest confirmation required")
     require_fixture_certificate_current(certificate)
+    if platform.system() == "Windows":
+        stage = Path(directory).absolute()
+        require(Path(ready_file).absolute().parent == stage,
+                "Windows fixture ready file must be inside the verified stage")
+        require_windows_private_acl(stage, private=False, directory=True)
     directory = directory.resolve(strict=True)
-    manifest, resources = load_resources(directory)
+    receipt_path = directory / "fixture-receipt.json"
+    require(receipt_path.is_file() and not receipt_path.is_symlink(),
+            "Fixture source/artifact receipt path is unsafe")
+    receipt_bytes = receipt_path.read_bytes()
+    manifest, resources = load_resources(directory, receipt_bytes=receipt_bytes)
     body = json.dumps(manifest, separators=(",", ":")).encode()
+    certificate_digest = probe_certificate_sha256(certificate)
+    probe_events_path(directory)
+    receipt = json.loads(receipt_bytes)
+    source_fingerprint = receipt.get("sourceFingerprint")
+    require(receipt.get("manifest") == manifest and isinstance(source_fingerprint, str) and
+            re.fullmatch(r"[0-9a-f]{64}", source_fingerprint) is not None,
+            "Fixture source/artifact receipt changed after resource admission")
+    instance_id = str(uuid.uuid4())
+    process_identity = server_process_identity()
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     tls.minimum_version = ssl.TLSVersion.TLSv1_2
     tls.load_cert_chain(certificate, private_key)
+    require(probe_certificate_sha256(certificate) == certificate_digest,
+            "Fixture TLS certificate changed during chain load")
 
     class Handler(socketserver.BaseRequestHandler):
         def handle(self):
             self.request.settimeout(30)
             serve_connection(self.request, tls, manifest, resources, body,
-                             lambda value: print(json.dumps(value, separators=(",", ":")), flush=True))
+                             lambda value: print(json.dumps(value, separators=(",", ":")), flush=True),
+                             probe_events_directory=directory, certificate_sha256=certificate_digest,
+                             server_instance_id=instance_id)
 
     class Server(socketserver.ThreadingTCPServer):
         daemon_threads = True
         allow_reuse_address = False
 
+    require(receipt_path.read_bytes() == receipt_bytes,
+            "Fixture source/artifact receipt changed during resource admission")
     with Server(("127.0.0.1", 0), Handler) as server:
-        write_json(ready_file, {"port": server.server_address[1], "sourceFingerprint":
-                              json.loads((directory / "fixture-receipt.json").read_text())["sourceFingerprint"],
-                              "manifestSha256": hashlib.sha256(body).hexdigest(),
-                              "manifest": manifest})
+        require(receipt_path.read_bytes() == receipt_bytes,
+                "Fixture source/artifact receipt changed during resource admission")
+        write_private_ready_json(ready_file, {"port": server.server_address[1],
+                                 "serverInstanceId": instance_id,
+                                 "serverPid": process_identity["serverPid"],
+                                 "serverProcessStartIdentity": process_identity["serverProcessStartIdentity"],
+                                 "sourceFingerprint": source_fingerprint,
+                                 "fixtureReceiptSha256": hashlib.sha256(receipt_bytes).hexdigest(),
+                                 "manifestSha256": hashlib.sha256(body).hexdigest(),
+                                 "peerCertificateSha256": certificate_digest,
+                                 "manifest": manifest})
         server.serve_forever()
 
 
