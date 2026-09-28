@@ -17,11 +17,13 @@ class AndroidSourceControlTest {
     @Test fun exactIdsAndAllEligibilityNeverFallBackToFirstSubscription() {
         val state = PersistedState(subscriptions = subscriptions, activeSubscriptionId = "one")
         assertEquals(ProfileSourceMode.SUBSCRIPTION to "two", AndroidSourceControl.target(state, args("subscription", "two")))
+        assertEquals(ProfileSourceMode.SUBSCRIPTION to "one", AndroidSourceControl.target(state, args("subscription")))
+        assertEquals(ProfileSourceMode.SUBSCRIPTION to "", AndroidSourceControl.target(PersistedState(), args("subscription")))
         assertEquals(ProfileSourceMode.CURRENT_LOCATIONS to "one", AndroidSourceControl.target(state, args("current-locations")))
         assertEquals(ProfileSourceMode.SUBSCRIPTION to ALL_SUBSCRIPTIONS_ID, AndroidSourceControl.target(state, args("all")))
         assertEquals("NOT_FOUND", runCatching { AndroidSourceControl.target(state, args("subscription", "2")) }.exceptionOrNull()?.message)
         assertEquals("NOT_FOUND", runCatching { AndroidSourceControl.target(state.copy(subscriptions = subscriptions.take(1)), args("all")) }.exceptionOrNull()?.message)
-        for (invalid in listOf(args("unknown"), args("all", "two"), args("subscription"), args("subscription", " ")))
+        for (invalid in listOf(args("unknown"), args("all", "two"), args("subscription", " ")))
             assertEquals("INVALID_ARGUMENT", runCatching { AndroidSourceControl.arguments(invalid) }.exceptionOrNull()?.message)
         assertFalse(AndroidSourceControl.result(state).toString().contains("private-one"))
     }

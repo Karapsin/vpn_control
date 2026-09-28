@@ -9,6 +9,41 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidSourceOwnerTest {
+    @Test fun bareSubscriptionModeMatchesGuiForRememberedAndEmptySelection() = runTest {
+        for (remembered in listOf(false, true)) {
+            val selectedId = if (remembered) "one" else ""
+            val selectedUrl = if (remembered) "https://private.invalid/one" else ""
+            var state = ControlCommitted("owner", 0, PersistedState(
+                subscriptions = if (remembered) listOf(SubscriptionSource(id = "one", url = selectedUrl)) else emptyList(),
+                activeSubscriptionId = selectedId, profileUrl = selectedUrl))
+            var commits = 0
+            val owner = AndroidSettingsControl("owner", backgroundScope, { state },
+                { _, _, _ -> error("Unexpected settings commit") }, {}, { false },
+                setSource = { args, epoch, revision ->
+                    check(epoch == state.controllerId && revision == state.revision) { "CONFLICT" }
+                    val (mode, id) = AndroidSourceControl.target(state.value, args)
+                    commits++
+                    state = state.copy(revision = state.revision + 1,
+                        value = state.value.copy(profileSourceMode = mode, activeSubscriptionId = id))
+                    AndroidSettingsCommit(state, schedulingChanged = true)
+                })
+            val reader = AndroidControlReader("owner", { state.value }, committedSnapshot = { state },
+                pendingRestart = { false }, settingsWrite = owner::execute)
+            val request = ControlRequest("bare-subscription-$remembered",
+                ControlCommand(ControlOperationId.SOURCE_SET,
+                    mapOf("source" to ControlValue.Text("subscription"))),
+                controllerId = "owner", ifRevision = 0)
+            val result = reader.read(request)
+            assertEquals(ControlCode.OK, result.code)
+            assertEquals(1L, result.configurationRevision)
+            assertEquals(ProfileSourceMode.SUBSCRIPTION, state.value.profileSourceMode)
+            assertEquals(selectedId, state.value.activeSubscriptionId)
+            assertEquals(selectedUrl, state.value.profileUrl)
+            assertEquals(result, reader.read(request))
+            assertEquals(1, commits)
+        }
+    }
+
     @Test fun protectedReaderSourceWritesUseOwnerLeaseGuardsAndReplayExactCommittedResult() = runTest {
         var state = ControlCommitted("owner", 0, PersistedState(subscriptions = listOf(
             SubscriptionSource(id = "one", url = "https://private.invalid/one"),

@@ -23,6 +23,67 @@ from agent_tools import native_rpm_public_install_ssh as subject
 
 
 class RpmTransportTest(unittest.TestCase):
+    def test_privileged_proc_probe_requires_exact_guest_and_rejects_missing_sudo(self):
+        for request in ({'host': 'archlinux', 'environment': 'fedora2328'},
+                        {'host': 'fedora2328', 'environment': 'other'},
+                        {'host': 'fedora2328', 'environment': 'fedora2328', 'command': 'sudo'}):
+            with self.subTest(request=request), self.assertRaises(subject.RpmPublicInstallSshError):
+                subject.observe_proc_privileged('.', request)
+        config = SimpleNamespace(hosts={'fedora2328': SimpleNamespace(user='vpnfixture')})
+        with patch.object(subject.ssh_transport, 'load_config', return_value=config), \
+             patch.object(subject.RpmPublicInstallSshDriver, '_remote', return_value=None) as remote:
+            result = subject.observe_proc_privileged('.', {'host': 'fedora2328', 'environment': 'fedora2328'})
+        self.assertFalse(result['ok'])
+        self.assertEqual('unknown', result['procState'])
+        self.assertTrue(remote.call_args.kwargs['privileged'])
+
+    def test_privileged_proc_probe_runs_only_fixed_sudo_read_and_checks_root_identity(self):
+        config = SimpleNamespace(hosts={'fedora2328': SimpleNamespace(user='vpnfixture')})
+        request = {'host': 'fedora2328', 'environment': 'fedora2328'}
+        with patch.object(subject.ssh_transport, 'load_config', return_value=config), \
+             patch.object(subject.RpmPublicInstallSshDriver, '_remote', return_value={
+                 'procState': 'clear', 'sameUidCount': 0, 'uninspectable': [], 'truncated': False,
+                 'observerUid': 0, 'targetUid': 1001, 'targetName': 'vpnfixture'}):
+            self.assertTrue(subject.observe_proc_privileged('.', request)['ok'])
+        with patch.object(subject.ssh_transport, 'load_config', return_value=config), \
+             patch.object(subject.RpmPublicInstallSshDriver, '_remote', return_value={
+                 'procState': 'clear', 'sameUidCount': 0, 'uninspectable': [], 'truncated': False,
+                 'observerUid': 1001, 'targetUid': 1001, 'targetName': 'vpnfixture'}):
+            self.assertFalse(subject.observe_proc_privileged('.', request)['ok'])
+        driver = subject.RpmPublicInstallSshDriver('.', timeout_seconds=2)
+        with patch.object(subject.ssh_transport, 'build_ssh_argv', return_value=[sys.executable, '-c', 'print("{}")']) as ssh, \
+             patch.object(subject.ssh_transport, 'connection_host', return_value=SimpleNamespace(password=None)):
+            driver._remote(config, 'fedora2328', subject._PROC_PRIVILEGED_OBSERVE, (), privileged=True)
+        command = ssh.call_args.kwargs['command']
+        self.assertEqual(('sudo', '-n', '--', 'python3', '-I', '-B', '-c'), command[:7])
+        self.assertEqual(8, len(command))
+
+    @unittest.skipIf(os.geteuid() == 0, 'requires an unprivileged local test process')
+    def test_privileged_proc_script_rejects_nonroot_execution(self):
+        run = subprocess.run([sys.executable, '-c', subject._PROC_PRIVILEGED_OBSERVE],
+                             capture_output=True, text=True, check=False)
+        self.assertEqual(3, run.returncode)
+        self.assertEqual('', run.stdout)
+
+    @unittest.skipUnless(os.name == 'posix', 'synthetic proc UID proof requires POSIX')
+    def test_privileged_proc_selection_uses_kernel_status_uid_not_proc_directory_owner(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary)
+            process = proc / '1234'
+            process.mkdir()
+            (process / 'status').write_text('Name:\tfixture\nUid:\t4242\t4242\t4242\t4242\n')
+            (process / 'stat').write_text('1234 (fixture) S 1 1234 1234 ' + ' '.join(['0'] * 15 + ['4567']) + '\n')
+            (process / 'cwd').symlink_to('/tmp')
+            (process / 'root').symlink_to('/')
+            (process / 'fd').mkdir()
+            result = subject._observe_proc_tree(proc, 4242, use_status_uid=True)
+            self.assertEqual('clear', result['procState'])
+            self.assertEqual(1, result['sameUidCount'])
+            (process / 'cwd').unlink()
+            result = subject._observe_proc_tree(proc, 4242, use_status_uid=True)
+            self.assertEqual('unknown', result['procState'])
+            self.assertEqual(1234, result['uninspectable'][0]['pid'])
+
     @unittest.skipUnless(os.name == 'posix', 'proc diagnostic requires POSIX process ownership')
     def test_proc_diagnostic_keeps_unreadable_same_uid_process_unknown(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -31,6 +92,7 @@ class RpmTransportTest(unittest.TestCase):
             process.mkdir()
             (process / 'stat').write_text('1234 (fixture) S 111 222 333 ' + ' '.join(['0'] * 15 + ['4567']) + '\n')
             (process / 'cwd').symlink_to('/tmp')
+            (process / 'root').symlink_to('/')
             (process / 'fd').mkdir()
             (process / 'fd' / '5').symlink_to('/tmp/some-file')
             output = subject._observe_proc_tree(proc, os.geteuid())
@@ -57,12 +119,24 @@ class RpmTransportTest(unittest.TestCase):
             process.mkdir()
             (process / 'stat').write_text('1234 (fixture) S 1 1234 1234 ' + ' '.join(['0'] * 15 + ['4567']) + '\n')
             (process / 'cwd').symlink_to('/private/fixture-secret')
+            (process / 'root').symlink_to('/')
             (process / 'fd').mkdir()
             with patch.object(subject.os, 'readlink', side_effect=PermissionError(errno.EACCES, 'denied')):
                 output = subject._observe_proc_tree(proc, os.geteuid())
             self.assertEqual('unknown', output['procState'])
             self.assertEqual(13, output['uninspectable'][0]['errorErrno'])
             self.assertNotIn('/private/fixture-secret', json.dumps(output))
+
+    @unittest.skipUnless(os.name == 'posix', 'proc diagnostic requires POSIX process ownership')
+    def test_proc_diagnostic_requires_root_visibility_before_cleanup_admission(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary); process = proc / '1234'; process.mkdir()
+            (process / 'stat').write_text('1234 (fixture) S 1 1234 1234 ' + ' '.join(['0'] * 15 + ['4567']) + '\n')
+            (process / 'cwd').symlink_to('/tmp')
+            (process / 'fd').mkdir()
+            result = subject._observe_proc_tree(proc, os.geteuid())
+            self.assertEqual('unknown', result['procState'])
+            self.assertEqual('root', result['uninspectable'][0]['phase'])
 
     def test_proc_diagnostic_rejects_unbounded_or_wrong_host_inputs_before_ssh(self):
         for request in ({'host': 'archlinux', 'environment': 'fedora2328'},

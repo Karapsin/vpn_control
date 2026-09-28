@@ -26,7 +26,8 @@ from test_linux_public_install import (launch_fixture_owner, require_package_man
                                        require_human_terminal,
                                        timed_update_command, verify_recovered_install,
                                        cleanup_synthetic_workspace, _no_process_uses_workspace,
-                                       _owned_synthetic_workspace)
+                                       _owned_synthetic_workspace, _privileged_workspace_observation,
+                                       _PRIVILEGED_WORKSPACE_PROGRAM)
 
 
 _POSIX_WORKSPACE_SUPPORTED = os.name == "posix" and hasattr(os, "geteuid") and hasattr(os, "getuid")
@@ -34,6 +35,66 @@ _FIXTURE_UID = 1000
 
 
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
+    @unittest.skipIf(not hasattr(os, 'geteuid') or os.geteuid() == 0,
+                     'requires an unprivileged local test process')
+    def test_privileged_cleanup_script_rejects_nonroot_execution(self):
+        observed = subprocess.run([sys.executable, '-c', _PRIVILEGED_WORKSPACE_PROGRAM],
+                                  capture_output=True, text=True, check=False)
+        self.assertEqual(3, observed.returncode, observed.stderr)
+        self.assertEqual('', observed.stdout)
+
+    @unittest.skipUnless(_POSIX_WORKSPACE_SUPPORTED, 'descriptor cleanup requires POSIX')
+    def test_rpm_cleanup_uses_privileged_read_only_proof_only_after_proc_eacces(self):
+        class StoppedOwner:
+            def poll(self): return 0
+        def denied(*_args, **_kwargs):
+            raise RuntimeError('Cannot inspect process ownership of synthetic workspace') from PermissionError(errno.EACCES, 'denied')
+        with tempfile.TemporaryDirectory(prefix='vpn-public-install-evidence-') as temporary:
+            evidence = Path(temporary); workspace = evidence / 'workspace'; workspace.mkdir()
+            (workspace / 'fixture.txt').write_text('owned')
+            with mock.patch('test_linux_public_install._no_process_uses_workspace', side_effect=denied), \
+                 mock.patch('test_linux_public_install._privileged_no_process_uses_workspace', return_value=None) as root_probe:
+                cleanup_synthetic_workspace(workspace, evidence, StoppedOwner(), True, True, True)
+            root_probe.assert_called_once()
+            self.assertFalse(workspace.exists())
+            workspace.mkdir()
+            with mock.patch('test_linux_public_install._no_process_uses_workspace', side_effect=denied), \
+                 mock.patch('test_linux_public_install._privileged_no_process_uses_workspace', side_effect=RuntimeError('unknown')):
+                with self.assertRaisesRegex(RuntimeError, 'unknown'):
+                    cleanup_synthetic_workspace(workspace, evidence, StoppedOwner(), True, True, True)
+            self.assertTrue(workspace.exists())
+            with mock.patch('test_linux_public_install._no_process_uses_workspace',
+                            side_effect=RuntimeError('A process still owns the synthetic workspace')), \
+                 mock.patch('test_linux_public_install._privileged_no_process_uses_workspace') as root_probe:
+                with self.assertRaisesRegex(RuntimeError, 'still owns'):
+                    cleanup_synthetic_workspace(workspace, evidence, StoppedOwner(), True, True, True)
+            root_probe.assert_not_called()
+            self.assertTrue(workspace.exists())
+
+    @unittest.skipUnless(_POSIX_WORKSPACE_SUPPORTED, "synthetic process ownership requires POSIX")
+    def test_privileged_cleanup_proves_exact_fd_exemption_and_rejects_foreign_reference(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); proc = root / 'proc'; proc.mkdir()
+            workspace = root / 'workspace'; workspace.mkdir()
+            info = workspace.stat()
+            uid = os.geteuid()
+            for pid in (1234, 1235):
+                process = proc / str(pid); process.mkdir()
+                (process / 'status').write_text(f'Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n')
+                (process / 'stat').write_text(f'{pid} (fixture) S 1 {pid} {pid} ' + ' '.join(['0'] * 15 + ['4567']) + '\n')
+                (process / 'cwd').symlink_to(str(root))
+                (process / 'root').symlink_to('/')
+                (process / 'fd').mkdir()
+            (proc / '1234' / 'fd' / '13').symlink_to(str(workspace))
+            expected = (info.st_dev, info.st_ino)
+            observe = lambda: _privileged_workspace_observation(proc, workspace, uid, 1234, 4567, 13, expected)
+            self.assertEqual('absent', observe()['state'])
+            (proc / '1235' / 'fd' / '13').symlink_to(str(workspace))
+            self.assertEqual('referenced', observe()['state'])
+            (proc / '1235' / 'fd' / '13').unlink()
+            (proc / '1235' / 'cwd').unlink()
+            self.assertEqual('unknown', observe()['state'])
+
     @unittest.skipUnless(_POSIX_WORKSPACE_SUPPORTED, "real workspace deletion requires POSIX ownership and descriptors")
     def test_rpm_cleanup_removes_only_terminal_recovered_workspace_after_old_retention_would_fail(self):
         """Causal RED/GREEN: collector sees a retained workspace as incomplete."""

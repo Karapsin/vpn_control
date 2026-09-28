@@ -1,6 +1,7 @@
 import unittest
 
 from android_fixture_preflight import (
+    admission_export_guard,
     admission_readback_guard,
     post_install_mutation_guard,
     require_disconnected_effective_proxy,
@@ -54,6 +55,22 @@ def terminal_operation(*, owner="owner", phase="succeeded", code="OK"):
 
 
 class AndroidFixturePreflightTest(unittest.TestCase):
+    def test_export_backup_guard_rejects_owner_drift_and_incomplete_private_document(self):
+        opening = status(running=True, observation="running", selected="location-a")
+        history = operations(entries=[terminal_operation()])
+        history["configurationRevision"] = 7
+        backup = {"path":"/private/routing.json","sha256":"b" * 64,"size":200,
+                  "type":"vpn_control_routing_rules","version":7,"rulesValid":True}
+        self.assertEqual({"controllerId":"owner","configurationRevision":7,
+                          "backupSha256":"b" * 64,"backupSize":200},
+                         admission_export_guard(opening,history,opening,backup))
+        for closing, changed in (({**opening,"controllerId":"new-owner"},backup),
+                                 ({**opening,"configurationRevision":8},backup),
+                                 (opening,{**backup,"rulesValid":False}),
+                                 (opening,{**backup,"size":0})):
+            with self.subTest(closing=closing,backup=changed), self.assertRaises(ValueError):
+                admission_export_guard(opening,history,closing,changed)
+
     def test_admission_readback_requires_same_owner_revision_and_complete_matching_backup(self):
         snapshot = status(running=True, observation="running", selected="location-a")
         history = operations(entries=[terminal_operation()])

@@ -119,8 +119,12 @@ def monitor(args: argparse.Namespace) -> int:
     validate_admission(args.tart, args.sysctl, args.vm_name)
 
     with (evidence / "tart.log").open("x", encoding="utf-8") as tart_log:
+        run_args = [args.tart, "run"]
+        if not getattr(args, "graphics", False):
+            run_args.append("--no-graphics")
+        run_args.extend(("--no-audio", "--no-clipboard", args.vm_name))
         child = subprocess.Popen(
-            [args.tart, "run", "--no-graphics", "--no-audio", "--no-clipboard", args.vm_name],
+            run_args,
             stdout=tart_log,
             stderr=subprocess.STDOUT,
             text=True,
@@ -134,6 +138,7 @@ def monitor(args: argparse.Namespace) -> int:
                 "monitorPid": os.getpid(),
                 "monitorSessionId": os.getsid(0),
                 "vm": args.vm_name,
+                "graphics": bool(getattr(args, "graphics", False)),
             },
         )
         stop_requested = False
@@ -197,6 +202,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tart", default="tart")
     parser.add_argument("--sysctl", default="sysctl")
     parser.add_argument("--vm-stat", default="vm_stat")
+    parser.add_argument("--graphics", action="store_true", help="show the owned guest window for native consent testing")
     parser.add_argument("--interval-seconds", type=float, default=5.0)
     parser.add_argument("--stop-timeout-seconds", type=float, default=75.0)
     parsed = parser.parse_args()

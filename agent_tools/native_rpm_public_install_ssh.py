@@ -35,7 +35,7 @@ class RpmPublicInstallSshError(ValueError):
     pass
 
 
-def _observe_proc_tree(proc: Path, uid: int) -> dict[str, Any]:
+def _observe_proc_tree(proc: Path, uid: int, *, use_status_uid: bool = False) -> dict[str, Any]:
     """Report bounded same-UID proc visibility without claiming workspace absence."""
     uninspectable: list[dict[str, Any]] = []
     same_uid = 0
@@ -75,7 +75,21 @@ def _observe_proc_tree(proc: Path, uid: int) -> dict[str, Any]:
         except OSError as error:
             uncertain(pid, 'identity', error_errno=error.errno)
             continue
-        if owner.st_uid != uid:
+        if use_status_uid:
+            try:
+                uid_rows = [line.split()[1:] for line in (entry / 'status').read_text(encoding='ascii').splitlines()
+                            if line.startswith('Uid:')]
+                if len(uid_rows) != 1 or len(uid_rows[0]) != 4:
+                    raise ValueError()
+                process_uids = tuple(int(part) for part in uid_rows[0])
+                if any(part < 0 for part in process_uids):
+                    raise ValueError()
+            except (OSError, ValueError):
+                uncertain(pid, 'identity')
+                continue
+            if uid not in process_uids:
+                continue
+        elif owner.st_uid != uid:
             continue
         same_uid += 1
         try:
@@ -97,6 +111,13 @@ def _observe_proc_tree(proc: Path, uid: int) -> dict[str, Any]:
             os.readlink(entry / 'cwd')
         except OSError as error:
             uncertain(pid, 'cwd', start_ticks=start_ticks, state=state,
+                      ppid=ppid, process_group=process_group, session=session,
+                      comm=comm, error_errno=error.errno)
+            continue
+        try:
+            os.readlink(entry / 'root')
+        except OSError as error:
+            uncertain(pid, 'root', start_ticks=start_ticks, state=state,
                       ppid=ppid, process_group=process_group, session=session,
                       comm=comm, error_errno=error.errno)
             continue
@@ -131,9 +152,16 @@ _PROC_OBSERVE = ('import json,os\nfrom pathlib import Path\nfrom typing import A
                  + inspect.getsource(_observe_proc_tree)
                  + "\nprint(json.dumps(_observe_proc_tree(Path('/proc'),os.geteuid()),separators=(',',':')))\n")
 
+_PROC_PRIVILEGED_OBSERVE = ('import json,os,pwd\nfrom pathlib import Path\nfrom typing import Any\n'
+    + inspect.getsource(_observe_proc_tree)
+    + "\nif os.geteuid()!=0: raise SystemExit(3)\n"
+      "target_uid=pwd.getpwnam('vpnfixture').pw_uid\n"
+      "result=_observe_proc_tree(Path('/proc'),target_uid,use_status_uid=True)\n"
+      "result.update(observerUid=0,targetUid=target_uid,targetName='vpnfixture')\n"
+      "print(json.dumps(result,separators=(',',':')))\n")
 
-def observe_proc(root: Path | str, request: Mapping[str, Any]) -> dict[str, Any]:
-    """Read-only Fedora fixture process diagnostic; no caller command or path."""
+
+def _proc_guest(root: Path | str, request: Mapping[str, Any]) -> Any:
     if (not isinstance(request, Mapping) or set(request) != {'host', 'environment'}
             or request.get('host') != 'fedora2328' or request.get('environment') != 'fedora2328'):
         raise RpmPublicInstallSshError('RPM proc diagnostic requires the exact owned Fedora guest.')
@@ -141,8 +169,10 @@ def observe_proc(root: Path | str, request: Mapping[str, Any]) -> dict[str, Any]
     host = config.hosts.get('fedora2328')
     if host is None or host.user != _ACCOUNT:
         raise RpmPublicInstallSshError('RPM proc diagnostic guest identity is unavailable.')
-    driver = RpmPublicInstallSshDriver(root, timeout_seconds=20)
-    result = driver._remote(config, 'fedora2328', _PROC_OBSERVE, ())
+    return config
+
+
+def _public_proc_result(result: Mapping[str, Any] | None) -> dict[str, Any]:
     entries = result.get('uninspectable') if isinstance(result, Mapping) else None
     valid_entries = isinstance(entries, list) and len(entries) <= 32 and all(
         isinstance(entry, Mapping) and set(entry) == {'pid', 'startTicks', 'state', 'ppid', 'processGroup', 'session', 'comm', 'errorErrno', 'phase', 'reason'}
@@ -154,7 +184,7 @@ def observe_proc(root: Path | str, request: Mapping[str, Any]) -> dict[str, Any]
         and (entry['comm'] is None or isinstance(entry['comm'], str) and 0 < len(entry['comm']) <= 64
              and all(char.isascii() and (char.isalnum() or char in '_.:-()') for char in entry['comm']))
         and (entry['errorErrno'] is None or type(entry['errorErrno']) is int and 0 < entry['errorErrno'] <= 255)
-        and entry['phase'] in {'proc', 'identity', 'generation', 'cwd', 'fd', 'descriptor'}
+        and entry['phase'] in {'proc', 'identity', 'generation', 'cwd', 'root', 'fd', 'descriptor'}
         and entry['reason'] == 'unreadable' for entry in entries) if entries is not None else False
     if (not isinstance(result, Mapping) or result.get('procState') not in {'clear', 'unknown'}
             or type(result.get('sameUidCount')) is not int or not 0 <= result['sameUidCount'] <= 4096
@@ -168,6 +198,28 @@ def observe_proc(root: Path | str, request: Mapping[str, Any]) -> dict[str, Any]
             'procState': result['procState'], 'sameUidCount': result['sameUidCount'],
             'uninspectable': result['uninspectable'], 'truncated': result['truncated'],
             'evidenceScope': 'same-uid-proc-visibility-only'}
+
+
+def observe_proc(root: Path | str, request: Mapping[str, Any]) -> dict[str, Any]:
+    """Read-only Fedora fixture process diagnostic; no caller command or path."""
+    config = _proc_guest(root, request)
+    driver = RpmPublicInstallSshDriver(root, timeout_seconds=20)
+    return _public_proc_result(driver._remote(config, 'fedora2328', _PROC_OBSERVE, ()))
+
+
+def observe_proc_privileged(root: Path | str, request: Mapping[str, Any]) -> dict[str, Any]:
+    """Use fixed passwordless sudo only to inspect the fixture UID's proc visibility."""
+    config = _proc_guest(root, request)
+    driver = RpmPublicInstallSshDriver(root, timeout_seconds=20)
+    raw = driver._remote(config, 'fedora2328', _PROC_PRIVILEGED_OBSERVE, (), privileged=True)
+    if (not isinstance(raw, Mapping) or raw.get('observerUid') != 0
+            or raw.get('targetName') != _ACCOUNT or type(raw.get('targetUid')) is not int
+            or raw['targetUid'] <= 0):
+        raw = None
+    result = _public_proc_result(raw)
+    result['evidenceScope'] = 'privileged-same-uid-proc-visibility-only'
+    result['ok'] = result['ok'] and result['procState'] == 'clear'
+    return result
 
 
 def _canonical(value: object) -> bytes:
@@ -620,11 +672,13 @@ class RpmPublicInstallSshDriver:
                 hashes[name] = {'size': info.st_size, 'sha256': digest}
         return hashes
 
-    def _remote(self, config: Any, host: str, program: str, args: tuple[str, ...], payload: Path | None = None) -> Mapping[str, Any] | None:
+    def _remote(self, config: Any, host: str, program: str, args: tuple[str, ...], payload: Path | None = None,
+                *, privileged: bool = False) -> Mapping[str, Any] | None:
         import subprocess
         import threading
         from contextlib import nullcontext
-        command = native_scenario_ssh._py(program, *args)
+        command = (('sudo', '-n', '--', 'python3', '-I', '-B', '-c', 'exec(' + repr(program) + ')', *args)
+                   if privileged else native_scenario_ssh._py(program, *args))
         argv = ssh_transport.build_ssh_argv(config, host, self.timeout_seconds, command=command, ssh_binary=self.ssh_binary)
         connection = ssh_transport.connection_host(config, host)
         context = tempfile.TemporaryDirectory(prefix='vpn-rpm-askpass-') if connection.password is not None else nullcontext(None)
@@ -660,6 +714,7 @@ class RpmPublicInstallSshDriver:
                 process.wait()
             finally:
                 timer.cancel()
+                process.stdout.close()
             writer.join(timeout=1)
             if expired.is_set() or errors or process.returncode != 0 or len(output) > 8192:
                 return None

@@ -1,7 +1,17 @@
 name: Linux Desktop Package
+run-name: Linux RPM fixture ${{ inputs.correlation_id || github.sha }}
 
 on:
   workflow_dispatch:
+    inputs:
+      fixture_base_version:
+        description: "Build test-only same-source base and target RPMs from this dev commit"
+        required: false
+        type: string
+      correlation_id:
+        description: "Unique UUID binding this fixture dispatch and artifact"
+        required: false
+        type: string
   push:
     branches:
       - dev
@@ -31,10 +41,128 @@ on:
       - "scripts/package_arch_desktop_update.sh"
       - "scripts/install_arch_desktop_update.sh"
       - "scripts/test_arch_desktop_update.sh"
+      - "scripts/prepare_desktop_update_fixture.py"
+      - "scripts/verify_linux_update_fixture.py"
+      - "scripts/test_linux_update_fixture_workflow.py"
 
 jobs:
+  validate-linux-update-fixture:
+    name: Validate Linux RPM fixture request
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate exact dev source and version pair
+        env:
+          FIXTURE_BASE_VERSION: ${{ inputs.fixture_base_version }}
+          FIXTURE_CORRELATION_ID: ${{ inputs.correlation_id }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import uuid
+          from pathlib import Path
+          from scripts.version_metadata import parse_version, read_version
+          base = os.environ['FIXTURE_BASE_VERSION']
+          correlation = os.environ['FIXTURE_CORRELATION_ID']
+          if str(uuid.UUID(correlation)) != correlation:
+              raise SystemExit('Fixture correlation_id must be a canonical UUID')
+          target = read_version(Path.cwd())
+          if parse_version(base) >= parse_version(target):
+              raise SystemExit('Fixture base must precede target version')
+          print(f'Validated test-only RPM fixture versions {base} -> {target}')
+          PY
+
+  linux-update-fixture:
+    name: Build same-source Linux RPM fixture
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''
+    needs: validate-linux-update-fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FIXTURE_ROOT: /tmp/vpn-control-linux-update-fixture
+      FIXTURE_BASE_VERSION: ${{ inputs.fixture_base_version }}
+      FIXTURE_CORRELATION_ID: ${{ inputs.correlation_id }}
+    steps:
+      - name: Checkout exact dispatch source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check release hygiene
+        run: ./scripts/check_release_hygiene.sh
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Linux package build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot rpm cpio binutils
+          test "$(uname -m)" = x86_64
+          for tool in fakeroot rpmbuild dpkg-deb objcopy; do command -v "$tool"; done
+
+      - name: Prepare native runtime
+        run: ./scripts/prepare_sing_box_desktop_runtime.sh
+
+      - name: Prepare same-source fixture
+        run: |
+          target_version="$(python3 scripts/version_metadata.py --field version)"
+          python3 scripts/prepare_desktop_update_fixture.py prepare \
+            --repository "$GITHUB_WORKSPACE" --output "$FIXTURE_ROOT" \
+            --base-version "$FIXTURE_BASE_VERSION" --target-version "$target_version" \
+            --runtime desktopApp/src/main/resources/bin/linux-amd64/sing-box \
+            --platform linux --architecture x86_64
+
+      - name: Build both native packages
+        run: python3 scripts/prepare_desktop_update_fixture.py build --directory "$FIXTURE_ROOT" --confirm-owned-native-host-build --discard-completed-builds
+
+      - name: Verify RPM provenance against dispatch commit
+        run: |
+          target_version="$(python3 scripts/version_metadata.py --field version)"
+          python3 scripts/verify_linux_update_fixture.py \
+            --directory "$FIXTURE_ROOT" --source-sha "$GITHUB_SHA" \
+            --base-version "$FIXTURE_BASE_VERSION" --target-version "$target_version" \
+            --correlation-id "$FIXTURE_CORRELATION_ID" \
+            --output "$FIXTURE_ROOT/fixture-verification.json"
+
+      - name: Upload verified Linux fixture
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-control-linux-update-fixture-${{ inputs.correlation_id }}
+          path: |
+            ${{ env.FIXTURE_ROOT }}/snapshot.json
+            ${{ env.FIXTURE_ROOT }}/build-plan.json
+            ${{ env.FIXTURE_ROOT }}/fixture-receipt.json
+            ${{ env.FIXTURE_ROOT }}/fixture-verification.json
+            ${{ env.FIXTURE_ROOT }}/base-build.log
+            ${{ env.FIXTURE_ROOT }}/target-build.log
+            ${{ env.FIXTURE_ROOT }}/packages/base/*.rpm
+            ${{ env.FIXTURE_ROOT }}/packages/target/*.rpm
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload fixture diagnostics after failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-control-linux-update-fixture-failure-${{ inputs.correlation_id }}
+          path: |
+            ${{ env.FIXTURE_ROOT }}/snapshot.json
+            ${{ env.FIXTURE_ROOT }}/build-plan.json
+            ${{ env.FIXTURE_ROOT }}/base-build.log
+            ${{ env.FIXTURE_ROOT }}/target-build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
   package-linux-desktop:
     name: Build DEB and RPM
+    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''
     runs-on: ubuntu-latest
     timeout-minutes: 45
 

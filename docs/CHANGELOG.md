@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Align GUI and CLI source selection and harden native parity acceptance workflows.
+
 ## 2.2.0 - 2026-09-28
 
 - Harden native batch admission and script-mode MCP imports, and retry transient pinned-tool downloads.

@@ -27,6 +27,88 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Active continuation after first delivery — 2026-09-28
+
+The first continuation checkpoint is `4aa0658bdc69ffd12b4f30d66988b7ccb4720dd6`
+on `origin/dev`, version `2.2.0`. Its managed prepush tier passed. The user
+requested larger, less frequent checkpoints and a single required-workflow CI
+review at the final pushed SHA; intermediate fixture workflow results are still
+artifact evidence and do not close final CI. No release is authorized.
+
+The acceptance matrix currently has one reviewed **historical** Android API35
+document-response recovery receipt from source `5cebf153` and 21 open groups.
+The Mac component summary has a corrected partial receipt
+`native-acceptance-2ec39b0a0d04914d6d0f7dceb92e2bd6` on source `4aa0658`.
+An earlier receipt `native-acceptance-7648c94fca43aaadf8583e089c53e731`
+overmarked explicit authorization denial and was immutably retracted; the
+original bytes remain auditable. Matrix status confirms one retraction and
+keeps the Mac row open without a conflict.
+No native operation has been replayed to turn historical evidence into current
+evidence. The Mac base `2.1.19` and target `2.2.0` DMGs are verified as one
+`4aa0658`-source arm64 pair; the old missing-token installer job remains unknown.
+On its admitted task VM, the public user-local `2.1.19`→`2.2.0` update
+completed: operation `779be669-2f61-4d4e-a185-2415438e30ed`, new protected
+job `5992b278-0232-4dab-9047-d0aae9d45099`, receipt sequence 4
+`SUCCEEDED/OK`. The installed target's signed app and original-user Aqua GUI
+returned with a live controller in OFF/proxy-only mode. This is a successful
+component scenario for original source `4aa0658`, not the full Mac lifecycle or
+final-source matrix row; subsequent machine cases are described below.
+The separate machine-owned preauthorization job
+`2f1ec654-c5ad-41c1-9af5-b4437ec85299` then crossed a distinct guest boot.
+The packaged original-user owner recovered it as final `CANCELLED`,
+`cleanupCode=OK`, `installed=false`; base `2.1.19` remained intact and only
+that new job's input/stage were removed. Legacy job `465a954f` remains unknown.
+The next monitored graphical boot completed a real machine-owned authorized
+replacement: protected job `e8227d0d-c599-452d-bedb-62ace8fe2538` returned
+`SUCCEEDED/OK`, installed signed `2.2.0`, and the original-user GUI/controller
+returned. A separate fault-injected machine rollback job
+`c0208907-4b5c-45e3-a200-75e7300f9d65` ended
+`FAILED/PERSISTENCE_FAILED`; the exact signed `2.1.19` base identity was
+restored, owner maintenance reported cleanup `OK`, and the candidate stage was
+retained as evidence. Explicit authorization denial, user-local rollback,
+first-gate races and final-source package reruns remain open. The sole Tart VM
+was stopped and its reservation released after these scenarios.
+
+Android API35 preflight retained package/owner/operation facts, but
+`routing show` exceeded even a 30-second bounded step. The Android owner
+replaced the redundant read with guarded private `routing export` and a
+durable detached readback job. Its first run, correlation
+`c5299b5f-402b-447e-945b-070902ddbc03`, retained an exact 11,872,243-byte
+private export (SHA256 `f6242fa695c4a264e3db0a0abd58d3775063fb9dc4ba4ce95464b27656c49ca8`)
+but ended `unknown/readback_or_backup_unknown`; no mutation is admitted. The
+second correlation `d4c6e8f9` also preserved a complete private export but
+ended `unknown/readback_export_stdout_unknown`. The cause was a valid JSON
+success envelope that the adapter had incorrectly required to be empty; a
+causal regression now validates its owner/revision/byte count. A third exact
+read-only correlation is running. The same audit found Android's public CLI
+still rejected bare subscription source mode;
+causal Android RED (2/6 failures) and GREEN (6/6 pass) now cover remembered and
+empty selections, with packaged acceptance still open.
+
+The Linux privileged read-only process probe can inspect all nine fixture-UID
+processes, while full workspace cleanup and RPM batch remain unproven. A
+disposable same-source RPM fixture workflow and correlated MCP dispatch/status
+route are ready, but no fixture has been dispatched because the next source
+checkpoint is not frozen. Windows CP117 still has no new public MSI operation;
+its durable original-user route is under final source review. An inert fixed
+CP117 PowerShell 5 preflight passed parser, gzip and UTF-8 pipeline checks
+without submitting an installer. A complete same-source MSI pair is still
+needed after the next source freeze.
+
+One additional GUI/CLI parity defect was reproduced and fixed in the dirty
+working tree: the GUI could enter subscription source mode without an explicit
+ID, whereas CLI rejected that form. Real-owner desktop and shared parser tests
+passed after the narrow command change. This change and all active MCP/native
+tool changes require a later metadata bump, full prepush receipt and delivery.
+
+Current exclusive writers are Android for the admission/readback adapter and
+fixture script, Linux for RPM cleanup/harness and Linux fixture workflow,
+Windows for MSI scenario adapter, and macOS for installer/recovery. The
+coordinator owns shared MCP registration, matrix accounting, docs, metadata,
+Gradle scheduling, checkpoint delivery and final CI. The desktop parity audit
+is complete and its writer has stopped. The sole local Mac VM is reserved for
+the Mac operator while admitted; host Gradle waits for its release.
+
 ### Continuation ownership and live gates — 2026-09-28
 
 Startup on `dev` found clean HEAD `24ec90d70ac58029068561fc434692a268ce0714`

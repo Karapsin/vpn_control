@@ -129,7 +129,11 @@ class ProfileStorage(
             val running = runtimeRunning() ?: error("RUNTIME_STATE_UNKNOWN")
             val (mode, id) = AndroidSourceControl.target(mapState(prefs), arguments)
             prefs[Keys.profileSourceMode] = mode.name
-            if (mode == ProfileSourceMode.SUBSCRIPTION) {
+            // A mode-only switch matches the GUI toggle: keep the remembered
+            // subscription and URL, including an empty selection.
+            if (mode == ProfileSourceMode.SUBSCRIPTION &&
+                ((arguments["source"] as? com.kardinal.vpncontrol.model.ControlValue.Text)?.value == "all" ||
+                    "subscription-id" in arguments)) {
                 prefs[Keys.activeSubscriptionId] = id
                 prefs[Keys.profileUrl] = mapState(prefs).subscriptions.firstOrNull { it.id == id }?.url.orEmpty()
             }

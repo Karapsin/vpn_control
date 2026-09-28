@@ -26,6 +26,7 @@ _SHA = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 _TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _ARTIFACT = re.compile(r"^sha256-[0-9a-f]{64}$")
+_RECEIPT_ID = re.compile(r"^native-acceptance-[0-9a-f]{32}$")
 _PLATFORMS = {"android", "linux", "windows", "macos", "cross-platform"}
 _RESULTS = {"passed", "failed", "unknown"}
 _SCOPES = {"full-native"}
@@ -77,8 +78,43 @@ def matrix_record(root: Path | str, observation: Mapping[str, Any], *, requireme
             if _encode(existing) == _encode(item):
                 raise NativeAcceptanceMatrixError("native acceptance observation is an exact duplicate")
         _exclusive_write(path, _encode({"schemaVersion": 1, "receiptId": receipt_id, **item}))
-    return {"receiptId": receipt_id, "receiptPath": str(path), "historical": False,
-            "requirementId": item["requirementId"], "result": item["result"]}
+    # A record has no intrinsic current/historical status: that depends on the
+    # checked-out source at status time. Preserve its original source identity.
+    return {"receiptId": receipt_id, "receiptPath": str(path),
+            "requirementId": item["requirementId"], "originalSourceSHA": item["originalSourceSHA"],
+            "result": item["result"]}
+
+
+def matrix_retract(root: Path | str, correction: Mapping[str, Any], *, requirements_path: Path | str = REQUIREMENTS_PATH) -> dict[str, Any]:
+    """Publish one immutable reviewed correction without changing its receipt."""
+    if not isinstance(correction, Mapping) or set(correction) != {"receiptId", "reason", "reviewer"}:
+        raise NativeAcceptanceMatrixError("native acceptance retraction fields are invalid")
+    receipt_id = correction["receiptId"]
+    if not isinstance(receipt_id, str) or not _RECEIPT_ID.fullmatch(receipt_id):
+        raise NativeAcceptanceMatrixError("native acceptance retraction receipt ID is invalid")
+    for field in ("reason", "reviewer"):
+        value = correction[field]
+        if not isinstance(value, str) or not value.strip() or len(value) > (500 if field == "reason" else 240):
+            raise NativeAcceptanceMatrixError(f"native acceptance retraction {field} is invalid")
+    requirements = load_requirements(requirements_path)
+    directory = _prepare_directory(root)
+    with _locked(directory):
+        _cleanup(directory)
+        receipt_path = directory / (receipt_id + ".json")
+        if not receipt_path.exists() or receipt_path.is_symlink():
+            raise NativeAcceptanceMatrixError("native acceptance retraction references a foreign receipt")
+        _read_receipt(receipt_path, requirements)
+        original_hash = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+        retractions = directory / "retractions"
+        _private_directory(retractions)
+        path = retractions / ("retract-" + receipt_id + ".json")
+        if path.exists() or path.is_symlink():
+            raise NativeAcceptanceMatrixError("native acceptance receipt is already retracted")
+        record = {"schemaVersion": 1, "receiptId": receipt_id, "originalReceiptSha256": original_hash,
+                  "reason": correction["reason"], "reviewer": correction["reviewer"]}
+        _exclusive_write(path, _encode(record))
+    return {"receiptId": receipt_id, "retractionPath": str(path),
+            "originalReceiptSha256": original_hash}
 
 
 def matrix_status(root: Path | str, current_source_sha: str, *, requirements_path: Path | str = REQUIREMENTS_PATH) -> dict[str, Any]:
@@ -88,6 +124,8 @@ def matrix_status(root: Path | str, current_source_sha: str, *, requirements_pat
     requirements = load_requirements(requirements_path)
     directory = _existing_directory(root)
     records = [] if directory is None else _records_read_only(directory, requirements)
+    retracted = set() if directory is None else _read_retractions(directory, requirements)
+    records = [record for record in records if record["receiptId"] not in retracted]
     for record in records:
         record["_verificationError"] = _verification_error(root, record)
     rows: list[dict[str, Any]] = []
@@ -99,7 +137,8 @@ def matrix_status(root: Path | str, current_source_sha: str, *, requirements_pat
                for state in ("passed", "failed", "unknown", "historical", "conflicting", "open")}
     gate = "passed" if summary["passed"] == len(rows) else "open"
     return {"schemaVersion": 1, "currentSourceSHA": current_source_sha, "gate": gate,
-            "summary": summary, "requirements": rows, "table": _table(rows)}
+            "summary": summary, "retractedCount": len(retracted),
+            "retractedReceiptIds": sorted(retracted), "requirements": rows, "table": _table(rows)}
 
 
 def _requirement(value: Any) -> dict[str, Any]:
@@ -359,7 +398,56 @@ def _records_read_only(directory: Path, requirements: Mapping[str, Mapping[str, 
         paths = sorted(directory.glob("*.json"))
     except OSError as error:
         raise NativeAcceptanceMatrixError("native acceptance receipts cannot be listed") from error
-    return [_read_receipt(path, requirements) for path in paths]
+    return [{**_read_receipt(path, requirements), "receiptId": path.stem} for path in paths]
+
+
+def _read_retractions(directory: Path, requirements: Mapping[str, Mapping[str, Any]]) -> set[str]:
+    retractions = directory / "retractions"
+    if not retractions.exists() and not retractions.is_symlink():
+        return set()
+    try:
+        info = retractions.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or
+                stat.S_IMODE(info.st_mode) != 0o700):
+            raise NativeAcceptanceMatrixError("native acceptance retraction directory is unsafe")
+        paths = sorted(retractions.glob("*.json"))
+    except OSError as error:
+        raise NativeAcceptanceMatrixError("native acceptance retractions cannot be listed") from error
+    found: set[str] = set()
+    for path in paths:
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+            with os.fdopen(fd, "rb") as stream:
+                info = os.fstat(stream.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+                    raise NativeAcceptanceMatrixError("native acceptance retraction is unsafe")
+                raw = stream.read(_MAX_RECORD + 1)
+            if len(raw) > _MAX_RECORD:
+                raise NativeAcceptanceMatrixError("native acceptance retraction is unsafe")
+            value = json.loads(raw.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise NativeAcceptanceMatrixError("native acceptance retraction is corrupt") from error
+        if (not isinstance(value, Mapping) or set(value) !=
+                {"schemaVersion", "receiptId", "originalReceiptSha256", "reason", "reviewer"} or
+                value["schemaVersion"] != 1 or not isinstance(value["receiptId"], str) or
+                not _RECEIPT_ID.fullmatch(value["receiptId"]) or
+                path.name != "retract-" + value["receiptId"] + ".json" or
+                not isinstance(value["originalReceiptSha256"], str) or
+                not _HASH.fullmatch(value["originalReceiptSha256"])):
+            raise NativeAcceptanceMatrixError("native acceptance retraction is corrupt")
+        for field in ("reason", "reviewer"):
+            if not isinstance(value[field], str) or not value[field].strip() or len(value[field]) > (500 if field == "reason" else 240):
+                raise NativeAcceptanceMatrixError("native acceptance retraction is corrupt")
+        receipt_path = directory / (value["receiptId"] + ".json")
+        if not receipt_path.exists() or receipt_path.is_symlink():
+            raise NativeAcceptanceMatrixError("native acceptance retraction references a foreign receipt")
+        _read_receipt(receipt_path, requirements)
+        if hashlib.sha256(receipt_path.read_bytes()).hexdigest() != value["originalReceiptSha256"]:
+            raise NativeAcceptanceMatrixError("native acceptance retracted receipt changed")
+        if value["receiptId"] in found:
+            raise NativeAcceptanceMatrixError("native acceptance duplicate retraction")
+        found.add(value["receiptId"])
+    return found
 
 
 def _read_receipt(path: Path, requirements: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
@@ -384,7 +472,10 @@ def _read_receipt(path: Path, requirements: Mapping[str, Mapping[str, Any]]) -> 
     # Receipt loading validates its schema only; the bytes/artifacts were checked
     # at record time and a later change must be reported by explicit re-recording.
     normalized = _stored_observation(raw, requirements)
-    if not isinstance(value["receiptId"], str) or not value["receiptId"].startswith("native-acceptance-"):
+    receipt_id = value.get("receiptId")
+    if (not isinstance(receipt_id, str) or not _RECEIPT_ID.fullmatch(receipt_id) or
+            path.name != receipt_id + ".json" or
+            receipt_id != "native-acceptance-" + hashlib.sha256(_encode(normalized)).hexdigest()[:32]):
         raise NativeAcceptanceMatrixError("native acceptance receipt is corrupt")
     return normalized
 
@@ -441,13 +532,17 @@ def _encode(value: Mapping[str, Any]) -> bytes:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Expose fixed matrix-record and matrix-status data actions for MCP/CLI wiring."""
+    """Expose fixed matrix record, retract and status actions for MCP/CLI wiring."""
     parser = argparse.ArgumentParser(prog="native-acceptance-matrix")
     subparsers = parser.add_subparsers(dest="action", required=True)
     record = subparsers.add_parser("matrix-record")
     record.add_argument("--root", required=True)
     record.add_argument("--observation-file", required=True)
     record.add_argument("--requirements")
+    retract = subparsers.add_parser("matrix-retract")
+    retract.add_argument("--root", required=True)
+    retract.add_argument("--correction-file", required=True)
+    retract.add_argument("--requirements")
     status = subparsers.add_parser("matrix-status")
     status.add_argument("--root", required=True)
     status.add_argument("--current-source-sha", required=True)
@@ -458,6 +553,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.action == "matrix-record":
             observation = json.loads(Path(args.observation_file).read_text(encoding="utf-8"))
             result = matrix_record(args.root, observation, requirements_path=requirements_path)
+        elif args.action == "matrix-retract":
+            correction = json.loads(Path(args.correction_file).read_text(encoding="utf-8"))
+            result = matrix_retract(args.root, correction, requirements_path=requirements_path)
         else:
             result = matrix_status(args.root, args.current_source_sha, requirements_path=requirements_path)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, NativeAcceptanceMatrixError) as error:

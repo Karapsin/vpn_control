@@ -513,9 +513,11 @@ class DesktopAppService internal constructor(
         }
         if (command.operation == com.kardinal.vpncontrol.model.ControlOperationId.SOURCE_SET) return synchronized(this) {
             admission().getOrElse { return@synchronized response(Result.failure(it), "") }
-            // GUI source-mode toggle preserves the remembered subscription, including an empty workspace.
-            if (command.arguments.keys == setOf("mode")) {
-                val mode = when ((command.arguments["mode"] as? ControlValue.Text)?.value) {
+            // GUI toggle and the mode-only CLI form share the remembered subscription transaction.
+            if (command.arguments.keys == setOf("mode") ||
+                (command.arguments.keys == setOf("source") &&
+                    (command.arguments["source"] as? ControlValue.Text)?.value == "subscription")) {
+                val mode = when (((command.arguments["mode"] ?: command.arguments["source"]) as? ControlValue.Text)?.value) {
                     "current-locations" -> ProfileSourceMode.CURRENT_LOCATIONS
                     "subscription" -> ProfileSourceMode.SUBSCRIPTION
                     else -> return@synchronized response(Result.failure(IllegalArgumentException("INVALID_ARGUMENT")), "")

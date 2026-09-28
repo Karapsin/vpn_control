@@ -194,7 +194,8 @@ object ControlCliParser {
             SOURCE_SET -> {
                 val source = normalizedPositionals.first()
                 if (source !in setOf("current-locations", "subscription", "all") ||
-                    normalizedPositionals.size != if (source == "subscription") 2 else 1) return invalid("Invalid source selection.")
+                    normalizedPositionals.size !in (if (source == "subscription") 1..2 else 1..1))
+                    return invalid("Invalid source selection.")
             }
             ROUTING_SET -> if (normalizedPositionals.first() !in setOf("ignore-rules", "direct-domains", "block-quic-udp443")) {
                 return invalid("Unknown routing setting.")

@@ -556,6 +556,15 @@ requirements are in `native_acceptance_requirements.json`. `matrix-status` takes
 optional `sourceSha` (must match current HEAD) and reports remaining scenarios.
 Partial current receipts aggregate; historical/component receipts remain visible,
 conflicts and unknowns remain open, and evidence changes invalidate a pass.
+`matrix-record` returns the observation's immutable `originalSourceSHA`; a
+record is classified as current or historical only by a subsequent
+`matrix-status` for the checked-out HEAD.
+If a reviewer overstates a scenario, `matrix-retract` accepts exactly
+`receiptId`, a nonempty `reason`, and `reviewer`. It writes an immutable private
+correction bound to the original receipt bytes; `matrix-status` reports the
+retracted ID and excludes that claim while leaving its original file auditable.
+Record a corrected observation separately with the original source/artifact
+identity. Do not edit or delete the original receipt.
 
 `vm_workflow("rpm-proc-observe", inputs={"host":"fedora2328","environment":"fedora2328"})`
 is a fixed read-only process-visibility check for the disposable RPM guest. It
@@ -565,6 +574,22 @@ and `ok=false` require investigation; unreadable entries are never treated as
 absent or as permission to start the installer. A running MCP server may retain
 the old action inventory after a source edit; the equivalent fresh-process route
 is `mcp_tool.sh vm-workflow rpm-proc-observe --inputs-file <private-input-json>`.
+`rpm-proc-observe-privileged` accepts the same exact keys and runs only a fixed
+read-only `sudo -n` observer on that positively identified disposable guest.
+It filters to the fixture UID and returns bounded visibility without command
+lines or filesystem targets. A clear visibility result does not itself prove
+installer cleanup; the workspace-reference criterion still needs an exact
+owned-process check.
+
+`linux-rpm-fixture-dispatch` accepts exact `sourceSha` (current `origin/dev`),
+`baseVersion` and a new UUID `correlationId`. It journals a private no-replay
+intent before dispatching only the Linux Desktop Package fixture job on `dev`.
+`linux-rpm-fixture-status` accepts only that correlation and binds the run's
+display title, exact head SHA and one unexpired artifact name/ID. Unknown
+dispatch remains unknown and must not be repeated with the same intent.
+Download the exact artifact ID and independently verify the contained snapshot,
+receipt, base/target RPM bytes and package headers before admitting either RPM
+to a native guest; workflow success alone is build evidence.
 
 `vm_workflow("android-admission-readback", inputs={"host":"archlinux",
 "device":"api35","correlationId":"<new-uuid>"})` performs fixed read-only
@@ -580,6 +605,23 @@ or retry. A new correlation is required for a genuinely new read-only snapshot.
 "device":"api35","correlationId":"<original-uuid>"})` observes that exact
 private backup stage and the current public owner after response loss. A backup
 alone is not admission; inspect its result before a new snapshot or any write.
+`android-admission-preflight` uses the same configured host/device and a new
+UUID correlation, with optional `timeoutSeconds` 1..60. It emits ordered
+bounded stage evidence for identity, package bytes, reverse mappings and public
+read-only commands. Timeout preserves completed stages and the last stage;
+its result never authorizes a product mutation or substitutes for the full
+private routing backup.
+For large routing exports, `android-readback-start` accepts exactly configured
+`host`, `device`, a new UUID `correlationId`, and `expectedBaseSha256`. It writes
+a private local no-replay intent before one detached, fixed read-only device
+job. `android-readback-status` and `android-readback-collect` accept only that
+correlation; they inspect the durable remote result without resubmission.
+A submitted or running job is not mutation admission. Only a complete private
+backup with its hash and same-owner/revision guard can support a later action.
+Timeout or unknown keeps the original correlation and `replayAllowed=false`.
+The wrapper may report `ok=true` for a correctly observed running job; only
+`android-readback-collect` with `admissionReady=true` certifies its completed
+readback, and a later write still requires a fresh owner/revision check.
 
 `vm_workflow("windows-msi-preinstall-status", inputs={"host":"archlinux",
 "jobId":"<exact-protected-job-uuid>"})` observes one configured CP117 guest's
@@ -589,6 +631,24 @@ to its running QEMU generation and the status to the exact job ID. Missing or
 unreadable diagnostic leaves remain explicit; the action never starts,
 cancels, replays or infers an MSI installation. Use a fresh-process MCP CLI
 fallback after server source changes until the MCP session is reloaded.
+`windows-msi-powershell-preflight` accepts only `host="archlinux"` and runs a
+fixed inert PowerShell 5 compatibility self-test through the positively bound
+CP117 QGA guest. It checks compressed bootstrap parsing and UTF-8 JSON file
+round-tripping in a unique temporary leaf, then removes that leaf. It does not
+submit the app CLI, UAC, MSI or VPN action; only `state=passed` clears this
+fixture transport preflight.
+
+`windows-msi-public-start` accepts exactly `host="archlinux"`, a new UUID
+`correlationId`, `sourceSha`, registered `fixtureReceiptArtifactId`,
+`baseMsiArtifactId`, `targetMsiArtifactId`, and optional `timeoutSeconds`
+(1..30). It checks the configured CP117 guest and a same-source complete MSI
+pair, writes a private no-replay intent, then submits one fixed original-user
+public update request. `windows-msi-public-status` and
+`windows-msi-public-collect` accept the exact `host` and `correlationId`, plus
+optional timeout, and observe that durable intent without submission. Unknown
+submission is not permission to retry. A collected protected terminal result
+does not assert installation, target bytes, relaunch or cleanup; those need
+independent native proof before an acceptance receipt.
 
 Darwin `admit-plan` accepts historical nonzero swap only with a caller-supplied
 `measurement.platform="darwin"` and exactly two `samples`. Each sample has

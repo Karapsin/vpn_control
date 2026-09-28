@@ -12,9 +12,9 @@ internal object AndroidSourceControl {
 
     fun arguments(values: Map<String, ControlValue>): Map<String, ControlValue> {
         val source = (values["source"] as? ControlValue.Text)?.value
-        val expected = if (source == "subscription") setOf("source", "subscription-id") else setOf("source")
+        val expected = if (source == "subscription" && "subscription-id" in values) setOf("source", "subscription-id") else setOf("source")
         require(values.keys == expected && source in setOf("current-locations", "subscription", "all")) { "INVALID_ARGUMENT" }
-        if (source == "subscription") require((values["subscription-id"] as? ControlValue.Text)?.value?.isNotBlank() == true) { "INVALID_ARGUMENT" }
+        if ("subscription-id" in values) require((values["subscription-id"] as? ControlValue.Text)?.value?.isNotBlank() == true) { "INVALID_ARGUMENT" }
         return values
     }
 
@@ -27,8 +27,8 @@ internal object AndroidSourceControl {
                 ProfileSourceMode.SUBSCRIPTION to ALL_SUBSCRIPTIONS_ID
             }
             else -> {
-                val id = (values.getValue("subscription-id") as ControlValue.Text).value
-                check(state.subscriptions.any { it.id == id }) { "NOT_FOUND" }
+                val id = (values["subscription-id"] as? ControlValue.Text)?.value ?: state.activeSubscriptionId
+                if ("subscription-id" in values) check(state.subscriptions.any { it.id == id }) { "NOT_FOUND" }
                 ProfileSourceMode.SUBSCRIPTION to id
             }
         }

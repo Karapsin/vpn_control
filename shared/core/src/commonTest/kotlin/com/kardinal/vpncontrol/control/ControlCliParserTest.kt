@@ -81,6 +81,22 @@ class ControlCliParserTest {
     }
 
     @Test
+    fun sourceSubscriptionCanReuseRememberedModeOrSelectAnExplicitId() {
+        val remembered = parse("source", "set", "subscription")
+        assertEquals(ControlOperationId.SOURCE_SET, remembered.operation)
+        assertEquals(listOf("subscription"), remembered.positional)
+        assertEquals(listOf("subscription", "saved-id"),
+            parse("source", "set", "subscription", "saved-id").positional)
+        for (args in listOf(
+            listOf("source", "set"),
+            listOf("source", "set", "subscription", ""),
+            listOf("source", "set", "subscription", "saved-id", "extra"),
+            listOf("source", "set", "current-locations", "saved-id"),
+            listOf("source", "set", "unknown"),
+        )) assertIs<ControlCliParseResult.Invalid>(ControlCliParser.parse(args))
+    }
+
+    @Test
     fun everyOperationHasAnExecutableGrammarExample() {
         val examples = listOf(
             listOf("on"), listOf("off"), listOf("status", "--watch"), listOf("restart"), listOf("find-best"),
@@ -118,7 +134,7 @@ class ControlCliParserTest {
             listOf("locations", "add", "--input", "-", "--qr-image", "secret.png"),
             listOf("subscriptions", "update", "id"),
             listOf("subscriptions", "add", "--source", "https://SECRET.test", "--input", "-"),
-            listOf("source", "set", "subscription"),
+            listOf("source", "set"),
             listOf("source", "set", "all", "SECRET"),
             listOf("routing", "set", "rule-sets", "SECRET"),
             listOf("routing", "export", "--output", "-", "--json"),

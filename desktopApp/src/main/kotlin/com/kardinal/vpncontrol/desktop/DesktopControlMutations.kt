@@ -19,7 +19,7 @@ internal object DesktopControlMutations {
         val options = parsed.options
         return when (request.operation) {
             LOCATIONS_SELECT -> DesktopCliCommand.Select(args.single())
-            SOURCE_SET -> DesktopCliCommand.SourceSet(when (args.first()) {
+            SOURCE_SET -> if (args == listOf("subscription")) null else DesktopCliCommand.SourceSet(when (args.first()) {
                 "current-locations" -> null
                 "all" -> ALL_SUBSCRIPTIONS_ID
                 else -> args[1]

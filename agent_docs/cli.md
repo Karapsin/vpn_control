@@ -22,7 +22,7 @@ select <name|visible-index>
 find-best
 source show
 source set current-locations
-source set subscription <id>
+source set subscription [id]
 source set all
 subscriptions list
 subscriptions show <id>
@@ -81,6 +81,11 @@ gui hide
 quit
 capabilities
 ```
+
+`source set subscription` without an ID selects the GUI's subscription mode,
+preserving the remembered subscription selection (including an empty selection
+in a new workspace). Supplying an ID selects that subscription. Both forms use
+the same committed source action and revision semantics as the GUI.
 
 Global options: `--help`, `--version`, `--json`, desktop-only `--state-dir PATH`,
 `--android`, `--async`,

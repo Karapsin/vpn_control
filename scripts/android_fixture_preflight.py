@@ -146,3 +146,35 @@ def admission_readback_guard(status_response, operations_response, routing_respo
         raise ValueError("Full routing backup is invalid")
     return {"controllerId": owner, "configurationRevision": revision,
             "backupSha256": backup["sha256"], "backupSize": backup["size"]}
+
+
+def admission_export_guard(status_before, operations_before, status_after, backup):
+    """Bind one complete private routing export to unchanged public owner state."""
+    def identity(value, label):
+        if (not isinstance(value, Mapping) or value.get("ok") is not True or
+                value.get("final") is not True or value.get("code") != "OK" or
+                value.get("operationId") is not None or
+                not isinstance(value.get("controllerId"), str) or not value["controllerId"] or
+                isinstance(value.get("configurationRevision"), bool) or
+                not isinstance(value.get("configurationRevision"), int) or
+                value["configurationRevision"] < 0 or
+                not isinstance(value.get("data"), Mapping)):
+            raise ValueError(f"{label} requires final owner/revision status")
+        return value["controllerId"], value["configurationRevision"]
+
+    owner, revision = identity(status_before, "Opening")
+    if identity(status_after, "Closing") != (owner, revision):
+        raise ValueError("Routing backup owner or revision changed")
+    if identity(operations_before, "Operations") != (owner, revision):
+        raise ValueError("Routing backup operation owner or revision changed")
+    require_terminal_operation_history(operations_before, owner)
+    if (not isinstance(backup, Mapping) or
+            not isinstance(backup.get("path"), str) or not backup["path"].startswith("/") or
+            not re.fullmatch(r"[0-9a-f]{64}", str(backup.get("sha256"))) or
+            isinstance(backup.get("size"), bool) or not isinstance(backup.get("size"), int) or
+            not 0 < backup["size"] <= 67_108_864 or
+            backup.get("type") != "vpn_control_routing_rules" or backup.get("version") != 7 or
+            backup.get("rulesValid") is not True):
+        raise ValueError("Full routing export is invalid")
+    return {"controllerId": owner, "configurationRevision": revision,
+            "backupSha256": backup["sha256"], "backupSize": backup["size"]}

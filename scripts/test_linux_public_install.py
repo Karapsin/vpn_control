@@ -9,6 +9,7 @@ arguments and logs.  Direct local terminal use remains available for a human.
 """
 import argparse
 import errno
+import inspect
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ import select
 import signal
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -221,9 +223,7 @@ def _no_process_uses_workspace(workspace, proc=Path("/proc"), owned_cleanup_fd=N
         except OSError as error:
             raise RuntimeError("Cannot inspect process ownership of synthetic workspace") from error
         for descriptor in descriptors:
-            # This one descriptor is held solely to remove the already-proven
-            # workspace through stable descriptor-relative names.  Do not
-            # exempt any other self reference or any other process reference.
+            # Exempt only the stable directory handle held by this invocation.
             if entry.name == own_pid and owned_cleanup_fd is not None and descriptor.name == str(owned_cleanup_fd):
                 continue
             try:
@@ -234,6 +234,121 @@ def _no_process_uses_workspace(workspace, proc=Path("/proc"), owned_cleanup_fd=N
                 raise RuntimeError("Cannot inspect process ownership of synthetic workspace") from error
             require(reference != workspace_text and not reference.startswith(prefix),
                     "A process still owns the synthetic workspace")
+
+
+def _privileged_workspace_observation(proc, workspace, uid, own_pid, own_start_ticks, own_fd, expected_identity):
+    """Inspect every target-UID process; exempt only the verified cleanup descriptor."""
+    proc, workspace = Path(proc), Path(workspace)
+    workspace_text = str(workspace)
+    prefix = workspace_text + "/"
+    try:
+        if (not workspace.is_absolute() or type(uid) is not int or uid <= 0
+                or any(type(value) is not int or value < 0 for value in (own_pid, own_start_ticks, own_fd))
+                or not proc.is_dir()):
+            return {'state': 'unknown'}
+        identity = os.stat(workspace)
+        if not stat.S_ISDIR(identity.st_mode) or (identity.st_dev, identity.st_ino) != tuple(expected_identity):
+            return {'state': 'unknown'}
+        parent = proc / str(own_pid)
+        parent_fields = (parent / 'stat').read_text(encoding='ascii').rsplit(')', 1)[1].split()
+        if int(parent_fields[19]) != own_start_ticks:
+            return {'state': 'unknown'}
+        owned_descriptor = parent / 'fd' / str(own_fd)
+        held = os.stat(owned_descriptor)
+        if (held.st_dev, held.st_ino) != tuple(expected_identity) or os.readlink(owned_descriptor) != workspace_text:
+            return {'state': 'unknown'}
+        processes = [entry for entry in proc.iterdir() if entry.name.isdecimal()]
+        if len(processes) > 4096:
+            return {'state': 'unknown'}
+        seen = 0
+        for entry in processes:
+            try:
+                lines = (entry / 'status').read_text(encoding='ascii').splitlines()
+                matches = [line.split()[1:] for line in lines if line.startswith('Uid:')]
+                if len(matches) != 1 or len(matches[0]) != 4:
+                    return {'state': 'unknown'}
+                uids = tuple(int(value) for value in matches[0])
+            except FileNotFoundError:
+                if not entry.exists():
+                    continue
+                return {'state': 'unknown'}
+            except (OSError, ValueError):
+                return {'state': 'unknown'}
+            if uid not in uids:
+                continue
+            seen += 1
+            try:
+                fields = (entry / 'stat').read_text(encoding='ascii').rsplit(')', 1)[1].split()
+                state, start_ticks = fields[0], int(fields[19])
+                if len(state) != 1 or start_ticks <= 0:
+                    return {'state': 'unknown'}
+                if state in ('Z', 'X'):
+                    continue
+                cwd = os.readlink(entry / 'cwd')
+                root = os.readlink(entry / 'root')
+                descriptors = list((entry / 'fd').iterdir())
+                if len(descriptors) > 8192:
+                    return {'state': 'unknown'}
+            except FileNotFoundError:
+                if not entry.exists():
+                    continue
+                return {'state': 'unknown'}
+            except (OSError, ValueError, IndexError):
+                return {'state': 'unknown'}
+            if any(value == workspace_text or value.startswith(prefix) for value in (cwd, root)):
+                return {'state': 'referenced', 'pid': int(entry.name), 'startTicks': start_ticks}
+            for descriptor in descriptors:
+                if not descriptor.name.isdecimal():
+                    continue
+                if entry.name == str(own_pid) and descriptor.name == str(own_fd):
+                    continue
+                try:
+                    reference = os.readlink(descriptor)
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    return {'state': 'unknown'}
+                if reference == workspace_text or reference.startswith(prefix):
+                    return {'state': 'referenced', 'pid': int(entry.name), 'startTicks': start_ticks}
+        final = os.stat(workspace)
+        if (final.st_dev, final.st_ino) != tuple(expected_identity):
+            return {'state': 'unknown'}
+        return {'state': 'absent', 'sameUidCount': seen}
+    except (OSError, ValueError, IndexError, TypeError):
+        return {'state': 'unknown'}
+
+
+_PRIVILEGED_WORKSPACE_PROGRAM = (
+    'import json,os,pwd,stat,sys\nfrom pathlib import Path\n'
+    + inspect.getsource(_privileged_workspace_observation)
+    + "\nif os.geteuid()!=0: raise SystemExit(3)\n"
+      "workspace,uid,pid,ticks,fd,dev,ino=sys.argv[1:]\n"
+      "if pwd.getpwnam('vpnfixture').pw_uid!=int(uid): raise SystemExit(4)\n"
+      "result=_privileged_workspace_observation(Path('/proc'),Path(workspace),int(uid),int(pid),int(ticks),int(fd),(int(dev),int(ino)))\n"
+      "print(json.dumps(result,separators=(',',':')))\n")
+
+
+def _privileged_no_process_uses_workspace(workspace, owned_cleanup_fd):
+    """Use the guest's fixed passwordless sudo only for read-only proc proof."""
+    if sys.platform != 'linux':
+        raise RuntimeError('Privileged process ownership observation is unavailable')
+    identity = os.fstat(owned_cleanup_fd)
+    parent_fields = Path('/proc/self/stat').read_text(encoding='ascii').rsplit(')', 1)[1].split()
+    args = [str(workspace), str(os.geteuid()), str(os.getpid()), str(int(parent_fields[19])),
+            str(owned_cleanup_fd), str(identity.st_dev), str(identity.st_ino)]
+    try:
+        observed = subprocess.run(['sudo', '-n', '--', 'python3', '-I', '-B', '-c',
+                                   _PRIVILEGED_WORKSPACE_PROGRAM, *args],
+                                  stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                  timeout=30, check=False)
+        if observed.returncode != 0 or len(observed.stdout) > 4096:
+            raise RuntimeError('Privileged process ownership observation is unavailable')
+        result = json.loads(observed.stdout)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError('Privileged process ownership observation is unavailable') from error
+    require(isinstance(result, dict) and result.get('state') == 'absent'
+            and type(result.get('sameUidCount')) is int and 0 < result['sameUidCount'] <= 4096,
+            'Privileged process ownership observation is unknown or still referenced')
 
 
 def _remove_owned_workspace_tree(directory_fd):
@@ -266,7 +381,13 @@ def cleanup_synthetic_workspace(workspace, evidence, owner, protected_success, r
     evidence_fd, workspace_fd = _owned_synthetic_workspace(workspace, evidence)
     try:
         try:
-            _no_process_uses_workspace(workspace, owned_cleanup_fd=workspace_fd)
+            try:
+                _no_process_uses_workspace(workspace, owned_cleanup_fd=workspace_fd)
+            except RuntimeError as error:
+                cause = error.__cause__
+                if not isinstance(cause, PermissionError) or cause.errno not in (errno.EACCES, errno.EPERM):
+                    raise
+                _privileged_no_process_uses_workspace(workspace, workspace_fd)
             _remove_owned_workspace_tree(workspace_fd)
         finally:
             os.close(workspace_fd)

@@ -11,6 +11,51 @@ import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopControlInstallSessionTest {
+    @Test fun exactInstallJournalNameUsesCanonicalProtocolEncoding() {
+        val canonical = com.kardinal.vpncontrol.control.ControlProtocolCodec.encodeValues(linkedMapOf(
+            "controllerId" to ControlValue.Text("11111111-1111-4111-8111-111111111111"),
+            "operationId" to ControlValue.Text("33333333-3333-4333-8333-333333333333")))
+        assertEquals("{\"controllerId\":\"11111111-1111-4111-8111-111111111111\",\"operationId\":\"33333333-3333-4333-8333-333333333333\"}", canonical)
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        assertEquals("06fe77cd6eab31fd692a3648fed2ed8b7436dc65542efd79f652a340c6950429", digest)
+    }
+
+    @Test fun publicOperationStatusBindsDelayedAndRecoveredInstallJob() = runTest {
+        val job = "00000000-0000-0000-0000-000000000001"
+        val release = CompletableDeferred<Unit>()
+        val owner = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {},
+            controllerId = "owner", install = DesktopControlInstallActions(
+                prepare = { _, _ -> release.await(); DesktopInstallHandoffResult(ControlCode.OK, job) },
+                recover = { Result.success(emptyList()) },
+                cancel = { DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) }))
+        suspend fun inspect(session: DesktopHeadlessSession, operation: String): ControlResult =
+            ControlDocumentCodec.decodeResult(session.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+                "inspect", ControlCommand(ControlOperationId.OPERATIONS_STATUS,
+                    mapOf("id" to ControlValue.Text(operation))), controllerId = session.controllerId))).message)
+        val initial = ControlDocumentCodec.decodeResult(owner.execute(DesktopCliCommand.ControlSubmit(ControlRequest(
+            "install", ControlCommand(ControlOperationId.UPDATES_INSTALL), controllerId = "owner", asynchronous = true))).message)
+        val operation = assertNotNull(initial.operationId)
+        val before = inspect(owner, operation)
+        assertEquals(operation, before.operationId)
+        assertNull(before.data["jobId"])
+        release.complete(Unit); runCurrent()
+        val after = inspect(owner, operation)
+        assertEquals(operation, after.operationId)
+        assertEquals(ControlValue.Text(job), after.data["jobId"])
+
+        val recovered = DesktopInstallCorrelationRecord(DesktopInstallCorrelation("owner", "install", operation), job, "0".repeat(64))
+        val replacement = DesktopHeadlessSession(backgroundScope, { MainUiState() }, { DesktopCliResponse.success("") }, {},
+            controllerId = "replacement-owner", install = DesktopControlInstallActions(
+                prepare = { _, _ -> error("Recovery must not replay install") },
+                recover = { Result.success(listOf(DesktopInstallCorrelationRecovery(recovered, null, ControlCode.OUTCOME_UNKNOWN))) },
+                cancel = { DesktopInstallHandoffResult(ControlCode.OUTCOME_UNKNOWN, job) }))
+        val afterExit = inspect(replacement, operation)
+        assertEquals(operation, afterExit.operationId)
+        assertEquals(ControlValue.Text(job), afterExit.data["jobId"])
+        assertEquals(ControlValue.Text("owner"), afterExit.data["originControllerId"])
+    }
+
     @Test fun cancellationCannotBeAcceptedAfterLateAuthorizationReservesTheIrreversibleHandoff() = runTest {
         val job = "00000000-0000-0000-0000-000000000001"
         lateinit var correlation: DesktopInstallCorrelation

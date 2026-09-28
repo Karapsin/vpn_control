@@ -32,7 +32,7 @@ object ControlOperationRegistry {
         product(RESTART, "restart", "connection.restart", async = true),
         product(FIND_BEST, "find-best", "connection.find-best", async = true),
         inspect(SOURCE_SHOW, "source show"),
-        product(SOURCE_SET, "source set <current-locations|subscription ID|all>", "source.select"),
+        product(SOURCE_SET, "source set <current-locations|subscription [ID]|all>", "source.select"),
         inspect(SUBSCRIPTIONS_LIST, "subscriptions list"),
         inspect(SUBSCRIPTIONS_SHOW, "subscriptions show <id>"),
         product(SUBSCRIPTIONS_ADD, "subscriptions add <--source URL|--input PATH|-|--qr-image PATH> [--name NAME]", "subscription.add", async = true),

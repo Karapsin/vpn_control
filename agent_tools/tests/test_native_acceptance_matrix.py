@@ -79,7 +79,10 @@ class NativeAcceptanceMatrixTest(unittest.TestCase):
     def test_current_beats_historical_and_historical_remains_visible(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); old = self.artifact(root, source="c" * 40, name="old"); current = self.artifact(root, name="current")
-            matrix.matrix_record(root, self.observation(root, old, source="c" * 40, suffix="old")); matrix.matrix_record(root, self.observation(root, current, suffix="current"))
+            recorded = matrix.matrix_record(root, self.observation(root, old, source="c" * 40, suffix="old"))
+            self.assertEqual("c" * 40, recorded["originalSourceSHA"])
+            self.assertNotIn("historical", recorded)
+            matrix.matrix_record(root, self.observation(root, current, suffix="current"))
             self.assertEqual("passed", self.row(root)["status"]); self.assertEqual("historical", self.row(root, "d" * 40)["status"])
 
     @unittest.skipIf(os.name == "nt", "private registry writes require POSIX")
@@ -105,6 +108,52 @@ class NativeAcceptanceMatrixTest(unittest.TestCase):
             with self.assertRaisesRegex(matrix.NativeAcceptanceMatrixError, "duplicate"): matrix.matrix_record(root, observation)
             self.assertEqual(0o600, Path(stored["receiptPath"]).stat().st_mode & 0o777)
             with self.assertRaises(matrix.NativeAcceptanceMatrixError): matrix.matrix_record(root, self.observation(root, artifact, suffix="bad", evidencePath="../outside"))
+
+    @unittest.skipIf(os.name == "nt", "private registry writes require POSIX")
+    def test_retract_false_macos_component_claim_preserves_original_but_excludes_aggregation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            artifact = self.artifact(root, platform="macos")
+            claim = self.observation(root, artifact, scenarios={"authorization-grant-denial": "passed"},
+                                     scope="component", suffix="overmarked", requirementId="macos-installer-lifecycle",
+                                     platform="macos", environment="macos-disposable")
+            recorded = matrix.matrix_record(root, claim)
+            receipt_path = Path(recorded["receiptPath"])
+            before = receipt_path.read_bytes()
+            prior = matrix.matrix_status(root, self.SHA)
+            row = next(item for item in prior["requirements"] if item["requirementId"] == "macos-installer-lifecycle")
+            self.assertEqual(1, row["receiptCount"])
+            correction = {"receiptId": recorded["receiptId"], "reason": "authorization denial was not observed",
+                          "reviewer": "maintainer-reviewed-correction"}
+            retracted = matrix.matrix_retract(root, correction)
+            self.assertEqual(recorded["receiptId"], retracted["receiptId"])
+            self.assertEqual(before, receipt_path.read_bytes())
+            current = matrix.matrix_status(root, self.SHA)
+            self.assertEqual(1, current["retractedCount"])
+            self.assertEqual([recorded["receiptId"]], current["retractedReceiptIds"])
+            row = next(item for item in current["requirements"] if item["requirementId"] == "macos-installer-lifecycle")
+            self.assertEqual("open", row["status"])
+            self.assertNotIn("receiptCount", row)
+            self.assertTrue(Path(retracted["retractionPath"]).is_file())
+
+    @unittest.skipIf(os.name == "nt", "private registry writes require POSIX")
+    def test_bad_foreign_duplicate_and_tampered_retraction_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            artifact = self.artifact(root)
+            recorded = matrix.matrix_record(root, self.observation(root, artifact))
+            good = {"receiptId": recorded["receiptId"], "reason": "review correction", "reviewer": "maintainer"}
+            for bad in (dict(good, receiptId="native-acceptance-" + "f" * 32),
+                        dict(good, reason=""), dict(good, reviewer=""), dict(good, extra="unexpected")):
+                with self.assertRaises(matrix.NativeAcceptanceMatrixError):
+                    matrix.matrix_retract(root, bad)
+            correction = matrix.matrix_retract(root, good)
+            with self.assertRaisesRegex(matrix.NativeAcceptanceMatrixError, "already retracted"):
+                matrix.matrix_retract(root, good)
+            path = Path(correction["retractionPath"])
+            path.write_text("{}")
+            with self.assertRaises(matrix.NativeAcceptanceMatrixError):
+                matrix.matrix_status(root, self.SHA)
 
 
 if __name__ == "__main__": unittest.main()

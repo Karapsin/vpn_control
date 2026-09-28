@@ -102,11 +102,11 @@ class MonitorTest(unittest.TestCase):
         path.chmod(0o700)
         return path
 
-    def start_monitor(self, evidence: Path, stop_timeout_seconds: str = "1") -> subprocess.Popen[str]:
+    def start_monitor(self, evidence: Path, stop_timeout_seconds: str = "1", graphical: bool = False) -> subprocess.Popen[str]:
         return subprocess.Popen(
             [sys.executable, str(MONITOR), "--vm-name", "owned-vm", "--evidence-dir", str(evidence),
              "--tart", str(self.tart), "--sysctl", str(self.sysctl), "--vm-stat", str(self.vm_stat), "--interval-seconds", "0.02",
-             "--stop-timeout-seconds", stop_timeout_seconds],
+             "--stop-timeout-seconds", stop_timeout_seconds] + (["--graphics"] if graphical else []),
             text=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -167,6 +167,25 @@ class MonitorTest(unittest.TestCase):
         self.assert_monitor_exit(monitor, 0, evidence)
         terminal = json.loads((evidence / "terminal.json").read_text(encoding="utf-8"))
         self.assertEqual(0, terminal["childExit"])
+        self.assertTrue((evidence / "samples.jsonl").exists())
+
+    @unittest.skipIf(os.name == "nt", "requires POSIX sessions and executable shebang fixture")
+    def test_graphical_owned_vm_keeps_monitor_and_isolating_tart_flags(self) -> None:
+        evidence = self.root / "graphical-evidence"
+        monitor = self.start_monitor(evidence, graphical=True)
+        self.wait_for(self.root / "calls.jsonl")
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            calls = [json.loads(line) for line in (self.root / "calls.jsonl").read_text().splitlines()]
+            launched = [call for call in calls if call[:1] == ["run"]]
+            if launched:
+                break
+            time.sleep(.01)
+        self.assertEqual(1, len(launched), calls)
+        self.assertEqual(["run", "--no-audio", "--no-clipboard", "owned-vm"], launched[0])
+        self.wait_for(evidence / "process.json")
+        (self.root / "stop").touch()
+        self.assert_monitor_exit(monitor, 0, evidence)
         self.assertTrue((evidence / "samples.jsonl").exists())
 
     @unittest.skipIf(os.name == "nt", "requires POSIX executable shebang fixture")
