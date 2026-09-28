@@ -11,6 +11,7 @@ import re
 import resource
 import stat
 import subprocess
+import tempfile
 import uuid
 from typing import Mapping
 import zipfile
@@ -27,6 +28,8 @@ _MAX_COMPRESSED_BYTES = 2 * 1024 ** 3
 _MAX_RECEIPT_BYTES = 1024 * 1024
 _MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024
 _MAX_PLAN_BYTES = 1024 * 1024
+_MAX_FAILED_LOG_BYTES = 8 * 1024 * 1024
+_MAX_FAILED_EXCERPT_CHARS = 32 * 1024
 
 
 def _run(argv):
@@ -231,6 +234,65 @@ def status(root, request: Mapping, runner=None):
         return _unknown(correlation, "missing-or-duplicate-artifact")
     return {"state": "complete", "artifactId": matches[0]["id"],
             "artifactName": name, **common}
+
+
+def _read_failed_log(run_id):
+    """Capture a fixed gh command with a child-enforced file-size bound."""
+    command = ["gh", "run", "view", str(run_id), "--repo", REPOSITORY, "--log-failed"]
+    try:
+        with tempfile.TemporaryFile() as stream:
+            def limit_output():
+                hard = resource.getrlimit(resource.RLIMIT_FSIZE)[1]
+                limit = _MAX_FAILED_LOG_BYTES if hard == resource.RLIM_INFINITY else min(_MAX_FAILED_LOG_BYTES, hard)
+                resource.setrlimit(resource.RLIMIT_FSIZE, (limit, hard))
+            result = subprocess.run(command, stdout=stream, stderr=subprocess.DEVNULL,
+                                    timeout=90, check=False, preexec_fn=limit_output)
+            size = os.fstat(stream.fileno()).st_size
+            if result.returncode != 0 or not 0 < size < _MAX_FAILED_LOG_BYTES:
+                return None
+            stream.seek(0)
+            return stream.read(_MAX_FAILED_LOG_BYTES)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+def _failed_excerpt(raw):
+    text = raw.decode("utf-8", errors="replace")
+    text = re.sub(r"-----BEGIN [^-\n]*PRIVATE KEY-----.*?-----END [^-\n]*PRIVATE KEY-----",
+                  "[REDACTED PRIVATE KEY]", text, flags=re.DOTALL)
+    text = re.sub(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b", "[REDACTED]", text)
+    text = re.sub(r"(?im)(authorization\s*:\s*)[^\r\n]+", r"\1[REDACTED]", text)
+    text = re.sub(r"(?i)\b((?:password|token|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+",
+                  r"\1[REDACTED]", text)
+    text = re.sub(r"(?i)https?://[^\s<>\"']+", "[REDACTED URL]", text)
+    text = re.sub(r"(?i)\b[A-Z]:\\Users\\[^\\\s]+", r"C:\\Users\\[REDACTED]", text)
+    text = re.sub(r"/(?:Users|home)/[^/\s]+", "/[REDACTED USER]", text)
+    lines = text.splitlines()
+    marker = re.compile(r"(?i)(FAIL:|ERROR:|Traceback|AssertionError|exit 1|Process completed with exit code|Exception:)")
+    selected = set()
+    for index, line in enumerate(lines):
+        if marker.search(line):
+            selected.update(range(max(0, index - 2), min(len(lines), index + 4)))
+    excerpt = "\n".join(lines[index] for index in sorted(selected)) if selected else "\n".join(lines[-200:])
+    return excerpt[-_MAX_FAILED_EXCERPT_CHARS:]
+
+
+def failed_log(root, request: Mapping, runner=None, log_reader=None):
+    """Read a bounded failed log only for one journal-bound terminal failed run."""
+    _require(isinstance(request, Mapping) and set(request) == {"correlationId"},
+             "Invalid Windows fixture failed-log inputs")
+    correlation = request["correlationId"]
+    _correlation(correlation)
+    observed = status(root, {"correlationId": correlation}, runner=runner)
+    if observed["state"] != "failed" or observed.get("conclusion") != "failure":
+        return _unknown(correlation, "exact-terminal-failure-unavailable")
+    reader = log_reader or _read_failed_log
+    raw = reader(observed["runId"])
+    if not isinstance(raw, bytes) or not 0 < len(raw) <= _MAX_FAILED_LOG_BYTES:
+        return _unknown(correlation, "failed-log-unavailable")
+    return {"state": "failed-log", "correlationId": correlation, "sourceSha": observed["sourceSha"],
+            "runId": observed["runId"], "conclusion": "failure", "logSha256": hashlib.sha256(raw).hexdigest(),
+            "capturedBytes": len(raw), "excerpt": _failed_excerpt(raw), "replayAllowed": False}
 
 
 def _download_zip(artifact_id, output):

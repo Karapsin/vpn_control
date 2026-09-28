@@ -114,6 +114,29 @@ class OwnerObserveTests(unittest.TestCase):
         self.assertIn("P ('UNKNOWN_'+$stage) $null", script)
         self.assertNotIn("$_.Exception.Message", script)
 
+    def test_loopback_failures_keep_secret_free_stage_boundaries(self):
+        script = owner._task(CORR, REQUEST, INTENT["expectedSid"])
+        boundaries = ("$stage='LOOPBACK_CONNECT'", "$stage='ENDPOINT_AUTH'",
+                      "$stage='SNAPSHOT_REQUEST'", "$stage='FRAMED_RESPONSE'",
+                      "$stage='SNAPSHOT_PARSE'")
+        self.assertEqual([script.index(stage) for stage in boundaries],
+                         sorted(script.index(stage) for stage in boundaries))
+        self.assertLess(script.index(boundaries[0]), script.index("BeginConnect"))
+        self.assertLess(script.index(boundaries[1]), script.index("W $token"))
+        self.assertLess(script.index(boundaries[2]), script.index('W ("cli`tcontrol-snapshot'))
+        self.assertLess(script.index(boundaries[3]), script.index("$response=R"))
+        self.assertLess(script.index(boundaries[4]), script.index("ConvertFrom-Json -InputObject $body"))
+        for code in ("UNKNOWN_LOOPBACK_CONNECT", "UNKNOWN_ENDPOINT_AUTH",
+                     "UNKNOWN_SNAPSHOT_REQUEST", "UNKNOWN_FRAMED_RESPONSE", "UNKNOWN_SNAPSHOT_PARSE"):
+            task_result = {"version": 1, "correlationId": CORR, "code": code,
+                           "originalSid": INTENT["expectedSid"], "sessionId": 1,
+                           "limited": True, "snapshot": None}
+            remote = json.dumps({"state": "observed", "correlationId": CORR,
+                                 "result": task_result}).encode()
+            classified = owner._classify(remote, CORR, INTENT)
+            self.assertEqual(classified["diagnostic"], "TASK_" + code)
+            self.assertFalse(classified["replayAllowed"])
+
     def test_one_local_intent_prevents_submission_replay(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -246,6 +269,26 @@ class OwnerObserveTests(unittest.TestCase):
                 self.assertEqual(result["cleanupState"], "complete")
                 self.assertIs(remote.call_args.args[1], owner._REMOTE_CLEANUP)
                 self.assertEqual(remote.call_args.args[2][-2:], (INTENT["expectedSid"], "UNKNOWN"))
+
+    def test_direct_stage_unknown_collects_only_exact_terminal_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            intent = dict(INTENT, environment="windows-cp117", socketPath="/qga.sock",
+                          pid=589342, startTicks=520739, commandSha256="c" * 64)
+            owner._reserve(root, intent)
+            class Target:
+                fixture_transfer_root = Path("/private/cp117")
+            observation = {"state": "unknown", "correlationId": CORR,
+                           "diagnostic": "TASK_UNKNOWN_TRANSPORT", "replayAllowed": False}
+            with patch.object(owner, "status", return_value=observation), \
+                 patch.object(owner.windows_msi_base_prepare, "_descriptor", return_value=(object(), Target(),
+                    ("windows-cp117", "/qga.sock", 589342, 520739, INTENT["expectedSid"]))), \
+                 patch.object(owner.windows_msi_base_prepare, "_remote",
+                              return_value=json.dumps({"state": "cleaned", "correlationId": CORR}).encode()) as remote:
+                result = owner.collect(root, {"correlationId": CORR})
+                self.assertEqual(result["cleanupState"], "complete")
+                self.assertEqual(remote.call_args.args[2][-2:], (INTENT["expectedSid"], "UNKNOWN_TRANSPORT"))
+                self.assertEqual(owner._read_private_json(owner._closed_marker(root, CORR))["state"], "cleaned")
 
     def test_cleanup_admission_binds_terminal_code_and_root_task_path(self):
         script = owner._REMOTE_CLEANUP

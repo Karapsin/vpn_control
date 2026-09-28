@@ -26,7 +26,9 @@ _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _TIME = re.compile(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z\Z")
 _TASK_UNKNOWN_CODES = {"UNKNOWN", "UNKNOWN_IDENTITY", "UNKNOWN_CLI_HASH", "UNKNOWN_PROCESS",
                        "UNKNOWN_ENDPOINT_FILE", "UNKNOWN_ENDPOINT_ACL", "UNKNOWN_ENDPOINT_BINDING",
-                       "UNKNOWN_TRANSPORT", "UNKNOWN_SNAPSHOT"}
+                       "UNKNOWN_TRANSPORT", "UNKNOWN_SNAPSHOT", "UNKNOWN_LOOPBACK_CONNECT",
+                       "UNKNOWN_ENDPOINT_AUTH", "UNKNOWN_SNAPSHOT_REQUEST",
+                       "UNKNOWN_FRAMED_RESPONSE", "UNKNOWN_SNAPSHOT_PARSE"}
 _GROUP = ".rag_index/windows-msi-owner-observe"
 _GUEST = r"C:\Users\vpncp117\AppData\Local\VpnControl"
 _CLI = r"C:\Users\vpncp117\AppData\Local\vpn-control\vpn-control-cli.exe"
@@ -192,7 +194,7 @@ try {
  if($endpoint.schemaVersion -ne 1 -or $endpoint.controllerId -cne @CONTROLLER@ -or $endpoint.port -lt 1 -or $endpoint.port -gt 65535){throw 'ENDPOINT_BINDING'}
  $token=$endpoint.token
  if($token -notmatch '^[A-Za-z0-9_-]{43}$'){throw 'ENDPOINT_TOKEN'}
- $stage='TRANSPORT'
+ $stage='LOOPBACK_CONNECT'
  $client=[Net.Sockets.TcpClient]::new()
  try {
   $connect=$client.BeginConnect([Net.IPAddress]::Loopback,[int]$endpoint.port,$null,$null)
@@ -209,10 +211,13 @@ try {
    while($offset -lt $length){$n=$stream.Read($bytes,$offset,$length-$offset);if($n -le 0){throw 'FRAME_EOF'};$offset+=$n}
    return (ConvertFrom-Json -InputObject ([Text.Encoding]::UTF8.GetString($bytes)))
   }
+  $stage='ENDPOINT_AUTH'
   W $token;if((R) -cne 'AUTHENTICATED'){throw 'AUTH'}
   $controllerBytes=[Text.Encoding]::UTF8.GetBytes($endpoint.controllerId)
   $controllerText=[Convert]::ToBase64String($controllerBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
+  $stage='SNAPSHOT_REQUEST'
   W ("cli`tcontrol-snapshot`t"+$controllerText)
+  $stage='FRAMED_RESPONSE'
   $response=R
  }finally{$client.Close()}
  if($response -isnot [string]){throw 'RESPONSE_TYPE'}
@@ -220,7 +225,7 @@ try {
  if($parts.Count -ne 4 -or $parts[0] -cne 'cli-response' -or $parts[1] -cne 'ok' -or $parts[2] -cne '0'){throw 'RESPONSE_CODE'}
  $encoded=$parts[3].Replace('-','+').Replace('_','/');$encoded=$encoded.PadRight($encoded.Length+(4-$encoded.Length%4)%4,'=')
  $body=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))
- $stage='SNAPSHOT'
+ $stage='SNAPSHOT_PARSE'
  $snapshot=ConvertFrom-Json -InputObject $body
  if($snapshot.schemaVersion -ne 1 -or $snapshot.controllerId -cne @CONTROLLER@ -or $snapshot.runtimeRunning -isnot [bool]){throw 'SNAPSHOT_BINDING'}
  $limitedSnapshot=[pscustomobject]@{controllerId=$snapshot.controllerId;runtimeRunning=$snapshot.runtimeRunning;configuredMode=$snapshot.configuredMode;activeMode=$snapshot.activeMode;selectedLocationId=$snapshot.selectedLocationId;activeLocationId=$snapshot.activeLocationId}
@@ -431,7 +436,7 @@ except Exception:
    observed=read(sock,'C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-owner-observe-'+corr+'\\result.json')
    if observed is not None:
     result=json.loads(decode(observed))
-    if isinstance(result,dict) and result.get('correlationId')==corr and result.get('code') in ('OBSERVED','ENDPOINT_ABSENT','UNKNOWN','UNKNOWN_IDENTITY','UNKNOWN_CLI_HASH','UNKNOWN_PROCESS','UNKNOWN_ENDPOINT_FILE','UNKNOWN_ENDPOINT_ACL','UNKNOWN_ENDPOINT_BINDING','UNKNOWN_TRANSPORT','UNKNOWN_SNAPSHOT'):
+    if isinstance(result,dict) and result.get('correlationId')==corr and result.get('code') in ('OBSERVED','ENDPOINT_ABSENT','UNKNOWN','UNKNOWN_IDENTITY','UNKNOWN_CLI_HASH','UNKNOWN_PROCESS','UNKNOWN_ENDPOINT_FILE','UNKNOWN_ENDPOINT_ACL','UNKNOWN_ENDPOINT_BINDING','UNKNOWN_TRANSPORT','UNKNOWN_SNAPSHOT','UNKNOWN_LOOPBACK_CONNECT','UNKNOWN_ENDPOINT_AUTH','UNKNOWN_SNAPSHOT_REQUEST','UNKNOWN_FRAMED_RESPONSE','UNKNOWN_SNAPSHOT_PARSE'):
      reason=reason+'_TASK_'+result['code']
   except Exception:pass
  out({'state':'unknown','correlationId':corr,'diagnostic':reason})
@@ -512,7 +517,7 @@ try:
  observed=read(sock,'C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-owner-observe-'+corr+'\\result.json')
  if observed is None:raise ValueError()
  terminal=json.loads(decode(observed))
- if not isinstance(terminal,dict) or set(terminal)!={'version','correlationId','code','originalSid','sessionId','limited','snapshot'} or type(terminal['version']) is not int or terminal['version']!=1 or terminal['correlationId']!=corr or terminal['originalSid']!=sid or type(terminal['sessionId']) is not int or terminal['sessionId']!=1 or terminal['limited'] is not True or expected_code not in ('OBSERVED','ENDPOINT_ABSENT','UNKNOWN','UNKNOWN_IDENTITY','UNKNOWN_CLI_HASH','UNKNOWN_PROCESS','UNKNOWN_ENDPOINT_FILE','UNKNOWN_ENDPOINT_ACL','UNKNOWN_ENDPOINT_BINDING','UNKNOWN_TRANSPORT','UNKNOWN_SNAPSHOT') or terminal['code']!=expected_code:raise ValueError()
+ if not isinstance(terminal,dict) or set(terminal)!={'version','correlationId','code','originalSid','sessionId','limited','snapshot'} or type(terminal['version']) is not int or terminal['version']!=1 or terminal['correlationId']!=corr or terminal['originalSid']!=sid or type(terminal['sessionId']) is not int or terminal['sessionId']!=1 or terminal['limited'] is not True or expected_code not in ('OBSERVED','ENDPOINT_ABSENT','UNKNOWN','UNKNOWN_IDENTITY','UNKNOWN_CLI_HASH','UNKNOWN_PROCESS','UNKNOWN_ENDPOINT_FILE','UNKNOWN_ENDPOINT_ACL','UNKNOWN_ENDPOINT_BINDING','UNKNOWN_TRANSPORT','UNKNOWN_SNAPSHOT','UNKNOWN_LOOPBACK_CONNECT','UNKNOWN_ENDPOINT_AUTH','UNKNOWN_SNAPSHOT_REQUEST','UNKNOWN_FRAMED_RESPONSE','UNKNOWN_SNAPSHOT_PARSE') or terminal['code']!=expected_code:raise ValueError()
  if terminal['code']!='OBSERVED' and terminal['snapshot'] is not None:raise ValueError()
  marker=os.path.join(stage,'cleanup-intent.json')
  with open(marker,'x',encoding='utf-8') as file:json.dump({'correlationId':corr,'taskName':'VpnControlMcpOwnerObserve-'+corr},file,separators=(',',':'));file.flush();os.fsync(file.fileno())
@@ -565,7 +570,8 @@ def collect(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     observation = status(root, {"correlationId": corr})
     diagnostic = observation.get("diagnostic", "")
     terminal_code = next((code for code in _TASK_UNKNOWN_CODES if diagnostic in
-                          ("BOOTSTRAP_STATUS_TASK_" + code, "BOOTSTRAP_EXIT_TASK_" + code)), None)
+                          ("BOOTSTRAP_STATUS_TASK_" + code, "BOOTSTRAP_EXIT_TASK_" + code)
+                          or (code != "UNKNOWN" and diagnostic == "TASK_" + code)), None)
     terminal_unknown = observation["state"] == "unknown" and terminal_code is not None
     if observation["state"] not in {"observed", "blocked"} and not terminal_unknown:
         return {**observation, "cleanupState": "not-attempted"}

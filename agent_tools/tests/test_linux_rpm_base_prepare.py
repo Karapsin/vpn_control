@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -30,6 +31,90 @@ class FakeDriver:
 
 
 class LinuxRpmBasePrepareTest(unittest.TestCase):
+    @staticmethod
+    def protected_inventory(phase='SUCCEEDED', gate_pending=False):
+        return {'state': 'observed', 'rootState': 'readable', 'truncated': False,
+                'entryCount': 4, 'entries': [
+                    {'kind': 'regular', 'guardName': 'gate-linux', 'guardState': 'trusted',
+                     'gatePending': gate_pending, 'nameHash': '0' * 16},
+                    {'kind': 'regular', 'guardName': 'reservation-linux', 'guardState': 'trusted',
+                     'reservationLocked': False, 'nameHash': '1' * 16},
+                    {'kind': 'directory', 'jobId': '7b7b99aa-6401-4289-9bb1-c0d74355269f',
+                     'receiptState': 'terminal', 'phase': phase, 'nameHash': '2' * 16},
+                    {'kind': 'directory', 'jobId': 'd1d5a85f-a334-401b-95d9-e985e08bf630',
+                     'receiptState': 'terminal', 'phase': 'SUCCEEDED', 'nameHash': '3' * 16}]}
+
+    def test_four_entry_protected_inventory_no_longer_false_blocks_preflight(self):
+        namespace = {}
+        exec(base._COMMON, namespace)
+        namespace['protected_job_inventory'] = lambda: self.protected_inventory()
+        completed = subprocess.CompletedProcess(['rpm'], 0, 'vpn-control-2.1.17-1.x86_64', '')
+        guard = SimpleNamespace(name='gate-linux', is_dir=lambda follow_symlinks=False: False)
+        with mock.patch('os.geteuid', return_value=0), \
+             mock.patch('pwd.getpwnam', return_value=SimpleNamespace(pw_uid=1001)), \
+             mock.patch('os.scandir', side_effect=lambda path: [] if path == '/proc' else [guard]), \
+             mock.patch('os.path.lexists', return_value=True), \
+             mock.patch('os.stat', return_value=SimpleNamespace(st_mode=0o40755, st_uid=0)), \
+             mock.patch('subprocess.run', return_value=completed):
+            value = namespace['inspect']('vpn-control-2.1.17-1.x86_64')
+        self.assertEqual('ready', value['state'])
+
+    def test_protected_inventory_rejects_active_unknown_or_failed_entries(self):
+        namespace = {}
+        exec(base._COMMON, namespace)
+        admit = namespace['admit_protected_inventory']
+        for change in (
+            lambda value: value['entries'][2].update(phase='FAILED'),
+            lambda value: value['entries'][2].update(receiptState='active'),
+            lambda value: value['entries'][0].update(gatePending=True),
+            lambda value: value.update(state='unknown'),
+            lambda value: value['entries'][0].update(guardState='untrusted'),
+            lambda value: value['entries'][1].update(gatePending=False),
+            lambda value: value['entries'][1].update(jobId='12345678-1234-1234-1234-123456789abc'),
+            lambda value: value['entries'][2].update(guardName='gate-linux'),
+        ):
+            value = self.protected_inventory()
+            change(value)
+            self.assertNotEqual('ready', admit(value)['state'])
+
+    def test_held_reservation_blocks_even_when_gate_clear_and_jobs_terminal(self):
+        namespace = {}
+        exec(base._COMMON, namespace)
+        value = self.protected_inventory()
+        value['entries'][1]['reservationLocked'] = True
+        decision = namespace['admit_protected_inventory'](value)
+        self.assertEqual('blocked', decision['state'])
+        self.assertEqual('pending-installer', decision['reason'])
+        self.assertIn('hold_reservation', base._WORKER)
+
+    def test_held_reservation_never_admits_absent_root_or_replaced_guard(self):
+        namespace = {}
+        exec(base._COMMON, namespace)
+        self.assertNotEqual('ready', namespace['admit_protected_inventory'](
+            {'state': 'observed', 'rootState': 'absent', 'entries': [],
+             'entryCount': 0, 'truncated': False}, held_by_us=True)['state'])
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'reservation-linux'
+            path.write_bytes(b'')
+            fd = os.open(path, os.O_RDONLY)
+            try:
+                self.assertTrue(namespace['reservation_identity'](fd, str(path)))
+                path.unlink()
+                path.write_bytes(b'')
+                self.assertFalse(namespace['reservation_identity'](fd, str(path)))
+            finally:
+                os.close(fd)
+
+    def test_worker_holds_reservation_across_final_inspect_and_rpm(self):
+        worker = base._WORKER
+        lock = worker.index('reservation_fd=hold_reservation()')
+        inspect = worker.index('pre=inspect(', lock)
+        rpm = worker.index("['rpm','-Uvh'", inspect)
+        release = worker.index('os.close(reservation_fd)', rpm)
+        self.assertLess(lock, inspect)
+        self.assertLess(inspect, rpm)
+        self.assertLess(rpm, release)
+
     def request(self, root):
         package = root / 'base.rpm'
         package.write_bytes(b'fake-rpm')

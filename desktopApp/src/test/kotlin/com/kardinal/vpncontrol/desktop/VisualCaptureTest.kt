@@ -368,7 +368,7 @@ internal fun visualLocations(): List<DesktopLocationRecord> = listOf(
         name = "Berlin",
         server = "example.invalid:443",
         details = "VLESS · TLS · TCP",
-        benchmarkDetail = "Primary 42 ms · verification 118 ms",
+        benchmarkDetail = "primary ok • tcp 42ms",
         isValid = true,
         isSelected = true,
     ),

@@ -27,6 +27,42 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Fifth continuation checkpoint and next dirty source — 2026-09-28
+
+`31b3c1145e0d33be473f5a88debc881e3a816498` is the current pushed
+`origin/dev` checkpoint. Its frozen Android native-fixture APK has SHA256
+`83a9aea9eb52681bc49197be0ba5d5c36a6232321656bc1768edc9046b00009c`
+(`31b3c11-android/frozen-apk-receipt.json`); capture is pending comparator
+review. Package and native receipts below prove only their stated components.
+The user requested **one required-workflow CI review at the final delivered
+SHA**. Full four-platform parity, final artifact and visual gates remain open;
+no release is authorized.
+
+Mac's one visible SecurityAgent Escape denial ended with protected installation
+`CANCELLED`/`NOT_STARTED` and `cleanupCode OK`
+(`continuation-macos/fixture-31b3c11/denial-not-started.json` and
+`denial-recovered-status.json`). The input and protected paths are absent, the
+base inode and signature are unchanged, and Tart is stopped and released. Keep
+this as bounded denial and cleanup evidence, not an installed target result.
+
+Fedora's explicitly approved guest-only public quit of PID `18367`/startTicks
+`2078693`, controller `1780cc81-65a6-4284-a424-2178b94e2690`, is terminal:
+the exact owner generation is gone and the correlation cannot be replayed
+(`continuation-linux-owner-quit-31b3c11/quit-collect.json`). The guarded
+protected-job scan observed the expected jobs terminal `SUCCEEDED`
+(`continuation-linux-protected-job-31b3c11/observe.json`), and a read-only
+base RPM preflight is ready (`base-preflight-after-fix.json`). RPM installation
+is still held while the new reservation-lock fix receives its next source
+checkpoint and admission; the scan itself did not mark admission ready.
+
+The Windows hosted fixture at `31b3c11` failed in a Windows test portability
+path. Its bounded failure log led to a test-only fix in the next dirty batch;
+no target install or owner acceptance follows. The owner-observer correlation
+ended `TASK_UNKNOWN_TRANSPORT` and was cleaned without replay. New stage
+diagnostics are also dirty and require fresh source-bound verification. The
+desktop visual benchmark fixture fix is in this same next checkpoint; prior
+captures remain historical until recaptured and reviewed on that source.
+
 ### Fourth continuation checkpoint and next source work — 2026-09-28
 
 `1b0cc06d0964763fadba5137652498355501eeb5` is pushed on `origin/dev`.

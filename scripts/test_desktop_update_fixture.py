@@ -30,6 +30,26 @@ from test_fixture_environment import symlink_probe_available
 
 
 class DesktopUpdateFixtureTest(unittest.TestCase):
+    @staticmethod
+    def synthetic_windows_acl_receipt(path, *, private):
+        """Model the fixed protected stage and current-owner private children."""
+        system, admins, recipient = "S-1-5-18", "S-1-5-32-544", "S-1-5-21-1-2-3-4"
+        is_directory = Path(path).is_dir()
+        def entry(sid, rights, inheritance):
+            return {"sid": sid, "rights": rights, "inheritance": inheritance,
+                    "propagation": 0, "type": "Allow", "inherited": False}
+        if private:
+            inheritance = 3 if is_directory else 0
+            acl = [entry(system, 0x1F01FF, inheritance),
+                   entry(admins, 0x1F01FF, inheritance)]
+        else:
+            if not is_directory:
+                raise ValueError("Synthetic fixture stage must be a directory")
+            acl = [entry(system, 0x1F01FF, 3), entry(admins, 0x1F01FF, 3),
+                   entry(recipient, 0x1200A9, 3)]
+        return {"protected": True, "currentSid": system,
+                "isDirectory": is_directory, "acl": acl}
+
     def setUp(self):
         # These tests create inert images with a fake Gradle executor. JVM
         # selection is exercised separately without starting a host build.
@@ -40,6 +60,10 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
         self.tools_check = tools_patch.start()
         self.addCleanup(tools_patch.stop)
         self.tools_patch = tools_patch
+        acl_patch = patch("prepare_desktop_update_fixture.windows_acl_receipt",
+                          side_effect=self.synthetic_windows_acl_receipt)
+        self.acl_check = acl_patch.start()
+        self.addCleanup(acl_patch.stop)
 
     def test_public_ready_phase_admits_only_expected_downloaded_update(self):
         # Public installed-DMG status observed during the native coordinator run.
@@ -102,7 +126,8 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                                             ready.get("fixtureReceiptSha256"))
                     self_assert.assertEqual(1234, ready.get("serverPid"))
                     self_assert.assertEqual("darwin:100:123", ready.get("serverProcessStartIdentity"))
-                    self_assert.assertEqual(0o600, ready_file.stat().st_mode & 0o777)
+                    if os.name == "posix":
+                        self_assert.assertEqual(0o600, ready_file.stat().st_mode & 0o777)
                     self_assert.assertEqual(["-Dhttps.proxyHost=127.0.0.1",
                                              "-Dhttps.proxyPort=53633",
                                              "-Dhttp.proxyHost=127.0.0.1",
@@ -173,6 +198,9 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                           side_effect=swapped_resources), \
                     patch("prepare_desktop_update_fixture.probe_certificate_sha256",
                           return_value="c" * 64), \
+                    patch("prepare_desktop_update_fixture.server_process_identity",
+                          return_value={"serverPid": 1234,
+                                        "serverProcessStartIdentity": "windows:123456789"}), \
                     patch("prepare_desktop_update_fixture.ssl.SSLContext"), \
                     patch("prepare_desktop_update_fixture.socketserver.ThreadingTCPServer", NoListener):
                 with self.assertRaisesRegex(ValueError, "receipt changed"):
@@ -205,6 +233,9 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             with patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
                     patch("prepare_desktop_update_fixture.load_resources",
                           return_value=(manifest, {})), \
+                    patch("prepare_desktop_update_fixture.server_process_identity",
+                          return_value={"serverPid": 1234,
+                                        "serverProcessStartIdentity": "windows:123456789"}), \
                     patch("prepare_desktop_update_fixture.ssl.SSLContext",
                           return_value=ReplacingTls()), \
                     patch("prepare_desktop_update_fixture.socketserver.ThreadingTCPServer", NoListener):
@@ -282,6 +313,15 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             self.assertEqual(b"", observed[0][1])
             self.assertEqual(2, len(observed))
             self.assertIn(b"fixtureReceiptSha256", observed[1][1])
+
+    def test_synthetic_serve_cases_replay_windows_acl_admission(self):
+        """Run the same fixture-server decisions under a Windows host branch."""
+        with patch("prepare_desktop_update_fixture.platform.system", return_value="Windows"):
+            self.test_serve_ready_digest_binds_the_exact_manifest_response()
+            self.test_serve_refuses_changed_fixture_receipt_before_ready_publish()
+            self.test_serve_refuses_same_manifest_receipt_swap_during_resource_admission()
+            self.test_serve_refuses_certificate_swap_during_tls_chain_load()
+            self.test_probe_event_requires_exact_manifest_get_and_is_immutable()
 
     def test_missing_selected_identity_is_rejected_before_runtime_start(self):
         # Native malformed-DMG preparation added a location but did not select it;
@@ -1235,8 +1275,9 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                               "exactManifestGet": True, "manifestSha256": manifest_hash,
                               "peerCertificateSha256": certificate_hash,
                               "servedBytes": len(manifest_body)}, event)
-            self.assertEqual(0o700, (event_path.parent.stat().st_mode & 0o777))
-            self.assertEqual(0o600, (event_path.stat().st_mode & 0o777))
+            if os.name == "posix":
+                self.assertEqual(0o700, event_path.parent.stat().st_mode & 0o777)
+                self.assertEqual(0o600, event_path.stat().st_mode & 0o777)
             original = event_path.read_bytes()
             _, diagnostics = exchange()
             self.assertEqual("ValueError", diagnostics[0]["exceptionType"])

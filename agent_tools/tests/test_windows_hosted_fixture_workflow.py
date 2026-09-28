@@ -154,6 +154,56 @@ class WindowsFixtureWorkflowTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Invalid fixture dispatch journal'):
                 fixture.status(root, {'correlationId': CORR}, runner=Runner([]))
 
+    def test_failed_log_requires_one_exact_terminal_failed_run_and_redacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'gradle.properties').write_text('vpnControlVersion=2.2.0\n')
+            fixture.dispatch(root, self.request(), runner=Runner([(0, SHA + '\n'), (0, '')]))
+            run = {'databaseId': 71, 'headSha': SHA, 'displayTitle': 'Windows MSI fixture ' + CORR,
+                   'status': 'completed', 'conclusion': 'failure'}
+            raw = (b'ordinary context\nERROR: update test failed\n'
+                   b'Authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz123456\n'
+                   b'Authorization: Basic dXNlcjpwYXNzd29yZA==\n'
+                   b'ERROR: endpoint https://user:pass@example.test/subscription?access_token=privatevalue\n'
+                   b'ERROR: local C:\\Users\\alice\\update-fixture and /Users/bob/private\n'
+                   b'AssertionError: expected target\n')
+            read_ids = []
+            def reader(run_id):
+                read_ids.append(run_id)
+                return raw
+            result = fixture.failed_log(root, {'correlationId': CORR},
+                                        runner=Runner([(0, json.dumps([run]))]), log_reader=reader)
+            self.assertEqual('failed-log', result['state'])
+            self.assertEqual([71], read_ids)
+            self.assertEqual(SHA, result['sourceSha'])
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), result['logSha256'])
+            self.assertIn('AssertionError: expected target', result['excerpt'])
+            self.assertNotIn('ghp_abcdefghijklmnopqrstuvwxyz123456', result['excerpt'])
+            self.assertNotIn('dXNlcjpwYXNzd29yZA==', result['excerpt'])
+            self.assertNotIn('example.test', result['excerpt'])
+            self.assertNotIn('alice', result['excerpt'])
+            self.assertNotIn('bob', result['excerpt'])
+            self.assertIn('[REDACTED URL]', result['excerpt'])
+            self.assertIn('[REDACTED]', result['excerpt'])
+            self.assertFalse(result['replayAllowed'])
+            for runs in ([run, dict(run, databaseId=72)], [dict(run, headSha='b' * 40)],
+                         [dict(run, status='in_progress')], [dict(run, conclusion='cancelled')]):
+                result = fixture.failed_log(root, {'correlationId': CORR},
+                                            runner=Runner([(0, json.dumps(runs))]), log_reader=reader)
+                self.assertEqual('unknown', result['state'])
+            self.assertEqual([71], read_ids)
+
+    def test_failed_log_capture_has_child_size_cap_and_excerpt_bound(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = Path(tmp) / 'gh'
+            fake.write_text('#!/bin/sh\nprintf abcdefghijklmnop\n')
+            fake.chmod(0o700)
+            with patch.object(fixture, '_MAX_FAILED_LOG_BYTES', 8), \
+                 patch.dict(os.environ, {'PATH': tmp + os.pathsep + os.environ.get('PATH', '')}):
+                self.assertIsNone(fixture._read_failed_log(71))
+            raw = (b'ERROR: repeated failure\n' * 5000)
+            self.assertLessEqual(len(fixture._failed_excerpt(raw)), fixture._MAX_FAILED_EXCERPT_CHARS)
+
     def test_rejects_base_version_not_preceding_tracked_target(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

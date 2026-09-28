@@ -14,7 +14,7 @@ import stat
 import uuid
 from typing import Any, Mapping
 
-from . import native_artifact_registry, native_rpm_public_install_ssh, ssh_transport
+from . import linux_rpm_protected_job_observe, native_artifact_registry, native_rpm_public_install_ssh, ssh_transport
 from scripts.version_metadata import parse_version
 
 
@@ -30,7 +30,7 @@ class LinuxRpmBasePrepareError(ValueError):
     pass
 
 
-_COMMON = r'''import hashlib,json,os,pwd,stat,subprocess,sys,time
+_COMMON = r'''import fcntl,hashlib,json,os,pwd,stat,subprocess,sys,time
 ROOT='/var/lib/vpn-control-rpm-base-prep'
 FMT='%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}'
 def result(state,reason=None,**extra):
@@ -40,7 +40,70 @@ def result(state,reason=None,**extra):
 def nevra(args):
  p=subprocess.run(args,capture_output=True,text=True,timeout=30)
  return p.stdout.strip() if p.returncode==0 and not p.stderr else None
-def inspect(expected):
+def protected_job_inventory():
+ scope={}
+ exec(PROTECTED_OBSERVER_CODE,scope)
+ return scope['scan']('/var/lib/vpn-control-install-jobs',0)
+def hold_reservation():
+ scope={}
+ exec(PROTECTED_OBSERVER_CODE,scope)
+ root='/var/lib/vpn-control-install-jobs'
+ if scope['mounted_at'](root) or scope['mounted_at'](root+'/reservation-linux'):
+  raise OSError('reservation-mount-boundary')
+ root_fd=scope['open_root'](root)
+ try:
+  parent=os.fstat(root_fd)
+  if not stat.S_ISDIR(parent.st_mode) or parent.st_uid!=0 or parent.st_mode&(stat.S_IWGRP|stat.S_IWOTH):
+   raise OSError('reservation-root-unsafe')
+  fd=os.open('reservation-linux',os.O_RDWR|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=root_fd)
+  try:
+   info=os.fstat(fd)
+   if (not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_dev!=parent.st_dev or
+       info.st_nlink!=1 or info.st_size!=0 or info.st_mode&(stat.S_IWGRP|stat.S_IWOTH)):
+    raise OSError('reservation-unsafe')
+   fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+   return fd
+  except BaseException:os.close(fd);raise
+ finally:os.close(root_fd)
+def reservation_identity(fd,path='/var/lib/vpn-control-install-jobs/reservation-linux'):
+ try:
+  held=os.fstat(fd);current=os.stat(path,follow_symlinks=False)
+  return (stat.S_ISREG(held.st_mode) and stat.S_ISREG(current.st_mode) and
+   (held.st_dev,held.st_ino)==(current.st_dev,current.st_ino))
+ except OSError:return False
+def admit_protected_inventory(value,held_by_us=False):
+ if not isinstance(value,dict) or value.get('state')!='observed' or value.get('truncated') is not False:
+  return result('unknown','protected-job-observation-unknown')
+ if value.get('rootState')=='absent' and value.get('entries')==[] and value.get('entryCount')==0:
+  return result('unknown','protected-job-absent-while-locked') if held_by_us else result('ready')
+ if value.get('rootState')!='readable' or not isinstance(value.get('entries'),list) or len(value['entries'])!=value.get('entryCount'):
+  return result('unknown','protected-job-unsafe')
+ guards=set();jobs=0
+ for row in value['entries']:
+  if not isinstance(row,dict):return result('unknown','protected-job-unsafe')
+  if row.get('guardName') in ('gate-linux','reservation-linux'):
+   name=row['guardName']
+   wanted={'kind','nameHash','guardName','guardState'}|({'gatePending'} if name=='gate-linux' else {'reservationLocked'})
+   if set(row)!=wanted:return result('unknown','protected-job-unsafe')
+   if name in guards or row.get('kind')!='regular' or row.get('guardState')!='trusted':
+    return result('unknown','protected-job-unsafe')
+   if name=='gate-linux' and row.get('gatePending') is not False:
+    return result('blocked','pending-installer')
+   if name=='reservation-linux' and (type(row.get('reservationLocked')) is not bool or
+      (row['reservationLocked'] and not held_by_us)):
+    return result('blocked','pending-installer')
+   guards.add(name)
+  elif row.get('kind')=='directory' and isinstance(row.get('jobId'),str):
+   if set(row)!={'kind','nameHash','jobId','receiptState','phase'}:
+    return result('unknown','protected-job-unsafe')
+   if row.get('receiptState')!='terminal' or row.get('phase')!='SUCCEEDED':
+    return result('blocked','pending-installer')
+   jobs+=1
+  else:return result('unknown','protected-job-unsafe')
+ if guards!={'gate-linux','reservation-linux'}:
+  return result('unknown','protected-job-guards-missing')
+ return result('ready',completedJobCount=jobs)
+def inspect(expected,held_reservation_fd=None):
  if os.geteuid()!=0:return result('unknown','privilege-unavailable')
  try: uid=pwd.getpwnam('vpnfixture').pw_uid
  except KeyError:return result('unknown','fixture-account-missing')
@@ -77,16 +140,12 @@ def inspect(expected):
     active_total+=1
     if len(active)<8:active.append({'pid':int(entry.name),'startTicks':ticks,'executable':executable})
   if active_total:return result('blocked','active-runtime',activeProcessCount=active_total,activeProcesses=active)
-  protected='/var/lib/vpn-control-install-jobs'
-  if os.path.lexists(protected):
-   info=os.stat(protected,follow_symlinks=False)
-   if not stat.S_ISDIR(info.st_mode) or info.st_uid!=0:return result('unknown','protected-job-root-unsafe')
-   for entry in os.scandir(protected):
-    if not entry.is_dir(follow_symlinks=False):return result('unknown','protected-job-unsafe')
-    path=entry.path+'/status.json'
-    if not os.path.isfile(path):return result('blocked','pending-installer')
-    value=json.load(open(path,encoding='utf-8'))
-    if value.get('phase') not in ('SUCCEEDED','FAILED','CANCELLED'):return result('blocked','pending-installer')
+  if held_reservation_fd is not None and not reservation_identity(held_reservation_fd):
+   return result('unknown','reservation-identity-changed')
+  protected=admit_protected_inventory(protected_job_inventory(),held_reservation_fd is not None)
+  if held_reservation_fd is not None and not reservation_identity(held_reservation_fd):
+   return result('unknown','reservation-identity-changed')
+  if protected.get('state')!='ready':return protected
  except (OSError,ValueError,KeyError):return result('unknown','guest-observation-unavailable')
  return result('ready',currentNevra=current)
 def durable(path,value):
@@ -94,7 +153,7 @@ def durable(path,value):
  with os.fdopen(fd,'wb') as stream:
   stream.write((json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode());stream.flush();os.fsync(stream.fileno())
  os.replace(tmp,path); fd=os.open(os.path.dirname(path),os.O_RDONLY);os.fsync(fd);os.close(fd)
-'''
+''' + '\nPROTECTED_OBSERVER_CODE=' + repr(linux_rpm_protected_job_observe._COMMON) + '\n'
 
 _PREFLIGHT = _COMMON + r'''expected=sys.argv[1]
 try: observed=inspect(expected)
@@ -105,8 +164,13 @@ print(json.dumps(observed,separators=(',',':')))
 _WORKER = _COMMON + r'''job=sys.argv[1]
 intent=json.load(open(job+'/intent.json',encoding='utf-8'))
 while not os.path.exists(job+'/release'):time.sleep(.02)
-pre=inspect(intent['expectedCurrentNevra'])
+try:reservation_fd=hold_reservation()
+except OSError:
+ durable(job+'/receipt.json',{'state':'blocked','correlationId':intent['correlationId'],'reason':'reservation-unavailable'})
+ raise SystemExit(1)
+pre=inspect(intent['expectedCurrentNevra'],held_reservation_fd=reservation_fd)
 if pre.get('state')!='ready':
+ os.close(reservation_fd)
  durable(job+'/receipt.json',{'state':'blocked','correlationId':intent['correlationId'],'reason':pre.get('reason','preflight-unknown')})
  raise SystemExit(1)
 with open(job+'/rpm.stdout','xb') as out,open(job+'/rpm.stderr','xb') as err:
@@ -115,6 +179,7 @@ current=nevra(['rpm','-q','--qf',FMT,'vpn-control'])
 verify=subprocess.run(['rpm','-V','vpn-control'],capture_output=True,timeout=30) if current==intent['expectedBaseNevra'] else None
 passed=(command.returncode==0 and current==intent['expectedBaseNevra'] and verify is not None
  and verify.returncode==0 and not verify.stdout and not verify.stderr)
+os.close(reservation_fd)
 durable(job+'/receipt.json',{'state':'terminal','correlationId':intent['correlationId'],
  'sourceSha':intent['sourceSha'],'baseArtifactId':intent['baseArtifactId'],
  'expectedBaseNevra':intent['expectedBaseNevra'],'observedNevra':current,

@@ -76,6 +76,9 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             collect.assert_called_once_with(mcp_server.REPO_ROOT, status_request)
         with patch.object(windows_update_fixture_workflow, "collect", return_value={"state": "collected", "replayAllowed": False}):
             self.assertTrue(mcp_server._vm_workflow_impl("windows-msi-fixture-collect", status_request)["ok"])
+        with patch.object(windows_update_fixture_workflow, "failed_log", return_value={"state": "failed-log", "replayAllowed": False}) as failed_log:
+            self.assertTrue(mcp_server._vm_workflow_impl("windows-msi-fixture-failed-log", status_request)["ok"])
+            failed_log.assert_called_once_with(mcp_server.REPO_ROOT, status_request)
 
     def test_linux_public_owner_quit_route_keeps_uncertain_exit_unverified(self):
         from agent_tools import linux_owner_public_quit
@@ -95,6 +98,17 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         with patch.object(linux_owner_public_quit, "collect", return_value={"state": "failed", "replayAllowed": False}) as collect:
             self.assertFalse(mcp_server._vm_workflow_impl("linux-owner-public-quit-collect", observation)["ok"])
             collect.assert_called_once_with(mcp_server.REPO_ROOT, observation)
+
+    def test_linux_protected_job_inventory_is_read_only_diagnostic(self):
+        from agent_tools import linux_rpm_protected_job_observe
+        request = {"host": "fedora2328", "environment": "fedora2328"}
+        with patch.object(linux_rpm_protected_job_observe, "observe", return_value={"state": "observed", "jobs": []}) as observe:
+            result = mcp_server._vm_workflow_impl("linux-rpm-protected-job-observe", request)
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["productAction"])
+            observe.assert_called_once_with(mcp_server.REPO_ROOT, request)
+        with patch.object(linux_rpm_protected_job_observe, "observe", return_value={"state": "unknown"}):
+            self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-protected-job-observe", request)["ok"])
 
     def test_linux_base_prepare_route_preserves_no_replay_and_terminal_failure(self):
         from agent_tools import linux_rpm_base_prepare
