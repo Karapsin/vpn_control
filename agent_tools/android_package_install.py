@@ -111,13 +111,14 @@ def _inspect_apk(root: Path | str, apk: Path) -> dict[str, Any]:
                               timeout=30, check=True).stdout.decode("utf-8", "strict")
     package = re.search(r"(?m)^package: name='([^']+)' versionCode='([0-9]+)' versionName='([^']+)'", badging)
     abi = re.search(r"(?m)^native-code: '([^']+)'$", badging)
-    cert = re.search(r"(?m)^Signer #1 certificate SHA-256 digest: ([0-9a-f]{64})$", signature)
-    count = re.search(r"(?m)^Number of signers: ([0-9]+)$", signature)
+    certs = re.findall(r"(?m)^Signer #([0-9]+) certificate SHA-256 digest: ([0-9a-f]{64})$", signature)
+    signer_ids = set(re.findall(r"(?m)^Signer #([0-9]+) certificate ", signature))
     if (not package or package.group(1) != _PACKAGE or not abi or abi.group(1) != "x86_64" or
-            "application-debuggable" in badging or not cert or not count or count.group(1) != "1"):
+            "application-debuggable" in badging or len(certs) != 1 or certs[0][0] != "1" or
+            signer_ids != {"1"}):
         raise ValueError("Android APK identity is not an admitted nondebuggable x86_64 package")
     result={"package":package.group(1),"code":int(package.group(2)),"version":package.group(3),
-            "abi":"x86_64","signerSha256":cert.group(1),"debuggable":False}
+            "abi":"x86_64","signerSha256":certs[0][1],"debuggable":False}
     _version_identity(result)
     return result
 

@@ -76,6 +76,45 @@ class BasePrepareTests(unittest.TestCase):
         self.assertNotIn("msiexec.exe", script)
         self.assertLess(len(__import__("base64").b64encode(script.encode("utf-16le"))), 30000)
 
+    def test_readiness_binds_product_version_idle_owner_and_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            class Target:
+                fixture_transfer_root = Path("/private/cp117")
+            descriptor = (object(), Target(), ("windows-cp117", "/qga.sock", 589342, 520739,
+                       "S-1-5-21-1-2-3-1002"))
+            inventory = {"version": 1, "code": "READY", "installedVersion": "2.1.17",
+                         "productCount": 1, "activeCount": 0, "activeKinds": [], "activeProcesses": [],
+                         "workspaceLockPid": None, "ownedExplorerCount": 1}
+            with patch.object(base, "_descriptor", return_value=descriptor), \
+                 patch.object(base, "_remote") as remote:
+                remote.return_value = json.dumps({"state": "observed", "inventory": inventory}).encode()
+                self.assertEqual(base.readiness(directory, {"host": "archlinux", "expectedCurrentVersion": "2.1.17"})["state"], "ready")
+                remote.return_value = json.dumps({"state": "observed", "inventory": dict(inventory, activeCount=1)}).encode()
+                self.assertEqual(base.readiness(directory, {"host": "archlinux", "expectedCurrentVersion": "2.1.17"})["state"], "unknown")
+                remote.return_value = json.dumps({"state": "observed", "inventory": dict(inventory, code="ACTIVE_PROCESS", activeCount=1, activeKinds=["msiexec"])}).encode()
+                self.assertEqual(base.readiness(directory, {"host": "archlinux", "expectedCurrentVersion": "2.1.17"})["state"], "unknown")
+                observed = dict(inventory, code="ACTIVE_PROCESS", activeCount=1,
+                                activeKinds=["vpn-control-cli"], activeProcesses=[{"kind": "vpn-control-cli", "pid": 1234,
+                                  "parentPid": 4, "startedAtUtc": "2026-09-28T10:00:00Z", "sessionId": 1,
+                                  "originalUser": True, "role": "owner", "currentWorkspaceOwner": True}],
+                                workspaceLockPid=1234)
+                remote.return_value = json.dumps({"state": "observed", "inventory": observed}).encode()
+                actual = base.readiness(directory, {"host": "archlinux", "expectedCurrentVersion": "2.1.17"})
+                self.assertEqual(actual["activeKinds"], ["vpn-control-cli"])
+                self.assertEqual(actual["activeProcesses"][0]["role"], "owner")
+                remote.return_value = json.dumps({"state": "observed", "inventory": dict(observed, activeKinds=["private-process-name"])}).encode()
+                self.assertEqual(base.readiness(directory, {"host": "archlinux", "expectedCurrentVersion": "2.1.17"})["state"], "unknown")
+                remote.return_value = None
+                self.assertEqual(base.readiness(directory, {"host": "archlinux", "expectedCurrentVersion": "2.1.17"})["state"], "unknown")
+
+    def test_readiness_script_only_observes_cp117_state(self):
+        script = base._readiness_script("2.1.17", "S-1-5-21-1-2-3-1002")
+        self.assertIn("HKEY_USERS", script)
+        self.assertIn("GetOwnerSid", script)
+        self.assertIn("ACTIVE_PROCESS", script)
+        self.assertNotIn("Start-Process", script)
+        self.assertNotIn("Start-ScheduledTask", script)
+
     def test_unknown_submission_reserves_once_and_never_replays(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

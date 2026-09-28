@@ -16,6 +16,23 @@ from agent_tools import android_package_install as installer
 
 
 class AndroidPackageInstallTest(unittest.TestCase):
+    def test_apksigner_single_signer_output_without_count_is_admitted(self):
+        badging = ("package: name='com.kardinal.vpncontrol' versionCode='16800' versionName='2.2.0'\n"
+                   "native-code: 'x86_64'\n")
+        signature = ("Signer #1 certificate DN: C=US, O=Android, CN=Android Debug\n"
+                     "Signer #1 certificate SHA-256 digest: " + "a" * 64 + "\n")
+        with mock.patch.object(installer, "_build_tools", return_value=(Path("/aapt"), Path("/apksigner"))), \
+             mock.patch.object(installer.subprocess, "run", side_effect=[
+                 SimpleNamespace(stdout=badging.encode()), SimpleNamespace(stdout=signature.encode())]):
+            actual = installer._inspect_apk(".", Path("/fixture.apk"))
+        self.assertEqual("a" * 64, actual["signerSha256"])
+        second_signer = signature + "Signer #2 certificate SHA-256 digest: " + "b" * 64 + "\n"
+        with mock.patch.object(installer, "_build_tools", return_value=(Path("/aapt"), Path("/apksigner"))), \
+             mock.patch.object(installer.subprocess, "run", side_effect=[
+                 SimpleNamespace(stdout=badging.encode()), SimpleNamespace(stdout=second_signer.encode())]):
+            with self.assertRaises(ValueError):
+                installer._inspect_apk(".", Path("/fixture.apk"))
+
     def test_version_name_and_code_must_form_monotonic_base20_identity(self):
         self.assertEqual((2,2,0),installer._version_identity({"version":"2.2.0","code":16800}))
         self.assertLess(installer._version_identity({"version":"2.1.18","code":16760}),

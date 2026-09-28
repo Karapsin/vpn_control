@@ -27,6 +27,57 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Third continuation checkpoint and pending acceptance — 2026-09-28
+
+`58b569559184cfbb24f588d5ac46aa4884690dc3` is the latest pushed
+`origin/dev` checkpoint, version `2.2.0`. It delivered native admission and
+visual-fixture repairs; full parity remains open. The user's requested delivery
+policy is larger coherent checkpoint pushes with **one required-workflow CI
+review at the final delivered SHA**. Intermediate workflow and package results
+remain evidence for their own source and scope, not final CI acceptance. No
+release is authorized.
+
+Current uncommitted work spans Android installer admission, Linux RPM preparation,
+Windows MSI owner observation/readiness and target preparation, desktop update
+fixture hashing, and desktop/Android visual fixtures. The writers own their respective
+tool/test files; root owns shared MCP registration, host checks, metadata and
+delivery. These changes need a reviewed coherent checkpoint and a fresh
+content-bound prepush receipt. Do not relabel the `58b5695` artifacts as built
+from the later dirty source.
+
+Exact-`58b5695` **component** package inputs are preserved: Android's frozen
+native-fixture APK SHA256
+`7dfc10891a14dd1747a580bbeef4133728d13d280a569c21b463f53575646bdd`
+(`58b5695-android/frozen-apk-receipt.json`); independently verified Linux
+2.1.19/2.2.0 RPM pair (`continuation-linux-58b5695/hosted-rpm-fixture/`
+`local-verification.json`); verified Windows AMD64 2.1.19/2.2.0 MSI pair
+(`checkpoint-current/windows-msi-fixture-58b/fixture-receipt.json`); and
+strictly signed Mac arm64 2.1.19/2.2.0 DMG pair
+(`continuation-macos/fixture-58b5695/reviewed-package-summary.json`). These
+receipts establish bytes/provenance and relevant packaging checks, not installed
+native behavior or current-source matrix completion after another code change.
+
+| Native slice | Current gate and preserved uncertainty |
+| --- | --- |
+| Android API29/API35 | The first guarded install attempt failed in its pre-lease parser/admission path; it is not an installer success or a reason to replay an uncertain accepted action. Preserve both readback backups and inspect the corrected parser/route regression before one newly admitted install. Neither API has a new `58b5695` installed-package acceptance result. |
+| Linux | Fedora2328 still has a live task-owned controller. A guest-only stop needed for base RPM installation awaits explicit approval under the runtime rule; no RPM replacement or owner-lifecycle batch is admitted. Preserve the existing owner and exact-source RPM pair. |
+| Windows | The exact-source MSI pair is staged. Owner observation `c8351cb2-162e-489e-91a1-3a75d7b49fb5` ended `UNKNOWN`; its exact task cleanup is complete, and the observation must not be replayed. A causal QGA one-shot read fix awaits the next source SHA. Target preparation fails closed as `FIXTURE_ADMISSION_UNAVAILABLE` without a live CP117 HTTPS proxy/TLS receipt; a separate read-only owner probe and base-install readiness remain under design/review. No public MSI replacement has run for this SHA. Preserve the terminal CP176 failure. |
+| macOS | The exact-source DMG pair is staged and the Tart guest is stopped. Host GUI unlock is required to observe the protected authorization surface before a new native case; legacy job `465a954f-cd70-45c4-896d-67e4508bae49` remains unknown. |
+
+Desktop visual fixture corrections and the remaining five Android comparator
+diffs require capture and review on the next source SHA. The earlier 25aa Android
+74/74 capture, desktop hosted single-scene failures, and six missing desktop
+add/edit-location baselines remain historical/partial evidence. No four-platform
+visual row is closed. The desktop owner-lifecycle matrix is likewise open on
+Linux, Windows and macOS; a fixed route is under preparation and does not itself
+prove installed GUI attachment or uninterrupted traffic.
+
+A causal desktop update fixture-manifest hash correction is in the dirty tool
+batch; it does not retroactively validate a failed manifest or admit an install.
+At this checkpoint no new Windows, Android, Linux or macOS native installation
+has been submitted. Preserve all exact correlations and await the scoped
+preflights, source checkpoint and required environment approval/GUI readiness.
+
 ### Second continuation checkpoint and active native admission — 2026-09-28
 
 `25aa22e1cdefe0417dc1f56ce159c4fe8a7b592f` is the second reviewed

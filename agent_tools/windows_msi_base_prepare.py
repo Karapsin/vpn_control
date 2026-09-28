@@ -6,6 +6,7 @@ target update. Local and remote reservations deliberately survive uncertainty.
 from __future__ import annotations
 
 import base64
+from datetime import datetime
 import fcntl
 import gzip
 import hashlib
@@ -320,6 +321,7 @@ def _powershell_preflight_script() -> str:
     corr = "11111111-1111-4111-8111-111111111111"
     bootstrap = _bootstrap(corr, pair, "2.1.17", "S-1-5-21-1-2-3-1002")
     task = _task(corr, pair, "2.1.17", "S-1-5-21-1-2-3-1002")
+    readiness = _readiness_script("2.1.17", "S-1-5-21-1-2-3-1002")
     def packed(value: str) -> str:
         return base64.b64encode(gzip.compress(value.encode("utf-16le"), mtime=0)).decode()
     return r'''$ErrorActionPreference='Stop'
@@ -333,15 +335,17 @@ function Expand([string]$body) {
  return $body
 }
 try {
- $bootstrap=Expand '@BOOTSTRAP@';$task=Expand '@TASK@'
+ $bootstrap=Expand '@BOOTSTRAP@';$task=Expand '@TASK@';$readiness=Expand '@READINESS@'
  $tokens=$null;$errors=$null
  [System.Management.Automation.Language.Parser]::ParseInput($bootstrap,[ref]$tokens,[ref]$errors)|Out-Null
  if($errors.Count -ne 0){throw 'BOOTSTRAP_SYNTAX'}
  [System.Management.Automation.Language.Parser]::ParseInput($task,[ref]$tokens,[ref]$errors)|Out-Null
  if($errors.Count -ne 0){throw 'TASK_SYNTAX'}
+ [System.Management.Automation.Language.Parser]::ParseInput($readiness,[ref]$tokens,[ref]$errors)|Out-Null
+ if($errors.Count -ne 0){throw 'READINESS_SYNTAX'}
  [Console]::Out.WriteLine('{"version":1,"code":"OK"}')
 }catch{[Console]::Out.WriteLine('{"version":1,"code":"FAILED"}');exit 1}
-'''.replace("@BOOTSTRAP@", packed(bootstrap)).replace("@TASK@", packed(task))
+'''.replace("@BOOTSTRAP@", packed(bootstrap)).replace("@TASK@", packed(task)).replace("@READINESS@", packed(readiness))
 
 
 def powershell_preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -364,6 +368,139 @@ def powershell_preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str
     if not isinstance(result, dict) or result.get("state") not in {"passed", "failed"}:
         return {"state": "unknown", "checks": []}
     return {"state": result["state"], "checks": ["ps5-parse", "gzip"]}
+
+
+def _readiness_script(expected_version: str, expected_sid: str) -> str:
+    """Read installed registration and idle original-user session without changes."""
+    version = windows_msi_public_scenario._ps_literal(expected_version)
+    sid = windows_msi_public_scenario._ps_literal(expected_sid)
+    return r'''$ErrorActionPreference='Stop'
+try {
+ $sid=@SID@;$expected=@VERSION@
+ $hku='Registry::HKEY_USERS\'+$sid+'\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
+ $hku32='Registry::HKEY_USERS\'+$sid+'\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+ $products=@(Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',$hku,$hku32 -ErrorAction SilentlyContinue|Where-Object {$_.DisplayName -eq 'vpn-control'})
+ $active=@(Get-CimInstance Win32_Process|Where-Object {$_.Name -match '^(vpn-control-cli|msiexec|consent|sing-box)\.exe$'})
+ if($active.Count -gt 16){throw 'ACTIVE_BOUND'}
+ $lockPid=$null
+ try{$lockRaw=(Get-Content -LiteralPath 'C:\Users\vpncp117\AppData\Local\VpnControl\cp166\state\vpn-control.lock' -Raw -ErrorAction Stop).Trim();if($lockRaw -match '^[0-9]{1,10}$'){$lockPid=[int]$lockRaw}}catch{}
+ $activeProcesses=@($active|ForEach-Object {
+  $process=$_;$kind=$process.Name.ToLowerInvariant().Replace('.exe','')
+  $role=switch($kind){'msiexec'{'installer'}'consent'{'authorization'}'sing-box'{'runtime'}default{'unknown'}}
+  if($kind -eq 'vpn-control-cli'){
+   if($null -eq $process.CommandLine){$role='unknown'}
+   elseif($process.CommandLine -match '(^|\s)serve(\s|$)'){$role='owner'}
+   else{$role='command'}
+  }
+  $processOwner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid
+  [pscustomobject]@{kind=$kind;pid=[int]$process.ProcessId;parentPid=[int]$process.ParentProcessId;startedAtUtc=$process.CreationDate.ToUniversalTime().ToString('o');sessionId=[int]$process.SessionId;originalUser=($processOwner.ReturnValue -eq 0 -and $processOwner.Sid -ceq $sid);role=$role;currentWorkspaceOwner=($null -ne $lockPid -and $process.ProcessId -eq $lockPid)}
+ })
+ $activeKinds=@($active|ForEach-Object {$_.Name.ToLowerInvariant().Replace('.exe','')}|Sort-Object -Unique)
+ $explorers=@(Get-CimInstance Win32_Process -Filter "name='explorer.exe'"|Where-Object {$_.SessionId -eq 1})
+ $owned=0
+ foreach($process in $explorers){$owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid;if($owner.ReturnValue -eq 0 -and $owner.Sid -ceq $sid){$owned++}}
+ $version=if($products.Count -eq 1){$products[0].DisplayVersion}else{$null}
+ $ready=$products.Count -eq 1 -and $version -ceq $expected -and $active.Count -eq 0 -and $owned -eq 1
+ $code=if($ready){'READY'}elseif($products.Count -ne 1){'PRODUCT_COUNT'}elseif($version -cne $expected){'PRODUCT_VERSION'}elseif($active.Count -ne 0){'ACTIVE_PROCESS'}else{'SESSION_OWNER'}
+ [Console]::Out.WriteLine(([pscustomobject]@{version=1;code=$code;installedVersion=$version;productCount=$products.Count;activeCount=$active.Count;activeKinds=$activeKinds;activeProcesses=$activeProcesses;workspaceLockPid=$lockPid;ownedExplorerCount=$owned}|ConvertTo-Json -Depth 5 -Compress))
+}catch{[Console]::Out.WriteLine('{"version":1,"code":"UNKNOWN"}');exit 1}
+'''.replace("@SID@", sid).replace("@VERSION@", version)
+
+
+_READINESS = _QGA + r'''import time
+sock,pid,ticks,encoded=sys.argv[1:]
+def out(v):print(json.dumps(v,separators=(',',':'),sort_keys=True))
+try:
+ if not live(sock,pid,ticks) or len(encoded)>=30000:raise ValueError()
+ start=call(sock,'guest-exec',{'path':'powershell.exe','arg':['-NoProfile','-NonInteractive','-EncodedCommand',encoded],'capture-output':True})
+ child=start['pid']
+ if type(child) is not int or child<=0:raise ValueError()
+ for attempt in range(40):
+  state=call(sock,'guest-exec-status',{'pid':child})
+  if state.get('exited') is True:break
+  time.sleep(.25)
+ else:raise ValueError()
+ raw=base64.b64decode(state.get('out-data',''),validate=True)
+ if len(raw)>4096:raise ValueError()
+ lines=[x for x in decode(raw).splitlines() if x.startswith('{') and x.endswith('}')]
+ if state.get('exitcode')!=0 or len(lines)!=1:raise ValueError()
+ out({'state':'observed','inventory':json.loads(lines[0])})
+except Exception:out({'state':'unknown'})
+'''
+
+
+def readiness(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    if (not isinstance(value, Mapping) or set(value) != {"host", "expectedCurrentVersion"}
+            or value["host"] != "archlinux" or not isinstance(value["expectedCurrentVersion"], str)
+            or not _VERSION.fullmatch(value["expectedCurrentVersion"])):
+        raise WindowsMsiBasePrepareError("Base readiness requires exact CP117 host and version.")
+    root = Path(root).resolve(strict=True)
+    config, _, (env, socket, pid, ticks, sid) = _descriptor(root)
+    if env != "windows-cp117":
+        raise WindowsMsiBasePrepareError("Owned CP117 guest identity changed.")
+    encoded = base64.b64encode(_readiness_script(value["expectedCurrentVersion"], sid).encode("utf-16le")).decode()
+    if len(encoded) >= 30000:
+        raise WindowsMsiBasePrepareError("Fixed base readiness exceeds Windows command admission.")
+    raw = _remote(config, _READINESS, (socket, str(pid), str(ticks), encoded), None, 30)
+    unknown = {"state": "unknown", "ready": False, "productAction": False}
+    try:
+        result = json.loads(raw) if raw is not None else {}
+    except (TypeError, ValueError):
+        return unknown
+    if not isinstance(result, dict) or result.get("state") != "observed" or not isinstance(result.get("inventory"), dict):
+        return unknown
+    inventory = result["inventory"]
+    codes = {"READY", "PRODUCT_COUNT", "PRODUCT_VERSION", "ACTIVE_PROCESS", "SESSION_OWNER"}
+    if (set(inventory) != {"version", "code", "installedVersion", "productCount", "activeCount", "activeKinds", "activeProcesses", "workspaceLockPid", "ownedExplorerCount"}
+            or inventory["version"] != 1 or inventory["code"] not in codes
+            or type(inventory["productCount"]) is not int or inventory["productCount"] < 0
+            or type(inventory["activeCount"]) is not int or inventory["activeCount"] < 0
+            or not isinstance(inventory["activeKinds"], list) or len(inventory["activeKinds"]) > 4
+            or len(set(x for x in inventory["activeKinds"] if isinstance(x, str))) != len(inventory["activeKinds"])
+            or any(x not in {"vpn-control-cli", "msiexec", "consent", "sing-box"} for x in inventory["activeKinds"])
+            or (inventory["activeCount"] == 0) != (len(inventory["activeKinds"]) == 0)
+            or not isinstance(inventory["activeProcesses"], list)
+            or len(inventory["activeProcesses"]) != inventory["activeCount"]
+            or len(inventory["activeProcesses"]) > 16
+            or (inventory["workspaceLockPid"] is not None and
+                (type(inventory["workspaceLockPid"]) is not int or inventory["workspaceLockPid"] <= 0))
+            or type(inventory["ownedExplorerCount"]) is not int or inventory["ownedExplorerCount"] < 0
+            or (inventory["installedVersion"] is not None and (not isinstance(inventory["installedVersion"], str)
+                or not _VERSION.fullmatch(inventory["installedVersion"])))):
+        return unknown
+    roles = {"vpn-control-cli": {"owner", "command", "unknown"}, "msiexec": {"installer"},
+             "consent": {"authorization"}, "sing-box": {"runtime"}}
+    for process in inventory["activeProcesses"]:
+        if (not isinstance(process, dict) or set(process) != {"kind", "pid", "parentPid", "startedAtUtc", "sessionId", "originalUser", "role", "currentWorkspaceOwner"}
+                or process.get("kind") not in roles or process.get("role") not in roles[process["kind"]]
+                or type(process.get("pid")) is not int or process["pid"] <= 0
+                or type(process.get("parentPid")) is not int or process["parentPid"] < 0
+                or not isinstance(process.get("startedAtUtc"), str)
+                or type(process.get("sessionId")) is not int or process["sessionId"] < 0
+                or type(process.get("originalUser")) is not bool
+                or type(process.get("currentWorkspaceOwner")) is not bool):
+            return unknown
+        try:
+            datetime.fromisoformat(process["startedAtUtc"].replace("Z", "+00:00"))
+        except ValueError:
+            return unknown
+    if sorted({p["kind"] for p in inventory["activeProcesses"]}) != inventory["activeKinds"]:
+        return unknown
+    if any(p["currentWorkspaceOwner"] != (p["pid"] == inventory["workspaceLockPid"])
+           for p in inventory["activeProcesses"]):
+        return unknown
+    ready = (inventory["code"] == "READY" and inventory["productCount"] == 1
+             and inventory["installedVersion"] == value["expectedCurrentVersion"]
+             and inventory["activeCount"] == 0 and inventory["ownedExplorerCount"] == 1)
+    if inventory["code"] == "READY" and not ready:
+        return unknown
+    return {"state": "ready" if ready else "blocked", "ready": ready, "code": inventory["code"],
+            "installedVersion": inventory["installedVersion"], "productCount": inventory["productCount"],
+            "activeCount": inventory["activeCount"], "activeKinds": inventory["activeKinds"],
+            "activeProcesses": inventory["activeProcesses"],
+            "workspaceLockPid": inventory["workspaceLockPid"],
+            "ownedExplorerCount": inventory["ownedExplorerCount"],
+            "productAction": False}
 
 
 def _remote(config: Any, program: str, args: tuple[str, ...], source: Path | None, timeout: int) -> bytes | None:

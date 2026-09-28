@@ -66,6 +66,45 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                 with self.subTest(value=value), self.assertRaises(ValueError):
                     fixture_proxy_arguments(ready)
 
+    def test_serve_ready_digest_binds_the_exact_manifest_response(self):
+        """The native proxy admission receipt must name the bytes served for GET."""
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            ready_file = directory / "ready.json"
+            (directory / "fixture-receipt.json").write_text(json.dumps({
+                "sourceFingerprint": "f" * 64}))
+            manifest = {"schemaVersion": 1, "assets": [{"fileName": "target.msi"}],
+                        "buildNumber": 16800}
+            served_body = json.dumps(manifest, separators=(",", ":")).encode()
+
+            class FakeServer:
+                def __init__(self, address, handler):
+                    self.server_address = ("127.0.0.1", 53633)
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *_):
+                    return False
+
+                def serve_forever(self):
+                    ready = json.loads(ready_file.read_text())
+                    self_assert.assertEqual(hashlib.sha256(served_body).hexdigest(),
+                                            ready.get("manifestSha256"))
+                    self_assert.assertEqual(["-Dhttps.proxyHost=127.0.0.1",
+                                             "-Dhttps.proxyPort=53633",
+                                             "-Dhttp.proxyHost=127.0.0.1",
+                                             "-Dhttp.proxyPort=53633"],
+                                            fixture_proxy_arguments(ready_file))
+
+            self_assert = self
+            with patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
+                    patch("prepare_desktop_update_fixture.load_resources", return_value=(manifest, {})), \
+                    patch("prepare_desktop_update_fixture.ssl.SSLContext"), \
+                    patch("prepare_desktop_update_fixture.socketserver.ThreadingTCPServer", FakeServer):
+                prepare_desktop_update_fixture.serve(
+                    directory, directory / "server.pem", directory / "server.key", ready_file, True)
+
     def test_missing_selected_identity_is_rejected_before_runtime_start(self):
         # Native malformed-DMG preparation added a location but did not select it;
         # public ON then returned SELECT_LOCATION_FIRST without starting a runtime.

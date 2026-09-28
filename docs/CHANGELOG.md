@@ -7,6 +7,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Align GUI and CLI source selection and harden native parity acceptance workflows.
 - Harden native package admission and repair visual acceptance fixtures.
+- Harden native update admission and visual parity fixtures.
 
 ## 2.2.0 - 2026-09-28
 

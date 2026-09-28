@@ -62,6 +62,15 @@ class VisualCaptureTest {
     private lateinit var compose: ComposeUiTest
 
     @Test
+    fun renameDialogFixtureReferencesSavedSubscription() {
+        val state = visualState("profile-rename-dialog")
+        check(state.showProfileHistoryRenameDialog)
+        check(state.subscriptions.any { it.url == state.profileHistoryRenameSource }) {
+            "Rename dialog visual fixture must identify its saved subscription"
+        }
+    }
+
+    @Test
     fun captureRequestedScenes() {
         if (System.getenv("VPN_CONTROL_VISUAL_OUTPUT") == null) return
         runDesktopComposeUiTest(width = 1280, height = 800) capture@{
@@ -464,6 +473,7 @@ internal fun visualState(sceneId: String): MainUiState {
         )
         "profile-rename-dialog" -> state.copy(
             showProfileHistoryRenameDialog = true,
+            profileHistoryRenameSource = subscriptions.first().url,
             profileHistoryRenameUrlDraft = subscriptions.first().url,
             profileHistoryRenameDraft = "Work renamed",
         )

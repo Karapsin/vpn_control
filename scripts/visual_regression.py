@@ -174,6 +174,19 @@ def _ignored_pixels(width: int, height: int, regions: object) -> bytearray:
     return ignored
 
 
+def _scene_ignore_regions(scene: dict[str, object], platform: str) -> list[object]:
+    common = scene.get("ignore_regions") or []
+    scoped = scene.get("ignore_regions_by_platform") or {}
+    if not isinstance(common, list) or not isinstance(scoped, dict):
+        raise ValueError("ignore_regions and ignore_regions_by_platform must be lists and a platform map")
+    if any(key not in ("android", "linux", "windows", "macos") for key in scoped):
+        raise ValueError("ignore_regions_by_platform contains an unsupported platform")
+    selected = scoped.get(platform, [])
+    if not isinstance(selected, list):
+        raise ValueError("ignore_regions_by_platform values must be rectangle lists")
+    return [*common, *selected]
+
+
 def _compare(
     baseline: PngImage,
     actual: PngImage,
@@ -393,11 +406,12 @@ def verify(args: argparse.Namespace) -> int:
                     f"actual={actual.width}x{actual.height}",
                 )
             else:
+                ignore_regions = _scene_ignore_regions(scene, args.platform)
                 metrics, diff = _compare(
                     baseline,
                     actual,
                     scene_max_delta,
-                    scene.get("ignore_regions"),
+                    ignore_regions,
                 )
                 if metrics["changed_ratio"] > scene_max_ratio:
                     errors.append(
@@ -407,7 +421,7 @@ def verify(args: argparse.Namespace) -> int:
                     errors.append(
                         f"mean channel error {metrics['mean_channel_error']:.6f} exceeds {scene_max_mean:.6f}",
                     )
-            result["ignore_regions"] = scene.get("ignore_regions", [])
+            result["ignore_regions"] = _scene_ignore_regions(scene, args.platform)
             result["metrics"] = metrics
             write_png(diff_path, diff)
             write_png(contact_path, _contact_sheet((baseline, actual, diff)))

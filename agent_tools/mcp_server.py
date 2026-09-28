@@ -1841,6 +1841,7 @@ _VM_NATIVE_ADAPTERS = (
     "native_failure_evidence", "macos_installer_recovery", "native_rpm_public_install_adapter",
     "native_rpm_public_install_ssh", "android_admission_readback", "windows_msi_public_scenario",
     "linux_update_fixture_workflow", "linux_rpm_base_prepare", "windows_msi_base_prepare",
+    "windows_msi_owner_observe", "windows_msi_target_prepare",
     "android_package_install", "android_public_inspect",
 )
 
@@ -2088,17 +2089,47 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "evidenceClass": "native-preflight", "productAction": False}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
-        if action in {"windows-msi-base-preflight", "windows-msi-base-start", "windows-msi-base-status"}:
+        if action in {"windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status"}:
             base = _agent_module("windows_msi_base_prepare")
             try:
                 method = {"windows-msi-base-preflight": base.powershell_preflight,
+                          "windows-msi-base-readiness": base.readiness,
                           "windows-msi-base-start": base.start,
                           "windows-msi-base-status": base.status}[action]
                 result = method(REPO_ROOT, inputs)
                 return {"tool": "vm_workflow", **result,
-                        "ok": result.get("state") in {"passed", "submitted", "running"} or
+                        "ok": result.get("state") in {"passed", "ready", "submitted", "running"} or
                               (result.get("state") == "terminal" and result.get("result") == "PASSED"),
-                        "evidenceClass": "native-preflight" if action.endswith("-preflight") else "installed-package",
+                        "evidenceClass": "native-preflight" if action.endswith(("-preflight", "-readiness")) else "installed-package",
+                        "productAction": action.endswith("-start")}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action in {"windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect"}:
+            observe = _agent_module("windows_msi_owner_observe")
+            try:
+                method = {"windows-msi-owner-observe-preflight": observe.powershell_preflight,
+                          "windows-msi-owner-observe-start": observe.start,
+                          "windows-msi-owner-observe-status": observe.status,
+                          "windows-msi-owner-observe-collect": observe.collect}[action]
+                result = method(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") in {"passed", "submitted", "running", "observed"},
+                        "evidenceClass": "native-preflight" if action.endswith("-preflight") else "native-observation",
+                        "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action in {"windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status"}:
+            target = _agent_module("windows_msi_target_prepare")
+            try:
+                method = {"windows-msi-target-preflight": target.powershell_preflight,
+                          "windows-msi-target-readiness": target.readiness,
+                          "windows-msi-target-start": target.start,
+                          "windows-msi-target-status": target.status}[action]
+                result = method(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") in {"passed", "ready", "submitted", "running"} or
+                              (result.get("state") == "terminal" and result.get("result") == "PASSED"),
+                        "evidenceClass": "native-preflight" if action.endswith(("-preflight", "-readiness")) else "native-update-preparation",
                         "productAction": action.endswith("-start")}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
@@ -2353,7 +2384,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status"))
+    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status"))
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")

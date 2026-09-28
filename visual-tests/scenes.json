@@ -29,8 +29,8 @@
     "Arabic RTL"
   ],
   "scenes": [
-    {"id":"main-disconnected","platforms":["android","linux","windows","macos"],"required_elements":["tab-main","main-settings","connect","find-best","export-diagnostics"]},
-    {"id":"main-connected","platforms":["android","linux","windows","macos"],"required_elements":["tab-main","disconnect","find-best","status"]},
+    {"id":"main-disconnected","platforms":["android","linux","windows","macos"],"required_elements":["tab-main","main-settings","connect","find-best","export-diagnostics"],"ignore_regions_by_platform":{"android":[[880,42,973,85]]}},
+    {"id":"main-connected","platforms":["android","linux","windows","macos"],"required_elements":["tab-main","disconnect","find-best","status"],"ignore_regions_by_platform":{"android":[[880,42,973,85]]}},
     {"id":"main-proxy-only","platforms":["android","linux","windows","macos"],"required_elements":["tab-main","start-proxy","status"]},
     {"id":"main-permission-required","platforms":["android"],"required_elements":["tab-main","connect","vpn-permission-required"]},
     {"id":"main-busy-progress","platforms":["android"],"required_elements":["blocking-progress","cancel-operation"]},

@@ -79,6 +79,20 @@ class LinuxFixtureWorkflowTest(unittest.TestCase):
                 self.assertEqual('unknown', result['state'])
                 self.assertFalse(result['replayAllowed'])
 
+    def test_status_rechecks_transient_missing_run_without_dispatch_replay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'gradle.properties').write_text('vpnControlVersion=2.2.0\n')
+            fixture.dispatch(root, self.request(), runner=Runner([(0, SHA + '\n'), (0, '')]))
+            run = {'databaseId': 71, 'headSha': SHA, 'displayTitle': 'Linux RPM fixture ' + CORR,
+                   'status': 'in_progress', 'conclusion': ''}
+            runner = Runner([(0, '[]'), (0, json.dumps([run]))])
+            result = fixture.status(root, {'correlationId': CORR}, runner=runner)
+            self.assertEqual('pending', result['state'])
+            self.assertEqual(71, result['runId'])
+            self.assertEqual(2, len(runner.calls))
+            self.assertTrue(all(call[:3] == ['gh', 'run', 'list'] for call in runner.calls))
+
     def test_successful_run_without_exact_artifact_remains_unknown(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

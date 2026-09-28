@@ -21,6 +21,39 @@ SPEC.loader.exec_module(visual_regression)
 
 
 class VisualRegressionTest(unittest.TestCase):
+    def test_android_main_os_chrome_mask_covers_only_status_icons(self) -> None:
+        manifest = json.loads(visual_regression.DEFAULT_MANIFEST.read_text(encoding="utf-8"))
+        scenes = {scene["id"]: scene for scene in manifest["scenes"]}
+        for scene_id, x in (("main-disconnected", 884), ("main-connected", 968)):
+            scene = scenes[scene_id]
+            android = visual_regression._scene_ignore_regions(scene, "android")
+            ignored = visual_regression._ignored_pixels(1080, 2400, android)
+            self.assertEqual(1, ignored[47 * 1080 + x])
+            self.assertEqual(1, ignored[79 * 1080 + x])
+            self.assertEqual(0, ignored[150 * 1080 + 900])
+            for desktop in ("linux", "windows", "macos"):
+                self.assertEqual([], visual_regression._scene_ignore_regions(scene, desktop))
+
+    def test_platform_scoped_os_chrome_mask_does_not_hide_other_platforms(self) -> None:
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        manifest["scenes"][0]["ignore_regions_by_platform"] = {"android": [[0, 0, 10, 10]]}
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        pixels = bytearray(self.image.pixels)
+        for row in range(10):
+            start = row * 100 * 4
+            pixels[start : start + 40] = bytes((255, 255, 255, 255)) * 10
+        visual_regression.write_png(
+            self.actual / "main.png",
+            visual_regression.PngImage(100, 100, bytes(pixels)),
+        )
+        self.assertEqual(1, self.verify())
+
+        manifest["scenes"][0]["ignore_regions_by_platform"] = {"linux": [[0, 0, 10, 10]]}
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        self.assertEqual(0, self.verify())
+        report = json.loads((self.reports / "linux/report.json").read_text(encoding="utf-8"))
+        self.assertEqual([[0, 0, 10, 10]], report["scenes"][0]["ignore_regions"])
+
     def test_android_notification_date_exclusion_covers_header_without_hiding_subject(self) -> None:
         manifest = json.loads(visual_regression.DEFAULT_MANIFEST.read_text(encoding="utf-8"))
         scene = next(item for item in manifest["scenes"] if item["id"] == "android-vpn-notification")

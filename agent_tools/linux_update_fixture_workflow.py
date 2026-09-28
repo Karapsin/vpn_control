@@ -151,19 +151,23 @@ def status(root, request: Mapping, runner=None):
              parse_version(intent["baseVersion"]) < parse_version(intent["targetVersion"]),
              "Invalid fixture version journal")
     runner = runner or _run
-    try:
-        response = runner(["gh", "run", "list", "--repo", REPOSITORY, "--workflow", WORKFLOW,
-                           "--event", "workflow_dispatch", "--limit", "100", "--json",
-                           "databaseId,headSha,displayTitle,status,conclusion,url"])
-        if response.returncode != 0:
-            return _unknown(correlation, "run-list-unavailable")
-        runs = json.loads(response.stdout)
-    except Exception:
-        return _unknown(correlation, "run-list-unavailable")
-    if not isinstance(runs, list):
-        return _unknown(correlation, "invalid-run-list")
     title = "Linux RPM fixture " + correlation
-    matches = [run for run in runs if isinstance(run, dict) and run.get("displayTitle") == title]
+    matches = []
+    for _ in range(2):
+        try:
+            response = runner(["gh", "run", "list", "--repo", REPOSITORY, "--workflow", WORKFLOW,
+                               "--event", "workflow_dispatch", "--limit", "100", "--json",
+                               "databaseId,headSha,displayTitle,status,conclusion,url"])
+            if response.returncode != 0:
+                return _unknown(correlation, "run-list-unavailable")
+            runs = json.loads(response.stdout)
+        except Exception:
+            return _unknown(correlation, "run-list-unavailable")
+        if not isinstance(runs, list):
+            return _unknown(correlation, "invalid-run-list")
+        matches = [run for run in runs if isinstance(run, dict) and run.get("displayTitle") == title]
+        if matches:
+            break
     if len(matches) != 1:
         return _unknown(correlation, "missing-or-duplicate-run")
     run = matches[0]

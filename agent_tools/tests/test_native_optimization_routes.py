@@ -259,6 +259,14 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             self.assertTrue(result["ok"])
             self.assertFalse(result["productAction"])
             preflight.assert_called_once_with(mcp_server.REPO_ROOT, {"host": "archlinux"})
+        readiness_request = {"host": "archlinux", "expectedCurrentVersion": "2.1.17"}
+        with patch.object(windows_msi_base_prepare, "readiness", return_value={"state": "blocked", "ready": False}) as readiness:
+            result = mcp_server._vm_workflow_impl("windows-msi-base-readiness", readiness_request)
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["productAction"])
+            readiness.assert_called_once_with(mcp_server.REPO_ROOT, readiness_request)
+        with patch.object(windows_msi_base_prepare, "readiness", return_value={"state": "ready", "ready": True}):
+            self.assertTrue(mcp_server._vm_workflow_impl("windows-msi-base-readiness", readiness_request)["ok"])
         with patch.object(windows_msi_base_prepare, "start", return_value={"state": "unknown", "replayAllowed": False}) as start:
             result = mcp_server._vm_workflow_impl("windows-msi-base-start", request)
             self.assertFalse(result["ok"])
@@ -269,6 +277,38 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertFalse(result["productAction"])
             status.assert_called_once_with(mcp_server.REPO_ROOT, {"correlationId": request["correlationId"]})
+
+    def test_windows_owner_observe_routes_are_read_only_and_do_not_promote_unknown(self):
+        from agent_tools import windows_msi_owner_observe
+        cases = (
+            ("preflight", "powershell_preflight", {"state": "passed"}, True),
+            ("start", "start", {"state": "submitted", "replayAllowed": False}, True),
+            ("status", "status", {"state": "observed", "controllerId": "owned"}, True),
+            ("collect", "collect", {"state": "unknown", "cleanupReplayAllowed": False}, False),
+        )
+        for suffix, method_name, response, expected_ok in cases:
+            request = {"host": "archlinux", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+            with self.subTest(suffix=suffix), patch.object(windows_msi_owner_observe, method_name, return_value=response) as method:
+                result = mcp_server._vm_workflow_impl("windows-msi-owner-observe-" + suffix, request)
+            self.assertEqual(result["ok"], expected_ok)
+            self.assertFalse(result["productAction"])
+            method.assert_called_once_with(mcp_server.REPO_ROOT, request)
+
+    def test_windows_target_preparation_routes_keep_install_separate(self):
+        from agent_tools import windows_msi_target_prepare
+        cases = (
+            ("preflight", "powershell_preflight", {"state": "passed"}, True, False),
+            ("readiness", "readiness", {"state": "ready"}, True, False),
+            ("start", "start", {"state": "submitted", "replayAllowed": False}, True, True),
+            ("status", "status", {"state": "unknown", "replayAllowed": False}, False, False),
+        )
+        for suffix, method_name, response, expected_ok, product_action in cases:
+            request = {"host": "archlinux", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+            with self.subTest(suffix=suffix), patch.object(windows_msi_target_prepare, method_name, return_value=response) as method:
+                result = mcp_server._vm_workflow_impl("windows-msi-target-" + suffix, request)
+            self.assertEqual(result["ok"], expected_ok)
+            self.assertEqual(result["productAction"], product_action)
+            method.assert_called_once_with(mcp_server.REPO_ROOT, request)
 
     def test_batch_observation_does_not_accept_replacement_plan(self):
         from agent_tools import native_scenario_batch

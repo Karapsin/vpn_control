@@ -1084,6 +1084,7 @@ def serve(directory, certificate, private_key, ready_file, confirmed):
     with Server(("127.0.0.1", 0), Handler) as server:
         write_json(ready_file, {"port": server.server_address[1], "sourceFingerprint":
                               json.loads((directory / "fixture-receipt.json").read_text())["sourceFingerprint"],
+                              "manifestSha256": hashlib.sha256(body).hexdigest(),
                               "manifest": manifest})
         server.serve_forever()
 
