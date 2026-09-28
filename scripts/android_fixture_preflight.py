@@ -89,3 +89,15 @@ def source_inspection_guard(status_response):
             "selectedLocationId" not in data or data["selectedLocationId"] is not None):
         raise ValueError("Source inspection requires an unselected authoritative OFF state")
     return {"controllerId": controller, "configurationRevision": revision}
+
+
+def post_install_mutation_guard(status_response, operations_response):
+    """Reacquire the Android owner and revision after an APK install.
+
+    Installation may create a new controller epoch.  A fixture must use this
+    fresh public status for its next guarded mutation, rather than retaining a
+    controller/revision pair captured before installation.
+    """
+    guard = source_inspection_guard(status_response)
+    require_terminal_operation_history(operations_response, guard["controllerId"])
+    return guard

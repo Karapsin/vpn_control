@@ -184,6 +184,23 @@ class NativeRoutesTest(unittest.TestCase):
     def test_vm_unknown_action_is_structured_failure(self):
         self.assertFalse(mcp_server.vm_workflow("restart-unknown-installer", {})["ok"])
 
+    def test_macos_installer_recovery_route_preserves_legacy_unknown_without_native_action(self):
+        job = "d98286a2-1094-4459-8e8d-bc6a2d91a851"
+        result = mcp_server.vm_workflow("macos-installer-recovery-status", {
+            "jobId": job,
+            "publicStatus": {"receiptId": job, "phase": "installing", "code": "OUTCOME_UNKNOWN",
+                             "final": False, "installed": None},
+            "protectedReceiptObservation": "absent",
+            "bootSessionToken": None,
+            "currentBootSessionUuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        })
+        self.assertTrue(result["ok"])
+        self.assertEqual(("unknown", "launch_boot_session_token_missing"),
+                         (result["state"], result["reason"]))
+        self.assertFalse(result["nativeActionAllowed"])
+        self.assertFalse(result["replayAllowed"])
+        self.assertFalse(result["cancellationAllowed"])
+
     def test_memory_plan_is_never_start_authorization(self):
         result = mcp_server.vm_workflow("admit-plan", {
             "measurement": {"physicalMemoryBytes": 16000, "runningConfiguredMemoryBytes": 4000,

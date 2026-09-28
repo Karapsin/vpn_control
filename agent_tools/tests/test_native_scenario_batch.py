@@ -38,6 +38,16 @@ class Dispatcher:
                     "cleanup": {"state": "complete", "ownerStopped": True,
                                 "protectedPreserved": True, "workspaceRemoved": True}}
             return value
+        if action == "rpm-public-install-start":
+            return {"state": "submitted", "correlationId": inputs["correlationId"]}
+        if action == "rpm-public-install-status":
+            return {"state": "terminal", "exitCode": 0, "correlationId": inputs["correlationId"]}
+        if action == "rpm-public-install-collect":
+            return {"state": "terminal", "exitCode": 0, "correlationId": inputs["correlationId"],
+                    "scenarioEvidence": {"correlationId": inputs["correlationId"], "result": "passed",
+                        "operationId": "operation-17", "protectedJobId": "job-17", "rpmVerifyClean": True,
+                        "credentialRestored": True, "cleanup": {"state": "complete", "ownerStopped": True,
+                            "protectedPreserved": True, "workspaceRemoved": True}}}
         raise AssertionError(action)
 
 
@@ -220,6 +230,133 @@ class NativeScenarioBatchTest(unittest.TestCase):
             self.assertEqual("running", result["state"])
             self.assertEqual("waiting", result["nodes"]["collect"]["state"])
             self.assertEqual("unknown", result["cleanup"]["state"])
+
+    def test_rpm_public_recovery_freezes_all_admitted_bytes_and_exact_correlation(self):
+        correlation = str(uuid.uuid4())
+        request = {"batchId": "rpm-17", "recipe": "linux-rpm-public-install-recovery", "host": "fedora",
+                   "environment": "owned", "bundleManifestArtifactId": "sha256-" + "a" * 64,
+                   "scenarioInputArtifactId": "sha256-" + "b" * 64,
+                   "sourceFixtureArtifactId": "sha256-" + "c" * 64,
+                   "targetPackageArtifactId": "sha256-" + "d" * 64,
+                   "credentialHandle": "fixture-auth-17", "scenarioCorrelationId": correlation}
+        with tempfile.TemporaryDirectory() as raw:
+            control, dispatch, preflight = self.control(raw)
+            control.plan(request)
+            result = control.start("rpm-17")
+            self.assertEqual("success", result["state"])
+            self.assertEqual("complete", result["cleanup"]["state"])
+            self.assertTrue(result["nodes"]["collect"]["evidence"]["scenarioEvidence"]["credentialRestored"])
+            self.assertEqual("linux-rpm-public-install-recovery", preflight.calls[-1]["scenarioId"])
+            self.assertEqual("fixture-auth-17", preflight.calls[-1]["credentialHandle"])
+            start = next(inputs for _, action, inputs in dispatch.calls if action == "rpm-public-install-start")
+            self.assertEqual(correlation, start["correlationId"])
+            self.assertEqual({"bundleManifest", "scenarioInput", "sourceFixture", "targetPackage"}, set(start["artifactIds"]))
+            self.assertNotIn("credential", start)
+
+    def test_rpm_unknown_start_is_never_replayed_and_wrong_collect_correlation_is_not_accepted(self):
+        correlation = str(uuid.uuid4())
+        request = {"batchId": "rpm-unknown", "recipe": "linux-rpm-public-install-recovery", "host": "fedora",
+                   "environment": "owned", "bundleManifestArtifactId": "sha256-" + "a" * 64,
+                   "scenarioInputArtifactId": "sha256-" + "b" * 64, "sourceFixtureArtifactId": "sha256-" + "c" * 64,
+                   "targetPackageArtifactId": "sha256-" + "d" * 64, "credentialHandle": "fixture-auth-17",
+                   "scenarioCorrelationId": correlation}
+        dispatch = Dispatcher({"rpm-public-install-start": [{"state": "unknown", "correlationId": correlation}]})
+        with tempfile.TemporaryDirectory() as raw:
+            control, dispatch, _ = self.control(raw, dispatch)
+            control.plan(request)
+            first = control.start("rpm-unknown")
+            control.resume("rpm-unknown")
+            self.assertEqual("unknown", first["nodes"]["start"]["state"])
+            self.assertEqual(1, [action for _, action, _ in dispatch.calls].count("rpm-public-install-start"))
+
+    def test_rpm_running_observation_waits_for_terminal_receipt(self):
+        correlation = str(uuid.uuid4())
+        node = {"surface": "vm", "action": "rpm-public-install-status", "mode": "observe",
+                "inputs": {"correlationId": correlation}}
+        observed = batch.NativeScenarioBatch._outcome(node, {"state": "running", "correlationId": correlation})
+        self.assertEqual("waiting", observed["state"])
+
+    def test_rpm_collect_rejects_false_green_and_reports_terminal_without_operation(self):
+        correlation = str(uuid.uuid4())
+        node = {"surface": "vm", "action": "rpm-public-install-collect", "mode": "collect",
+                "inputs": {"correlationId": correlation}}
+        summary = {"correlationId": correlation, "result": "passed", "operationId": "op-1",
+                   "protectedJobId": "job-1", "rpmVerifyClean": True,
+                   "credentialRestored": False, "cleanup": {"state": "complete",
+                       "ownerStopped": True, "protectedPreserved": True, "workspaceRemoved": True}}
+        observed = batch.NativeScenarioBatch._outcome(node, {"state": "terminal",
+            "correlationId": correlation, "exitCode": 0, "scenarioEvidence": summary})
+        self.assertEqual("failed", observed["state"])
+        no_operation = batch.NativeScenarioBatch._outcome(node, {"state": "terminal",
+            "correlationId": correlation, "exitCode": 1,
+            "scenarioEvidence": {"correlationId": correlation, "result": "failed",
+                                 "failurePhase": "guest-admission"}})
+        self.assertEqual("failed", no_operation["state"])
+        self.assertEqual("terminal_without_recovery_receipt", no_operation["outcome"])
+
+    def test_rpm_batch_cannot_pass_with_retained_workspace(self):
+        correlation = str(uuid.uuid4())
+        request = {"batchId": "rpm-retained", "recipe": "linux-rpm-public-install-recovery", "host": "fedora",
+                   "environment": "owned", "bundleManifestArtifactId": "sha256-" + "a" * 64,
+                   "scenarioInputArtifactId": "sha256-" + "b" * 64,
+                   "sourceFixtureArtifactId": "sha256-" + "c" * 64,
+                   "targetPackageArtifactId": "sha256-" + "d" * 64,
+                   "credentialHandle": "fixture-auth-17", "scenarioCorrelationId": correlation}
+        receipt = {"state": "terminal", "correlationId": correlation, "exitCode": 1,
+                   "scenarioEvidence": {"correlationId": correlation, "result": "failed",
+                       "operationId": "operation-17", "protectedJobId": "job-17", "rpmVerifyClean": True,
+                       "credentialRestored": True, "cleanup": {"state": "preserved-for-recovery",
+                           "ownerStopped": True, "protectedPreserved": True, "workspaceRemoved": False}}}
+        dispatcher = Dispatcher({"rpm-public-install-status": [{"state": "terminal", "exitCode": 1,
+            "correlationId": correlation}], "rpm-public-install-collect": [receipt]})
+        with tempfile.TemporaryDirectory() as raw:
+            control, _, _ = self.control(raw, dispatcher)
+            control.plan(request)
+            result = control.start("rpm-retained")
+            self.assertEqual("failed", result["state"])
+            self.assertEqual("failed", result["nodes"]["collect"]["state"])
+
+    def test_rpm_collect_requires_integer_zero_exit_for_passed_summary(self):
+        correlation = str(uuid.uuid4())
+        node = {"surface": "vm", "action": "rpm-public-install-collect", "mode": "collect",
+                "inputs": {"correlationId": correlation}}
+        receipt = Dispatcher()("vm", node["action"], node["inputs"])
+        for code in (None, False, True, 1, 130):
+            with self.subTest(code=code):
+                observed = batch.NativeScenarioBatch._outcome(node, {**receipt, "exitCode": code})
+                self.assertNotEqual("success", observed["state"])
+
+    def test_rpm_terminal_without_recovery_receipt_is_durable_and_never_replayed(self):
+        correlation = str(uuid.uuid4())
+        request = {"batchId": "rpm-no-receipt", "recipe": "linux-rpm-public-install-recovery", "host": "fedora",
+                   "environment": "owned", "bundleManifestArtifactId": "sha256-" + "a" * 64,
+                   "scenarioInputArtifactId": "sha256-" + "b" * 64, "sourceFixtureArtifactId": "sha256-" + "c" * 64,
+                   "targetPackageArtifactId": "sha256-" + "d" * 64, "credentialHandle": "fixture-auth-17",
+                   "scenarioCorrelationId": correlation}
+        receipt = {"state": "terminal", "correlationId": correlation, "exitCode": 1,
+                   "scenarioEvidence": {"correlationId": correlation, "result": "failed",
+                                        "failurePhase": "harness-unverified"}}
+        dispatch = Dispatcher({"rpm-public-install-status": [receipt], "rpm-public-install-collect": [receipt]})
+        with tempfile.TemporaryDirectory() as raw:
+            control, _, _ = self.control(raw, dispatch)
+            control.plan(request)
+            observed = control.start(request["batchId"])
+            self.assertEqual("terminal_without_recovery_receipt", observed["nodes"]["collect"]["outcome"])
+            resumed, _, _ = self.control(raw, dispatch)
+            self.assertEqual("failed", resumed.resume(request["batchId"])["state"])
+            self.assertEqual(1, [action for _, action, _ in dispatch.calls].count("rpm-public-install-start"))
+
+    def test_rpm_plan_rejects_non_uuid_correlation_before_creating_journal(self):
+        request = {"batchId": "rpm-bad", "recipe": "linux-rpm-public-install-recovery", "host": "fedora",
+                   "environment": "owned", "bundleManifestArtifactId": "sha256-" + "a" * 64,
+                   "scenarioInputArtifactId": "sha256-" + "b" * 64, "sourceFixtureArtifactId": "sha256-" + "c" * 64,
+                   "targetPackageArtifactId": "sha256-" + "d" * 64, "credentialHandle": "fixture-auth-17",
+                   "scenarioCorrelationId": "not-a-uuid"}
+        with tempfile.TemporaryDirectory() as raw:
+            control, _, _ = self.control(raw)
+            with self.assertRaisesRegex(batch.NativeScenarioBatchError, "canonical UUID"):
+                control.plan(request)
+            self.assertEqual([], list(Path(raw).iterdir()))
 
 
 class NativeScenarioBatchPortableTest(unittest.TestCase):

@@ -72,6 +72,29 @@ class SshConnectionRecoveryTest(unittest.TestCase):
                 with self.assertRaises(recovery.RecoveryError):
                     recovery._read_intent(Path(directory), "archlinux", adopted)
 
+    def test_changed_socket_or_config_cannot_bypass_unknown_hashed_recovery(self):
+        initial = self.config()
+        old = initial.hosts["archlinux"]
+        recovered_path = recovery._recovery_socket_path(old, "0" * 32)[1]
+        targets = (
+            replace(old, remote_control_path=recovered_path),
+            replace(old, remote_config_file=transport.PurePosixPath("/fixture/new-config")),
+        )
+        for target in targets:
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
+                recovery._create_intent(Path(directory), "archlinux", old, "previous", str(recovered_path))
+                history_path = recovery._intent_path(Path(directory), "archlinux", old)
+                history = history_path.read_bytes()
+                config = replace(initial, hosts={**initial.hosts, "archlinux": target})
+                with mock.patch.object(recovery.ssh_transport, "load_config", return_value=config), \
+                        mock.patch.object(recovery, "_socket_state", return_value="absent"), \
+                        mock.patch.object(recovery, "_gateway_run") as run:
+                    result = recovery.recover(directory, "archlinux")
+                self.assertEqual({"ok": False, "state": "recovery_unavailable"}, result)
+                run.assert_not_called()
+                self.assertEqual(history, history_path.read_bytes())
+                self.assertFalse(recovery._intent_path(Path(directory), "archlinux", target).exists())
+
     def test_ready_configured_master_does_not_create_or_write_intent(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(recovery.ssh_transport, "load_config", return_value=self.config()), \
                 mock.patch.object(recovery, "_socket_state", return_value="ready") as check, \
@@ -89,6 +112,20 @@ class SshConnectionRecoveryTest(unittest.TestCase):
         self.assertEqual({"ok": False, "state": "configured_master_unknown"}, result)
         run.assert_not_called()
 
+    def test_socket_observation_uses_the_configured_remote_config(self):
+        config = self.config()
+        target = replace(config.hosts["archlinux"], remote_config_file=transport.PurePosixPath("/fixture/private-config"))
+        with mock.patch.object(recovery, "_gateway_run", return_value=mock.Mock(returncode=0)) as run:
+            self.assertEqual("ready", recovery._socket_state(config, target, target.remote_control_path, 5))
+        self.assertEqual(("ssh", "-F", "/fixture/private-config", "-S", "/remote/configured.sock", "-O", "check", "archlinux"),
+                         run.call_args.args[2])
+
+    def test_recovery_intent_binds_the_remote_config_file(self):
+        target = self.config().hosts["archlinux"]
+        other = replace(target, remote_config_file=transport.PurePosixPath("/fixture/private-config"))
+        self.assertNotEqual(recovery._intent_path(Path("/repo"), "archlinux", target),
+                            recovery._intent_path(Path("/repo"), "archlinux", other))
+
     def test_pending_intent_prevents_second_master_launch(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(recovery.ssh_transport, "load_config", return_value=self.config()), \
                 mock.patch.object(recovery, "_socket_state", side_effect=("absent", "unknown")), \
@@ -96,6 +133,20 @@ class SshConnectionRecoveryTest(unittest.TestCase):
             recovery._create_intent(Path(directory), "archlinux", self.config().hosts["archlinux"], "correlation", "/remote/new.sock")
             result = recovery.recover(directory, "archlinux")
         self.assertEqual({"ok": False, "state": "recovery_intent_pending"}, result)
+        run.assert_not_called()
+
+    def test_observed_master_readiness_resolves_intent_without_resubmitting(self):
+        target = self.config().hosts["archlinux"]
+        with tempfile.TemporaryDirectory() as directory:
+            recovery._create_intent(Path(directory), "archlinux", target, "correlation", "/remote/new.sock")
+            with mock.patch.object(recovery.ssh_transport, "load_config", return_value=self.config()), \
+                    mock.patch.object(recovery, "_socket_state", side_effect=("absent", "ready")), \
+                    mock.patch.object(recovery, "_gateway_run") as run:
+                result = recovery.recover(directory, "archlinux")
+            intent = recovery._read_intent(Path(directory), "archlinux", target)
+        self.assertEqual({"ok": True, "state": "recovery_master_ready"}, result)
+        self.assertEqual("ready", intent["state"])
+        self.assertEqual("correlation", intent["correlationId"])
         run.assert_not_called()
 
     def test_absent_socket_records_intent_before_secret_stdin_request(self):
@@ -138,6 +189,54 @@ class SshConnectionRecoveryTest(unittest.TestCase):
                                    password=base.password)
         self.assertIsNone(recovery._recovery_socket_path(target, "1234567890abcdef1234567890abcdef"))
 
+    def test_67_byte_configured_socket_allows_bounded_recovery_master(self):
+        config = self.config()
+        base = config.hosts["archlinux"]
+        target = replace(base, remote_control_path=transport.PurePosixPath("/" + "a" * 64 + "/m"))
+        config = replace(config, hosts={**config.hosts, "archlinux": target})
+        self.assertEqual(67, len(str(target.remote_control_path).encode("utf-8")))
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(recovery.ssh_transport, "load_config", return_value=config), \
+                mock.patch.object(recovery, "_socket_state", return_value="absent"), \
+                mock.patch.object(recovery, "_gateway_run") as run:
+            run.side_effect = lambda *args, **kwargs: mock.Mock(
+                stdout=json.dumps({"state": "ready", "control_path": args[2][-1]}))
+            result = recovery.recover(directory, "archlinux")
+            intent = recovery._read_intent(Path(directory), "archlinux", target)
+        self.assertEqual({"ok": True, "state": "recovery_master_ready"}, result)
+        self.assertEqual("ready", intent["state"])
+        self.assertLessEqual(len(intent["controlPath"].encode("utf-8")), recovery._MAX_REMOTE_SOCKET_BYTES)
+        run.assert_called_once()
+
+    def test_adopted_bounded_recovery_uses_a_sibling_without_replaying_a_mutation(self):
+        initial = self.config()
+        original = replace(initial.hosts["archlinux"], remote_control_path=transport.PurePosixPath("/" + "a" * 64 + "/m"))
+        first_path = recovery._recovery_socket_path(original, "0" * 32)[1]
+        adopted = replace(original, remote_control_path=first_path)
+        config = replace(initial, hosts={**initial.hosts, "archlinux": adopted})
+        old_history = recovery._intent_value("archlinux", original, "old-correlation", "ready", str(first_path))
+        expected_path = original.remote_control_path.parent / f"r-{'1' * recovery._RECOVERY_CORRELATION_CHARS}" / "m"
+        with tempfile.TemporaryDirectory() as directory:
+            old_path = recovery._intent_path(Path(directory), "archlinux", original)
+            old_path.parent.mkdir(parents=True)
+            old_path.write_text(json.dumps(old_history))
+            with mock.patch.object(recovery.ssh_transport, "load_config", return_value=config), \
+                    mock.patch.object(recovery, "uuid4", return_value=mock.Mock(hex="1" * 32)), \
+                    mock.patch.object(recovery, "_socket_state", side_effect=("absent", "absent", "unknown")), \
+                    mock.patch.object(recovery, "_gateway_run") as run:
+                run.side_effect = lambda *args, **kwargs: mock.Mock(
+                    stdout=json.dumps({"state": "ready", "control_path": args[2][-1]}))
+                first = recovery.recover(directory, "archlinux")
+                second = recovery.recover(directory, "archlinux")
+            current_intent = recovery._read_intent(Path(directory), "archlinux", adopted)
+            stored_history = json.loads(old_path.read_text())
+        self.assertEqual({"ok": True, "state": "recovery_master_ready"}, first)
+        self.assertEqual({"ok": False, "state": "recovery_intent_pending"}, second)
+        self.assertEqual(old_history, stored_history)
+        self.assertEqual(str(expected_path), current_intent["controlPath"])
+        self.assertLessEqual(len(current_intent["controlPath"].encode("utf-8")), recovery._MAX_REMOTE_SOCKET_BYTES)
+        run.assert_called_once()
+
     def test_real_transport_accepts_encoded_remote_recovery_command(self):
         target = self.config().hosts["archlinux"]
         command = recovery._remote_command(target, 30, transport.PurePosixPath("/remote/r-1234567890abcdef"),
@@ -179,7 +278,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
             control_path = control_directory / "master.sock"
             environment = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}", "SSH_TEST_EVIDENCE": str(evidence)}
             completed = subprocess.run(
-                ["python3", "-c", recovery._REMOTE_RECOVERY_SCRIPT, "archlinux", "5",
+                ["python3", "-c", recovery._REMOTE_RECOVERY_SCRIPT, "", "archlinux", "5",
                  str(control_directory), str(control_path)],
                 input=json.dumps({"passphrase": "test-only-secret"}), text=True, capture_output=True, check=False, env=environment)
             self.assertEqual(0, completed.returncode)
@@ -190,6 +289,33 @@ class SshConnectionRecoveryTest(unittest.TestCase):
             self.assertIn("UserKnownHostsFile=/fixture/known", captured)
             self.assertIn("BatchMode=no", captured)
             self.assertIn("ConnectTimeout=5", captured)
+
+    def test_remote_helper_resolves_and_creates_only_the_private_config_route(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ssh = root / "ssh"
+            evidence = root / "evidence"
+            ssh.write_text(
+                "#!/bin/sh\n"
+                "test \"$1\" = '-F' && test \"$2\" = '/fixture/private config' || exit 19\n"
+                "shift 2\n"
+                "printf '%s\\n' \"$*\" >> \"$SSH_TEST_EVIDENCE\"\n"
+                "if [ \"$1\" = '-G' ]; then printf '%s\\n' 'userknownhostsfile /fixture/known'; exit 0; fi\n"
+                "if [ \"$1\" = '-M' ]; then exit 0; fi\n"
+                "if [ \"$3\" = '-O' ]; then exit 0; fi\n"
+                "exit 1\n", encoding="utf-8")
+            ssh.chmod(0o700)
+            target = replace(self.config().hosts["archlinux"],
+                             remote_config_file=transport.PurePosixPath("/fixture/private config"))
+            control_directory = root / "remote-control"
+            control_path = str(control_directory / "master.sock")
+            command = recovery._remote_command(target, 5, control_directory, control_path)
+            environment = {**os.environ, "PATH": f"{root}:{os.environ['PATH']}", "SSH_TEST_EVIDENCE": str(evidence)}
+            completed = subprocess.run(command, input=json.dumps({"passphrase": "test-only-secret"}),
+                                       text=True, capture_output=True, check=False, env=environment)
+            self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
+            self.assertEqual({"state": "ready", "control_path": control_path}, json.loads(completed.stdout))
+            self.assertEqual(3, len(evidence.read_text(encoding="utf-8").splitlines()))
 
 
 if __name__ == "__main__":

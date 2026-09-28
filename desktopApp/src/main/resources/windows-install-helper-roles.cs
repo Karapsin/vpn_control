@@ -1,9 +1,26 @@
 // Fixed installer role state machines. Native authority and storage implementations are separate.
 using System;
+using System.ComponentModel;
 using System.IO;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 internal static class VpnInstallHelperRoles {
     internal enum Phase { Preparing, Authorized, WaitingForExit, Installing, Succeeded, Failed, Cancelled }
+    // Only these fixed values may reach the protected pre-install diagnostic.
+    internal enum PreinstallStage { None=0, ExclusiveAdmission=1, Inventory=2, Readiness=3 }
+    internal enum PreinstallKind { Other=0, Win32Api=1, Identity=2 }
+    internal static void PublishProtectedPreinstallDiagnostic(SafeFileHandle directory,PreinstallStage stage,PreinstallKind kind) {
+        string fixedStage=stage==PreinstallStage.ExclusiveAdmission ? "EXCLUSIVE_ADMISSION" :
+            stage==PreinstallStage.Inventory ? "INVENTORY" : stage==PreinstallStage.Readiness ? "READINESS" : null;
+        string fixedKind=kind==PreinstallKind.Other ? "OTHER" : kind==PreinstallKind.Win32Api ? "WIN32_API" :
+            kind==PreinstallKind.Identity ? "IDENTITY" : null;
+        if (fixedStage==null || fixedKind==null) throw new IOException("INVALID_ARGUMENT");
+        string record="{\"version\":1,\"stage\":\""+fixedStage+"\",\"kind\":\""+fixedKind+"\"}";
+        const string diagnosticAcl="O:BAG:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;GR;;;BU)";
+        using (FileStream output=VpnInstallNative.CreateProtectedChild(directory,
+            "preinstall-diagnostic.json",diagnosticAcl,Encoding.ASCII.GetBytes(record))) { }
+    }
 
     internal sealed class Receipt {
         internal readonly string JobId, Code;
@@ -131,6 +148,7 @@ internal static class VpnInstallHelperRoles {
         bool CommitExists(); // Admitted, exact immutable v1 commit record; no caller flag.
         bool TryExclusiveAdmission();
         bool TryInstallationReady(); // Same-handle native inventory plus both physical sibling write probes.
+        void PublishPreinstallDiagnostic(int stage,bool win32Failure);
         uint? ReadNativeResult(); // Exact worker-result record, never inferred from process exit or timeout.
         void Pause();
     }
@@ -138,6 +156,7 @@ internal static class VpnInstallHelperRoles {
     internal static void RunCoordinator(CoordinatorSession session) {
         bool created=false, preparingPublished=false, pending=false, installing=false, terminal=false;
         bool terminalPublicationAttempted=false;
+        PreinstallStage preinstallStage=PreinstallStage.None;
         try {
             session.ReserveInstallation();
             session.CreateProtectedJob(); created=true;
@@ -166,7 +185,10 @@ internal static class VpnInstallHelperRoles {
                     terminalPublicationAttempted=true;
                     session.Publish(Phase.Cancelled,"CANCELLED"); terminal=true; return;
                 }
-                if (session.OwnerExited && session.FrontendExited && session.TryExclusiveAdmission()) break;
+                if (session.OwnerExited && session.FrontendExited) {
+                    preinstallStage=PreinstallStage.ExclusiveAdmission;
+                    if (session.TryExclusiveAdmission()) break;
+                }
                 if (session.ExitDeadlineReached) throw new IOException("BUSY");
                 session.Pause();
             }
@@ -175,6 +197,7 @@ internal static class VpnInstallHelperRoles {
                     terminalPublicationAttempted=true;
                     session.Publish(Phase.Cancelled,"CANCELLED"); terminal=true; return;
                 }
+                preinstallStage=PreinstallStage.Inventory;
                 if (session.TryInstallationReady()) break;
                 if (session.ExitDeadlineReached) throw new IOException("BUSY");
                 session.Pause();
@@ -196,8 +219,14 @@ internal static class VpnInstallHelperRoles {
             }
         } catch (PublicationUncertainException) {
             throw;
-        } catch {
+        } catch (Exception error) {
             if (created && !installing && !terminalPublicationAttempted) {
+                if (preinstallStage!=PreinstallStage.None) {
+                    // Diagnostic publication is best effort. Failure cannot replace the
+                    // truthful RUNTIME_FAILED receipt or reveal exception text.
+                    try { session.PublishPreinstallDiagnostic((int)preinstallStage,error is Win32Exception); }
+                    catch { }
+                }
                 if (!preparingPublished) session.Publish(Phase.Preparing,"OK");
                 terminalPublicationAttempted=true;
                 session.Publish(Phase.Failed,"RUNTIME_FAILED"); terminal=true;

@@ -207,6 +207,8 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
     FileStream gate, cancel;
     SafeFileHandle programDataDirectory, programDataWitness, machineDirectory, jobDirectory;
     bool reserved, exclusive;
+    VpnInstallHelperRoles.PreinstallStage preinstallStage=VpnInstallHelperRoles.PreinstallStage.None;
+    bool preinstallIdentityFailure;
     bool disposed;
 
     internal CoordinatorSessionAdapter(CoordinatorSessionAdapterFacilities facilities) {
@@ -309,15 +311,33 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
     }
     public bool TryExclusiveAdmission() {
         if (fixture!=null) return fixture.TryExclusiveAdmission();
+        preinstallStage=VpnInstallHelperRoles.PreinstallStage.ExclusiveAdmission;
         if (gate==null || !admission.Owner.Exited || (frontend!=null && !frontend.Exited)) return false;
         if (!exclusive) exclusive=VpnInstallNative.TryLock(gate.SafeFileHandle,0,true);
         return exclusive;
     }
     public bool TryInstallationReady() {
         if (fixture!=null) return fixture.TryInstallationReady();
+        preinstallStage=VpnInstallHelperRoles.PreinstallStage.Inventory;
+        preinstallIdentityFailure=false;
         if (!exclusive || installation==null) throw new IOException("CONFLICT");
-        return VpnInstallHelperProcessInventory.TryNoAdmittedInstallationCopies(installation,
-            (uint)Process.GetCurrentProcess().Id,worker.Pid) && installation.TryReady();
+        if (!VpnInstallHelperProcessInventory.TryNoAdmittedInstallationCopies(installation,
+            (uint)Process.GetCurrentProcess().Id,worker.Pid)) return false;
+        preinstallStage=VpnInstallHelperRoles.PreinstallStage.Readiness;
+        try { return installation.TryReady(); }
+        catch (IOException) { preinstallIdentityFailure=true; throw; }
+    }
+    public void PublishPreinstallDiagnostic(int attemptedStage,bool win32Failure) {
+        if (fixture!=null) return;
+        if (jobDirectory==null || attemptedStage<1 || attemptedStage>2) return;
+        VpnInstallHelperRoles.PreinstallStage stage=attemptedStage==1 ?
+            VpnInstallHelperRoles.PreinstallStage.ExclusiveAdmission : preinstallStage;
+        if (stage!=VpnInstallHelperRoles.PreinstallStage.ExclusiveAdmission &&
+            stage!=VpnInstallHelperRoles.PreinstallStage.Inventory &&
+            stage!=VpnInstallHelperRoles.PreinstallStage.Readiness) return;
+        VpnInstallHelperRoles.PreinstallKind kind=preinstallIdentityFailure ? VpnInstallHelperRoles.PreinstallKind.Identity :
+            win32Failure ? VpnInstallHelperRoles.PreinstallKind.Win32Api : VpnInstallHelperRoles.PreinstallKind.Other;
+        VpnInstallHelperRoles.PublishProtectedPreinstallDiagnostic(jobDirectory,stage,kind);
     }
     public uint? ReadNativeResult() {
         if (fixture!=null) return fixture.ReadNativeResult();

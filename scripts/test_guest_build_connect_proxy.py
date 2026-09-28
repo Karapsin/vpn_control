@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import errno
 import socket
 import http.client
 import sys
@@ -509,15 +510,68 @@ class RelayTest(unittest.TestCase):
             client.settimeout(SOCKET_TIMEOUT_SECONDS)
             try:
                 client.sendall(b"A" * (subject.MAX_HEADER_BYTES + 1))
-            except BrokenPipeError:
+            except OSError as error:
                 # The relay may reject once it has received the bounded prefix.
-                pass
+                # macOS can report ENOTCONN and Winsock can report ECONNRESET
+                # during the unfinished write. Still require the real response
+                # and exact rejection event below; unrelated IO failures fail.
+                if error.errno not in (errno.EPIPE, errno.ENOTCONN, errno.ECONNRESET):
+                    raise
             self.assertIn(b"403 Forbidden", recv_headers(client))
             thread.join(1)
             self.assertFalse(thread.is_alive())
             self.assertEqual([{"event": "rejected", "stage": "header-or-tunnel"}], events)
         finally:
             client.close()
+
+    def test_header_limit_rejection_survives_peer_close_during_send(self):
+        # Run the real fixture against a relay that consumes the bounded prefix
+        # and closes before the client can finish the oversized write.  Inject
+        # each platform's close result only after the real handler has closed;
+        # its actual 403 response and rejection event still have to pass.
+        socket_pair = socket.socketpair
+        for code in (errno.EPIPE, errno.ENOTCONN, errno.ECONNRESET, errno.EINVAL, errno.ETIMEDOUT):
+            with self.subTest(errno=code):
+                client, relay = socket_pair()
+                closed = threading.Event()
+                received = bytearray()
+
+                class ClosingRelay:
+                    def __getattr__(self, name):
+                        return getattr(relay, name)
+
+                    def recv(self, size):
+                        chunk = relay.recv(size)
+                        received.extend(chunk)
+                        return chunk
+
+                    def close(self):
+                        relay.close()
+                        closed.set()
+
+                class InterruptedWriter:
+                    def __getattr__(self, name):
+                        return getattr(client, name)
+
+                    def sendall(self, payload):
+                        client.sendall(payload[:subject.MAX_HEADER_BYTES])
+                        if not closed.wait(SOCKET_TIMEOUT_SECONDS):
+                            raise AssertionError("relay did not reject the bounded prefix")
+                        raise OSError(code, "peer closed during oversized header write")
+
+                try:
+                    with mock.patch.object(socket, "socketpair", return_value=(InterruptedWriter(), ClosingRelay())):
+                        if code in (errno.EINVAL, errno.ETIMEDOUT):
+                            with self.assertRaises(OSError) as raised:
+                                self.test_header_limit_is_bounded()
+                            self.assertEqual(code, raised.exception.errno)
+                        else:
+                            self.test_header_limit_is_bounded()
+                    self.assertEqual(b"A" * subject.MAX_HEADER_BYTES, bytes(received))
+                    self.assertTrue(closed.is_set())
+                finally:
+                    client.close()
+                    relay.close()
 
 
 class ProbeTest(unittest.TestCase):

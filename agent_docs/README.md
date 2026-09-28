@@ -50,6 +50,7 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | `macos-release.md` | macOS signing and notarization setup. |
 | `visual-regression.md` | Agent-owned scene capture, local VM/hosted fallback, baseline, review, receipt, and release-gate operations. |
 | `work-in-progress.md` | Current intentional multi-bucket work: owners, verified checkpoint, next actions and remaining gates. |
+| `parity-continuation-plan.md` | Detailed continuation brief for completing remaining GUI/CLI parity with MCP, subagents, native evidence and exact-SHA delivery. |
 | `parity-failure-regressions.md` | Failure causes, quick regression coverage, native evidence, and remaining prevention gaps. |
 | `parity-history.md` | Historical GUI/CLI parity evidence and design notes; superseded snapshots, not current completion claims. |
 | `parity-native-history.md` | Historical native parity runs and artifact evidence; consult work-in-progress for current gates. |

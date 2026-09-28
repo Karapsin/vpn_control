@@ -1,6 +1,7 @@
 import unittest
 
 from android_fixture_preflight import (
+    post_install_mutation_guard,
     require_disconnected_effective_proxy,
     require_terminal_operation_history,
     source_inspection_guard,
@@ -52,6 +53,30 @@ def terminal_operation(*, owner="owner", phase="succeeded", code="OK"):
 
 
 class AndroidFixturePreflightTest(unittest.TestCase):
+    def test_post_install_reacquires_fresh_owner_and_revision_before_mutation(self):
+        cached = {"controllerId": "owner-before-install", "configurationRevision": 7}
+        fresh_status = status()
+        fresh_status["controllerId"] = "owner-after-install"
+        fresh_status["configurationRevision"] = 0
+        fresh_operations = operations(owner="owner-after-install")
+
+        def guarded_write(guard):
+            return "OK" if guard == {"controllerId": "owner-after-install", "configurationRevision": 0} else "CONFLICT"
+
+        self.assertEqual("CONFLICT", guarded_write(cached))
+        self.assertEqual({"controllerId": "owner-after-install", "configurationRevision": 0},
+                         post_install_mutation_guard(fresh_status, fresh_operations))
+        self.assertEqual("OK", guarded_write(post_install_mutation_guard(fresh_status, fresh_operations)))
+
+    def test_post_install_rebind_rejects_foreign_or_active_operation_history(self):
+        fresh_status = status()
+        fresh_status["controllerId"] = "owner-after-install"
+        with self.assertRaisesRegex(ValueError, "Operation"):
+            post_install_mutation_guard(fresh_status, operations(owner="owner-before-install"))
+        with self.assertRaisesRegex(ValueError, "Operation"):
+            post_install_mutation_guard(fresh_status, operations(owner="owner-after-install",
+                entries=[{**terminal_operation(owner="owner-after-install"), "final": False}]))
+
     def test_terminal_operation_history_is_admitted_even_when_nonempty(self):
         history = [terminal_operation(), terminal_operation(phase="failed", code="RUNTIME_FAILED"),
                    {**terminal_operation(), "restartRequired": True}]

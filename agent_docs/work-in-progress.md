@@ -25,37 +25,169 @@ A timeout is not cancellation, termination, or permission to replay. Retain unkn
 job correlations and inputs. One operator per environment and one writer per file;
 root owns host Gradle, shared integration, metadata, commits, push and exact-SHA CI.
 
-## Current integration follow-up — checkpoint173
+## Current handoff review — 2026-09-28
+
+The user stopped the old `Finish GUI CLI parity` task and requested review and
+delivery of its inherited dirty batch before passing the remaining work to a fresh
+GPT-6 Sol medium coordinator. Use [parity-continuation-plan.md](parity-continuation-plan.md)
+for the detailed continuation sequence and native acceptance gates. The old task
+and its previous workers no longer own implementation or environments.
+
+This review began on `5aa882412b4a1dea614303946640351111c8ad3c` with36 dirty
+paths. Four independent reviews cover Mac recovery, Windows diagnostics/fixtures,
+RPM batch/harness, and MCP environment/SSH recovery. A separate read-only audit
+checked remaining acceptance against current source and saved evidence. Findings
+and causal RED/GREEN records are under `handoff-review/`.
+
+Review corrections include descriptor-bound private build-environment and Mac
+boot-token reads; independent Windows UAC frame/identity admission and portable
+tests; private SSH-config preservation and unresolved-intent guards; integer-zero
+RPM terminal success, durable failure journals, strict proc observation and
+descriptor cleanup. Current-source packaged acceptance is still required.
+
+The old task had retained a prepush child after being paused. A focused regression
+run briefly overlapped it, causing shared Gradle report failures. The user then
+confirmed the old task was stopped; root rechecked active build processes before
+continuing. Managed checks now take an exclusive checkout lease and verify a
+pre/post content fingerprint. Direct Gradle calls still require coordinator scheduling.
+Preserve `checkpoint177/prepush-final.json` as the failed overlap evidence;
+never reuse its receipt. Final metadata, current prepush and exact-SHA dev CI are
+the delivery gates for this review batch.
+
+No VM, installer or VPN mutation was performed by this review. The native matrix
+reported22 open requirements with zero registered reviewed observations at the
+starting SHA; reconcile historical receipts before treating every row as new work.
+
+## Previous integration follow-up — checkpoint176
+
+Checkpoint177 delivery follow-up: managed pre-push validation exposed a missing
+`JAVA_HOME` in the desktop MCP process even though the interactive shell has a
+working JDK. A causal quick test and owner-only ignored local build-environment
+loader now supply the path to each managed child command; the full pre-push tier
+must still pass before this dirty batch is pushed. The source-matched Linux RPM
+target is verified, but the base RPM still needs a separately admitted build
+guest; Fedora2328's installed base and pending installer state remain preserved.
+The strict RPM cleanup check currently fails closed on uninspectable same-UID
+`/proc` entries; Arch observation is blocked rather than a native GREEN.
+The first full managed pre-push tier passed after the local JDK fix. A repeated
+run exposed two newly added macOS boot-token tests failing under a symlinked
+input parent and a permission-granting Darwin ACL. The product reader now
+rejects both; its focused 10-test suite passed. The complete pre-push tier
+must be rerun for the final content snapshot before any commit.
 
 The full parity goal remains incomplete. The seven requested optimization areas
-are implemented; native adoption is exposing integration gaps which receive
-quick causal regressions before repair. Checkpoint5cebf153039c7540952b5b0278c04054bc15d65c
-passed all five required workflows. Its successor d19652524a135ce0f8c6bd463cf5c5961e8fe413
-(version2.1.19) is pushed after full prepush. Fast Checks encountered an actionlint
-download connection reset; one exact-SHA rerun is in progress and a bounded
-transport retry correction is in the current batch. Do not claim this SHA verified.
+are implemented, and current native adoption continues to expose gaps that need
+causal quick regressions. Pushed `dev` HEAD
+`5aa882412b4a1dea614303946640351111c8ad3c` is clean at the start of this
+checkpoint; all five required exact-SHA workflows and advisory VPN Integration
+passed. Version is 2.1.19. This verifies delivery of that checkpoint, not the
+remaining native acceptance matrix.
 
-Current corrections are a package-qualified MCP adapter import strategy and
-workspace admission in the fixed Linux preflight. Script-mode imports had selected
-the guest helper instead of the MCP adapter; both preflight and batch-plan paths
-have a causal regression covering all13 native adapter imports. The initial
-post-fix batch then exited at input validation because its requested workspace
-parent did not exist. Its correlation a1f33191-4f6d-41dc-aa1e-cbc4c6029282 is terminal;
-do not replay it. The collector has no scenario receipt and reports unknown
-cleanup/traffic. Read-only traceback diagnosis identifies the pre-run input error.
-Evidence is under checkpoint173/linux-batch; the installed2.1.17 package means
-this is mixed-artifact fixture evidence, not current-package acceptance.
+Checkpoint173 repaired package-qualified MCP imports, Linux owned-workspace
+admission and bounded actionlint download retry. The rejected Linux correlation
+`a1f33191-4f6d-41dc-aa1e-cbc4c6029282` remains terminal and must not be replayed.
+Checkpoint174's fresh Fedora Find Best plus scheduled refresh completed with a
+51.1 ms benchmark and scoped cleanup. Its old listener had 224/226 successful
+traffic probes and two brief connection-refused gaps; new-listener traffic
+recovered in about 0.265 seconds. This is mixed-artifact evidence using an
+installed 2.1.17 RPM, not uninterrupted traffic or final-package acceptance.
+Read-only contract review found this is the permitted short controlled restart
+when scheduled Find Best applies a changed generated configuration; the public
+operation completed with the runtime running on B. `DESKTOP-005` requires the
+refresh not leave the runtime stopped. The existing auto-refresh lifecycle test
+guards against stopping A before the post-refresh selection.
+See `checkpoint174/linux-refresh/` for the protected native receipt and review.
+
+Windows CP117 recovered its exact earlier installer cancellation under the
+corrected complete 2.1.18 image: public operation status exited 130, update
+status was CANCELLED with `cleanupCode=OK` and `installed=false`, and the old
+2.1.15 installation stayed intact. The subsequent public MSI success scenario
+is still open. Fresh admission exposed a nested SSH recovery path of 86
+bytes against an 85-byte cap. A causal quick regression and bounded path repair
+are in the current dirty work; the new recovery master is verified and adopted
+in the ignored host inventory. A second regression guards renewal after that
+adopted socket expires. The next public install reached real UAC once, but the
+fixture driver rejected the expanded dialog's re-rasterized title after it had
+already matched the selected administrator account. That exact operation later
+ended `CANCELLED`/130 without installer execution; no replay occurred. CP175
+evidence is under `checkpoint175/windows-msi/`. The separate fixed credential
+probe correctly rejected a secret under a world-writable ancestor; root moved
+the same bytes to an owner-only home directory, updated the ignored inventory,
+and a new exact probe completed successfully. The corrected two-phase preflight
+passed eight quick tests and a fresh CP176 public attempt passed real UAC. Exact
+request `99126312-977f-4a61-a9ef-fb6884d2d26f`, operation
+`a021aae5-2235-4646-b750-01dca01441d0`, and protected job
+`9107428f-9c80-4284-9f4e-926350105a59` ended `Failed/RUNTIME_FAILED` after
+`WaitingForExit`, before `Installing` or any `msiexec`. Base 2.1.17 is intact,
+helpers exited, and owned fixture cleanup completed without replay. Read-only
+forensics narrow the failure to `TryExclusiveAdmission` or
+`TryInstallationReady`; the protected receipt does not distinguish them. A
+causal quick role regression and fixed enum-only protected diagnostic are now
+implemented. Isolated CP117 role fixtures showed both old-code RED branches and
+current-code GREEN, including strict ACL/readback for the protected diagnostic
+leaf; they ran no installer. The first inert QGA test command exceeded the
+guest-exec command size before launch, so a portable size/chunking regression
+was added to routine hygiene. Another packaged native MSI attempt must inspect
+the new fixed stage/kind to establish the underlying cause. Evidence is under
+`checkpoint176/windows-msi/`.
+
+macOS machine update job `465a954f-cd70-45c4-896d-67e4508bae49` was accepted
+on the frozen 2.1.17→2.1.18 pair and awaited OS authorization. After the owned
+VM was stopped and booted again, the original prompt/coordinator was absent,
+there was no protected receipt, and the public operation remained
+`OUTCOME_UNKNOWN`. The job, target, worker and legacy unknown job remain
+preserved; no install was replayed. A future-job boot-session recovery guard is
+implemented in the current dirty work for both machine and user-local receipt
+authorities. It requires a private exact-job kernel boot token from before the
+coordinator attempt, a different current boot and a second authoritative
+receipt-absence check before marking not-started. The exact old job predates that
+token and cannot be labelled terminal from a newly inferred outcome. Focused
+Mac tests pass; packaged reboot/process-loss verification remains open.
+
+Android API35's 11,872,243-byte, 56,000-domain baseline is preserved. A
+matching complete Linux CLI image from frozen source `5cebf15` is now verified
+on Arch: archive SHA-256
+`826b597754bf422de67566bead66d8640720847d35073dc09c302af92772a504`,
+full tree manifest SHA-256
+`d045410fd7351eb097057177b04ba3280b7af40cd488b63044c7ec28984ab60f`.
+The nondebuggable 2.1.18 APK has the expected signer. Fresh device admission and
+the single response-loss scenario remain open. The signed APK installed under
+API35, creating a new controller epoch. The first guarded response-loss request
+mistakenly used the pre-install owner/revision and correctly returned `CONFLICT`
+before a document operation existed. An exact cleanup import succeeded and a
+fresh full export matched the pre-install backup byte-for-byte at the canonical
+rules hash; no persisted-data loss occurred. A reusable post-install rebind
+helper with ten passing quick tests is in the current dirty work. The fresh
+API35 nondebuggable APK scenario passed: one guarded request
+`29be994c-6cd1-4e43-956d-568c1506bc03` committed at operation
+`2fe094a8-a29c-4603-8088-07ce68a71c35`/revision1; first response loss
+returned `OUTCOME_UNKNOWN` while retaining the exact identity. Pinned status
+was final OK, same-request replay returned byte-identical committed results
+without a second effect, and guarded restoration reached revision2. Final
+56,000-domain content and canonical rules hash matched the backup; runtime
+remained OFF and the shim was removed. Raw exports differ only in generated
+`exported_at`. See `checkpoint174/android35-document-response-loss-rerun/`.
 
 | Task | Owner | Files/environment | Current check / handoff |
 | --- | --- | --- | --- |
-| MCP imports | root, worker handoff complete | mcp_server.py and test_vm_workflow.py | All13 adapters use qualified imports;338 agent tests pass,4 skips |
-| Download resilience | root, worker handoff complete | check_workflow_syntax.py and tests |8 focused tests; causal pre-change replay retained |
-| Workspace admission | root, handoff complete | guest/MCP preflight and focused tests | Missing/unowned/symlink/overlap rejected;39 focused tests pass |
-| Linux native rerun | linux_refresh174 | Fedora2328; checkpoint174/linux-refresh | New immutable bundle and correlation; existing admitted parent |
-| Windows recovery | windows_recovery173 | CP117, ignored evidence | Same stopped owner/terminal protected cancellation admitted; immutable pair downloading |
-| macOS fixture | macos_fixture173 | boot-control53, isolated173 namespace | Aqua/sudo/capacity admitted; waiting for immutable pair;114 untouched |
-| Android documents | android35_documents173 | owned5682, ignored evidence | Matched complete CLI/APK staging and response-loss scenario |
-| Delivery | root | docs, metadata, single host build, push/CI | Batch coherent freeze precedes final prepush |
+| SSH recovery path | ssh_socket_regression handoff; root integration | `ssh_connection_recovery.py` and test | Causal RED/GREEN, 13 focused tests; native master recovered, Windows admission pending |
+| Windows public MSI | windows_msi_retry176/diagnostic handoffs complete; root integration | CP117 guest terminal, native role code/tests | CP176 pre-MSI failure retained; enum-only diagnostic passed inert native test, fresh packaged retry required |
+| Windows UAC fixture | windows_fixture_preflight handoff complete | Reusable scripts/tests, no VM | Eight quick tests and CP176 two-phase UAC admission passed; current MSI failure is later |
+| macOS recovery | macos_unknown_recovery handoff complete; root review | Mac installer classes/tests; no VM mutation | Machine/user-local boot guard and read-only MCP diagnostic pass focused tests; native reboot scenario open |
+| Android document response loss | android35_response_loss175/177 handoffs complete | API35 AVD5682 now clean | Fresh owner guard, one committed response-loss operation, exact retry and full content restoration passed; remaining Android lifecycle gates separate |
+| Linux continuity review | linux_findbest_continuity handoff complete | Read-only CP174 receipt review | Controlled A→B restart allowed by DESKTOP-005; final package proof remains open |
+| Linux RPM recovery batch | rpm_transport_implementation handoff; linux_rpm_harness_cleanup | New fixed MCP adapter/tests and synthetic workspace cleanup; no Fedora VM mutation | Agent suite 366 passed/6 skips; truthful cleanup must become achievable before native RPM retry |
+| CLI coverage audit | cli_public_coverage_audit handoff complete | Read-only registry/adapter review | No concrete handler gap; `cli.md` corrected for Android-only apps and desktop update revision guard |
+| Visual gate audit | visual_gate_audit handoff complete | Read-only scene/baseline inventory | Android API35 is canonical; desktop location add/edit baselines missing, current-SHA review and Windows secure capture open |
+| Delivery | root | Shared docs/metadata, host checks, dev push/CI | Final content freeze and full native matrix still outstanding |
+
+The visual audit found desktop `locations-add-dialog` and
+`locations-edit-dialog` baseline PNGs missing on Linux, Windows and macOS, plus
+no current-SHA four-platform review receipt. `VISUAL-003` specifies Pixel 6/API35
+as the canonical Android visual environment; API29 remains a native product
+acceptance gate, not a second canonical visual baseline set. The local Windows
+visual VM was retired during the user-authorized storage cleanup, so its secure
+UAC capture needs a fresh owned environment before review.
 
 Frozen Windows/macOS pairs use source5cebf15, base2.1.17 and target2.1.18; their
 identity must not be relabelled as2.1.19. Current-source Android APK under
@@ -63,8 +195,13 @@ checkpoint172/android-current likewise retains5cebf15 provenance. Final package
 acceptance and exact-SHA CI remain separate gates. The Android API35 full backup
 contains56000 domains, original ignorefalse; preserve it before any device mutation.
 
-User-authorized storage cleanup reclaimed the Mac's required100GB headroom:
-112.5GB free was verified. The obsolete stopped local Windows ARM visual/component
+Earlier user-authorized storage cleanup temporarily reached112.5GiB free on the
+Mac. A fresh Data-volume check at checkpoint176 found80.15GiB free; current
+Tart/AVD/evidence state has grown since that receipt. The exact proven disposable
+repo build/dist set is only about5.51GiB and would not reach the requested
+100GiB. Automatic command review rejected its permanent deletion as an unsafe
+`rm -f` style action; no workaround or deletion was performed. The obsolete
+stopped local Windows ARM visual/component
 VM and its READY marker were retired; recreate explicitly before any future local
 Windows visual run. The active remote Windows CP117 and every unknown installer
 input remain preserved. Arch cleanup reclaimed112.27GB from Trash/build caches

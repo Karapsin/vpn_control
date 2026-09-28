@@ -25,6 +25,10 @@ if not __package__ and str(REPO_ROOT) not in sys.path:
 docs_assistant = importlib.import_module(
     f"{__package__}.docs_assistant" if __package__ else "docs_assistant"
 )
+local_build_environment = importlib.import_module(
+    f"{__package__}.local_build_environment" if __package__ else "local_build_environment"
+)
+managed_check_lease = importlib.import_module(f"{__package__ or 'agent_tools'}.managed_check_lease")
 
 try:  # The repository tests intentionally run without the optional MCP package.
     from mcp.server.fastmcp import FastMCP
@@ -391,6 +395,15 @@ def run_checks(
             "result": {"area": selected_area, "level": level, "commands": [_display(c) for c in commands]},
         }
 
+    try:
+        with managed_check_lease.acquire(REPO_ROOT):
+            return _run_check_commands(selected_area, level, commands)
+    except managed_check_lease.ManagedCheckLeaseError as error:
+        return _error("run_checks", str(error), blockers=[{"phase": "check-lease", "state": error.state}])
+
+
+def _run_check_commands(selected_area: str, level: str, commands: list[list[str]]) -> dict[str, Any]:
+    checked_fingerprint = _snapshot_fingerprint() if level == "prepush" else None
     results = []
     for command in commands:
         result = _run(command, timeout=50 * 60)
@@ -405,9 +418,15 @@ def run_checks(
 
     receipt = None
     if level == "prepush":
+        if _snapshot_fingerprint() != checked_fingerprint:
+            return _error(
+                "run_checks",
+                "Repository contents changed during validation; freeze edits and rerun pre-push checks.",
+                command_results=results,
+            )
         receipt = {
             "version": 1,
-            "fingerprint": _snapshot_fingerprint(),
+            "fingerprint": checked_fingerprint,
             "head": _git_stdout(["rev-parse", "HEAD"]),
             "commands": [_display(command) for command in commands],
             "created_at_epoch": int(time.time()),
@@ -1590,7 +1609,11 @@ def _run(
     timeout: int = 120,
     output_limit: int | None = MAX_OUTPUT_CHARS,
 ) -> dict[str, Any]:
-    environment = dict(os.environ)
+    try:
+        environment = local_build_environment.apply(REPO_ROOT, dict(os.environ))
+    except local_build_environment.LocalBuildEnvironmentError as exc:
+        return {"ok": False, "command": _display(command), "returncode": None,
+                "stdout": "", "stderr": str(exc)}
     environment.pop("DYLD_INSERT_LIBRARIES", None)
     try:
         completed = subprocess.run(
@@ -1768,7 +1791,8 @@ def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) ->
     """Dispatch only existing fixed adapters; batches cannot invoke arbitrary tools."""
     vm_actions = {"artifact-verify", "bundle-verify", "environment-status", "credential-status",
                   "windows-credential-probe-start", "windows-credential-probe-status",
-                  "scenario-start", "scenario-status", "scenario-resume", "scenario-collect"}
+                  "scenario-start", "scenario-status", "scenario-resume", "scenario-collect",
+                  "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect"}
     ssh_actions = {"inventory", "probe", "job-status", "android-observe"}
     if surface == "vm" and action in vm_actions:
         return _vm_workflow_impl(action, inputs)
@@ -1784,7 +1808,8 @@ _VM_NATIVE_ADAPTERS = (
     "native_scenario_batch", "native_artifact_reuse", "native_scenario_execution",
     "native_scenario_ssh", "native_artifact_registry", "native_environment",
     "native_environment_observation", "native_scenario_bundle", "native_next_action",
-    "native_failure_evidence",
+    "native_failure_evidence", "macos_installer_recovery", "native_rpm_public_install_adapter",
+    "native_rpm_public_install_ssh",
 )
 
 
@@ -1822,10 +1847,21 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             preflight = _agent_module("native_fixture_preflight")
             result = preflight.check(REPO_ROOT, inputs, _native_fixed_dispatch)
             return {"tool": "vm_workflow", "ok": result.get("ready") is True, **result}
+        if action == "macos-installer-recovery-status":
+            recovery = _agent_module("macos_installer_recovery")
+            result = recovery.diagnose(inputs)
+            return {"tool": "vm_workflow", "ok": True, **result}
         if action in {"batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect"}:
             batch_module = _agent_module("native_scenario_batch")
+            def batch_preflight(request):
+                if request.get("scenarioId") == "linux-rpm-public-install-recovery":
+                    rpm = _agent_module("native_rpm_public_install_ssh")
+                    return rpm.preflight(REPO_ROOT, request)
+                fixture = _agent_module("native_fixture_preflight")
+                return fixture.check(REPO_ROOT, request, _native_fixed_dispatch)
             batch = batch_module.NativeScenarioBatch(REPO_ROOT / ".rag_index" / "native-batches",
-                                                     _native_fixed_dispatch, repository_root=REPO_ROOT)
+                                                     _native_fixed_dispatch, repository_root=REPO_ROOT,
+                                                     preflight=batch_preflight)
             if action == "batch-plan":
                 result = batch.plan(inputs)
             else:
@@ -1833,6 +1869,21 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     return _error("vm_workflow", "Batch observation/execution requires only its immutable batchId.")
                 result = getattr(batch, action.removeprefix("batch-"))(inputs["batchId"])
             return {"tool": "vm_workflow", "ok": result.get("state") not in {"failed", "blocked", "unknown"}, **result}
+        if action in {"rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect"}:
+            rpm = _agent_module("native_rpm_public_install_ssh")
+            boundary = _agent_module("native_rpm_public_install_adapter")
+            fixed = boundary.RpmPublicInstallAdapter(rpm.RpmPublicInstallSshDriver(REPO_ROOT))
+            try:
+                if action == "rpm-public-install-start":
+                    result = fixed.start(inputs)
+                else:
+                    if set(inputs) != {"correlationId"}:
+                        return _error("vm_workflow", "RPM observation requires only correlationId.")
+                    result = getattr(fixed, "status" if action.endswith("-status") else "collect")(inputs["correlationId"])
+                accepted = result.get("state") in {"submitted", "running"} or (result.get("state") == "terminal" and result.get("exitCode") == 0)
+                return {"tool": "vm_workflow", "ok": accepted, "evidenceClass": "installed-package", "productAction": True, **result}
+            except (ValueError, OSError, KeyError) as error:
+                return _error("vm_workflow", str(error))
         if action in {"artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check"}:
             reuse = _agent_module("native_artifact_reuse")
             if action == "artifact-set-freeze":
@@ -2072,7 +2123,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-status", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status"))
+    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-status", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status"))
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")

@@ -32,6 +32,8 @@ _INTENT_DIRECTORY = ".rag_index/ssh-recovery"
 _ABSENT_SOCKET_MARKERS = ("no such file or directory", "control socket connect")
 _MAX_CAPTURE_CHARS = 8_192
 _MAX_REMOTE_SOCKET_BYTES = 85
+_RECOVERY_CORRELATION_CHARS = 15
+_RECOVERY_DIRECTORY_CORRELATION_LENGTHS = (15, 16)
 
 
 class RecoveryError(ValueError):
@@ -46,7 +48,14 @@ def _intent_path(root: Path, host: str, target: ssh_transport.SshHost) -> Path:
 
 def _recovery_socket_path(target: ssh_transport.SshHost, correlation_id: str) -> tuple[PurePosixPath, PurePosixPath] | None:
     assert target.remote_control_path
-    directory = target.remote_control_path.parent / f"r-{correlation_id[:16]}"
+    configured = target.remote_control_path
+    configured_parent = configured.parent
+    recovered_name = configured_parent.name
+    if (configured.name == "m" and recovered_name.startswith("r-")
+            and len(recovered_name[2:]) in _RECOVERY_DIRECTORY_CORRELATION_LENGTHS
+            and all(char in "0123456789abcdef" for char in recovered_name[2:])):
+        configured_parent = configured_parent.parent
+    directory = configured_parent / f"r-{correlation_id[:_RECOVERY_CORRELATION_CHARS]}"
     control_path = directory / "m"
     try:
         valid = len(str(control_path).encode("utf-8")) <= _MAX_REMOTE_SOCKET_BYTES
@@ -57,8 +66,23 @@ def _recovery_socket_path(target: ssh_transport.SshHost, correlation_id: str) ->
 
 def _identity(target: ssh_transport.SshHost) -> dict[str, str]:
     assert target.gateway and target.remote_host_alias and target.remote_control_path
-    return {"targetHost": target.host, "gateway": target.gateway, "remoteHostAlias": target.remote_host_alias,
-            "configuredControlPath": str(target.remote_control_path)}
+    identity = {"targetHost": target.host, "gateway": target.gateway, "remoteHostAlias": target.remote_host_alias,
+                "configuredControlPath": str(target.remote_control_path)}
+    if target.remote_config_file is not None:
+        identity["remoteConfigFile"] = str(target.remote_config_file)
+    return identity
+
+
+def _require_resolved_history(root: Path, host: str) -> None:
+    """A changed route must not hide an earlier submitted recovery."""
+    try:
+        for path in (root / _INTENT_DIRECTORY).glob(f"{host}-*.json"):
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if (not isinstance(value, dict) or value.get("schemaVersion") != 1 or
+                    value.get("host") != host or value.get("state") != "ready"):
+                raise RecoveryError("Earlier SSH recovery intent has an unresolved outcome.")
+    except (OSError, ValueError) as error:
+        raise RecoveryError("Earlier SSH recovery intent cannot be resolved safely.") from error
 
 
 def _read_intent(root: Path, host: str, target: ssh_transport.SshHost) -> dict[str, str] | None:
@@ -70,6 +94,7 @@ def _read_intent(root: Path, host: str, target: ssh_transport.SshHost) -> dict[s
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
+        _require_resolved_history(root, host)
         return None
     except (OSError, json.JSONDecodeError):
         raise RecoveryError("Existing SSH recovery intent cannot be read safely.") from None
@@ -86,6 +111,7 @@ def _read_intent(root: Path, host: str, target: ssh_transport.SshHost) -> dict[s
         # A completed legacy recovery remains immutable history after the user
         # adopts a new configured socket. Unknown legacy outcomes stay blocked.
         if legacy and value.get("state") == "ready":
+            _require_resolved_history(root, host)
             return None
         raise RecoveryError("Existing SSH recovery intent does not match this host.")
     return {key: value[key] for key in required if key != "schemaVersion"}
@@ -199,7 +225,11 @@ def _gateway_run(config: ssh_transport.SshConfig, target: ssh_transport.SshHost,
 
 def _socket_state(config: ssh_transport.SshConfig, target: ssh_transport.SshHost, control_path: PurePosixPath, timeout_seconds: int) -> str:
     assert target.remote_host_alias
-    completed = _gateway_run(config, target, ("ssh", "-S", str(control_path), "-O", "check", target.remote_host_alias), timeout_seconds)
+    command = ["ssh"]
+    if target.remote_config_file is not None:
+        command.extend(("-F", str(target.remote_config_file)))
+    command.extend(("-S", str(control_path), "-O", "check", target.remote_host_alias))
+    completed = _gateway_run(config, target, tuple(command), timeout_seconds)
     if completed is None:
         return "unknown"
     if completed.returncode == 0:
@@ -212,10 +242,12 @@ def _socket_state(config: ssh_transport.SshConfig, target: ssh_transport.SshHost
 # the private nested-key passphrase; it is never placed in argv or environment.
 _REMOTE_RECOVERY_SCRIPT = r'''
 import json, os, subprocess, sys, tempfile
-profile = sys.argv[1]
-timeout = int(sys.argv[2])
-directory = sys.argv[3]
-control_path = sys.argv[4]
+config_file = sys.argv[1]
+profile = sys.argv[2]
+timeout = int(sys.argv[3])
+directory = sys.argv[4]
+control_path = sys.argv[5]
+ssh = ["ssh"] + (["-F", config_file] if config_file else [])
 secret = json.loads(sys.stdin.read())
 passphrase = secret.get("passphrase")
 if not isinstance(passphrase, str) or not passphrase:
@@ -235,7 +267,7 @@ try:
     with open(helper_path, "w", encoding="utf-8") as handle:
         handle.write("#!/bin/sh\ncat \"$VPN_CONTROL_SSH_PASSWORD_FILE\"\n")
     os.chmod(helper_path, 0o700)
-    resolved = subprocess.run(["ssh", "-G", profile], capture_output=True, text=True, timeout=timeout, check=False)
+    resolved = subprocess.run(ssh + ["-G", profile], capture_output=True, text=True, timeout=timeout, check=False)
     known_hosts = next((line.split(" ", 1)[1] for line in resolved.stdout.splitlines()
                         if line.startswith("userknownhostsfile ")), None)
     if resolved.returncode != 0 or not known_hosts:
@@ -245,13 +277,13 @@ try:
     environment.update({"SSH_ASKPASS": helper_path, "SSH_ASKPASS_REQUIRE": "force",
                         "DISPLAY": environment.get("DISPLAY", "vpn-control-askpass"),
                         "VPN_CONTROL_SSH_PASSWORD_FILE": password_path})
-    command = ["ssh", "-M", "-N", "-f", "-S", control_path,
+    command = ssh + ["-M", "-N", "-f", "-S", control_path,
                "-o", "ControlMaster=yes", "-o", "ControlPersist=3600",
                "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + known_hosts,
                "-o", "IdentitiesOnly=yes", "-o", "BatchMode=no",
                "-o", "NumberOfPasswordPrompts=1", "-o", "ConnectTimeout=" + str(timeout), profile]
     created = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False, env=environment)
-    checked = subprocess.run(["ssh", "-S", control_path, "-O", "check", profile], capture_output=True, text=True, timeout=timeout, check=False)
+    checked = subprocess.run(ssh + ["-S", control_path, "-O", "check", profile], capture_output=True, text=True, timeout=timeout, check=False)
     print(json.dumps({"state": "ready" if created.returncode == 0 and checked.returncode == 0 else "unknown",
                       "control_path": control_path}))
 finally:
@@ -267,7 +299,7 @@ def _remote_command(target: ssh_transport.SshHost, timeout_seconds: int,
                     control_directory: PurePosixPath, control_path: str) -> tuple[str, ...]:
     """Encode fixed multiline code as one control-character-free argv value."""
     assert target.remote_host_alias
-    return ("python3", "-c", f"exec({_REMOTE_RECOVERY_SCRIPT!r})", target.remote_host_alias,
+    return ("python3", "-c", f"exec({_REMOTE_RECOVERY_SCRIPT!r})", str(target.remote_config_file or ""), target.remote_host_alias,
             str(timeout_seconds), str(control_directory), control_path)
 
 
@@ -289,6 +321,8 @@ def recover(root: Path | str, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_
         if intent is not None:
             recovered = _socket_state(config, target, PurePosixPath(intent["controlPath"]), timeout_seconds)
             if recovered == "ready":
+                if intent["state"] != "ready":
+                    _update_intent(Path(root).resolve(), host, target, intent["correlationId"], "ready", intent["controlPath"])
                 return {"ok": True, "state": "recovery_master_ready"}
             return {"ok": False, "state": "recovery_intent_pending"}
         if target.password is None:

@@ -5,7 +5,9 @@ import json
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
@@ -198,6 +200,7 @@ class FingerprintTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
+        (self.root / ".git" / "info" / "exclude").write_text(".rag_index/\n", encoding="utf-8")
         subprocess.run(["git", "config", "user.email", "tests@example.com"], cwd=self.root, check=True)
         subprocess.run(["git", "config", "user.name", "Agent Tests"], cwd=self.root, check=True)
         (self.root / "tracked.txt").write_text("one\n", encoding="utf-8")
@@ -224,6 +227,52 @@ class FingerprintTest(unittest.TestCase):
         before = mcp_server._snapshot_fingerprint()
         (self.root / "new.txt").write_text("new\n", encoding="utf-8")
         self.assertNotEqual(before, mcp_server._snapshot_fingerprint())
+
+    def test_prepush_rejects_content_changed_while_checks_run(self) -> None:
+        receipt = self.root / ".rag_index" / "prepush_receipt.json"
+        command = [sys.executable, "-c",
+                   "from pathlib import Path; Path('tracked.txt').write_text('changed during check\\n')"]
+        with mock.patch.object(mcp_server, "RECEIPT_PATH", receipt), \
+                mock.patch.object(mcp_server, "_commands_for", return_value=[command]):
+            result = mcp_server.run_checks(level="prepush")
+        self.assertFalse(result["ok"])
+        self.assertIn("changed during", result["summary"])
+        self.assertFalse(receipt.exists())
+
+    def test_overlapping_managed_checks_reject_second_before_execution(self) -> None:
+        started, release = threading.Event(), threading.Event()
+        executions = []
+
+        def harmless_check(command, **kwargs):
+            executions.append(command)
+            if len(executions) == 1:
+                started.set()
+                self.assertTrue(release.wait(10))
+            return command_result()
+
+        with mock.patch.object(mcp_server, "_changed_paths", return_value=[]), \
+                mock.patch.object(mcp_server, "_commands_for", return_value=[["fixture-check"]]), \
+                mock.patch.object(mcp_server, "_run", side_effect=harmless_check), \
+                ThreadPoolExecutor(max_workers=1) as executor:
+            first = executor.submit(mcp_server.run_checks, area="docs")
+            try:
+                self.assertTrue(started.wait(10))
+                second = mcp_server.run_checks(area="docs")
+                self.assertFalse(second["ok"])
+                self.assertEqual("busy", second["blockers"][0]["state"])
+                self.assertEqual(1, len(executions))
+            finally:
+                release.set()
+            self.assertTrue(first.result(timeout=10)["ok"])
+
+    def test_prepush_records_only_unchanged_checked_content(self) -> None:
+        receipt = self.root / ".rag_index" / "prepush_receipt.json"
+        before = mcp_server._snapshot_fingerprint()
+        with mock.patch.object(mcp_server, "RECEIPT_PATH", receipt), \
+                mock.patch.object(mcp_server, "_commands_for", return_value=[[sys.executable, "-c", "pass"]]):
+            result = mcp_server.run_checks(level="prepush")
+        self.assertTrue(result["ok"])
+        self.assertEqual(before, json.loads(receipt.read_text())["fingerprint"])
 
     def test_fingerprint_survives_committed_addition_and_deletion(self) -> None:
         (self.root / "tracked.txt").unlink()

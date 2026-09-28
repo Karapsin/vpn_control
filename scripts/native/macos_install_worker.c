@@ -801,7 +801,7 @@ static void cleanup_input(const char *job_id, bool require_terminal_receipt) {
         require(receipt_read(job, request.machine ? 0 : uid, !request.machine, job_id, &sequence, phase) &&
             (!strcmp(phase, "SUCCEEDED") || !strcmp(phase, "FAILED") || !strcmp(phase, "CANCELLED")), "OUTCOME_UNKNOWN");
     } else require_absent_protected_job(&request, &pins);
-    const char *names[] = {"package.dmg", "commit", "watcher", "request", "vpn-control-install-worker", "vpn-control-install-cleanup-worker"};
+    const char *names[] = {"package.dmg", "commit", "watcher", "request", "boot-session", "vpn-control-install-worker", "vpn-control-install-cleanup-worker"};
     for (size_t i = 0; i < sizeof(names)/sizeof(names[0]); ++i) {
         int fd = openat(input, names[i], O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
         if (fd < 0 && errno == ENOENT) continue;

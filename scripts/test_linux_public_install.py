@@ -121,6 +121,161 @@ def launch_fixture_owner(launcher, workspace, log, environment):
                             start_new_session=True)
 
 
+def _owned_synthetic_workspace(workspace, evidence):
+    """Open the exact workspace child without trusting a replaced pathname."""
+    workspace = Path(workspace)
+    evidence = Path(evidence)
+    require(workspace.parent == evidence and workspace.name == "workspace",
+            "Cleanup target is not the owned synthetic workspace")
+    # Normalize pre-existing host aliases such as macOS /var -> /private/var
+    # before detecting a replacement below.  The Linux harness itself creates
+    # its evidence below /tmp, but portable focused tests use the host tmpdir.
+    evidence = evidence.resolve(strict=True)
+    workspace = workspace.resolve(strict=True)
+    require(workspace.parent == evidence and workspace.name == "workspace",
+            "Synthetic workspace was replaced")
+    # Check each named ancestor before using it.  A symlink introduced at any
+    # point makes recursive removal unsafe, even if its current target looks
+    # plausible.
+    current = Path("/")
+    for part in evidence.parts[1:]:
+        current /= part
+        info = os.lstat(current)
+        require(not stat.S_ISLNK(info.st_mode), "Synthetic workspace ancestry was replaced")
+    evidence_info = os.lstat(evidence)
+    require(stat.S_ISDIR(evidence_info.st_mode) and evidence_info.st_uid == os.geteuid()
+            and not evidence_info.st_mode & 0o077, "Synthetic evidence directory is untrusted")
+    evidence_fd = os.open(evidence, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    workspace_fd = None
+    try:
+        workspace_fd = os.open("workspace", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=evidence_fd)
+        workspace_info = os.fstat(workspace_fd)
+        named_info = os.lstat(workspace)
+        require(stat.S_ISDIR(workspace_info.st_mode) and workspace_info.st_uid == os.geteuid()
+                and (workspace_info.st_dev, workspace_info.st_ino) == (named_info.st_dev, named_info.st_ino),
+                "Synthetic workspace was replaced")
+        return evidence_fd, workspace_fd
+    except Exception:
+        if workspace_fd is not None:
+            os.close(workspace_fd)
+        os.close(evidence_fd)
+        raise
+
+
+def _no_process_uses_workspace(workspace, proc=Path("/proc"), owned_cleanup_fd=None):
+    """Reject same-UID references while terminal protected state closes privileged work.
+
+    The protected terminal receipt is the ownership proof for the privileged
+    installer. Foreign-UID processes are outside this fixture's ownership;
+    every same-UID cwd/fd observation must succeed, except the exact descriptor
+    this cleanup invocation holds for descriptor-relative removal.
+    """
+    require(proc.is_dir(), "Cannot prove synthetic workspace has no process owner")
+    workspace_text = str(Path(workspace))
+    prefix = workspace_text + "/"
+    own_pid = str(os.getpid())
+    require(owned_cleanup_fd is None or isinstance(owned_cleanup_fd, int) and owned_cleanup_fd >= 0,
+            "Cleanup workspace descriptor is invalid")
+    def require_process_gone(entry):
+        # A missing cwd/fd does not prove exit: procfs can withhold those
+        # entries while the thread group still exists. Only a missing PID
+        # directory permits treating that observation as a completed exit.
+        try:
+            os.stat(entry, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        except OSError as error:
+            raise RuntimeError("Cannot inspect process ownership of synthetic workspace") from error
+        raise RuntimeError("Cannot inspect process ownership of synthetic workspace")
+    try:
+        entries = list(proc.iterdir())
+    except OSError as error:
+        raise RuntimeError("Cannot inspect process ownership of synthetic workspace") from error
+    for entry in entries:
+        if not entry.name.isdecimal():
+            continue
+        try:
+            process_info = os.stat(entry, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            raise RuntimeError("Cannot inspect process ownership of synthetic workspace") from error
+        if process_info.st_uid != os.geteuid():
+            continue
+        for target in (entry / "cwd",):
+            try:
+                reference = os.readlink(target)
+            except FileNotFoundError:
+                require_process_gone(entry)
+                continue
+            except OSError as error:
+                raise RuntimeError("Cannot inspect process ownership of synthetic workspace") from error
+            require(reference != workspace_text and not reference.startswith(prefix),
+                    "A process still owns the synthetic workspace")
+        fds = entry / "fd"
+        try:
+            descriptors = list(fds.iterdir())
+        except FileNotFoundError:
+            require_process_gone(entry)
+            continue
+        except OSError as error:
+            raise RuntimeError("Cannot inspect process ownership of synthetic workspace") from error
+        for descriptor in descriptors:
+            # This one descriptor is held solely to remove the already-proven
+            # workspace through stable descriptor-relative names.  Do not
+            # exempt any other self reference or any other process reference.
+            if entry.name == own_pid and owned_cleanup_fd is not None and descriptor.name == str(owned_cleanup_fd):
+                continue
+            try:
+                reference = os.readlink(descriptor)
+            except FileNotFoundError:
+                continue
+            except OSError as error:
+                raise RuntimeError("Cannot inspect process ownership of synthetic workspace") from error
+            require(reference != workspace_text and not reference.startswith(prefix),
+                    "A process still owns the synthetic workspace")
+
+
+def _remove_owned_workspace_tree(directory_fd):
+    """Remove a current-user directory tree through descriptor-relative names."""
+    for entry in os.scandir(directory_fd):
+        info = os.stat(entry.name, dir_fd=directory_fd, follow_symlinks=False)
+        require(info.st_uid == os.geteuid() and not stat.S_ISLNK(info.st_mode),
+                "Synthetic workspace contains an untrusted entry")
+        if stat.S_ISDIR(info.st_mode):
+            child = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd)
+            try:
+                _remove_owned_workspace_tree(child)
+            finally:
+                os.close(child)
+            os.rmdir(entry.name, dir_fd=directory_fd)
+        else:
+            require(stat.S_ISREG(info.st_mode), "Synthetic workspace contains a non-file entry")
+            os.unlink(entry.name, dir_fd=directory_fd)
+
+
+def cleanup_synthetic_workspace(workspace, evidence, owner, protected_success, recovered, credential_restored):
+    """Remove only the terminal, recovered RPM synthetic workspace.
+
+    Any missing proof leaves the workspace and all evidence intact.  This never
+    signals an owner or installer; it merely rejects a still-live owner.
+    """
+    require(protected_success and recovered and credential_restored,
+            "Synthetic workspace cleanup requires terminal protected recovery and restored credential")
+    require(owner.poll() is not None, "Fixture owner is still running; workspace retained")
+    evidence_fd, workspace_fd = _owned_synthetic_workspace(workspace, evidence)
+    try:
+        try:
+            _no_process_uses_workspace(workspace, owned_cleanup_fd=workspace_fd)
+            _remove_owned_workspace_tree(workspace_fd)
+        finally:
+            os.close(workspace_fd)
+        os.rmdir("workspace", dir_fd=evidence_fd)
+    finally:
+        os.close(evidence_fd)
+    require(not os.path.lexists(workspace), "Synthetic workspace removal is uncertain")
+
+
 _ANSI_TERMINAL_ESCAPE = re.compile(rb"\x1b\[[0-?]*[ -/]*[@-~]")
 _PASSWORD_PROMPT = re.compile(rb"(?:^|[\r\n])Password:[ \t]*$")
 _IDENTITY_SELECTOR = re.compile(
@@ -427,7 +582,7 @@ def invoke_retained_install(launcher, workspace, environment, arguments, credent
 
 def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_deb_dependencies=False,
         arch_source_fixture=None, rpm_source_fixture=None, retained_fixture_auth=False,
-        preserve_existing_fixture_password=False):
+        preserve_existing_fixture_password=False, cleanup_synthetic_workspace_after_success=False):
     require(confirmed and os.uname().sysname == "Linux" and os.getuid() != 0,
             "Explicit owned-disposable-VM confirmation and non-root Linux user required")
     require_human_terminal(retained_fixture_auth)
@@ -435,6 +590,9 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
             "Arch and RPM source fixtures are mutually exclusive")
     require(not preserve_existing_fixture_password or retained_fixture_auth,
             "Existing fixture password preservation requires retained fixture authentication")
+    require(not cleanup_synthetic_workspace_after_success or
+            (same_source_recovery and retained_fixture_auth and preserve_existing_fixture_password),
+            "Synthetic workspace cleanup requires same-source recovery and restored retained fixture credentials")
     if arch_source_fixture is not None:
         # The privileged Arch adapter admits only this fixed installation root.
         # Reject alternate fixture paths before launching any owner or authorization.
@@ -550,6 +708,7 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
         exit_code, accepted = invoke(*timed_update_command("install", 240), seconds=270)
     job, operation = terminal_install_handoff({"childExit": exit_code, "envelope": accepted})
     owner.wait(timeout=30)
+    require(owner.poll() is not None, "Fixture owner did not stop; workspace retained")
     # Never hold an app admission lock while waiting for replacement, and never kill the installer.
     deadline = time.monotonic() + 600
     receipt = None
@@ -561,6 +720,7 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
         if receipt and receipt.get("phase") in ("SUCCEEDED", "FAILED", "CANCELLED"):
             break
         time.sleep(0.5)
+    credential_restored = not retained_fixture_auth
     if retained_fixture_auth:
         from linux_fixture_auth import restore
         # Only a final protected receipt may relock the account.  Failed and
@@ -580,6 +740,7 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
         if receipt and receipt.get("phase") in {"SUCCEEDED", "FAILED", "CANCELLED"}:
             restore(credential_dir=credential_directory, correlation=credential_correlation,
                     terminal_receipt=terminal_result, terminal_validator=terminal_validator)
+            credential_restored = True
     require(receipt and receipt.get("phase") == "SUCCEEDED" and receipt.get("code") == "OK",
             f"No protected installation success; do not retry/kill pending worker: {receipt}")
     version = subprocess.run([str(launcher), "--version"], capture_output=True, text=True, timeout=30)
@@ -590,10 +751,12 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
         exit_code, recovery = invoke("operations", "status", operation)
     except (RuntimeError, ValueError) as error:
         recovery = {"unavailable": str(error)}
+    recovery_proven = False
     if same_source_recovery:
         require(image_identity(launcher.parent.parent, target_version)["codeFingerprint"] == fixture["codeFingerprint"],
                 "Replacement code differs from the frozen source pair")
         verify_recovered_install(accepted, receipt, recovery)
+        recovery_proven = True
     dependency_evidence = None
     if fresh_deb_dependencies:
         after_packages = installed_debian_packages()
@@ -609,6 +772,23 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
               "freshDependencyEvidence": dependency_evidence, "evidence": str(evidence),
               "retainedFixtureAuth": retained_fixture_auth,
               "preservesExistingFixturePassword": preserve_existing_fixture_password}
+    if cleanup_synthetic_workspace_after_success:
+        # The fixed RPM collector requires an absent workspace, but cleanup is
+        # deliberately late: terminal receipt, replacement recovery, credential
+        # restoration and the original owner must all already be proven.
+        try:
+            cleanup_synthetic_workspace(workspace, evidence, owner,
+                                        protected_success=True,
+                                        recovered=recovery_proven,
+                                        credential_restored=credential_restored)
+            result["syntheticWorkspaceCleanup"] = {"requested": True, "workspaceRemoved": True}
+        except Exception as error:
+            result["syntheticWorkspaceCleanup"] = {"requested": True, "workspaceRemoved": False,
+                                                   "error": str(error)}
+            (evidence / "install-result.json").write_text(json.dumps(result, indent=2))
+            raise
+    else:
+        result["syntheticWorkspaceCleanup"] = {"requested": False, "workspaceRemoved": False}
     (evidence / "install-result.json").write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2), flush=True)
 
@@ -628,7 +808,10 @@ if __name__ == "__main__":
                         help="Use the private disposable-guest credential path and retained polkit PTY")
     parser.add_argument("--preserve-existing-fixture-password", action="store_true",
                         help="Explicitly restore a pre-existing P-baseline after retained fixture authentication")
+    parser.add_argument("--cleanup-synthetic-workspace", action="store_true",
+                        help="After terminal protected success/recovery, remove only the owned synthetic workspace")
     args = parser.parse_args()
     run(args.launcher, args.expected_target_version, args.confirm_owned_disposable_vm,
         args.require_same_source_recovery, args.require_fresh_deb_dependencies, args.arch_source_fixture,
-        args.rpm_source_fixture, args.retained_fixture_auth, args.preserve_existing_fixture_password)
+        args.rpm_source_fixture, args.retained_fixture_auth, args.preserve_existing_fixture_password,
+        args.cleanup_synthetic_workspace)

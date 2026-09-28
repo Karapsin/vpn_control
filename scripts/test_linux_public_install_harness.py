@@ -24,10 +24,212 @@ from test_linux_public_install import (launch_fixture_owner, require_package_man
                                        invoke_retained_install,
                                        _terminal_json_envelope,
                                        require_human_terminal,
-                                       timed_update_command, verify_recovered_install)
+                                       timed_update_command, verify_recovered_install,
+                                       cleanup_synthetic_workspace, _no_process_uses_workspace,
+                                       _owned_synthetic_workspace)
 
 
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
+    def test_rpm_cleanup_removes_only_terminal_recovered_workspace_after_old_retention_would_fail(self):
+        """Causal RED/GREEN: collector sees a retained workspace as incomplete."""
+        class StoppedOwner:
+            def poll(self):
+                return 0
+
+        with tempfile.TemporaryDirectory(prefix="vpn-public-install-evidence-") as temporary:
+            evidence = Path(temporary)
+            workspace = evidence / "workspace"
+            workspace.mkdir()
+            (workspace / "state.json").write_text("synthetic")
+            # This is the old outcome: a real completed install was classified
+            # failed solely because this owned state tree remained.
+            self.assertTrue(os.path.lexists(workspace))
+            with mock.patch("test_linux_public_install._no_process_uses_workspace") as no_owner:
+                cleanup_synthetic_workspace(workspace, evidence, StoppedOwner(),
+                                            protected_success=True, recovered=True, credential_restored=True)
+            no_owner.assert_called_once()
+            self.assertEqual((workspace,), no_owner.call_args.args)
+            self.assertIsInstance(no_owner.call_args.kwargs["owned_cleanup_fd"], int)
+            self.assertFalse(os.path.lexists(workspace))
+            self.assertTrue(evidence.is_dir(), "Evidence and install-result stay available")
+
+    def test_rpm_cleanup_preserves_workspace_when_owner_or_process_observation_is_unknown(self):
+        class LiveOwner:
+            def poll(self):
+                return None
+
+        class StoppedOwner:
+            def poll(self):
+                return 0
+
+        with tempfile.TemporaryDirectory(prefix="vpn-public-install-evidence-") as temporary:
+            evidence = Path(temporary)
+            workspace = evidence / "workspace"
+            workspace.mkdir()
+            with self.assertRaisesRegex(RuntimeError, "requires terminal protected recovery"):
+                cleanup_synthetic_workspace(workspace, evidence, StoppedOwner(),
+                                            protected_success=False, recovered=True, credential_restored=True)
+            self.assertTrue(workspace.is_dir(), "Failed installation must retain the workspace")
+            with self.assertRaisesRegex(RuntimeError, "still running"):
+                cleanup_synthetic_workspace(workspace, evidence, LiveOwner(),
+                                            protected_success=True, recovered=True, credential_restored=True)
+            self.assertTrue(workspace.is_dir())
+            with mock.patch("test_linux_public_install._no_process_uses_workspace",
+                            side_effect=RuntimeError("Cannot inspect process ownership of synthetic workspace")):
+                with self.assertRaisesRegex(RuntimeError, "Cannot inspect"):
+                    cleanup_synthetic_workspace(workspace, evidence, StoppedOwner(),
+                                                protected_success=True, recovered=True, credential_restored=True)
+            self.assertTrue(workspace.is_dir(), "Unknown ownership must retain the workspace")
+
+    def test_rpm_cleanup_process_scan_skips_foreign_uninspectable_proc_entry(self):
+        class PathEntry:
+            def __init__(self, name):
+                self.name = name
+
+            def __truediv__(self, child):
+                return (self.name, child)
+
+        class Proc:
+            def is_dir(self):
+                return True
+
+            def iterdir(self):
+                return [PathEntry("1234")]
+
+        foreign = types.SimpleNamespace(st_uid=os.geteuid() + 1)
+        # Fedora can deny cwd/fd reads for another UID.  That is expected: the
+        # terminal protected receipt has already closed privileged installer
+        # ownership, while same-UID observation failures still fail closed.
+        with mock.patch("test_linux_public_install.os.stat", return_value=foreign), \
+             mock.patch("test_linux_public_install.os.readlink") as readlink:
+            _no_process_uses_workspace(Path("/tmp/vpn-public-install-evidence-x/workspace"), Proc())
+        readlink.assert_not_called()
+
+    @unittest.skipUnless(os.name == "posix", "descriptor cleanup requires POSIX")
+    def test_rpm_cleanup_closes_both_descriptors_when_process_observation_fails(self):
+        owner = types.SimpleNamespace(poll=lambda: 0)
+        with tempfile.TemporaryDirectory(prefix="vpn-public-install-evidence-") as temporary:
+            evidence = Path(temporary); workspace = evidence / "workspace"; workspace.mkdir()
+            descriptors = _owned_synthetic_workspace(workspace, evidence)
+            try:
+                with mock.patch("test_linux_public_install._owned_synthetic_workspace", return_value=descriptors), \
+                     mock.patch("test_linux_public_install._no_process_uses_workspace", side_effect=RuntimeError("unreadable")):
+                    with self.assertRaisesRegex(RuntimeError, "unreadable"):
+                        cleanup_synthetic_workspace(workspace, evidence, owner, True, True, True)
+                self.assertTrue(workspace.is_dir())
+                for descriptor in descriptors:
+                    with self.assertRaises(OSError):
+                        os.fstat(descriptor)
+            finally:
+                for descriptor in descriptors:
+                    try: os.close(descriptor)
+                    except OSError: pass
+
+    def test_rpm_cleanup_process_scan_retains_on_inspectable_same_uid_observation_failure(self):
+        class PathEntry:
+            name = "1234"
+
+            def __truediv__(self, child):
+                return self
+
+            def iterdir(self):
+                return []
+
+        class Proc:
+            def is_dir(self):
+                return True
+
+            def iterdir(self):
+                return [PathEntry()]
+
+        same_uid = types.SimpleNamespace(st_uid=os.geteuid())
+        with mock.patch("test_linux_public_install.os.stat", return_value=same_uid), \
+             mock.patch("test_linux_public_install.os.readlink", side_effect=OSError("fixture failure")):
+            with self.assertRaisesRegex(RuntimeError, "Cannot inspect"):
+                _no_process_uses_workspace(Path("/tmp/vpn-public-install-evidence-x/workspace"), Proc())
+
+    def test_rpm_cleanup_process_scan_retains_on_same_uid_proc_permission_denial(self):
+        class PathEntry:
+            name = "1234"
+
+            def __truediv__(self, child):
+                return self
+
+            def iterdir(self):
+                return []
+
+        class Proc:
+            def is_dir(self):
+                return True
+
+            def iterdir(self):
+                return [PathEntry()]
+
+        same_uid = types.SimpleNamespace(st_uid=os.geteuid())
+        with tempfile.TemporaryDirectory(prefix="vpn-public-install-evidence-") as temporary:
+            workspace = Path(temporary) / "workspace"
+            workspace.mkdir()
+            with mock.patch("test_linux_public_install.os.stat", return_value=same_uid), \
+                 mock.patch("test_linux_public_install.os.readlink", side_effect=PermissionError("hidepid")):
+                with self.assertRaisesRegex(RuntimeError, "Cannot inspect"):
+                    _no_process_uses_workspace(workspace, Proc())
+            self.assertTrue(workspace.is_dir(), "Same-UID proc uncertainty must retain the workspace")
+
+    @unittest.skipUnless(os.name == "posix", "proc fixture symlinks require POSIX")
+    def test_rpm_cleanup_missing_cwd_or_fd_is_not_a_disappeared_process(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary); process = proc / "1234"; process.mkdir()
+            workspace = Path("/tmp/vpn-public-install-evidence-x/workspace")
+            for target in ("cwd", "fd"):
+                with self.subTest(missing=target):
+                    if target == "fd":
+                        (process / "cwd").symlink_to("/tmp")
+                    with self.assertRaisesRegex(RuntimeError, "Cannot inspect"):
+                        _no_process_uses_workspace(workspace, proc)
+
+    @unittest.skipUnless(os.name == "posix", "descriptor cleanup requires POSIX")
+    def test_rpm_cleanup_replaced_workspace_closes_all_opened_descriptors(self):
+        with tempfile.TemporaryDirectory(prefix="vpn-public-install-evidence-") as temporary:
+            evidence = Path(temporary); workspace = evidence / "workspace"; workspace.mkdir()
+            descriptors = []
+            real_open = os.open
+            def opened(*args, **kwargs):
+                descriptor = real_open(*args, **kwargs)
+                descriptors.append(descriptor)
+                return descriptor
+            try:
+                with mock.patch("test_linux_public_install.os.open", side_effect=opened), \
+                     mock.patch("test_linux_public_install.os.fstat", side_effect=OSError("replaced")):
+                    with self.assertRaisesRegex(OSError, "replaced"):
+                        _owned_synthetic_workspace(workspace, evidence)
+                self.assertEqual(2, len(descriptors))
+                for descriptor in descriptors:
+                    with self.assertRaises(OSError):
+                        os.fstat(descriptor)
+            finally:
+                for descriptor in descriptors:
+                    try: os.close(descriptor)
+                    except OSError: pass
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "requires Linux procfs descriptor visibility")
+    def test_rpm_cleanup_exempts_only_its_exact_workspace_descriptor_from_proc_scan(self):
+        with tempfile.TemporaryDirectory(prefix="vpn-public-install-evidence-") as temporary:
+            evidence = Path(temporary)
+            workspace = evidence / "workspace"
+            workspace.mkdir()
+            evidence_fd, workspace_fd = _owned_synthetic_workspace(workspace, evidence)
+            try:
+                # Causal RED: the old scanner saw its own cleanup descriptor
+                # and rejected every otherwise safe removal.
+                with self.assertRaisesRegex(RuntimeError, "still owns"):
+                    _no_process_uses_workspace(workspace)
+                # GREEN: only this PID/FD pair is exempt; all other same-UID
+                # descriptors and process references remain checked.
+                _no_process_uses_workspace(workspace, owned_cleanup_fd=workspace_fd)
+            finally:
+                os.close(workspace_fd)
+                os.close(evidence_fd)
+
     def test_public_envelope_requires_one_complete_stdout_document(self):
         envelope = {"schemaVersion": 1, "code": "ACCEPTED", "final": False,
                     "data": {"nested": {"schemaVersion": 1, "status": "accepted"}}}

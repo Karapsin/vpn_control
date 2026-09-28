@@ -2,6 +2,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.ComponentModel;
+using Microsoft.Win32.SafeHandles;
 
 public static class InstallerRoleFixtures {
     const string Job="00000000-0000-0000-0000-00000000000a";
@@ -40,7 +42,8 @@ public static class InstallerRoleFixtures {
     }
     sealed class Coordinator : VpnInstallHelperRoles.CoordinatorSession {
         internal readonly List<string> Calls=new List<string>();
-        internal bool Cancel,Ready=true,Expired,ExitedUnexpectedly,FailInstallPublication,FailSuccessPublication,OwnerAlreadyExited;
+        internal bool Cancel,Ready=true,Expired,ExitedUnexpectedly,FailInstallPublication,FailSuccessPublication,OwnerAlreadyExited,ThrowAdmission,ThrowReady;
+        internal string PreinstallDiagnostic;
         internal int CancelPublicationFailure;
         internal bool CancellationReplaced;
         bool waiting,installing;
@@ -70,8 +73,21 @@ public static class InstallerRoleFixtures {
         public bool PrecommitDeadlineReached { get { return Expired; } }
         public bool ExitDeadlineReached { get { return Expired; } }
         public bool CommitExists() { Calls.Add("commit"); return true; }
-        public bool TryExclusiveAdmission() { Calls.Add("exclusive"); return true; }
-        public bool TryInstallationReady() { Calls.Add("inventory"); return Ready; }
+        public bool TryExclusiveAdmission() {
+            Calls.Add("exclusive");
+            if (ThrowAdmission) throw new IOException("private path C:\\Secret\\alice; token=redacted-in-product");
+            return true;
+        }
+        public void PublishPreinstallDiagnostic(int stage,bool win32Failure) {
+            PreinstallDiagnostic=(stage==1 ? "ExclusiveAdmission" : stage==2 ? "Inventory" : "Unknown")+
+                ":"+(win32Failure ? "WIN32" : "OTHER");
+            Calls.Add("diagnostic:"+PreinstallDiagnostic);
+        }
+        public bool TryInstallationReady() {
+            Calls.Add("inventory");
+            if (ThrowReady) throw new IOException("private path C:\\Secret\\bob; password=fake");
+            return Ready;
+        }
         public uint? ReadNativeResult() { Calls.Add("result"); return Result; }
         public void Pause() { Calls.Add("pause"); }
     }
@@ -98,6 +114,64 @@ public static class InstallerRoleFixtures {
     }
     public static void CancelFailureBeforeReplacement() { CancellationPublicationFailure(1); }
     public static void CancelFailureAfterReplacement() { CancellationPublicationFailure(2); }
+    public static void PreinstallAdmissionFailure() {
+        Coordinator session=new Coordinator(); session.ThrowAdmission=true;
+        CoordinatorFails(session);
+        Check(String.Join(",",session.Calls)==
+            "reserve,job,publish:Preparing,pending:1,publish:Authorized,commit,publish:WaitingForExit,exclusive,"+
+            "diagnostic:ExclusiveAdmission:OTHER,publish:Failed,pending:0",
+            "Pre-install exception lost exact phase sequence or bounded admission diagnostic");
+        Check(!session.Calls.Contains("inventory") && !session.Calls.Contains("result") &&
+            !session.Calls.Contains("publish:Installing") && !session.Calls.Contains("publish:Succeeded"),
+            "Pre-install exception invented an MSI result or altered the original state");
+    }
+    public static void PreinstallReadinessFailure() {
+        Coordinator session=new Coordinator(); session.ThrowReady=true;
+        CoordinatorFails(session);
+        Check(String.Join(",",session.Calls)==
+            "reserve,job,publish:Preparing,pending:1,publish:Authorized,commit,publish:WaitingForExit,exclusive,inventory,"+
+            "diagnostic:Inventory:OTHER,publish:Failed,pending:0",
+            "Readiness exception lost exact phase sequence or bounded inventory diagnostic");
+        Check(!session.Calls.Contains("result") && !session.Calls.Contains("publish:Installing") &&
+            !session.Calls.Contains("publish:Succeeded"),
+            "Readiness exception invented an MSI result or altered the original state");
+    }
+    public static void ProtectedPreinstallDiagnosticLeaf() {
+        CheckProtectedLeaf(VpnInstallHelperRoles.PreinstallStage.ExclusiveAdmission,
+            VpnInstallHelperRoles.PreinstallKind.Win32Api,"EXCLUSIVE_ADMISSION","WIN32_API");
+        CheckProtectedLeaf(VpnInstallHelperRoles.PreinstallStage.Inventory,
+            VpnInstallHelperRoles.PreinstallKind.Other,"INVENTORY","OTHER");
+        CheckProtectedLeaf(VpnInstallHelperRoles.PreinstallStage.Readiness,
+            VpnInstallHelperRoles.PreinstallKind.Identity,"READINESS","IDENTITY");
+    }
+    static void CheckProtectedLeaf(VpnInstallHelperRoles.PreinstallStage stage,VpnInstallHelperRoles.PreinstallKind kind,
+        string expectedStage,string expectedKind) {
+        string directory=Path.Combine(Path.GetTempPath(),"vpn-role-diagnostic-"+Guid.NewGuid().ToString("N"));
+        const string directoryAcl="O:BAG:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;GRGX;;;BU)";
+        VpnInstallNative.CreateDirectory(directory,directoryAcl);
+        try {
+            using (SafeFileHandle handle=VpnInstallNative.OpenDirectory(directory)) {
+                VpnInstallHelperRoles.PublishProtectedPreinstallDiagnostic(handle,stage,kind);
+                string path=Path.Combine(directory,"preinstall-diagnostic.json");
+                string expected="{\"version\":1,\"stage\":\""+expectedStage+"\",\"kind\":\""+expectedKind+"\"}";
+                using (SafeFileHandle leaf=VpnInstallNative.OpenRead(path,false))
+                using (FileStream input=new FileStream(leaf,FileAccess.Read,1,false)) {
+                    VpnInstallNative.Inspect(input.SafeFileHandle,false,false,null);
+                    using (StreamReader reader=new StreamReader(input)) {
+                        Check(reader.ReadToEnd()==expected,
+                            "Protected diagnostic had non-enum data or lost the exact stage");
+                    }
+                }
+                bool duplicateRejected=false;
+                try { VpnInstallHelperRoles.PublishProtectedPreinstallDiagnostic(handle,
+                    VpnInstallHelperRoles.PreinstallStage.Readiness,VpnInstallHelperRoles.PreinstallKind.Identity); }
+                catch (Win32Exception) { duplicateRejected=true; }
+                Check(duplicateRejected,"Protected diagnostic leaf was overwritten");
+                Check(File.ReadAllText(path)==expected,
+                    "Rejected duplicate changed the first diagnostic");
+            }
+        } finally { Directory.Delete(directory,true); }
+    }
     static void CancellationPublicationFailure(int scenario) {
         Coordinator session=new Coordinator(); session.Cancel=true; session.CancelPublicationFailure=scenario;
         CoordinatorFails(session);

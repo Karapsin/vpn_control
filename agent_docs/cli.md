@@ -50,12 +50,12 @@ routing set block-quic-udp443 true|false
 routing import --input PATH|-
 routing import --qr-image PATH
 routing export --output PATH|- [--format json|qr-png]
-routing apps list [--search TEXT]
-routing apps set --input PATH|-
-routing apps add <package>
-routing apps remove <package>
-routing apps select-all [--search TEXT]
-routing apps clear [--search TEXT]
+routing apps list [--search TEXT]                # Android only
+routing apps set --input PATH|-                  # Android only
+routing apps add <package>                      # Android only
+routing apps remove <package>                   # Android only
+routing apps select-all [--search TEXT]         # Android only
+routing apps clear [--search TEXT]              # Android only
 settings show [key]
 settings set <key> <value>
 settings apply --input PATH|-
@@ -94,7 +94,8 @@ requests never bootstrap a missing owner. The authenticated transport preserves 
 explicit epoch rather than replacing it with the newly discovered owner's identity.
 Desktop `revisionGuardOperations` lists the currently supported guarded writes:
 settings, SSH-key import, subscription/location edits and selection, source changes,
-routing set/import, bulk location import, location benchmarks, and quit. Runtime/job guards outside that
+routing set/import, bulk location import, location benchmarks, update installation,
+and quit. Runtime/job guards outside that
 list remain unsupported. Android forwards both guards to its implemented owner
 handlers; this does not make its remaining domain commands implemented.
 Human and JSON desktop commands share the timeout option. Synchronous commands

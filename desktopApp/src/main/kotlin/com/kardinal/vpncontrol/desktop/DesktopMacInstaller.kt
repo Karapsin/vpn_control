@@ -62,6 +62,7 @@ internal interface DesktopMacInstallAdapter {
 /** Native per-job worker, never the legacy mutable shell helper. Public dispatch waits for native validation. */
 internal class DesktopMacInstaller(private val stateDirectory: Path,
     private val isMac: () -> Boolean = { System.getProperty("os.name").startsWith("Mac", true) },
+    private val currentBootSession: () -> String = DesktopMacBootSession::current,
 ) : DesktopMacInstallAdapter {
     private val correlations = DesktopInstallCorrelationJournal(stateDirectory, readBoundReceipt = { binding ->
         authority(binding.receiptAuthority).store().open(binding.jobId).use { it.read() }
@@ -81,8 +82,19 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
             }
         }
     override fun reconcileLateAuthorization(ownerId: String): Result<Unit> = synchronized(this) {
-        val observer = lateAuthorization ?: return@synchronized Result.success(Unit)
-        observer.reconcile(ownerId).also { if (observer.isCompleted()) lateAuthorization = null }
+        val observer = lateAuthorization
+        if (observer != null) {
+            val result = observer.reconcile(ownerId)
+            if (observer.isCompleted()) lateAuthorization = null
+            if (result.isFailure) return@synchronized result
+        }
+        runCatching {
+            val inputRoot = JnaMacInstallAdmission().homeDirectory()
+                .resolve("Library/Application Support/vpn-control-install-inputs")
+            reconcileMacPreauthorizationProcessLoss(correlations.recoverAll(), previousBoot = { jobId ->
+                DesktopMacBootSessionRecord.belongsToPreviousBoot(inputRoot.resolve(jobId), jobId, currentBootSession)
+            }, markNotStarted = { correlation, jobId -> correlations.markNotStarted(correlation, jobId) })
+        }
     }
     override fun releaseCompleted(correlation: DesktopInstallCorrelation, receipt: DesktopInstallJobReceipt): Result<Unit> = runCatching {
         require(receipt.phase.terminal)
@@ -157,6 +169,7 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
         try {
             correlations.requireNew(correlation)
             val native = JnaMacInstallAdmission()
+            val launchBootSession = currentBootSession()
             val owner = DesktopMacInstallProcesses.read(ProcessHandle.current().pid())
             require(owner.uid == native.currentUid())
             val launcher = Path.of(owner.executable)
@@ -206,6 +219,7 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
             val request = DesktopMacInstallRequest(job, kind, owner, attached, copied.toString(), count, asset.sha256,
                 stateDirectory.toAbsolutePath().normalize().toString())
             macInstallPublishRecord(input.resolve("request"), request.encode())
+            DesktopMacBootSessionRecord.publish(input, job, launchBootSession)
             fun receiptReader() = reader ?: policy.store().open(job).also { reader = it }
             val receiptPrepared = DesktopReceiptPreparedInstall(job,
                 readReceipt = { receiptReader().read() },
@@ -338,7 +352,8 @@ internal class DesktopMacInstaller(private val stateDirectory: Path,
 }
 
 internal fun macInstallPublishRecord(target: Path, bytes: ByteArray) {
-    require(target.fileName.toString() in setOf("request", "watcher", "commit") && bytes.size in 1..16384)
+    require(target.fileName.toString() in setOf("request", "watcher", "commit", DesktopMacBootSessionRecord.FILE_NAME) &&
+        bytes.size in 1..16384)
     DesktopPrivateExportWriter.write(target.toString(), bytes).getOrThrow()
 }
 

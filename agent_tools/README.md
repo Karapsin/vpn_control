@@ -13,6 +13,16 @@ Run `python3 agent_tools/configure_codex.py` once in a new checkout before openi
 
 Do not commit `.agent_venv/` or `.rag_index/`. Restart the Codex session after changing project MCP configuration because a running session does not reload its MCP inventory.
 
+If the desktop app does not export a toolchain path, put it in ignored
+`.codex/build-env.local.json`, for example `{"JAVA_HOME":"/absolute/path/to/jdk"}`.
+`ANDROID_HOME` is also accepted. The file must be a regular, owner-only file
+(mode `0600` on POSIX); values must name existing absolute directories, and
+`JAVA_HOME` must contain executable `bin/java`. Managed MCP child commands
+read this file for each invocation, so a running server picks up changes
+without a restart. The file is parsed as JSON and is never executed as shell
+code. On Windows, an existing local file is rejected until an ACL-aware reader
+is available. Keep machine-specific paths out of tracked MCP configuration.
+
 ## Mandatory Lifecycle
 
 For implementation, testing, release, or commit work:
@@ -23,6 +33,16 @@ For implementation, testing, release, or commit work:
 4. Run `version_bump` once after the final non-documentation content change, then run `run_checks(level="prepush")`. A successful check writes a content fingerprint to `.rag_index/prepush_receipt.json`.
 5. Use `git_workflow` to push `dev` or to resume checks for a full commit SHA. It queries only runs attached to that exact SHA and requires every development workflow in `.github/required-workflows.json` to succeed.
 6. Use `release_workflow` only after an explicit user release command. It fast-forwards `main` from verified `dev`, starts agent-owned visual review, gates on exhaustive VPN integration plus the exact-SHA visual receipt/status, and dispatches the manual publisher.
+
+Managed checks hold an exclusive checkout lease for execution and receipt
+publication. A concurrent caller returns busy before running checks; observe the
+existing run rather than deleting the persistent lock file. Dry runs do not
+acquire a lease. Direct Gradle commands still require a single coordinator.
+If a check runner exits while its child survives, reobserve that child before
+starting another build; the lease cannot establish an orphan's terminal outcome.
+Pre-push captures source content before and after checks and refuses to publish
+a new receipt when content changes during validation. Freeze edits, wait for the
+current run to exit, then run a fresh pre-push tier.
 
 `prepare_start` deliberately blocks when a fetch fails, branches diverge, a dirty branch other than `dev` would need switching, or a dirty behind-`dev` worktree would need pulling. Resolve the reported condition explicitly and rerun it.
 
@@ -122,7 +142,27 @@ performs the approved isolated import. A hash-only result is not execution proof
 `admit-plan` accepts explicit memory observations and reservations; its result is
 planning arithmetic, not fresh host observation or permission to start a VM.
 
+`vm_workflow("macos-installer-recovery-status", inputs=...)` accepts one exact,
+redacted unknown-job envelope: `jobId`, its nonfinal `publicStatus`,
+`protectedReceiptObservation`, optional `bootSessionToken`, and
+`currentBootSessionUuid`. It is read-only and always reports the job as unknown.
+A missing launch token preserves a legacy job such as one created before
+boot-session recovery existed. A different valid boot token plus caller-reported
+receipt absence only identifies a product-maintenance candidate; the product must
+reopen its private token and protected receipt before it may publish cancellation.
+The MCP action never starts a VM or product owner, replays or cancels an installer,
+or accepts credential fields.
+
 ### Fixed Windows credential-validity probe
+
+The separate `scripts/windows_msi_fixture_preflight.py` two-phase UAC CLI requires
+independent `--compact-observation` and `--expanded-observation` JSON records.
+Each contains exactly `version: 1`, `phase`, `frameSha256`, `qemuIdentity`,
+`operationId` and `promptId`, recorded with the corresponding capture. The CLI
+binds both frames to the expected prompt; it never supplies expected identity as
+observed evidence. The credential-input driver must separately use the existing
+prompt freshness guard immediately before input. This metadata/pixel check never
+types a credential or establishes installer success.
 
 `vm_workflow("windows-credential-probe-start", inputs=...)` and
 `vm_workflow("windows-credential-probe-status", inputs=...)` are the only

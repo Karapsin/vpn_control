@@ -21,6 +21,15 @@ class DesktopWindowsInstallHelperRoleTest {
     @Test fun cancellationPublicationFailureAfterReplacementPreservesTerminalIdentity() =
         runFixture("CancelFailureAfterReplacement", 0)
 
+    @Test fun thrownExclusiveAdmissionPublishesBoundedPreinstallDiagnosticBeforeFailure() =
+        runFixture("PreinstallAdmissionFailure", 0)
+
+    @Test fun thrownInstallationReadinessPublishesBoundedPreinstallDiagnosticBeforeFailure() =
+        runFixture("PreinstallReadinessFailure", 0)
+
+    @Test fun protectedPreinstallDiagnosticHasFixedBytesAndStrictAcl() =
+        runFixture("ProtectedPreinstallDiagnosticLeaf", 0)
+
     private fun runFixture(operation: String, expectedCases: Int) {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
         val directory = Files.createTempDirectory("vpn-install-helper-role-")

@@ -32,6 +32,7 @@ _VERSION = 2
 _RECIPE = "linux-public-update-preflight"
 _WINDOWS_RECIPE = "windows-credential-validity-v1"
 _SCHEDULED_RECIPE = "linux-scheduled-refresh"
+_RPM_RECIPE = "linux-rpm-public-install-recovery"
 Dispatch = Callable[[str, str, Mapping[str, Any]], Mapping[str, Any]]
 
 
@@ -46,13 +47,20 @@ def _token(value: object, name: str) -> str:
 
 
 def _plan(value: Mapping[str, Any]) -> dict[str, str]:
-    if not isinstance(value, Mapping) or value.get("recipe") not in {_RECIPE, _WINDOWS_RECIPE, _SCHEDULED_RECIPE}:
+    if not isinstance(value, Mapping) or value.get("recipe") not in {_RECIPE, _WINDOWS_RECIPE, _SCHEDULED_RECIPE, _RPM_RECIPE}:
         raise NativeScenarioBatchError("Batch recipe is not allowlisted.")
     if value["recipe"] == _RECIPE:
         required = {"batchId", "recipe", "host", "environment", "bundleManifestArtifactId", "scenarioCorrelationId"}
         optional: set[str] = set()
     elif value["recipe"] == _WINDOWS_RECIPE:
         required = {"batchId", "recipe", "host", "environment", "probeCorrelationId"}
+        optional = set()
+    elif value["recipe"] == _RPM_RECIPE:
+        # The credential is an opaque configured handle.  Its bytes are never
+        # an artifact, a batch input, or journal evidence.
+        required = {"batchId", "recipe", "host", "environment", "bundleManifestArtifactId",
+                    "scenarioInputArtifactId", "sourceFixtureArtifactId", "targetPackageArtifactId",
+                    "credentialHandle", "scenarioCorrelationId"}
         optional = set()
     else:
         required = {"batchId", "recipe", "host", "environment", "bundleManifestArtifactId",
@@ -62,7 +70,7 @@ def _plan(value: Mapping[str, Any]) -> dict[str, str]:
         raise NativeScenarioBatchError("Batch plan has unsupported or missing fields.")
     strings = required - {"bundleManifestArtifactId", "scenarioInputArtifactId"}
     result = {key: _token(value[key], key) for key in strings}
-    for field in ("bundleManifestArtifactId", "scenarioInputArtifactId"):
+    for field in ("bundleManifestArtifactId", "scenarioInputArtifactId", "sourceFixtureArtifactId", "targetPackageArtifactId"):
         if field in value:
             artifact = value[field]
             if not isinstance(artifact, str) or not _ARTIFACT.fullmatch(artifact):
@@ -85,10 +93,46 @@ def _plan(value: Mapping[str, Any]) -> dict[str, str]:
                 "scenarioCorrelationId": result["scenarioCorrelationId"]})
         except (ValueError, native_fixture_preflight.NativeFixturePreflightError) as error:
             raise NativeScenarioBatchError("Scheduled refresh plan inputs are invalid.") from error
+    elif result["recipe"] == _RPM_RECIPE:
+        try:
+            if str(uuid.UUID(result["scenarioCorrelationId"])) != result["scenarioCorrelationId"]:
+                raise ValueError()
+        except ValueError as error:
+            raise NativeScenarioBatchError("RPM recovery correlationId must be a canonical UUID.") from error
     return dict(sorted(result.items()))
 
 
 def _nodes(plan: Mapping[str, str]) -> dict[str, dict[str, Any]]:
+    if plan["recipe"] == _RPM_RECIPE:
+        digest = _ARTIFACT.fullmatch(plan["bundleManifestArtifactId"]).group(1)
+        correlation = plan["scenarioCorrelationId"]
+        artifact_ids = {"bundleManifest": plan["bundleManifestArtifactId"],
+                        "scenarioInput": plan["scenarioInputArtifactId"],
+                        "sourceFixture": plan["sourceFixtureArtifactId"],
+                        "targetPackage": plan["targetPackageArtifactId"]}
+        preflight = {"scenarioId": _RPM_RECIPE, "host": plan["host"], "environment": plan["environment"],
+                     "bundleManifestArtifactId": plan["bundleManifestArtifactId"],
+                     "scenarioInputArtifactId": plan["scenarioInputArtifactId"],
+                     "sourceFixtureArtifactId": plan["sourceFixtureArtifactId"],
+                     "targetPackageArtifactId": plan["targetPackageArtifactId"],
+                     "credentialHandle": plan["credentialHandle"], "scenarioCorrelationId": correlation}
+        result = {
+            "artifact": {"surface": "vm", "action": "artifact-verify", "inputs": {"artifactId": plan["bundleManifestArtifactId"]}, "after": [], "mode": "preflight"},
+            "scenarioInput": {"surface": "vm", "action": "artifact-verify", "inputs": {"artifactId": plan["scenarioInputArtifactId"]}, "after": [], "mode": "preflight"},
+            "sourceFixture": {"surface": "vm", "action": "artifact-verify", "inputs": {"artifactId": plan["sourceFixtureArtifactId"]}, "after": [], "mode": "preflight"},
+            "targetPackage": {"surface": "vm", "action": "artifact-verify", "inputs": {"artifactId": plan["targetPackageArtifactId"]}, "after": [], "mode": "preflight"},
+            "fixture": {"surface": "fixture", "action": "check", "inputs": preflight, "after": [], "mode": "preflight"},
+            "start": {"surface": "vm", "action": "rpm-public-install-start", "inputs": {
+                "scenarioId": _RPM_RECIPE, "host": plan["host"], "environment": plan["environment"],
+                "bundleHash": digest, "artifactIds": artifact_ids, "credentialHandle": plan["credentialHandle"],
+                "correlationId": correlation},
+                "after": ["artifact", "scenarioInput", "sourceFixture", "targetPackage", "fixture"], "mode": "mutation"},
+            "status": {"surface": "vm", "action": "rpm-public-install-status", "inputs": {"correlationId": correlation}, "after": ["start"], "mode": "observe"},
+            "collect": {"surface": "vm", "action": "rpm-public-install-collect", "inputs": {"correlationId": correlation},
+                        "scenarioId": _RPM_RECIPE, "after": ["status"], "mode": "collect", "afterTerminal": True},
+        }
+        _ensure_acyclic(result)
+        return result
     if plan["recipe"] == _SCHEDULED_RECIPE:
         digest = _ARTIFACT.fullmatch(plan["bundleManifestArtifactId"]).group(1)
         correlation = plan["scenarioCorrelationId"]
@@ -276,6 +320,33 @@ class NativeScenarioBatch:
                 if isinstance(traffic, Mapping):
                     evidence["scenarioEvidence"]["traffic"] = {key: traffic.get(key) if type(traffic.get(key)) is bool else None
                         for key in ("oldPortContinuity", "portMigrated", "postTransitionTraffic")}
+        if node["action"] == "rpm-public-install-collect":
+            summary = value.get("scenarioEvidence")
+            cleanup = summary.get("cleanup") if isinstance(summary, Mapping) else None
+            if (state == "terminal" and type(value.get("exitCode")) is int and value["exitCode"] != 0
+                    and isinstance(summary, Mapping) and summary.get("correlationId") == expected
+                    and summary.get("result") == "failed" and not isinstance(cleanup, Mapping)):
+                phase = summary.get("failurePhase")
+                evidence["scenarioEvidence"] = {"correlationId": expected, "result": "failed",
+                    "failurePhase": phase if isinstance(phase, str) and phase in
+                    {"harness-unverified", "guest-admission"} else "harness-unverified",
+                    "reason": "no_typed_recovery_receipt"}
+                return {"state": "failed", "outcome": "terminal_without_recovery_receipt", "evidence": evidence}
+            if (not isinstance(summary, Mapping) or summary.get("correlationId") != expected
+                    or summary.get("result") not in {"passed", "failed"} or not isinstance(cleanup, Mapping)):
+                return {"state": "waiting", "outcome": "observer_unknown", "evidence": evidence}
+            operation = summary.get("operationId")
+            protected_job = summary.get("protectedJobId")
+            if (not isinstance(operation, str) or not _TOKEN.fullmatch(operation)
+                    or not isinstance(protected_job, str) or not _TOKEN.fullmatch(protected_job)):
+                return {"state": "waiting", "outcome": "observer_unknown", "evidence": evidence}
+            evidence["scenarioEvidence"] = {"correlationId": expected, "result": summary["result"],
+                "operationId": operation, "protectedJobId": protected_job,
+                "rpmVerifyClean": summary.get("rpmVerifyClean") if type(summary.get("rpmVerifyClean")) is bool else None,
+                "credentialRestored": summary.get("credentialRestored") if type(summary.get("credentialRestored")) is bool else None,
+                "cleanup": {"state": cleanup.get("state") if cleanup.get("state") in {"complete", "incomplete", "preserved-for-recovery", "not-started"} else "unknown",
+                            **{key: cleanup.get(key) if type(cleanup.get(key)) is bool else None
+                               for key in ("ownerStopped", "protectedPreserved", "workspaceRemoved")}}}
         if node["action"] == "artifact-verify":
             ok = value.get("verification") == "verified"
         elif node["surface"] == "fixture":
@@ -291,13 +362,23 @@ class NativeScenarioBatch:
             if state in {"submitted", "unknown", "intent"}:
                 return {"state": "waiting", "outcome": "observer_unknown", "evidence": evidence}
             ok = state == "terminal" and value.get("success") is True
-        elif node["action"] == "scenario-start":
+        elif node["action"] in {"scenario-start", "rpm-public-install-start"}:
             if state in {"unknown", "submitting"}: return {"state": "unknown", "outcome": "submit_unknown", "evidence": evidence}
             ok = state == "submitted" or (state == "terminal" and value.get("exitCode") == 0)
-        elif node["action"] == "scenario-status":
-            if state == "submitted": return {"state": "waiting", "outcome": "running", "evidence": evidence}
+        elif node["action"] in {"scenario-status", "rpm-public-install-status"}:
+            if state in {"submitted", "running"}: return {"state": "waiting", "outcome": "running", "evidence": evidence}
             if state == "unknown": return {"state": "waiting", "outcome": "observer_unknown", "evidence": evidence}
             ok = state == "terminal" and value.get("exitCode") == 0
+        elif node["action"] == "rpm-public-install-collect":
+            summary = evidence.get("scenarioEvidence", {})
+            cleanup = summary.get("cleanup", {})
+            ok = (state == "terminal" and type(value.get("exitCode")) is int and value["exitCode"] == 0
+                  and summary.get("result") == "passed"
+                  and summary.get("rpmVerifyClean") is True
+                  and summary.get("credentialRestored") is True
+                  and cleanup.get("state") == "complete"
+                  and all(cleanup.get(key) is True for key in
+                          ("ownerStopped", "protectedPreserved", "workspaceRemoved")))
         else:  # A bounded, correlation-scoped terminal observer.
             ok = state == "terminal"
         return {"state": "success" if ok else "failed", "outcome": "accepted" if ok else "rejected", "evidence": evidence}
@@ -352,7 +433,7 @@ class NativeScenarioBatch:
         plan = _plan(value["plan"])
         if plan["batchId"] != batch_id or not isinstance(value["nodes"], dict) or set(value["nodes"]) != set(_nodes(plan)): raise NativeScenarioBatchError("Batch journal is invalid.")
         for node in value["nodes"].values():
-            if not isinstance(node, dict) or set(node) != {"state", "outcome", "evidence"} or not isinstance(node["evidence"], dict) or node["state"] not in {"pending", "submitting", "waiting", "success", "failed", "unknown", "blocked"} or node["outcome"] is not None and node["outcome"] not in {"observer_unavailable", "submit_unknown", "observer_unknown", "accepted", "rejected", "running", "dependency_not_admitted", "preflight_not_ready", "fresh_preflight_not_ready", "correlation_mismatch"}: raise NativeScenarioBatchError("Batch node is invalid.")
+            if not isinstance(node, dict) or set(node) != {"state", "outcome", "evidence"} or not isinstance(node["evidence"], dict) or node["state"] not in {"pending", "submitting", "waiting", "success", "failed", "unknown", "blocked"} or node["outcome"] is not None and node["outcome"] not in {"observer_unavailable", "submit_unknown", "observer_unknown", "accepted", "rejected", "running", "dependency_not_admitted", "preflight_not_ready", "fresh_preflight_not_ready", "correlation_mismatch", "terminal_without_recovery_receipt"}: raise NativeScenarioBatchError("Batch node is invalid.")
     def _write(self, record: Mapping[str, Any]) -> None:
         self._validate(record, record["plan"]["batchId"]); self._ensure(); fd, temporary = tempfile.mkstemp(prefix=".batch-", dir=self.directory)
         try:
@@ -386,7 +467,7 @@ class NativeScenarioBatch:
             result["state"] = "pending"
         else:
             result["state"] = "running"
-        if record["plan"]["recipe"] == _SCHEDULED_RECIPE:
+        if record["plan"]["recipe"] in {_SCHEDULED_RECIPE, _RPM_RECIPE}:
             collected = record["nodes"]["collect"].get("evidence", {}).get("scenarioEvidence")
             result["cleanup"] = (dict(collected["cleanup"]) if isinstance(collected, Mapping)
                 and isinstance(collected.get("cleanup"), Mapping) else

@@ -67,6 +67,8 @@ run_check python3 scripts/test_linux_fixture_owner_readiness.py
 run_check python3 scripts/test_linux_fixture_runtime_config.py
 run_check python3 scripts/test_linux_public_install_fixture.py
 run_check python3 scripts/test_windows_fixture_stage_acl.py
+run_check python3 scripts/test_windows_msi_fixture_preflight.py
+run_check python3 scripts/test_windows_qga_powershell_size.py
 run_check python3 scripts/test_guest_build_connect_proxy.py
 run_check python3 scripts/test_guest_fixture_input.py
 run_check python3 scripts/test_linux_gui_fixture_guard.py
