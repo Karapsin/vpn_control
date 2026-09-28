@@ -27,6 +27,48 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Continuation ownership and live gates — 2026-09-28
+
+Startup on `dev` found clean HEAD `24ec90d70ac58029068561fc434692a268ce0714`
+at version `2.1.19`; the five required workflows and advisory VPN Integration
+passed for that SHA. `matrix-status` still reports 22 open groups and zero
+registered reviewed receipts. The prior source-specific native evidence remains
+historical until its artifacts and scenario coverage are reconciled.
+
+| Slice | Owner and exclusive files | Environment and preserved identity | Next gate |
+| --- | --- | --- | --- |
+| Windows MSI | Windows worker: install helper/installer/broker files and focused tests; coordinator owns MCP route | CP117 AMD64 guest; CP176 request `99126312-977f-4a61-a9ef-fb6884d2d26f`, operation `a021aae5-2235-4646-b750-01dca01441d0`, job `9107428f-9c80-4284-9f4e-926350105a59` terminal and never replayed | Freeze same-source complete MSI pair, use a new admitted public operation and diagnose protected pre-MSI stage |
+| Android | Android worker: Android owner/fixture files and focused tests; coordinator owns MCP route | Arch-host API35 `5682` and API29 `5684`, one AVD at a time; UID2000 read-only observation, no new mutation | Fixed package/owner/routing admission and backup, then native action and installer scenarios |
+| Linux RPM | Linux worker: RPM native adapter, batch/harness and tests; coordinator owns MCP route | Fedora2328 installed base and pending state preserved; CP173 correlation `a1f33191-4f6d-41dc-aa1e-cbc4c6029282` rejected and never replayed | Strict process observation and separate base-RPM build guest, then same-source batch |
+| macOS | Mac worker: boot recovery/installer/worker and focused tests; sole local Tart VM | Legacy job `465a954f-cd70-45c4-896d-67e4508bae49` remains unknown; VM stopped, no reservation | Prove safe Darwin memory admission, then future-job reboot recovery, rollback and GUI return |
+| Documents | Document worker: focused desktop export boundary and tests | Read-only historical audit; no native environment | Causal GUI export parity fix and remaining document scenario mapping |
+| Visuals | Visual worker read-only inventory, coordinator controls later capture/review | 249 required scene-platform pairs, six desktop add/edit-location baselines missing; no current-SHA review | Capture in platform-owned environments after native operators release them |
+| Integration | Coordinator: shared protocol, MCP server, docs, metadata, Gradle, commit/push | Host checkout and exact-SHA CI | Register narrow native MCP routes, validate coherent checkpoints, reconcile reviewed receipts |
+
+Each worker owns cleanup of its admitted environment and must hand off exact
+correlation, artifact IDs, terminal status and residual uncertainty. No host VPN,
+installer, trust or runtime interruption is authorized by this ledger.
+
+First-checkpoint observations: the Android API35 readback correlation
+`a4a2f73c-6c99-4028-a846-a4c63f21f6d6` is unknown after a bounded timeout;
+fixed status found no backup, the same controller and zero operations. Do not
+use it as mutation admission. Fedora2328's fixed process probe found unreadable
+same-UID user-manager processes (`EACCES`); cleanup remains unknown and no RPM
+batch started. The macOS local VM was admitted with stable historical swap,
+observed, then stopped and its reservation released. Legacy Mac job `465a954f`
+still has no launch boot token or protected receipt. The 24ec90d arm64 DMG was
+registered under `sha256-eb672e633c659e0c9db8d247aafc6c01ffa474d9d914b01ce4a1329f7b3f39c4`
+as component evidence, not final native acceptance. The GUI text-export helper
+now uses the same private no-overwrite publication as CLI; its two real-filesystem
+tests failed before the fix and passed afterward.
+The fixed Windows preinstall observer re-read CP176's exact protected status as
+`Failed/RUNTIME_FAILED` sequence 3; its diagnostic is absent on the old image.
+The 24ec90d Windows fixture workflow `36412798220` produced a verified
+same-source 2.1.17→2.1.19 AMD64 MSI pair and receipt under
+`checkpoint178/windows-msi-fixture/`, registered through MCP. The pair is
+component/historical evidence once this checkpoint changes product source;
+there is still no new public MSI operation or durable MCP submission route.
+
 The user stopped the old `Finish GUI CLI parity` task and requested review and
 delivery of its inherited dirty batch before passing the remaining work to a fresh
 GPT-6 Sol medium coordinator. Use [parity-continuation-plan.md](parity-continuation-plan.md)

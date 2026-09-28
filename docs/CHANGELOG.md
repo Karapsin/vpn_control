@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.0 - 2026-09-28
 
 - Harden native batch admission and script-mode MCP imports, and retry transient pinned-tool downloads.
 - Harden installer recovery and parity fixtures across Android, Linux, Windows, and macOS.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Make the bounded CONNECT-header fixture handle peer closure consistently across hosts.
 - Isolate cross-platform RPM cleanup fixtures and retain causal context in MCP CI failure logs.
 - Verify native managed-check locking and validation receipts in Windows package CI.
+- Align desktop GUI export safety and native parity admission diagnostics.
 
 ## 2.1.19 - 2026-09-25
 

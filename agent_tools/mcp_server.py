@@ -1839,7 +1839,7 @@ _VM_NATIVE_ADAPTERS = (
     "native_scenario_ssh", "native_artifact_registry", "native_environment",
     "native_environment_observation", "native_scenario_bundle", "native_next_action",
     "native_failure_evidence", "macos_installer_recovery", "native_rpm_public_install_adapter",
-    "native_rpm_public_install_ssh",
+    "native_rpm_public_install_ssh", "android_admission_readback", "windows_msi_public_scenario",
 )
 
 
@@ -1913,6 +1913,55 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 accepted = result.get("state") in {"submitted", "running"} or (result.get("state") == "terminal" and result.get("exitCode") == 0)
                 return {"tool": "vm_workflow", "ok": accepted, "evidenceClass": "installed-package", "productAction": True, **result}
             except (ValueError, OSError, KeyError) as error:
+                return _error("vm_workflow", str(error))
+        if action == "rpm-proc-observe":
+            rpm = _agent_module("native_rpm_public_install_ssh")
+            try:
+                result = rpm.observe_proc(REPO_ROOT, inputs)
+                state = result.get("procState")
+                return {"tool": "vm_workflow", **result, "state": state,
+                        "ok": state == "clear"}
+            except (ValueError, OSError, KeyError) as error:
+                return _error("vm_workflow", str(error))
+        if action == "android-admission-readback":
+            required = {"host", "device", "correlationId"}
+            optional = {"expectedBaseSha256", "timeoutSeconds"}
+            if not isinstance(inputs, dict) or not required <= set(inputs) or set(inputs) - required - optional:
+                return _error("vm_workflow", "Android admission readback requires a configured host/device and correlationId only, with optional expectedBaseSha256 and timeoutSeconds.")
+            reader = _agent_module("android_admission_readback")
+            try:
+                result = reader.readback(REPO_ROOT, inputs["host"], inputs["device"], inputs["correlationId"],
+                    expected_base_sha256=inputs.get("expectedBaseSha256"), timeout_seconds=inputs.get("timeoutSeconds", 45))
+                outcome = result.get("outcome")
+                return {"tool": "vm_workflow", **result,
+                        "state": "unknown" if outcome == "unknown" else outcome,
+                        "ok": outcome == "admitted"}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action == "android-admission-status":
+            required = {"host", "device", "correlationId"}
+            if not isinstance(inputs, dict) or not required <= set(inputs) or set(inputs) - required - {"timeoutSeconds"}:
+                return _error("vm_workflow", "Android admission status requires a configured host/device and exact correlationId, with optional timeoutSeconds.")
+            reader = _agent_module("android_admission_readback")
+            try:
+                result = reader.readback_status(REPO_ROOT, inputs["host"], inputs["device"], inputs["correlationId"],
+                    timeout_seconds=inputs.get("timeoutSeconds", 45))
+                outcome = result.get("outcome")
+                return {"tool": "vm_workflow", **result,
+                        "state": "unknown" if outcome == "unknown" else outcome,
+                        "ok": result.get("ok") is True}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action == "windows-msi-preinstall-status":
+            required = {"host", "jobId"}
+            if not isinstance(inputs, dict) or not required <= set(inputs) or set(inputs) - required - {"timeoutSeconds"}:
+                return _error("vm_workflow", "Windows MSI preinstall status requires configured host and exact jobId, with optional timeoutSeconds.")
+            windows = _agent_module("windows_msi_public_scenario")
+            try:
+                result = windows.preinstall_status(REPO_ROOT, inputs["host"], inputs["jobId"],
+                    timeout_seconds=inputs.get("timeoutSeconds", 15))
+                return {"tool": "vm_workflow", **result, "ok": result.get("state") == "observed"}
+            except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action in {"artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check"}:
             reuse = _agent_module("native_artifact_reuse")
@@ -2153,7 +2202,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-status", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status"))
+    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-status", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "rpm-proc-observe", "android-admission-readback", "android-admission-status", "windows-msi-preinstall-status", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status"))
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")

@@ -52,8 +52,7 @@ object DesktopTextTransfer {
     }
 
     fun writeTextFile(path: Path, content: String): Result<Path> = runCatching {
-        path.parent?.let(Files::createDirectories)
-        Files.writeString(path, content)
+        DesktopPrivateExportWriter.writeText(path.toString(), content).getOrThrow()
         path
     }
 

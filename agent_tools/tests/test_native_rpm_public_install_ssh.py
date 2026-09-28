@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import errno
 import io
 import json
 import os
@@ -22,6 +23,71 @@ from agent_tools import native_rpm_public_install_ssh as subject
 
 
 class RpmTransportTest(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'posix', 'proc diagnostic requires POSIX process ownership')
+    def test_proc_diagnostic_keeps_unreadable_same_uid_process_unknown(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary)
+            process = proc / '1234'
+            process.mkdir()
+            (process / 'stat').write_text('1234 (fixture) S 111 222 333 ' + ' '.join(['0'] * 15 + ['4567']) + '\n')
+            (process / 'cwd').symlink_to('/tmp')
+            (process / 'fd').mkdir()
+            (process / 'fd' / '5').symlink_to('/tmp/some-file')
+            output = subject._observe_proc_tree(proc, os.geteuid())
+            self.assertEqual('clear', output['procState'])
+            self.assertEqual(1, output['sameUidCount'])
+            (process / 'cwd').unlink()
+            output = subject._observe_proc_tree(proc, os.geteuid())
+            self.assertEqual('unknown', output['procState'])
+            self.assertEqual([{'pid': 1234, 'startTicks': 4567, 'state': 'S',
+                               'ppid': 111, 'processGroup': 222, 'session': 333, 'comm': 'fixture',
+                               'errorErrno': 2,
+                               'phase': 'cwd', 'reason': 'unreadable'}], output['uninspectable'])
+            guest_program = subject._PROC_OBSERVE.replace("Path('/proc')", f"Path({str(proc)!r})")
+            guest = subprocess.run([sys.executable, '-c', guest_program], capture_output=True, text=True,
+                                   check=False)
+            self.assertEqual(0, guest.returncode, guest.stderr)
+            self.assertEqual(output, json.loads(guest.stdout))
+
+    @unittest.skipUnless(os.name == 'posix', 'proc diagnostic requires POSIX process ownership')
+    def test_proc_diagnostic_reports_eacces_without_exposing_cwd(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary)
+            process = proc / '1234'
+            process.mkdir()
+            (process / 'stat').write_text('1234 (fixture) S 1 1234 1234 ' + ' '.join(['0'] * 15 + ['4567']) + '\n')
+            (process / 'cwd').symlink_to('/private/fixture-secret')
+            (process / 'fd').mkdir()
+            with patch.object(subject.os, 'readlink', side_effect=PermissionError(errno.EACCES, 'denied')):
+                output = subject._observe_proc_tree(proc, os.geteuid())
+            self.assertEqual('unknown', output['procState'])
+            self.assertEqual(13, output['uninspectable'][0]['errorErrno'])
+            self.assertNotIn('/private/fixture-secret', json.dumps(output))
+
+    def test_proc_diagnostic_rejects_unbounded_or_wrong_host_inputs_before_ssh(self):
+        for request in ({'host': 'archlinux', 'environment': 'fedora2328'},
+                        {'host': 'fedora2328', 'environment': 'other'},
+                        {'host': 'fedora2328', 'environment': 'fedora2328', 'command': 'true'}):
+            with self.subTest(request=request), self.assertRaises(subject.RpmPublicInstallSshError):
+                subject.observe_proc('.', request)
+
+    def test_proc_diagnostic_rejects_inconsistent_or_private_remote_output(self):
+        config = SimpleNamespace(hosts={'fedora2328': SimpleNamespace(user='vpnfixture')})
+        request = {'host': 'fedora2328', 'environment': 'fedora2328'}
+        bad = [
+            {'procState': 'clear', 'sameUidCount': 1, 'uninspectable': [
+                {'pid': 123, 'startTicks': 44, 'state': 'S', 'phase': 'cwd', 'reason': 'unreadable'}], 'truncated': False},
+            {'procState': 'unknown', 'sameUidCount': 1, 'uninspectable': [
+                {'pid': 123, 'startTicks': 44, 'state': 'S', 'phase': 'cwd', 'reason': '/private/workspace'}], 'truncated': False},
+        ]
+        with patch.object(subject.ssh_transport, 'load_config', return_value=config):
+            for value in bad:
+                with self.subTest(value=value), patch.object(subject.RpmPublicInstallSshDriver, '_remote', return_value=value):
+                    result = subject.observe_proc('.', request)
+                    self.assertFalse(result['ok'])
+                    self.assertEqual('unknown', result['procState'])
+                    self.assertEqual('same-uid-proc-visibility-only', result['evidenceScope'])
+
     def authorize(self, root, intent):
         directory = root / '.runtime' / 'linux-rpm-public-install-authorizations'
         directory.mkdir(parents=True, mode=0o700)

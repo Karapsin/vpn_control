@@ -31,6 +31,9 @@ _MIB = 1024 * 1024
 _LINUX_SAMPLE_COUNT = 2
 _LINUX_MAX_SAMPLE_WINDOW_MS = 30_000
 _LINUX_MAX_SAMPLE_AGE_MS = 60_000
+_DARWIN_SAMPLE_COUNT = 2
+_DARWIN_MAX_SAMPLE_WINDOW_MS = 30_000
+_DARWIN_MAX_SAMPLE_AGE_MS = 60_000
 _DESKTOP_UPDATE_PREFLIGHT = "desktop-update-entrypoint"
 _DESKTOP_UPDATE_MODULES = (
     "prepare_desktop_update_fixture.py",
@@ -222,6 +225,47 @@ def _linux_samples(measurement: Mapping[str, Any], *, requested: int, headroom: 
                        for sample in parsed)
 
 
+def _darwin_samples(measurement: Mapping[str, Any], *, physical: int, requested: int,
+                    headroom: int, swap: int) -> tuple[list[Mapping[str, Any]], int]:
+    """Admit historical swap only when a recent caller receipt shows no paging pressure.
+
+    `memory_pressure` reports reclaimable free percentage; `vm_stat` pageouts
+    and `sysctl vm.swapusage` are cumulative. The two samples must agree on
+    stable pageouts and non-growing swap over a short interval.
+    """
+    samples = measurement.get("samples")
+    if not isinstance(samples, list) or len(samples) != _DARWIN_SAMPLE_COUNT:
+        raise VmWorkflowError("Darwin admission requires exactly two caller receipt samples")
+    parsed: list[Mapping[str, Any]] = []
+    observed_at: list[int] = []
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            raise VmWorkflowError("Darwin admission sample must be an object")
+        observed_at.append(_positive_int(sample.get("observedAtUnixMs"), "Darwin sample timestamp"))
+        free_percent = _nonnegative_int(sample.get("freePercent"), "Darwin sample free percentage")
+        if free_percent > 100:
+            raise VmWorkflowError("Darwin sample free percentage exceeds 100")
+        if physical * free_percent // 100 < requested + headroom:
+            raise VmWorkflowError("Darwin sample available memory cannot retain the requested guest and host headroom")
+        if sample.get("pressure") != "normal":
+            raise VmWorkflowError("Darwin memory pressure is not normal")
+        _nonnegative_int(sample.get("pageouts"), "Darwin sample pageouts")
+        _nonnegative_int(sample.get("swapUsedBytes"), "Darwin sample swap usage")
+        parsed.append(sample)
+    if observed_at[1] <= observed_at[0] or observed_at[1] - observed_at[0] > _DARWIN_MAX_SAMPLE_WINDOW_MS:
+        raise VmWorkflowError("Darwin caller receipt samples must be ordered within the bounded observation window")
+    now_ms = time.time_ns() // 1_000_000
+    if observed_at[1] > now_ms or now_ms - observed_at[0] > _DARWIN_MAX_SAMPLE_AGE_MS:
+        raise VmWorkflowError("Darwin caller receipt samples are not recent")
+    if swap != parsed[-1]["swapUsedBytes"]:
+        raise VmWorkflowError("Darwin swap usage must match the latest caller receipt sample")
+    if parsed[-1]["pageouts"] != parsed[0]["pageouts"]:
+        raise VmWorkflowError("Darwin caller receipt records pageout activity or inconsistent counters")
+    if parsed[-1]["swapUsedBytes"] > parsed[0]["swapUsedBytes"]:
+        raise VmWorkflowError("Darwin caller receipt records swap growth")
+    return parsed, min(physical * sample["freePercent"] // 100 for sample in parsed)
+
+
 def admit_plan(
     measurement: Mapping[str, Any],
     *,
@@ -300,6 +344,28 @@ def admit_plan(
             "availableMemoryBytes": physical - required,
             "observedAvailableMemoryBytes": available,
             "swapUsedBytes": swap,
+            "sampleCount": len(samples),
+            "reservation": {"memoryBytes": requested, "persisted": False},
+            "nativeActionAllowed": False,
+        }
+
+    if measurement.get("platform") == "darwin":
+        samples, minimum_available = _darwin_samples(
+            measurement, physical=physical, requested=requested, headroom=headroom, swap=swap,
+        )
+        required = running + reserved + requested + headroom
+        if required > physical:
+            raise VmWorkflowError(
+                f"planned allocation needs {required} bytes but host reports {physical} bytes"
+            )
+        return {
+            "ok": True, "state": "planned", "authorization": "none",
+            "measurementSource": "caller-supplied", "observationSource": "caller-receipt",
+            "platform": "darwin", "physicalMemoryBytes": physical,
+            "runningConfiguredMemoryBytes": running, "reservedMemoryBytes": reserved,
+            "requestedMemoryBytes": requested, "headroomBytes": headroom,
+            "requiredMemoryBytes": required, "availableMemoryBytes": physical - required,
+            "observedAvailableMemoryBytes": minimum_available, "swapUsedBytes": swap,
             "sampleCount": len(samples),
             "reservation": {"memoryBytes": requested, "persisted": False},
             "nativeActionAllowed": False,

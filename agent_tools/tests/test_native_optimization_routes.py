@@ -20,6 +20,57 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         with patch.object(native_artifact_reuse, "artifact_reuse_check", return_value={"decision": "rebuild-required"}):
             self.assertFalse(mcp_server._vm_workflow_impl("artifact-reuse-check", {"artifactSetId": "id"})["ok"])
 
+    def test_rpm_proc_observation_keeps_unreadable_processes_unknown(self):
+        from agent_tools import native_rpm_public_install_ssh
+        request = {"host": "fedora2328", "environment": "fedora2328"}
+        with patch.object(native_rpm_public_install_ssh, "observe_proc", return_value={"ok": True, "procState": "unknown", "uninspectable": [{"pid": 123}]}) as observe:
+            result = mcp_server._vm_workflow_impl("rpm-proc-observe", request)
+        self.assertFalse(result["ok"])
+        self.assertEqual("unknown", result["procState"])
+        self.assertEqual("unknown", result["state"])
+        observe.assert_called_once_with(mcp_server.REPO_ROOT, request)
+        with patch.object(native_rpm_public_install_ssh, "observe_proc", return_value={"procState": "clear", "uninspectable": []}):
+            self.assertTrue(mcp_server._vm_workflow_impl("rpm-proc-observe", request)["ok"])
+
+    def test_android_admission_readback_requires_exact_inputs_and_actual_admission(self):
+        from agent_tools import android_admission_readback
+        request = {"host": "archlinux", "device": "api35", "correlationId": "ad399bdd-25cb-4f71-857e-34ad18ae0399"}
+        with patch.object(android_admission_readback, "readback", return_value={"ok": True, "outcome": "unknown"}) as readback:
+            unknown = mcp_server._vm_workflow_impl("android-admission-readback", request)
+            self.assertFalse(unknown["ok"])
+            self.assertEqual("unknown", unknown["state"])
+            readback.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", "api35", request["correlationId"],
+                expected_base_sha256=None, timeout_seconds=45)
+        with patch.object(android_admission_readback, "readback") as readback:
+            self.assertFalse(mcp_server._vm_workflow_impl("android-admission-readback", {**request, "shell": "id"})["ok"])
+            readback.assert_not_called()
+        with patch.object(android_admission_readback, "readback", return_value={"outcome": "admitted"}):
+            self.assertTrue(mcp_server._vm_workflow_impl("android-admission-readback", request)["ok"])
+
+    def test_android_admission_status_observes_exact_correlation_without_replay(self):
+        from agent_tools import android_admission_readback
+        request = {"host": "archlinux", "device": "api35", "correlationId": "a4a2f73c-6c99-4028-a846-a4c63f21f6d6"}
+        with patch.object(android_admission_readback, "readback_status", return_value={"ok": False, "outcome": "unknown"}) as observe:
+            result = mcp_server._vm_workflow_impl("android-admission-status", request)
+            self.assertFalse(result["ok"])
+            self.assertEqual("unknown", result["state"])
+            observe.assert_called_once_with(mcp_server.REPO_ROOT, request["host"], request["device"], request["correlationId"], timeout_seconds=45)
+        with patch.object(android_admission_readback, "readback_status") as observe:
+            self.assertFalse(mcp_server._vm_workflow_impl("android-admission-status", {**request, "newRequest": True})["ok"])
+            observe.assert_not_called()
+
+    def test_windows_msi_preinstall_status_only_accepts_exact_readonly_job(self):
+        from agent_tools import windows_msi_public_scenario
+        request = {"host": "archlinux", "jobId": "9107428f-9c80-4284-9f4e-926350105a59"}
+        with patch.object(windows_msi_public_scenario, "preinstall_status", return_value={"state": "unknown"}) as observe:
+            self.assertFalse(mcp_server._vm_workflow_impl("windows-msi-preinstall-status", request)["ok"])
+            observe.assert_called_once_with(mcp_server.REPO_ROOT, request["host"], request["jobId"], timeout_seconds=15)
+        with patch.object(windows_msi_public_scenario, "preinstall_status") as observe:
+            self.assertFalse(mcp_server._vm_workflow_impl("windows-msi-preinstall-status", {**request, "command": "guest-exec"})["ok"])
+            observe.assert_not_called()
+        with patch.object(windows_msi_public_scenario, "preinstall_status", return_value={"state": "observed"}):
+            self.assertTrue(mcp_server._vm_workflow_impl("windows-msi-preinstall-status", request)["ok"])
+
     def test_batch_observation_does_not_accept_replacement_plan(self):
         from agent_tools import native_scenario_batch
         with patch.object(native_scenario_batch.NativeScenarioBatch, "status") as status:

@@ -7,6 +7,7 @@ artifact set and source pair for the named fixture account and P baseline.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -32,6 +33,141 @@ _MAX_MEMBER = 1024 * 1024 * 1024
 
 class RpmPublicInstallSshError(ValueError):
     pass
+
+
+def _observe_proc_tree(proc: Path, uid: int) -> dict[str, Any]:
+    """Report bounded same-UID proc visibility without claiming workspace absence."""
+    uninspectable: list[dict[str, Any]] = []
+    same_uid = 0
+    truncated = False
+
+    def uncertain(pid: int, phase: str, *, start_ticks: int | None = None, state: str | None = None,
+                  ppid: int | None = None, process_group: int | None = None,
+                  session: int | None = None, comm: str | None = None,
+                  error_errno: int | None = None) -> None:
+        nonlocal truncated
+        if len(uninspectable) < 32:
+            uninspectable.append({'pid': pid, 'startTicks': start_ticks, 'state': state,
+                                  'ppid': ppid, 'processGroup': process_group, 'session': session,
+                                  'comm': comm, 'errorErrno': error_errno,
+                                  'phase': phase, 'reason': 'unreadable'})
+        else:
+            truncated = True
+
+    try:
+        entries = sorted((entry for entry in proc.iterdir() if entry.name.isdecimal()),
+                         key=lambda entry: int(entry.name))
+    except OSError as error:
+        return {'procState': 'unknown', 'sameUidCount': 0, 'uninspectable': [
+            {'pid': 0, 'startTicks': None, 'state': None, 'ppid': None,
+             'processGroup': None, 'session': None, 'comm': None, 'errorErrno': error.errno,
+             'phase': 'proc', 'reason': 'unreadable'}],
+            'truncated': False}
+    if len(entries) > 4096:
+        truncated = True
+        entries = entries[:4096]
+    for entry in entries:
+        pid = int(entry.name)
+        try:
+            owner = os.stat(entry, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            uncertain(pid, 'identity', error_errno=error.errno)
+            continue
+        if owner.st_uid != uid:
+            continue
+        same_uid += 1
+        try:
+            raw_stat = (entry / 'stat').read_text(encoding='ascii')
+            comm = raw_stat.split('(', 1)[1].rsplit(')', 1)[0]
+            if not 0 < len(comm) <= 64 or not all(char.isascii() and (char.isalnum() or char in '_.:-()') for char in comm):
+                comm = None
+            fields = raw_stat.rsplit(')', 1)[1].split()
+            state, ppid, process_group, session, start_ticks = (
+                fields[0], int(fields[1]), int(fields[2]), int(fields[3]), int(fields[19]))
+            if len(state) != 1 or ppid < 0 or process_group <= 0 or session <= 0 or start_ticks <= 0:
+                raise ValueError()
+        except (OSError, ValueError, IndexError):
+            uncertain(pid, 'generation')
+            continue
+        if state in ('Z', 'X'):
+            continue
+        try:
+            os.readlink(entry / 'cwd')
+        except OSError as error:
+            uncertain(pid, 'cwd', start_ticks=start_ticks, state=state,
+                      ppid=ppid, process_group=process_group, session=session,
+                      comm=comm, error_errno=error.errno)
+            continue
+        try:
+            descriptors = list((entry / 'fd').iterdir())
+        except OSError as error:
+            uncertain(pid, 'fd', start_ticks=start_ticks, state=state,
+                      ppid=ppid, process_group=process_group, session=session,
+                      comm=comm, error_errno=error.errno)
+            continue
+        if len(descriptors) > 8192:
+            truncated = True
+            descriptors = descriptors[:8192]
+        for descriptor in descriptors:
+            if not descriptor.name.isdecimal():
+                continue
+            try:
+                os.readlink(descriptor)
+            except FileNotFoundError:
+                # Individual descriptors may close after the directory listing.
+                continue
+            except OSError as error:
+                uncertain(pid, 'descriptor', start_ticks=start_ticks, state=state,
+                          ppid=ppid, process_group=process_group, session=session,
+                          comm=comm, error_errno=error.errno)
+                break
+    return {'procState': 'unknown' if uninspectable or truncated else 'clear',
+            'sameUidCount': same_uid, 'uninspectable': uninspectable, 'truncated': truncated}
+
+
+_PROC_OBSERVE = ('import json,os\nfrom pathlib import Path\nfrom typing import Any\n'
+                 + inspect.getsource(_observe_proc_tree)
+                 + "\nprint(json.dumps(_observe_proc_tree(Path('/proc'),os.geteuid()),separators=(',',':')))\n")
+
+
+def observe_proc(root: Path | str, request: Mapping[str, Any]) -> dict[str, Any]:
+    """Read-only Fedora fixture process diagnostic; no caller command or path."""
+    if (not isinstance(request, Mapping) or set(request) != {'host', 'environment'}
+            or request.get('host') != 'fedora2328' or request.get('environment') != 'fedora2328'):
+        raise RpmPublicInstallSshError('RPM proc diagnostic requires the exact owned Fedora guest.')
+    config = ssh_transport.load_config(root)
+    host = config.hosts.get('fedora2328')
+    if host is None or host.user != _ACCOUNT:
+        raise RpmPublicInstallSshError('RPM proc diagnostic guest identity is unavailable.')
+    driver = RpmPublicInstallSshDriver(root, timeout_seconds=20)
+    result = driver._remote(config, 'fedora2328', _PROC_OBSERVE, ())
+    entries = result.get('uninspectable') if isinstance(result, Mapping) else None
+    valid_entries = isinstance(entries, list) and len(entries) <= 32 and all(
+        isinstance(entry, Mapping) and set(entry) == {'pid', 'startTicks', 'state', 'ppid', 'processGroup', 'session', 'comm', 'errorErrno', 'phase', 'reason'}
+        and type(entry['pid']) is int and 0 <= entry['pid'] <= 2**31 - 1
+        and (entry['startTicks'] is None or type(entry['startTicks']) is int and entry['startTicks'] > 0)
+        and (entry['state'] is None or isinstance(entry['state'], str) and len(entry['state']) == 1)
+        and all(entry[key] is None or type(entry[key]) is int and entry[key] >= 0
+                for key in ('ppid', 'processGroup', 'session'))
+        and (entry['comm'] is None or isinstance(entry['comm'], str) and 0 < len(entry['comm']) <= 64
+             and all(char.isascii() and (char.isalnum() or char in '_.:-()') for char in entry['comm']))
+        and (entry['errorErrno'] is None or type(entry['errorErrno']) is int and 0 < entry['errorErrno'] <= 255)
+        and entry['phase'] in {'proc', 'identity', 'generation', 'cwd', 'fd', 'descriptor'}
+        and entry['reason'] == 'unreadable' for entry in entries) if entries is not None else False
+    if (not isinstance(result, Mapping) or result.get('procState') not in {'clear', 'unknown'}
+            or type(result.get('sameUidCount')) is not int or not 0 <= result['sameUidCount'] <= 4096
+            or not valid_entries or type(result.get('truncated')) is not bool
+            or result['procState'] == 'clear' and (entries or result['truncated'])
+            or result['procState'] == 'unknown' and not (entries or result['truncated'])):
+        return {'ok': False, 'host': 'fedora2328', 'environment': 'fedora2328',
+                'procState': 'unknown', 'sameUidCount': None, 'uninspectable': [],
+                'truncated': True, 'evidenceScope': 'same-uid-proc-visibility-only'}
+    return {'ok': True, 'host': 'fedora2328', 'environment': 'fedora2328',
+            'procState': result['procState'], 'sameUidCount': result['sameUidCount'],
+            'uninspectable': result['uninspectable'], 'truncated': result['truncated'],
+            'evidenceScope': 'same-uid-proc-visibility-only'}
 
 
 def _canonical(value: object) -> bytes:

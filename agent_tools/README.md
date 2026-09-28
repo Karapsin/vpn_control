@@ -557,6 +557,48 @@ optional `sourceSha` (must match current HEAD) and reports remaining scenarios.
 Partial current receipts aggregate; historical/component receipts remain visible,
 conflicts and unknowns remain open, and evidence changes invalidate a pass.
 
+`vm_workflow("rpm-proc-observe", inputs={"host":"fedora2328","environment":"fedora2328"})`
+is a fixed read-only process-visibility check for the disposable RPM guest. It
+returns bounded same-UID PID generations and the phase of any unreadable process
+entry without exposing command lines, descriptors or paths. `procState=unknown`
+and `ok=false` require investigation; unreadable entries are never treated as
+absent or as permission to start the installer. A running MCP server may retain
+the old action inventory after a source edit; the equivalent fresh-process route
+is `mcp_tool.sh vm-workflow rpm-proc-observe --inputs-file <private-input-json>`.
+
+`vm_workflow("android-admission-readback", inputs={"host":"archlinux",
+"device":"api35","correlationId":"<new-uuid>"})` performs fixed read-only
+package, owner, operation-history and routing inspection on a configured AVD.
+Optional `expectedBaseSha256` binds the installed base APK to separately verified
+signed artifact bytes; optional `timeoutSeconds` is 1..60. It requires shell
+UID 2000 and a non-debuggable package, creates an exclusive private routing
+backup under the configured fixture root, and returns only its path/hash/size
+plus a redacted controller/revision guard. Unknown transport or owner changes
+preserve the correlation and any partial backup; they do not authorize mutation
+or retry. A new correlation is required for a genuinely new read-only snapshot.
+`vm_workflow("android-admission-status", inputs={"host":"archlinux",
+"device":"api35","correlationId":"<original-uuid>"})` observes that exact
+private backup stage and the current public owner after response loss. A backup
+alone is not admission; inspect its result before a new snapshot or any write.
+
+`vm_workflow("windows-msi-preinstall-status", inputs={"host":"archlinux",
+"jobId":"<exact-protected-job-uuid>"})` observes one configured CP117 guest's
+protected installer status and fixed enum-only preinstall diagnostic through
+QGA file reads. Optional `timeoutSeconds` is 1..30. It binds the guest socket
+to its running QEMU generation and the status to the exact job ID. Missing or
+unreadable diagnostic leaves remain explicit; the action never starts,
+cancels, replays or infers an MSI installation. Use a fresh-process MCP CLI
+fallback after server source changes until the MCP session is reloaded.
+
+Darwin `admit-plan` accepts historical nonzero swap only with a caller-supplied
+`measurement.platform="darwin"` and exactly two `samples`. Each sample has
+`observedAtUnixMs`, `freePercent`, `pressure="normal"`, `pageouts` and
+`swapUsedBytes`; timestamps must be recent, ordered and at most 30 seconds
+apart. Both samples must retain guest memory plus host headroom, with unchanged
+pageouts and non-growing swap. The latest swap value must match the top-level
+measurement. This is conservative planning arithmetic, not a VM-start permit;
+`environment-reserve` records the separate owned allocation.
+
 ### Compact guidance and failure evidence
 
 Native tool responses include `nextAction` with a safe existing observation or

@@ -20,6 +20,25 @@ def fixture_input(path: Path) -> dict[str, object]:
 
 class VmWorkflowTest(unittest.TestCase):
     @staticmethod
+    def darwin_measurement(*, free_percent: int = 54, pageout_delta: int = 0,
+                           swap_delta: int = 0) -> dict[str, object]:
+        gib = 1024 ** 3
+        now = time.time_ns() // 1_000_000
+        swap = int(1.64 * gib)
+        return {
+            "platform": "darwin", "physicalMemoryBytes": 24 * gib,
+            "runningConfiguredMemoryBytes": 0, "pressure": "normal",
+            "swapUsedBytes": swap + swap_delta,
+            "samples": [
+                {"observedAtUnixMs": now - 1_000, "freePercent": free_percent,
+                 "pressure": "normal", "pageouts": 374312, "swapUsedBytes": swap},
+                {"observedAtUnixMs": now, "freePercent": free_percent,
+                 "pressure": "normal", "pageouts": 374312 + pageout_delta,
+                 "swapUsedBytes": swap + swap_delta},
+            ],
+        }
+
+    @staticmethod
     def linux_measurement(*, available_gib: int = 36, pswpin_delta: int = 0, pswpout_delta: int = 0,
                           oom_kill_delta: int = 0) -> dict[str, object]:
         gib = 1024 ** 3
@@ -147,6 +166,47 @@ class VmWorkflowTest(unittest.TestCase):
         self.assertEqual("linux", result["platform"])
         self.assertEqual("caller-receipt", result["observationSource"])
         self.assertEqual(measurement["swapUsedBytes"], result["swapUsedBytes"])
+
+    def test_darwin_admission_accepts_historical_swap_only_with_fresh_stable_receipt(self) -> None:
+        gib = 1024 ** 3
+        measurement = self.darwin_measurement()
+        result = vm_workflow.admit_plan(measurement, requested_memory_bytes=4 * gib,
+                                        headroom_bytes=8 * gib)
+        self.assertEqual("darwin", result["platform"])
+        self.assertEqual("caller-receipt", result["observationSource"])
+        self.assertEqual(measurement["swapUsedBytes"], result["swapUsedBytes"])
+        self.assertFalse(result["nativeActionAllowed"])
+
+    def test_darwin_admission_rejects_pageouts_swap_growth_low_memory_and_stale_receipts(self) -> None:
+        gib = 1024 ** 3
+        out_of_order = self.darwin_measurement()
+        out_of_order["samples"][1]["observedAtUnixMs"] -= 120_000
+        stale = self.darwin_measurement()
+        for sample in stale["samples"]:
+            sample["observedAtUnixMs"] -= 120_000
+        future = self.darwin_measurement()
+        for sample in future["samples"]:
+            sample["observedAtUnixMs"] += 120_000
+        high_pressure = self.darwin_measurement()
+        high_pressure["samples"][1]["pressure"] = "warning"
+        mismatched_swap = self.darwin_measurement()
+        mismatched_swap["swapUsedBytes"] += 1
+        invalid = (
+            (self.darwin_measurement(pageout_delta=1), "pageout"),
+            (self.darwin_measurement(swap_delta=1), "swap"),
+            (self.darwin_measurement(free_percent=40), "available memory"),
+            (out_of_order, "ordered"),
+            (stale, "not recent"),
+            (future, "not recent"),
+            (high_pressure, "pressure"),
+            (mismatched_swap, "match"),
+            ({key: value for key, value in self.darwin_measurement().items() if key != "samples"},
+             "exactly two"),
+        )
+        for measurement, message in invalid:
+            with self.subTest(message=message), self.assertRaisesRegex(vm_workflow.VmWorkflowError, message):
+                vm_workflow.admit_plan(measurement, requested_memory_bytes=4 * gib,
+                                       headroom_bytes=8 * gib)
 
     def test_linux_admission_rejects_low_available_memory_active_paging_oom_and_missing_receipt(self) -> None:
         gib = 1024 ** 3

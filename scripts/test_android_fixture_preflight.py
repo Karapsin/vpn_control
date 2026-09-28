@@ -1,6 +1,7 @@
 import unittest
 
 from android_fixture_preflight import (
+    admission_readback_guard,
     post_install_mutation_guard,
     require_disconnected_effective_proxy,
     require_terminal_operation_history,
@@ -53,6 +54,30 @@ def terminal_operation(*, owner="owner", phase="succeeded", code="OK"):
 
 
 class AndroidFixturePreflightTest(unittest.TestCase):
+    def test_admission_readback_requires_same_owner_revision_and_complete_matching_backup(self):
+        snapshot = status(running=True, observation="running", selected="location-a")
+        history = operations(entries=[terminal_operation()])
+        history["configurationRevision"] = 7
+        routing = {**status(), "data": {"routing": {"rules": {"direct_domain_suffixes": []}}}, "operationId": None}
+        backup = {"path": "/private/backup.json", "sha256": "a" * 64, "size": 128,
+                  "type": "vpn_control_routing_rules", "version": 7,
+                  "rulesType": "object", "matchesReadback": True}
+        expected = {"controllerId": "owner", "configurationRevision": 7,
+                    "backupSha256": "a" * 64, "backupSize": 128}
+        self.assertEqual(expected, admission_readback_guard(snapshot, history, routing, backup))
+        cases = [
+            (snapshot, {**history, "configurationRevision": 8}, routing, backup),
+            (snapshot, history, {**routing, "controllerId": "replacement"}, backup),
+            (snapshot, history, {**routing, "data": {}}, backup),
+            (snapshot, {**history, "data": {"scope": "android-provider-operations", "operations": [{**terminal_operation(), "final": False}]}}, routing, backup),
+            (snapshot, history, routing, {**backup, "matchesReadback": False}),
+            (snapshot, history, routing, {**backup, "size": 0}),
+            (snapshot, history, routing, {**backup, "version": 6}),
+        ]
+        for case in cases:
+            with self.subTest(case=case), self.assertRaises(ValueError):
+                admission_readback_guard(*case)
+
     def test_post_install_reacquires_fresh_owner_and_revision_before_mutation(self):
         cached = {"controllerId": "owner-before-install", "configurationRevision": 7}
         fresh_status = status()
