@@ -27,7 +27,9 @@ _TIME = re.compile(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z\Z")
 _TASK_UNKNOWN_CODES = {"UNKNOWN", "UNKNOWN_IDENTITY", "UNKNOWN_CLI_HASH", "UNKNOWN_PROCESS",
                        "UNKNOWN_ENDPOINT_FILE", "UNKNOWN_ENDPOINT_ACL", "UNKNOWN_ENDPOINT_BINDING",
                        "UNKNOWN_TRANSPORT", "UNKNOWN_SNAPSHOT", "UNKNOWN_LOOPBACK_CONNECT",
-                       "UNKNOWN_ENDPOINT_AUTH", "UNKNOWN_SNAPSHOT_REQUEST",
+                       "UNKNOWN_ENDPOINT_AUTH", "UNKNOWN_ENDPOINT_AUTH_WRITE",
+                       "UNKNOWN_ENDPOINT_AUTH_READ", "UNKNOWN_ENDPOINT_AUTH_REPLY",
+                       "UNKNOWN_SNAPSHOT_REQUEST",
                        "UNKNOWN_FRAMED_RESPONSE", "UNKNOWN_SNAPSHOT_PARSE"}
 _GROUP = ".rag_index/windows-msi-owner-observe"
 _GUEST = r"C:\Users\vpncp117\AppData\Local\VpnControl"
@@ -212,7 +214,9 @@ try {
    return (ConvertFrom-Json -InputObject ([Text.Encoding]::UTF8.GetString($bytes)))
   }
   $stage='ENDPOINT_AUTH'
-  W $token;if((R) -cne 'AUTHENTICATED'){throw 'AUTH'}
+  $stage='ENDPOINT_AUTH_WRITE';W $token
+  $stage='ENDPOINT_AUTH_READ';$auth=R
+  $stage='ENDPOINT_AUTH_REPLY';if($auth -cne 'AUTHENTICATED'){throw 'AUTH'}
   $controllerBytes=[Text.Encoding]::UTF8.GetBytes($endpoint.controllerId)
   $controllerText=[Convert]::ToBase64String($controllerBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
   $stage='SNAPSHOT_REQUEST'
@@ -436,7 +440,7 @@ except Exception:
    observed=read(sock,'C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-owner-observe-'+corr+'\\result.json')
    if observed is not None:
     result=json.loads(decode(observed))
-    if isinstance(result,dict) and result.get('correlationId')==corr and result.get('code') in ('OBSERVED','ENDPOINT_ABSENT','UNKNOWN','UNKNOWN_IDENTITY','UNKNOWN_CLI_HASH','UNKNOWN_PROCESS','UNKNOWN_ENDPOINT_FILE','UNKNOWN_ENDPOINT_ACL','UNKNOWN_ENDPOINT_BINDING','UNKNOWN_TRANSPORT','UNKNOWN_SNAPSHOT','UNKNOWN_LOOPBACK_CONNECT','UNKNOWN_ENDPOINT_AUTH','UNKNOWN_SNAPSHOT_REQUEST','UNKNOWN_FRAMED_RESPONSE','UNKNOWN_SNAPSHOT_PARSE'):
+    if isinstance(result,dict) and result.get('correlationId')==corr and result.get('code') in ('OBSERVED','ENDPOINT_ABSENT','UNKNOWN','UNKNOWN_IDENTITY','UNKNOWN_CLI_HASH','UNKNOWN_PROCESS','UNKNOWN_ENDPOINT_FILE','UNKNOWN_ENDPOINT_ACL','UNKNOWN_ENDPOINT_BINDING','UNKNOWN_TRANSPORT','UNKNOWN_SNAPSHOT','UNKNOWN_LOOPBACK_CONNECT','UNKNOWN_ENDPOINT_AUTH','UNKNOWN_ENDPOINT_AUTH_WRITE','UNKNOWN_ENDPOINT_AUTH_READ','UNKNOWN_ENDPOINT_AUTH_REPLY','UNKNOWN_SNAPSHOT_REQUEST','UNKNOWN_FRAMED_RESPONSE','UNKNOWN_SNAPSHOT_PARSE'):
      reason=reason+'_TASK_'+result['code']
   except Exception:pass
  out({'state':'unknown','correlationId':corr,'diagnostic':reason})
@@ -517,7 +521,7 @@ try:
  observed=read(sock,'C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-owner-observe-'+corr+'\\result.json')
  if observed is None:raise ValueError()
  terminal=json.loads(decode(observed))
- if not isinstance(terminal,dict) or set(terminal)!={'version','correlationId','code','originalSid','sessionId','limited','snapshot'} or type(terminal['version']) is not int or terminal['version']!=1 or terminal['correlationId']!=corr or terminal['originalSid']!=sid or type(terminal['sessionId']) is not int or terminal['sessionId']!=1 or terminal['limited'] is not True or expected_code not in ('OBSERVED','ENDPOINT_ABSENT','UNKNOWN','UNKNOWN_IDENTITY','UNKNOWN_CLI_HASH','UNKNOWN_PROCESS','UNKNOWN_ENDPOINT_FILE','UNKNOWN_ENDPOINT_ACL','UNKNOWN_ENDPOINT_BINDING','UNKNOWN_TRANSPORT','UNKNOWN_SNAPSHOT','UNKNOWN_LOOPBACK_CONNECT','UNKNOWN_ENDPOINT_AUTH','UNKNOWN_SNAPSHOT_REQUEST','UNKNOWN_FRAMED_RESPONSE','UNKNOWN_SNAPSHOT_PARSE') or terminal['code']!=expected_code:raise ValueError()
+ if not isinstance(terminal,dict) or set(terminal)!={'version','correlationId','code','originalSid','sessionId','limited','snapshot'} or type(terminal['version']) is not int or terminal['version']!=1 or terminal['correlationId']!=corr or terminal['originalSid']!=sid or type(terminal['sessionId']) is not int or terminal['sessionId']!=1 or terminal['limited'] is not True or expected_code not in ('OBSERVED','ENDPOINT_ABSENT','UNKNOWN','UNKNOWN_IDENTITY','UNKNOWN_CLI_HASH','UNKNOWN_PROCESS','UNKNOWN_ENDPOINT_FILE','UNKNOWN_ENDPOINT_ACL','UNKNOWN_ENDPOINT_BINDING','UNKNOWN_TRANSPORT','UNKNOWN_SNAPSHOT','UNKNOWN_LOOPBACK_CONNECT','UNKNOWN_ENDPOINT_AUTH','UNKNOWN_ENDPOINT_AUTH_WRITE','UNKNOWN_ENDPOINT_AUTH_READ','UNKNOWN_ENDPOINT_AUTH_REPLY','UNKNOWN_SNAPSHOT_REQUEST','UNKNOWN_FRAMED_RESPONSE','UNKNOWN_SNAPSHOT_PARSE') or terminal['code']!=expected_code:raise ValueError()
  if terminal['code']!='OBSERVED' and terminal['snapshot'] is not None:raise ValueError()
  marker=os.path.join(stage,'cleanup-intent.json')
  with open(marker,'x',encoding='utf-8') as file:json.dump({'correlationId':corr,'taskName':'VpnControlMcpOwnerObserve-'+corr},file,separators=(',',':'));file.flush();os.fsync(file.fileno())

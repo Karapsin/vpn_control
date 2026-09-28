@@ -90,18 +90,19 @@ def _within_running_window(intent: Mapping[str, Any]) -> bool:
     return 0 <= age <= _MAX_RUNNING_SECONDS
 
 
-def _require_cross_route_lease(root: Path) -> None:
-    """Base/public writers lack a shared CP117 lease; do not race them.
-
-    Checking their journals is insufficient: either writer can reserve after a
-    scan. Target reservation stays disabled until all three routes participate
-    in one local and remote environment lock/admission protocol.
-    """
-    raise WindowsMsiTargetPrepareError("CP117_CROSS_ROUTE_LEASE_UNAVAILABLE")
+def _require_cross_route_lease(root: Path, record: Mapping[str, Any]) -> None:
+    """Rebind target intent to both shared lease journals before reservation."""
+    request = record.get("request")
+    if not isinstance(request, dict) or not isinstance(record.get("leaseId"), str):
+        raise WindowsMsiTargetPrepareError("CP117_CROSS_ROUTE_LEASE_UNAVAILABLE")
+    config, guest, descriptor = base._descriptor(root)
+    actual = base._require_verified_live_fixture(root, request, descriptor, config, guest)
+    if actual != record["leaseId"]:
+        raise WindowsMsiTargetPrepareError("CP117 target lease identity changed.")
 
 
 def _reserve(root: Path, value: dict[str, Any]) -> None:
-    _require_cross_route_lease(root)
+    _require_cross_route_lease(root, value)
     # Private, fsynced one-shot reservation after a future shared CP117 lease.
     directory = root / _GROUP
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -135,14 +136,17 @@ def _pair(root: Path, request: dict[str, Any]) -> dict[str, Any]:
     return pair
 
 
-def _require_fixture_network_admission(root: Path, request: Mapping[str, Any]) -> None:
-    """No existing receipt binds live CP117 proxy, certificate trust and fixture.
-
-    The registered build fixture receipt binds packages, not the owner's HTTPS
-    routing. A future narrow receipt route must replace this gate and attest the
-    live owner generation, exact manifest, proxy endpoint, and certificate.
-    """
-    raise WindowsMsiTargetPrepareError("FIXTURE_ADMISSION_UNAVAILABLE: no live CP117 HTTPS proxy/TLS receipt")
+def _require_fixture_network_admission(root: Path, request: Mapping[str, Any]) -> str:
+    """Require registered pair, current QEMU generation and private live receipt."""
+    _pair(root, dict(request))
+    config, guest, descriptor = base._descriptor(root)
+    try:
+        base._require_verified_live_fixture(root, request, descriptor, config, guest)
+    except ValueError as error:
+        raise WindowsMsiTargetPrepareError("FIXTURE_ADMISSION_UNAVAILABLE: no live CP117 HTTPS proxy/TLS receipt") from error
+    # A verified server alone cannot serialize target preparation with the
+    # public installer. The exact target correlation must claim the campaign.
+    raise WindowsMsiTargetPrepareError("CP117_TARGET_ROUTE_CLAIM_UNAVAILABLE")
 
 
 def _readiness_script(request: Mapping[str, Any], pair: Mapping[str, Any], sid: str) -> str:
@@ -397,7 +401,7 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         if existing.get("request") != request:
             raise WindowsMsiTargetPrepareError("Correlation binds another target preparation.")
         return {"state": "unknown", "correlationId": correlation, "replayAllowed": False}
-    _require_fixture_network_admission(root, request)
+    lease_id = _require_fixture_network_admission(root, request)
     if readiness(root, request)["state"] != "ready":
         raise WindowsMsiTargetPrepareError("Installed base or original owner is not ready.")
     pair = _pair(root, request)
@@ -409,6 +413,7 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     command_hash = hashlib.sha256(command.encode("utf-16le")).hexdigest()
     record = {"request": request, "pair": pair, "environment": env, "socketPath": sock,
               "pid": pid, "startTicks": ticks, "expectedSid": sid, "commandSha256": command_hash}
+    record["leaseId"] = lease_id
     record["createdAtUtc"] = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     _reserve(root, record)
     raw = base._remote(config, _REMOTE_START, (str(target.fixture_transfer_root), env, correlation, sock,

@@ -137,6 +137,50 @@ class OwnerObserveTests(unittest.TestCase):
             self.assertEqual(classified["diagnostic"], "TASK_" + code)
             self.assertFalse(classified["replayAllowed"])
 
+    def test_auth_substage_failure_is_bounded_and_collectable_without_replay(self):
+        script = owner._task(CORR, REQUEST, INTENT["expectedSid"])
+        self.assertLess(script.index("$stage='ENDPOINT_AUTH_WRITE'"), script.index("W $token"))
+        self.assertLess(script.index("W $token"), script.index("$stage='ENDPOINT_AUTH_READ'"))
+        self.assertLess(script.index("$stage='ENDPOINT_AUTH_READ'"), script.index("$auth=R"))
+        self.assertLess(script.index("$auth=R"), script.index("$stage='ENDPOINT_AUTH_REPLY'"))
+        self.assertLess(script.index("$stage='ENDPOINT_AUTH_REPLY'"),
+                        script.index("$auth -cne 'AUTHENTICATED'"))
+        for code in ("UNKNOWN_ENDPOINT_AUTH_WRITE", "UNKNOWN_ENDPOINT_AUTH_READ",
+                     "UNKNOWN_ENDPOINT_AUTH_REPLY"):
+            task_result = {"version": 1, "correlationId": CORR, "code": code,
+                           "originalSid": INTENT["expectedSid"], "sessionId": 1,
+                           "limited": True, "snapshot": None}
+            remote = json.dumps({"state": "observed", "correlationId": CORR,
+                                 "result": task_result}).encode()
+            classified = owner._classify(remote, CORR, INTENT)
+            self.assertEqual(classified["diagnostic"], "TASK_" + code)
+            self.assertFalse(classified["replayAllowed"])
+            self.assertIn(code, owner._REMOTE_CLEANUP)
+
+    def test_auth_substage_collects_only_exact_terminal_code(self):
+        for code in ("UNKNOWN_ENDPOINT_AUTH_WRITE", "UNKNOWN_ENDPOINT_AUTH_READ",
+                     "UNKNOWN_ENDPOINT_AUTH_REPLY"):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                intent = dict(INTENT, environment="windows-cp117", socketPath="/qga.sock",
+                              pid=589342, startTicks=520739, commandSha256="c" * 64)
+                owner._reserve(root, intent)
+                class Target:
+                    fixture_transfer_root = Path("/private/cp117")
+                observation = {"state": "unknown", "correlationId": CORR,
+                               "diagnostic": "TASK_" + code, "replayAllowed": False}
+                with patch.object(owner, "status", return_value=observation), \
+                     patch.object(owner.windows_msi_base_prepare, "_descriptor", return_value=(object(), Target(),
+                        ("windows-cp117", "/qga.sock", 589342, 520739, INTENT["expectedSid"]))), \
+                     patch.object(owner.windows_msi_base_prepare, "_remote",
+                                  return_value=json.dumps({"state": "cleaned", "correlationId": CORR}).encode()) as remote:
+                    result = owner.collect(root, {"correlationId": CORR})
+                    self.assertEqual(result["state"], "unknown")
+                    self.assertEqual(result["cleanupState"], "complete")
+                    self.assertFalse(result["replayAllowed"])
+                    self.assertEqual(remote.call_args.args[2][-2:], (INTENT["expectedSid"], code))
+                    self.assertEqual(owner._read_private_json(owner._closed_marker(root, CORR))["state"], "cleaned")
+
     def test_one_local_intent_prevents_submission_replay(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -125,6 +125,7 @@ class BasePrepareTests(unittest.TestCase):
             with patch.object(base, "_admit", return_value=(PAIR, package, 1)), \
                  patch.object(base, "_descriptor", return_value=(object(), Target(),
                      ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002"))), \
+                 patch.object(base, "_open_base_campaign", return_value=CORR), \
                  patch.object(base, "_remote", return_value=None) as remote:
                 result = base.start(root, REQUEST)
                 self.assertEqual(result["state"], "unknown")
@@ -132,6 +133,43 @@ class BasePrepareTests(unittest.TestCase):
                 self.assertEqual(base.start(root, REQUEST)["state"], "unknown")
                 self.assertEqual(remote.call_count, 1)
                 self.assertEqual(base._private_intent(root, CORR)["request"], REQUEST)
+
+    def test_legacy_reconciliation_blocks_before_base_intent_or_guest_submission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); package = root / "base.msi"; package.write_bytes(b"x")
+            class Target:
+                fixture_transfer_root = Path("/private/cp117")
+            with patch.object(base, "_admit", return_value=(PAIR, package, 1)), \
+                 patch.object(base, "_descriptor", return_value=(object(), Target(),
+                    ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002"))), \
+                 patch.object(base, "_remote") as remote:
+                with self.assertRaisesRegex(base.WindowsMsiBasePrepareError,
+                                            "CP117_LEGACY_RECONCILIATION_UNAVAILABLE"):
+                    base.start(root, REQUEST)
+                remote.assert_not_called()
+                self.assertIsNone(base._private_intent(root, CORR))
+
+    def test_shared_campaign_rejects_second_route_and_mismatched_pair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            descriptor = ("windows-cp117", "/qga.sock", 589342, 520739,
+                          "S-1-5-21-1-2-3-1002")
+            class Target:
+                fixture_transfer_root = Path("/private/cp117")
+            def journal(action, payload):
+                desired = payload["desired"]
+                return json.dumps({"version": 1, "action": action, "leaseId": CORR,
+                    "recordSha256": base.campaign_lease._digest(desired),
+                    "state": "confirmed"}).encode()
+            with patch.object(base, "_require_reconciled_legacy"), \
+                 patch.object(base, "_campaign_remote", return_value=journal):
+                self.assertEqual(base._open_base_campaign(root, REQUEST, object(), Target(), descriptor), CORR)
+                with self.assertRaises(base.campaign_lease.Cp117LeaseError):
+                    base._open_base_campaign(root, dict(REQUEST, correlationId=
+                        "70fa550a-a622-4123-b89c-f68a087ce808"), object(), Target(), descriptor)
+                with self.assertRaises(base.WindowsMsiBasePrepareError):
+                    base._verified_active_campaign(root, dict(REQUEST, targetMsiArtifactId=
+                        "sha256-" + "f" * 64), descriptor, object(), Target(), require_server=False)
 
     def test_second_correlation_is_blocked_after_unknown(self):
         with tempfile.TemporaryDirectory() as directory:

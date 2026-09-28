@@ -27,6 +27,59 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Sixth continuation checkpoint and next dirty source — 2026-09-29
+
+`2a7b6a4cbbca75a8a3e9740f6be33f9ed1bac6bf` is pushed on `origin/dev`.
+The user requested **one required-workflow CI review at the final delivered
+SHA**. The following are exact-source component results, not completed
+four-platform parity rows or final artifact and visual acceptance. No release
+is authorized.
+
+Android API35 and API29 installed and publicly inspected the same frozen
+native-fixture APK, SHA256
+`75e0e9fc2804373b174e16e82310d62e9815c9cf51aa7ed603466cf64ca9c4eb`
+(`2a7b6a4-android/frozen-apk-receipt.json`). Both terminal install receipts
+report the expected package hash, verified post-install routing and stopped
+runtime; the fresh public inspections bind the package, controller and revision
+(`install35-terminal.json`, `install35-public-inspect.json`,
+`install29-terminal.json`, `install29-public-inspect.json`). Their backup SHA256s
+are `0322057579803ce36cc6eb94765c2d74c66c674d7fda00ee12d8532bd963b8fa`
+and `13398ce608ccfb1d56f1d81ab51b57b89d1bf82d3cd3d437af2dfdd79a5a97f2`;
+post-install routing SHA256s are
+`5eafd50d15ef1fc2db6a2069bcf42ad086367a71748ad752e15edc41e6bf9b7b`
+and `86e573cb513090daead226040e5ace7ab9a22a32f56f645f4b384c0cb96e37e3`.
+The native document row and Android visual comparator remain open.
+
+Fedora's exact-source base RPM `2.1.19` install passed with clean RPM verify
+(`continuation-linux-2a7b6a4/base-install/status-1.json`); the independently
+verified `2.1.19`/`2.2.0` pair is in
+`continuation-linux-2a7b6a4/hosted-rpm-fixture/local-verification.json`.
+Reviewed RPM-only fixture derivation succeeded locally, but the public HTTPS
+fixture endpoint, proxy and trust are still unready. No target start was
+submitted. Windows' exact-source hosted MSI pair (run
+`36447907765`, artifact `10982156646`) is locally verified as package input:
+the receipt SHA256 is
+`aa87705abb113ef845a71012a07304c3e1859a4dcac3a2fa926ae8ff7da47911`,
+with base/target MSI SHA256s
+`adb11ce963880e3b103f9b4987bc5950114a0e3bb3535988e4c3139280db19be`
+and `4b389187c35095009fa6ffe3030672fd4937e8eb4bf74d6c5682df68b5bbc976`
+(`../windows-msi-fixture-collect/b05b8679-02fa-40a6-8805-8faa128d3bcc/`
+`extracted/fixture-receipt.json`). CP117 owner observation ended
+`TASK_UNKNOWN_ENDPOINT_AUTH` and its correlation was cleaned without replay
+(`continuation-windows-owner-2a7b6a4/owner-observation.json`). Windows
+staging and lease tools remain dirty; there is no target install result.
+
+Mac's exact-source signed arm64 `2.1.19`/`2.2.0` DMG pair is recorded in
+`continuation-macos/fixture-2a7b6a4/pair/fixture-receipt.json`. The owned
+Tart guest disk grew from 50 to 60 GB. The fixture DMGs are already staged in
+the guest with verified bytes but mode `0644`; fixture serving requires
+read-only mode `0444`. Installation is held for the fixed MCP mode repair in
+the next checkpoint. Hosted desktop visual capture on `2a7b6a4` exposed a
+cursor fixture failure; its causal fix is dirty and needs a new-source
+recapture. Preserve all component
+receipts and historical captures; document-native and remaining GUI/CLI matrix
+rows still require their own packaged actions and effect comparisons.
+
 ### Fifth continuation checkpoint and next dirty source — 2026-09-28
 
 `31b3c1145e0d33be473f5a88debc881e3a816498` is the current pushed

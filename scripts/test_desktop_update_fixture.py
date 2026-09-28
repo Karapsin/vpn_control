@@ -31,7 +31,7 @@ from test_fixture_environment import symlink_probe_available
 
 class DesktopUpdateFixtureTest(unittest.TestCase):
     @staticmethod
-    def synthetic_windows_acl_receipt(path, *, private):
+    def synthetic_windows_acl_receipt(path, *, private, establish=True):
         """Model the fixed protected stage and current-owner private children."""
         system, admins, recipient = "S-1-5-18", "S-1-5-32-544", "S-1-5-21-1-2-3-4"
         is_directory = Path(path).is_dir()
@@ -41,13 +41,14 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
         if private:
             inheritance = 3 if is_directory else 0
             acl = [entry(system, 0x1F01FF, inheritance),
-                   entry(admins, 0x1F01FF, inheritance)]
+                   entry(admins, 0x1F01FF, inheritance),
+                   entry(recipient, 0x1F01FF, inheritance)]
         else:
             if not is_directory:
                 raise ValueError("Synthetic fixture stage must be a directory")
             acl = [entry(system, 0x1F01FF, 3), entry(admins, 0x1F01FF, 3),
                    entry(recipient, 0x1200A9, 3)]
-        return {"protected": True, "currentSid": system,
+        return {"protected": True, "currentSid": recipient,
                 "isDirectory": is_directory, "acl": acl}
 
     def setUp(self):
@@ -64,6 +65,18 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                           side_effect=self.synthetic_windows_acl_receipt)
         self.acl_check = acl_patch.start()
         self.addCleanup(acl_patch.stop)
+
+    @staticmethod
+    def synthetic_server_paths(temporary):
+        root = Path(temporary)
+        if platform.system() == "Windows":
+            stage_root = root / "mcp-update-fixture-a6285846-10e4-45c5-9cf7-b138a5beb222"
+            directory = stage_root / "content"
+            state = stage_root / "server-state"
+            directory.mkdir(parents=True)
+            state.mkdir()
+            return directory, state / "ready.json"
+        return root, root / "ready.json"
 
     def test_public_ready_phase_admits_only_expected_downloaded_update(self):
         # Public installed-DMG status observed during the native coordinator run.
@@ -96,8 +109,7 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
     def test_serve_ready_digest_binds_the_exact_manifest_response(self):
         """The native proxy admission receipt must name the bytes served for GET."""
         with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            ready_file = directory / "ready.json"
+            directory, ready_file = self.synthetic_server_paths(temporary)
             manifest = {"schemaVersion": 1, "assets": [{"fileName": "target.msi"}],
                         "buildNumber": 16800}
             fixture_receipt = directory / "fixture-receipt.json"
@@ -117,6 +129,10 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
 
                 def serve_forever(self):
                     ready = json.loads(ready_file.read_text())
+                    if platform.system() == "Windows":
+                        self_assert.assertEqual(directory.parent / "server-state", ready_file.parent)
+                        self_assert.assertTrue((ready_file.parent / "probe-events").is_dir())
+                        self_assert.assertFalse((directory / "probe-events").exists())
                     self_assert.assertEqual(hashlib.sha256(served_body).hexdigest(),
                                             ready.get("manifestSha256"))
                     self_assert.assertEqual("a6285846-10e4-45c5-9cf7-b138a5beb222",
@@ -161,8 +177,7 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
 
     def test_serve_refuses_changed_fixture_receipt_before_ready_publish(self):
         with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            ready_file = directory / "ready.json"
+            directory, ready_file = self.synthetic_server_paths(temporary)
             (directory / "fixture-receipt.json").write_text(json.dumps({
                 "sourceFingerprint": "f" * 64, "manifest": {"assets": ["changed"]}}))
             with patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
@@ -177,8 +192,7 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
 
     def test_serve_refuses_same_manifest_receipt_swap_during_resource_admission(self):
         with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            ready_file = directory / "ready.json"
+            directory, ready_file = self.synthetic_server_paths(temporary)
             receipt = directory / "fixture-receipt.json"
             manifest = {"assets": []}
             receipt.write_text(json.dumps({"sourceFingerprint": "a" * 64,
@@ -210,8 +224,7 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
 
     def test_serve_refuses_certificate_swap_during_tls_chain_load(self):
         with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            ready_file = directory / "ready.json"
+            directory, ready_file = self.synthetic_server_paths(temporary)
             manifest = {"assets": []}
             (directory / "fixture-receipt.json").write_text(json.dumps({
                 "sourceFingerprint": "a" * 64, "manifest": manifest}))
@@ -271,14 +284,13 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
 
     def test_windows_serve_requires_live_stage_acl_before_fixture_resources(self):
         with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            ready_file = directory / "ready.json"
-            with patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
-                    patch("prepare_desktop_update_fixture.platform.system", return_value="Windows"), \
+            with patch("prepare_desktop_update_fixture.platform.system", return_value="Windows"), \
+                    patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
                     patch("prepare_desktop_update_fixture.require_windows_private_acl",
                           side_effect=ValueError("unsafe Windows stage")), \
                     patch("prepare_desktop_update_fixture.load_resources",
                           side_effect=AssertionError("unsafe stage reached resources")):
+                directory, ready_file = self.synthetic_server_paths(temporary)
                 with self.assertRaisesRegex(ValueError, "unsafe Windows stage"):
                     prepare_desktop_update_fixture.serve(
                         directory, directory / "server.pem", directory / "server.key", ready_file, True)
@@ -322,6 +334,49 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             self.test_serve_refuses_same_manifest_receipt_swap_during_resource_admission()
             self.test_serve_refuses_certificate_swap_during_tls_chain_load()
             self.test_probe_event_requires_exact_manifest_get_and_is_immutable()
+
+    def test_windows_server_state_requires_fresh_sibling_before_resources(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("prepare_desktop_update_fixture.platform.system", return_value="Windows"), \
+                    patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
+                    patch("prepare_desktop_update_fixture.load_resources",
+                          side_effect=AssertionError("dirty state reached resources")):
+                directory, ready_file = self.synthetic_server_paths(temporary)
+                with self.assertRaisesRegex(ValueError, "protected sibling"):
+                    prepare_desktop_update_fixture.serve(
+                        directory, directory / "server.pem", directory / "server.key",
+                        directory / "ready.json", True)
+                (ready_file.parent / "stale-ready.json").write_text("old generation")
+                with self.assertRaisesRegex(ValueError, "not fresh"):
+                    prepare_desktop_update_fixture.serve(
+                        directory, directory / "server.pem", directory / "server.key",
+                        ready_file, True)
+                self.assertFalse(ready_file.exists())
+
+    def test_windows_server_rejects_process_other_than_stage_recipient(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("prepare_desktop_update_fixture.platform.system", return_value="Windows"), \
+                    patch("prepare_desktop_update_fixture.require_fixture_certificate_current"), \
+                    patch("prepare_desktop_update_fixture.load_resources",
+                          side_effect=AssertionError("wrong user reached resources")):
+                directory, ready_file = self.synthetic_server_paths(temporary)
+                observations = []
+                def wrong_owner(path, *, private, establish=True):
+                    observations.append((Path(path), private, establish))
+                    receipt = self.synthetic_windows_acl_receipt(path, private=private)
+                    receipt["currentSid"] = "S-1-5-18"
+                    if private:
+                        receipt["acl"] = [item for item in receipt["acl"]
+                                          if item["sid"] != "S-1-5-21-1-2-3-4"]
+                    return receipt
+                with patch("prepare_desktop_update_fixture.windows_acl_receipt",
+                          side_effect=wrong_owner):
+                    with self.assertRaisesRegex(ValueError, "recipient"):
+                        prepare_desktop_update_fixture.serve(
+                            directory, directory / "server.pem", directory / "server.key",
+                            ready_file, True)
+                self.assertIn((ready_file.parent, True, False), observations)
+                self.assertFalse(ready_file.exists())
 
     def test_missing_selected_identity_is_rejected_before_runtime_start(self):
         # Native malformed-DMG preparation added a location but did not select it;

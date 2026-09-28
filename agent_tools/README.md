@@ -751,3 +751,27 @@ identity after interruption; a timeout never authorizes another publication.
 
 Job and transfer observation currently require key/agent profiles on a POSIX
 coordinator. Password-backed connectivity probes remain separate from these actions.
+
+### Fixed continuation acceptance adapters
+
+`vm_workflow("android-cli-stage-start", inputs={host, correlationId, artifactId})`
+publishes one verified, current-source Linux x86_64 RPM's complete desktop CLI
+tree into a private Android fixture host stage. `android-cli-stage-status` and
+`android-cli-stage-collect` accept only `correlationId`; they rehash the staged
+RPM and tree. An unknown transfer is not replayable. This stage does not install
+the Android APK or start a runtime.
+
+`vm_workflow("android-document-acceptance-start", inputs={host, device,
+correlationId, artifactId, cliStageCorrelationId, expectedOwner,
+expectedRevision})` runs the fixed API29 48 MiB routing-document scenario only
+after the exact APK and current CLI stage are admitted. Status and collect accept
+only `correlationId`. Its receipt reports full and cold reads, export, restore,
+retained wait and same-request retry separately; false fields must not be
+promoted as passed scenarios. Unknown outcomes retain their device lease.
+
+`vm_workflow("macos-fixture-guest-stage-start", inputs={correlationId,
+sourceSha, guestRoot, baseSha256, baseSizeBytes, targetSha256,
+targetSizeBytes})` verifies registered same-source DMGs and repairs only the
+mode of exact task-owned copies in the disposable Tart guest after hashing both.
+Status and collect accept only `correlationId`. It neither starts a fixture
+server nor submits an installer. An uncertain mutation cannot be resubmitted.

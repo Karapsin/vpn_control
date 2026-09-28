@@ -71,6 +71,22 @@ class VisualCaptureTest {
     }
 
     @Test
+    fun connectionLogGeometryUsesTheOwnerAssignedCursorTag() {
+        val directory = Files.createTempDirectory("vpn-control-visual-log-cursor")
+        val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+        try {
+            service.replaceStateForVisualCapture(visualState("stats-connection-log"), visualLocations())
+            val entries = service.state.connectionLog
+            check(entries.single().id != "0")
+            check(visualGeometryTag("connection-log-row-0", entries) == "connection-log-row-${entries.single().id}") {
+                "Visual geometry must resolve the owner-assigned connection-log cursor"
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun captureRequestedScenes() {
         if (System.getenv("VPN_CONTROL_VISUAL_OUTPUT") == null) return
         runDesktopComposeUiTest(width = 1280, height = 800) capture@{
@@ -168,6 +184,7 @@ class VisualCaptureTest {
                     image,
                     scene,
                     viewport.value.density,
+                    service.state.connectionLog,
                 )
             }
         }
@@ -216,18 +233,23 @@ class VisualCaptureTest {
         return canvas
     }
 
-    private fun writeGeometry(path: Path, image: BufferedImage, scene: JsonObject, density: Float) {
+    private fun visualGeometryTag(id: String, entries: List<ConnectionLogEntry>): String =
+        if (id == "connection-log-row-0") "connection-log-row-${entries.single().id}" else id
+
+    private fun writeGeometry(path: Path, image: BufferedImage, scene: JsonObject, density: Float,
+        connectionLog: List<ConnectionLogEntry>) {
         val required = scene["required_elements"]?.jsonArray.orEmpty().map { it.jsonPrimitive.content }
         val sceneId = scene.getValue("id").jsonPrimitive.content
         val elements = buildJsonArray {
             required.forEach { id ->
+                val productionTag = visualGeometryTag(id, connectionLog)
                 val mergedNode = runCatching {
-                    compose.onAllNodes(hasTestTag(id), useUnmergedTree = false)
+                    compose.onAllNodes(hasTestTag(productionTag), useUnmergedTree = false)
                         .fetchSemanticsNodes(atLeastOneRootRequired = false)
                         .firstOrNull()
                 }.getOrNull()
                 val unmergedNode = runCatching {
-                    compose.onAllNodes(hasTestTag(id), useUnmergedTree = true)
+                    compose.onAllNodes(hasTestTag(productionTag), useUnmergedTree = true)
                         .fetchSemanticsNodes(atLeastOneRootRequired = false)
                         .firstOrNull()
                 }.getOrNull()

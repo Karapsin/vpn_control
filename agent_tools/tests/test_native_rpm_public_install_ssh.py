@@ -278,6 +278,7 @@ class RpmTransportTest(unittest.TestCase):
                 subject._authorization(Path(temporary), candidate, 'f' * 64)
                 return captured
             with patch.object(subject, 'admission', side_effect=admitted), \
+                 patch.object(subject.linux_rpm_fixture_server, 'host_endpoint_ready', return_value=True), \
                  patch.object(driver, '_transfer', side_effect=transfer), \
                  patch.object(driver, '_remote', return_value=None) as remote:
                 self.assertEqual('unknown', driver.submit(intent)['state'])
@@ -309,6 +310,7 @@ class RpmTransportTest(unittest.TestCase):
                 subject._authorization(Path(temporary), candidate, 'f' * 64)
                 return captured
             with patch.object(subject, 'admission', side_effect=admitted), \
+                 patch.object(subject.linux_rpm_fixture_server, 'host_endpoint_ready', return_value=True), \
                  patch.object(driver, '_transfer', side_effect=transfer), \
                  patch.object(driver, '_remote', return_value={'state': 'submitted', 'correlationId': intent.correlation_id}) as remote:
                 self.assertTrue(subject.preflight(temporary, request)['ready'])

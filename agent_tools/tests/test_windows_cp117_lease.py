@@ -1,0 +1,254 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+import threading
+import unittest
+import uuid
+from pathlib import Path
+
+from agent_tools import windows_cp117_lease as lease
+
+
+def identity(lease_id: str | None = None) -> dict:
+    return {"host": "archlinux", "environment": "windows-cp117",
+            "leaseId": lease_id or str(uuid.uuid4()), "operator": "windows-owner",
+            "sourceSha": "a" * 40, "fixtureReceiptArtifactId": "sha256-" + "b" * 64,
+            "baseMsiArtifactId": "sha256-" + "c" * 64,
+            "targetMsiArtifactId": "sha256-" + "d" * 64,
+            "socketPath": "/owned/cp117.qga", "qemuPid": 4321, "startTicks": 98765}
+
+
+def remote_at(root: Path):
+    transfer = root / "remote"
+    transfer.mkdir(mode=0o700, exist_ok=True)
+    prefix = "import base64,hashlib,json,os,secrets,stat,sys\n" \
+             "def live(sock,pid,ticks):return sock=='/owned/cp117.qga' and pid=='4321' and ticks=='98765'\n"
+
+    def remote(action: str, payload: dict) -> bytes:
+        args = lease.remote_arguments(transfer, action, payload)
+        run = subprocess.run([sys.executable, "-c", prefix + lease._REMOTE_BODY, *args],
+                             capture_output=True, timeout=10, check=False)
+        if run.returncode:
+            raise AssertionError(run.stderr.decode(errors="replace"))
+        return run.stdout
+
+    return remote
+
+
+class Cp117CampaignLeaseTests(unittest.TestCase):
+    def test_remote_status_never_creates_missing_journal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); remote = remote_at(root); bound = identity()
+            desired = {"version": 1, "identity": bound, "sequence": 0, "state": "active",
+                       "role": None, "correlationId": None, "server": "stopped",
+                       "lastEvidenceSha256": None, "lastOutcome": None}
+            for action in ("status", "finalize"):
+                receipt = json.loads(remote(action, {"action": action, "desired": desired,
+                                                     "priorSha256": None}))
+                self.assertEqual(receipt, {"version": 1, "state": "unknown"})
+            self.assertEqual(list((root / "remote").iterdir()), [])
+
+    def test_conflicting_active_and_closed_records_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); remote = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            lease.begin(root, bound, remote)
+            remote_group = root / "remote/windows-cp117/windows-cp117-campaign"
+            active = remote_group / "active.json"
+            closed = remote_group / (lease_id + ".closed.json")
+            closed.write_bytes(active.read_bytes()); closed.chmod(0o600)
+            desired = json.loads(active.read_text())
+            receipt = json.loads(remote("status", {"action": "status", "desired": desired,
+                                                    "priorSha256": None}))
+            self.assertEqual(receipt, {"version": 1, "state": "unknown"})
+            self.assertEqual(active.read_bytes(), closed.read_bytes())
+
+            local_group = root / ".rag_index/windows-cp117-campaign"
+            local_closed = local_group / (lease_id + ".closed.json")
+            local_closed.write_bytes((local_group / "active.json").read_bytes()); local_closed.chmod(0o600)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.inspect(root, lease_id)
+
+    def test_one_campaign_serializes_routes_and_preserves_server_role(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); remote = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            self.assertEqual(lease.begin(root, bound, remote)["state"], "active")
+            base_corr = str(uuid.uuid4())
+            self.assertEqual(lease.claim_role(root, lease_id, "base", base_corr, remote)["state"], "role-active")
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "public", str(uuid.uuid4()), remote)
+            lease.finish_role(root, lease_id, "base", base_corr, "e" * 64, "succeeded", remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "target", str(uuid.uuid4()), remote)
+            server_corr = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "server-start", server_corr, remote)
+            lease.finish_role(root, lease_id, "server-start", server_corr, "f" * 64, "succeeded", remote)
+            self.assertEqual(lease.inspect(root, lease_id)["server"], "live")
+            target_corr = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "target", target_corr, remote)
+            lease.finish_role(root, lease_id, "target", target_corr, "1" * 64, "succeeded", remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.close(root, lease_id, {}, remote)
+            stop_corr = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "server-stop", stop_corr, remote)
+            lease.finish_role(root, lease_id, "server-stop", stop_corr, "2" * 64, "succeeded", remote)
+            proof = {"guestGeneration": {"socketPath": bound["socketPath"], "qemuPid": bound["qemuPid"],
+                                         "startTicks": bound["startTicks"]},
+                     "serverStopped": True, "protectedJobsTerminalCleaned": True,
+                     "activeInstallerProcessesAbsent": True, "cleanupReceiptSha256": "3" * 64}
+            self.assertEqual(lease.close(root, lease_id, proof, remote)["state"], "closed")
+            self.assertEqual(lease.inspect(root, lease_id)["state"], "closed")
+            self.assertEqual(lease.reconcile(root, lease_id, remote)["state"], "closed")
+            self.assertTrue((root / ".rag_index/windows-cp117-campaign" /
+                             (lease_id + ".closed.json")).exists())
+
+    def test_lost_remote_response_is_sticky_across_restart_and_never_replayed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); actual = remote_at(root); bound = identity(); calls = []
+
+            def lost(action, payload):
+                calls.append(action)
+                actual(action, payload)
+                return None
+
+            result = lease.begin(root, bound, lost)
+            self.assertEqual(result["state"], "unknown")
+            self.assertFalse(result["replayAllowed"])
+            self.assertEqual(lease.inspect(root, bound["leaseId"])["state"], "pending-remote")
+            self.assertEqual(lease.reconcile(root, bound["leaseId"], actual)["state"], "active")
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.begin(root, bound, actual)
+            role = str(uuid.uuid4())
+            self.assertEqual(lease.claim_role(root, bound["leaseId"], "base", role, actual)["state"], "role-active")
+            self.assertEqual(calls, ["reserve"])
+
+    def test_lost_remote_role_response_recovers_by_read_only_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); actual = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            lease.begin(root, bound, actual)
+            role = str(uuid.uuid4()); calls = []
+
+            def lost(action, payload):
+                calls.append(action)
+                actual(action, payload)
+                return None
+
+            self.assertEqual(lease.claim_role(root, lease_id, "base", role, lost)["state"], "unknown")
+            self.assertEqual(lease.inspect(root, lease_id)["state"], "pending-role")
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "public", str(uuid.uuid4()), actual)
+            self.assertEqual(lease.reconcile(root, lease_id, actual)["state"], "role-active")
+            self.assertEqual(calls, ["claim"])
+
+    def test_two_route_campaigns_race_for_one_local_and_remote_slot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); remote = remote_at(root)
+            barrier = threading.Barrier(2); results = []
+
+            def start(bound):
+                barrier.wait()
+                try: results.append(lease.begin(root, bound, remote)["state"])
+                except lease.Cp117LeaseError: results.append("blocked")
+
+            threads = [threading.Thread(target=start, args=(identity(),)) for _ in range(2)]
+            for thread in threads: thread.start()
+            for thread in threads: thread.join(timeout=15)
+            self.assertEqual(sorted(results), ["active", "blocked"])
+
+    def test_changed_guest_generation_never_admits_remote_lease(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); bound = dict(identity(), startTicks=12345)
+            result = lease.begin(root, bound, remote_at(root))
+            self.assertEqual(result["state"], "unknown")
+            self.assertFalse(result["replayAllowed"])
+            self.assertEqual(lease.reconcile(root, bound["leaseId"], remote_at(root))["state"], "unknown")
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.begin(root, identity(), remote_at(root))
+
+    def test_lost_close_response_requires_remote_closed_readback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); actual = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            lease.begin(root, bound, actual)
+            proof = {"guestGeneration": {"socketPath": bound["socketPath"], "qemuPid": bound["qemuPid"],
+                                         "startTicks": bound["startTicks"]},
+                     "serverStopped": True, "protectedJobsTerminalCleaned": True,
+                     "activeInstallerProcessesAbsent": True, "cleanupReceiptSha256": "6" * 64}
+
+            def lost(action, payload):
+                actual(action, payload)
+                return None
+
+            self.assertEqual(lease.close(root, lease_id, proof, lost)["state"], "unknown")
+            self.assertEqual(lease.inspect(root, lease_id)["state"], "pending-close")
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.begin(root, identity(), actual)
+            self.assertEqual(lease.reconcile(root, lease_id, actual)["state"], "closed")
+            self.assertEqual(lease.begin(root, identity(), actual)["state"], "active")
+
+    def test_interrupted_close_at_remote_and_local_rename_boundaries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); actual = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            lease.begin(root, bound, actual)
+            proof = {"guestGeneration": {"socketPath": bound["socketPath"], "qemuPid": bound["qemuPid"],
+                                         "startTicks": bound["startTicks"]},
+                     "serverStopped": True, "protectedJobsTerminalCleaned": True,
+                     "activeInstallerProcessesAbsent": True, "cleanupReceiptSha256": "7" * 64}
+
+            def interrupted_remote_close(action, payload):
+                self.assertEqual(action, "close")
+                remote_active = root / "remote/windows-cp117/windows-cp117-campaign/active.json"
+                remote_active.write_text(json.dumps(payload["desired"], sort_keys=True) + "\n")
+                remote_active.chmod(0o600)
+                return None
+
+            self.assertEqual(lease.close(root, lease_id, proof, interrupted_remote_close)["state"], "unknown")
+            remote_group = root / "remote/windows-cp117/windows-cp117-campaign"
+            self.assertTrue((remote_group / "active.json").exists())
+            self.assertFalse((remote_group / (lease_id + ".closed.json")).exists())
+            self.assertEqual(lease.reconcile(root, lease_id, actual)["state"], "closed")
+            self.assertFalse((remote_group / "active.json").exists())
+            self.assertTrue((remote_group / (lease_id + ".closed.json")).exists())
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); actual = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            lease.begin(root, bound, actual)
+            def lost(action, payload):
+                actual(action, payload)
+                return None
+            lease.close(root, lease_id, proof | {"guestGeneration": {
+                "socketPath": bound["socketPath"], "qemuPid": bound["qemuPid"],
+                "startTicks": bound["startTicks"]}}, lost)
+            local_group = root / ".rag_index/windows-cp117-campaign"
+            active = local_group / "active.json"
+            pending = json.loads(active.read_text())
+            active.write_text(json.dumps(dict(pending, state="closed"), sort_keys=True) + "\n")
+            active.chmod(0o600)
+            self.assertEqual(lease.reconcile(root, lease_id, actual)["state"], "closed")
+            self.assertFalse(active.exists())
+
+    def test_legacy_terminal_requires_exact_cleanup_and_keeps_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            proof = {"correlationId": "99126312-977f-4a61-a9ef-fb6884d2d26f",
+                     "guestGeneration": {"socketPath": "/owned/cp117.qga", "qemuPid": 4321, "startTicks": 98765},
+                     "terminalJobId": "9107428f-9c80-4284-9f4e-926350105a59",
+                     "terminalPhase": "Failed", "cleanupCode": "OK",
+                     "activeInstallerProcessesAbsent": True, "evidenceSha256": "4" * 64}
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.attest_legacy_closed(root, dict(proof, terminalPhase="Installing"))
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.attest_legacy_closed(root, dict(proof, activeInstallerProcessesAbsent=False))
+            self.assertEqual(lease.attest_legacy_closed(root, proof)["state"], "closed")
+            self.assertEqual(lease.attest_legacy_closed(root, proof)["state"], "closed")
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.attest_legacy_closed(root, dict(proof, evidenceSha256="5" * 64))
+            self.assertEqual(json.loads((root / ".rag_index/windows-cp117-campaign" /
+                (proof["correlationId"] + ".legacy-closed.json")).read_text()), proof)
+            self.assertFalse((root / ".rag_index/windows-cp117-campaign/active.json").exists())
+            self.assertEqual(lease.inspect(root, str(uuid.uuid4()))["state"], "unknown")
+            self.assertFalse((root / "remote").exists())
+
+
+if __name__ == "__main__": unittest.main()

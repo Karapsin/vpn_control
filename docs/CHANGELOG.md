@@ -11,6 +11,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Add source-bound update probes and correlated Windows fixtures.
 - Guard the approved Fedora owner quit before RPM tests.
 - Harden native update fixture admission and visual benchmark capture.
+- Harden cross-platform native fixture admission and visual capture.
 
 ## 2.2.0 - 2026-09-28
 

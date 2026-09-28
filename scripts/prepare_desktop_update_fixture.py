@@ -1072,7 +1072,7 @@ def fsync_probe_directory(directory):
             os.close(descriptor)
 
 
-def windows_acl_receipt(path, *, private):
+def windows_acl_receipt(path, *, private, establish=True):
     """Ask the OS to verify the protected fixture stage or secure one child."""
     require(platform.system() == "Windows", "Windows fixture ACL check is unavailable")
     system32 = ctypes.create_unicode_buffer(32768)
@@ -1084,7 +1084,7 @@ def windows_acl_receipt(path, *, private):
     powershell = Path(system32.value) / "WindowsPowerShell/v1.0/powershell.exe"
     require(powershell.is_file(), "Windows PowerShell ACL verifier is unavailable")
     encoded_path = base64.b64encode(str(path).encode("utf-16le")).decode("ascii")
-    action = "private" if private else "stage"
+    action = "private" if private and establish else ("private-check" if private else "stage")
     script = f'''$ErrorActionPreference = 'Stop'
 $path = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{encoded_path}'))
 $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
@@ -1136,9 +1136,9 @@ $records = @($acl.Access | ForEach-Object {{
     return observed
 
 
-def require_windows_private_acl(path, *, private, directory):
+def require_windows_private_acl(path, *, private, directory, establish=True):
     """Require the live stage DACL or set/check a private ready/probe child."""
-    observed = windows_acl_receipt(path, private=private)
+    observed = windows_acl_receipt(path, private=private, establish=establish)
     require(isinstance(observed, dict) and observed.get("protected") is True and
             observed.get("isDirectory") is directory and isinstance(observed.get("acl"), list),
             "Windows fixture ACL protection is invalid")
@@ -1165,6 +1165,7 @@ def require_windows_private_acl(path, *, private, directory):
         expected = {"S-1-5-18": (full, 3), "S-1-5-32-544": (full, 3),
                     recipient[0]: (0x1200A9, 3)}
     require(entries == expected, "Windows fixture ACL principals or rights are unsafe")
+    return current if private else recipient[0]
 
 
 def write_private_ready_json(path, value):
@@ -1379,12 +1380,30 @@ def serve_connection(request, tls, manifest, resources, manifest_body, emit, *,
 def serve(directory, certificate, private_key, ready_file, confirmed):
     require(confirmed, "Explicit owned-disposable-guest confirmation required")
     require_fixture_certificate_current(certificate)
-    if platform.system() == "Windows":
+    windows = platform.system() == "Windows"
+    if windows:
         stage = Path(directory).absolute()
-        require(Path(ready_file).absolute().parent == stage,
-                "Windows fixture ready file must be inside the verified stage")
-        require_windows_private_acl(stage, private=False, directory=True)
+        root_name = stage.parent.name.removeprefix("mcp-update-fixture-")
+        try:
+            canonical_root = str(uuid.UUID(root_name))
+        except (TypeError, ValueError) as error:
+            raise ValueError("Windows fixture stage identity is invalid") from error
+        require(stage.name == "content" and stage.parent.name ==
+                "mcp-update-fixture-" + canonical_root,
+                "Windows fixture stage identity is invalid")
+        state = stage.parent / "server-state"
+        require(Path(ready_file).absolute() == state / "ready.json" and
+                state.is_dir() and not state.is_symlink(),
+                "Windows fixture ready file requires the protected sibling state root")
+        stage_recipient = require_windows_private_acl(stage, private=False, directory=True)
+        state_owner = require_windows_private_acl(state, private=True, directory=True,
+                                                 establish=False)
+        require(state_owner == stage_recipient,
+                "Windows fixture server process is not the stage recipient")
+        require(not any(state.iterdir()),
+                "Windows fixture server state root is not fresh")
     directory = directory.resolve(strict=True)
+    event_root = state if windows else directory
     receipt_path = directory / "fixture-receipt.json"
     require(receipt_path.is_file() and not receipt_path.is_symlink(),
             "Fixture source/artifact receipt path is unsafe")
@@ -1392,7 +1411,7 @@ def serve(directory, certificate, private_key, ready_file, confirmed):
     manifest, resources = load_resources(directory, receipt_bytes=receipt_bytes)
     body = json.dumps(manifest, separators=(",", ":")).encode()
     certificate_digest = probe_certificate_sha256(certificate)
-    probe_events_path(directory)
+    probe_events_path(event_root)
     receipt = json.loads(receipt_bytes)
     source_fingerprint = receipt.get("sourceFingerprint")
     require(receipt.get("manifest") == manifest and isinstance(source_fingerprint, str) and
@@ -1411,7 +1430,7 @@ def serve(directory, certificate, private_key, ready_file, confirmed):
             self.request.settimeout(30)
             serve_connection(self.request, tls, manifest, resources, body,
                              lambda value: print(json.dumps(value, separators=(",", ":")), flush=True),
-                             probe_events_directory=directory, certificate_sha256=certificate_digest,
+                             probe_events_directory=event_root, certificate_sha256=certificate_digest,
                              server_instance_id=instance_id)
 
     class Server(socketserver.ThreadingTCPServer):

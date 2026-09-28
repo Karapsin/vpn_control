@@ -18,9 +18,9 @@ import tempfile
 from typing import Any, Mapping
 
 try:
-    from . import native_artifact_registry, native_rpm_public_install_adapter as adapter, native_scenario_bundle, native_scenario_ssh, ssh_transport, ssh_transfer
+    from . import linux_rpm_fixture_server, native_artifact_registry, native_rpm_public_install_adapter as adapter, native_scenario_bundle, native_scenario_ssh, ssh_transport, ssh_transfer
 except ImportError:
-    import native_artifact_registry, native_rpm_public_install_adapter as adapter, native_scenario_bundle, native_scenario_ssh, ssh_transport, ssh_transfer
+    import linux_rpm_fixture_server, native_artifact_registry, native_rpm_public_install_adapter as adapter, native_scenario_bundle, native_scenario_ssh, ssh_transport, ssh_transfer
 
 _BUNDLE_ID = 'linux-public-update-driver'
 _AUTH_PURPOSE = 'linux-rpm-public-install-recovery'
@@ -459,10 +459,10 @@ _ASSESS_HARNESS = r'''def assess_harness(out_path,intent,rc,run=subprocess.run):
   return None,rc if rc!=0 else 1
 '''
 
-_LAUNCHER = r'''import json,os,subprocess,sys,time,stat
+_LAUNCHER = r'''import json,os,runpy,subprocess,sys,time,stat
 job,stage=sys.argv[1:]
 while not os.path.exists(os.path.join(job,'release')): time.sleep(.02)
-intent=json.load(open(os.path.join(job,'intent.json'),encoding='utf-8'))
+with open(os.path.join(job,'intent.json'),encoding='utf-8') as source:intent=json.load(source)
 def durable(name,value):
  path=os.path.join(job,name); tmp=path+'.tmp'; fd=os.open(tmp,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
  with os.fdopen(fd,'wb') as out: out.write((json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode()); out.flush(); os.fsync(out.fileno())
@@ -471,9 +471,16 @@ entry=os.path.join(stage,'scripts','test_linux_public_install.py')
 fixture=os.path.join(stage,'fixture')
 runner="import pathlib,runpy,sys;p=pathlib.Path(sys.argv[1]);sys.path.insert(0,str(p.parent));sys.argv=[str(p),*sys.argv[2:]];runpy.run_path(str(p),run_name='__main__')"
 args=[sys.executable,'-I','-B','-c',runner,entry,'--launcher','/opt/vpn-control/bin/vpn-control','--expected-target-version',intent['expectedTargetVersion'],'--confirm-owned-disposable-vm','--require-same-source-recovery','--rpm-source-fixture',fixture,'--retained-fixture-auth','--preserve-existing-fixture-password','--cleanup-synthetic-workspace']
+try:
+ endpoint=runpy.run_path(os.path.join(stage,'linux-rpm-fixture-server.py'))['admit_endpoint']
+ environment={**os.environ,**endpoint(job,stage,intent)}
+except Exception:
+ identity=intent['identity']
+ durable('receipt.json',{'scenarioId':intent['scenarioId'],'host':intent['host'],'environment':intent['environment'],'bundleHash':intent['bundleHash'],'artifactIds':intent['artifactIds'],'correlationId':intent['correlationId'],'pid':identity['pid'],'startTicks':identity['startTicks'],'exitCode':1,'scenarioEvidence':None,'failurePhase':'guest-admission'})
+ raise SystemExit(1)
 out_path=os.path.join(job,'harness.stdout'); err_path=os.path.join(job,'harness.stderr')
 with open(out_path,'xb',buffering=0) as out,open(err_path,'xb',buffering=0) as err:
- rc=subprocess.call(['/bin/sh',os.path.join(stage,'scripts','native_fixture_run.sh'),'--pid-file',os.path.join(job,'child.pid'),'--exit-file',os.path.join(job,'child.exit'),'--',*args],stdout=out,stderr=err)
+ rc=subprocess.call(['/bin/sh',os.path.join(stage,'scripts','native_fixture_run.sh'),'--pid-file',os.path.join(job,'child.pid'),'--exit-file',os.path.join(job,'child.exit'),'--',*args],stdout=out,stderr=err,env=environment)
 ''' + _ASSESS_HARNESS + r'''
 summary,rc=assess_harness(out_path,intent,rc)
 identity=intent['identity']
@@ -486,7 +493,7 @@ root,metadata,size,digest=sys.argv[1:]
 intent=json.loads(metadata); size=int(size)
 os.umask(0o077)
 def bad(reason): print(json.dumps({'state':'unknown','reason':reason},separators=(',',':'))); raise SystemExit(64)
-names=('scripts/test_linux_public_install.py','scripts/linux_fixture_auth.py','scripts/arch_public_update.py','scripts/rpm_public_update.py','scripts/prepare_desktop_update_fixture.py','scripts/fixture_environment.py','scripts/macos_packaging_jdk_preflight.py','scripts/native_fixture_run.sh','native-scenario-manifest.json','scenario-input.json','source-fixture.tar','target.rpm')
+names=('scripts/test_linux_public_install.py','scripts/linux_fixture_auth.py','scripts/arch_public_update.py','scripts/rpm_public_update.py','scripts/prepare_desktop_update_fixture.py','scripts/fixture_environment.py','scripts/macos_packaging_jdk_preflight.py','scripts/native_fixture_run.sh','native-scenario-manifest.json','scenario-input.json','source-fixture.tar','target.rpm','linux-rpm-fixture-server.py')
 if not 0<size<=4*1024*1024*1024 or set(intent.get('fileHashes',{}))!=set(names): bad('transfer_inventory_invalid')
 if intent.get('scenarioId')!='linux-rpm-public-install-recovery' or intent.get('artifactIds',{}).get('bundleManifest')!='sha256-'+intent.get('bundleHash',''): bad('intent_invalid')
 def private(path):
@@ -650,8 +657,7 @@ class RpmPublicInstallSshDriver:
         try: os.fsync(directory)
         finally: os.close(directory)
 
-    @staticmethod
-    def _transfer(path: Path, captured: Mapping[str, Any], intent: adapter.RpmPublicInstallIntent) -> dict[str, Any]:
+    def _transfer(self, path: Path, captured: Mapping[str, Any], intent: adapter.RpmPublicInstallIntent) -> dict[str, Any]:
         paths = captured['paths']
         bundle = paths['bundleManifest'].parent
         names = [entry['path'] for entry in captured['bundle']['files']]
@@ -659,7 +665,8 @@ class RpmPublicInstallSshDriver:
         files.update({'native-scenario-manifest.json': paths['bundleManifest'],
                       'scenario-input.json': paths['scenarioInput'],
                       'source-fixture.tar': paths['sourceFixture'],
-                      'target.rpm': paths['targetPackage']})
+                      'target.rpm': paths['targetPackage'],
+                      'linux-rpm-fixture-server.py': self.root / 'agent_tools' / 'linux_rpm_fixture_server.py'})
         hashes = {}
         with tarfile.open(path, 'w') as archive:
             for name, source in files.items():
@@ -742,6 +749,8 @@ class RpmPublicInstallSshDriver:
 
     def submit(self, intent: adapter.RpmPublicInstallIntent) -> Mapping[str, Any]:
         captured = admission(self.root, intent)
+        if not linux_rpm_fixture_server.host_endpoint_ready(self.root, intent, captured['typed']['sourceFingerprint']):
+            raise RpmPublicInstallSshError('RPM fixture endpoint is not independently ready.')
         # The local no-replay intent is durable before a guest receives bytes.
         try:
             self._save_journal(intent)
@@ -796,7 +805,10 @@ def preflight(root: Path | str, request: Mapping[str, Any]) -> dict[str, Any]:
                         'targetPackage': request['targetPackageArtifactId']},
         'credentialHandle': request['credentialHandle'], 'correlationId': request['scenarioCorrelationId']})
     try:
-        admission(root, intent)
+        captured = admission(root, intent)
+        if not linux_rpm_fixture_server.host_endpoint_ready(root, intent, captured['typed']['sourceFingerprint']):
+            return {'ready': False, 'scenarioId': adapter.SCENARIO_ID,
+                    'requirements': {'fixtureEndpoint': {'state': 'missing', 'reason': 'governed-server-unavailable'}}}
         return {'ready': True, 'scenarioId': adapter.SCENARIO_ID}
     except (OSError, ValueError, tarfile.TarError) as error:
         return {'ready': False, 'scenarioId': adapter.SCENARIO_ID, 'requirements': {'rpmAdmission': {'state': 'failed', 'reason': type(error).__name__, 'evidenceScope': 'registered-local-and-owner-only'}}}

@@ -20,6 +20,7 @@ import uuid
 from typing import Any, Mapping
 
 from . import ssh_transport, windows_credential_probe_ssh, windows_msi_public_scenario
+from . import windows_cp117_lease as campaign_lease
 
 
 class WindowsMsiBasePrepareError(ValueError):
@@ -519,6 +520,99 @@ def _remote(config: Any, program: str, args: tuple[str, ...], source: Path | Non
         return None
 
 
+def _campaign_remote(config: Any, target: Any):
+    """Fixed journal transport; no QGA guest-exec or product action."""
+    def send(action: str, payload: Mapping[str, Any]) -> bytes | None:
+        return _remote(config, campaign_lease.remote_program(),
+            campaign_lease.remote_arguments(target.fixture_transfer_root, action, payload), None, 30)
+    return send
+
+
+def _campaign_identity(request: Mapping[str, Any], descriptor: tuple[Any, ...]) -> dict[str, Any]:
+    env, socket, pid, ticks, _sid = descriptor
+    return {"host": "archlinux", "environment": env, "leaseId": request["correlationId"],
+            "operator": "windows-base", "sourceSha": request["sourceSha"],
+            "fixtureReceiptArtifactId": request["fixtureReceiptArtifactId"],
+            "baseMsiArtifactId": request["baseMsiArtifactId"],
+            "targetMsiArtifactId": request["targetMsiArtifactId"],
+            "socketPath": socket, "qemuPid": pid, "startTicks": ticks}
+
+
+def _require_reconciled_legacy(_root: Path, _descriptor: tuple[Any, ...]) -> None:
+    """A fixed CP176/other-prior native reconciler has not been admitted yet."""
+    raise WindowsMsiBasePrepareError("CP117_LEGACY_RECONCILIATION_UNAVAILABLE")
+
+
+def _require_base_route_free(root: Path) -> None:
+    directory = root / _LOCAL
+    if directory.exists():
+        info = directory.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or directory.is_symlink()
+                or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700
+                or any(item.suffix == ".json" for item in directory.iterdir())):
+            raise WindowsMsiBasePrepareError("CP117 base route has active or unknown history.")
+
+
+def _open_base_campaign(root: Path, request: Mapping[str, Any], config: Any,
+                        target: Any, descriptor: tuple[Any, ...]) -> str:
+    """Internal: starts only after artifact and exact legacy/guest admission."""
+    _require_reconciled_legacy(root, descriptor)
+    _require_base_route_free(root)
+    identity = _campaign_identity(request, descriptor)
+    remote = _campaign_remote(config, target)
+    opened = campaign_lease.begin(root, identity, remote)
+    if opened["state"] != "active":
+        raise WindowsMsiBasePrepareError("CP117 campaign reservation is unknown; inspect, do not replay.")
+    claimed = campaign_lease.claim_role(root, identity["leaseId"], "base",
+                                        request["correlationId"], remote)
+    if claimed["state"] != "role-active":
+        raise WindowsMsiBasePrepareError("CP117 base route claim is unknown; inspect, do not replay.")
+    return identity["leaseId"]
+
+
+def _verified_active_campaign(root: Path, request: Mapping[str, Any],
+                              descriptor: tuple[Any, ...], config: Any, target: Any,
+                              *, require_server: bool) -> str:
+    """Internal: bind a previously verified pair and guest to both lease journals."""
+    directory, lock = campaign_lease._locked(root)
+    try:
+        record = campaign_lease._active(directory)
+        if record is None or record["state"] != "active" or record["role"] is not None:
+            raise WindowsMsiBasePrepareError("CP117 campaign is absent, busy, or unknown.")
+        identity = dict(record["identity"])
+        expected = _campaign_identity({**request, "correlationId": identity["leaseId"]}, descriptor)
+        if identity != expected or (require_server and record["server"] != "live"):
+            raise WindowsMsiBasePrepareError("CP117 campaign or server identity changed.")
+        if not campaign_lease._remote_confirm(_campaign_remote(config, target), "status", record, None):
+            raise WindowsMsiBasePrepareError("CP117 remote campaign state is unknown.")
+        return identity["leaseId"]
+    finally:
+        os.close(lock)
+
+
+def _require_verified_live_fixture(root: Path, request: Mapping[str, Any],
+                                   descriptor: tuple[Any, ...], config: Any, target: Any) -> str:
+    """Join only one fixed, source-bound live server; no caller-supplied proof."""
+    lease_id = _verified_active_campaign(root, request, descriptor, config, target,
+                                         require_server=True)
+    from . import windows_update_fixture_server
+    receipt = windows_update_fixture_server.verified_live_receipt(root, lease_id)
+    expected = _campaign_identity({**request, "correlationId": lease_id}, descriptor)
+    if (not isinstance(receipt, dict) or receipt.get("leaseId") != lease_id
+            or receipt.get("sourceSha") != expected["sourceSha"]
+            or receipt.get("fixtureReceiptArtifactId") != expected["fixtureReceiptArtifactId"]
+            or receipt.get("baseMsiArtifactId") != expected["baseMsiArtifactId"]
+            or receipt.get("targetMsiArtifactId") != expected["targetMsiArtifactId"]
+            or receipt.get("socketPath") != expected["socketPath"]
+            or receipt.get("qemuPid") != expected["qemuPid"]
+            or receipt.get("startTicks") != expected["startTicks"]
+            or receipt.get("serverReady") is not True
+            or not isinstance(receipt.get("liveReceiptSha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", receipt["liveReceiptSha256"])):
+        raise WindowsMsiBasePrepareError("CP117 live fixture receipt does not match campaign.")
+    return lease_id
+
+
 def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     root = Path(root).resolve(strict=True)
     request = _request(value)
@@ -537,6 +631,7 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     command_hash = hashlib.sha256(command.encode("utf-16le")).hexdigest()
     record = {"request": request, "pair": pair, "environment": env, "socketPath": sock,
               "pid": pid, "startTicks": ticks, "expectedSid": sid, "commandSha256": command_hash}
+    record["leaseId"] = _open_base_campaign(root, request, config, target, (env, sock, pid, ticks, sid))
     _reserve(root, record)
     raw = _remote(config, _STAGE, (str(target.fixture_transfer_root), env, correlation, sock, str(pid), str(ticks),
         sid, str(size), encoded, command_hash, request["sourceSha"], pair["sourceFingerprint"],

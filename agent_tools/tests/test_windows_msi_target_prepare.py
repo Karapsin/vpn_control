@@ -113,13 +113,34 @@ class TargetPrepareTests(unittest.TestCase):
             pair.assert_not_called(); remote.assert_not_called()
 
     def test_missing_network_receipt_blocks_before_guest_or_journal(self):
+        class Guest:
+            fixture_transfer_root = Path("/private/cp117")
         with tempfile.TemporaryDirectory() as directory, \
+             patch.object(target, "_pair", return_value=PAIR) as pair, \
+             patch.object(target.base, "_descriptor", return_value=(object(), Guest(),
+                 ("windows-cp117", "/qga.sock", 589342, 520739, SID))), \
+             patch.object(target.base, "_require_verified_live_fixture", side_effect=ValueError("unavailable")), \
              patch.object(target, "readiness") as readiness, \
-             patch.object(target, "_pair") as pair, \
              patch.object(target.base, "_remote") as remote:
             with self.assertRaisesRegex(target.WindowsMsiTargetPrepareError, "FIXTURE_ADMISSION_UNAVAILABLE"):
                 target.start(directory, REQUEST)
-            readiness.assert_not_called(); pair.assert_not_called(); remote.assert_not_called()
+            readiness.assert_not_called(); pair.assert_called_once(); remote.assert_not_called()
+            self.assertIsNone(target._read_intent(Path(directory), CORR))
+
+    def test_verified_server_still_cannot_bypass_missing_target_route_claim(self):
+        class Guest:
+            fixture_transfer_root = Path("/private/cp117")
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(target, "_pair", return_value=PAIR), \
+             patch.object(target.base, "_descriptor", return_value=(object(), Guest(),
+                 ("windows-cp117", "/qga.sock", 589342, 520739, SID))), \
+             patch.object(target.base, "_require_verified_live_fixture", return_value=CORR), \
+             patch.object(target, "readiness") as readiness, \
+             patch.object(target.base, "_remote") as remote:
+            with self.assertRaisesRegex(target.WindowsMsiTargetPrepareError,
+                                        "CP117_TARGET_ROUTE_CLAIM_UNAVAILABLE"):
+                target.start(directory, REQUEST)
+            readiness.assert_not_called(); remote.assert_not_called()
             self.assertIsNone(target._read_intent(Path(directory), CORR))
 
     def test_target_reservation_blocks_without_shared_cp117_lease(self):
@@ -133,7 +154,7 @@ class TargetPrepareTests(unittest.TestCase):
         class Guest:
             fixture_transfer_root = Path("/private/cp117")
         with tempfile.TemporaryDirectory() as directory, \
-             patch.object(target, "_require_fixture_network_admission"), \
+             patch.object(target, "_require_fixture_network_admission", return_value=CORR), \
              patch.object(target, "_require_cross_route_lease"), \
              patch.object(target, "readiness", return_value={"state": "ready"}), \
              patch.object(target, "_pair", return_value=PAIR), \

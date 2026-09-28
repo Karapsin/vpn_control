@@ -498,6 +498,18 @@ def _read_intent(root: Path, correlation: str) -> dict[str, Any]:
     return value
 
 
+def _require_live_fixture_campaign(root: Path, inputs: dict[str, Any],
+                                   descriptor: tuple[Any, ...], config: Any, target: Any) -> str:
+    """Internal only; fail before a public request without a live server receipt."""
+    from agent_tools import windows_msi_base_prepare
+    environment, socket, pid, ticks, _account, sid, _ = descriptor
+    windows_msi_base_prepare._require_verified_live_fixture(
+        root, inputs, (environment, socket, pid, ticks, sid), config, target)
+    # The public route must claim its correlation in both campaign journals
+    # before writing a local intent or asking QGA to create a task.
+    raise WindowsMsiPreinstallStatusError("CP117_PUBLIC_ROUTE_CLAIM_UNAVAILABLE")
+
+
 def start(root: Path | str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Submit one fixed public-update request after durable local/remote intent."""
     allowed = {"host", "correlationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId", "timeoutSeconds"}
@@ -525,9 +537,12 @@ def start(root: Path | str, inputs: dict[str, Any]) -> dict[str, Any]:
     if len(encoded) >= 30000:
         raise WindowsMsiPreinstallStatusError("Fixed MSI bootstrap exceeds Windows command-line admission.")
     command_hash = hashlib.sha256(command.encode("utf-16le")).hexdigest()
+    lease_id = _require_live_fixture_campaign(root_path, inputs,
+        (environment, socket, pid, ticks, account, sid, _), config, target)
     intent = {"schemaVersion": 1, "host": host, "correlationId": correlation, "environment": environment,
               "socketPath": socket, "pid": pid, "startTicks": ticks, "pair": pair, "commandSha256": command_hash}
     intent["expectedSid"] = sid
+    intent["leaseId"] = lease_id
     _write_intent(root_path, correlation, intent)
     payload = {"schema": 1, "socketPath": socket, "pid": pid, "startTicks": ticks,
                "encodedCommand": encoded, "commandSha256": command_hash, "sourceSha": pair["sourceSha"],

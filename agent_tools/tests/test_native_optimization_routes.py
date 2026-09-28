@@ -239,6 +239,100 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             self.assertFalse(result["productAction"])
             collect.assert_called_once_with(mcp_server.REPO_ROOT, correlation)
 
+    def test_android_package_install_running_status_is_not_terminal_failure_evidence(self):
+        from agent_tools import android_package_install, native_failure_evidence
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"correlationId": correlation}
+        for action, method in (("android-package-install-status", "status"),
+                               ("android-package-install-collect", "collect")):
+            with self.subTest(action=action), \
+                    patch.object(android_package_install, method,
+                                 return_value={"state": "running", "correlationId": correlation,
+                                               "replayAllowed": False}), \
+                    patch.object(native_failure_evidence, "record_failure") as record:
+                result = mcp_server.vm_workflow(action, request)
+                self.assertTrue(result["ok"])
+                self.assertEqual("running", result["state"])
+                self.assertNotIn("failureEvidence", result)
+                record.assert_not_called()
+
+    def test_android_document_route_requires_fixed_start_and_observation_fields(self):
+        from agent_tools import android_document_acceptance
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "device": "api29", "correlationId": correlation,
+                   "artifactId": "sha256-" + "b" * 64,
+                   "cliStageCorrelationId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                   "expectedOwner": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "expectedRevision": 0}
+        with patch.object(android_document_acceptance, "start", autospec=True,
+                          return_value={"ok": True, "state": "submitted", "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("android-document-acceptance-start", request)
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["productAction"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", "api29", correlation,
+                                          request["artifactId"], request["cliStageCorrelationId"],
+                                          request["expectedOwner"], 0)
+            self.assertFalse(mcp_server._vm_workflow_impl("android-document-acceptance-start", {**request, "shell": "id"})["ok"])
+            start.assert_called_once()
+        for action, method in (("android-document-acceptance-status", "status"),
+                               ("android-document-acceptance-collect", "collect")):
+            with self.subTest(action=action), patch.object(android_document_acceptance, method,
+                    return_value={"ok": True, "state": "running", "replayAllowed": False}) as observed:
+                result = mcp_server._vm_workflow_impl(action, {"correlationId": correlation})
+                self.assertTrue(result["ok"])
+                self.assertFalse(result["productAction"])
+                observed.assert_called_once_with(mcp_server.REPO_ROOT, correlation)
+                self.assertFalse(mcp_server._vm_workflow_impl(action, {"correlationId": correlation, "device": "api29"})["ok"])
+
+    def test_android_cli_stage_route_has_exact_nonreplayable_fields(self):
+        from agent_tools import android_cli_stage
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "correlationId": correlation, "artifactId": "sha256-" + "b" * 64}
+        with patch.object(android_cli_stage, "start", autospec=True,
+                          return_value={"ok": True, "state": "published", "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("android-cli-stage-start", request)
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["productAction"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", correlation, request["artifactId"])
+            self.assertFalse(mcp_server._vm_workflow_impl("android-cli-stage-start", {**request, "command": "id"})["ok"])
+            start.assert_called_once()
+        for action, method in (("android-cli-stage-status", "status"), ("android-cli-stage-collect", "collect")):
+            with self.subTest(action=action), patch.object(android_cli_stage, method, autospec=True,
+                    return_value={"ok": False, "state": "unknown", "replayAllowed": False}) as observed:
+                result = mcp_server._vm_workflow_impl(action, {"correlationId": correlation})
+                self.assertFalse(result["ok"])
+                self.assertFalse(result["productAction"])
+                observed.assert_called_once_with(mcp_server.REPO_ROOT, correlation)
+                self.assertFalse(mcp_server._vm_workflow_impl(action, {"correlationId": correlation, "host": "archlinux"})["ok"])
+
+    def test_macos_guest_stage_requires_two_verified_same_source_dmgs(self):
+        from agent_tools import macos_fixture_guest_stage, native_artifact_registry
+        source = "a" * 40
+        request = {"correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "sourceSha": source,
+                   "guestRoot": "/Users/admin/macos-parityaaaaaaa", "baseSha256": "b" * 64,
+                   "baseSizeBytes": 123, "targetSha256": "c" * 64, "targetSizeBytes": 456}
+        def verified(_root, artifact_id):
+            size = 123 if artifact_id.endswith("b" * 64) else 456
+            return {"verification": "verified", "artifact": {"platform": "macos", "artifactKind": "desktop-package",
+                    "sourceSha": source, "sourceFingerprint": "d" * 64, "size": size}}
+        with patch.object(native_artifact_registry, "verify_artifact", side_effect=verified) as verify, \
+             patch.object(macos_fixture_guest_stage, "start", return_value={"ok": True, "state": "complete"}) as start:
+            result = mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start", request)
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["productAction"])
+            self.assertEqual(2, verify.call_count)
+            start.assert_called_once_with(mcp_server.REPO_ROOT, request)
+            self.assertFalse(mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start", {**request, "command": "id"})["ok"])
+            start.assert_called_once()
+        with patch.object(native_artifact_registry, "verify_artifact", return_value={"verification": "missing"}), \
+             patch.object(macos_fixture_guest_stage, "start") as start:
+            self.assertFalse(mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start", request)["ok"])
+            start.assert_not_called()
+        with patch.object(native_artifact_registry, "verify_artifact", side_effect=verified), \
+             patch.object(macos_fixture_guest_stage, "start", return_value={"ok": False, "state": "unknown", "replayAllowed": False}):
+            result = mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start", request)
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["replayAllowed"])
+
     def test_android_public_inspect_routes_only_bounded_readonly_request(self):
         from agent_tools import android_public_inspect
         request = {"host": "archlinux", "device": "api29", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

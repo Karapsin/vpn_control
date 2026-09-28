@@ -175,6 +175,7 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
             with (patch.object(scenario.native_artifact_registry, "verify_artifact", side_effect=helper["verify"]),
                   patch.object(scenario.ssh_transport, "load_config", return_value=config),
                   patch.object(scenario.windows_credential_probe_ssh, "_descriptor", return_value=descriptor),
+                  patch.object(scenario, "_require_live_fixture_campaign", return_value=args["correlationId"]),
                   patch.object(scenario.windows_credential_probe_ssh, "_run_ssh", return_value=None) as send):
                 first = scenario.start(root, args)
                 self.assertEqual("unknown", first["state"])
@@ -186,6 +187,33 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
                 with self.assertRaises(scenario.WindowsMsiPreinstallStatusError):
                     scenario.start(root, other)
                 send.assert_called_once()
+
+    def test_no_live_campaign_receipt_blocks_before_public_intent_or_guest_request(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); ids, helper = fake_pair(root)
+            args = {"host": "archlinux", "correlationId": "11111111-1111-4111-8111-111111111111",
+                    "sourceSha": SOURCE, **ids}
+            target = types.SimpleNamespace(fixture_transfer_root=Path("/private/fixture"))
+            config = types.SimpleNamespace(hosts={"archlinux": target})
+            descriptor = ("windows-cp117", "/private/qga.sock", 589342, 520739,
+                          "vpncp117", "S-1-5-21-2404255130-2183793310-3766671872-1002", Path("private"))
+            with (patch.object(scenario.native_artifact_registry, "verify_artifact", side_effect=helper["verify"]),
+                  patch.object(scenario.ssh_transport, "load_config", return_value=config),
+                  patch.object(scenario.windows_credential_probe_ssh, "_descriptor", return_value=descriptor),
+                  patch.object(scenario.windows_credential_probe_ssh, "_run_ssh") as send):
+                with self.assertRaises(ValueError):
+                    scenario.start(root, args)
+                send.assert_not_called()
+                self.assertFalse(scenario._intent_file(root, args["correlationId"]).exists())
+
+    def test_live_server_receipt_still_cannot_bypass_missing_public_route_claim(self) -> None:
+        from agent_tools import windows_msi_base_prepare as base
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(base, "_require_verified_live_fixture", return_value="11111111-1111-4111-8111-111111111111"):
+            descriptor = ("windows-cp117", "/qga.sock", 1, 2, "vpncp117", "S-1-5-21-1-2-3-1002", Path("private"))
+            with self.assertRaisesRegex(scenario.WindowsMsiPreinstallStatusError,
+                                        "CP117_PUBLIC_ROUTE_CLAIM_UNAVAILABLE"):
+                scenario._require_live_fixture_campaign(Path(directory), {}, descriptor, object(), object())
 
     def test_command_size_fails_before_intent_or_qga(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
