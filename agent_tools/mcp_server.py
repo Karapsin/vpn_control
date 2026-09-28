@@ -1559,8 +1559,8 @@ def _watch_required_workflows(sha: str) -> dict[str, Any]:
             logs = []
             for name, run in failures.items():
                 run_id = str(run.get("databaseId"))
-                log = _run(["gh", "run", "view", run_id, "--log-failed"], timeout=180)
-                logs.append({"workflow": name, "run_id": run_id, "excerpt": _bounded(log.get("stdout") or log.get("stderr"), 8000)})
+                log = _run(["gh", "run", "view", run_id, "--log-failed"], timeout=180, output_limit=None)
+                logs.append({"workflow": name, "run_id": run_id, "excerpt": _failure_log_excerpt(log.get("stdout") or log.get("stderr"))})
             return _error(
                 "git_workflow",
                 "One or more required workflows failed for the exact pushed SHA.",
@@ -1602,6 +1602,36 @@ def _watch_required_workflows(sha: str) -> dict[str, Any]:
                 command_results=[listed],
             )
         time.sleep(POLL_SECONDS)
+
+
+def _failure_log_excerpt(value: Any, limit: int = 8000) -> str:
+    """Keep causal error context and the final summary within the MCP bound."""
+    text = str(value or "")
+    if len(text) <= limit:
+        return text
+    lines = text.splitlines(keepends=True)
+    error = re.compile(r"FAIL(?:ED)?[: ]|ERROR[: ]|Traceback |AssertionError|Exception|\berror:|##\[error\]")
+    selected: list[str] = []
+    end = 0
+    for index, line in enumerate(lines):
+        if not error.search(line):
+            continue
+        start = max(end, index - 2)
+        stop = min(len(lines), index + 25)
+        if start >= stop:
+            continue
+        if start > end:
+            selected.append("\n...[context omitted]...\n")
+        selected.extend(lines[start:stop])
+        end = stop
+        if sum(map(len, selected)) >= limit - 1600:
+            break
+    if not selected:
+        marker = "...[earlier output omitted]...\n"
+        return marker + text[-(limit - len(marker)):]
+    marker = "\n...[remaining context omitted; log tail follows]...\n"
+    tail = text[-1500:]
+    return "".join(selected)[:limit - len(marker) - len(tail)] + marker + tail
 
 
 def _run(

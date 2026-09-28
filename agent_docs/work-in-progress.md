@@ -54,6 +54,15 @@ Preserve `checkpoint177/prepush-final.json` as the failed overlap evidence;
 never reuse its receipt. Final metadata, current prepush and exact-SHA dev CI are
 the delivery gates for this review batch.
 
+The first review push `03fc7d8` passed local prepush but exposed RPM harness
+fixture assumptions in Linux and Windows CI. Linux's descriptor-specific test
+encountered unrelated unreadable runner processes; Windows synthetic tests used
+POSIX paths/APIs. Preserve the original CI logs in `handoff-review/`; fixture
+repairs must keep strict unknown-process rejection. MCP failed-log selection now
+retains causal error context and the final summary within its response bound.
+Windows package CI now explicitly runs the lease and fingerprint suites, closing
+the earlier coverage gap where only Linux ran agent-tool discovery.
+
 No VM, installer or VPN mutation was performed by this review. The native matrix
 reported22 open requirements with zero registered reviewed observations at the
 starting SHA; reconcile historical receipts before treating every row as new work.

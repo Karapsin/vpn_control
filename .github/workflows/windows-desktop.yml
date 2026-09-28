@@ -47,6 +47,10 @@ on:
       - "scripts/test_windows_native_helpers.py"
       - "scripts/test_windows_native_helper_builder.ps1"
       - "scripts/windows_native_packaging.gradle"
+      - "agent_tools/managed_check_lease.py"
+      - "agent_tools/mcp_server.py"
+      - "agent_tools/tests/test_managed_check_lease.py"
+      - "agent_tools/tests/test_mcp_server.py"
 
 jobs:
   validate-windows-update-fixture:
@@ -111,6 +115,9 @@ jobs:
       - name: Check release hygiene
         shell: bash
         run: ./scripts/check_release_hygiene.sh
+
+      - name: Verify native managed-check locking and receipts
+        run: python -m unittest agent_tools.tests.test_managed_check_lease agent_tools.tests.test_mcp_server.FingerprintTest
 
       - name: Verify batch-logon fixture admission
         run: python scripts/test_windows_task_admission.py

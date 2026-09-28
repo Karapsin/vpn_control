@@ -12,6 +12,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Reject linked or ACL-granted macOS boot proof during installer recovery.
 - Harden parity recovery evidence and serialize managed validation across tasks.
 - Make the bounded CONNECT-header fixture handle peer closure consistently across hosts.
+- Isolate cross-platform RPM cleanup fixtures and retain causal context in MCP CI failure logs.
+- Verify native managed-check locking and validation receipts in Windows package CI.
 
 ## 2.1.19 - 2026-09-25
 

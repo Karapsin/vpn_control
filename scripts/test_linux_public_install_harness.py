@@ -29,7 +29,12 @@ from test_linux_public_install import (launch_fixture_owner, require_package_man
                                        _owned_synthetic_workspace)
 
 
+_POSIX_WORKSPACE_SUPPORTED = os.name == "posix" and hasattr(os, "geteuid") and hasattr(os, "getuid")
+_FIXTURE_UID = 1000
+
+
 class LinuxPublicInstallHarnessTest(unittest.TestCase):
+    @unittest.skipUnless(_POSIX_WORKSPACE_SUPPORTED, "real workspace deletion requires POSIX ownership and descriptors")
     def test_rpm_cleanup_removes_only_terminal_recovered_workspace_after_old_retention_would_fail(self):
         """Causal RED/GREEN: collector sees a retained workspace as incomplete."""
         class StoppedOwner:
@@ -74,11 +79,14 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
                 cleanup_synthetic_workspace(workspace, evidence, LiveOwner(),
                                             protected_success=True, recovered=True, credential_restored=True)
             self.assertTrue(workspace.is_dir())
-            with mock.patch("test_linux_public_install._no_process_uses_workspace",
+            with mock.patch("test_linux_public_install._owned_synthetic_workspace", return_value=(101, 102)), \
+                 mock.patch("test_linux_public_install.os.close") as close, \
+                 mock.patch("test_linux_public_install._no_process_uses_workspace",
                             side_effect=RuntimeError("Cannot inspect process ownership of synthetic workspace")):
                 with self.assertRaisesRegex(RuntimeError, "Cannot inspect"):
                     cleanup_synthetic_workspace(workspace, evidence, StoppedOwner(),
                                                 protected_success=True, recovered=True, credential_restored=True)
+            self.assertEqual([mock.call(102), mock.call(101)], close.call_args_list)
             self.assertTrue(workspace.is_dir(), "Unknown ownership must retain the workspace")
 
     def test_rpm_cleanup_process_scan_skips_foreign_uninspectable_proc_entry(self):
@@ -96,16 +104,17 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
             def iterdir(self):
                 return [PathEntry("1234")]
 
-        foreign = types.SimpleNamespace(st_uid=os.geteuid() + 1)
+        foreign = types.SimpleNamespace(st_uid=_FIXTURE_UID + 1)
         # Fedora can deny cwd/fd reads for another UID.  That is expected: the
         # terminal protected receipt has already closed privileged installer
         # ownership, while same-UID observation failures still fail closed.
-        with mock.patch("test_linux_public_install.os.stat", return_value=foreign), \
+        with mock.patch("test_linux_public_install.os.geteuid", return_value=_FIXTURE_UID, create=True), \
+             mock.patch("test_linux_public_install.os.stat", return_value=foreign), \
              mock.patch("test_linux_public_install.os.readlink") as readlink:
             _no_process_uses_workspace(Path("/tmp/vpn-public-install-evidence-x/workspace"), Proc())
         readlink.assert_not_called()
 
-    @unittest.skipUnless(os.name == "posix", "descriptor cleanup requires POSIX")
+    @unittest.skipUnless(_POSIX_WORKSPACE_SUPPORTED, "descriptor cleanup requires POSIX ownership")
     def test_rpm_cleanup_closes_both_descriptors_when_process_observation_fails(self):
         owner = types.SimpleNamespace(poll=lambda: 0)
         with tempfile.TemporaryDirectory(prefix="vpn-public-install-evidence-") as temporary:
@@ -142,8 +151,9 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
             def iterdir(self):
                 return [PathEntry()]
 
-        same_uid = types.SimpleNamespace(st_uid=os.geteuid())
-        with mock.patch("test_linux_public_install.os.stat", return_value=same_uid), \
+        same_uid = types.SimpleNamespace(st_uid=_FIXTURE_UID)
+        with mock.patch("test_linux_public_install.os.geteuid", return_value=_FIXTURE_UID, create=True), \
+             mock.patch("test_linux_public_install.os.stat", return_value=same_uid), \
              mock.patch("test_linux_public_install.os.readlink", side_effect=OSError("fixture failure")):
             with self.assertRaisesRegex(RuntimeError, "Cannot inspect"):
                 _no_process_uses_workspace(Path("/tmp/vpn-public-install-evidence-x/workspace"), Proc())
@@ -165,17 +175,18 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
             def iterdir(self):
                 return [PathEntry()]
 
-        same_uid = types.SimpleNamespace(st_uid=os.geteuid())
+        same_uid = types.SimpleNamespace(st_uid=_FIXTURE_UID)
         with tempfile.TemporaryDirectory(prefix="vpn-public-install-evidence-") as temporary:
             workspace = Path(temporary) / "workspace"
             workspace.mkdir()
-            with mock.patch("test_linux_public_install.os.stat", return_value=same_uid), \
+            with mock.patch("test_linux_public_install.os.geteuid", return_value=_FIXTURE_UID, create=True), \
+                 mock.patch("test_linux_public_install.os.stat", return_value=same_uid), \
                  mock.patch("test_linux_public_install.os.readlink", side_effect=PermissionError("hidepid")):
                 with self.assertRaisesRegex(RuntimeError, "Cannot inspect"):
                     _no_process_uses_workspace(workspace, Proc())
             self.assertTrue(workspace.is_dir(), "Same-UID proc uncertainty must retain the workspace")
 
-    @unittest.skipUnless(os.name == "posix", "proc fixture symlinks require POSIX")
+    @unittest.skipUnless(_POSIX_WORKSPACE_SUPPORTED, "real proc fixture symlinks require POSIX ownership")
     def test_rpm_cleanup_missing_cwd_or_fd_is_not_a_disappeared_process(self):
         with tempfile.TemporaryDirectory() as temporary:
             proc = Path(temporary); process = proc / "1234"; process.mkdir()
@@ -187,7 +198,7 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "Cannot inspect"):
                         _no_process_uses_workspace(workspace, proc)
 
-    @unittest.skipUnless(os.name == "posix", "descriptor cleanup requires POSIX")
+    @unittest.skipUnless(_POSIX_WORKSPACE_SUPPORTED, "descriptor cleanup requires POSIX ownership")
     def test_rpm_cleanup_replaced_workspace_closes_all_opened_descriptors(self):
         with tempfile.TemporaryDirectory(prefix="vpn-public-install-evidence-") as temporary:
             evidence = Path(temporary); workspace = evidence / "workspace"; workspace.mkdir()
@@ -211,24 +222,76 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
                     try: os.close(descriptor)
                     except OSError: pass
 
-    @unittest.skipUnless(sys.platform.startswith("linux"), "requires Linux procfs descriptor visibility")
     def test_rpm_cleanup_exempts_only_its_exact_workspace_descriptor_from_proc_scan(self):
-        with tempfile.TemporaryDirectory(prefix="vpn-public-install-evidence-") as temporary:
-            evidence = Path(temporary)
-            workspace = evidence / "workspace"
-            workspace.mkdir()
-            evidence_fd, workspace_fd = _owned_synthetic_workspace(workspace, evidence)
-            try:
-                # Causal RED: the old scanner saw its own cleanup descriptor
-                # and rejected every otherwise safe removal.
+        # Model only the declared processes and descriptors. Host procfs may
+        # contain unrelated unreadable entries; those belong to native admission.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); proc = root / "proc"; workspace = root / "workspace"
+            own = proc / str(os.getpid()); other = proc / str(os.getpid() + 1)
+            fds = own / "fd"; fds.mkdir(parents=True)
+            cleanup_fd = 13
+            owned_descriptor = fds / str(cleanup_fd); owned_descriptor.touch()
+            references = {own / "cwd": str(root), owned_descriptor: str(workspace)}
+            real_stat = os.stat
+            def process_stat(path, *args, **kwargs):
+                if Path(path) in (own, other):
+                    return types.SimpleNamespace(st_uid=_FIXTURE_UID)
+                return real_stat(path, *args, **kwargs)
+            with mock.patch("test_linux_public_install.os.geteuid", return_value=_FIXTURE_UID, create=True), \
+                 mock.patch("test_linux_public_install.os.stat", side_effect=process_stat), \
+                 mock.patch("test_linux_public_install.os.readlink", side_effect=lambda path: references[Path(path)]):
                 with self.assertRaisesRegex(RuntimeError, "still owns"):
-                    _no_process_uses_workspace(workspace)
-                # GREEN: only this PID/FD pair is exempt; all other same-UID
-                # descriptors and process references remain checked.
-                _no_process_uses_workspace(workspace, owned_cleanup_fd=workspace_fd)
-            finally:
-                os.close(workspace_fd)
-                os.close(evidence_fd)
+                    _no_process_uses_workspace(workspace, proc)
+                _no_process_uses_workspace(workspace, proc, owned_cleanup_fd=cleanup_fd)
+                duplicate = fds / "14"; duplicate.touch(); references[duplicate] = str(workspace)
+                with self.assertRaisesRegex(RuntimeError, "still owns"):
+                    _no_process_uses_workspace(workspace, proc, owned_cleanup_fd=cleanup_fd)
+                duplicate.unlink()
+                other_fds = other / "fd"; other_fds.mkdir(parents=True)
+                other_descriptor = other_fds / str(cleanup_fd); other_descriptor.touch()
+                references.update({other / "cwd": str(root), other_descriptor: str(workspace)})
+                with self.assertRaisesRegex(RuntimeError, "still owns"):
+                    _no_process_uses_workspace(workspace, proc, owned_cleanup_fd=cleanup_fd)
+
+    def test_rpm_descriptor_fixture_is_independent_of_unreadable_runner_processes(self):
+        # Reproduce the CI runner's unrelated same-UID /proc entry without
+        # depending on its PID, permissions, or the host operating system.
+        with tempfile.TemporaryDirectory() as temporary:
+            process = Path(temporary) / "1015"; process.mkdir()
+            real_is_dir, real_iterdir, real_readlink = Path.is_dir, Path.iterdir, os.readlink
+            def is_dir(path):
+                return True if path == Path("/proc") else real_is_dir(path)
+            def iterdir(path):
+                return iter([process]) if path == Path("/proc") else real_iterdir(path)
+            def readlink(path, *args, **kwargs):
+                if path == process / "cwd":
+                    raise PermissionError("unrelated runner process")
+                return real_readlink(path, *args, **kwargs)
+            scenario = self.test_rpm_cleanup_exempts_only_its_exact_workspace_descriptor_from_proc_scan
+            with mock.patch.object(Path, "is_dir", is_dir), mock.patch.object(Path, "iterdir", iterdir), \
+                 mock.patch("test_linux_public_install.os.readlink", side_effect=readlink):
+                underlying = getattr(scenario, "__wrapped__", None)
+                underlying(self) if underlying is not None else scenario()
+
+    def test_harness_selection_handles_absent_posix_uid_apis(self):
+        # Load the complete selection with the Windows capability absence;
+        # omit only this subprocess test to avoid recursively launching it.
+        probe = """import os, pathlib, runpy, sys, unittest
+path = pathlib.Path(sys.argv[1])
+sys.path.insert(0, str(path.parent))
+for name in ('getuid', 'geteuid'):
+    if hasattr(os, name): delattr(os, name)
+namespace = runpy.run_path(str(path))
+case = namespace['LinuxPublicInstallHarnessTest']
+names = unittest.defaultTestLoader.getTestCaseNames(case)
+suite = unittest.TestSuite(case(name) for name in names
+    if name != 'test_harness_selection_handles_absent_posix_uid_apis')
+result = unittest.TextTestRunner(verbosity=1).run(suite)
+raise SystemExit(0 if result.wasSuccessful() else 1)
+"""
+        result = subprocess.run([sys.executable, "-c", probe, str(Path(__file__).resolve())],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
     def test_public_envelope_requires_one_complete_stdout_document(self):
         envelope = {"schemaVersion": 1, "code": "ACCEPTED", "final": False,

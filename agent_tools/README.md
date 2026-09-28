@@ -32,6 +32,11 @@ For implementation, testing, release, or commit work:
 3. Use `workflow_status` while working to re-check routing, dirty paths, index freshness, and validation requirements.
 4. Run `version_bump` once after the final non-documentation content change, then run `run_checks(level="prepush")`. A successful check writes a content fingerprint to `.rag_index/prepush_receipt.json`.
 5. Use `git_workflow` to push `dev` or to resume checks for a full commit SHA. It queries only runs attached to that exact SHA and requires every development workflow in `.github/required-workflows.json` to succeed.
+   Failed-log excerpts select error context and the final summary from the complete
+   command output, then enforce an 8,000-character response bound. If more context
+   is needed, use the returned exact run ID to inspect its failed log.
+   Windows package CI also runs the native check-lease and receipt-fingerprint
+   tests; Linux agent-tool discovery alone cannot verify Windows ACL/lock behavior.
 6. Use `release_workflow` only after an explicit user release command. It fast-forwards `main` from verified `dev`, starts agent-owned visual review, gates on exhaustive VPN integration plus the exact-SHA visual receipt/status, and dispatches the manual publisher.
 
 Managed checks hold an exclusive checkout lease for execution and receipt

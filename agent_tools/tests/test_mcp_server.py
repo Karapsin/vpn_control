@@ -449,6 +449,45 @@ class VersionPolicyTest(unittest.TestCase):
             self.assertIn("- Initial release work.\n- Final visual repair.", updated)
 
 class WorkflowWatchTest(unittest.TestCase):
+    def test_failed_ci_log_keeps_late_failure_context_with_bounded_output(self) -> None:
+        sha = "a" * 40
+        failure = "AssertionError: same-UID process ownership is unknown"
+        logs = [
+            "healthy setup output\n" * 600
+            + "Traceback (most recent call last):\n  causal frame\n" + failure + "\n"
+            + "other checks succeeded\n" * 600 + "FAILED (failures=1)\n",
+            "healthy setup output\n" * 600 + "unrecognized diagnostic at end\n",
+        ]
+        original_run = mcp_server._run
+        for log in logs:
+            with self.subTest(log_kind="traceback" if failure in log else "tail"):
+                def run(command, **kwargs):
+                    if command[:3] == ["gh", "run", "list"]:
+                        return command_result(stdout=json.dumps([{
+                            "databaseId": 7, "workflowName": "Fast Checks", "event": "push",
+                            "status": "completed", "conclusion": "failure", "headSha": sha,
+                        }]))
+                    # Exercise the real subprocess output-boundary behavior.
+                    return original_run([sys.executable, "-c", "print(" + repr(log) + ")"], **kwargs)
+
+                with (
+                    mock.patch.object(mcp_server, "_required_workflows", return_value=[{
+                        "name": "Fast Checks", "event": "push", "allowed_conclusions": ["success"],
+                    }]),
+                    mock.patch.object(mcp_server, "_write_json"),
+                    mock.patch.object(mcp_server, "_run", side_effect=run),
+                ):
+                    result = mcp_server._watch_required_workflows(sha)
+                self.assertFalse(result["ok"])
+                excerpt = result["blockers"][0]["failed_log_excerpts"][0]["excerpt"]
+                self.assertLessEqual(len(excerpt), 8000)
+                if failure in log:
+                    self.assertIn(failure, excerpt)
+                    self.assertIn("causal frame", excerpt)
+                    self.assertIn("FAILED (failures=1)", excerpt)
+                else:
+                    self.assertIn("unrecognized diagnostic at end", excerpt)
+
     def test_visual_attestation_binds_receipt_manifest_and_commit_status(self) -> None:
         sha = "a" * 40
         with tempfile.TemporaryDirectory() as temporary:
