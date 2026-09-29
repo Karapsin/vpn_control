@@ -142,7 +142,11 @@ class RollbackFixtureTest(unittest.TestCase):
         events = []; fixture = RollbackFixture(spec, boundary, events.append)
         original_sleep = boundary.sleep
         boundary.sleep = lambda seconds: (original_sleep(seconds), boundary.terminal_receipt_after_unlock())
-        fixture.run()
+        with mock.patch.object(subject.sys, "platform", "win32"), \
+                mock.patch.object(subject.os, "getuid", None, create=True), \
+                mock.patch.object(subject.os, "O_NOFOLLOW", None, create=True), \
+                mock.patch.object(subject.os, "O_DIRECTORY", None, create=True):
+            fixture.run()
         self.assertTrue(boundary.receipt_calls and all(call[1] is ReceiptAuthority.MACHINE for call in boundary.receipt_calls))
         self.assertTrue(all(event[-1] is ReceiptAuthority.MACHINE for event in boundary.events if event[0] in ("arm", "clear")))
         self.assertEqual(["arm", "clear", "clean"], [event[0] for event in boundary.events
@@ -150,6 +154,11 @@ class RollbackFixtureTest(unittest.TestCase):
         self.assertTrue(events[-1]["cleanup"]["candidateAbsent"])
         trace = state / "acceptance-evidence" / spec.correlation_id / "rollback-trace.json"
         self.assertEqual(OPERATION, __import__("json").loads(trace.read_text())["operationId"])
+        with mock.patch.object(subject.sys, "platform", "darwin"), \
+                mock.patch.object(subject.os, "getuid", return_value=-1):
+            with self.assertRaisesRegex(FixtureError, "evidence directory is unsafe"):
+                fixture._write_machine_trace(boundary.worker_events(JOB, ReceiptAuthority.MACHINE),
+                                             boundary.cleanup_value)
     def test_machine_cleanup_fails_closed_when_candidate_or_backup_remains(self):
         for field in ("candidateAbsent", "backupAbsent", "baseUnchanged", "jobId"):
             boundary = FakeBoundary(); boundary.cleanup_value[field] = False

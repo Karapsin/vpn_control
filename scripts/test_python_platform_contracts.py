@@ -24,6 +24,14 @@ class OsMockProbeTest(unittest.TestCase):
         result = subject.probe_absent_getuid()
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
+    def test_windows_phase_recorder_probe_exercises_real_receipt_publication(self):
+        result = subject.probe_windows_phase_recorder()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_windows_android_probe_rejects_before_private_write(self):
+        result = subject.probe_windows_android_installer_boundary()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
     def test_causal_missing_create_fails_when_the_windows_like_os_object_lacks_getsid(self):
         source = '''from types import SimpleNamespace
 from unittest import mock

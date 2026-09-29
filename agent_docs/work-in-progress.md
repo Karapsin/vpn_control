@@ -27,6 +27,64 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Tenth continuation checkpoint pushed — 2026-09-29
+
+`df05f3fec37d1d12de492592bcc118c4b8babd0f` is on `origin/dev` at
+product version 2.2.1. The fresh managed prepush tier passed before its
+checkpoint commit; GitHub CLI credential setup allowed the interrupted push to
+resume without another commit. Required exact-SHA CI remains deferred until the
+final delivered SHA by user request. The managed MCP transport stayed stale, so
+fresh `agent_tools/mcp_tool.sh` processes supplied current routes and receipts.
+This checkpoint is not native or visual acceptance completion.
+
+The exact-`df05f3f` nondebuggable Android APK SHA256 `3f4c1e11...` was built,
+verified and staged for API29/API35. Fresh readbacks preserved the original
+2.2.0 installations, OFF runtimes and private routing backups (239 and
+11,872,243 bytes); no APK replacement or AVD product action ran. The Mac
+2.1.19→2.2.1 hosted DMG pair and receipt passed artifact verification under
+run `36592834172`; they are component evidence at this SHA. Tart remains
+stopped because host memory pressure fails admission, and the old unknown
+installer job `465a954f...` is unchanged.
+
+The blank disposable Windows VM booted the official evaluation ISO into
+Windows 11 Setup. Exact-owner one-shot navigation selected English-US language
+and US keyboard. A read-only provenance proof bound its originally blank
+task-owned qcow2 by device/inode to live QMP topology and excluded foreign
+writable disks. Separate reviewed one-shot actions focused and checked the
+disposable-disk deletion acknowledgment, then selected Next once. The sealed
+result says Windows 11 cannot install because this guest lacks TPM 2.0 and
+Secure Boot. No bypass or further input ran; inventory for a standard virtual
+TPM/Secure Boot remedy is read-only. Sealed optical, setup and screen receipts
+live under `optical-boot-20260929/attempt3-current-frame/`. CP117 is separate
+and remains installed at 2.1.17, runtime OFF, with no new MSI attempt. Two
+`df05f3f` hosted MSI fixture runs failed in Windows release hygiene before
+packaging because POSIX-only Python APIs were exercised; a causal portability
+fix is dirty below.
+
+The Arch Linux package builder's first one-shot correlation
+`5c1c217f-3eb3-45e0-a499-96ae0a409883` failed before SSH launch on a
+multiline bootstrap command. A reviewed pre-effect closure preserved its old
+unknown intent and released only its exact local claim; the causal SSH fix is
+dirty below. A hosted exact-`df05f3f` RPM fixture run `36593094225` is pending.
+Six QEMUs remain live; no new Linux guest was booted or parked. Fedora2327
+lacks a configured SSH alias; Fedora2328 has read-only connectivity but no fresh
+installed-package admission.
+
+The exact-`df05f3f` hosted Linux and Windows visual captures passed provenance
+for all 59 and 57 hosted scenes respectively. Old-baseline comparisons were
+17/59 and 15/58 passing; Windows UAC requires an owned local guest. A filtered
+synthetic location-error fixture and sub-4.5 dialog button contrast have focused
+causal fixes and a three-scene Linux recapture in dirty source. Most pixel
+differences require reviewed baseline classification. All four-platform
+current-source visual receipts remain open.
+
+Current dirty work intentionally spans guarded Windows Setup, CP117 fixture
+dispatch/MCP routes, Linux builder recovery, Windows Python portability, Mac
+rollback portability and focused visual fixes. Each has an exclusive file and
+environment owner; root owns their integration, metadata, next coherent
+checkpoint, source-matched artifact rebuild, native matrix and final CI. Do not
+label `df05f3f` component artifacts as final-source after this dirty work commits.
+
 ### Ninth continuation checkpoint pushed — 2026-09-29
 
 `096804e8228540d4f7b59aeb6f7e56a58a11e245` is on `origin/dev` at

@@ -1860,6 +1860,14 @@ _VM_NATIVE_ADAPTERS = (
     "native_rpm_public_install_ssh", "android_admission_readback", "windows_msi_public_scenario",
     "linux_update_fixture_workflow", "linux_rpm_fixture_server_lifecycle", "linux_rpm_workspace_recovery", "linux_vm_readonly_inventory", "arch_qemu_holder_census", "windows_vm_baseline_inventory", "windows_vm_driver_fetch", "windows_vm_fresh_setup", "windows_vm_optical_boot", "windows_vm_optical_boot_attempt2", "windows_vm_optical_boot_attempt3", "windows_vm_optical_post_collect", "windows_vm_optical_current_screen", "windows_update_fixture_workflow", "windows_update_fixture_server", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare",
     "windows_msi_owner_observe", "windows_msi_target_prepare",
+    "windows_update_fixture_stage", "windows_fixture_credentials",
+    "windows_fixture_owner_network", "windows_fixture_network_probe",
+    "windows_vm_setup_language_next",
+    "windows_vm_setup_keyboard_next",
+    "windows_vm_setup_install_disk_proof",
+    "windows_vm_setup_install_focus",
+    "windows_vm_setup_install_ack",
+    "windows_vm_setup_install_next",
     "android_package_install", "android_public_inspect", "android_document_acceptance", "android_document_recovery", "android_action_acceptance", "android_consent_acceptance", "android_native_fixture_lifecycle", "android_endpoint_admission", "android_installer_dispatch", "android_cli_stage",
     "macos_fixture_guest_stage", "macos_machine_server_stop", "linux_guest_park", "linux_package_fixture_build", "linux_deb_arch_guest_prepare", "linux_deb_arch_guest_prepare_remote",
     "linux_deb_arch_acceptance", "linux_deb_arch_transport", "linux_deb_arch_host_supervisor",
@@ -2236,6 +2244,64 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 return {"tool": "vm_workflow", **result,
                         "ok": result.get("state") == "observed" and result.get("serverReady") is False,
                         "evidenceClass": "native-preflight", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action.startswith("windows-fixture-stage-") or action.startswith("windows-fixture-credentials-") or action.startswith("windows-fixture-server-") or action.startswith("windows-fixture-owner-network-") or action.startswith("windows-fixture-network-probe-"):
+            lifecycle = {
+                "windows-fixture-stage-start": ("windows_update_fixture_stage", "start", {"host", "correlationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"correlationId"}, {"submitted"}),
+                "windows-fixture-stage-status": ("windows_update_fixture_stage", "status", {"correlationId"}, {"correlationId"}, {"running", "staged-not-server-ready"}),
+                "windows-fixture-stage-collect": ("windows_update_fixture_stage", "collect", {"correlationId"}, {"correlationId"}, {"staged-not-server-ready"}),
+                "windows-fixture-credentials-start": ("windows_fixture_credentials", "start", {"host", "leaseId", "stageCorrelationId", "correlationId"}, {"leaseId", "stageCorrelationId", "correlationId"}, {"submitted"}),
+                "windows-fixture-credentials-status": ("windows_fixture_credentials", "status", {"correlationId"}, {"correlationId"}, {"ready"}),
+                "windows-fixture-credentials-collect": ("windows_fixture_credentials", "collect", {"correlationId"}, {"correlationId"}, {"ready"}),
+                "windows-fixture-server-start": ("windows_update_fixture_server", "start", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"leaseId", "stageCorrelationId", "serverCorrelationId"}, {"submitted"}),
+                "windows-fixture-server-status": ("windows_update_fixture_server", "status", {"serverCorrelationId"}, {"serverCorrelationId"}, {"live"}),
+                "windows-fixture-server-collect": ("windows_update_fixture_server", "collect", {"serverCorrelationId"}, {"serverCorrelationId"}, {"live"}),
+                "windows-fixture-server-stop-start": ("windows_update_fixture_server", "stop_start", {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"submitted"}),
+                "windows-fixture-server-stop-status": ("windows_update_fixture_server", "stop_status", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"running", "stopped"}),
+                "windows-fixture-server-stop-collect": ("windows_update_fixture_server", "stop_collect", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"stopped"}),
+                "windows-fixture-credentials-cleanup-start": ("windows_fixture_credentials", "cleanup_start", {"host", "leaseId", "stageCorrelationId", "correlationId"}, {"leaseId", "stageCorrelationId", "correlationId"}, {"submitted"}),
+                "windows-fixture-credentials-cleanup-status": ("windows_fixture_credentials", "cleanup_status", {"correlationId"}, {"correlationId"}, {"running", "cleaned"}),
+                "windows-fixture-credentials-cleanup-collect": ("windows_fixture_credentials", "cleanup_collect", {"correlationId"}, {"correlationId"}, {"cleaned"}),
+                "windows-fixture-server-abort-start": ("windows_update_fixture_server", "abort_start", {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"submitted"}),
+                "windows-fixture-server-abort-status": ("windows_update_fixture_server", "abort_status", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"running", "stopped"}),
+                "windows-fixture-server-abort-collect": ("windows_update_fixture_server", "abort_collect", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"stopped"}),
+                "windows-fixture-credentials-abort-start": ("windows_fixture_credentials", "abort_start", {"correlationId"}, {"correlationId"}, {"submitted"}),
+                "windows-fixture-credentials-abort-status": ("windows_fixture_credentials", "abort_status", {"correlationId"}, {"correlationId"}, {"running", "aborted-cleaned"}),
+                "windows-fixture-credentials-abort-collect": ("windows_fixture_credentials", "abort_collect", {"correlationId"}, {"correlationId"}, {"aborted-cleaned"}),
+                "windows-fixture-owner-network-start": ("windows_fixture_owner_network", "start", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "ownerNetworkCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId", "controllerId", "ownerPid", "ownerStartedAtUtc"}, {"leaseId", "stageCorrelationId", "serverCorrelationId", "ownerNetworkCorrelationId"}, {"submitted"}),
+                "windows-fixture-owner-network-status": ("windows_fixture_owner_network", "status", {"ownerNetworkCorrelationId"}, {"ownerNetworkCorrelationId"}, {"correlated"}),
+                "windows-fixture-owner-network-collect": ("windows_fixture_owner_network", "collect", {"ownerNetworkCorrelationId"}, {"ownerNetworkCorrelationId"}, {"correlated"}),
+                "windows-fixture-network-probe-start": ("windows_fixture_network_probe", "start", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "probeCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId", "controllerId", "ownerPid", "ownerStartedAtUtc"}, {"leaseId", "stageCorrelationId", "serverCorrelationId", "probeCorrelationId"}, {"submitted"}),
+                "windows-fixture-network-probe-status": ("windows_fixture_network_probe", "status", {"probeCorrelationId"}, {"probeCorrelationId"}, {"correlated"}),
+                "windows-fixture-network-probe-collect": ("windows_fixture_network_probe", "collect", {"probeCorrelationId"}, {"probeCorrelationId"}, {"correlated"}),
+            }
+            route = lifecycle.get(action)
+            if route is None:
+                return _error("vm_workflow", "Unknown fixed Windows fixture lifecycle action.")
+            module_name, method_name, fields, uuid_fields, passing_states = route
+            if not isinstance(inputs, dict) or set(inputs) != fields or ("host" in fields and inputs.get("host") != "archlinux"):
+                return _error("vm_workflow", "Windows fixture lifecycle requires exact CP117 fields.")
+            if any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in uuid_fields):
+                return _error("vm_workflow", "Windows fixture lifecycle correlation is invalid.")
+            if len({inputs[key] for key in uuid_fields}) != len(uuid_fields):
+                return _error("vm_workflow", "Windows fixture lifecycle correlations must differ.")
+            if "sourceSha" in fields and (not isinstance(inputs["sourceSha"], str) or not re.fullmatch(r"[0-9a-f]{40}", inputs["sourceSha"])):
+                return _error("vm_workflow", "Windows fixture lifecycle source SHA is invalid.")
+            for key in ("fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"):
+                if key in fields and (not isinstance(inputs[key], str) or not re.fullmatch(r"sha256-[0-9a-f]{64}", inputs[key])):
+                    return _error("vm_workflow", "Windows fixture lifecycle artifact identity is invalid.")
+            if "controllerId" in fields and (not isinstance(inputs["controllerId"], str) or not _valid_uuid(inputs["controllerId"])):
+                return _error("vm_workflow", "Windows fixture controller identity is invalid.")
+            if "ownerPid" in fields and (type(inputs["ownerPid"]) is not int or inputs["ownerPid"] <= 0):
+                return _error("vm_workflow", "Windows fixture owner PID is invalid.")
+            if "ownerStartedAtUtc" in fields and (not isinstance(inputs["ownerStartedAtUtc"], str) or not re.fullmatch(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z", inputs["ownerStartedAtUtc"])):
+                return _error("vm_workflow", "Windows fixture owner start time is invalid.")
+            try:
+                adapter = _agent_module(module_name)
+                result = getattr(adapter, method_name)(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result, "ok": result.get("state") in passing_states and result.get("replayAllowed") is False,
+                        "evidenceClass": "native-fixture", "productAction": False}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action in {"linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status"}:
@@ -3026,6 +3092,28 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "reason": "linux-package-fixture-build-unavailable",
                         "correlationId": inputs["correlationId"], "replayAllowed": False,
                         "nativeActionAllowed": False, "productAction": False}
+        if action in {"linux-package-fixture-build-pre-effect-status",
+                      "linux-package-fixture-build-pre-effect-close"}:
+            closing = action.endswith("-close")
+            required = {"correlationId", "closureDigest"} if closing else {"correlationId"}
+            if (set(inputs) != required or not isinstance(inputs.get("correlationId"), str) or
+                    not _valid_uuid(inputs["correlationId"]) or
+                    (closing and (not isinstance(inputs.get("closureDigest"), str) or
+                                  re.fullmatch(r"[0-9a-f]{64}", inputs["closureDigest"]) is None))):
+                return _error("vm_workflow", "Linux build pre-effect closure requires exact correlation and proof.")
+            build = _agent_module("linux_package_fixture_build")
+            try:
+                method = build.pre_effect_close if closing else build.pre_effect_status
+                result = method(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") in ({"closed"} if closing else {"ready", "closing", "closed"}),
+                        "evidenceClass": "build-pre-effect-closure", "productAction": False,
+                        "nativeActionAllowed": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "linux-build-pre-effect-unavailable",
+                        "correlationId": inputs["correlationId"], "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
         if action in {"linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start",
                       "linux-deb-arch-guest-prepare-status"}:
             preparation = _agent_module("linux_deb_arch_guest_prepare")
@@ -3231,6 +3319,167 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 return {"tool": "vm_workflow", "ok": False, "state": "unknown",
                         "reason": "windows-optical-attempt2-close-outcome-unavailable",
                         "closureCorrelationId": closure, "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action in {"windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start",
+                      "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect"}:
+            if (not isinstance(inputs, dict) or set(inputs) != {"host", "nextCorrelationId", "timeoutSeconds"}
+                    or inputs.get("host") != "archlinux"
+                    or not isinstance(inputs.get("nextCorrelationId"), str)
+                    or not _valid_uuid(inputs["nextCorrelationId"])
+                    or type(inputs.get("timeoutSeconds")) is not int
+                    or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows Setup language Next requires the fixed Arch host, canonical nextCorrelationId and bounded timeoutSeconds.")
+            try:
+                setup = _agent_module("windows_vm_setup_language_next")
+                method = {"windows-vm-setup-language-next-preflight": setup.preflight,
+                          "windows-vm-setup-language-next-start": setup.start,
+                          "windows-vm-setup-language-next-status": setup.status,
+                          "windows-vm-setup-language-next-collect": setup.collect}[action]
+                result = method(REPO_ROOT, host=inputs["host"],
+                                next_correlation_id=inputs["nextCorrelationId"],
+                                timeout_seconds=inputs["timeoutSeconds"])
+                expected = ("ready" if action.endswith("-preflight") else
+                            "collected" if action.endswith("-collect") else "after-observed")
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") == expected and result.get("replayAllowed") is False,
+                        "evidenceClass": "native-windows-setup-language", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-setup-language-next-outcome-unavailable",
+                        "nextCorrelationId": inputs["nextCorrelationId"], "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action in {"windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start",
+                      "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect"}:
+            if (not isinstance(inputs, dict) or set(inputs) != {"host", "nextCorrelationId", "timeoutSeconds"}
+                    or inputs.get("host") != "archlinux"
+                    or not isinstance(inputs.get("nextCorrelationId"), str)
+                    or not _valid_uuid(inputs["nextCorrelationId"])
+                    or type(inputs.get("timeoutSeconds")) is not int
+                    or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows checked install option Next needs fixed Arch host, canonical nextCorrelationId and bounded timeoutSeconds.")
+            try:
+                advance = _agent_module("windows_vm_setup_install_next")
+                method = {"windows-vm-setup-install-next-preflight": advance.preflight,
+                          "windows-vm-setup-install-next-start": advance.start,
+                          "windows-vm-setup-install-next-status": advance.status,
+                          "windows-vm-setup-install-next-collect": advance.collect}[action]
+                result = method(REPO_ROOT, host=inputs["host"],
+                                next_correlation_id=inputs["nextCorrelationId"],
+                                timeout_seconds=inputs["timeoutSeconds"])
+                expected = ("ready" if action.endswith("-preflight") else
+                            "collected" if action.endswith("-collect") else "after-observed")
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") == expected and result.get("replayAllowed") is False,
+                        "evidenceClass": "native-windows-install-option-next", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-install-option-next-outcome-unavailable",
+                        "nextCorrelationId": inputs["nextCorrelationId"], "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action in {"windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start",
+                      "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect"}:
+            if (not isinstance(inputs, dict) or set(inputs) != {"host", "nextCorrelationId", "timeoutSeconds"}
+                    or inputs.get("host") != "archlinux"
+                    or not isinstance(inputs.get("nextCorrelationId"), str)
+                    or not _valid_uuid(inputs["nextCorrelationId"])
+                    or type(inputs.get("timeoutSeconds")) is not int
+                    or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows install acknowledgment needs fixed Arch host, canonical nextCorrelationId and bounded timeoutSeconds.")
+            try:
+                acknowledgment = _agent_module("windows_vm_setup_install_ack")
+                method = {"windows-vm-setup-install-ack-preflight": acknowledgment.preflight,
+                          "windows-vm-setup-install-ack-start": acknowledgment.start,
+                          "windows-vm-setup-install-ack-status": acknowledgment.status,
+                          "windows-vm-setup-install-ack-collect": acknowledgment.collect}[action]
+                result = method(REPO_ROOT, host=inputs["host"],
+                                next_correlation_id=inputs["nextCorrelationId"],
+                                timeout_seconds=inputs["timeoutSeconds"])
+                expected = ("ready" if action.endswith("-preflight") else
+                            "collected" if action.endswith("-collect") else "after-observed")
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") == expected and result.get("replayAllowed") is False,
+                        "evidenceClass": "native-windows-install-acknowledgment", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-install-acknowledgment-outcome-unavailable",
+                        "nextCorrelationId": inputs["nextCorrelationId"], "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action in {"windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start",
+                      "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect"}:
+            if (not isinstance(inputs, dict) or set(inputs) != {"host", "nextCorrelationId", "timeoutSeconds"}
+                    or inputs.get("host") != "archlinux"
+                    or not isinstance(inputs.get("nextCorrelationId"), str)
+                    or not _valid_uuid(inputs["nextCorrelationId"])
+                    or type(inputs.get("timeoutSeconds")) is not int
+                    or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows install focus needs fixed Arch host, canonical nextCorrelationId and bounded timeoutSeconds.")
+            try:
+                focus = _agent_module("windows_vm_setup_install_focus")
+                method = {"windows-vm-setup-install-focus-preflight": focus.preflight,
+                          "windows-vm-setup-install-focus-start": focus.start,
+                          "windows-vm-setup-install-focus-status": focus.status,
+                          "windows-vm-setup-install-focus-collect": focus.collect}[action]
+                result = method(REPO_ROOT, host=inputs["host"],
+                                next_correlation_id=inputs["nextCorrelationId"],
+                                timeout_seconds=inputs["timeoutSeconds"])
+                expected = ("ready" if action.endswith("-preflight") else
+                            "collected" if action.endswith("-collect") else "after-observed")
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") == expected and result.get("replayAllowed") is False,
+                        "evidenceClass": "native-windows-install-focus", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-install-focus-outcome-unavailable",
+                        "nextCorrelationId": inputs["nextCorrelationId"], "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action == "windows-vm-setup-install-disk-proof":
+            if (not isinstance(inputs, dict) or set(inputs) != {"host", "timeoutSeconds"}
+                    or inputs.get("host") != "archlinux"
+                    or type(inputs.get("timeoutSeconds")) is not int
+                    or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows install disk proof needs fixed Arch host and bounded timeoutSeconds.")
+            try:
+                proof = _agent_module("windows_vm_setup_install_disk_proof")
+                result = proof.preflight(REPO_ROOT, host=inputs["host"],
+                                         timeout_seconds=inputs["timeoutSeconds"])
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") == "ready"
+                        and result.get("replayAllowed") is False
+                        and result.get("nativeActionAllowed") is False,
+                        "evidenceClass": "read-only-windows-install-disk-proof",
+                        "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-install-disk-proof-unavailable",
+                        "nativeActionAllowed": False, "replayAllowed": False,
+                        "productAction": False}
+        if action in {"windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start",
+                      "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect"}:
+            if (not isinstance(inputs, dict) or set(inputs) != {"host", "nextCorrelationId", "timeoutSeconds"}
+                    or inputs.get("host") != "archlinux"
+                    or not isinstance(inputs.get("nextCorrelationId"), str)
+                    or not _valid_uuid(inputs["nextCorrelationId"])
+                    or type(inputs.get("timeoutSeconds")) is not int
+                    or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows Setup keyboard Next requires the fixed Arch host, canonical nextCorrelationId and bounded timeoutSeconds.")
+            try:
+                setup = _agent_module("windows_vm_setup_keyboard_next")
+                method = {"windows-vm-setup-keyboard-next-preflight": setup.preflight,
+                          "windows-vm-setup-keyboard-next-start": setup.start,
+                          "windows-vm-setup-keyboard-next-status": setup.status,
+                          "windows-vm-setup-keyboard-next-collect": setup.collect}[action]
+                result = method(REPO_ROOT, host=inputs["host"],
+                                next_correlation_id=inputs["nextCorrelationId"],
+                                timeout_seconds=inputs["timeoutSeconds"])
+                expected = ("ready" if action.endswith("-preflight") else
+                            "collected" if action.endswith("-collect") else "after-observed")
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") == expected and result.get("replayAllowed") is False,
+                        "evidenceClass": "native-windows-setup-keyboard", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-setup-keyboard-next-outcome-unavailable",
+                        "nextCorrelationId": inputs["nextCorrelationId"], "replayAllowed": False,
                         "nativeActionAllowed": False, "productAction": False}
         if action in {"windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start",
                       "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect"}:
@@ -3581,6 +3830,7 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
             "environment-status", "windows-msi-base-pre-effect-status",
             "linux-guest-park-preflight", "linux-guest-park-status",
             "linux-package-fixture-build-preflight", "linux-package-fixture-build-status",
+            "linux-package-fixture-build-pre-effect-status",
             "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-status",
             "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-status",
             "build-timing-report", "artifact-cache-check", "android-consent-acceptance-preflight",
@@ -3798,7 +4048,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-guest-park-preflight", "linux-guest-park-start", "linux-guest-park-status", "linux-package-fixture-build-preflight", "linux-package-fixture-build-start", "linux-package-fixture-build-status", "linux-package-fixture-build-collect", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "windows-vm-optical-boot-preflight", "windows-vm-optical-boot-start", "windows-vm-optical-boot-status", "windows-vm-optical-close-preflight", "windows-vm-optical-close-start", "windows-vm-optical-close-status", "windows-vm-optical-attempt2-preflight", "windows-vm-optical-attempt2-start", "windows-vm-optical-attempt2-status", "windows-vm-optical-attempt2-phase-probe", "windows-vm-optical-attempt2-close-preflight", "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt2-close-status", "windows-vm-optical-attempt3-preflight", "windows-vm-optical-attempt3-start", "windows-vm-optical-attempt3-status", "windows-vm-optical-attempt3-frame-collect", "windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start", "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-endpoint-admission-start", "android-endpoint-admission-status", "android-endpoint-admission-cleanup", "android-installer-dispatch-start", "android-installer-dispatch-status", "android-installer-dispatch-collect", "android-installer-callback-handoff-ready", "android-installer-callback-continue", "android-installer-callback-status-handoff-ready", "android-installer-callback-status-continue", "android-installer-abort-prelaunch", "android-installer-reconcile", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-machine-server-stop-start", "macos-machine-server-stop-status", "macos-machine-server-stop-collect", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
+    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-guest-park-preflight", "linux-guest-park-start", "linux-guest-park-status", "linux-package-fixture-build-preflight", "linux-package-fixture-build-start", "linux-package-fixture-build-status", "linux-package-fixture-build-collect", "linux-package-fixture-build-pre-effect-status", "linux-package-fixture-build-pre-effect-close", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "windows-vm-optical-boot-preflight", "windows-vm-optical-boot-start", "windows-vm-optical-boot-status", "windows-vm-optical-close-preflight", "windows-vm-optical-close-start", "windows-vm-optical-close-status", "windows-vm-optical-attempt2-preflight", "windows-vm-optical-attempt2-start", "windows-vm-optical-attempt2-status", "windows-vm-optical-attempt2-phase-probe", "windows-vm-optical-attempt2-close-preflight", "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt2-close-status", "windows-vm-optical-attempt3-preflight", "windows-vm-optical-attempt3-start", "windows-vm-optical-attempt3-status", "windows-vm-optical-attempt3-frame-collect", "windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start", "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect", "windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start", "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect", "windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start", "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect", "windows-vm-setup-install-disk-proof", "windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start", "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect", "windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start", "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect", "windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start", "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "windows-fixture-stage-start", "windows-fixture-stage-status", "windows-fixture-stage-collect", "windows-fixture-credentials-start", "windows-fixture-credentials-status", "windows-fixture-credentials-collect", "windows-fixture-server-start", "windows-fixture-server-status", "windows-fixture-server-collect", "windows-fixture-server-stop-start", "windows-fixture-server-stop-status", "windows-fixture-server-stop-collect", "windows-fixture-credentials-cleanup-start", "windows-fixture-credentials-cleanup-status", "windows-fixture-credentials-cleanup-collect", "windows-fixture-server-abort-start", "windows-fixture-server-abort-status", "windows-fixture-server-abort-collect", "windows-fixture-credentials-abort-start", "windows-fixture-credentials-abort-status", "windows-fixture-credentials-abort-collect", "windows-fixture-owner-network-start", "windows-fixture-owner-network-status", "windows-fixture-owner-network-collect", "windows-fixture-network-probe-start", "windows-fixture-network-probe-status", "windows-fixture-network-probe-collect", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-endpoint-admission-start", "android-endpoint-admission-status", "android-endpoint-admission-cleanup", "android-installer-dispatch-start", "android-installer-dispatch-status", "android-installer-dispatch-collect", "android-installer-callback-handoff-ready", "android-installer-callback-continue", "android-installer-callback-status-handoff-ready", "android-installer-callback-status-continue", "android-installer-abort-prelaunch", "android-installer-reconcile", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-machine-server-stop-start", "macos-machine-server-stop-status", "macos-machine-server-stop-collect", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")

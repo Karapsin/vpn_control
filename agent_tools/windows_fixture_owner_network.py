@@ -3,8 +3,8 @@
 The already-running owner handles forwarded CLI update operations. A proxy and
 trust store set on a forwarding CLI cannot configure that owner. This adapter
 prepares a one-shot, original-user launch with explicit runtime-off admission.
-Native dispatch remains closed until its exact task/status/cleanup receipts are
-reviewed; no caller-supplied JVM flags or proof can unlock target/public work.
+Dispatch uses a fixed one-shot task with exact task/status/cleanup receipts;
+no caller-supplied JVM flags or proof can unlock target/public work.
 """
 from __future__ import annotations
 
@@ -1111,12 +1111,24 @@ def collect(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
-    """Fail closed until protected one-shot dispatch/status/cleanup is reviewed."""
+    """Submit one fixed task after exact admission; status owns reconciliation."""
     request = _request(value)
     root = Path(root).resolve(strict=True)
+    existing = _read_intent(root, request["ownerNetworkCorrelationId"])
+    if existing is not None:
+        if existing["request"] != request:
+            raise WindowsFixtureOwnerNetworkError("Owner network correlation belongs to another request.")
+        return _unknown(request["ownerNetworkCorrelationId"], cleanup=True)
     binding = _binding(root, request)
-    _task_script(request, binding)
-    raise WindowsFixtureOwnerNetworkError("OWNER_NETWORK_DISPATCH_UNAVAILABLE")
+    directory, lock = lease._locked(root)
+    try:
+        current = lease._active(directory)
+        if (current is None or current.get("identity", {}).get("leaseId") != request["leaseId"]
+                or current.get("state") != "active" or current.get("role") is not None):
+            raise WindowsFixtureOwnerNetworkError("Owner network start requires an idle campaign.")
+    finally:
+        os.close(lock)
+    return _submit_candidate(root, request, binding)
 
 
 def verified_owner_jvm_receipt(root: Path | str, lease_id: str) -> dict[str, Any]:

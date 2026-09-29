@@ -40,6 +40,8 @@ def _hash(path: Path) -> str:
 
 
 def _private_file(path: Path, limit: int) -> bytes:
+    if os.name != "posix":
+        raise ValueError("Android installer private evidence requires POSIX file APIs")
     parent = path.parent.lstat()
     item = path.lstat()
     if (not stat.S_ISDIR(parent.st_mode) or parent.st_uid != os.getuid() or
@@ -62,6 +64,8 @@ def _private_file(path: Path, limit: int) -> bytes:
 
 
 def _write_private(path: Path, value: dict[str, Any]) -> None:
+    if os.name != "posix":
+        raise ValueError("Android installer private evidence requires POSIX file APIs")
     data = json.dumps(value, sort_keys=True, separators=(",", ":")).encode() + b"\n"
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     with os.fdopen(fd, "wb") as output:

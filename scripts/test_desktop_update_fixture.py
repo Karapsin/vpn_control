@@ -30,6 +30,7 @@ from test_fixture_environment import symlink_probe_available
 
 
 class DesktopUpdateFixtureTest(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "macOS private stop intent uses POSIX descriptor and owner APIs")
     def test_macos_graceful_stop_receipt_requires_exact_private_intent(self):
         """A bare SIGTERM or replaced intent cannot claim a zero-exit stop."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -64,6 +65,7 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             self.assertTrue(receipt["stopReceiptFinal"])
             self.assertEqual(receipt, json.loads((evidence / "server-stop.json").read_text()))
 
+    @unittest.skipIf(os.name == "nt", "macOS private stop intent uses POSIX descriptor and owner APIs")
     def test_macos_graceful_stop_rejects_linked_or_wrong_generation_intent(self):
         with tempfile.TemporaryDirectory() as temporary:
             correlation = "11111111-1111-4111-8111-111111111111"
@@ -956,6 +958,7 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "changed"):
                 load_resources(output)
 
+    @unittest.skipIf(os.name == "nt", "Linux timing publication is covered on POSIX hosts")
     def test_opt_in_linux_timing_records_phases_without_changing_packages(self):
         from build_phase_timing import PhaseRecorder
         with tempfile.TemporaryDirectory() as temporary:
@@ -990,6 +993,7 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             self.assertEqual(2, phases.count("gradle"))
             self.assertEqual(2, phases.count("packaging"))
 
+    @unittest.skipIf(os.name == "nt", "Linux timing publication is covered on POSIX hosts")
     def test_opt_in_timing_includes_native_helper_preparation(self):
         from build_phase_timing import PhaseRecorder
         with tempfile.TemporaryDirectory() as temporary:

@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 from agent_tools import linux_package_fixture_build as fixture
+from agent_tools import ssh_transport
 
 
 SOURCE = "a" * 40
@@ -176,6 +177,59 @@ class LinuxPackageFixtureBuildTest(unittest.TestCase):
             with patch.object(fixture, "_process_generation", return_value=None):
                 observed = fixture.FixedArchDriver(root).status(REQUEST)
             self.assertEqual(observed["state"], "unknown")
+
+    def test_remote_bootstrap_passes_real_ssh_command_guard_before_spawn(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            journal = fixture._directory(root, create=True)
+            fixture._write_once(journal / (CORRELATION + ".json"), REQUEST)
+            job = journal / CORRELATION
+            job.mkdir(mode=0o700)
+            host = ssh_transport.SshHost(
+                alias="archlinux", host="example.invalid", port=22, user="kardinal",
+                identity_file=root / "identity", known_hosts_file=root / "known_hosts")
+            config = ssh_transport.SshConfig(root=root, hosts={"archlinux": host})
+            with patch.object(ssh_transport, "load_config", return_value=config), \
+                    patch.object(fixture.subprocess, "Popen", side_effect=RuntimeError("spawn sentinel")) as spawn:
+                fixture._local_worker(root, CORRELATION)
+            self.assertEqual(spawn.call_count, 1)
+            self.assertNotIn("\n", spawn.call_args.args[0][-1])
+
+    def test_pre_effect_closure_preserves_unknown_intent_and_blocks_remote_trace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            journal = fixture._directory(root, create=True)
+            fixture._write_once(journal / (CORRELATION + ".json"), REQUEST)
+            fixture._write_once(journal / "archlinux.claim",
+                                {"correlationId": CORRELATION, "host": "archlinux"})
+            job = journal / CORRELATION
+            job.mkdir(mode=0o700)
+            fixture._write_once(job / "state.json", {"state": "unknown", "reason": "SshConfigError",
+                "correlationId": CORRELATION, "sourceSha": SOURCE})
+            fixture._write_once(job / "worker-pid.json", {"pid": 12345,
+                "start": "Mon Jan  1 00:00:00 2024"})
+            (job / "worker.log").write_bytes(b"")
+            (job / "worker.log").chmod(0o644)  # Historical worker used open("xb").
+            with patch.object(fixture.subprocess, "run", return_value=
+                    subprocess.CompletedProcess(["ps"], 1, "", "")):
+                observed = fixture.pre_effect_status(root, {"correlationId": CORRELATION})
+                self.assertEqual(observed["state"], "ready")
+                (job / "remote.log").write_bytes(b"")
+                self.assertEqual(fixture.pre_effect_status(root, {"correlationId": CORRELATION})["state"],
+                                 "unknown")
+                (job / "remote.log").unlink()
+                with patch.object(Path, "unlink", side_effect=OSError("interrupted after closure write")):
+                    with self.assertRaises(OSError):
+                        fixture.pre_effect_close(root, {"correlationId": CORRELATION,
+                            "closureDigest": observed["closureDigest"]})
+                self.assertEqual(fixture.pre_effect_status(root, {"correlationId": CORRELATION})["state"],
+                                 "closing")
+                closed = fixture.pre_effect_close(root, {"correlationId": CORRELATION,
+                    "closureDigest": observed["closureDigest"]})
+            self.assertEqual(closed["state"], "closed")
+            self.assertFalse((journal / "archlinux.claim").exists())
+            self.assertEqual(fixture._read(journal / (CORRELATION + ".json")), REQUEST)
+            self.assertTrue((job / "pre-effect-closure.json").exists())
 
     def test_verified_timing_is_published_for_source_bound_report(self):
         with tempfile.TemporaryDirectory() as directory:

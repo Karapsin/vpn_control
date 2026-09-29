@@ -99,16 +99,20 @@ class PhaseRecorder:
         if len(raw) > 4096:
             raise ValueError("Build timing receipt too large")
         path = self.directory / name
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                     getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(fd, "wb") as stream:
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
-        parent = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        try:
-            os.fsync(parent)
-        finally:
-            os.close(parent)
+        if platform.system() == "Windows":
+            require_windows_private_acl(path, private=True, directory=False)
+        else:
+            parent = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                os.fsync(parent)
+            finally:
+                os.close(parent)
         reference = {"path": ".rag_index/build-timings/" + name,
                      "sha256": hashlib.sha256(raw).hexdigest()}
         self.references.append(reference)
@@ -118,15 +122,19 @@ class PhaseRecorder:
         parent = self.directory.parent
         if self.directory.name != "build-timings" or parent.name != ".rag_index":
             raise ValueError("Build timing receipts require the private index")
-        owner = os.getuid()
+        windows = platform.system() == "Windows"
+        owner = os.getuid() if not windows else None
         for path in (parent, self.directory):
             try:
                 path.mkdir(mode=0o700)
             except FileExistsError:
                 pass
             info = path.lstat()
-            if (not stat.S_ISDIR(info.st_mode) or info.st_uid != owner
-                    or stat.S_IMODE(info.st_mode) != 0o700):
+            if not stat.S_ISDIR(info.st_mode) or path.is_symlink():
+                raise ValueError("Build timing directory unsafe")
+            if windows:
+                require_windows_private_acl(path, private=True, directory=True)
+            elif info.st_uid != owner or stat.S_IMODE(info.st_mode) != 0o700:
                 raise ValueError("Build timing directory unsafe")
 
 

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import os
 from contextlib import contextmanager
 from unittest import mock
 
@@ -41,6 +42,22 @@ def admitted(pair, backup_hash, backup_path, avd, api, *, changed=False):
          mock.patch.object(android_admission_readback, "async_collect", return_value=opening), \
          mock.patch.object(android_public_inspect, "inspect", return_value=public):
         yield
+
+
+class WindowsAdmissionTest(unittest.TestCase):
+    def test_windows_private_evidence_rejects_before_create(self):
+        class WindowsOs:
+            name = "nt"
+            def __getattr__(self, name):
+                if name in {"getuid", "geteuid", "O_DIRECTORY", "O_NOFOLLOW"}:
+                    raise AttributeError(name)
+                return getattr(os, name)
+        with tempfile.TemporaryDirectory() as raw:
+            destination = Path(raw) / "intent.json"
+            with mock.patch.object(target, "os", WindowsOs()):
+                with self.assertRaisesRegex(ValueError, "POSIX"):
+                    target._write_private(destination, {"state": "test"})
+            self.assertFalse(destination.exists())
 
 
 class AndroidInstallerTargetTest(unittest.TestCase):
@@ -83,6 +100,7 @@ class AndroidInstallerTargetTest(unittest.TestCase):
                     target.admit_pair(root, source, "sha256-" + old_hash,
                                       "sha256-" + new_hash, old_hash)
 
+    @unittest.skipIf(os.name == "nt", "private Android installer intent uses POSIX file APIs")
     def test_private_intent_is_once_only_and_backup_bound(self):
         correlation = "3a328d13-28a6-442b-bcc0-266ca20368f5"
         with tempfile.TemporaryDirectory() as raw:
@@ -116,6 +134,7 @@ class AndroidInstallerTargetTest(unittest.TestCase):
                     expected_avd="owned-api35", expected_api=35, expected_owner="owner", expected_revision=4,
                     backup_path=backup, backup_sha256=backup_hash, expected_terminal="cancelled")
 
+    @unittest.skipIf(os.name == "nt", "private Android installer intent uses POSIX file APIs")
     def test_incomplete_or_forged_terminal_never_allows_replay(self):
         correlation = "3a328d13-28a6-442b-bcc0-266ca20368f5"
         with tempfile.TemporaryDirectory() as raw:
@@ -172,6 +191,7 @@ class AndroidInstallerTargetTest(unittest.TestCase):
             self.assertEqual("unknown", target.collect(output, correlation)["state"])
             self.assertFalse(target.collect(output, correlation)["replayAllowed"])
 
+    @unittest.skipIf(os.name == "nt", "private Android installer intent uses POSIX file APIs")
     def test_cancelled_terminal_requires_exact_retained_session(self):
         intent = {"correlationId": "3a328d13-28a6-442b-bcc0-266ca20368f5",
             "expectedTerminal": "cancelled", "expectedOwner": "owner", "expectedRevision": 4,

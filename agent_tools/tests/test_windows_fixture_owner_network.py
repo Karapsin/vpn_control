@@ -342,15 +342,50 @@ class OwnerNetworkTests(unittest.TestCase):
         self.assertNotIn("[IO.Directory]::CreateDirectory($root)", script)
         self.assertNotIn("Set-Acl -LiteralPath $root", script)
 
-    def test_public_start_and_static_receipt_are_hard_blocked(self):
+    def test_public_start_dispatches_once_and_static_receipt_remains_blocked(self):
         with tempfile.TemporaryDirectory() as directory, \
-             patch.object(owner, "_binding", return_value=BINDING):
-            with self.assertRaisesRegex(owner.WindowsFixtureOwnerNetworkError,
-                                        "OWNER_NETWORK_DISPATCH_UNAVAILABLE"):
-                owner.start(directory, REQUEST)
+             patch.object(owner, "_binding", return_value=BINDING), \
+             patch.object(owner.lease, "_locked", side_effect=lambda *_:
+                          (owner.Path(directory), os.open(os.devnull, os.O_RDONLY))), \
+             patch.object(owner.lease, "_active", return_value={
+                 "identity": {"leaseId": LEASE}, "state": "active", "role": None}), \
+             patch.object(owner, "_submit_candidate", return_value={
+                 "state": "submitted", "ownerNetworkCorrelationId": CORR,
+                 "replayAllowed": False}) as submit:
+            self.assertEqual(owner.start(directory, REQUEST)["state"], "submitted")
+            submit.assert_called_once_with(owner.Path(directory).resolve(), REQUEST, BINDING)
             with self.assertRaisesRegex(owner.WindowsFixtureOwnerNetworkError,
                                         "OWNER_JVM_RECEIPT_UNAVAILABLE"):
                 owner.verified_owner_jvm_receipt(directory, LEASE)
+
+    def test_public_start_existing_intent_never_replays(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = owner.Path(directory)
+            owner._intent_path(root, CORR).parent.mkdir(parents=True, mode=0o700)
+            owner._write_private(owner._intent_path(root, CORR), {
+                "request": REQUEST, "binding": BINDING, "commandSha256": "4" * 64})
+            with patch.object(owner, "_binding") as binding, \
+                 patch.object(owner, "_submit_candidate") as submit:
+                outcome = owner.start(directory, REQUEST)
+                self.assertEqual(outcome["state"], "unknown")
+                self.assertFalse(outcome["replayAllowed"])
+                binding.assert_not_called()
+                submit.assert_not_called()
+
+    def test_start_rejects_existing_owner_role_before_reserving_intent(self):
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(owner, "_binding", return_value=BINDING), \
+             patch.object(owner.lease, "_locked", side_effect=lambda *_:
+                          (owner.Path(directory), os.open(os.devnull, os.O_RDONLY))), \
+             patch.object(owner.lease, "_active", return_value={
+                 "identity": {"leaseId": LEASE}, "state": "role-active",
+                 "role": "owner-network", "correlationId": CORR}), \
+             patch.object(owner, "_submit_candidate") as submit:
+            with self.assertRaisesRegex(owner.WindowsFixtureOwnerNetworkError,
+                                        "idle campaign"):
+                owner.start(directory, REQUEST)
+            self.assertIsNone(owner._read_intent(owner.Path(directory), CORR))
+            submit.assert_not_called()
 
 
 if __name__ == "__main__":

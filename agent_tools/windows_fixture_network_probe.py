@@ -3,7 +3,7 @@
 The public probe is only evidence when a fresh, private server event agrees with
 the exact owner response and current server/credential generation. The native
 dispatch is deliberately separate from validation so an uncertain scheduled
-task can never be replayed as a new public request.
+task cannot be replayed as a new public request.
 """
 from __future__ import annotations
 
@@ -934,7 +934,7 @@ def _cleanup_native(root: Path, request: Mapping[str, Any], binding: Mapping[str
 
 def _submit_candidate(root: Path, request: Mapping[str, Any], binding: Mapping[str, Any],
                       trust_store_path: str) -> dict[str, Any]:
-    """Review candidate; public start remains locked until cleanup is complete."""
+    """Submit the fixed task once; later status reconciles it without replay."""
     config, target, guest = base._descriptor(root)
     if guest[0] != "windows-cp117":
         raise WindowsFixtureNetworkProbeError("Owned CP117 guest changed.")
@@ -946,6 +946,8 @@ def _submit_candidate(root: Path, request: Mapping[str, Any], binding: Mapping[s
                                request["probeCorrelationId"], base._campaign_remote(config, target))
     if claimed.get("state") != "role-active":
         return _unknown(request["probeCorrelationId"], cleanup=True)
+    if _current_binding(root, request) != binding:
+        raise WindowsFixtureNetworkProbeError("Probe binding changed after claim.")
     raw = base._remote(config, _REMOTE_START,
                        (str(target.fixture_transfer_root), "windows-cp117", request["leaseId"],
                         request["probeCorrelationId"], binding["socketPath"],
@@ -970,12 +972,7 @@ def _unknown(correlation_id: str, *, cleanup: bool) -> dict[str, Any]:
 
 
 def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
-    """Admission-only until a protected original-user dispatcher is reviewed.
-
-    A probe is an action with an irreversible server event and must not be run
-    from a general QGA shell. This route therefore refuses to claim the lease or
-    create an intent until its exact limited-user task dispatcher is available.
-    """
+    """Submit one limited original-user task for the exact admitted owner."""
     request = _request(value)
     root = Path(root).resolve(strict=True)
     existing = _read_intent(root, request["probeCorrelationId"])
@@ -983,8 +980,18 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         if existing["request"] != request:
             raise WindowsFixtureNetworkProbeError("Probe correlation belongs to another request.")
         return _unknown(request["probeCorrelationId"], cleanup=True)
-    _current_binding(root, request)
-    raise WindowsFixtureNetworkProbeError("ORIGINAL_OWNER_PROBE_DISPATCH_UNAVAILABLE")
+    binding = _current_binding(root, request)
+    directory, lock = lease._locked(root)
+    try:
+        current = lease._active(directory)
+        if (current is None or current.get("identity", {}).get("leaseId") != request["leaseId"]
+                or current.get("state") != "active" or current.get("role") is not None):
+            raise WindowsFixtureNetworkProbeError("Probe start requires an idle campaign.")
+    finally:
+        os.close(lock)
+    trust_store_path = (_ROOT + r"\mcp-update-credentials-" + request["stageCorrelationId"]
+                        + r"\fixture-trust.p12")
+    return _submit_candidate(root, request, binding, trust_store_path)
 
 
 def status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:

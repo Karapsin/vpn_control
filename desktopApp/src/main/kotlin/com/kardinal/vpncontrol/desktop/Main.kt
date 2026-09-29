@@ -766,11 +766,11 @@ internal fun DesktopVpnControlApp(
                             } finally { locationEditorSaving = false }
                         }
                     }
-                }) { Text(appStrings.get(UiText.SAVE)) }
+                }) { Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF)) }
             },
             dismissButton = {
                 TextButton(onClick = { locationEditorOpen = false; locationDraft = null }, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-cancel")) {
-                    Text(appStrings.get(UiText.CANCEL))
+                    Text(appStrings.get(UiText.CANCEL), color = Color(0xFFD3E3EE))
                 }
             },
         )

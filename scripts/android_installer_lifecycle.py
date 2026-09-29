@@ -544,6 +544,8 @@ def main():
     if (not math.isfinite(args.reconciliation_timeout_seconds) or not math.isfinite(args.reconciliation_poll_seconds)
             or args.reconciliation_timeout_seconds <= 0 or args.reconciliation_poll_seconds <= 0):
         raise SystemExit("reconciliation timeout and poll interval must be finite positive values")
+    if os.name != "posix":
+        raise SystemExit("Android installer lifecycle requires POSIX private file APIs")
     args.output.mkdir(mode=0o700, parents=True, exist_ok=True)
     args.cli_environment = tls.public_cli_environment(args.adb, args.cli)
     args.intent = validate_intent(args)

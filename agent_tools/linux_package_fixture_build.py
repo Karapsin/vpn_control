@@ -231,6 +231,134 @@ def collect(root: Path | str, raw: Mapping[str, Any], *, driver=None) -> dict[st
                                       (raw["correlationId"] + ".json"))), observed)
 
 
+def _ended_worker(pid: int, expected_start: str) -> bool:
+    """Require positive ps evidence that this exact local worker generation ended."""
+    try:
+        result = subprocess.run(["ps", "-p", str(pid), "-o", "lstart="],
+                                capture_output=True, text=True, timeout=5, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    observed = result.stdout.strip()
+    return ((result.returncode == 1 and not observed) or
+            (result.returncode == 0 and 0 < len(observed) <= 128 and
+             "\n" not in observed and observed != expected_start))
+
+
+def pre_effect_status(root: Path | str, raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Prove the one known SSH argv rejection occurred before any remote spawn."""
+    _need(isinstance(raw, Mapping) and set(raw) == {"correlationId"} and
+          _correlation(raw["correlationId"]), "Build pre-effect status requires exact correlation")
+    correlation = raw["correlationId"]
+    unknown = _unknown(correlation, "pre-effect-proof-unavailable")
+    directory = _directory(Path(root).resolve(strict=True), create=False)
+    if directory is None:
+        return unknown
+    request = _read(directory / (correlation + ".json"))
+    claim_path = directory / "archlinux.claim"
+    if request is None or _request(request) != request:
+        return unknown
+    job = directory / correlation
+    try:
+        job_info = job.lstat()
+        files = set(os.listdir(job))
+        base_files = {"state.json", "worker-pid.json", "worker.log"}
+        if (not stat.S_ISDIR(job_info.st_mode) or job_info.st_uid != os.getuid() or
+                stat.S_IMODE(job_info.st_mode) != 0o700 or
+                files not in (base_files, base_files | {"pre-effect-closure.json"})):
+            return unknown
+        closure = _read(job / "pre-effect-closure.json") if "pre-effect-closure.json" in files else None
+        claim_value = _read(claim_path)
+        own_claim = claim_value == {"correlationId": correlation, "host": _HOST}
+        claim_info = claim_path.lstat() if own_claim else None
+        if own_claim and (not stat.S_ISREG(claim_info.st_mode) or
+                          claim_info.st_uid != os.getuid() or
+                          stat.S_IMODE(claim_info.st_mode) != 0o600 or
+                          claim_info.st_nlink != 1):
+            return unknown
+        if not own_claim and closure is None:
+            return unknown
+        state = _read(job / "state.json")
+        worker = _read(job / "worker-pid.json")
+        log_path = job / "worker.log"
+        log_fd = os.open(log_path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            log_info = os.fstat(log_fd)
+            if (not stat.S_ISREG(log_info.st_mode) or log_info.st_uid != os.getuid() or
+                    stat.S_IMODE(log_info.st_mode) not in (0o600, 0o644) or log_info.st_nlink != 1 or
+                    log_info.st_size != 0):
+                return unknown
+        finally:
+            os.close(log_fd)
+        if (state != {"state": "unknown", "reason": "SshConfigError",
+                      "correlationId": correlation, "sourceSha": request["sourceSha"]} or
+                not isinstance(worker, dict) or set(worker) != {"pid", "start"} or
+                type(worker["pid"]) is not int or worker["pid"] <= 0 or
+                not isinstance(worker["start"], str) or not worker["start"] or
+                not _ended_worker(worker["pid"], worker["start"])):
+            return unknown
+        if closure is not None and (not isinstance(closure, dict) or
+                set(closure) != {"state", "correlationId", "sourceSha", "closureDigest",
+                                 "claimDevice", "claimInode"} or
+                closure.get("state") != "closed-pre-effect" or
+                closure.get("correlationId") != correlation or
+                closure.get("sourceSha") != request["sourceSha"] or
+                not isinstance(closure.get("closureDigest"), str) or
+                re.fullmatch(r"[0-9a-f]{64}", closure["closureDigest"]) is None or
+                type(closure.get("claimDevice")) is not int or closure["claimDevice"] <= 0 or
+                type(closure.get("claimInode")) is not int or closure["claimInode"] <= 0):
+            return unknown
+        claim_device = claim_info.st_dev if own_claim else closure["claimDevice"]
+        claim_inode = claim_info.st_ino if own_claim else closure["claimInode"]
+        facts = {"correlationId": correlation, "sourceSha": request["sourceSha"],
+                 "workerPid": worker["pid"], "workerStart": worker["start"],
+                 "jobDevice": job_info.st_dev, "jobInode": job_info.st_ino,
+                 "claimDevice": claim_device, "claimInode": claim_inode,
+                 "reason": "SshConfigError", "remoteSpawnObserved": False}
+        digest = hashlib.sha256((json.dumps(facts, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
+        if closure is not None and (closure["closureDigest"] != digest or
+                (own_claim and (closure["claimDevice"], closure["claimInode"]) !=
+                 (claim_device, claim_inode))):
+            return unknown
+        return {"state": "ready" if closure is None else "closing" if own_claim else "closed",
+                "correlationId": correlation,
+                "sourceSha": request["sourceSha"], "closureDigest": digest,
+                "claimDevice": claim_device, "claimInode": claim_inode,
+                "remoteSpawnObserved": False, "replayAllowed": False}
+    except (OSError, ValueError, TypeError):
+        return unknown
+
+
+def pre_effect_close(root: Path | str, raw: Mapping[str, Any]) -> dict[str, Any]:
+    _need(isinstance(raw, Mapping) and set(raw) == {"correlationId", "closureDigest"} and
+          _correlation(raw["correlationId"]) and isinstance(raw["closureDigest"], str) and
+          re.fullmatch(r"[0-9a-f]{64}", raw["closureDigest"]) is not None,
+          "Build pre-effect close requires exact proof digest")
+    observed = pre_effect_status(root, {"correlationId": raw["correlationId"]})
+    if observed.get("state") not in {"ready", "closing", "closed"} or \
+            observed.get("closureDigest") != raw["closureDigest"]:
+        return _unknown(raw["correlationId"], "pre-effect-proof-differs")
+    if observed["state"] == "closed":
+        return {"state": "closed", "correlationId": raw["correlationId"],
+                "sourceSha": observed["sourceSha"], "closureDigest": raw["closureDigest"],
+                "oldIntentPreserved": True, "replayAllowed": False}
+    directory = _directory(Path(root).resolve(strict=True), create=False)
+    assert directory is not None
+    claim = directory / "archlinux.claim"
+    current = claim.lstat()
+    if (current.st_dev, current.st_ino) != (observed["claimDevice"], observed["claimInode"]):
+        return _unknown(raw["correlationId"], "build-host-claim-changed")
+    job = directory / raw["correlationId"]
+    if observed["state"] == "ready":
+        _write_once(job / "pre-effect-closure.json", {
+            "state": "closed-pre-effect", "correlationId": raw["correlationId"],
+            "sourceSha": observed["sourceSha"], "closureDigest": raw["closureDigest"],
+            "claimDevice": observed["claimDevice"], "claimInode": observed["claimInode"]})
+    claim.unlink()
+    return {"state": "closed", "correlationId": raw["correlationId"],
+            "sourceSha": observed["sourceSha"], "closureDigest": raw["closureDigest"],
+            "oldIntentPreserved": True, "replayAllowed": False}
+
+
 _BOOTSTRAP = r'''
 import base64,json,os,pathlib,subprocess,sys
 request=json.loads(base64.b64decode(sys.argv[1],validate=True))
@@ -570,8 +698,10 @@ def _local_worker(root: Path, correlation: str) -> None:
         from . import ssh_transport
         encoded = base64.b64encode((json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n").encode()).decode()
         config = ssh_transport.load_config(root)
+        bootstrap = base64.b64encode(_BOOTSTRAP.encode("utf-8")).decode("ascii")
+        fixed_command = f"import base64;exec(base64.b64decode('{bootstrap}'))"
         argv = ssh_transport.build_ssh_argv(config, _HOST, 60,
-                                             ["python3", "-I", "-B", "-c", _BOOTSTRAP, encoded])
+                                             command=["python3", "-I", "-B", "-c", fixed_command, encoded])
         archive = job / "result.tar"
         with archive.open("xb") as output, (job / "remote.log").open("xb") as errors:
             process = subprocess.Popen(argv, cwd=root, stdout=subprocess.PIPE, stderr=errors)

@@ -18,6 +18,39 @@ class PhaseRecorderTest(unittest.TestCase):
                              "linux-fixture", "12345678-1234-4234-9234-123456789abc",
                              "fedora-builder")
 
+    def test_windows_absent_posix_apis_still_publishes_acl_guarded_receipt(self):
+        import prepare_desktop_update_fixture as fixture
+        class WindowsOs:
+            def __getattr__(self, name):
+                if name in {"getuid", "geteuid", "O_DIRECTORY", "O_NOFOLLOW"}:
+                    raise AttributeError(name)
+                return getattr(os, name)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            recorder = self.recorder(root)
+            with mock.patch.object(fixture, "os", WindowsOs()), \
+                 mock.patch.object(fixture.platform, "system", return_value="Windows"), \
+                 mock.patch.object(fixture, "require_windows_private_acl") as acl:
+                reference = recorder.finish("gradle", "base", recorder.start())
+            receipt = root / reference["path"]
+            self.assertEqual(hashlib.sha256(receipt.read_bytes()).hexdigest(), reference["sha256"])
+            self.assertEqual({root / ".rag_index", root / ".rag_index/build-timings", receipt},
+                             {call.args[0] for call in acl.call_args_list})
+            self.assertTrue(all(call.kwargs["private"] for call in acl.call_args_list))
+
+    def test_windows_rejects_unsafe_acl_before_receipt_publication(self):
+        import prepare_desktop_update_fixture as fixture
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            recorder = self.recorder(root)
+            with mock.patch.object(fixture.platform, "system", return_value="Windows"), \
+                 mock.patch.object(fixture, "require_windows_private_acl", side_effect=ValueError("unsafe ACL")):
+                with self.assertRaisesRegex(ValueError, "unsafe ACL"):
+                    recorder.finish("gradle", "base", recorder.start())
+            self.assertFalse(list((root / ".rag_index").glob("**/*.json")))
+            self.assertEqual([], recorder.references)
+
+    @unittest.skipIf(os.name == "nt", "POSIX mode assertions are covered on POSIX hosts")
     def test_private_source_bound_monotonic_receipt_matches_report_schema(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -46,6 +79,7 @@ class PhaseRecorderTest(unittest.TestCase):
                     recorder.finish("gradle", "base", 1_000_000_000)
             self.assertEqual(1, len(recorder.references))
 
+    @unittest.skipIf(os.name == "nt", "POSIX mode rejection is covered on POSIX hosts")
     def test_rejects_unsafe_directory_or_non_monotonic_phase(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -61,6 +95,7 @@ class PhaseRecorderTest(unittest.TestCase):
                     recorder.finish("gradle", "base", 100)
             self.assertFalse((private / "build-timings").exists())
 
+    @unittest.skipIf(os.name == "nt", "POSIX receipt publication is covered on POSIX hosts")
     def test_equal_clock_ticks_record_minimum_positive_duration(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -81,6 +116,7 @@ class PhaseRecorderTest(unittest.TestCase):
                 with self.subTest(source=source, pipeline=pipeline, run=run), self.assertRaises(ValueError):
                     PhaseRecorder(directory, source, pipeline, run, "fedora-builder")
 
+    @unittest.skipIf(os.name == "nt", "POSIX receipt publication is covered on POSIX hosts")
     def test_external_upload_phase_wraps_exact_command_and_only_success_emits(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

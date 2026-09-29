@@ -119,11 +119,20 @@ class NetworkProbeTest(unittest.TestCase):
                                      {**PUBLIC, "data": {**DATA, "assetSha256": "9" * 64}},
                                      EVENT, manifest_bytes=156)
 
-    def test_start_is_inert_until_original_owner_dispatch_exists(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.object(probe, "_current_binding", return_value=BINDING):
-            with self.assertRaisesRegex(probe.WindowsFixtureNetworkProbeError,
-                                        "ORIGINAL_OWNER_PROBE_DISPATCH_UNAVAILABLE"):
-                probe.start(tmp, REQUEST)
+    def test_public_start_dispatches_exact_original_owner_probe(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(probe, "_current_binding", return_value=BINDING), \
+             patch.object(probe.lease, "_locked", side_effect=lambda *_:
+                          (Path(tmp), os.open(os.devnull, os.O_RDONLY))), \
+             patch.object(probe.lease, "_active", return_value={
+                 "identity": {"leaseId": LEASE}, "state": "active", "role": None}), \
+             patch.object(probe, "_submit_candidate", return_value={
+                 "state": "submitted", "probeCorrelationId": CORR,
+                 "cleanupRequired": True, "replayAllowed": False,
+                 "ownerTransportVerified": False}) as submit:
+            self.assertEqual(probe.start(tmp, REQUEST)["state"], "submitted")
+            submit.assert_called_once_with(Path(tmp).resolve(), REQUEST, BINDING,
+                probe._ROOT + r"\mcp-update-credentials-" + STAGE + r"\fixture-trust.p12")
             self.assertEqual(probe.status(tmp, {"probeCorrelationId": CORR}),
                              {"state": "unknown", "probeCorrelationId": CORR,
                               "cleanupRequired": False, "replayAllowed": False,
@@ -131,6 +140,38 @@ class NetworkProbeTest(unittest.TestCase):
             with self.assertRaisesRegex(probe.WindowsFixtureNetworkProbeError,
                                         "OWNER_NETWORK_RECEIPT_UNAVAILABLE"):
                 probe.verified_owner_network_receipt(tmp, LEASE)
+
+    def test_claimed_probe_rechecks_owner_binding_before_guest_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(probe.base, "_descriptor", return_value=(object(), object(),
+                          ("windows-cp117", BINDING["socketPath"], BINDING["qemuPid"],
+                           BINDING["startTicks"], BINDING["originalSid"]))), \
+             patch.object(probe.base, "_campaign_remote", return_value=object()), \
+             patch.object(probe, "_reserve"), \
+             patch.object(probe.lease, "claim_role", return_value={"state": "role-active"}), \
+             patch.object(probe, "_current_binding", return_value={**BINDING,
+                          "ownerPid": REQUEST["ownerPid"] + 1}), \
+             patch.object(probe.base, "_remote") as remote:
+            with self.assertRaisesRegex(probe.WindowsFixtureNetworkProbeError,
+                                        "binding changed after claim"):
+                probe._submit_candidate(Path(tmp), REQUEST, BINDING,
+                    probe._ROOT + r"\mcp-update-credentials-" + STAGE + r"\fixture-trust.p12")
+            remote.assert_not_called()
+
+    def test_start_rejects_target_role_before_reserving_probe_intent(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(probe, "_current_binding", return_value=BINDING), \
+             patch.object(probe.lease, "_locked", side_effect=lambda *_:
+                          (Path(tmp), os.open(os.devnull, os.O_RDONLY))), \
+             patch.object(probe.lease, "_active", return_value={
+                 "identity": {"leaseId": LEASE}, "state": "role-active",
+                 "role": "target", "correlationId": "88888888-8888-4888-8888-888888888888"}), \
+             patch.object(probe, "_submit_candidate") as submit:
+            with self.assertRaisesRegex(probe.WindowsFixtureNetworkProbeError,
+                                        "idle campaign"):
+                probe.start(tmp, REQUEST)
+            self.assertIsNone(probe._read_intent(Path(tmp), CORR))
+            submit.assert_not_called()
 
     def test_fixed_original_owner_task_and_observer_are_bounded(self):
         trust = (r"C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-credentials-"

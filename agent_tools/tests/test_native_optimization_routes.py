@@ -1177,6 +1177,34 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         self.assertFalse(bounded["replayAllowed"])
         self.assertEqual("linux-package-fixture-build-status", bounded["nextAction"]["action"]["action"])
 
+    def test_linux_package_build_pre_effect_routes_bind_exact_proof(self):
+        from agent_tools import linux_package_fixture_build
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        digest = "b" * 64
+        with patch.object(linux_package_fixture_build, "pre_effect_status", return_value={
+                "state": "ready", "correlationId": correlation, "closureDigest": digest,
+                "replayAllowed": False}) as observe:
+            ready = mcp_server._vm_workflow_impl("linux-package-fixture-build-pre-effect-status",
+                                                 {"correlationId": correlation})
+        observe.assert_called_once_with(mcp_server.REPO_ROOT, {"correlationId": correlation})
+        self.assertTrue(ready["ok"])
+        self.assertFalse(ready["nativeActionAllowed"])
+        with patch.object(linux_package_fixture_build, "pre_effect_close", return_value={
+                "state": "closed", "correlationId": correlation, "replayAllowed": False}) as close:
+            closed = mcp_server._vm_workflow_impl("linux-package-fixture-build-pre-effect-close",
+                {"correlationId": correlation, "closureDigest": digest})
+        close.assert_called_once_with(mcp_server.REPO_ROOT,
+            {"correlationId": correlation, "closureDigest": digest})
+        self.assertTrue(closed["ok"])
+        self.assertFalse(closed["productAction"])
+        with patch.object(linux_package_fixture_build, "pre_effect_close",
+                          side_effect=AssertionError("unsafe close")):
+            for bad in ({"correlationId": correlation},
+                        {"correlationId": correlation, "closureDigest": digest, "host": "other"},
+                        {"correlationId": correlation, "closureDigest": "invalid"}):
+                self.assertFalse(mcp_server._vm_workflow_impl(
+                    "linux-package-fixture-build-pre-effect-close", bad)["ok"])
+
     def test_windows_owner_quit_routes_require_exact_request(self):
         from agent_tools import windows_msi_owner_observe
         correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"

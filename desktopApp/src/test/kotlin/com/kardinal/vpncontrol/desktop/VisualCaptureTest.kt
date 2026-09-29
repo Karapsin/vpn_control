@@ -63,6 +63,64 @@ class VisualCaptureTest {
     private lateinit var compose: ComposeUiTest
 
     @Test
+    fun invalidLocationFixtureSurvivesOwnerPresentationFiltering() {
+        val directory = Files.createTempDirectory("vpn-control-visual-invalid-location")
+        val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+        try {
+            service.replaceStateForVisualCapture(visualState("locations-invalid"), visualLocations())
+            val rows = service.controlPresentationSnapshot("visual-fixture").locations
+            check(rows.size == 2)
+            check(rows[0].details.isNotBlank()) { "Valid location detail was filtered from the visual fixture" }
+            check(rows[1].details.isNotBlank() && !rows[1].valid) {
+                "Invalid location must retain visible error detail after owner presentation filtering"
+            }
+            check(rows[1].benchmark == "primary failed") {
+                "Invalid location benchmark label must survive owner presentation filtering"
+            }
+            check(!rows[1].legacyDetailsUnavailable) {
+                "Visual fixture must use canonical safe display labels"
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun locationEditorActionsMeetNormalTextContrast() {
+        val directory = Files.createTempDirectory("vpn-control-visual-location-contrast")
+        val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+        try {
+            for (sceneId in listOf("locations-add-dialog", "locations-edit-dialog")) {
+                service.replaceStateForVisualCapture(visualState(sceneId), visualLocations())
+                runDesktopComposeUiTest(width = 1280, height = 800) {
+                    compose = this
+                    setContent {
+                        VpnControlTheme {
+                            DesktopVpnControlApp(
+                                windowProvider = { error("Native file dialogs are not used by visual tests") },
+                                service = service,
+                                onCheckAndDownloadUpdate = {},
+                                onDismissOrCancelUpdate = {},
+                                onInstallUpdate = {},
+                            )
+                        }
+                    }
+                    waitForIdle()
+                    val image = captureScene(directory.resolve("$sceneId.png"), 1280, 800)
+                    for (tag in listOf("dialog-save", "dialog-cancel")) {
+                        val node = onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+                        val bounds = node.firstTextDescendant()?.boundsInWindow ?: node.boundsInWindow
+                        val contrast = measuredContrast(image, bounds)
+                        check(contrast >= 4.5) { "$sceneId $tag contrast $contrast is below 4.5" }
+                    }
+                }
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun invalidDnsVisualDraftShowsFeedbackOnlyAfterSaveAndClearsOnEdit() {
         val directory = Files.createTempDirectory("vpn-control-visual-dns-error")
         val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
@@ -443,7 +501,7 @@ internal fun visualLocations(): List<DesktopLocationRecord> = listOf(
         rawLink = "vless://00000000-0000-0000-0000-000000000001@example.invalid:443#Berlin",
         name = "Berlin",
         server = "example.invalid:443",
-        details = "VLESS · TLS · TCP",
+        details = "VLESS TLS",
         benchmarkDetail = "primary ok • tcp 42ms",
         isValid = true,
         isSelected = true,
@@ -454,8 +512,8 @@ internal fun visualLocations(): List<DesktopLocationRecord> = listOf(
         rawLink = "trojan://visual@example.net:443#Tokyo",
         name = "Tokyo",
         server = "example.net:443",
-        details = "Trojan · TLS · TCP",
-        benchmarkDetail = "Validation failed: synthetic timeout",
+        details = "Trojan TLS",
+        benchmarkDetail = "primary failed",
         isValid = false,
     ),
 )

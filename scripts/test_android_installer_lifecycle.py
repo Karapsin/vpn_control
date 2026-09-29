@@ -58,7 +58,20 @@ def portable_private_file_privacy(*paths, windows=None):
     return nullcontext()
 
 
+class WindowsAdmissionTest(unittest.TestCase):
+    def test_windows_driver_rejects_before_creating_any_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "output"
+            with patch.object(driver, "os", SimpleNamespace(name="nt")), \
+                 patch.object(sys, "argv", argv(root, output)):
+                with self.assertRaisesRegex(SystemExit, "POSIX"):
+                    driver.main()
+            self.assertFalse(output.exists())
+
+
 class InstallerLifecycleTest(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "governed callback evidence uses POSIX private file APIs")
     def test_governed_callback_rejects_missing_mismatched_and_foreign_session_evidence(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary); output.chmod(0o700)
@@ -151,7 +164,7 @@ class InstallerLifecycleTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "private"):
                 driver.wait_for_continue_file(callback, parent)
 
-    @unittest.skipIf(os.name == "nt", "POSIX callback-parent modes are checked by the POSIX fixture")
+    @unittest.skipIf(os.name == "nt", "native Android lifecycle requires POSIX private file APIs")
     def test_preexisting_continue_file_rejects_before_fixture_launch(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); output, callback = root / "output", root / "output" / "continue"
@@ -168,6 +181,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                     driver.main()
             launched.assert_not_called()
 
+    @unittest.skipIf(os.name == "nt", "native Android lifecycle requires POSIX private file APIs")
     def test_main_forwards_file_callback_and_fixture_identity_without_stdin(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); output, callback = root / "output", root / "output" / "continue"
@@ -216,6 +230,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                 "pid": 23456, "startTicks": 777, "port": 12345},
                 json.loads((output / "fixture-identity.json").read_text()))
 
+    @unittest.skipIf(os.name == "nt", "native Android lifecycle requires POSIX private file APIs")
     def test_duplicate_run_marker_rejects_before_fixture_or_guest_effect(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); output = root / "output"; output.mkdir(mode=0o700)
@@ -230,6 +245,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                     driver.main()
             launched.assert_not_called()
 
+    @unittest.skipIf(os.name == "nt", "native Android lifecycle requires POSIX private file APIs")
     def test_main_forwards_handoff_ready_to_two_phase_action(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); output = root / "output"; callback = output / "continue"; ready = output / "handoff-ready"
@@ -268,6 +284,7 @@ class InstallerLifecycleTest(unittest.TestCase):
             self.assertEqual(ready, observed["args"].handoff_ready_file)
             self.assertTrue((output / "handoff.json").is_file())
 
+    @unittest.skipIf(os.name == "nt", "native Android lifecycle requires POSIX private file APIs")
     def test_bad_base_hash_rejects_before_fixture_launch(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); output = root / "output"; adb = root / "adb"
@@ -292,6 +309,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                     driver.main()
             launched.assert_not_called()
 
+    @unittest.skipIf(os.name == "nt", "native Android lifecycle requires POSIX private file APIs")
     def test_installed_callback_requires_distinct_handoff_ready_callback_before_fixture_launch(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); output = root / "output"; callback = output / "continue"; adb = root / "adb"
@@ -324,6 +342,12 @@ class InstallerLifecycleTest(unittest.TestCase):
             original = driver.tls.public_cli_environment
             def child_environment(selected, cli):
                 value = original(selected, cli, {"PATH": "/missing"}); observed.append(value); return value
+            if os.name == "nt":
+                # Windows can validate executable discovery without entering the
+                # POSIX-only native fixture's private marker boundary.
+                child_environment(adb, root / "cli")
+                self.assertEqual(str(adb.resolve().parent) + os.pathsep + "/missing", observed[0]["PATH"])
+                return
             with patch.object(driver.tls, "public_cli_environment", side_effect=child_environment), \
                  patch.object(driver.tls, "require_artifact_hash"), \
                  patch.object(driver.fixture, "launch_supervised_fixture", side_effect=RuntimeError("LAUNCHED")), \

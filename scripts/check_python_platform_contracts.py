@@ -63,6 +63,68 @@ with TemporaryDirectory() as raw:
 ''')
 
 
+def probe_windows_phase_recorder() -> subprocess.CompletedProcess[str]:
+    """Exercise real receipt publication without Windows-missing POSIX APIs."""
+    return _run('''import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+import prepare_desktop_update_fixture as fixture
+class WindowsOs:
+    def __getattr__(self, name):
+        if name in {"getuid", "geteuid", "O_DIRECTORY", "O_NOFOLLOW"}:
+            raise AttributeError(name)
+        return getattr(os, name)
+with TemporaryDirectory() as raw:
+    root = Path(raw)
+    recorder = fixture.PhaseRecorder(root / ".rag_index/build-timings", "a" * 40,
+        "windows-fixture", "12345678-1234-4234-9234-123456789abc", "windows-builder")
+    with patch.object(fixture, "os", WindowsOs()), patch.object(fixture.platform, "system", return_value="Windows"), \\
+         patch.object(fixture, "require_windows_private_acl") as acl:
+        reference = recorder.finish("gradle", "base", recorder.start())
+    assert (root / reference["path"]).is_file()
+    assert len(acl.call_args_list) == 3
+''')
+
+
+def probe_windows_android_installer_boundary() -> subprocess.CompletedProcess[str]:
+    """Require a clear rejection before Android evidence is created on Windows."""
+    return _run('''import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest.mock import patch
+import android_installer_lifecycle as driver
+from agent_tools import android_installer_target as target
+class WindowsOs:
+    name = "nt"
+    def __getattr__(self, name):
+        if name in {"getuid", "geteuid", "O_DIRECTORY", "O_NOFOLLOW"}:
+            raise AttributeError(name)
+        return getattr(os, name)
+with TemporaryDirectory() as raw:
+    path = Path(raw) / "intent.json"
+    with patch.object(target, "os", WindowsOs()):
+        try:
+            target._write_private(path, {"state": "test"})
+        except ValueError as error:
+            assert "POSIX" in str(error)
+        else:
+            raise AssertionError("Windows private write was accepted")
+    assert not path.exists()
+    parsed = SimpleNamespace(api="35", device_port="123",
+        reconciliation_timeout_seconds=1.0, reconciliation_poll_seconds=1.0)
+    with patch.object(driver, "os", SimpleNamespace(name="nt")), \\
+         patch.object(driver, "parse_args", return_value=parsed):
+        try:
+            driver.main()
+        except SystemExit as error:
+            assert "POSIX" in str(error)
+        else:
+            raise AssertionError("Windows lifecycle was accepted")
+''')
+
+
 def _run(source: str, *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-c", source], cwd=SCRIPTS, text=True,
@@ -121,6 +183,11 @@ def check_contracts(root: Path = ROOT) -> list[str]:
     result = probe_absent_getuid()
     if result.returncode:
         errors.append(_failure("absent-os-getuid native_fixture_preflight", result))
+    for name, probe in (("windows-phase-recorder", probe_windows_phase_recorder),
+                        ("windows-android-installer", probe_windows_android_installer_boundary)):
+        result = probe()
+        if result.returncode:
+            errors.append(_failure(name, result))
     return errors
 
 
@@ -130,7 +197,7 @@ def main() -> int:
         print("Python platform contract check failed:", file=sys.stderr)
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 1} capability probes)")
+    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 3} capability probes)")
     return 0
 
 

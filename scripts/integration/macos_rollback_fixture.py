@@ -306,11 +306,14 @@ class RollbackFixture:
         directory.mkdir(mode=0o700, exist_ok=True)
         for part in (directory.parent, directory):
             info = part.lstat()
-            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or \
-                    stat.S_IMODE(info.st_mode) != 0o700:
+            if not stat.S_ISDIR(info.st_mode) or (sys.platform == "darwin" and
+                    (info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700)):
                 raise FixtureError("machine rollback evidence directory is unsafe")
         path = directory / "rollback-trace.json"
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if sys.platform == "darwin":
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(path, flags, 0o600)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as output:
                 json.dump(trace, output, sort_keys=True, separators=(",", ":"))
@@ -318,9 +321,10 @@ class RollbackFixture:
         except Exception:
             path.unlink(missing_ok=True)
             raise
-        parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        try: os.fsync(parent)
-        finally: os.close(parent)
+        if sys.platform == "darwin":
+            parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try: os.fsync(parent)
+            finally: os.close(parent)
 
     def _ready_operation(self) -> dict[str, Any] | None:
         status = self.boundary.public(self.spec.app, self.spec.state_dir,
