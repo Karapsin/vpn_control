@@ -15,20 +15,35 @@ REQUEST = {"host": "archlinux", "correlationId": CORR, "timeoutSeconds": 60}
 class WindowsVmSecurebootFreshRouteTest(unittest.TestCase):
     def test_preflight_start_status_have_only_fixed_dispatch(self):
         with mock.patch.object(mcp_server, "_agent_module") as module:
-            module.return_value.preflight.return_value = {"state": "blocked", "reason": "virt-fw-vars-unavailable"}
+            module.return_value.preflight.return_value = {
+                "state": "blocked", "reason": "host-components-unavailable",
+                "missingHostComponents": ["edk2-ovmf-package"],
+                "hostComponentAdmission": {"edk2-ovmf-package": "integrity-failed"},
+            }
             preflight = mcp_server._vm_workflow_impl("windows-vm-secureboot-fresh-preflight", REQUEST)
             self.assertFalse(preflight["ok"])
             self.assertFalse(preflight["nativeActionAllowed"])
+            self.assertEqual(preflight["missingHostComponents"], ["edk2-ovmf-package"])
+            self.assertEqual(preflight["hostComponentAdmission"],
+                             {"edk2-ovmf-package": "integrity-failed"})
             module.return_value.preflight.assert_called_once_with(
                 mcp_server.REPO_ROOT, host="archlinux", correlation_id=CORR, timeout_seconds=60)
             reservation = {"hostAlias": "archlinux", "environment": subject.ENVIRONMENT,
                            "operator": subject.OPERATOR, "requestedMemoryBytes": subject.MEMORY_MIB * 1024 * 1024,
                            "allocationState": "pending", "reservationIdentity": {}}
-            module.return_value.start.return_value = {"state": "unknown", "replayAllowed": False}
+            module.return_value.start.return_value = {
+                "state": "blocked", "reason": "host-components-unavailable",
+                "missingHostComponents": ["swtpm-package"],
+                "hostComponentAdmission": {"swtpm-package": "integrity-failed"},
+                "replayAllowed": False,
+            }
             start = mcp_server._vm_workflow_impl("windows-vm-secureboot-fresh-start",
                                                  {**REQUEST, "reservationRequest": reservation})
             self.assertFalse(start["ok"])
             self.assertFalse(start["replayAllowed"])
+            self.assertEqual(start["missingHostComponents"], ["swtpm-package"])
+            self.assertEqual(start["hostComponentAdmission"],
+                             {"swtpm-package": "integrity-failed"})
             module.return_value.start.assert_called_once_with(
                 mcp_server.REPO_ROOT, reservation_request=reservation,
                 host="archlinux", correlation_id=CORR, timeout_seconds=60)

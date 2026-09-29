@@ -78,9 +78,79 @@ class WindowsVmSecurebootFreshTest(unittest.TestCase):
                 return subprocess.CompletedProcess(argv, 1, b"altered files\n", b"")
             with (mock.patch("os.path.isfile", return_value=True),
                   mock.patch("subprocess.run", side_effect=package_check) as dispatched):
-                reason, _, _ = scope["prerequisites"]()
+                reason, _, _, _, _ = scope["prerequisites"]()
             self.assertEqual(reason, "virt-fw-vars-unavailable")
             self.assertEqual(dispatched.call_count, 2)
+            self.assertFalse(root.exists())
+
+    def test_missing_host_package_reports_fixed_component_before_resource_sampling(self):
+        """The native host failure must identify an actionable fixed admission fact."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "new-private-vm"
+            scope: dict = {}
+            exec(program(ROOT=str(root), GUEST=str(root / "guest")).split(
+                "try:\n if MODE=='status'", 1)[0], scope)
+            scope["binary"] = lambda name: "/usr/bin/" + name
+
+            def package_check(argv, **_):
+                name = argv[2]
+                if argv[1] == "-Q" and name == "edk2-ovmf":
+                    return subprocess.CompletedProcess(argv, 1, b"", b"")
+                versions = {"virt-firmware": "26.9-1", "swtpm": "0.10.2-1",
+                            "qemu-system-x86": "10.0.3-1", "qemu-img": "10.0.3-1"}
+                if argv[1] == "-Q":
+                    return subprocess.CompletedProcess(argv, 0, f"{name} {versions[name]}\n".encode(), b"")
+                return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+            with (mock.patch("os.path.isfile", return_value=True),
+                  mock.patch("subprocess.run", side_effect=package_check)):
+                outcome = scope["prerequisites"]()
+            self.assertEqual(outcome[0], "host-components-unavailable")
+            self.assertEqual(outcome[3], ["edk2-ovmf-package"])
+            self.assertEqual(outcome[4], {"edk2-ovmf-package": "absent"})
+            self.assertIsNone(outcome[1])
+            self.assertIsNone(outcome[2])
+            self.assertFalse(root.exists())
+
+    def test_start_blocked_receipt_keeps_component_admission_facts(self):
+        """A deterministic start denial must not be relabeled as unknown by its validator."""
+        script = subject._program(CORR, "start")
+        before, _, remainder = script.partition("def prerequisites():")
+        _, _, after = remainder.partition("def write_json")
+        script = before + """def prerequisites():
+ return 'host-components-unavailable',None,None,['swtpm-package'],{'swtpm-package':'integrity-failed'}
+def write_json""" + after
+        result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        value = json.loads(result.stdout)
+        self.assertEqual(value["state"], "blocked")
+        self.assertEqual(value["reason"], "host-components-unavailable")
+        self.assertEqual(value["missingHostComponents"], ["swtpm-package"])
+        self.assertEqual(value["hostComponentAdmission"], {"swtpm-package": "integrity-failed"})
+
+    def test_swtpm_integrity_failure_is_categorical_without_package_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "new-private-vm"
+            scope: dict = {}
+            exec(program(ROOT=str(root), GUEST=str(root / "guest")).split(
+                "try:\n if MODE=='status'", 1)[0], scope)
+            scope["binary"] = lambda name: "/usr/bin/" + name
+
+            def package_check(argv, **_):
+                name = argv[2]
+                versions = {"virt-firmware": "26.9-1", "edk2-ovmf": "202608-1",
+                            "swtpm": "0.10.2-1", "qemu-system-x86": "10.0.3-1",
+                            "qemu-img": "10.0.3-1"}
+                if argv[1] == "-Q":
+                    return subprocess.CompletedProcess(argv, 0, f"{name} {versions[name]}\n".encode(), b"")
+                return subprocess.CompletedProcess(argv, 1 if name == "swtpm" else 0, b"private details", b"")
+
+            with (mock.patch("os.path.isfile", return_value=True),
+                  mock.patch("subprocess.run", side_effect=package_check)):
+                outcome = scope["prerequisites"]()
+            self.assertEqual(outcome[0], "host-components-unavailable")
+            self.assertEqual(outcome[3], ["swtpm-package"])
+            self.assertEqual(outcome[4], {"swtpm-package": "integrity-failed"})
             self.assertFalse(root.exists())
 
     def test_existing_target_root_blocks_without_touching_it(self):
@@ -114,6 +184,22 @@ class WindowsVmSecurebootFreshTest(unittest.TestCase):
                                   reservation_request=RESERVATION)
                 reserve.assert_called_once()
                 remote.assert_called_once_with(directory, CORR, "start", 300)
+
+    def test_public_start_preserves_validated_blocked_component_admission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            blocked = {"state": "blocked", "reason": "host-components-unavailable",
+                       "missingHostComponents": ["swtpm-package"],
+                       "hostComponentAdmission": {"swtpm-package": "integrity-failed"}}
+            with (mock.patch.object(subject, "_remote", return_value=blocked),
+                  mock.patch.object(subject.native_environment, "reserve_environment",
+                                    return_value={"state": "reserved", "identity": IDENTITY,
+                                                  "reservation": {"allocationState": "pending"}})):
+                result = subject.start(directory, host="archlinux", correlation_id=CORR,
+                                       reservation_request=RESERVATION)
+            self.assertEqual(result["state"], "blocked")
+            self.assertEqual(result["missingHostComponents"], ["swtpm-package"])
+            self.assertEqual(result["hostComponentAdmission"],
+                             {"swtpm-package": "integrity-failed"})
 
     def test_unknown_start_preserves_intent_for_exact_status(self):
         with tempfile.TemporaryDirectory() as directory:

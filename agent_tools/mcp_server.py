@@ -1838,6 +1838,7 @@ def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) ->
     """Dispatch only existing fixed adapters; batches cannot invoke arbitrary tools."""
     vm_actions = {"artifact-verify", "bundle-verify", "environment-status", "credential-status",
                   "windows-credential-probe-start", "windows-credential-probe-status",
+                  "windows-vm-swtpm-repair-preflight", "windows-vm-swtpm-repair-start", "windows-vm-swtpm-repair-status",
                   "scenario-start", "scenario-status", "scenario-resume", "scenario-collect",
                   "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect"}
     ssh_actions = {"inventory", "probe", "job-status", "android-observe"}
@@ -1857,7 +1858,7 @@ _VM_NATIVE_ADAPTERS = (
     "native_environment_observation", "native_scenario_bundle", "native_next_action",
     "native_response_diagnostics", "native_build_timing",
     "native_failure_evidence", "macos_installer_recovery", "native_rpm_public_install_adapter",
-    "native_rpm_public_install_ssh", "android_admission_readback", "windows_msi_public_scenario",
+    "native_rpm_public_install_ssh", "android_admission_readback", "windows_msi_public_scenario", "windows_vm_swtpm_repair",
     "linux_update_fixture_workflow", "linux_rpm_fixture_server_lifecycle", "linux_rpm_workspace_recovery", "linux_vm_readonly_inventory", "arch_ai_loop_observe", "arch_qemu_holder_census", "windows_vm_baseline_inventory", "windows_vm_secureboot_inventory", "windows_vm_virt_firmware_admission", "windows_vm_virt_firmware_install", "windows_vm_secureboot_clone", "windows_vm_secureboot_fresh", "windows_vm_driver_fetch", "windows_vm_fresh_setup", "windows_vm_optical_boot", "windows_vm_optical_boot_attempt2", "windows_vm_optical_boot_attempt3", "windows_vm_optical_post_collect", "windows_vm_optical_current_screen", "windows_update_fixture_workflow", "windows_update_fixture_server", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare",
     "windows_msi_owner_observe", "windows_msi_target_prepare",
     "windows_update_fixture_stage", "windows_fixture_credentials",
@@ -3492,6 +3493,35 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "host": "archlinux", "correlationId": inputs.get("correlationId"),
                         "replayAllowed": False, "nativeActionAllowed": False,
                         "productAction": action.endswith("-start")}
+        if action == "windows-vm-swtpm-repair-preflight":
+            if (set(inputs) != {"host", "correlationId", "timeoutSeconds"} or inputs.get("host") != "archlinux"
+                    or not isinstance(inputs.get("correlationId"), str) or not _valid_uuid(inputs["correlationId"])
+                    or type(inputs.get("timeoutSeconds")) is not int or not 10 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "swtpm repair preflight requires exact Arch host, canonical correlation and bounded timeout.")
+            try:
+                result = _agent_module("windows_vm_swtpm_repair").preflight(REPO_ROOT, host=inputs["host"], correlation_id=inputs["correlationId"], timeout_seconds=inputs["timeoutSeconds"])
+                required = {"correlationId", "host", "state", "packageIntegrityFailed", "activeSwtpmProcesses", "safeStartAllowed", "newCorrelationRequired", "nativeActionAllowed"}
+                states = {"ready", "intent-existing", "integrity-failed", "verified", "package-not-exact", "active-swtpm-processes", "process-census-unavailable", "signature-policy-rejected", "credential-metadata-invalid", "transport-unavailable"}
+                if (not isinstance(result, dict) or set(result) != required or result.get("correlationId") != inputs["correlationId"] or result.get("host") != "archlinux" or result.get("state") not in states or any(type(result.get(key)) is not bool for key in ("packageIntegrityFailed", "activeSwtpmProcesses", "safeStartAllowed", "newCorrelationRequired", "nativeActionAllowed"))):
+                    raise ValueError("swtpm repair preflight response is invalid.")
+                return {"tool": "vm_workflow", **result, "ok": result["state"] == "ready", "evidenceClass": "read-only-swtpm-repair-preflight", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "transport-unavailable", "host": "archlinux", "correlationId": inputs.get("correlationId"), "packageIntegrityFailed": False, "activeSwtpmProcesses": False, "safeStartAllowed": False, "newCorrelationRequired": True, "nativeActionAllowed": False, "productAction": False}
+        if action in {"windows-vm-swtpm-repair-start", "windows-vm-swtpm-repair-status"}:
+            if (set(inputs) != {"host", "correlationId", "timeoutSeconds"} or inputs.get("host") != "archlinux"
+                    or not isinstance(inputs.get("correlationId"), str) or not _valid_uuid(inputs["correlationId"])
+                    or type(inputs.get("timeoutSeconds")) is not int or not 10 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "swtpm repair requires exact Arch host, canonical correlation and bounded timeout.")
+            try:
+                adapter = _agent_module("windows_vm_swtpm_repair")
+                result = (adapter.start if action.endswith("-start") else adapter.status)(REPO_ROOT, host=inputs["host"], correlation_id=inputs["correlationId"], timeout_seconds=inputs["timeoutSeconds"])
+                required = {"correlationId", "host", "state", "package", "version", "pacmanSignatureVerified", "packageIntegrityVerified", "activeSwtpmProcesses", "replayAllowed", "nativeActionAllowed"}
+                states = {"verified", "already-healthy", "integrity-failed", "package-not-exact", "active-swtpm-processes", "process-census-unavailable", "transaction-failed", "unknown", "intent-absent"}
+                if (not isinstance(result, dict) or set(result) != required or result.get("correlationId") != inputs["correlationId"] or result.get("host") != "archlinux" or result.get("state") not in states or result.get("package") != "swtpm" or result.get("version") != "0.10.2-1" or any(type(result.get(key)) is not bool for key in ("pacmanSignatureVerified", "packageIntegrityVerified", "activeSwtpmProcesses", "replayAllowed", "nativeActionAllowed")) or result["replayAllowed"] is not False or result["nativeActionAllowed"] is not False):
+                    raise ValueError("swtpm repair response is invalid.")
+                return {"tool": "vm_workflow", **result, "ok": result["state"] == "verified", "evidenceClass": "remote-swtpm-repair", "productAction": action.endswith("-start")}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown", "host": "archlinux", "correlationId": inputs.get("correlationId"), "package": "swtpm", "version": "0.10.2-1", "pacmanSignatureVerified": False, "packageIntegrityVerified": False, "activeSwtpmProcesses": False, "replayAllowed": False, "nativeActionAllowed": False, "productAction": action.endswith("-start")}
         if action == "windows-vm-secureboot-clone-preflight":
             required = {"host", "ownerPid", "ownerStartTicks", "baselineReservationId", "timeoutSeconds"}
             if (set(inputs) != required or inputs.get("host") != "archlinux"
@@ -4378,6 +4408,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                                       "windows-vm-virt-firmware-install-preflight",
                                       "windows-vm-virt-firmware-install-start",
                                       "windows-vm-virt-firmware-install-status",
+                                      "windows-vm-swtpm-repair-preflight",
+                                      "windows-vm-swtpm-repair-start",
+                                      "windows-vm-swtpm-repair-status",
                                       "arch-ai-loop-observe")
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")

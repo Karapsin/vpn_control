@@ -33,10 +33,11 @@ The user set the native acceptance order to Windows, Android, Linux, then
 macOS. Subagents for new slices use GPT-5.6 Terra at medium effort. Android,
 Linux guest and macOS native mutations are paused; already submitted hosted
 builds and captures retain their exact correlations and historical evidence.
-`29d6b188f289e55161629a1b067293d7cd672281` is the latest clean pushed
+`00e8897b59bfdf6bb53808721c158e067a6d08f9` is the latest clean pushed
 `dev` checkpoint. Its full prepush tier passed, and the user requested one
-required exact-SHA CI check only at final delivery. The fixed Arch firmware
-installer preflight repair is currently dirty and under independent review.
+required exact-SHA CI check only at final delivery. The Secure Boot preflight
+diagnostic and fixed swtpm repair are reviewed and currently dirty for the next
+coherent checkpoint.
 
 CP117 remains at installed 2.1.17 with runtime and active product process count
 zero, one owned Explorer, passed read-only PowerShell/base/owner preflights and a
@@ -50,11 +51,18 @@ live source disk. A fixed MCP installer for the signed Arch package and private
 ignored `.codex/arch-sudo.local` input is in place. Its first start returned
 unknown before any durable intent, credential read, or transaction. The
 read-only preflight identified an inherited global signature policy that the
-original repo-specific query misclassified. The corrected query now reports
-ready; the original correlation remains retired. After independent review and
-a checkpoint, use a fresh correlation for preflight and install, then recheck
-Secure Boot and resource admission. The credential value is never documented
-or committed.
+original repo-specific query misclassified. The original correlation remains
+retired. At the clean `00e8897` checkpoint, a fresh correlation
+`0751a22c-e242-4dc9-89db-fa2b98300b87` passed admission and the fixed
+signed `virt-firmware 26.9-1` transaction, package integrity and executable
+checks. A new Secure Boot preflight then blocked on `host-components-unavailable`
+before resource/digest sampling; its corrected read-only diagnostic, correlation
+`37604a3d-a215-460f-962c-e80f0b0b75b5`, names `swtpm-package`. A later
+read-only correlation `4c625eba-2441-4dd2-a4bf-4e7f44e2d8f3` classified
+the exact installed `swtpm 0.10.2-1` as `integrity-failed` by `pacman -Qkk`.
+A fixed signed same-version repair tool passed focused/full agent-tool tests
+and independent security review; no repair or VM start has run. The credential
+value is never documented or committed.
 
 Exact-dd10 hosted visual captures were collected with source provenance:
 Linux 59/59 and Windows 57/57 hosted scenes. Linux has 17 automated passes,

@@ -38,6 +38,13 @@ VNC_PORT = 5928
 ENVIRONMENT = "windows-vm-secureboot-fresh-20260929"
 OPERATOR = "windows-secureboot-fresh"
 UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z")
+HOST_COMPONENT_FACTS = frozenset({
+    "qemu-system-x86_64-binary", "qemu-img-binary", "swtpm-binary", "swtpm_setup-binary",
+    "edk2-ovmf-package", "swtpm-package", "qemu-system-x86-package", "qemu-img-package",
+})
+HOST_COMPONENT_ADMISSION_FACTS = frozenset({
+    "absent", "version-mismatch", "integrity-failed", "query-unavailable",
+})
 
 _REMOTE = r'''import hashlib,json,os,shutil,stat,struct,subprocess,sys,time,uuid
 ROOT=__ROOT__;GUEST=__GUEST__;CORR=__CORR__;MODE=__MODE__
@@ -80,14 +87,30 @@ def binary(name):
  info=os.stat(path,follow_symlinks=False)
  if not stat.S_ISREG(info.st_mode) or info.st_size<1 or not os.access(path,os.X_OK):raise ValueError()
  return path
+def package_admission(name,version=None):
+ try:
+  pacman=binary('pacman')
+  run=subprocess.run([pacman,'-Q',name],capture_output=True,timeout=5,check=False)
+  if len(run.stdout)>256 or len(run.stderr)>256:return 'query-unavailable'
+  if run.returncode:return 'absent'
+  parts=run.stdout.decode().split()
+  if len(parts)!=2 or parts[0]!=name:return 'query-unavailable'
+  if version and parts[1]!=version:return 'version-mismatch'
+  integrity=subprocess.run([pacman,'-Qkk',name],capture_output=True,timeout=10,check=False)
+  if len(integrity.stdout)>8192 or len(integrity.stderr)>8192:return 'query-unavailable'
+  return 'ready' if integrity.returncode==0 else 'integrity-failed'
+ except (OSError,ValueError,subprocess.SubprocessError):
+  return 'query-unavailable'
 def package_installed(name,version=None):
- pacman=binary('pacman')
- run=subprocess.run([pacman,'-Q',name],capture_output=True,timeout=5,check=False)
- if len(run.stdout)>256 or len(run.stderr)>256:raise ValueError()
- parts=run.stdout.decode().split()
- if run.returncode!=0 or len(parts)!=2 or parts[0]!=name or (version and parts[1]!=version):return False
- integrity=subprocess.run([pacman,'-Qkk',name],capture_output=True,timeout=10,check=False)
- return integrity.returncode==0 and len(integrity.stdout)<=8192 and len(integrity.stderr)<=8192
+ return package_admission(name,version)=='ready'
+def available_binary(name):
+ try:
+  binary(name)
+  return True
+ except (OSError,ValueError):
+  return False
+def available_package(name,version=None):
+ return package_admission(name,version)=='ready'
 def port_free():
  needle='%04X'%PORT
  for path in ('/proc/net/tcp','/proc/net/tcp6'):
@@ -98,16 +121,22 @@ def port_free():
    if len(cols)>=4 and cols[1].rsplit(':',1)[-1].upper()==needle and cols[3]=='0A':return False
  return True
 def prerequisites():
- if os.path.lexists(ROOT):return 'guest-root-exists',None,None
- if not os.path.isfile('/usr/bin/virt-fw-vars'):return 'virt-fw-vars-unavailable',None,None
- for name in ('qemu-system-x86_64','qemu-img','swtpm','swtpm_setup','virt-fw-vars'):binary(name)
- if not package_installed('virt-firmware','26.9-1'):return 'virt-fw-vars-unavailable',None,None
- if not package_installed('edk2-ovmf','202608-1') or not package_installed('swtpm','0.10.2-1'):
-  return 'host-components-unavailable',None,None
- if not package_installed('qemu-system-x86') or not package_installed('qemu-img'):
-  return 'host-components-unavailable',None,None
- if not os.path.exists('/dev/kvm'):return 'kvm-unavailable',None,None
- if not port_free():return 'vnc-port-owned',None,None
+ if os.path.lexists(ROOT):return 'guest-root-exists',None,None,[],{}
+ if not os.path.isfile('/usr/bin/virt-fw-vars') or not available_binary('virt-fw-vars') or not available_package('virt-firmware','26.9-1'):
+  return 'virt-fw-vars-unavailable',None,None,[],{}
+ components=[]
+ admission={}
+ for name in ('qemu-system-x86_64','qemu-img','swtpm','swtpm_setup'):
+  if not available_binary(name):components.append(name+'-binary')
+ for component,name,version in (('edk2-ovmf-package','edk2-ovmf','202608-1'),
+                                ('swtpm-package','swtpm','0.10.2-1'),
+                                ('qemu-system-x86-package','qemu-system-x86',None),
+                                ('qemu-img-package','qemu-img',None)):
+  result=package_admission(name,version)
+  if result!='ready':components.append(component);admission[component]=result
+ if components:return 'host-components-unavailable',None,None,components,admission
+ if not os.path.exists('/dev/kvm'):return 'kvm-unavailable',None,None,[],{}
+ if not port_free():return 'vnc-port-owned',None,None,[],{}
  digest(CODE,3653632,CODE_HASH,False,33554432)
  template=digest(VARS,540672,VARS_HASH,False,33554432)
  digest(WIN,WIN_SIZE,WIN_HASH,True,8*1024*1024*1024)
@@ -115,9 +144,9 @@ def prerequisites():
  with open('/proc/meminfo') as f:memory=f.read(8192)
  available=next(int(line.split()[1]) for line in memory.splitlines() if line.startswith('MemAvailable:'))
  free=shutil.disk_usage('/home/kardinal').free//1024
- if available<MEM*1024+HEADROOM:return 'memory-headroom',available,free
- if free<MIN_DISK:return 'disk-headroom',available,free
- return None,available,free
+ if available<MEM*1024+HEADROOM:return 'memory-headroom',available,free,[],{}
+ if free<MIN_DISK:return 'disk-headroom',available,free,[],{}
+ return None,available,free,[],{}
 def write_json(path,value):
  fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0),0o600)
  try:os.write(fd,json.dumps(value,sort_keys=True,separators=(',',':')).encode());os.fsync(fd)
@@ -237,13 +266,13 @@ def state():
 try:
  if MODE=='status':emit(state())
  elif MODE=='preflight':
-  reason,available,free=prerequisites()
+  reason,available,free,missing,admission=prerequisites()
   emit('blocked' if reason else 'ready',reason,availableMemoryKiB=available,freeDiskKiB=free,
        windowsSha256=WIN_HASH,driverSha256=DRV_HASH,codeSha256=CODE_HASH,varsTemplateSha256=VARS_HASH,
-       vncPort=PORT)
+       vncPort=PORT,missingHostComponents=missing,hostComponentAdmission=admission)
  elif MODE=='start':
-  reason,available,free=prerequisites()
-  if reason:emit('blocked',reason)
+  reason,available,free,missing,admission=prerequisites()
+  if reason:emit('blocked',reason,missingHostComponents=missing,hostComponentAdmission=admission)
   else:
    os.umask(0o077)
    os.mkdir(ROOT,0o700);private_dir(ROOT)
@@ -387,13 +416,25 @@ def _remote(root: str | Path, correlation_id: str, mode: str, timeout_seconds: i
     if completed.returncode or not 0 < len(completed.stdout) <= 2048:
         raise ValueError("Secure Boot fresh VM transport is unknown.")
     value = json.loads(completed.stdout)
+    component_admission = value.get("hostComponentAdmission", {}) if isinstance(value, Mapping) else {}
     if (not isinstance(value, Mapping) or value.get("schemaVersion") != 1
             or value.get("correlationId") != correlation_id or value.get("nativeActionAllowed") is not False
             or value.get("state") not in {"ready", "blocked", "absent", "partial-unknown", "running-observed", "unknown"}
             or value.get("reason") not in {None, "guest-root-exists", "virt-fw-vars-unavailable",
                                             "host-components-unavailable", "kvm-unavailable", "vnc-port-owned",
                                             "memory-headroom", "disk-headroom", "invalid-mode",
-                                            "effect-or-observation-unknown"}):
+                                            "effect-or-observation-unknown"}
+            or not isinstance(value.get("missingHostComponents", []), list)
+            or any(type(item) is not str or item not in HOST_COMPONENT_FACTS
+                   for item in value.get("missingHostComponents", []))
+            or not isinstance(component_admission, Mapping)
+            or any(type(component) is not str or component not in value.get("missingHostComponents", [])
+                   or component not in HOST_COMPONENT_FACTS
+                   or type(admission) is not str or admission not in HOST_COMPONENT_ADMISSION_FACTS
+                   for component, admission in component_admission.items())
+            or any(component.endswith("-package") and component not in component_admission
+                   for component in value.get("missingHostComponents", []))
+            or (value.get("reason") == "host-components-unavailable") != bool(value.get("missingHostComponents", []))):
         raise ValueError("Secure Boot fresh VM response is invalid.")
     return dict(value)
 
@@ -429,8 +470,13 @@ def start(root: str | Path, *, host: str, correlation_id: str,
         result = _remote(root, correlation_id, "start", timeout_seconds)
     except (OSError, ValueError, subprocess.TimeoutExpired, json.JSONDecodeError):
         result = {"state": "unknown", "reason": "transport-unknown"}
-    return {"correlationId": correlation_id, "state": result["state"], "reason": result.get("reason"),
-            "guest": GUEST, "vncPort": VNC_PORT, "replayAllowed": False, "nativeActionAllowed": False}
+    response = {"correlationId": correlation_id, "state": result["state"], "reason": result.get("reason"),
+                "guest": GUEST, "vncPort": VNC_PORT, "replayAllowed": False, "nativeActionAllowed": False}
+    if result["state"] == "blocked":
+        for field in ("missingHostComponents", "hostComponentAdmission"):
+            if field in result:
+                response[field] = result[field]
+    return response
 
 
 def status(root: str | Path, *, host: str, correlation_id: str, timeout_seconds: int = 60) -> dict[str, Any]:

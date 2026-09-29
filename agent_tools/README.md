@@ -191,6 +191,42 @@ The installer pins both the local and each configured nested SSH hop to
 `/usr/bin/ssh`; remote Python is `/usr/bin/python3`. Its one fixed pacman target
 is `extra/virt-firmware=26.9-1`.
 
+### Fixed swtpm integrity repair for the Windows fixture
+
+`vm_workflow("windows-vm-swtpm-repair-preflight", inputs=...)` and its one-shot
+start/status counterparts accept only `{host: "archlinux", correlationId:
+"<canonical lowercase UUID>", timeoutSeconds: 10..300}`. They can repair only
+the observed `extra/swtpm=0.10.2-1` condition where `pacman -Q swtpm` returns
+that exact installed version and `pacman -Qkk swtpm` fails. This route does not
+install a missing or different package, update another package, or inspect,
+start, stop, reset, copy, or otherwise change a VM.
+
+Preflight is read-only and does not read `.codex/arch-sudo.local`. It uses the
+fixed nested `/usr/bin/ssh` path and checks package identity, `Qkk`, and a
+bounded `pgrep -x swtpm` census. Any active swtpm process, census failure,
+transport loss, matching/unknown package state, unsafe signature policy, or
+invalid credential metadata blocks the repair. No process is killed. The
+configured `extra` policy uses the same bounded `pacman-conf` evaluation as the
+firmware repair: when `extra` inherits the global policy it checks that global
+effective value; an explicit unreadable override, optional signatures, `Never`,
+or `TrustAll` fails closed before start can read the owner-only credential.
+
+Start reads the ignored `0600`, current-user, non-symlink credential only after
+the repeated read-only integrity and process admission. It records one private
+durable intent, then supplies the secret only through SSH stdin to the fixed
+remote `sudo -S pacman -S --noconfirm extra/swtpm=0.10.2-1` transaction. The
+command deliberately omits `--needed`: an installed same-version package must
+be reinstalled through pacman's signature verification. Remote stderr and
+transaction diagnostics are discarded. The postcondition requires the exact
+installed version and a passing `pacman -Qkk swtpm` with no active swtpm process.
+The raw remote start rechecks exact package identity and `Qkk` before it reads
+stdin; if another actor already repaired the package, it returns
+`already-healthy` and makes no sudo or pacman transaction.
+
+An accepted intent, timeout, response loss, or `unknown` result is never
+replayed; use status with the same correlation. Results, SSH arguments,
+environment, and journals never include the credential or raw remote stderr.
+
 `vm_workflow("arch-ai-loop-observe", inputs={"host":"archlinux",
 "timeoutSeconds":15})` is a fixed read-only inventory for the Arch host's
 `ai_loop` tool. It accepts no executable, command, path, prompt, credential, or
@@ -770,6 +806,25 @@ intent; status observes that same probe. `partial` or unknown is never
 replayed. A verified probe establishes only this fixed disk operation, not
 capacity or admission for the planned 96 GiB Windows VM. Fresh VM start and
 installer work require separate review and resource checks.
+
+`windows-vm-secureboot-fresh-preflight` takes the same fixed Arch host,
+canonical correlation and 30..300 second timeout. It reads only the reviewed
+blank-guest prerequisites and returns `nativeActionAllowed: false`. When it
+returns `host-components-unavailable`, its nonempty
+`missingHostComponents` list identifies the fixed missing executable or package
+admission fact: `qemu-system-x86_64-binary`, `qemu-img-binary`,
+`swtpm-binary`, `swtpm_setup-binary`, `edk2-ovmf-package`, `swtpm-package`,
+`qemu-system-x86-package`, or `qemu-img-package`. The receipt never includes a
+host path, command output, or log data. For a missing package label,
+`hostComponentAdmission` reports only `absent`, `version-mismatch`,
+`integrity-failed`, or `query-unavailable`, derived from the fixed bounded
+`pacman -Q` and `pacman -Qkk` checks. The same safe fields are preserved when a
+start reaches a deterministic blocked prerequisite; the caller must not relabel
+that receipt as an unknown outcome. This gate runs before firmware/media hashing
+and memory/disk sampling, so null resource fields and returned pinned input
+identities are not evidence that later gates passed. Repair a named host component
+only through its separately reviewed host workflow, then run a new read-only
+preflight correlation; never replay a start or mutation from an older correlation.
 
 `windows-vm-fresh-preflight` takes exactly `{host: "archlinux",
 correlationId: "<canonical lowercase UUID>", timeoutSeconds: 30..300}` and
