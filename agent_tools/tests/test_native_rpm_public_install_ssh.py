@@ -447,7 +447,7 @@ class RpmTransportTest(unittest.TestCase):
             write('intent.json', {**public, 'identity': identity})
             write('receipt.json', receipt)
             args = [temporary, intent.host, intent.environment, intent.correlation_id,
-                    intent.bundle_hash, json.dumps(dict(intent.artifact_ids))]
+                    intent.bundle_hash, json.dumps(dict(intent.artifact_ids)), '-']
             def observe():
                 run = subprocess.run([sys.executable, '-c', subject._STATUS, *args],
                                      capture_output=True, text=True, check=False)
@@ -458,6 +458,100 @@ class RpmTransportTest(unittest.TestCase):
             self.assertEqual('unknown', observe()['state'])
             write('receipt.json', {**receipt, 'startTicks': 9999})
             self.assertEqual('unknown', observe()['state'])
+
+    @unittest.skipUnless(os.name == 'posix', 'private guest diagnostic requires POSIX')
+    def test_terminal_guest_admission_diagnoses_only_verified_guard_category(self):
+        intent = self.intent()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            job = root / 'native-scenario-jobs' / intent.environment / adapter.SCENARIO_ID / intent.correlation_id
+            stage = job / 'stage'
+            stage.mkdir(parents=True)
+            job.chmod(0o700)
+            source = ("import json\n"
+                      "def _private_json(path):\n"
+                      "    return json.load(open(path))\n"
+                      "def admit_protected_server(*_):\n"
+                      "    raise ValueError('fixture endpoint protected intent differs')\n").encode()
+            guard = stage / 'linux-rpm-fixture-server.py'
+            guard.write_bytes(source)
+            guard.chmod(0o600)
+            digest = hashlib.sha256(source).hexdigest()
+            public = intent.public_mapping()
+            public_digest = hashlib.sha256((json.dumps(public, sort_keys=True,
+                separators=(',', ':')) + '\n').encode()).hexdigest()
+            identity = {'pid': 1234, 'startTicks': 5678}
+            server = root / 'linux-rpm-fixture-server-jobs' / intent.correlation_id
+            server.mkdir(parents=True)
+            (server / 'intent.json').write_text(json.dumps({**public,
+                'bundleHash': '0' * 64, 'publicIntentSha256': public_digest,
+                'sourceSha': 'a' * 40}))
+            (server / 'server-receipt.json').write_text(json.dumps({
+                'state': 'ready', 'correlationId': intent.correlation_id,
+                'publicIntentSha256': public_digest, 'sourceSha': 'a' * 40,
+                'sourceFixtureArtifactId': public['artifactIds']['sourceFixture'],
+                'targetPackageArtifactId': public['artifactIds']['targetPackage']}))
+            for name, value in (
+                ('intent.json', {**public, 'identity': identity, 'serverGuardSha256': digest,
+                                 'publicIntentSha256': public_digest}),
+                ('receipt.json', {**public, **identity, 'exitCode': 1,
+                                  'scenarioEvidence': None, 'failurePhase': 'guest-admission'}),
+            ):
+                path = job / name
+                path.write_text(json.dumps(value))
+                path.chmod(0o600)
+            args = [temporary, intent.host, intent.environment, intent.correlation_id,
+                    intent.bundle_hash, json.dumps(dict(intent.artifact_ids)), digest]
+            run = subprocess.run([sys.executable, '-c', subject._STATUS, *args],
+                                 capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, run.stderr)
+            self.assertEqual('protected-intent-differs',
+                             json.loads(run.stdout)['guestAdmissionDiagnostic'])
+            self.assertEqual('bundleHash', json.loads(run.stdout)['guestAdmissionField'])
+            guard.write_bytes(b"raise ValueError('/private/secret')\n")
+            run = subprocess.run([sys.executable, '-c', subject._STATUS, *args],
+                                 capture_output=True, text=True)
+            self.assertEqual('guard-digest-mismatch',
+                             json.loads(run.stdout)['guestAdmissionDiagnostic'])
+
+    @unittest.skipUnless(os.name == 'posix', 'private guest cleanup evidence requires POSIX')
+    def test_terminal_cleanup_status_classifies_private_error_without_exposing_text(self):
+        intent = self.intent()
+        with tempfile.TemporaryDirectory() as temporary, \
+             tempfile.TemporaryDirectory(prefix='vpn-public-install-evidence-', dir='/tmp') as evidence_name:
+            job = Path(temporary) / 'native-scenario-jobs' / intent.environment / adapter.SCENARIO_ID / intent.correlation_id
+            job.mkdir(parents=True, mode=0o700)
+            job.chmod(0o700)
+            evidence = Path(evidence_name)
+            (evidence / 'workspace').mkdir()
+            result_path = evidence / 'install-result.json'
+            result_path.write_text(json.dumps({'syntheticWorkspaceCleanup': {
+                'requested': True, 'workspaceRemoved': False,
+                'error': 'Cannot inspect process ownership of synthetic workspace'}}))
+            result_path.chmod(0o600)
+            pointer = job / 'harness.stdout'
+            pointer.write_text(json.dumps({'evidence': str(evidence),
+                'workspace': str(evidence / 'workspace')}) + '\n')
+            pointer.chmod(0o600)
+            public = intent.public_mapping()
+            identity = {'pid': 1234, 'startTicks': 5678}
+            for name, value in (
+                ('intent.json', {**public, 'identity': identity}),
+                ('receipt.json', {**public, **identity, 'exitCode': 1,
+                                  'scenarioEvidence': {'correlationId': intent.correlation_id,
+                                                       'result': 'failed'}}),
+            ):
+                path = job / name
+                path.write_text(json.dumps(value))
+                path.chmod(0o600)
+            args = [temporary, intent.host, intent.environment, intent.correlation_id,
+                    intent.bundle_hash, json.dumps(dict(intent.artifact_ids)), '-']
+            run = subprocess.run([sys.executable, '-c', subject._STATUS, *args],
+                                 capture_output=True, text=True)
+            self.assertEqual(0, run.returncode, run.stderr)
+            observed = json.loads(run.stdout)
+            self.assertEqual('process-observation-unavailable', observed['cleanupFailureKind'])
+            self.assertNotIn(str(evidence), run.stdout)
 
 
 if __name__ == '__main__':

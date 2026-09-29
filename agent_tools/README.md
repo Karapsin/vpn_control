@@ -31,7 +31,7 @@ For implementation, testing, release, or commit work:
 2. Read the returned instruction files. Use `docs` and `change_impact` instead of broad exploratory searches when repository documentation can answer the question.
 3. Use `workflow_status` while working to re-check routing, dirty paths, index freshness, and validation requirements.
 4. Run `version_bump` once after the final non-documentation content change, then run `run_checks(level="prepush")`. A successful check writes a content fingerprint to `.rag_index/prepush_receipt.json`.
-5. Use `git_workflow` to push `dev` or to resume checks for a full commit SHA. It queries only runs attached to that exact SHA and requires every development workflow in `.github/required-workflows.json` to succeed.
+5. Use `git_workflow` to push `dev` or to resume checks for a full commit SHA. `action="checkpoint"` is an explicit intermediate option for this parity continuation: it requires the same fresh pre-push receipt, safe explicit commit paths and clean post-commit worktree, then pushes to `origin/dev` and returns the exact SHA with `requiredWorkflowsVerified: false`. Run `action="checks"` for the final pushed SHA; it queries only runs attached to that SHA and requires every development workflow in `.github/required-workflows.json` to succeed.
    Failed-log excerpts select error context and the final summary from the complete
    command output, then enforce an 8,000-character response bound. If more context
    is needed, use the returned exact run ID to inspect its failed log.
@@ -64,7 +64,7 @@ current run to exit, then run a fresh pre-push tier.
 | `workflow_status(task=None, area=None, instructions_read=False)` | Show worktree state, required reading, RAG freshness, and check receipt state. |
 | `run_checks(area="auto", level="focused", dry_run=False)` | Run focused checks or the repository's complete pre-push tier. |
 | `version_bump(summary=None, change_type="code", dry_run=False, force_release=False, target_version=None)` | Add the required changelog note and atomically roll unified three-part version metadata at 10 notes or an explicit forced/targeted release. |
-| `git_workflow(action, message=None, paths=None, sha=None)` | Commit explicit safe paths, push `dev`, and/or watch exact-SHA CI. |
+| `git_workflow(action, message=None, paths=None, sha=None)` | Commit explicit safe paths and push `dev`; `checkpoint` defers required CI until the final exact-SHA check. |
 | `release_workflow(action="status")` | Explicit-release-only `merge-dev`, readiness, and publisher dispatch gate. |
 | `visual_workflow(action, target_sha=None, platforms=None, release=False, post_status=False)` | Start, inspect, or complete an exact-SHA agent visual review. |
 | `visual_review(target_sha, platform, scene_id, verdict, notes=None)` | Record the agent's verdict after opening a captured scene. |
@@ -410,6 +410,18 @@ while its correlated active-job evidence is active, unavailable, stale, or
 unknown. A lost observation must remain unknown; do not retry execution to clear
 it.
 
+`linux-vm-readonly-inventory` takes only `{host: "archlinux",
+timeoutSeconds: 1..30}`. It inventories the two fixed historical Ubuntu/Arch
+package-test VM trees, their exact QEMU/disk/port/QMP identity, host disk and
+bounded guest process/job facts when reachable. Incomplete or ambiguous facts
+remain unknown. The result always has `nativeActionAllowed: false`; it neither
+boots a guest nor reserves capacity or admits an installer.
+For a running guest, completeness requires the observed QEMU PID generation to
+remain stable after the guest probe and its open socket FDs to own both the
+loopback SSH listener and QMP socket. Matching command-line claims alone are
+insufficient. An unreadable live guest PID also makes its process census
+incomplete.
+
 ```text
 vm_workflow("environment-status", {"observations": []})
 vm_workflow("environment-reserve", {
@@ -516,6 +528,17 @@ manifest probe, certificate/trust check and exact journal identity. The public
 RPM launcher independently requires that protected server state and live
 endpoint for the same intent before submission. This is fixture readiness, not
 evidence that the RPM update installed successfully.
+If an unknown correlation leaves only its exact loopback fixture server alive,
+`linux-rpm-fixture-server-stop` takes only `{correlationId}`. It requires a fresh
+matching boot/PID-start/UID/argv observation, an absent worker and a private
+one-shot stop journal, then sends one pidfd-bound SIGTERM to that fixture server.
+An uncertain stop result remains unknown and never authorizes a second signal.
+It does not stop the product VPN or promote the old fixture job to success.
+`linux-rpm-workspace-recovery-status` takes only the canonical UUID
+`{correlationId}` of the existing fixture server campaign. Its pinned,
+read-only scanner reports whether the protected workspace is still referenced;
+uncertain scanner evidence stays `unknown`. This route cannot delete a
+workspace or start a guest. Cleanup remains a separately reviewed action.
 
 **Windows interpreter preflight.** `windows-fixture-python-preflight` takes
 exact `host`, `leaseId`, `stageCorrelationId`, `serverCorrelationId`,
@@ -586,6 +609,202 @@ correction bound to the original receipt bytes; `matrix-status` reports the
 retracted ID and excludes that claim while leaving its original file auditable.
 Record a corrected observation separately with the original source/artifact
 identity. Do not edit or delete the original receipt.
+
+**Read-only acceptance and prebuild views.** `acceptance-status` accepts
+`{}` or `{sourceSha: "<current full SHA>", correlations: [{platform,
+correlationId, statusAction}], ownerProbes: [{platform, action, inputs}]}`.
+The fixed correlation status actions are Android consent status, Linux RPM
+workspace recovery/cleanup status, and Windows MSI public status. Fixed owner
+probes are Android observe, Fedora owner observe/public quit status, and a
+Windows configured environment status with exact VM identity. macOS remains
+unknown until a read-only owner/correlation adapter exists. It combines the
+current reviewed matrix rows into one
+Android/Linux/Windows/macOS view with the exact source SHA, hashes from
+reviewed current receipts and the exact-source artifact index, unmet gate
+counts and next fixed command. Registry-only hashes are labelled
+`registered-unverified`. The view rehashes current-source local package/APK/DMG
+bytes within a 1 GiB total read limit and labels matches
+`verified-local-bytes`; this verifies local files, not their installed state
+or matrix review. Large inputs beyond the limit remain registered only.
+`sourceSha` names the HEAD commit. `checkoutExact` is true only when a bounded
+read-only Git status sees a clean checkout; `worktreeDirty` is true when any
+tracked or untracked work is present. An unavailable status makes the whole
+view unknown, with `checkoutExact: false`.
+Caller correlation IDs and owner probe parameters are never promoted by
+themselves: the route verifies a correlated status, its source binding and a
+fresh owner/guest observation. A stale source, foreign owner/device, omitted
+probe or uncertain status remains `unknown`. Terminal correlations are
+reported as `observedCorrelationId`; `activeCorrelationId` appears only
+for verified submitted/running work. The route also discovers bounded private
+Android consent and Fedora cleanup intents that bind to the current source,
+then checks their fixed read-only status routes. Each verified result appears
+in `correlationObservations` and `observedCorrelationIds`; when several results
+exist, the singular `observedCorrelationId` remains unset unless exactly one
+active result is unambiguous. `knownCorrelations` are source-bound local lookup
+keys, not proof that a native operation completed. A fixed macOS machine-denial
+summary appears under `localNativeSummaries` only after its source and artifact
+IDs match the index; it is labelled `local-summary-not-matrix-reviewed` and
+does not establish a live owner, installed state or full matrix coverage.
+The matrix and artifact index are read
+without creating, migrating, cleaning or chmodding local evidence. A legacy
+or incomplete index returns unknown. A live owner/guest probe alone does not
+prove its installed package came from the current source; that separate
+`ownerSourceBinding` remains unknown unless the Android owner matches a
+verified current-source correlation. This view never authorizes a native action.
+
+`artifact-cache-check` takes exactly `{sourceSha, artifactSetId}` before a
+package rebuild. It rechecks frozen package bytes, product inputs and Git
+changes through `artifact-reuse-check`; `cacheEligible` is true only for a
+verified same-source set with no reasons. A different source, dirty product
+inputs, missing bytes or provenance uncertainty requires rebuilding. Cache
+eligibility does not establish native installer admission or exact-SHA CI.
+
+`vm-preflight-batch` takes `{reads: [{id, action, inputs}, ...]}` with one to
+four distinct IDs. Only `environment-status` (configured host and bounded
+observer inputs) and `linux-vm-readonly-inventory` (fixed `archlinux` host
+and 1–30 second timeout) are accepted. Independent reads run concurrently.
+`observationsComplete` requires a live `READY` environment observation or
+a complete Linux inventory for every entry. Unknown, supplied-only,
+malformed and failed observations remain unknown. The result always has
+`nativeActionAllowed: false`; a subsequent native start must run its own
+fresh owner, reservation and artifact admission.
+
+`android-consent-acceptance-preflight` takes only `{host, device,
+cliStageCorrelationId}` and reports fixed read-only admission categories for
+the staged Android consent-denial fixture. It performs no consent action and
+does not create a journal or reservation.
+
+`windows-vm-baseline-inventory` takes only `{host: "archlinux",
+timeoutSeconds: 1..30}` and returns a bounded read-only census of Windows
+qcow2 candidates, QEMU descriptors and image metadata. Each candidate's
+`sourceState` is `stopped-observed` only after a complete all-process file
+descriptor census and QEMU generation recheck; otherwise it is `unknown`.
+`noQemuObserved` alone does not prove a source is stopped. The census never
+admits cloning, capture, shutdown or package testing.
+
+`windows-vm-media-fingerprint` takes exactly `{host: "archlinux",
+timeoutSeconds: 30..240}` and rehashes only two fixed existing Windows media
+paths through a stable read-only file observation. It reports SHA256 and size
+as byte identity; it does not establish publisher trust or admit installation.
+
+`windows-vm-driver-fetch-start` and `windows-vm-driver-fetch-status` take
+exactly `{host: "archlinux", correlationId: "<canonical lowercase UUID>",
+timeoutSeconds: 30..300}`. Start creates one local intent before the fixed
+VirtIO ISO download; status observes that same intent and remote destination.
+The URL, SHA256, size and private destination are fixed in the reviewed adapter.
+Unknown or partial outcomes are never replayable. A verified download is
+fixture preparation only and does not admit a Windows clone or install.
+
+`windows-vm-disk-probe-start/status` take exactly `{host: "archlinux",
+correlationId: "<canonical lowercase UUID>", timeoutSeconds: 30..300}`. The
+reviewed start makes one task-owned 8 MiB qcow2 probe after an exact local
+intent; status observes that same probe. `partial` or unknown is never
+replayed. A verified probe establishes only this fixed disk operation, not
+capacity or admission for the planned 96 GiB Windows VM. Fresh VM start and
+installer work require separate review and resource checks.
+
+`windows-vm-fresh-preflight` takes exactly `{host: "archlinux",
+correlationId: "<canonical lowercase UUID>", timeoutSeconds: 30..300}` and
+observes the fixed Windows media, OVMF/KVM support, memory, disk and port
+requirements. Its `ready` result remains read-only with
+`nativeActionAllowed: false`; it does not create a VM, reserve resources or
+authorize a later start.
+
+`windows-vm-fresh-start/status` use the same fixed Arch host, canonical UUID
+and 30..300 second timeout. Start additionally requires `reservationRequest`
+with fixed `hostAlias: archlinux`, `environment:
+windows-vm-baseline-20260929`, `operator: windows-baseline`,
+`requestedMemoryBytes: 6442450944`, `allocationState: pending`,
+`headroomBytes: 8589934592`, and the exact native-environment
+`reservationIdentity` and `measurement` objects. It creates a one-shot VM
+intent and consumes only the reviewed reservation transition. Status takes no
+reservation request. Unknown or unrecorded-running outcomes require exact
+status observation and never authorize a repeated start.
+
+`windows-vm-fresh-screen-start/status` take exactly `{host: "archlinux",
+correlationId: "<canonical lowercase UUID>", timeoutSeconds: 30..300}`.
+The reviewed one-shot screen capture and status adapter returns only a bounded
+frame path, SHA256 and dimensions; it never returns image bytes. Unknown
+capture outcomes require exact status, without a repeated capture start.
+
+`windows-msi-owner-quit-preflight` takes only `{host: "archlinux"}`. The
+reviewed `windows-msi-owner-quit-start` requires the fixed Arch host, a new
+canonical `correlationId`, exact source/controller/installed CLI identities,
+parent and child PID generations, and a prior cleaned `statusCorrelationId`.
+`windows-msi-owner-quit-status/collect` take only the quit correlation. The
+one-shot public quit concerns only the identified CP117 owner; unknown status
+is not replay authorization.
+
+`windows-msi-base-pre-effect-status` takes only `{host: "archlinux"}`. It
+observes the fixed failed pre-dispatch base correlation and reports `absent`
+only after the owned remote stage, scheduled task, and guest leaf are absent.
+It does not close a lease or run an installer.
+The one-off `windows-msi-base-pre-effect-close` also takes only
+`{host: "archlinux"}`; it requires repeated absence and idle proofs before
+closing that exact failed campaign while retaining its original intent.
+
+`android-native-fixture-start` takes exactly `{host, device, campaignId,
+planPath, certificatePath, privateKeyPath}`. The aliases are configured,
+the campaign is a canonical UUID, and the three file paths are absolute local
+paths checked by the reviewed adapter. Only a host HTTPS/SOCKS endpoint is
+started; the receipt explicitly leaves device mutation and installer target
+admission false. `android-native-fixture-status/stop/collect` take only
+`{campaignId}`. Unknown outcomes are not replay authorization. No certificate
+or private key bytes are accepted or returned by these routes.
+
+`linux-deb-arch-guest-prepare-preflight/start` take exactly `{profile,
+distribution, correlationId, sourceSha, artifactIds}`. The four fixed
+profile/distribution pairs map to ports 2330–2333; `artifactIds` contains only
+`fixtureReceipt`, `basePackage`, `targetPackage`, and `bundleManifest`.
+Preflight verifies a clean exact source and frozen package inputs. Start uses
+the reviewed fixed remote driver with a one-shot local intent. Status takes
+only `{correlationId}` and reports `ready` only with bound guest-manifest and
+preparation-receipt artifact IDs. Unknown status forbids replay.
+
+`linux-deb-arch-acceptance-preflight/start` take the same source-bound request
+with the two preparation artifact IDs added as `guestManifest` and
+`preparationReceipt`. The fixed live observer rechecks guest generation,
+package/process state and the prepared source before admission. Status takes
+only `{correlationId}` and reports only verified terminal `dependencies-installed`,
+`installed`, or `rollback-restored` outcomes. A blocked or unknown start is not
+replayed.
+
+`linux-rpm-workspace-cleanup-start` takes exactly `{correlationId,
+cleanupCorrelationId}`; `linux-rpm-workspace-cleanup-status` takes only
+`{cleanupCorrelationId}`. The separately reviewed Fedora adapter permits a
+single exact failed-public-job workspace deletion only after the public quit
+receipt, absent process/workspace references, installed target RPM, clean
+package verification and credential recovery are rechecked. An existing intent,
+transport loss or missing terminal receipt remains unknown and forbids replay.
+The MCP route returns success only with terminal removal proof.
+
+**Failure grouping and safe next read.** Failed or unknown native MCP responses
+now include `failureSignature` and `admissionGap`. The signature hashes only
+the fixed tool/action, normalized state class, typed phase and bounded reason;
+it excludes correlation IDs, paths and secrets so repeated causes group without
+rewriting their separate immutable failure receipts. `sourceReceiptId` links
+the signature to that response's original private receipt. A known
+`causalRegression` points to the relevant quick test; otherwise
+`regressionRequired` remains true. The admission gap names the missing fact
+and, only when the original adapter returned a canonical correlation, an
+existing read-only status call. It never authorizes a start or cleanup.
+
+**Build phase timing.** `build-timing-report` reads immutable private phase
+receipts and takes exactly `{sourceSha, pipelineId, runId, receipts:
+[{path, sha256}]}`. `sourceSha` must equal checked-out HEAD; `runId` is a
+canonical UUID. Each path must be a regular owner-only mode-0600 JSON file
+directly under the owner-only mode-0700
+`.rag_index/build-timings/` directory. The file's SHA-256 must match the
+request. Each JSON record has exactly `schemaVersion: 1`, `sourceSha`,
+`pipelineId`, `runId`, `hostAlias`, `phase`,
+`startedMonotonicNs`, and `finishedMonotonicNs`. Phase is one of
+`gradle`, `runtime-prep`, `packaging`, `upload`, or `guest-staging`.
+Build and staging owners emit those timestamps from their own monotonic clock
+and copy the receipt into the private index; the report itself never creates
+or changes one. It verifies source, run, owner, hash and bounded duration,
+sums repeated phase samples, reports the largest measured phase, and labels
+every missing phase `unmeasured`. A partial report is not a completed
+five-phase timing study.
 
 **Continuation native adapters.** `vm_workflow` exposes narrow, journaled
 `android-package-install-start/status/collect`, `linux-rpm-base-prepare-start/status`,
@@ -707,6 +926,15 @@ measurement. This is conservative planning arithmetic, not a VM-start permit;
 Native tool responses include `nextAction` with a safe existing observation or
 verification route where known. `replayAllowed: false` forbids treating a timeout
 as permission to repeat a mutation. Unknown states default to evidence inspection.
+At the MCP response boundary, a canonical UUID `correlationId` from the request
+or adapter identity is returned when the adapter omits it. An `unknown` or
+`submitting` result always receives `replayAllowed: false`, even if a lower
+adapter accidentally allows replay. The boundary does not infer success from
+these fields.
+When an adapter supplies bounded lowercase `failurePhase` and `failureType`
+tokens, an uncertain response also includes `uncertainty: {phase,
+failureType}`. Transport text and free-form exception messages are never
+converted into typed failure values.
 
 Failures and uncertain results automatically record allowlisted private evidence
 under `.rag_index/native-failures`. Responses return its ID/path, classification
@@ -799,6 +1027,26 @@ after the exact APK and current CLI stage are admitted. Status and collect accep
 only `correlationId`. Its receipt reports full and cold reads, export, restore,
 retained wait and same-request retry separately; false fields must not be
 promoted as passed scenarios. Unknown outcomes retain their device lease.
+
+`android-action-acceptance-start` is a separate fixed API29 small-frame
+same-request scenario. It requires `{host, device, correlationId, artifactId,
+backupCorrelationId, expectedBackupSha256, expectedOwner, expectedRevision}`
+and uses the public provider with one explicit UUID for import and retry. It
+checks one operation/revision, rejects changed-payload reuse, restores the
+verified opening routing and keeps the runtime off. Status and collect take only
+`{correlationId}`. Uncertain transport retains the journal and device lease;
+this receipt does not claim a large-document retry or API35 acceptance.
+
+`android-consent-acceptance-start` is the fixed Android VPN consent **denial**
+scenario on an owned English API35 fixture. It requires exact `host`, `device`,
+`correlationId`, `artifactId`, `cliStageCorrelationId`,
+`openingReadbackCorrelationId`, `expectedBackupSha256`, `expectedOwner`, and
+`expectedRevision`. `openingReadbackCorrelationId` must identify a completed
+`android-readback-collect` receipt; the synchronous admission readback is not
+accepted. It captures the visible system denial, checks the public
+result and restores the opening state. Status and collect take only
+`{correlationId}`. The MCP route has no grant option; an uncertain result keeps
+the device lease and is not replayable.
 
 `android-document-recovery-start` is a separate one-shot API29 restore for an
 exact unknown document correlation. It requires `host`, `device`,

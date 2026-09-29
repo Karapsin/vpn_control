@@ -15,6 +15,8 @@ from agent_tools import linux_rpm_base_prepare as base
 SHA = 'a' * 40
 FINGERPRINT = 'b' * 64
 CORRELATION = '12345678-1234-1234-1234-123456789abc'
+OLD_HEADER = '1' * 40
+NEW_HEADER = '2' * 40
 
 
 class FakeDriver:
@@ -31,6 +33,35 @@ class FakeDriver:
 
 
 class LinuxRpmBasePrepareTest(unittest.TestCase):
+    def test_same_version_replacement_requires_distinct_pinned_header(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            request, _ = self.request(Path(temporary))
+            request['expectedCurrentNevra'] = request['expectedBaseNevra']
+            request['expectedCurrentHeaderSha1'] = OLD_HEADER
+            self.assertEqual(request, base._request(request))
+            for header in (None, '', 'x' * 40):
+                changed = dict(request)
+                if header is None:
+                    del changed['expectedCurrentHeaderSha1']
+                else:
+                    changed['expectedCurrentHeaderSha1'] = header
+                with self.assertRaises(base.LinuxRpmBasePrepareError):
+                    base._request(changed)
+
+    def test_replacement_command_decision_requires_fresh_header_mismatch(self):
+        namespace = {}
+        exec(base._COMMON, namespace)
+        decision = namespace['base_install_command']
+        same = 'vpn-control-2.1.19-1.x86_64'
+        self.assertEqual(['rpm', '-Uvh', '--replacepkgs', '--', '/fixed/base.rpm'],
+                         decision(same, same, OLD_HEADER, NEW_HEADER, '/fixed/base.rpm',
+                                  expected_current_header=OLD_HEADER))
+        self.assertIsNone(decision(same, same, OLD_HEADER, OLD_HEADER, '/fixed/base.rpm',
+                                   expected_current_header=OLD_HEADER))
+        self.assertIsNone(decision(same, same, OLD_HEADER, NEW_HEADER, '/fixed/base.rpm'))
+        self.assertIsNone(decision(same, same, '3' * 40, NEW_HEADER, '/fixed/base.rpm',
+                                   expected_current_header=OLD_HEADER))
+
     @staticmethod
     def protected_inventory(phase='SUCCEEDED', gate_pending=False):
         return {'state': 'observed', 'rootState': 'readable', 'truncated': False,
@@ -109,7 +140,7 @@ class LinuxRpmBasePrepareTest(unittest.TestCase):
         worker = base._WORKER
         lock = worker.index('reservation_fd=hold_reservation()')
         inspect = worker.index('pre=inspect(', lock)
-        rpm = worker.index("['rpm','-Uvh'", inspect)
+        rpm = worker.index('command=subprocess.run(argv', inspect)
         release = worker.index('os.close(reservation_fd)', rpm)
         self.assertLess(lock, inspect)
         self.assertLess(inspect, rpm)
@@ -142,6 +173,42 @@ class LinuxRpmBasePrepareTest(unittest.TestCase):
             self.assertEqual('blocked', result['state'])
             self.assertEqual(1, len(driver.calls))
             self.assertFalse((root / '.rag_index/linux-rpm-base-prepare').exists())
+
+    def test_same_version_current_header_mismatch_blocks_before_journal_or_payload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            request, verified = self.request(root)
+            request['expectedCurrentNevra'] = request['expectedBaseNevra']
+            request['expectedCurrentHeaderSha1'] = OLD_HEADER
+            driver = FakeDriver([{'state': 'ready', 'currentNevra': request['expectedCurrentNevra'],
+                                  'currentHeaderSha1': NEW_HEADER}])
+            with mock.patch.object(base, '_admitted', return_value=(Path(verified['location']['localPath']), object())), \
+                 mock.patch.object(base, '_driver', return_value=driver):
+                result = base.start(root, request)
+            self.assertEqual('blocked', result['state'])
+            self.assertEqual('current-header-mismatch', result['reason'])
+            self.assertEqual(1, len(driver.calls))
+            self.assertEqual((request['expectedCurrentNevra'], 'header'), driver.calls[0][2])
+            self.assertFalse((root / '.rag_index/linux-rpm-base-prepare').exists())
+
+    def test_header_preflight_returns_only_valid_current_header(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = mock.Mock(hosts={'fedora2328': mock.Mock(user='vpnfixture')})
+            value = {'host': 'fedora2328', 'environment': 'fedora2328',
+                     'expectedCurrentNevra': 'vpn-control-2.1.19-1.x86_64',
+                     'includeCurrentHeader': True}
+            driver = FakeDriver([{'state': 'ready', 'currentNevra': value['expectedCurrentNevra'],
+                                  'currentHeaderSha1': OLD_HEADER},
+                                 {'state': 'ready', 'currentNevra': value['expectedCurrentNevra'],
+                                  'currentHeaderSha1': 'unsafe'}])
+            with mock.patch.object(base.ssh_transport, 'load_config', return_value=config), \
+                 mock.patch.object(base, '_driver', return_value=driver):
+                first = base.preflight(root, value)
+                second = base.preflight(root, value)
+            self.assertEqual(OLD_HEADER, first['currentHeaderSha1'])
+            self.assertEqual('unknown', second['state'])
+            self.assertEqual('current-header-unavailable', second['reason'])
 
     def test_intent_precedes_payload_and_uncertain_submission_never_replays(self):
         with tempfile.TemporaryDirectory() as temporary:

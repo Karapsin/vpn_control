@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.api.tasks.PathSensitivity
 import groovy.json.JsonSlurper
 
 plugins {
@@ -10,14 +11,16 @@ val generatedLanguageDir = layout.buildDirectory.dir("generated/source/languages
 val languageManifest = layout.projectDirectory.file("src/commonMain/resources/languages.json")
 
 val generateAppLanguages by tasks.registering {
-    val outputDir = generatedLanguageDir
-    inputs.file(languageManifest)
-    outputs.dir(outputDir)
+    inputs.file(languageManifest).withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(generatedLanguageDir)
+    outputs.cacheIf("Generated Kotlin is determined by the language manifest") { true }
 
     doLast {
+        val manifestFile = inputs.files.singleFile
+        val generatedDir = outputs.files.singleFile
         val parser = JsonSlurper()
-        val entries = parser.parse(languageManifest.asFile) as? List<*>
-            ?: error("Expected a JSON array in ${languageManifest.asFile}")
+        val entries = parser.parse(manifestFile) as? List<*>
+            ?: error("Expected a JSON array in $manifestFile")
         require(entries.isNotEmpty()) {
             "Language manifest must contain at least SYSTEM and ENGLISH"
         }
@@ -69,9 +72,7 @@ val generateAppLanguages by tasks.registering {
             append('"')
         }
 
-        val targetFile = outputDir.get().file(
-            "com/kardinal/vpncontrol/model/AppLanguage.kt",
-        ).asFile
+        val targetFile = generatedDir.resolve("com/kardinal/vpncontrol/model/AppLanguage.kt")
         targetFile.parentFile.mkdirs()
         targetFile.writeText(
             buildString {

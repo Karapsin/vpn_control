@@ -62,6 +62,31 @@ class RpmPublicInstallAdapterTest(unittest.TestCase):
         self.assertEqual("failed", result["scenarioEvidence"]["result"])
         self.assertEqual("guest-admission", result["scenarioEvidence"]["failurePhase"])
         self.assertNotIn("operationId", result["scenarioEvidence"])
+        driver.collect = lambda _: {"state": "terminal", "correlationId": correlation,
+                                    "exitCode": 1, "scenarioEvidence": None,
+                                    "failurePhase": "guest-admission",
+                                    "guestAdmissionDiagnostic": "protected-intent-differs",
+                                    "guestAdmissionField": "bundleHash",
+                                    "privatePath": "/secret"}
+        result = subject.RpmPublicInstallAdapter(driver).collect(correlation)
+        self.assertEqual("protected-intent-differs", result["guestAdmissionDiagnostic"])
+        self.assertEqual("bundleHash", result["guestAdmissionField"])
+        self.assertNotIn("privatePath", result)
+
+    def test_terminal_cleanup_failure_exposes_only_fixed_kind(self):
+        correlation = self.request()["correlationId"]
+        driver = Driver()
+        original = driver.collect(correlation)
+        original["exitCode"] = 1
+        original["scenarioEvidence"]["result"] = "failed"
+        original["scenarioEvidence"]["cleanup"]["state"] = "preserved-for-recovery"
+        original["scenarioEvidence"]["cleanup"]["workspaceRemoved"] = False
+        original["cleanupFailureKind"] = "process-observation-unavailable"
+        original["privatePath"] = "/tmp/secret"
+        driver.collect = lambda _: original
+        result = subject.RpmPublicInstallAdapter(driver).collect(correlation)
+        self.assertEqual("process-observation-unavailable", result["cleanupFailureKind"])
+        self.assertNotIn("privatePath", result)
 
     def test_passed_receipt_cannot_claim_unverified_cleanup(self):
         driver = Driver(); correlation = self.request()["correlationId"]

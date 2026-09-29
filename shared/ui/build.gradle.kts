@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.api.tasks.PathSensitivity
 import groovy.json.JsonSlurper
 
 plugins {
@@ -13,32 +14,35 @@ val i18nCatalogDir = layout.projectDirectory.dir("src/commonMain/resources/i18n"
 val i18nStatusCatalogDir = layout.projectDirectory.dir("src/commonMain/resources/i18n-status")
 
 val generateI18nCatalog by tasks.registering {
-    val outputDir = generatedI18nCatalogDir
-    inputs.dir(i18nCatalogDir)
-    inputs.dir(i18nStatusCatalogDir)
-    outputs.dir(outputDir)
+    val catalogDir = i18nCatalogDir.asFile
+    val statusCatalogDir = i18nStatusCatalogDir.asFile
+    inputs.dir(i18nCatalogDir).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.dir(i18nStatusCatalogDir).withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(generatedI18nCatalogDir)
+    outputs.cacheIf("Generated Kotlin is determined by the JSON catalogs") { true }
 
     doLast {
-        val jsonFiles = i18nCatalogDir.asFile
+        val generatedDir = outputs.files.singleFile
+        val jsonFiles = catalogDir
             .listFiles { file -> file.isFile && file.extension == "json" }
             ?.sortedBy { it.name }
             .orEmpty()
         require(jsonFiles.isNotEmpty()) {
-            "No i18n JSON files found in ${i18nCatalogDir.asFile}"
+            "No i18n JSON files found in $catalogDir"
         }
-        val statusJsonFiles = i18nStatusCatalogDir.asFile
+        val statusJsonFiles = statusCatalogDir
             .listFiles { file -> file.isFile && file.extension == "json" }
             ?.sortedBy { it.name }
             .orEmpty()
         require(statusJsonFiles.isNotEmpty()) {
-            "No status i18n JSON files found in ${i18nStatusCatalogDir.asFile}"
+            "No status i18n JSON files found in $statusCatalogDir"
         }
         require(jsonFiles.map { it.nameWithoutExtension }.toSet() == statusJsonFiles.map { it.nameWithoutExtension }.toSet()) {
             "UI and status i18n catalogs must use the same language codes"
         }
 
         val parser = JsonSlurper()
-        val packageDir = outputDir.get().dir("com/kardinal/vpncontrol/shared/ui").asFile
+        val packageDir = generatedDir.resolve("com/kardinal/vpncontrol/shared/ui")
         packageDir.deleteRecursively()
         packageDir.mkdirs()
 

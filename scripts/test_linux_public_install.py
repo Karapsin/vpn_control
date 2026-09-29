@@ -241,39 +241,41 @@ def _privileged_workspace_observation(proc, workspace, uid, own_pid, own_start_t
     proc, workspace = Path(proc), Path(workspace)
     workspace_text = str(workspace)
     prefix = workspace_text + "/"
+    def unknown(reason):
+        return {'state': 'unknown', 'reason': reason}
     try:
         if (not workspace.is_absolute() or type(uid) is not int or uid <= 0
                 or any(type(value) is not int or value < 0 for value in (own_pid, own_start_ticks, own_fd))
                 or not proc.is_dir()):
-            return {'state': 'unknown'}
+            return unknown('invalid-input')
         identity = os.stat(workspace)
         if not stat.S_ISDIR(identity.st_mode) or (identity.st_dev, identity.st_ino) != tuple(expected_identity):
-            return {'state': 'unknown'}
+            return unknown('workspace-identity')
         parent = proc / str(own_pid)
         parent_fields = (parent / 'stat').read_text(encoding='ascii').rsplit(')', 1)[1].split()
         if int(parent_fields[19]) != own_start_ticks:
-            return {'state': 'unknown'}
+            return unknown('owner-generation')
         owned_descriptor = parent / 'fd' / str(own_fd)
         held = os.stat(owned_descriptor)
         if (held.st_dev, held.st_ino) != tuple(expected_identity) or os.readlink(owned_descriptor) != workspace_text:
-            return {'state': 'unknown'}
+            return unknown('owner-descriptor')
         processes = [entry for entry in proc.iterdir() if entry.name.isdecimal()]
         if len(processes) > 4096:
-            return {'state': 'unknown'}
+            return unknown('process-count')
         seen = 0
         for entry in processes:
             try:
                 lines = (entry / 'status').read_text(encoding='ascii').splitlines()
                 matches = [line.split()[1:] for line in lines if line.startswith('Uid:')]
                 if len(matches) != 1 or len(matches[0]) != 4:
-                    return {'state': 'unknown'}
+                    return unknown('process-status-invalid')
                 uids = tuple(int(value) for value in matches[0])
             except FileNotFoundError:
                 if not entry.exists():
                     continue
-                return {'state': 'unknown'}
+                return unknown('process-status-unavailable')
             except (OSError, ValueError):
-                return {'state': 'unknown'}
+                return unknown('process-status-unavailable')
             if uid not in uids:
                 continue
             seen += 1
@@ -281,20 +283,20 @@ def _privileged_workspace_observation(proc, workspace, uid, own_pid, own_start_t
                 fields = (entry / 'stat').read_text(encoding='ascii').rsplit(')', 1)[1].split()
                 state, start_ticks = fields[0], int(fields[19])
                 if len(state) != 1 or start_ticks <= 0:
-                    return {'state': 'unknown'}
+                    return unknown('process-generation')
                 if state in ('Z', 'X'):
                     continue
                 cwd = os.readlink(entry / 'cwd')
                 root = os.readlink(entry / 'root')
                 descriptors = list((entry / 'fd').iterdir())
                 if len(descriptors) > 8192:
-                    return {'state': 'unknown'}
+                    return unknown('descriptor-count')
             except FileNotFoundError:
                 if not entry.exists():
                     continue
-                return {'state': 'unknown'}
+                return unknown('process-links-unavailable')
             except (OSError, ValueError, IndexError):
-                return {'state': 'unknown'}
+                return unknown('process-links-unavailable')
             if any(value == workspace_text or value.startswith(prefix) for value in (cwd, root)):
                 return {'state': 'referenced', 'pid': int(entry.name), 'startTicks': start_ticks}
             for descriptor in descriptors:
@@ -307,15 +309,15 @@ def _privileged_workspace_observation(proc, workspace, uid, own_pid, own_start_t
                 except FileNotFoundError:
                     continue
                 except OSError:
-                    return {'state': 'unknown'}
+                    return unknown('descriptor-unavailable')
                 if reference == workspace_text or reference.startswith(prefix):
                     return {'state': 'referenced', 'pid': int(entry.name), 'startTicks': start_ticks}
         final = os.stat(workspace)
         if (final.st_dev, final.st_ino) != tuple(expected_identity):
-            return {'state': 'unknown'}
+            return unknown('workspace-changed')
         return {'state': 'absent', 'sameUidCount': seen}
     except (OSError, ValueError, IndexError, TypeError):
-        return {'state': 'unknown'}
+        return unknown('observer-exception')
 
 
 _PRIVILEGED_WORKSPACE_PROGRAM = (

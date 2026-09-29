@@ -1128,7 +1128,8 @@ def _binding(root: Path, lease_id: str, stage_correlation_id: str, *,
                 and current.get("role") is None)
         live_use = (isinstance(current, dict) and require_credentials == "ready"
                     and current.get("state") == "role-active"
-                    and current.get("role") in {"server-start", "target", "public", "server-stop"})
+                    and current.get("role") in {"server-start", "owner-network", "network-probe",
+                                                "target", "public", "server-stop"})
         admissible_server = ({"stopped", "starting", "live", "stopping"}
                              if require_credentials == "ready" and not in_cleanup else {"stopped"})
         if (not isinstance(current, dict) or not (idle or in_provision or in_cleanup or live_use)

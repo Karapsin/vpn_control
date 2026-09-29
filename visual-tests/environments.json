@@ -21,6 +21,7 @@
     },
     "linux": {
       "canonical_environment": "linux-ubuntu24-x11",
+      "canonical_architecture": "x86_64",
       "required_capabilities": ["app", "native"],
       "local": {
         "kind": "native-or-tart",

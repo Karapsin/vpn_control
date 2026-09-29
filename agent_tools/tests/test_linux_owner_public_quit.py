@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -10,6 +11,7 @@ from agent_tools import linux_owner_public_quit as quit_owner
 
 CORRELATION = "12345678-1234-1234-1234-123456789abc"
 CONTROLLER = "1780cc81-65a6-4284-a424-2178b94e2690"
+RECOVERY_CONTROLLER = "4da9288d-dd73-4312-92d8-c7d96f046040"
 
 
 class FakeDriver:
@@ -30,6 +32,50 @@ class LinuxOwnerPublicQuitTest(unittest.TestCase):
         return {"host": "fedora2328", "environment": "fedora2328", "pid": 18367,
                 "startTicks": 2078693, "controllerId": CONTROLLER,
                 "approval": quit_owner.APPROVAL, "correlationId": CORRELATION}
+
+    def recovery_request(self):
+        return {"host": "fedora2328", "environment": "fedora2328", "pid": 84498,
+                "startTicks": 42693938, "controllerId": RECOVERY_CONTROLLER,
+                "approval": quit_owner.RECOVERY_APPROVAL, "correlationId": CORRELATION}
+
+    def test_recovery_owner_is_exact_generation_and_disconnected(self):
+        request = self.recovery_request()
+        self.assertEqual(request, quit_owner._request(request))
+        namespace = {}
+        exec(quit_owner._COMMON, namespace)
+        self.assertEqual((None, "approval-owner-mismatch"),
+                         namespace["public_status"](dict(request, startTicks=42693939)))
+        namespace["same_owner"] = lambda intent: True
+        response = {"ok": True, "final": True, "code": "OK",
+                    "controllerId": RECOVERY_CONTROLLER,
+                    "data": {"runtimeRunning": False, "runtimeId": None,
+                             "activeLocationId": None, "activeMode": None,
+                             "selectedLocationId": "selected"}}
+        cmdline = (b"/opt/vpn-control/bin/vpn-control\0--state-dir\0"
+                   b"/home/vpnfixture/state\0serve\0")
+        with mock.patch("os.geteuid", return_value=1000), \
+             mock.patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=1000)), \
+             mock.patch("builtins.open", mock.mock_open(read_data=cmdline)), \
+             mock.patch("subprocess.run", return_value=SimpleNamespace(
+                 returncode=0, stdout=json.dumps(response))):
+            self.assertEqual((None, "active-runtime"), namespace["public_status"](request))
+        response["data"]["selectedLocationId"] = None
+        with mock.patch("os.geteuid", return_value=1000), \
+             mock.patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=1000)), \
+             mock.patch("builtins.open", mock.mock_open(read_data=cmdline)), \
+             mock.patch("subprocess.run", side_effect=[
+                 SimpleNamespace(returncode=0, stdout=json.dumps(response)),
+                 SimpleNamespace(returncode=0, stdout="vpn-control-2.1.19-1.x86_64")]):
+            self.assertEqual((None, "installed-package-mismatch"),
+                             namespace["public_status"](request))
+        with mock.patch("os.geteuid", return_value=1000), \
+             mock.patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=1000)), \
+             mock.patch("builtins.open", mock.mock_open(read_data=cmdline)), \
+             mock.patch("subprocess.run", side_effect=[
+                 SimpleNamespace(returncode=0, stdout=json.dumps(response)),
+                 SimpleNamespace(returncode=0, stdout="vpn-control-2.2.0-1.x86_64")]):
+            self.assertEqual(("/home/vpnfixture/state", None),
+                             namespace["public_status"](request))
 
     def guest(self, driver):
         config = mock.Mock(hosts={"fedora2328": mock.Mock(user="vpnfixture")})
@@ -64,6 +110,22 @@ class LinuxOwnerPublicQuitTest(unittest.TestCase):
                 self.assertFalse(result["replayAllowed"])
                 self.assertEqual(1, len(driver.calls))
                 self.assertFalse((root / ".rag_index" / "linux-owner-public-quit").exists())
+
+    def test_replacement_owner_start_is_one_shot_with_exact_correlation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            request = self.recovery_request()
+            driver = FakeDriver([
+                {"state": "ready", "pid": request["pid"], "startTicks": request["startTicks"],
+                 "controllerId": request["controllerId"]},
+                {"state": "submitted", "correlationId": CORRELATION}])
+            config, owner = self.guest(driver)
+            with config, owner:
+                self.assertEqual("submitted", quit_owner.start(root, request)["state"])
+                self.assertEqual("existing-intent", quit_owner.start(root, request)["reason"])
+            self.assertEqual(2, len(driver.calls))
+            self.assertEqual(request, json.loads((root / ".rag_index" /
+                "linux-owner-public-quit" / (CORRELATION + ".json")).read_text()))
 
     def test_intent_precedes_effect_and_response_loss_never_replays(self):
         with tempfile.TemporaryDirectory() as temporary:

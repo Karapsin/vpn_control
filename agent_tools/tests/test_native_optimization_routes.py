@@ -5,6 +5,1028 @@ from agent_tools import mcp_server
 
 
 class NativeOptimizationRoutesTest(unittest.TestCase):
+    def test_acceptance_status_is_read_only_and_does_not_promote_supplied_owner(self):
+        from agent_tools import native_acceptance_overview
+        source = "a" * 40
+        rows = [{"platform": platform, "requirementId": platform + "-native", "status": "open",
+                 "missingScenarios": ["installer"]} for platform in ("android", "linux", "windows", "macos")]
+        matrix = {"currentSourceSHA": source, "gate": "open", "requirements": rows}
+        artifacts = {"matches": [{"platform": "linux", "sourceSha": source, "artifactKind": "package",
+                                  "artifactId": "sha256-" + "b" * 64}], "records": {}}
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"sourceSha": source,
+                   "correlations": [{"platform": "linux", "correlationId": correlation,
+                                     "statusAction": "linux-rpm-workspace-recovery-status"}],
+                   "ownerProbes": [{"platform": "linux", "action": "linux-owner-public-quit-status",
+                                    "inputs": {"correlationId": correlation}}]}
+        result = native_acceptance_overview.acceptance_status(matrix, request, artifacts,
+            correlation_observer=lambda item, sha, index: {
+                "state": "verified", "correlationId": correlation, "sourceSha": "b" * 40,
+                "operationState": "running"},
+            owner_observer=lambda item: {
+                "state": "stopped", "evidenceScope": "owner", "source": "caller-receipt"})
+        self.assertFalse(result["nativeActionAllowed"])
+        linux = next(p for p in result["platforms"] if p["platform"] == "linux")
+        self.assertEqual("unknown", linux["ownerEvidence"])
+        self.assertEqual("unknown", linux["correlationEvidence"])
+        self.assertIsNone(linux["activeCorrelationId"])
+        self.assertEqual(1, linux["unmetGates"][0]["missingCount"])
+        self.assertEqual("registered-unverified", linux["artifactEvidence"])
+        with self.assertRaisesRegex(ValueError, "current exact"):
+            native_acceptance_overview.acceptance_status(matrix, {**request, "sourceSha": "b" * 40},
+                artifacts, correlation_observer=lambda *args: self.fail("stale source was observed"))
+        with self.assertRaisesRegex(ValueError, "only sourceSha"):
+            native_acceptance_overview.acceptance_status(matrix,
+                {**request, "ownerObservations": [{"platform": "linux", "state": "stopped"}]}, artifacts)
+
+    def test_acceptance_status_promotes_only_exact_live_status_and_owner_probe(self):
+        from agent_tools import native_acceptance_overview
+        source = "a" * 40
+        rows = [{"platform": platform, "requirementId": platform + "-native", "status": "open",
+                 "missingScenarios": []} for platform in ("android", "linux", "windows", "macos")]
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        result = native_acceptance_overview.acceptance_status(
+            {"currentSourceSHA": source, "gate": "open", "requirements": rows},
+            {"sourceSha": source,
+             "correlations": [{"platform": "android", "correlationId": correlation,
+                               "statusAction": "android-consent-acceptance-status"}],
+             "ownerProbes": [{"platform": "android", "action": "android-observe",
+                              "inputs": {"host": "archlinux", "device": "api29", "timeoutSeconds": 5}}]},
+            {"matches": [], "records": {}},
+            correlation_observer=lambda item, sha, index: {
+                "state": "verified", "correlationId": correlation,
+                "sourceSha": source, "operationState": "running",
+                "ownerIdentity": "owned", "deviceAlias": "api29"},
+            owner_observer=lambda item: {"state": "running", "evidenceScope": "owner",
+                                         "source": "live-tool", "controllerId": "owned",
+                                         "deviceAlias": "api29"})
+        android = result["platforms"][0]
+        self.assertEqual(correlation, android["activeCorrelationId"])
+        self.assertEqual("verified-current-source-status", android["correlationEvidence"])
+        self.assertEqual("live-observer", android["ownerEvidence"])
+        self.assertEqual("running", android["ownerOrGuest"]["state"])
+        foreign = native_acceptance_overview.acceptance_status(
+            {"currentSourceSHA": source, "gate": "open", "requirements": rows},
+            {"sourceSha": source,
+             "correlations": [{"platform": "android", "correlationId": correlation,
+                               "statusAction": "android-consent-acceptance-status"}],
+             "ownerProbes": [{"platform": "android", "action": "android-observe",
+                              "inputs": {"host": "archlinux", "device": "api29", "timeoutSeconds": 5}}]},
+            {"matches": [], "records": {}},
+            correlation_observer=lambda item, sha, index: {
+                "state": "verified", "correlationId": correlation,
+                "sourceSha": source, "operationState": "running",
+                "ownerIdentity": "old", "deviceAlias": "api29"},
+            owner_observer=lambda item: {"state": "running", "evidenceScope": "owner",
+                                         "source": "live-tool", "controllerId": "replacement",
+                                         "deviceAlias": "api29"})
+        self.assertIsNone(foreign["platforms"][0]["activeCorrelationId"])
+        self.assertEqual("unknown", foreign["platforms"][0]["ownerEvidence"])
+        with self.assertRaisesRegex(ValueError, "fixed and bounded"):
+            native_acceptance_overview.acceptance_status(
+                {"currentSourceSHA": source, "gate": "open", "requirements": rows},
+                {"ownerProbes": [{"platform": "android", "action": "android-observe",
+                                  "inputs": {"host": "archlinux", "device": "api29",
+                                             "timeoutSeconds": 5, "shell": "id"}}]},
+                {"matches": [], "records": {}},
+                owner_observer=lambda item: self.fail("unsafe probe dispatched"))
+
+    def test_multiple_source_bound_correlations_remain_separately_observed(self):
+        from agent_tools import native_acceptance_overview
+        source = "a" * 40
+        first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        rows = [{"platform": platform, "requirementId": platform + "-native", "status": "open",
+                 "missingScenarios": []} for platform in ("android", "linux", "windows", "macos")]
+        known = {"android": [{"correlationId": corr, "sourceSha": source,
+                 "statusAction": "android-consent-acceptance-status",
+                 "evidence": "source-bound-local-intent"} for corr in (first, second)]}
+        result = native_acceptance_overview.acceptance_status(
+            {"currentSourceSHA": source, "gate": "open", "requirements": rows}, {},
+            {"matches": [], "records": {}}, known_correlations=known,
+            correlation_observer=lambda item, sha, index: {"state": "verified",
+                "correlationId": item["correlationId"], "sourceSha": source,
+                "operationState": "complete" if item["correlationId"] == first else "running"})
+        android = result["platforms"][0]
+        self.assertEqual(2, len(android["correlationObservations"]))
+        self.assertEqual([first, second], android["observedCorrelationIds"])
+        self.assertEqual(second, android["activeCorrelationId"])
+        self.assertEqual("verified-current-source-status", android["correlationEvidence"])
+        self.assertFalse(result["nativeActionAllowed"])
+
+    def test_acceptance_artifact_index_read_does_not_create_or_clean_state(self):
+        import os
+        if os.name == "nt":
+            self.skipTest("POSIX private registry ownership is required")
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from agent_tools import native_acceptance_overview, native_artifact_registry
+        source = "a" * 40
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            self.assertEqual({"matches": [], "records": {}}, native_acceptance_overview.read_artifact_index(
+                root, source, native_artifact_registry))
+            self.assertFalse((root / ".rag_index").exists())
+            index = root / ".rag_index" / "native-artifacts"
+            index.mkdir(parents=True)
+            os.chmod(index.parent, 0o700)
+            os.chmod(index, 0o700)
+            (index / ".tmp-incomplete").write_text("partial")
+            with self.assertRaisesRegex(ValueError, "incomplete"):
+                native_acceptance_overview.read_artifact_index(root, source, native_artifact_registry)
+            self.assertTrue((index / ".tmp-incomplete").exists())
+            (index / ".tmp-incomplete").unlink()
+            legacy = index / ("sha256-" + "b" * 64 + ".json")
+            legacy.write_text('{"schemaVersion":1}')
+            os.chmod(legacy, 0o600)
+            before = legacy.read_bytes()
+            with self.assertRaisesRegex(ValueError, "migration"):
+                native_acceptance_overview.read_artifact_index(root, source, native_artifact_registry)
+            self.assertEqual(before, legacy.read_bytes())
+
+    def test_acceptance_verifies_current_local_artifact_bytes_without_matrix_promotion(self):
+        import hashlib
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from agent_tools import native_acceptance_overview, native_artifact_registry
+        source = "a" * 40
+        with TemporaryDirectory() as raw:
+            path = Path(raw) / "package.rpm"
+            path.write_bytes(b"exact rpm")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            identifier = "sha256-" + digest
+            record = {"platform": "linux", "artifactKind": "package", "artifactId": identifier,
+                      "sourceSha": source, "sha256": digest, "size": path.stat().st_size,
+                      "locations": [{"evidenceClass": "local-verified", "localPath": str(path)}]}
+            index = {"matches": [{"platform": "linux", "sourceSha": source,
+                                  "artifactKind": "package", "artifactId": identifier}],
+                     "records": {identifier: record}}
+            states = native_acceptance_overview.verify_local_artifact_bytes(index, native_artifact_registry)
+            self.assertEqual("verified-local-bytes", states[identifier])
+            path.write_bytes(b"changed rpm")
+            states = native_acceptance_overview.verify_local_artifact_bytes(index, native_artifact_registry)
+            self.assertEqual("local-bytes-mismatch", states[identifier])
+        rows = [{"platform": platform, "requirementId": platform + "-native", "status": "open",
+                 "missingScenarios": []} for platform in ("android", "linux", "windows", "macos")]
+        result = native_acceptance_overview.acceptance_status(
+            {"currentSourceSHA": source, "gate": "open", "requirements": rows}, {}, index,
+            artifact_verification={identifier: "verified-local-bytes"})
+        linux = result["platforms"][1]
+        self.assertEqual("verified-local-bytes", linux["artifactHashes"][0]["evidence"])
+        self.assertEqual("open", result["matrixGate"])
+
+    def test_source_bound_local_intents_are_discovered_without_promoting_status(self):
+        import os
+        if os.name == "nt":
+            self.skipTest("POSIX private intent ownership is required")
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from agent_tools import native_acceptance_overview
+        source = "a" * 40
+        artifact_id = "sha256-" + "b" * 64
+        android_corr = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        cleanup_corr = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        public_corr = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        class Android:
+            @staticmethod
+            def _load(root, corr):
+                return {"correlationId": corr, "artifactId": artifact_id, "device": "api35",
+                        "backupSha256": "d" * 64, "openingReadbackCorrelationId": public_corr,
+                        "cliStageCorrelationId": public_corr, "packageSha256": "b" * 64}
+        class Cleanup:
+            @staticmethod
+            def _cleanup_journal(root, corr):
+                return root / ".rag_index" / "linux-rpm-workspace-cleanup" / (corr + ".json")
+            @staticmethod
+            def _read_cleanup_journal(path):
+                return {"cleanupCorrelationId": cleanup_corr, "correlationId": public_corr}
+        class Server:
+            @staticmethod
+            def _journal(root, corr):
+                return {"correlationId": corr, "sourceSha": source}
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            for name, correlation in (("android-document-jobs", android_corr),
+                                      ("linux-rpm-workspace-cleanup", cleanup_corr)):
+                directory = root / ".rag_index" / name
+                directory.mkdir(parents=True)
+                os.chmod(directory, 0o700)
+                path = directory / (correlation + ".json")
+                path.write_text("{}")
+                os.chmod(path, 0o600)
+            found = native_acceptance_overview.discover_source_correlations(
+                root, source, {"records": {artifact_id: {"platform": "android",
+                    "sourceSha": source, "sha256": "b" * 64}}}, Android, Cleanup, Server)
+            self.assertEqual(android_corr, found["android"][0]["correlationId"])
+            self.assertEqual(cleanup_corr, found["linux"][0]["correlationId"])
+            self.assertEqual("source-bound-local-intent", found["android"][0]["evidence"])
+            self.assertEqual("source-bound-local-intent", found["linux"][0]["evidence"])
+            self.assertEqual([], found["macos"])
+            self.assertEqual([], found["windows"])
+            self.assertEqual("{}", (root / ".rag_index" / "android-document-jobs" /
+                                    (android_corr + ".json")).read_text())
+            self.assertEqual([], native_acceptance_overview.discover_source_correlations(
+                root, "e" * 40, {"records": {}}, Android, Cleanup, Server)["android"])
+
+    def test_macos_summary_is_source_bound_pointer_not_live_owner(self):
+        import os
+        if os.name == "nt":
+            self.skipTest("POSIX local evidence ownership is required")
+        import json
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from agent_tools import native_acceptance_overview
+        source = "a" * 40
+        base, target = "sha256-" + "b" * 64, "sha256-" + "c" * 64
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            path = (root / ".runtime" / "parity-evidence" / "continuation-macos" /
+                    ("fixture-" + source[:7]) / "native-machine-denial" /
+                    "reviewed-denial-summary.json")
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({"sourceSha": source, "baseArtifactId": base,
+                "targetArtifactId": target, "finalPublicCode": "CANCELLED", "installed": False,
+                "installOperationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}))
+            index = {"records": {base: {"platform": "macos", "sourceSha": source},
+                                 target: {"platform": "macos", "sourceSha": source}}}
+            found = native_acceptance_overview.read_macos_denial_summary(root, source, index)
+            self.assertEqual("local-summary-not-matrix-reviewed", found[0]["evidence"])
+            self.assertEqual("cancelled", found[0]["outcome"])
+            self.assertEqual("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", found[0]["correlationId"])
+            self.assertFalse(found[0]["liveOwnerVerified"])
+            path.write_text(json.dumps({"sourceSha": "d" * 40, "baseArtifactId": base,
+                "targetArtifactId": target, "finalPublicCode": "CANCELLED", "installed": False,
+                "installOperationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}))
+            self.assertEqual([], native_acceptance_overview.read_macos_denial_summary(root, source, index))
+
+    def test_readonly_matrix_does_not_use_registry_mutation_path(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from agent_tools import native_acceptance_matrix, native_acceptance_overview, native_artifact_registry
+        source = "a" * 40
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            with patch.object(native_artifact_registry, "_prepare_registry",
+                              side_effect=AssertionError("registry mutation path used")), \
+                 patch.object(native_acceptance_matrix, "matrix_status",
+                              side_effect=AssertionError("canonical matrix writer path used")):
+                report = native_acceptance_overview.matrix_status_readonly(
+                    root, source, native_acceptance_matrix, native_artifact_registry,
+                    {"matches": [], "records": {}})
+            self.assertEqual("open", report["gate"])
+            self.assertFalse((root / ".rag_index").exists())
+
+    def test_acceptance_route_requires_live_correlated_status_and_current_artifact_source(self):
+        from agent_tools import native_acceptance_overview, android_consent_acceptance, android_document_acceptance
+        source = "a" * 40
+        artifact_id = "sha256-" + "b" * 64
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        rows = [{"platform": platform, "requirementId": platform + "-native", "status": "open",
+                 "missingScenarios": []} for platform in ("android", "linux", "windows", "macos")]
+        request = {"sourceSha": source, "correlations": [{"platform": "android",
+                   "correlationId": correlation, "statusAction": "android-consent-acceptance-status"}]}
+        index = {"matches": [], "records": {artifact_id: {"sourceSha": source}}}
+        with patch.object(mcp_server.subprocess, "check_output", return_value=source), \
+             patch.object(native_acceptance_overview, "read_artifact_index", return_value=index), \
+             patch.object(native_acceptance_overview, "verify_local_artifact_bytes", return_value={}), \
+             patch.object(native_acceptance_overview, "discover_source_correlations", return_value={
+                 "android": [], "linux": [], "windows": [], "macos": []}), \
+             patch.object(native_acceptance_overview, "matrix_status_readonly", return_value={
+                 "currentSourceSHA": source, "gate": "open", "requirements": rows}), \
+             patch.object(android_consent_acceptance, "status", return_value={
+                 "state": "running", "correlationId": correlation}), \
+             patch.object(android_document_acceptance, "_load", return_value={
+                 "device": "api29", "artifactId": artifact_id, "cliStageCorrelationId": correlation,
+                 "expectedOwner": "owned"}):
+            current = mcp_server._vm_workflow_impl("acceptance-status", request)
+            self.assertEqual(correlation, current["platforms"][0]["activeCorrelationId"])
+            index["records"][artifact_id]["sourceSha"] = "c" * 40
+            stale = mcp_server._vm_workflow_impl("acceptance-status", request)
+            self.assertIsNone(stale["platforms"][0]["activeCorrelationId"])
+            self.assertEqual("unknown", stale["platforms"][0]["correlationEvidence"])
+        self.assertFalse(stale["nativeActionAllowed"])
+
+    def test_checkout_status_marks_dirty_source_and_fails_closed(self):
+        from pathlib import Path
+        from subprocess import CompletedProcess
+        from agent_tools import native_acceptance_overview
+        root = Path("/tmp/read-only-checkout")
+        with patch.object(native_acceptance_overview.subprocess, "run", return_value=
+                          CompletedProcess([], 0, b"", b"")) as run:
+            self.assertEqual({"checkoutExact": True, "worktreeDirty": False},
+                             native_acceptance_overview.checkout_state(root))
+        self.assertIn("--no-optional-locks", run.call_args.args[0])
+        self.assertEqual("0", run.call_args.kwargs["env"]["GIT_OPTIONAL_LOCKS"])
+        with patch.object(native_acceptance_overview.subprocess, "run", return_value=
+                          CompletedProcess([], 0, b" M app/src/main.kt\n?? new.kt\n", b"")):
+            self.assertEqual({"checkoutExact": False, "worktreeDirty": True},
+                             native_acceptance_overview.checkout_state(root))
+        with patch.object(native_acceptance_overview.subprocess, "run", return_value=
+                          CompletedProcess([], 1, b"", b"")):
+            with self.assertRaisesRegex(ValueError, "unavailable"):
+                native_acceptance_overview.checkout_state(root)
+
+    def test_acceptance_route_never_claims_exact_dirty_checkout(self):
+        from agent_tools import native_acceptance_overview
+        source = "a" * 40
+        rows = [{"platform": platform, "requirementId": platform + "-native", "status": "open",
+                 "missingScenarios": []} for platform in ("android", "linux", "windows", "macos")]
+        with patch.object(mcp_server.subprocess, "check_output", return_value=source), \
+             patch.object(native_acceptance_overview, "read_artifact_index",
+                          return_value={"matches": [], "records": {}}), \
+             patch.object(native_acceptance_overview, "discover_source_correlations", return_value={
+                 "android": [], "linux": [], "windows": [], "macos": []}), \
+             patch.object(native_acceptance_overview, "matrix_status_readonly", return_value={
+                 "currentSourceSHA": source, "gate": "open", "requirements": rows}):
+            for dirty in (False, True):
+                with patch.object(native_acceptance_overview, "checkout_state", return_value={
+                        "worktreeDirty": dirty, "checkoutExact": not dirty}):
+                    result = mcp_server._vm_workflow_impl("acceptance-status", {"sourceSha": source})
+                self.assertEqual(not dirty, result["checkoutExact"])
+                self.assertEqual(dirty, result["worktreeDirty"])
+                self.assertFalse(result["nativeActionAllowed"])
+
+    def test_unknown_acceptance_does_not_write_failure_evidence(self):
+        from agent_tools import native_failure_evidence
+        result = {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                  "nativeActionAllowed": False, "productAction": False,
+                  "checkoutExact": False, "worktreeDirty": None}
+        with patch.object(native_failure_evidence, "record_failure",
+                          side_effect=AssertionError("read-only route wrote evidence")):
+            observed = mcp_server._native_response("vm_workflow", "acceptance-status", result, {})
+        self.assertFalse(observed["checkoutExact"])
+        self.assertNotIn("failureEvidence", observed)
+
+    def test_acceptance_guidance_names_unmet_review_gate_without_authorizing_action(self):
+        result = {"tool": "vm_workflow", "ok": True, "state": "observed", "matrixGate": "open",
+                  "checkoutExact": False, "worktreeDirty": True,
+                  "platforms": [{"platform": "android", "artifactHashes": [{"sha256": "sha256-" + "a" * 64,
+                      "evidence": "verified-local-bytes"}], "observedCorrelationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                      "unmetGates": [{"requirementId": "android-api29-native-cli", "status": "open"}]}],
+                  "nativeActionAllowed": False, "productAction": False}
+        observed = mcp_server._native_response("vm_workflow", "acceptance-status", result, {})
+        self.assertEqual("review-current-source-native-evidence", observed["nextAction"]["kind"])
+        self.assertEqual("android-api29-native-cli", observed["admissionGap"]["requirementId"])
+        self.assertFalse(observed["nextAction"]["replayAllowed"])
+        self.assertFalse(observed["admissionGap"]["nativeActionAllowed"])
+
+    def test_windows_baseline_inventory_route_is_read_only_and_never_admits_clone(self):
+        from agent_tools import windows_vm_baseline_inventory
+        request = {"host": "archlinux", "timeoutSeconds": 20}
+        sample = {"inventoryComplete": True, "nativeActionAllowed": False,
+                  "candidates": [{"path": "/home/kardinal/win11/base.qcow2",
+                                  "sourceState": "unknown", "noQemuObserved": True}]}
+        # Other tests may import the MCP server before a concurrent worker
+        # finishes editing this domain module; bypass only that hot-reload
+        # guard here so the test measures route dispatch and input bounds.
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_baseline_inventory, "observe", return_value=sample) as observe:
+            result = mcp_server._vm_workflow_impl("windows-vm-baseline-inventory", request)
+        observe.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", timeout_seconds=20)
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["nativeActionAllowed"])
+        self.assertFalse(result["productAction"])
+        self.assertEqual("unknown", result["candidates"][0]["sourceState"])
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_baseline_inventory, "observe",
+                          side_effect=AssertionError("unsafe request dispatched")):
+            for bad in ({"host": "fedora2328", "timeoutSeconds": 20},
+                        {"host": "archlinux", "timeoutSeconds": 31},
+                        {"host": "archlinux", "timeoutSeconds": 20, "clone": True}):
+                self.assertFalse(mcp_server._vm_workflow_impl(
+                    "windows-vm-baseline-inventory", bad)["ok"])
+
+    def test_windows_driver_fetch_route_exact_identity_and_status_read_only(self):
+        from agent_tools import windows_vm_driver_fetch
+        request = {"host": "archlinux", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                   "timeoutSeconds": 120}
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_driver_fetch, "start", return_value={
+                 "state": "unknown", "correlationId": request["correlationId"],
+                 "replayAllowed": False, "nativeActionAllowed": False}) as start:
+            started = mcp_server._vm_workflow_impl("windows-vm-driver-fetch-start", request)
+        self.assertFalse(started["ok"])
+        self.assertFalse(started["replayAllowed"])
+        start.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                                      correlation_id=request["correlationId"], timeout_seconds=120)
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_driver_fetch, "status", return_value={
+                 "state": "verified", "correlationId": request["correlationId"],
+                 "replayAllowed": False, "nativeActionAllowed": False}) as status:
+            observed = mcp_server._vm_workflow_impl("windows-vm-driver-fetch-status", request)
+        self.assertTrue(observed["ok"])
+        self.assertFalse(observed["nativeActionAllowed"])
+        status.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                                       correlation_id=request["correlationId"], timeout_seconds=120)
+        with patch.object(windows_vm_driver_fetch, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "fedora2328"}, {**request, "timeoutSeconds": 29},
+                        {**request, "correlationId": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"},
+                        {**request, "url": "https://foreign.example"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-driver-fetch-start", bad)["ok"])
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_driver_fetch, "start", side_effect=ValueError("private intent exists")):
+            uncertain = mcp_server._vm_workflow_impl("windows-vm-driver-fetch-start", request)
+        self.assertEqual("unknown", uncertain["state"])
+        self.assertEqual(request["correlationId"], uncertain["correlationId"])
+        self.assertFalse(uncertain["replayAllowed"])
+        self.assertNotIn("private intent exists", str(uncertain))
+        for state in ("unknown", "partial", "linked-partial", "mismatch"):
+            detail = mcp_server._native_response("vm_workflow", "windows-vm-driver-fetch-status",
+                {"ok": False, "state": state, "correlationId": request["correlationId"],
+                 "replayAllowed": False, "nativeActionAllowed": False}, request)
+            self.assertEqual("unknown", detail["failureSignature"]["basis"]["classification"])
+            self.assertEqual("windows-vm-driver-fetch-status",
+                             detail["admissionGap"]["readOnlyAction"]["action"])
+            self.assertFalse(detail["replayAllowed"])
+
+    def test_driver_fetch_unexpected_boundary_exception_keeps_correlation_and_status_only(self):
+        import subprocess
+        from agent_tools import windows_vm_driver_fetch
+        request = {"host": "archlinux", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                   "timeoutSeconds": 300}
+        for error in (RuntimeError("unexpected private transport detail"),
+                      subprocess.TimeoutExpired(["ssh"], 300)):
+            with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_vm_driver_fetch, "start", side_effect=error):
+                result = mcp_server.vm_workflow("windows-vm-driver-fetch-start", request)
+            self.assertFalse(result["ok"])
+            self.assertEqual("unknown", result["state"])
+            self.assertEqual(request["correlationId"], result["correlationId"])
+            self.assertFalse(result["replayAllowed"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertNotIn("unexpected private transport detail", str(result))
+            self.assertEqual("windows-vm-driver-fetch-status", result["nextAction"]["action"]["action"])
+
+    def test_driver_fetch_partial_start_is_uncertain_with_exact_status_followup(self):
+        from agent_tools import native_failure_evidence
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        captured = []
+        def record(root, context, receipt):
+            captured.append(receipt)
+            return {"state": "recorded"}
+        with patch.object(native_failure_evidence, "record_failure", side_effect=record):
+            result = mcp_server._native_response("vm_workflow", "windows-vm-driver-fetch-start",
+                {"ok": False, "state": "linked-partial", "correlationId": correlation,
+                 "replayAllowed": False, "nativeActionAllowed": False},
+                {"host": "archlinux", "correlationId": correlation, "timeoutSeconds": 300})
+        self.assertEqual("nativeUNKNOWN", captured[0]["classification"])
+        self.assertEqual("observe-existing-driver-fetch", result["nextAction"]["kind"])
+        self.assertEqual(correlation, result["nextAction"]["action"]["inputs"]["correlationId"])
+        self.assertFalse(result["nextAction"]["replayAllowed"])
+
+    def test_failure_receipt_enrichment_tolerates_missing_optional_signature(self):
+        from agent_tools import native_failure_evidence, native_response_diagnostics
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        with patch.object(native_response_diagnostics, "describe", return_value={}), \
+             patch.object(native_failure_evidence, "record_failure", return_value={
+                 "evidenceId": "native-failure-" + "a" * 64}):
+            result = mcp_server._native_response("vm_workflow", "windows-vm-driver-fetch-start",
+                {"ok": False, "state": "partial", "correlationId": correlation,
+                 "replayAllowed": False, "nativeActionAllowed": False},
+                {"host": "archlinux", "correlationId": correlation, "timeoutSeconds": 300})
+        self.assertEqual("partial", result["state"])
+        self.assertFalse(result["replayAllowed"])
+        self.assertEqual("native-failure-" + "a" * 64, result["failureEvidence"]["evidenceId"])
+
+    def test_windows_inventory_incomplete_is_unknown_diagnostic_not_native_failure(self):
+        result = mcp_server._native_response("vm_workflow", "windows-vm-baseline-inventory",
+            {"ok": False, "state": "unknown", "inventoryComplete": False,
+             "reason": "incomplete_or_conflicting_inventory", "nativeActionAllowed": False,
+             "productAction": False}, {"host": "archlinux", "timeoutSeconds": 20})
+        self.assertEqual("unknown", result["failureSignature"]["basis"]["classification"])
+        self.assertEqual("complete all-process file-holder census and QEMU generation recheck",
+                         result["admissionGap"]["missingFact"])
+
+    def test_environment_status_unknown_probe_gap_does_not_record_native_failure(self):
+        from agent_tools import native_failure_evidence
+        with patch.object(native_failure_evidence, "record_failure",
+                          side_effect=AssertionError("read-only status wrote failure receipt")):
+            result = mcp_server._native_response("vm_workflow", "environment-status",
+                {"ok": False, "state": "UNKNOWN", "requestedProbesReady": True,
+                 "components": {"host": {"state": "available"}}},
+                {"hostAlias": "archlinux", "observeHost": True})
+        self.assertEqual("UNKNOWN", result["state"])
+        self.assertNotIn("failureEvidence", result)
+        self.assertNotIn("failureSignature", result)
+        self.assertEqual("required environment receipts outside the requested live probes",
+                         result["admissionGap"]["missingFact"])
+
+    def test_windows_media_fingerprint_route_reports_bytes_without_publisher_claim(self):
+        from agent_tools import windows_vm_baseline_inventory
+        request = {"host": "archlinux", "timeoutSeconds": 180}
+        sample = {"mediaFingerprintComplete": True, "nativeActionAllowed": False,
+                  "media": {"windows": {"sha256": "a" * 64, "sizeBytes": 100}}}
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_baseline_inventory, "media_fingerprint",
+                          return_value=sample) as fingerprint:
+            observed = mcp_server._vm_workflow_impl("windows-vm-media-fingerprint", request)
+        fingerprint.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", timeout_seconds=180)
+        self.assertEqual("observed", observed["state"])
+        self.assertTrue(observed["ok"])
+        self.assertFalse(observed["nativeActionAllowed"])
+        self.assertNotIn("publisherVerified", observed)
+        with patch.object(windows_vm_baseline_inventory, "media_fingerprint",
+                          side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "fedora2328"}, {**request, "timeoutSeconds": 29},
+                        {**request, "path": "/foreign.iso"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-media-fingerprint", bad)["ok"])
+
+    def test_windows_disk_probe_routes_preserve_exact_one_shot_identity(self):
+        from agent_tools import windows_vm_fresh_setup
+        request = {"host": "archlinux", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                   "timeoutSeconds": 60}
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_fresh_setup, "probe_start", return_value={
+                 "state": "partial", "correlationId": request["correlationId"],
+                 "replayAllowed": False, "nativeActionAllowed": False}) as start:
+            partial = mcp_server._vm_workflow_impl("windows-vm-disk-probe-start", request)
+        self.assertFalse(partial["ok"])
+        self.assertFalse(partial["replayAllowed"])
+        start.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                                      correlation_id=request["correlationId"], timeout_seconds=60)
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_fresh_setup, "probe_status", return_value={
+                 "state": "verified", "correlationId": request["correlationId"],
+                 "replayAllowed": False, "nativeActionAllowed": False}) as status:
+            verified = mcp_server._vm_workflow_impl("windows-vm-disk-probe-status", request)
+        self.assertTrue(verified["ok"])
+        self.assertFalse(verified["nativeActionAllowed"])
+        status.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                                       correlation_id=request["correlationId"], timeout_seconds=60)
+        with patch.object(windows_vm_fresh_setup, "probe_start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "fedora2328"}, {**request, "timeoutSeconds": 29},
+                        {**request, "correlationId": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"},
+                        {**request, "sizeMiB": 96 * 1024}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-disk-probe-start", bad)["ok"])
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_fresh_setup, "probe_start", side_effect=ValueError("remote private detail")):
+            unknown = mcp_server._vm_workflow_impl("windows-vm-disk-probe-start", request)
+        self.assertEqual("unknown", unknown["state"])
+        self.assertEqual(request["correlationId"], unknown["correlationId"])
+        self.assertNotIn("remote private detail", str(unknown))
+        detail = mcp_server._native_response("vm_workflow", "windows-vm-disk-probe-status",
+            {"ok": False, "state": "partial", "correlationId": request["correlationId"],
+             "replayAllowed": False, "nativeActionAllowed": False}, request)
+        self.assertEqual("unknown", detail["failureSignature"]["basis"]["classification"])
+        self.assertEqual("windows-vm-disk-probe-status",
+                         detail["admissionGap"]["readOnlyAction"]["action"])
+
+    def test_windows_fresh_preflight_is_bounded_read_only_and_no_start(self):
+        from agent_tools import windows_vm_fresh_setup
+        request = {"host": "archlinux", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                   "timeoutSeconds": 180}
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_fresh_setup, "preflight", return_value={
+                 "state": "ready", "correlationId": request["correlationId"],
+                 "nativeActionAllowed": False}) as preflight, \
+             patch.object(windows_vm_fresh_setup, "start", side_effect=AssertionError("VM started")):
+            ready = mcp_server._vm_workflow_impl("windows-vm-fresh-preflight", request)
+        preflight.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                                          correlation_id=request["correlationId"], timeout_seconds=180)
+        self.assertTrue(ready["ok"])
+        self.assertFalse(ready["nativeActionAllowed"])
+        self.assertFalse(ready["productAction"])
+        with patch.object(windows_vm_fresh_setup, "preflight", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "fedora2328"}, {**request, "timeoutSeconds": 301},
+                        {**request, "reservationRequest": {}},
+                        {**request, "correlationId": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-fresh-preflight", bad)["ok"])
+
+    def test_windows_fresh_start_status_require_exact_reservation(self):
+        from agent_tools import windows_vm_fresh_setup
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        common = {"host": "archlinux", "correlationId": correlation, "timeoutSeconds": 180}
+        reservation = {"hostAlias": "archlinux", "environment": "windows-vm-baseline-20260929",
+                       "operator": "windows-baseline", "requestedMemoryBytes": 6442450944,
+                       "allocationState": "pending", "reservationIdentity": {},
+                       "measurement": {}, "headroomBytes": 8589934592}
+        request = {**common, "reservationRequest": reservation}
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_fresh_setup, "start", return_value={
+                 "state": "running-unrecorded-observed", "correlationId": correlation,
+                 "replayAllowed": False, "nativeActionAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("windows-vm-fresh-start", request)
+        start.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                                      correlation_id=correlation, reservation_request=reservation,
+                                      timeout_seconds=180)
+        self.assertEqual("running-unrecorded-observed", result["state"])
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["replayAllowed"])
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_fresh_setup, "status", return_value={
+                "state": "running-observed", "correlationId": correlation,
+                "nativeActionAllowed": False}) as status:
+            observed = mcp_server._vm_workflow_impl("windows-vm-fresh-status", common)
+        status.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                                       correlation_id=correlation, timeout_seconds=180)
+        self.assertTrue(observed["ok"])
+        with patch.object(windows_vm_fresh_setup, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "fedora2328"},
+                        {**request, "reservationRequest": {**reservation, "operator": "other"}},
+                        {**request, "reservationRequest": {**reservation, "extra": True}},
+                        {**request, "timeoutSeconds": True},
+                        {**request, "correlationId": correlation.upper()}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-fresh-start", bad)["ok"])
+
+    def test_windows_fresh_screen_routes_return_only_bounded_observation(self):
+        from agent_tools import windows_vm_fresh_setup
+        request = {"host": "archlinux", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                   "timeoutSeconds": 60}
+        for action, method in (("windows-vm-fresh-screen-start", "screen_start"),
+                               ("windows-vm-fresh-screen-status", "screen_status")):
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_vm_fresh_setup, method, return_value={
+                     "state": "observed", "correlationId": request["correlationId"],
+                     "framePath": "/private/frame.ppm", "frameSha256": "a" * 64,
+                     "width": 800, "height": 600, "nativeActionAllowed": False}) as dispatch:
+                observed = mcp_server._vm_workflow_impl(action, request)
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                                             correlation_id=request["correlationId"], timeout_seconds=60)
+            self.assertTrue(observed["ok"])
+            self.assertFalse(observed["nativeActionAllowed"])
+            self.assertNotIn("frameBytes", observed)
+        with patch.object(windows_vm_fresh_setup, "screen_start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "other"}, {**request, "reservationRequest": {}},
+                        {**request, "timeoutSeconds": 301}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-fresh-screen-start", bad)["ok"])
+
+    def test_windows_owner_quit_routes_require_exact_request(self):
+        from agent_tools import windows_msi_owner_observe
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "correlationId": correlation, "sourceSha": "a" * 40,
+                   "controllerId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                   "installedCliSha256": "b" * 64, "parentPid": 3640,
+                   "parentStartedAtUtc": "2026-09-25T10:18:47.4249100Z", "childPid": 5520,
+                   "childStartedAtUtc": "2026-09-25T10:18:47.7734480Z",
+                   "statusCorrelationId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc"}
+        routes = (("windows-msi-owner-quit-preflight", "quit_powershell_preflight", {"host": "archlinux"}),
+                  ("windows-msi-owner-quit-start", "quit_start", request),
+                  ("windows-msi-owner-quit-status", "quit_status", {"correlationId": correlation}),
+                  ("windows-msi-owner-quit-collect", "quit_collect", {"correlationId": correlation}))
+        for action, method, inputs in routes:
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_msi_owner_observe, method, return_value={
+                     "state": "passed" if action.endswith("preflight") else "running",
+                     "correlationId": correlation, "replayAllowed": False}) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, inputs)
+                self.assertTrue(result["ok"])
+                dispatch.assert_called_once_with(mcp_server.REPO_ROOT, inputs)
+        with patch.object(windows_msi_owner_observe, "quit_start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "other"}, {**request, "extra": True},
+                        {**request, "statusCorrelationId": "not-a-uuid"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-msi-owner-quit-start", bad)["ok"])
+        for state, expected in (("quit-complete", True), ("quit-partial", False), ("unknown", False)):
+            with self.subTest(state=state), \
+                 patch.object(windows_msi_owner_observe, "quit_status", return_value={
+                     "state": state, "correlationId": correlation,
+                     "replayAllowed": False}) as status:
+                observed = mcp_server._vm_workflow_impl("windows-msi-owner-quit-status",
+                    {"correlationId": correlation})
+            status.assert_called_once()
+            self.assertEqual(expected, observed["ok"])
+            self.assertFalse(observed["replayAllowed"])
+            if expected:
+                from agent_tools import native_failure_evidence
+                with patch.object(native_failure_evidence, "record_failure",
+                                  side_effect=AssertionError("successful quit recorded failure")):
+                    enriched = mcp_server._native_response("vm_workflow",
+                        "windows-msi-owner-quit-status", observed, {"correlationId": correlation})
+                self.assertNotIn("failureSignature", enriched)
+                self.assertNotIn("failureEvidence", enriched)
+
+    def test_windows_base_pre_effect_status_is_read_only_exact_host(self):
+        from agent_tools import windows_msi_base_prepare
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_msi_base_prepare, "pre_effect_status", return_value={
+                 "state": "absent", "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}) as observe:
+            result = mcp_server._vm_workflow_impl("windows-msi-base-pre-effect-status",
+                                                  {"host": "archlinux"})
+        observe.assert_called_once_with(mcp_server.REPO_ROOT, {"host": "archlinux"})
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["nativeActionAllowed"])
+        with patch.object(windows_msi_base_prepare, "pre_effect_status", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({"host": "other"}, {"host": "archlinux", "correlationId": "other"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-msi-base-pre-effect-status", bad)["ok"])
+
+    def test_windows_base_pre_effect_close_requires_fixed_host_and_terminal_receipt(self):
+        from agent_tools import windows_msi_base_prepare
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_msi_base_prepare, "close_pre_effect", return_value={
+                 "state": "pre-effect-closed", "replayAllowed": False,
+                 "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}) as close:
+            result = mcp_server._vm_workflow_impl("windows-msi-base-pre-effect-close",
+                                                  {"host": "archlinux"})
+        close.assert_called_once_with(mcp_server.REPO_ROOT, {"host": "archlinux"})
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["replayAllowed"])
+        with patch.object(windows_msi_base_prepare, "close_pre_effect", return_value={
+                "state": "unknown", "replayAllowed": False}):
+            uncertain = mcp_server._vm_workflow_impl("windows-msi-base-pre-effect-close",
+                                                       {"host": "archlinux"})
+        self.assertFalse(uncertain["ok"])
+        self.assertFalse(uncertain["replayAllowed"])
+        with patch.object(windows_msi_base_prepare, "close_pre_effect", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({"host": "other"}, {"host": "archlinux", "correlationId": "other"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-msi-base-pre-effect-close", bad)["ok"])
+
+    def test_android_host_fixture_routes_preserve_no_device_admission(self):
+        from agent_tools import android_native_fixture_lifecycle
+        campaign = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "device": "api29", "campaignId": campaign,
+                   "planPath": "/private/fixture-plan.json", "certificatePath": "/private/cert.pem",
+                   "privateKeyPath": "/private/key.pem"}
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(android_native_fixture_lifecycle, "start", return_value={
+                 "ok": True, "state": "running", "campaignId": campaign,
+                 "deviceMutationAllowed": False, "installerTargetAdmitted": False}) as start:
+            result = mcp_server._vm_workflow_impl("android-native-fixture-start", request)
+        start.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", "api29", campaign,
+                                      "/private/fixture-plan.json", "/private/cert.pem", "/private/key.pem")
+        self.assertFalse(result["deviceMutationAllowed"])
+        self.assertFalse(result["installerTargetAdmitted"])
+        for action, name in (("android-native-fixture-status", "status"),
+                             ("android-native-fixture-stop", "stop"),
+                             ("android-native-fixture-collect", "collect")):
+            with self.subTest(action=action), \
+                 patch.object(android_native_fixture_lifecycle, name, return_value={
+                     "ok": False, "state": "unknown", "campaignId": campaign,
+                     "replayAllowed": False}) as method:
+                observed = mcp_server._vm_workflow_impl(action, {"campaignId": campaign})
+                method.assert_called_once_with(mcp_server.REPO_ROOT, campaign)
+                self.assertFalse(observed["installerTargetAdmitted"])
+                self.assertFalse(observed["deviceMutationAllowed"])
+        with patch.object(android_native_fixture_lifecycle, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "planPath": "relative.json"},
+                        {**request, "device": "API29"}, {**request, "secretBytes": "data"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("android-native-fixture-start", bad)["ok"])
+
+    def test_linux_deb_arch_preparation_and_acceptance_routes_are_exact_one_shot(self):
+        from agent_tools import (linux_deb_arch_guest_prepare as preparation,
+                                 linux_deb_arch_acceptance as acceptance,
+                                 linux_deb_arch_guest_prepare_remote as remote,
+                                 linux_deb_arch_host_supervisor as supervisor,
+                                 linux_deb_arch_transport as transport)
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        artifacts = {key: "sha256-" + "a" * 64 for key in
+                     ("fixtureReceipt", "basePackage", "targetPackage", "bundleManifest")}
+        request = {"profile": "package-update", "distribution": "arch", "correlationId": correlation,
+                   "sourceSha": "b" * 40, "artifactIds": artifacts}
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(preparation, "preflight", return_value={"inputsVerified": True,
+                                                                     "nativeActionAllowed": False}) as preflight:
+            checked = mcp_server._vm_workflow_impl("linux-deb-arch-guest-prepare-preflight", request)
+        self.assertTrue(checked["ok"])
+        self.assertFalse(checked["nativeActionAllowed"])
+        preflight.assert_called_once()
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(remote, "FixedRemoteDriver") as driver, \
+             patch.object(preparation, "Adapter") as adapter:
+            adapter.return_value.start.return_value = {"state": "unknown", "correlationId": correlation,
+                                                        "replayAllowed": False}
+            unknown = mcp_server._vm_workflow_impl("linux-deb-arch-guest-prepare-start", request)
+            adapter.return_value.start.assert_called_once_with(request)
+            driver.assert_called_once_with(mcp_server.REPO_ROOT)
+        self.assertFalse(unknown["ok"])
+        self.assertFalse(unknown["replayAllowed"])
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(supervisor, "FixedHostSupervisor") as driver, \
+             patch.object(transport, "FixedLiveObserver") as observer, \
+             patch.object(acceptance, "Adapter") as adapter:
+            adapter.return_value.status.return_value = {"state": "terminal", "result": "rollback-restored",
+                                                         "correlationId": correlation, "replayAllowed": False}
+            terminal = mcp_server._vm_workflow_impl("linux-deb-arch-acceptance-status",
+                                                     {"correlationId": correlation})
+            adapter.return_value.status.assert_called_once_with(correlation)
+            driver.assert_called_once_with(mcp_server.REPO_ROOT)
+            observer.assert_called_once_with(mcp_server.REPO_ROOT)
+        self.assertTrue(terminal["ok"])
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(supervisor, "FixedHostSupervisor"), \
+             patch.object(transport, "FixedLiveObserver"), \
+             patch.object(acceptance, "Adapter") as adapter:
+            adapter.return_value.preflight.return_value = {"ready": False,
+                                                             "nativeActionAllowed": False}
+            blocked = mcp_server._vm_workflow_impl("linux-deb-arch-acceptance-preflight", request)
+            adapter.return_value.preflight.assert_called_once_with(request)
+        self.assertFalse(blocked["ok"])
+        self.assertFalse(blocked["nativeActionAllowed"])
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(supervisor, "FixedHostSupervisor"), \
+             patch.object(transport, "FixedLiveObserver"), \
+             patch.object(acceptance, "Adapter") as adapter:
+            adapter.return_value.start.return_value = {"state": "unknown", "correlationId": correlation,
+                                                        "replayAllowed": False}
+            unknown = mcp_server._vm_workflow_impl("linux-deb-arch-acceptance-start", request)
+            adapter.return_value.start.assert_called_once_with(request)
+        self.assertFalse(unknown["ok"])
+        self.assertFalse(unknown["replayAllowed"])
+        with patch.object(preparation, "Adapter", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "artifactIds": {}}, {**request, "extra": True}):
+                self.assertFalse(mcp_server._vm_workflow_impl("linux-deb-arch-guest-prepare-start", bad)["ok"])
+
+    def test_artifact_cache_requires_verified_same_source(self):
+        from agent_tools import native_artifact_reuse
+        source = "a" * 40
+        base = {"decision": "same-source", "verification": "verified",
+                "currentSourceSha": source, "originalSourceSha": source,
+                "reasons": [], "nativeAdmissionReady": False}
+        with patch.object(mcp_server.subprocess, "check_output", return_value=source), \
+             patch.object(native_artifact_reuse, "artifact_reuse_check", return_value=base):
+            result = mcp_server._vm_workflow_impl("artifact-cache-check",
+                {"sourceSha": source, "artifactSetId": "set"})
+        self.assertTrue(result["cacheEligible"])
+        self.assertFalse(result["nativeActionAllowed"])
+        for changed in ({"verification": "mismatch"}, {"decision": "verified-equivalent-product-inputs"},
+                        {"currentSourceSha": "b" * 40}, {"reasons": ["dirty product"]}):
+            with patch.object(mcp_server.subprocess, "check_output", return_value=source), \
+                 patch.object(native_artifact_reuse, "artifact_reuse_check", return_value={**base, **changed}):
+                self.assertFalse(mcp_server._vm_workflow_impl("artifact-cache-check",
+                    {"sourceSha": source, "artifactSetId": "set"})["cacheEligible"])
+        self.assertFalse(mcp_server._vm_workflow_impl("artifact-cache-check",
+            {"sourceSha": source, "artifactSetId": "set", "command": "build"})["ok"])
+
+    def test_vm_preflight_batch_parallel_and_fail_closed(self):
+        import threading
+        from agent_tools import native_acceptance_overview
+        barrier = threading.Barrier(2)
+        def observe(action, inputs):
+            barrier.wait(timeout=2)
+            if action == "environment-status":
+                return {"ok": True, "state": "READY", "source": "live-tool",
+                        "ready": True, "productAction": False}
+            return {"ok": True, "inventoryComplete": True,
+                    "nativeActionAllowed": False, "productAction": False}
+        reads = {"reads": [
+            {"id": "ubuntu", "action": "environment-status", "inputs": {"hostAlias": "archlinux"}},
+            {"id": "arch", "action": "linux-vm-readonly-inventory",
+             "inputs": {"host": "archlinux", "timeoutSeconds": 5}},
+        ]}
+        result = native_acceptance_overview.batch_preflight(reads, observe)
+        self.assertTrue(result["observationsComplete"])
+        self.assertFalse(result["nativeActionAllowed"])
+        unknown = native_acceptance_overview.batch_preflight(reads,
+            lambda action, inputs: {"ok": False, "state": "unknown"})
+        self.assertFalse(unknown["observationsComplete"])
+        self.assertEqual("unknown", unknown["state"])
+        with self.assertRaisesRegex(ValueError, "read-only"):
+            native_acceptance_overview.batch_preflight({"reads": [
+                {"id": "unsafe", "action": "environment-reserve", "inputs": {}}]}, observe)
+        with self.assertRaisesRegex(ValueError, "repeated"):
+            native_acceptance_overview.batch_preflight({"reads": [reads["reads"][0], reads["reads"][0]]}, observe)
+
+    def test_android_consent_preflight_exact_route(self):
+        from agent_tools import android_consent_acceptance
+        request = {"host": "archlinux", "device": "api29",
+                   "cliStageCorrelationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+        with patch.object(android_consent_acceptance, "preflight", return_value={
+            "ok": False, "state": "unknown", "code": "stage_unknown", "productAction": False}) as preflight:
+            result = mcp_server._vm_workflow_impl("android-consent-acceptance-preflight", request)
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["productAction"])
+        preflight.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", "api29", request["cliStageCorrelationId"])
+        self.assertFalse(mcp_server._vm_workflow_impl("android-consent-acceptance-preflight",
+            {**request, "command": "start"})["ok"])
+
+    def test_linux_workspace_cleanup_route_requires_exact_terminal_proof(self):
+        from agent_tools import linux_rpm_workspace_recovery
+        request = {"correlationId": "944447ff-7ee3-42df-8ca8-f02dac670459",
+                   "cleanupCorrelationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+        with patch.object(linux_rpm_workspace_recovery, "cleanup_start", return_value={
+            "state": "unknown", "correlationId": request["cleanupCorrelationId"],
+            "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("linux-rpm-workspace-cleanup-start", request)
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["productAction"])
+        start.assert_called_once_with(mcp_server.REPO_ROOT, request)
+        with patch.object(linux_rpm_workspace_recovery, "cleanup_status", return_value={
+            "state": "terminal", "result": "passed", "workspaceRemoved": True,
+            "replayAllowed": False}) as status:
+            result = mcp_server._vm_workflow_impl("linux-rpm-workspace-cleanup-status",
+                {"cleanupCorrelationId": request["cleanupCorrelationId"]})
+        self.assertTrue(result["ok"])
+        status.assert_called_once()
+        self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-workspace-cleanup-start",
+            {**request, "shell": "rm"})["ok"])
+        self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-workspace-cleanup-status",
+            {"cleanupCorrelationId": "not-a-uuid"})["ok"])
+
+    def test_build_timing_report_is_source_bound_and_marks_missing_phases(self):
+        import hashlib
+        import json
+        import os
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from agent_tools import native_build_timing
+        source = "a" * 40
+        run = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        with TemporaryDirectory() as raw:
+            root = Path(raw)
+            directory = root / ".rag_index" / "build-timings"
+            directory.mkdir(parents=True)
+            os.chmod(directory.parent, 0o700)
+            os.chmod(directory, 0o700)
+            record = {"schemaVersion": 1, "sourceSha": source, "pipelineId": "linux-rpm",
+                      "runId": run, "hostAlias": "archlinux", "phase": "gradle",
+                      "startedMonotonicNs": 100, "finishedMonotonicNs": 10_000_100}
+            path = directory / "gradle.json"
+            raw_bytes = json.dumps(record).encode()
+            path.write_bytes(raw_bytes)
+            os.chmod(path, 0o600)
+            request = {"sourceSha": source, "pipelineId": "linux-rpm", "runId": run,
+                       "receipts": [{"path": ".rag_index/build-timings/gradle.json",
+                                     "sha256": hashlib.sha256(raw_bytes).hexdigest()}]}
+            result = native_build_timing.report(root, source, request)
+            self.assertEqual("gradle", result["largestMeasuredPhase"])
+            self.assertFalse(result["allPhasesMeasured"])
+            self.assertEqual(4, sum(p["state"] == "unmeasured" for p in result["phases"]))
+            self.assertFalse(result["nativeActionAllowed"])
+            with self.assertRaisesRegex(ValueError, "source"):
+                native_build_timing.report(root, "b" * 40, request)
+            with self.assertRaisesRegex(ValueError, "bytes"):
+                native_build_timing.report(root, source, {**request,
+                    "receipts": [{**request["receipts"][0], "sha256": "0" * 64}]})
+            path.unlink()
+            self.assertFalse(path.exists())
+            empty = native_build_timing.report(root, source, {**request, "receipts": []})
+            self.assertEqual("unmeasured", empty["state"])
+
+    def test_build_timing_route_does_not_promote_unmeasured_to_complete(self):
+        from agent_tools import native_build_timing
+        source = "a" * 40
+        request = {"sourceSha": source, "pipelineId": "linux-rpm",
+                   "runId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "receipts": []}
+        with patch.object(mcp_server.subprocess, "check_output", return_value=source), \
+             patch.object(native_build_timing, "report", return_value={
+                 "state": "unmeasured", "allPhasesMeasured": False,
+                 "nativeActionAllowed": False, "productAction": False}):
+            result = mcp_server._vm_workflow_impl("build-timing-report", request)
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["allPhasesMeasured"])
+
+    def test_mcp_boundary_adds_valid_correlation_and_disallows_unknown_replay(self):
+        from agent_tools import native_failure_evidence, native_next_action
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        with patch.object(native_next_action, "next_action", return_value={}), \
+             patch.object(native_failure_evidence, "record_failure", return_value={"state": "recorded"}):
+            unknown = mcp_server._native_response("vm_workflow", "fixture-status",
+                {"ok": False, "state": "unknown"}, {"correlationId": correlation})
+            self.assertEqual(correlation, unknown["correlationId"])
+            self.assertFalse(unknown["replayAllowed"])
+            unsafe = mcp_server._native_response("vm_workflow", "fixture-status",
+                {"ok": False, "state": "unknown", "replayAllowed": True},
+                {"correlationId": correlation})
+            self.assertFalse(unsafe["replayAllowed"])
+            typed = mcp_server._native_response("vm_workflow", "fixture-status",
+                {"ok": False, "state": "unknown", "failurePhase": "owner_probe",
+                 "failureType": "process_identity_changed"}, {"correlationId": correlation})
+            self.assertEqual({"phase": "owner_probe", "failureType": "process_identity_changed"},
+                             typed["uncertainty"])
+            untyped = mcp_server._native_response("vm_workflow", "fixture-status",
+                {"ok": False, "state": "unknown", "failurePhase": "owner_probe",
+                 "failureType": "unexpected; command"}, {"correlationId": correlation})
+            self.assertNotIn("uncertainty", untyped)
+            malformed = mcp_server._native_response("vm_workflow", "fixture-status",
+                {"ok": True, "state": "ready"}, {"correlationId": "untrusted"})
+            self.assertNotIn("correlationId", malformed)
+
+    def test_failure_signature_groups_cause_without_erasing_correlation_or_receipt(self):
+        from agent_tools import native_failure_evidence, native_next_action
+        first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        with patch.object(native_next_action, "next_action", return_value={}), \
+             patch.object(native_failure_evidence, "record_failure", side_effect=[
+                 {"evidenceId": "native-failure-one"}, {"evidenceId": "native-failure-two"}]):
+            a = mcp_server._native_response("vm_workflow", "linux-rpm-workspace-cleanup-start",
+                {"ok": False, "state": "unknown", "reason": "workspace-reference-unknown"},
+                {"correlationId": first})
+            b = mcp_server._native_response("vm_workflow", "linux-rpm-workspace-cleanup-start",
+                {"ok": False, "state": "unknown", "reason": "workspace-reference-unknown"},
+                {"correlationId": second})
+        self.assertNotEqual(a["correlationId"], b["correlationId"])
+        self.assertNotEqual(a["failureEvidence"], b["failureEvidence"])
+        self.assertEqual(a["failureSignature"]["fingerprint"], b["failureSignature"]["fingerprint"])
+        self.assertIn("test_cleanup_requires_absent_scanner", a["failureSignature"]["causalRegression"])
+        self.assertFalse(a["admissionGap"]["nativeActionAllowed"])
+        self.assertIsNone(a["admissionGap"]["readOnlyAction"])
+
+    def test_admission_gap_uses_only_adapter_correlation_for_safe_status(self):
+        from agent_tools import native_response_diagnostics
+        cleanup = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        described = native_response_diagnostics.describe("vm_workflow",
+            "linux-rpm-workspace-cleanup-start",
+            {"state": "unknown", "reason": "existing-intent", "correlationId": cleanup})
+        self.assertEqual({"tool": "vm_workflow", "action": "linux-rpm-workspace-cleanup-status",
+                          "inputs": {"cleanupCorrelationId": cleanup}},
+                         described["admissionGap"]["readOnlyAction"])
+        foreign = native_response_diagnostics.describe("vm_workflow",
+            "linux-rpm-workspace-cleanup-start",
+            {"state": "unknown", "reason": "existing-intent", "correlationId": "bad"})
+        self.assertIsNone(foreign["admissionGap"]["readOnlyAction"])
+        self.assertEqual("terminal status of the existing cleanup intent",
+                         foreign["admissionGap"]["missingFact"])
+
     def test_loaded_native_adapter_changed_after_mcp_boot_requires_fresh_process(self):
         with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 0, create=True):
             with self.assertRaisesRegex(ValueError, "MCP adapter source changed"):
@@ -83,6 +1105,52 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-fixture-server-collect", observe)["ok"])
         with patch.object(linux_rpm_fixture_server_lifecycle, "status", side_effect=ValueError("invalid observation")):
             self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-fixture-server-status", {**observe, "shell": "id"})["ok"])
+
+    def test_linux_https_server_stop_route_requires_exact_terminal_pidfd_proof(self):
+        from agent_tools import linux_rpm_fixture_server_lifecycle
+        observe = {"correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+        with patch.object(linux_rpm_fixture_server_lifecycle, "stop", return_value={
+            "state": "unknown", "replayAllowed": False}) as stop:
+            result = mcp_server._vm_workflow_impl("linux-rpm-fixture-server-stop", observe)
+            self.assertFalse(result["ok"])
+            stop.assert_called_once_with(mcp_server.REPO_ROOT, observe)
+        with patch.object(linux_rpm_fixture_server_lifecycle, "stop", return_value={
+            "state": "terminal", "result": "stopped", "pidfdExitObserved": True,
+            "replayAllowed": False}) as stop:
+            result = mcp_server._vm_workflow_impl("linux-rpm-fixture-server-stop", observe)
+            self.assertTrue(result["ok"])
+            stop.assert_called_once_with(mcp_server.REPO_ROOT, observe)
+        self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-fixture-server-stop", {**observe, "shell": "id"})["ok"])
+
+    def test_linux_vm_inventory_route_is_fixed_and_read_only(self):
+        from agent_tools import linux_vm_readonly_inventory
+        with patch.object(linux_vm_readonly_inventory, "observe", return_value={
+                "inventoryComplete": True, "nativeActionAllowed": False, "guests": {}}) as observe:
+            result = mcp_server._vm_workflow_impl("linux-vm-readonly-inventory",
+                                                  {"host": "archlinux", "timeoutSeconds": 20})
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["productAction"])
+            observe.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", timeout_seconds=20)
+            self.assertFalse(mcp_server._vm_workflow_impl("linux-vm-readonly-inventory",
+                {"host": "archlinux", "timeoutSeconds": 20, "shell": "id"})["ok"])
+
+    def test_linux_rpm_workspace_recovery_status_is_exact_read_only(self):
+        from agent_tools import linux_rpm_workspace_recovery
+        inputs = {"correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+        with patch.object(linux_rpm_workspace_recovery, "status", return_value={
+                "state": "observed", "scannerState": "referenced",
+                "referencePid": 123, "referenceStartTicks": 456}) as status:
+            result = mcp_server._vm_workflow_impl("linux-rpm-workspace-recovery-status", inputs)
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["productAction"])
+            status.assert_called_once_with(mcp_server.REPO_ROOT, inputs)
+            self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-workspace-recovery-status",
+                {**inputs, "shell": "id"})["ok"])
+            self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-workspace-recovery-status",
+                {"correlationId": "not-a-uuid"})["ok"])
+        with patch.object(linux_rpm_workspace_recovery, "status", return_value={
+                "state": "unknown", "scannerReason": "scanner-unavailable"}):
+            self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-workspace-recovery-status", inputs)["ok"])
 
     def test_windows_fixture_route_requires_correlated_artifact_collection(self):
         from agent_tools import windows_update_fixture_workflow
@@ -344,6 +1412,65 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
                 self.assertFalse(result["productAction"])
                 observed.assert_called_once_with(mcp_server.REPO_ROOT, correlation)
                 self.assertFalse(mcp_server._vm_workflow_impl(action, {"correlationId": correlation, "device": "api29"})["ok"])
+
+    def test_android_action_route_requires_exact_same_request_fixture_fields(self):
+        from agent_tools import android_action_acceptance
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "device": "api29", "correlationId": correlation,
+                   "artifactId": "sha256-" + "b" * 64,
+                   "backupCorrelationId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                   "expectedBackupSha256": "e" * 64,
+                   "expectedOwner": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "expectedRevision": 0}
+        with patch.object(android_action_acceptance, "start", return_value={
+                "state": "submitted", "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("android-action-acceptance-start", request)
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["productAction"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", "api29", correlation,
+                request["artifactId"], request["backupCorrelationId"], request["expectedBackupSha256"],
+                request["expectedOwner"], 0)
+            self.assertFalse(mcp_server._vm_workflow_impl("android-action-acceptance-start", {**request, "shell": "id"})["ok"])
+        for action, method in (("android-action-acceptance-status", "status"),
+                               ("android-action-acceptance-collect", "collect")):
+            with self.subTest(action=action), patch.object(android_action_acceptance, method,
+                    return_value={"state": "running", "replayAllowed": False}) as observed:
+                result = mcp_server._vm_workflow_impl(action, {"correlationId": correlation})
+                self.assertTrue(result["ok"])
+                self.assertFalse(result["productAction"])
+                observed.assert_called_once_with(mcp_server.REPO_ROOT, correlation)
+                self.assertFalse(mcp_server._vm_workflow_impl(action, {"correlationId": correlation, "shell": "id"})["ok"])
+
+    def test_android_consent_denial_route_has_only_fixed_denial_inputs(self):
+        from agent_tools import android_consent_acceptance
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "device": "api35", "correlationId": correlation,
+                   "artifactId": "sha256-" + "b" * 64,
+                   "cliStageCorrelationId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                   "openingReadbackCorrelationId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                   "expectedBackupSha256": "f" * 64,
+                   "expectedOwner": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "expectedRevision": 0}
+        with patch.object(android_consent_acceptance, "start", return_value={
+                "state": "submitted", "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("android-consent-acceptance-start", request)
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["productAction"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", "api35", correlation,
+                request["artifactId"], request["cliStageCorrelationId"],
+                request["openingReadbackCorrelationId"], request["expectedBackupSha256"],
+                request["expectedOwner"], 0)
+            self.assertFalse(mcp_server._vm_workflow_impl("android-consent-acceptance-start",
+                {**request, "grant": True})["ok"])
+            start.assert_called_once()
+        for action, method in (("android-consent-acceptance-status", "status"),
+                               ("android-consent-acceptance-collect", "collect")):
+            with self.subTest(action=action), patch.object(android_consent_acceptance, method,
+                    return_value={"state": "running", "replayAllowed": False}) as observed:
+                result = mcp_server._vm_workflow_impl(action, {"correlationId": correlation})
+                self.assertTrue(result["ok"])
+                self.assertFalse(result["productAction"])
+                observed.assert_called_once_with(mcp_server.REPO_ROOT, correlation)
+                self.assertFalse(mcp_server._vm_workflow_impl(action,
+                    {"correlationId": correlation, "grant": True})["ok"])
 
     def test_android_document_recovery_routes_exact_unknown_and_fresh_closing_readback(self):
         from agent_tools import android_document_recovery

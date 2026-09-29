@@ -601,8 +601,9 @@ fd=os.open(os.path.join(job,'release'),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600); 
 print(json.dumps({'state':'submitted','correlationId':intent['correlationId']},separators=(',',':')))
 '''.replace('LAUNCH_CODE', repr(_LAUNCHER))
 
-_STATUS = r'''import json,os,stat,sys
-root,host,env,corr,bundle,artifacts=sys.argv[1:]
+_STATUS = r'''import hashlib,json,os,stat,sys
+from pathlib import Path
+root,host,env,corr,bundle,artifacts,guard_hash=sys.argv[1:]
 job=os.path.join(root,'native-scenario-jobs',env,'linux-rpm-public-install-recovery',corr)
 def unknown(): print(json.dumps({'state':'unknown','correlationId':corr},separators=(',',':'))); raise SystemExit(0)
 def read(name):
@@ -612,6 +613,101 @@ def read(name):
   if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>1024*1024: unknown()
   return json.loads(os.read(fd,1024*1024+1))
  finally: os.close(fd)
+def mismatch_field(intent,namespace):
+ try:
+  server=os.path.join(root,'linux-rpm-fixture-server-jobs',corr)
+  protected=namespace['_private_json'](Path(server)/'intent.json')
+  receipt=namespace['_private_json'](Path(server)/'server-receipt.json')
+  keys=('scenarioId','host','environment','bundleHash','artifactIds','correlationId')
+  mapping={key:intent[key] for key in keys}
+  digest=hashlib.sha256((json.dumps(mapping,sort_keys=True,separators=(',',':'))+'\n').encode()).hexdigest()
+  if intent.get('publicIntentSha256')!=digest:return 'publicIntentSha256'
+  if protected.get('publicIntentSha256')!=digest:return 'protectedPublicIntentSha256'
+  if receipt.get('publicIntentSha256')!=digest:return 'receiptPublicIntentSha256'
+  for key in keys:
+   if protected.get(key)!=intent.get(key):return key
+  for key in ('authorizationHandleSha256','sourceFingerprint','expectedBaseVersion',
+              'expectedTargetVersion','expectedBaseNevra','expectedTargetNevra',
+              'expectedDesktopJarSha256'):
+   if protected.get(key)!=intent.get(key):return key
+  if receipt.get('state')!='ready':return 'receiptState'
+  if receipt.get('correlationId')!=corr:return 'receiptCorrelationId'
+  if receipt.get('sourceSha')!=protected.get('sourceSha'):return 'receiptSourceSha'
+  if receipt.get('sourceFixtureArtifactId')!=intent['artifactIds']['sourceFixture']:return 'receiptSourceFixtureArtifactId'
+  if receipt.get('targetPackageArtifactId')!=intent['artifactIds']['targetPackage']:return 'receiptTargetPackageArtifactId'
+ except Exception:return 'unavailable'
+ return 'unavailable'
+def diagnose(intent):
+ if not isinstance(guard_hash,str) or len(guard_hash)!=64 or intent.get('serverGuardSha256')!=guard_hash:return 'guard-digest-mismatch'
+ path=os.path.join(job,'stage','linux-rpm-fixture-server.py')
+ try: fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+ except FileNotFoundError:return 'guard-missing'
+ except OSError:return 'guard-unsafe'
+ try:
+  before=os.fstat(fd)
+  if not stat.S_ISREG(before.st_mode) or before.st_uid!=os.geteuid() or stat.S_IMODE(before.st_mode)!=0o600 or not 0<before.st_size<=1048576:return 'guard-unsafe'
+  raw=os.read(fd,before.st_size+1);after=os.fstat(fd);current=os.stat(path,follow_symlinks=False)
+  if len(raw)!=before.st_size or (before.st_dev,before.st_ino,before.st_size)!=(after.st_dev,after.st_ino,after.st_size) or (before.st_dev,before.st_ino)!=(current.st_dev,current.st_ino):return 'guard-unsafe'
+ finally:os.close(fd)
+ if hashlib.sha256(raw).hexdigest()!=guard_hash:return 'guard-digest-mismatch'
+ namespace={'__name__':'linux_rpm_fixture_server_guard'}
+ try:
+  exec(compile(raw,'<verified-linux-rpm-fixture-server>','exec'),namespace)
+  namespace['admit_protected_server'](job,os.path.join(job,'stage'),intent)
+  return 'admission-now-ready'
+ except ValueError as error:
+  mapping={'fixture endpoint protected intent differs':'protected-intent-differs',
+   'fixture endpoint unavailable':'endpoint-unavailable',
+   'fixture endpoint workspace invalid':'workspace-invalid',
+   'fixture endpoint workspace unsafe':'workspace-unsafe',
+   'fixture endpoint inherited Java options':'inherited-java-options'}
+  reason=mapping.get(str(error),'guard-exception')
+  return reason, mismatch_field(intent,namespace) if reason=='protected-intent-differs' else None
+ except Exception:return 'guard-exception'
+def cleanup_kind():
+ try:
+  path=os.path.join(job,'harness.stdout')
+  fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+  try:
+   info=os.fstat(fd)
+   if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or not 0<info.st_size<=4194304:return None
+   first=b''
+   while not first.endswith(b'\n') and len(first)<=4096:
+    block=os.read(fd,1)
+    if not block:break
+    first+=block
+   if len(first)>4096 or not first.endswith(b'\n'):return None
+  finally:os.close(fd)
+  pointer=json.loads(first)
+  evidence=pointer.get('evidence');workspace=pointer.get('workspace')
+  prefix='/tmp/vpn-public-install-evidence-'
+  if not isinstance(evidence,str) or not evidence.startswith(prefix) or not evidence[len(prefix):] or '/' in evidence[len(prefix):] or workspace!=evidence+'/workspace':return None
+  info=os.stat(evidence,follow_symlinks=False)
+  if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)&0o077:return None
+  fd=os.open(os.path.join(evidence,'install-result.json'),os.O_RDONLY|os.O_NOFOLLOW)
+  try:
+   info=os.fstat(fd)
+   if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or not 0<info.st_size<=1048576:return None
+   raw=os.read(fd,info.st_size+1)
+   if len(raw)!=info.st_size:return None
+  finally:os.close(fd)
+  result=json.loads(raw);cleanup=result.get('syntheticWorkspaceCleanup')
+  if not isinstance(cleanup,dict) or cleanup.get('requested') is not True or cleanup.get('workspaceRemoved') is not False:return None
+  error=cleanup.get('error')
+  if not isinstance(error,str) or not error or len(error)>1024:return None
+  mapping={'Fixture owner is still running; workspace retained':'owner-running',
+   'A process still owns the synthetic workspace':'process-still-owns-workspace',
+   'Cannot inspect process ownership of synthetic workspace':'process-observation-unavailable',
+   'Privileged process ownership observation is unavailable':'privileged-observation-unavailable',
+   'Privileged process ownership observation is unknown or still referenced':'privileged-observation-unknown',
+   'Synthetic workspace ancestry was replaced':'workspace-unsafe',
+   'Synthetic evidence directory is untrusted':'workspace-unsafe',
+   'Synthetic workspace was replaced':'workspace-unsafe',
+   'Synthetic workspace contains an untrusted entry':'workspace-entry-unsafe',
+   'Synthetic workspace contains a non-file entry':'workspace-entry-unsafe',
+   'Synthetic workspace removal is uncertain':'workspace-removal-uncertain'}
+  return mapping.get(error,'other')
+ except Exception:return None
 try:
  info=os.stat(job,follow_symlinks=False)
  if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700: unknown()
@@ -626,7 +722,11 @@ try:
   if any(receipt.get(k)!=v for k,v in expected.items()) or receipt.get('pid')!=identity['pid'] or receipt.get('startTicks')!=identity['startTicks'] or type(receipt.get('exitCode')) is not int: unknown()
   summary=receipt.get('scenarioEvidence')
   if not isinstance(summary,dict) or summary.get('correlationId')!=corr: summary=None
-  print(json.dumps({'state':'terminal','correlationId':corr,'exitCode':receipt['exitCode'],'scenarioEvidence':summary,'failurePhase':receipt.get('failurePhase') if receipt.get('failurePhase') in ('harness-unverified','guest-admission') else None},separators=(',',':'))); raise SystemExit(0)
+  phase=receipt.get('failurePhase') if receipt.get('failurePhase') in ('harness-unverified','guest-admission') else None
+  diagnostic=diagnose(intent) if phase=='guest-admission' and receipt['exitCode']!=0 else None
+  kind,field=(diagnostic if isinstance(diagnostic,tuple) else (diagnostic,None))
+  cleanup=cleanup_kind() if receipt['exitCode']!=0 and isinstance(summary,dict) else None
+  print(json.dumps({'state':'terminal','correlationId':corr,'exitCode':receipt['exitCode'],'scenarioEvidence':summary,'failurePhase':phase,**({'guestAdmissionDiagnostic':kind} if kind is not None else {}),**({'guestAdmissionField':field} if field is not None else {}),**({'cleanupFailureKind':cleanup} if cleanup is not None else {})},separators=(',',':'))); raise SystemExit(0)
  try:
   parts=open('/proc/%d/stat'%identity['pid'],encoding='ascii').read().rsplit(')',1)[1].split()
   if parts[0]=='Z' or int(parts[19])!=identity['startTicks']: unknown()
@@ -791,13 +891,18 @@ class RpmPublicInstallSshDriver:
         if stored is None:
             return {'state': 'unknown', 'correlationId': correlation_id}
         try:
+            from . import linux_rpm_fixture_server_lifecycle as server_lifecycle
+            server_record = server_lifecycle._journal(self.root, correlation_id)
+            guard_hash = (server_record.get('serverGuardSha256', '')
+                          if isinstance(server_record, Mapping) else '')
             config = ssh_transport.load_config(self.root)
             host = config.hosts.get(stored['host'])
             if host is None or host.user != _ACCOUNT or not isinstance(host.fixture_transfer_root, PurePosixPath):
                 raise RpmPublicInstallSshError('RPM configured host is unavailable.')
             result = self._remote(config, stored['host'], _STATUS,
                 (str(host.fixture_transfer_root), stored['host'], stored['environment'], correlation_id,
-                 stored['bundleHash'], json.dumps(stored['artifactIds'], sort_keys=True, separators=(',', ':'))))
+                 stored['bundleHash'], json.dumps(stored['artifactIds'], sort_keys=True, separators=(',', ':')),
+                 guard_hash))
             return result if result and result.get('correlationId') == correlation_id else {'state': 'unknown', 'correlationId': correlation_id}
         except (OSError, ValueError, KeyError):
             return {'state': 'unknown', 'correlationId': correlation_id}

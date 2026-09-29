@@ -5,6 +5,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Allow guarded dev checkpoints with final exact-SHA CI verification.
+
+## 2.2.1 - 2026-09-29
+
 - Align GUI and CLI source selection and harden native parity acceptance workflows.
 - Harden native package admission and repair visual acceptance fixtures.
 - Harden native update admission and visual parity fixtures.
@@ -14,6 +18,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Harden cross-platform native fixture admission and visual capture.
 - Harden guarded native update fixtures and visible DNS validation for parity acceptance.
 - Record guarded Android document command phase for native diagnosis.
+- Advance GUI/CLI parity acceptance with guarded native workflows and source-bound evidence.
 
 ## 2.2.0 - 2026-09-28
 

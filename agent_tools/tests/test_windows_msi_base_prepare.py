@@ -63,10 +63,11 @@ class BasePrepareTests(unittest.TestCase):
             package = Path(directory) / "base.msi"
             package.write_bytes(b"source")
             with patch.object(base.windows_credential_probe_ssh, "_remote_command", return_value=("python3", "-c", "pass")), \
-                 patch.object(base.ssh_transport, "build_ssh_argv", return_value=["ssh", "archlinux"]), \
+                 patch.object(base.ssh_transport, "build_ssh_argv", return_value=["ssh", "archlinux"]) as argv, \
                  patch.object(base.subprocess, "run", side_effect=subprocess.TimeoutExpired("ssh", 1800)) as run:
                 self.assertIsNone(base._remote(object(), "", (), package, 1800))
                 self.assertEqual(run.call_args.kwargs["timeout"], 1800)
+                self.assertEqual(argv.call_args.args[2], 60)
                 self.assertTrue(run.call_args.kwargs["stdin"].closed)
 
     def test_preflight_is_inert_and_bounded(self):
@@ -125,6 +126,8 @@ class BasePrepareTests(unittest.TestCase):
             with patch.object(base, "_admit", return_value=(PAIR, package, 1)), \
                  patch.object(base, "_descriptor", return_value=(object(), Target(),
                      ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002"))), \
+                 patch.object(base, "_require_reconciled_legacy"), \
+                 patch.object(base.ssh_transport, "build_ssh_argv", return_value=["ssh", "archlinux"]), \
                  patch.object(base, "_open_base_campaign", return_value=CORR), \
                  patch.object(base, "_remote", return_value=None) as remote:
                 result = base.start(root, REQUEST)
@@ -133,6 +136,148 @@ class BasePrepareTests(unittest.TestCase):
                 self.assertEqual(base.start(root, REQUEST)["state"], "unknown")
                 self.assertEqual(remote.call_count, 1)
                 self.assertEqual(base._private_intent(root, CORR)["request"], REQUEST)
+
+    def test_base_intent_write_failure_cannot_begin_or_claim_campaign(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); package = root / "base.msi"; package.write_bytes(b"x")
+            class Target:
+                fixture_transfer_root = Path("/private/cp117")
+            with patch.object(base, "_admit", return_value=(PAIR, package, 1)), \
+                 patch.object(base, "_descriptor", return_value=(object(), Target(),
+                    ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002"))), \
+                 patch.object(base, "_require_reconciled_legacy"), \
+                 patch.object(base.ssh_transport, "build_ssh_argv", return_value=["ssh", "archlinux"]), \
+                 patch.object(base, "_reserve", side_effect=OSError("fsync failed")), \
+                 patch.object(base.campaign_lease, "begin") as begin, \
+                 patch.object(base.campaign_lease, "claim_role") as claim, \
+                 patch.object(base, "_remote") as remote:
+                with self.assertRaisesRegex(OSError, "fsync failed"):
+                    base.start(root, REQUEST)
+                begin.assert_not_called(); claim.assert_not_called(); remote.assert_not_called()
+
+    def test_invalid_ssh_transport_fails_before_base_intent_or_campaign(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); package = root / "base.msi"; package.write_bytes(b"x")
+            target = type("Target", (), {"fixture_transfer_root": Path("/private/cp117")})()
+            with patch.object(base, "_admit", return_value=(PAIR, package, 1)), \
+                 patch.object(base, "_descriptor", return_value=(object(), target,
+                     ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002"))), \
+                 patch.object(base, "_require_reconciled_legacy"), \
+                 patch.object(base, "_require_base_route_free"), \
+                 patch.object(base.ssh_transport, "build_ssh_argv", side_effect=ValueError("transport invalid")) as argv, \
+                 patch.object(base, "_reserve") as reserve, \
+                 patch.object(base, "_open_base_campaign") as campaign, \
+                 patch.object(base, "_remote") as remote:
+                with self.assertRaisesRegex(ValueError, "transport invalid"):
+                    base.start(root, REQUEST)
+                self.assertEqual(argv.call_args.args[2], 60)
+                reserve.assert_not_called(); campaign.assert_not_called(); remote.assert_not_called()
+                self.assertIsNone(base._private_intent(root, CORR))
+
+    def test_pre_effect_status_requires_exact_failed_intent_and_guest_absence(self):
+        corr = base._PRE_EFFECT_REJECTED_CORRELATION
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            intent = {"request": dict(REQUEST, correlationId=corr), "leaseId": corr,
+                      "commandSha256": base._PRE_EFFECT_REJECTED_COMMAND_SHA256,
+                      "environment": "windows-cp117", "socketPath": "/qga.sock",
+                      "pid": 589342, "startTicks": 520739,
+                      "expectedSid": "S-1-5-21-1-2-3-1002"}
+            base._reserve(root, intent)
+            target = type("Target", (), {"fixture_transfer_root": Path("/private/cp117")})()
+            descriptor = (object(), target, ("windows-cp117", "/qga.sock", 589342,
+                      520739, "S-1-5-21-1-2-3-1002"))
+            absent = {"state": "absent", "correlationId": corr, "qemuPid": 589342,
+                      "startTicks": 520739}
+            with patch.object(base, "_descriptor", return_value=descriptor), \
+                 patch.object(base, "_remote", return_value=json.dumps(absent).encode()) as remote:
+                self.assertEqual(base.pre_effect_status(root, {"host": "archlinux"}), absent)
+                self.assertIs(remote.call_args.args[1], base._PRE_EFFECT_STATUS)
+            with patch.object(base, "_descriptor", return_value=descriptor), \
+                 patch.object(base, "_remote", return_value=json.dumps(dict(absent, state="present")).encode()):
+                self.assertEqual(base.pre_effect_status(root, {"host": "archlinux"})["state"], "unknown")
+            with self.assertRaises(base.WindowsMsiBasePrepareError):
+                base.pre_effect_status(root, {"host": "wrong"})
+
+    def test_failed_pre_dispatch_base_closure_preserves_intent_and_frees_only_exact_route(self):
+        corr = base._PRE_EFFECT_REJECTED_CORRELATION
+        sid = "S-1-5-21-1-2-3-1002"
+        descriptor = ("windows-cp117", "/qga.sock", 589342, 520739, sid)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            intent = {"request": base._PRE_EFFECT_REJECTED_REQUEST, "leaseId": corr,
+                      "commandSha256": base._PRE_EFFECT_REJECTED_COMMAND_SHA256,
+                      "environment": descriptor[0], "socketPath": descriptor[1],
+                      "pid": descriptor[2], "startTicks": descriptor[3], "expectedSid": sid}
+            base._reserve(root, intent)
+            original = base._private_intent(root, corr)
+            identity = base._campaign_identity(base._PRE_EFFECT_REJECTED_REQUEST, descriptor)
+            def remote(action, request):
+                desired = request["desired"]
+                return json.dumps({"version": 1, "action": action, "leaseId": corr,
+                                   "recordSha256": base.campaign_lease._digest(desired),
+                                   "state": "confirmed"}).encode()
+            self.assertEqual(base.campaign_lease.begin(root, identity, remote)["state"], "active")
+            self.assertEqual(base.campaign_lease.claim_role(root, corr, "base", corr, remote)["state"], "role-active")
+            target = type("Target", (), {"fixture_transfer_root": Path("/private/cp117")})()
+            observed = {"state": "absent", "correlationId": corr, "qemuPid": 589342,
+                        "startTicks": 520739}
+            idle = {"state": "ready", "ready": True, "code": "READY", "installedVersion": "2.1.17",
+                    "productCount": 1, "activeCount": 0, "activeProcesses": []}
+            with patch.object(base, "_descriptor", return_value=(object(), target, descriptor)), \
+                 patch.object(base, "pre_effect_status", return_value=observed) as probe, \
+                 patch.object(base, "readiness", return_value=idle), \
+                 patch.object(base, "_campaign_remote", return_value=remote):
+                closed = base.close_pre_effect(root, {"host": "archlinux"})
+            self.assertEqual(closed["state"], "pre-effect-closed")
+            self.assertEqual(probe.call_count, 2)
+            self.assertEqual(base._private_intent(root, corr), original)
+            self.assertTrue(base._pre_effect_closed(root))
+            base._require_base_route_free(root)
+            next_corr = "05fd80ad-b93f-4450-a3e5-a67d14f24478"
+            base._reserve(root, {"request": dict(REQUEST, correlationId=next_corr),
+                                 "commandSha256": "a" * 64})
+            self.assertIsNotNone(base._private_intent(root, next_corr))
+
+    def test_pre_effect_closure_refuses_present_guest_or_active_installer(self):
+        corr = base._PRE_EFFECT_REJECTED_CORRELATION
+        sid = "S-1-5-21-1-2-3-1002"
+        descriptor = ("windows-cp117", "/qga.sock", 589342, 520739, sid)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base._reserve(root, {"request": base._PRE_EFFECT_REJECTED_REQUEST, "leaseId": corr,
+                "commandSha256": base._PRE_EFFECT_REJECTED_COMMAND_SHA256,
+                "environment": descriptor[0], "socketPath": descriptor[1], "pid": descriptor[2],
+                "startTicks": descriptor[3], "expectedSid": sid})
+            target = type("Target", (), {"fixture_transfer_root": Path("/private/cp117")})()
+            exact = {"state": "absent", "correlationId": corr, "qemuPid": 589342, "startTicks": 520739}
+            idle = {"state": "ready", "ready": True, "code": "READY", "installedVersion": "2.1.17",
+                    "productCount": 1, "activeCount": 0, "activeProcesses": []}
+            with patch.object(base, "_descriptor", return_value=(object(), target, descriptor)), \
+                 patch.object(base, "_campaign_remote") as remote, \
+                 patch.object(base, "readiness", return_value=idle):
+                with patch.object(base, "pre_effect_status", side_effect=[exact, dict(exact, state="unknown")]):
+                    self.assertEqual(base.close_pre_effect(root, {"host": "archlinux"})["state"], "unknown")
+                with patch.object(base, "pre_effect_status", return_value=exact), \
+                     patch.object(base, "readiness", return_value=dict(idle, activeCount=1)):
+                    self.assertEqual(base.close_pre_effect(root, {"host": "archlinux"})["state"], "unknown")
+                remote.assert_not_called()
+            self.assertFalse(base._pre_effect_marker(root).exists())
+
+    def test_forged_pre_effect_marker_cannot_free_base_route(self):
+        corr = base._PRE_EFFECT_REJECTED_CORRELATION
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base._reserve(root, {"request": base._PRE_EFFECT_REJECTED_REQUEST,
+                "commandSha256": base._PRE_EFFECT_REJECTED_COMMAND_SHA256})
+            marker = base._pre_effect_marker(root)
+            marker.write_text(json.dumps({"correlationId": corr,
+                "commandSha256": base._PRE_EFFECT_REJECTED_COMMAND_SHA256,
+                "state": "pre-effect-closed", "cleanupReceiptSha256": "a" * 64}))
+            marker.chmod(0o600)
+            self.assertFalse(base._pre_effect_closed(root))
+            with self.assertRaises(base.WindowsMsiBasePrepareError):
+                base._require_base_route_free(root)
 
     def test_legacy_reconciliation_blocks_before_base_intent_or_guest_submission(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -195,10 +340,14 @@ class BasePrepareTests(unittest.TestCase):
                 return json.dumps({"version": 1, "action": action, "leaseId": CORR,
                     "recordSha256": base.campaign_lease._digest(desired),
                     "state": "confirmed"}).encode()
+            base._reserve(root, {"request": REQUEST, "pair": PAIR,
+                "environment": descriptor[0], "socketPath": descriptor[1],
+                "pid": descriptor[2], "startTicks": descriptor[3],
+                "expectedSid": descriptor[4], "leaseId": CORR})
             with patch.object(base, "_require_reconciled_legacy"), \
                  patch.object(base, "_campaign_remote", return_value=journal):
                 self.assertEqual(base._open_base_campaign(root, REQUEST, object(), Target(), descriptor), CORR)
-                with self.assertRaises(base.campaign_lease.Cp117LeaseError):
+                with self.assertRaises(base.WindowsMsiBasePrepareError):
                     base._open_base_campaign(root, dict(REQUEST, correlationId=
                         "70fa550a-a622-4123-b89c-f68a087ce808"), object(), Target(), descriptor)
                 with self.assertRaises(base.WindowsMsiBasePrepareError):

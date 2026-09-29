@@ -91,13 +91,14 @@ def _within_running_window(intent: Mapping[str, Any]) -> bool:
 
 
 def _require_cross_route_lease(root: Path, record: Mapping[str, Any]) -> None:
-    """Rebind target intent to both shared lease journals before reservation."""
+    """Rebind target intent to an idle, live campaign before reservation."""
     request = record.get("request")
     if not isinstance(request, dict) or not isinstance(record.get("leaseId"), str):
         raise WindowsMsiTargetPrepareError("CP117_CROSS_ROUTE_LEASE_UNAVAILABLE")
     config, guest, descriptor = base._descriptor(root)
-    base._verified_claimed_campaign(root, request, descriptor, config, guest,
-                                    record["leaseId"], "target")
+    observed = base._require_verified_live_fixture(root, request, descriptor, config, guest)
+    if observed != record["leaseId"]:
+        raise WindowsMsiTargetPrepareError("CP117_CROSS_ROUTE_LEASE_UNAVAILABLE")
 
 
 def _reserve(root: Path, value: dict[str, Any]) -> None:
@@ -507,6 +508,11 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     if len(encoded) >= 30000:
         raise WindowsMsiTargetPrepareError("Fixed target bootstrap exceeds Windows command admission.")
     command_hash = hashlib.sha256(command.encode("utf-16le")).hexdigest()
+    record = {"request": request, "pair": pair, "environment": env, "socketPath": sock,
+              "pid": pid, "startTicks": ticks, "expectedSid": sid, "commandSha256": command_hash}
+    record["leaseId"] = lease_id
+    record["createdAtUtc"] = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    _reserve(root, record)
     claimed = base.campaign_lease.claim_role(root, lease_id, "target", correlation,
                                               base._campaign_remote(config, target))
     if claimed["state"] != "role-active":
@@ -514,11 +520,6 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     refreshed = _verified_network_context(root, request, lease_id)
     if refreshed["probeReceiptSha256"] != fixture["probeReceiptSha256"]:
         raise WindowsMsiTargetPrepareError("CP117 owner network probe changed after target claim.")
-    record = {"request": request, "pair": pair, "environment": env, "socketPath": sock,
-              "pid": pid, "startTicks": ticks, "expectedSid": sid, "commandSha256": command_hash}
-    record["leaseId"] = lease_id
-    record["createdAtUtc"] = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-    _reserve(root, record)
     raw = base._remote(config, _REMOTE_START, (str(target.fixture_transfer_root), env, lease_id, correlation, sock,
         str(pid), str(ticks), encoded, command_hash, request["sourceSha"], pair["sourceFingerprint"],
         request["fixtureReceiptArtifactId"], request["baseMsiArtifactId"], request["targetMsiArtifactId"], sid), None, 30)

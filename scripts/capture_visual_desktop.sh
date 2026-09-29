@@ -77,12 +77,40 @@ if [[ -n "$native_scenes" ]]; then
     sudo date 0903120026.00 >/dev/null
     restore_macos_clock=true
   fi
-  VPN_CONTROL_VISUAL_PLATFORM="$platform_name" \
-  VPN_CONTROL_VISUAL_MANIFEST="$manifest" \
-  VPN_CONTROL_VISUAL_OUTPUT="$output_abs" \
-  VPN_CONTROL_VISUAL_NATIVE_SCENES="$native_scenes" \
-  VPN_CONTROL_VISUAL_PACKAGE="$visual_package" \
-    ./gradlew :desktopApp:nativeVisualCapture
+  native_batches=("$native_scenes")
+  if [[ "$platform_name" == "linux" && "$native_scenes" == *linux-tray-* ]]; then
+    # Dorkbox fixes its tray implementation when the JVM first creates a tray.
+    # AWT/XEmbed and native GTK must run in separate test JVMs.
+    awt_scenes=()
+    gtk_scenes=()
+    other_scenes=()
+    IFS=',' read -r -a selected_native_scenes <<< "$native_scenes"
+    for scene in "${selected_native_scenes[@]}"; do
+      case "$scene" in
+        linux-tray-awt-*) awt_scenes+=("$scene") ;;
+        linux-tray-native-*) gtk_scenes+=("$scene") ;;
+        *) other_scenes+=("$scene") ;;
+      esac
+    done
+    native_batches=()
+    if (( ${#awt_scenes[@]} > 0 )); then
+      native_batches+=("$(IFS=,; echo "${awt_scenes[*]}")")
+    fi
+    if (( ${#gtk_scenes[@]} > 0 )); then
+      native_batches+=("$(IFS=,; echo "${gtk_scenes[*]}")")
+    fi
+    if (( ${#other_scenes[@]} > 0 )); then
+      native_batches+=("$(IFS=,; echo "${other_scenes[*]}")")
+    fi
+  fi
+  for batch in "${native_batches[@]}"; do
+    VPN_CONTROL_VISUAL_PLATFORM="$platform_name" \
+    VPN_CONTROL_VISUAL_MANIFEST="$manifest" \
+    VPN_CONTROL_VISUAL_OUTPUT="$output_abs" \
+    VPN_CONTROL_VISUAL_NATIVE_SCENES="$batch" \
+    VPN_CONTROL_VISUAL_PACKAGE="$visual_package" \
+      ./gradlew :desktopApp:nativeVisualCapture
+  done
 fi
 
 validation=(python3 scripts/visual_platform.py capture-local --platform "$platform_name" --driver /usr/bin/true --output "$output_dir")

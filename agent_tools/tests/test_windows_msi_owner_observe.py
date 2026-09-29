@@ -23,9 +23,140 @@ REQUEST = {"host": "archlinux", "correlationId": CORR, "sourceSha": "a" * 40,
            "parentPid": 3640, "parentStartedAtUtc": "2026-09-25T10:18:47.4249100Z",
            "childPid": 5520, "childStartedAtUtc": "2026-09-25T10:18:47.7734480Z"}
 INTENT = {"request": REQUEST, "expectedSid": "S-1-5-21-1-2-3-1002"}
+QUIT_CORR = "13416223-825b-4b75-8da5-ce3c51cc331a"
+QUIT_REQUEST = dict(REQUEST, correlationId=QUIT_CORR, statusCorrelationId=CORR)
+QUIT_INTENT = dict(INTENT, request={**REQUEST, "correlationId": QUIT_CORR,
+                                   "operation": "public-quit", "statusCorrelationId": CORR})
+REJECTED_REQUEST = dict(REQUEST, correlationId=owner._PRE_EFFECT_REJECTED_CORRELATION,
+                        sourceSha=owner._PRE_EFFECT_REJECTED_SOURCE,
+                        installedCliSha256="b0f3828504b4c556b30604c026b1cf9db17ce9d11e75f2b736e01760c05cce11")
+REJECTED_INTENT = {"request": REJECTED_REQUEST,
+                   "expectedSid": "S-1-5-21-2404255130-2183793310-3766671872-1002",
+                   "environment": "windows-cp117", "socketPath": "/qga.sock",
+                   "pid": 589342, "startTicks": 520739,
+                   "commandSha256": owner._PRE_EFFECT_REJECTED_COMMAND_SHA256}
 
 
 class OwnerObserveTests(unittest.TestCase):
+    @unittest.skipUnless(hasattr(os, "geteuid"), "owner staging runs on a POSIX coordinator")
+    def test_owner_remote_start_accepts_its_own_empty_artifact_payload(self):
+        """Exercise the actual remote admission parser before any guest command."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.chmod(0o700)
+            payload = {"schema": 1, "socketPath": "/qga.sock", "pid": 589342,
+                       "startTicks": 520739, "encodedCommand": base64.b64encode(b"x" * 100).decode(),
+                       "commandSha256": __import__("hashlib").sha256(b"x" * 100).hexdigest(),
+                       "sourceSha": REQUEST["sourceSha"], "artifactIds": []}
+            framed = owner.windows_credential_probe_ssh._remote_payload(payload)
+            code = owner._REMOTE_START.replace(
+                "if not isinstance(sock,str) or not sock.startswith('/') or not isinstance(pid,int) or not isinstance(ticks,int) or not live(sock,pid,ticks): raise ValueError()",
+                "if not isinstance(sock,str) or not sock.startswith('/') or not isinstance(pid,int) or not isinstance(ticks,int): raise ValueError()")
+            code = code.replace("result=call(sock,'guest-exec',{'path':'powershell.exe','arg':['-NoProfile','-NonInteractive','-EncodedCommand',encoded],'capture-output':True})",
+                                "result={'return':{'pid':1234}}")
+            stdout = io.StringIO()
+            stdin = io.TextIOWrapper(io.BytesIO(framed), encoding="utf-8")
+            with patch.object(sys, "argv", ["remote", str(root), "windows-cp117", CORR]), \
+                 patch.object(sys, "stdin", stdin), contextlib.redirect_stdout(stdout):
+                exec(code, {"__name__": "__main__"})
+            result = json.loads(stdout.getvalue())
+            self.assertEqual(result["state"], "submitted", result)
+            stage = root / "windows-cp117" / "windows-msi-owner-observe" / CORR
+            self.assertEqual(json.loads((stage / "dispatch.json").read_text()), {"pid": 1234})
+            self.assertEqual(json.loads((stage / "binding.json").read_text())["artifactIds"], [])
+
+    def test_pre_effect_absence_requires_exact_live_guest_and_three_absences(self):
+        descriptor = ("windows-cp117", "/qga.sock", 589342, 520739, INTENT["expectedSid"])
+        intent = {"environment": descriptor[0], "socketPath": descriptor[1],
+                  "pid": descriptor[2], "startTicks": descriptor[3], "expectedSid": descriptor[4]}
+        with tempfile.TemporaryDirectory() as directory:
+            for observed, expected in (({"state": "absent", "correlationId": CORR}, True),
+                                       ({"state": "present", "correlationId": CORR}, False),
+                                       ({"state": "absent", "correlationId": "other"}, False),
+                                       ({"state": "absent", "correlationId": CORR, "extra": True}, False)):
+                with self.subTest(observed=observed), \
+                     patch.object(owner.windows_msi_base_prepare, "_remote",
+                                  return_value=json.dumps(observed).encode()) as remote:
+                    self.assertEqual(owner._pre_effect_absence(Path(directory), CORR, intent,
+                                     object(), type("Target", (), {"fixture_transfer_root": Path(directory)})(),
+                                     descriptor), expected)
+                    self.assertEqual(remote.call_count, 1)
+            changed = dict(intent, startTicks=520740)
+            with patch.object(owner.windows_msi_base_prepare, "_remote") as remote:
+                self.assertFalse(owner._pre_effect_absence(Path(directory), CORR, changed,
+                                 object(), type("Target", (), {"fixture_transfer_root": Path(directory)})(),
+                                 descriptor))
+                remote.assert_not_called()
+
+    def test_stage_binding_status_adds_only_correlated_pre_effect_proof(self):
+        descriptor = ("windows-cp117", "/qga.sock", 589342, 520739, INTENT["expectedSid"])
+        intent = dict(INTENT, environment=descriptor[0], socketPath=descriptor[1],
+                      pid=descriptor[2], startTicks=descriptor[3], commandSha256="c" * 64)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            owner._reserve(root, intent)
+            target = type("Target", (), {"fixture_transfer_root": Path(directory)})()
+            with patch.object(owner.windows_msi_base_prepare, "_descriptor",
+                              return_value=(object(), target, descriptor)), \
+                 patch.object(owner.windows_msi_base_prepare, "_remote",
+                              side_effect=[json.dumps({"state": "unknown", "correlationId": CORR,
+                                                       "diagnostic": "STAGE_BINDING"}).encode(),
+                                           json.dumps({"state": "absent", "correlationId": CORR}).encode()]) as remote:
+                result = owner.status(root, {"correlationId": CORR})
+            self.assertEqual(result["state"], "unknown")
+            self.assertTrue(result["preEffectAbsent"])
+            self.assertFalse(result["replayAllowed"])
+            self.assertEqual(remote.call_count, 2)
+
+    def test_exact_pre_effect_rejection_closes_only_failed_old_admission(self):
+        self.assertTrue(owner._pre_effect_rejection_binding(REJECTED_INTENT))
+        self.assertFalse(owner._pre_effect_rejection_binding(dict(REJECTED_INTENT,
+                         commandSha256="0" * 64)))
+        descriptor = ("windows-cp117", "/qga.sock", 589342, 520739,
+                      REJECTED_INTENT["expectedSid"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            owner._reserve(root, REJECTED_INTENT)
+            observation = {"state": "unknown", "correlationId": REJECTED_REQUEST["correlationId"],
+                           "diagnostic": "STAGE_BINDING", "preEffectAbsent": True,
+                           "replayAllowed": False}
+            target = type("Target", (), {"fixture_transfer_root": Path(directory)})()
+            with patch.object(owner, "status", return_value=observation), \
+                 patch.object(owner.windows_msi_base_prepare, "_descriptor",
+                              return_value=(object(), target, descriptor)), \
+                 patch.object(owner, "_pre_effect_absence", return_value=True) as absence, \
+                 patch.object(owner.windows_msi_base_prepare, "_remote") as remote:
+                result = owner.collect(root, {"correlationId": REJECTED_REQUEST["correlationId"]})
+            self.assertTrue(result["preEffectRejected"])
+            self.assertEqual(result["state"], "unknown")
+            self.assertEqual(result["cleanupState"], "not-required")
+            self.assertEqual(absence.call_count, 1)
+            remote.assert_not_called()
+            self.assertEqual(owner._read_private_json(owner._closed_marker(root,
+                             REJECTED_REQUEST["correlationId"]))["state"], "pre-effect-rejected")
+            with patch.object(owner, "_pre_effect_absence", return_value=True):
+                owner._close_prior(root, object(), target, descriptor)
+            next_record = dict(INTENT, commandSha256="c" * 64)
+            owner._reserve(root, next_record)
+
+    def test_pre_effect_rejection_requires_fresh_second_absence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            owner._reserve(root, REJECTED_INTENT)
+            observation = {"state": "unknown", "correlationId": REJECTED_REQUEST["correlationId"],
+                           "diagnostic": "STAGE_BINDING", "preEffectAbsent": True,
+                           "replayAllowed": False}
+            descriptor = ("windows-cp117", "/qga.sock", 589342, 520739,
+                          REJECTED_INTENT["expectedSid"])
+            target = type("Target", (), {"fixture_transfer_root": Path(directory)})()
+            with patch.object(owner, "status", return_value=observation), \
+                 patch.object(owner.windows_msi_base_prepare, "_descriptor",
+                              return_value=(object(), target, descriptor)), \
+                 patch.object(owner, "_pre_effect_absence", return_value=False):
+                result = owner.collect(root, {"correlationId": REJECTED_REQUEST["correlationId"]})
+            self.assertEqual(result["cleanupState"], "not-attempted")
+            self.assertFalse(owner._pre_effect_marker(root, REJECTED_REQUEST["correlationId"]).exists())
+
     def test_exact_input_and_generations(self):
         self.assertEqual(owner._request(REQUEST), REQUEST)
         with self.assertRaises(owner.WindowsMsiOwnerObserveError):
@@ -44,7 +175,8 @@ class OwnerObserveTests(unittest.TestCase):
         script = owner._task(CORR, REQUEST, INTENT["expectedSid"])
         self.assertIn("if(-not [IO.File]::Exists($endpointPath))", script)
         self.assertNotIn("Start-Process", script)
-        self.assertNotIn("& $cli", script)
+        self.assertLess(script.index("P 'ENDPOINT_ABSENT' $null;exit 0"),
+                        script.index("& $cli --state-dir"))
 
     def test_endpoint_private_file_is_admitted_before_credential_read(self):
         script = owner._task(CORR, REQUEST, INTENT["expectedSid"])
@@ -114,20 +246,16 @@ class OwnerObserveTests(unittest.TestCase):
         self.assertIn("P ('UNKNOWN_'+$stage) $null", script)
         self.assertNotIn("$_.Exception.Message", script)
 
-    def test_loopback_failures_keep_secret_free_stage_boundaries(self):
+    def test_public_cli_status_replaces_hand_framed_auth_read(self):
         script = owner._task(CORR, REQUEST, INTENT["expectedSid"])
-        boundaries = ("$stage='LOOPBACK_CONNECT'", "$stage='ENDPOINT_AUTH'",
-                      "$stage='SNAPSHOT_REQUEST'", "$stage='FRAMED_RESPONSE'",
-                      "$stage='SNAPSHOT_PARSE'")
-        self.assertEqual([script.index(stage) for stage in boundaries],
-                         sorted(script.index(stage) for stage in boundaries))
-        self.assertLess(script.index(boundaries[0]), script.index("BeginConnect"))
-        self.assertLess(script.index(boundaries[1]), script.index("W $token"))
-        self.assertLess(script.index(boundaries[2]), script.index('W ("cli`tcontrol-snapshot'))
-        self.assertLess(script.index(boundaries[3]), script.index("$response=R"))
-        self.assertLess(script.index(boundaries[4]), script.index("ConvertFrom-Json -InputObject $body"))
-        for code in ("UNKNOWN_LOOPBACK_CONNECT", "UNKNOWN_ENDPOINT_AUTH",
-                     "UNKNOWN_SNAPSHOT_REQUEST", "UNKNOWN_FRAMED_RESPONSE", "UNKNOWN_SNAPSHOT_PARSE"):
+        self.assertLess(script.index("$stage='ENDPOINT_BINDING'"), script.index("$stage='PUBLIC_STATUS'"))
+        self.assertIn("& $cli --state-dir $state --json --controller-id", script)
+        self.assertIn("--timeout-seconds 15 status", script)
+        self.assertIn("$exitCode=$LASTEXITCODE", script)
+        self.assertIn("$public.code -cne 'OK'", script)
+        self.assertNotIn("[Net.Sockets.TcpClient]", script)
+        self.assertNotIn("$auth=R", script)
+        for code in ("UNKNOWN_PUBLIC_STATUS", "UNKNOWN_PUBLIC_RESULT"):
             task_result = {"version": 1, "correlationId": CORR, "code": code,
                            "originalSid": INTENT["expectedSid"], "sessionId": 1,
                            "limited": True, "snapshot": None}
@@ -136,15 +264,92 @@ class OwnerObserveTests(unittest.TestCase):
             classified = owner._classify(remote, CORR, INTENT)
             self.assertEqual(classified["diagnostic"], "TASK_" + code)
             self.assertFalse(classified["replayAllowed"])
+            self.assertIn(code, owner._REMOTE_CLEANUP)
 
-    def test_auth_substage_failure_is_bounded_and_collectable_without_replay(self):
-        script = owner._task(CORR, REQUEST, INTENT["expectedSid"])
-        self.assertLess(script.index("$stage='ENDPOINT_AUTH_WRITE'"), script.index("W $token"))
-        self.assertLess(script.index("W $token"), script.index("$stage='ENDPOINT_AUTH_READ'"))
-        self.assertLess(script.index("$stage='ENDPOINT_AUTH_READ'"), script.index("$auth=R"))
-        self.assertLess(script.index("$auth=R"), script.index("$stage='ENDPOINT_AUTH_REPLY'"))
-        self.assertLess(script.index("$stage='ENDPOINT_AUTH_REPLY'"),
-                        script.index("$auth -cne 'AUTHENTICATED'"))
+    def test_public_quit_requires_cleaned_exact_off_status_and_new_correlation(self):
+        observed = {"state": "observed", "correlationId": CORR, "controllerId": CONTROLLER,
+                    "runtimeRunning": False, "activeMode": None,
+                    "selectedLocationId": None, "activeLocationId": None}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prior = dict(INTENT, commandSha256="c" * 64)
+            owner._reserve(root, prior)
+            owner._record_closed(root, CORR, "c" * 64)
+            with patch.object(owner, "status", return_value=observed):
+                self.assertEqual(owner._quit_request(root, QUIT_REQUEST), QUIT_INTENT["request"])
+                for change in ({"runtimeRunning": True}, {"selectedLocationId": "a" * 64},
+                               {"activeLocationId": "a" * 64}, {"activeMode": "vpn"},
+                               {"controllerId": "00000000-0000-4000-8000-000000000000"}):
+                    with patch.object(owner, "status", return_value={**observed, **change}):
+                        with self.assertRaises(owner.WindowsMsiOwnerObserveError):
+                            owner._quit_request(root, QUIT_REQUEST)
+                with self.assertRaises(owner.WindowsMsiOwnerObserveError):
+                    owner._quit_request(root, dict(QUIT_REQUEST, childPid=5521))
+                with self.assertRaises(owner.WindowsMsiOwnerObserveError):
+                    owner._quit_request(root, dict(QUIT_REQUEST, correlationId=CORR))
+
+    def test_public_quit_runs_after_fresh_status_and_never_forces_owner(self):
+        script = owner._quit_task(QUIT_CORR, QUIT_INTENT["request"], INTENT["expectedSid"])
+        self.assertLess(script.index("$stage='PUBLIC_STATUS'"), script.index("$stage='QUIT_ADMISSION'"))
+        self.assertLess(script.index("$stage='QUIT_ADMISSION'"), script.index("$stage='PUBLIC_QUIT'"))
+        self.assertIn("--timeout-seconds 30 quit", script)
+        self.assertEqual(script.count("--timeout-seconds 30 quit"), 1)
+        self.assertLess(script.index("$parentBefore=Get-CimInstance"), script.index("$stage='PUBLIC_QUIT'"))
+        self.assertIn("$childBefore.CreationDate.ToUniversalTime().ToString('o')", script)
+        self.assertIn("$parentNow.CreationDate.ToUniversalTime().ToString('o')", script)
+        self.assertIn("$childNow.CreationDate.ToUniversalTime().ToString('o')", script)
+        self.assertIn("P 'QUIT_PARTIAL' $closing", script)
+        self.assertNotIn("Stop-Process", script)
+        self.assertNotIn("taskkill", script)
+        self.assertNotIn("Start-Process", script)
+        self.assertLess(len(base64.b64encode(owner._bootstrap(QUIT_CORR, QUIT_INTENT["request"],
+                                                            INTENT["expectedSid"]).encode("utf-16le"))), 30000)
+
+    def test_quit_result_requires_exact_exit_and_runtime_absence(self):
+        snapshot = {"controllerId": CONTROLLER, "runtimeRunning": False,
+                    "configuredMode": "vpn", "activeMode": None, "selectedLocationId": None,
+                    "activeLocationId": None, "parentExited": True, "childExited": True,
+                    "endpointAbsent": True, "runtimeProcessAbsent": True}
+        def classify(code, value):
+            result = {"version": 1, "correlationId": QUIT_CORR, "code": code,
+                      "originalSid": INTENT["expectedSid"], "sessionId": 1,
+                      "limited": True, "snapshot": value}
+            raw = json.dumps({"state": "observed", "correlationId": QUIT_CORR,
+                              "result": result}).encode()
+            return owner._classify(raw, QUIT_CORR, QUIT_INTENT)
+        self.assertEqual(classify("QUIT_COMPLETED", snapshot)["state"], "quit-complete")
+        partial = dict(snapshot, childExited=False)
+        self.assertEqual(classify("QUIT_PARTIAL", partial)["state"], "quit-partial")
+        self.assertEqual(classify("QUIT_COMPLETED", partial)["state"], "unknown")
+        self.assertEqual(classify("QUIT_PARTIAL", snapshot)["state"], "unknown")
+        self.assertEqual(classify("QUIT_COMPLETED", dict(snapshot, activeLocationId="a" * 64))["state"], "unknown")
+        self.assertEqual(classify("QUIT_COMPLETED", dict(snapshot, parentExited=1))["state"], "unknown")
+        self.assertEqual(classify("QUIT_COMPLETED", dict(snapshot, extra=True))["state"], "unknown")
+        self.assertIn("QUIT_COMPLETED", owner._REMOTE_CLEANUP)
+        self.assertIn("QUIT_PARTIAL", owner._REMOTE_CLEANUP)
+
+    def test_quit_intent_is_durable_before_remote_dispatch_and_never_replays(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            descriptor = ("windows-cp117", "/qga.sock", 589342, 520739, INTENT["expectedSid"])
+            target = type("Target", (), {"fixture_transfer_root": root})()
+            def dispatch(*args):
+                recorded = owner._read_intent(root, QUIT_CORR)
+                self.assertEqual(recorded["request"], QUIT_INTENT["request"])
+                self.assertEqual(recorded["pid"], 589342)
+                self.assertEqual(recorded["startTicks"], 520739)
+                self.assertEqual(len(recorded["commandSha256"]), 64)
+                return b'{"state":"submitted"}'
+            with patch.object(owner, "_quit_request", return_value=QUIT_INTENT["request"]), \
+                 patch.object(owner.windows_msi_base_prepare, "_descriptor",
+                              return_value=(object(), target, descriptor)), \
+                 patch.object(owner, "_close_prior"), \
+                 patch.object(owner.windows_credential_probe_ssh, "_run_ssh", side_effect=dispatch) as remote:
+                self.assertEqual(owner.quit_start(root, QUIT_REQUEST)["state"], "submitted")
+                self.assertEqual(owner.quit_start(root, QUIT_REQUEST)["state"], "unknown")
+                self.assertEqual(remote.call_count, 1)
+
+    def test_legacy_auth_failure_remains_bounded_and_collectable(self):
         for code in ("UNKNOWN_ENDPOINT_AUTH_WRITE", "UNKNOWN_ENDPOINT_AUTH_READ",
                      "UNKNOWN_ENDPOINT_AUTH_REPLY"):
             task_result = {"version": 1, "correlationId": CORR, "code": code,
@@ -158,8 +363,8 @@ class OwnerObserveTests(unittest.TestCase):
             self.assertIn(code, owner._REMOTE_CLEANUP)
 
     def test_auth_substage_collects_only_exact_terminal_code(self):
-        for code in ("UNKNOWN_ENDPOINT_AUTH_WRITE", "UNKNOWN_ENDPOINT_AUTH_READ",
-                     "UNKNOWN_ENDPOINT_AUTH_REPLY"):
+        for code in ("UNKNOWN_ENDPOINT_AUTH_READ", "UNKNOWN_PUBLIC_STATUS",
+                     "UNKNOWN_PUBLIC_RESULT"):
             with self.subTest(code=code), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 intent = dict(INTENT, environment="windows-cp117", socketPath="/qga.sock",

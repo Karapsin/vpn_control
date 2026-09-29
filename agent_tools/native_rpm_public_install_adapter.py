@@ -123,6 +123,30 @@ def _correlated(value: Mapping[str, Any], correlation: str, *, collecting: bool 
     result: dict[str, Any] = {"state": state, "correlationId": correlation}
     if type(value.get("exitCode")) is int:
         result["exitCode"] = value["exitCode"]
+    if (state == "terminal" and type(value.get("exitCode")) is int and
+            value["exitCode"] != 0 and value.get("cleanupFailureKind") in {
+                "owner-running", "process-still-owns-workspace",
+                "process-observation-unavailable", "privileged-observation-unavailable",
+                "privileged-observation-unknown", "workspace-unsafe",
+                "workspace-entry-unsafe", "workspace-removal-uncertain", "other"}):
+        result["cleanupFailureKind"] = value["cleanupFailureKind"]
+    if (state == "terminal" and value.get("failurePhase") == "guest-admission" and
+            value.get("guestAdmissionDiagnostic") in {
+                "guard-missing", "guard-unsafe", "guard-digest-mismatch",
+                "protected-intent-differs", "endpoint-unavailable", "workspace-invalid",
+                "workspace-unsafe", "inherited-java-options", "guard-exception",
+                "admission-now-ready"}):
+        result["guestAdmissionDiagnostic"] = value["guestAdmissionDiagnostic"]
+        if (value["guestAdmissionDiagnostic"] == "protected-intent-differs" and
+                value.get("guestAdmissionField") in {
+                    "publicIntentSha256", "protectedPublicIntentSha256", "receiptPublicIntentSha256",
+                    "scenarioId", "host", "environment", "bundleHash", "artifactIds", "correlationId",
+                    "authorizationHandleSha256", "sourceFingerprint", "expectedBaseVersion",
+                    "expectedTargetVersion", "expectedBaseNevra", "expectedTargetNevra",
+                    "expectedDesktopJarSha256", "receiptState", "receiptCorrelationId",
+                    "receiptSourceSha", "receiptSourceFixtureArtifactId",
+                    "receiptTargetPackageArtifactId", "unavailable"}):
+            result["guestAdmissionField"] = value["guestAdmissionField"]
     if collecting:
         summary = value.get("scenarioEvidence")
         cleanup = summary.get("cleanup") if isinstance(summary, Mapping) else None

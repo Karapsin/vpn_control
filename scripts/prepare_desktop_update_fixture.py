@@ -47,6 +47,83 @@ FIXTURE_ENTRYPOINT_MODULES = (
 )
 
 
+class PhaseRecorder:
+    """Emit only private, immutable timing metadata when a build opts in."""
+
+    _TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
+    _PHASES = frozenset(("gradle", "runtime-prep", "packaging", "upload", "guest-staging"))
+
+    def __init__(self, directory, source_sha, pipeline_id, run_id, host_alias):
+        if not isinstance(source_sha, str) or not re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", source_sha):
+            raise ValueError("Exact source SHA required for build timing")
+        for value in (pipeline_id, host_alias):
+            if not isinstance(value, str) or not self._TOKEN.fullmatch(value):
+                raise ValueError("Invalid build timing identity")
+        try:
+            if str(uuid.UUID(run_id)) != run_id:
+                raise ValueError()
+        except (TypeError, ValueError, AttributeError) as error:
+            raise ValueError("Canonical build timing run UUID required") from error
+        self.directory = Path(directory)
+        self.source_sha = source_sha
+        self.pipeline_id = pipeline_id
+        self.run_id = run_id
+        self.host_alias = host_alias
+        self.references = []
+
+    def start(self):
+        return time.monotonic_ns()
+
+    def finish(self, phase, sample, started_ns):
+        finished_ns = time.monotonic_ns()
+        if (phase not in self._PHASES or not isinstance(sample, str) or not self._TOKEN.fullmatch(sample)
+                or type(started_ns) is not int or not 0 <= started_ns < finished_ns
+                or finished_ns - started_ns > 24 * 60 * 60 * 1_000_000_000):
+            raise ValueError("Invalid monotonic build phase")
+        self._directory()
+        name = f"{self.pipeline_id}-{self.run_id}-{phase}-{sample}.json"
+        if len(name) > 132:
+            raise ValueError("Build timing receipt name too long")
+        record = {"schemaVersion": 1, "sourceSha": self.source_sha,
+                  "pipelineId": self.pipeline_id, "runId": self.run_id,
+                  "hostAlias": self.host_alias, "phase": phase,
+                  "startedMonotonicNs": started_ns,
+                  "finishedMonotonicNs": finished_ns}
+        raw = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        if len(raw) > 4096:
+            raise ValueError("Build timing receipt too large")
+        path = self.directory / name
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        parent = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+        reference = {"path": ".rag_index/build-timings/" + name,
+                     "sha256": hashlib.sha256(raw).hexdigest()}
+        self.references.append(reference)
+        return reference
+
+    def _directory(self):
+        parent = self.directory.parent
+        if self.directory.name != "build-timings" or parent.name != ".rag_index":
+            raise ValueError("Build timing receipts require the private index")
+        owner = os.getuid()
+        for path in (parent, self.directory):
+            try:
+                path.mkdir(mode=0o700)
+            except FileExistsError:
+                pass
+            info = path.lstat()
+            if (not stat.S_ISDIR(info.st_mode) or info.st_uid != owner
+                    or stat.S_IMODE(info.st_mode) != 0o700):
+                raise ValueError("Build timing directory unsafe")
+
+
 def fixture_entrypoint_modules(source_directory):
     """Return the declared entrypoint inventory after checking direct local imports.
 
@@ -834,7 +911,8 @@ def require_linux_build_tools(package_family=None):
                     f"install {package} in the build guest")
 
 
-def native_build(directory, confirmed, run_command=None, discard_completed_builds=False):
+def native_build(directory, confirmed, run_command=None, discard_completed_builds=False,
+                 timing_recorder=None):
     import platform as host_platform
     # This path only creates and inspects test-only package artifacts. Serving,
     # recovery, and installer/trust actions have separate guest-only gates.
@@ -844,6 +922,9 @@ def native_build(directory, confirmed, run_command=None, discard_completed_build
     snapshot = json.loads((directory / "snapshot.json").read_text())
     require(plan["testOnly"] is True and plan["productionTrustChanged"] is False, "Not a fixture build plan")
     require(snapshot["sourceFingerprint"] == plan["sourceFingerprint"] == json_hash(snapshot["files"]), "Source fingerprint mismatch")
+    if timing_recorder is not None:
+        require(plan["platform"] == "linux" and snapshot.get("sourceHead") == timing_recorder.source_sha,
+                "Linux timing source must match the frozen fixture source")
     require(host_platform.system() == PLATFORMS[plan["platform"]]["os"], "Build only on the native target OS")
     host_arch = {"AMD64": "x86_64", "aarch64": "arm64", "arm64": "arm64", "x86_64": "x86_64"}.get(host_platform.machine())
     require(host_arch == plan["architecture"], "Native build architecture mismatch; do not spoof os.arch")
@@ -876,13 +957,21 @@ def native_build(directory, confirmed, run_command=None, discard_completed_build
         os_tag = {"linux": "linux", "windows": "windows", "macos": "darwin"}[plan["platform"]]
         arch_tag = {"x86_64": "amd64", "arm64": "arm64"}[plan["architecture"]]
         bundled = checkout / "desktopApp/src/main/resources/bin" / (os_tag + "-" + arch_tag) / runtime.name
+        runtime_started = timing_recorder.start() if timing_recorder is not None else None
         bundled.parent.mkdir(parents=True)
         shutil.copyfile(runtime, bundled)
         bundled.chmod(0o755)
+        if timing_recorder is not None:
+            timing_recorder.finish("runtime-prep", stage["label"], runtime_started)
         with (directory / (stage["label"] + "-build.log")).open("xb") as log:
+            preparation_started = (timing_recorder.start()
+                                   if timing_recorder is not None and stage["preparation"] else None)
             for command in stage["preparation"]:
                 prepared = run_command(command, cwd=checkout, stdout=log, stderr=subprocess.STDOUT, check=False)
                 require(prepared.returncode == 0, "Native helper preparation failed; retain log and inputs")
+            if preparation_started is not None:
+                timing_recorder.finish("runtime-prep", stage["label"] + "-preparation",
+                                       preparation_started)
             command = stage["command"]
             if plan["platform"] == "windows":
                 # Windows CreateProcess does not resolve the executable against cwd.
@@ -890,8 +979,12 @@ def native_build(directory, confirmed, run_command=None, discard_completed_build
                 command = [str(checkout / "gradlew.bat"), *command[1:]]
             if plan["platform"] == "macos":
                 command = ["bash", "-e", "-c", 'source ./scripts/setup_macos_signing.sh; exec "$@"', "fixture-macos", *command]
+            gradle_started = timing_recorder.start() if timing_recorder is not None else None
             result = run_command(command, cwd=checkout, stdout=log, stderr=subprocess.STDOUT, check=False)
         require(result.returncode == 0, "Native build failed; retain log and inputs")
+        if timing_recorder is not None:
+            timing_recorder.finish("gradle", stage["label"], gradle_started)
+        packaging_started = timing_recorder.start() if timing_recorder is not None else None
         verify_sources(checkout, snapshot["files"])
         root = checkout / "desktopApp/build/compose/binaries/main"
         image = root / "app" / ("vpn-control.app" if plan["platform"] == "macos" else "vpn-control")
@@ -929,6 +1022,8 @@ def native_build(directory, confirmed, run_command=None, discard_completed_build
             # code-fingerprint comparison below has succeeded.
             if stage["label"] == "base":
                 discard_completed_stage_directory(directory, stage)
+        if timing_recorder is not None:
+            timing_recorder.finish("packaging", stage["label"], packaging_started)
     require(built[0]["codeFingerprint"] == built[1]["codeFingerprint"], "Base and target executable content differ beyond version metadata")
     if discard_completed_builds:
         discard_completed_stage_directory(directory, plan["stages"][1])
@@ -1342,7 +1437,7 @@ def serve_connection(request, tls, manifest, resources, manifest_body, emit, *,
     tunneled = None
     try:
         method, target, host = read_request_header(request)
-        if method != "CONNECT" or target.lower() != "github.com:443" or host.lower() != "github.com:443":
+        if method != "CONNECT" or target.lower() != "github.com:443" or host.lower() not in ("github.com", "github.com:443"):
             request.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
             raise ValueError("Rejected fixture CONNECT admission")
         request.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
@@ -1479,6 +1574,10 @@ def main():
                               help="confirm an owned native host for build-only package capture")
     build_parser.add_argument("--discard-completed-builds", action="store_true",
                               help="discard only verified build-base/build-target trees after capture")
+    build_parser.add_argument("--timing-directory", type=Path)
+    build_parser.add_argument("--timing-pipeline-id")
+    build_parser.add_argument("--timing-run-id")
+    build_parser.add_argument("--timing-host-alias")
     recover_parser = commands.add_parser("recover-macos-target-package")
     recover_parser.add_argument("--directory", type=Path, required=True)
     recover_parser.add_argument("--confirm-owned-disposable-guest", action="store_true")
@@ -1506,9 +1605,24 @@ def main():
         extract_readonly_archive(args.archive, args.output)
         result = {"extracted": str(args.output)}
     elif args.action == "build":
-        result = native_build(args.directory, args.confirm_owned_disposable_guest or
-                              args.confirm_owned_native_host_build, None,
-                              args.discard_completed_builds)
+        timing_fields = (args.timing_directory, args.timing_pipeline_id,
+                         args.timing_run_id, args.timing_host_alias)
+        require(all(value is None for value in timing_fields) or all(value is not None for value in timing_fields),
+                "Specify all Linux build timing fields together")
+        timing_recorder = None
+        if args.timing_directory is not None:
+            snapshot = json.loads((args.directory / "snapshot.json").read_text())
+            timing_recorder = PhaseRecorder(args.timing_directory, snapshot.get("sourceHead"),
+                                            args.timing_pipeline_id, args.timing_run_id,
+                                            args.timing_host_alias)
+        confirmed = args.confirm_owned_disposable_guest or args.confirm_owned_native_host_build
+        if timing_recorder is None:
+            result = native_build(args.directory, confirmed, None, args.discard_completed_builds)
+        else:
+            result = native_build(args.directory, confirmed, None,
+                                  args.discard_completed_builds, timing_recorder)
+        if timing_recorder is not None:
+            result = {**result, "timingReceipts": timing_recorder.references}
     elif args.action == "recover-macos-target-package":
         result = recover_macos_target_package(args.directory, args.confirm_owned_disposable_guest,
                                               package_only=args.package_only)

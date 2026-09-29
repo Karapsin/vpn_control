@@ -287,4 +287,5 @@ def admit_endpoint(job: Path | str, stage: Path | str, intent: Mapping[str, Any]
     return {"JAVA_TOOL_OPTIONS": " ".join((
         "-Dhttps.proxyHost=127.0.0.1", f"-Dhttps.proxyPort={port}",
         "-Dhttp.proxyHost=127.0.0.1", f"-Dhttp.proxyPort={port}",
-        f"-Djavax.net.ssl.trustStore={trust}", "-Djavax.net.ssl.trustStoreType=PKCS12"))}
+        f"-Djavax.net.ssl.trustStore={trust}", "-Djavax.net.ssl.trustStoreType=PKCS12",
+        "-Djavax.net.ssl.trustStorePassword=fixtureonly"))}

@@ -12,6 +12,7 @@ import shlex
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -70,7 +71,7 @@ SERVER_INSTRUCTIONS = (
     "MANDATORY: call prepare_start before normal repository inspection, edits, or tests. "
     "Use docs and change_impact before broad searches. Never stop the VPN/runtime without "
     "explicit user approval. Preserve unrelated dirty changes. Before finishing, use "
-    "run_checks(level='prepush'), then git_workflow for push and exact-SHA CI verification on dev. "
+    "run_checks(level='prepush'), then git_workflow for a checkpoint or final push and exact-SHA CI verification on dev. "
     "Publishing is allowed only after an explicit user release command through release_workflow. "
     "The server is fixed to the VPN Control repository root. "
     "Product invariants are centralized in agent_docs/contracts.md. "
@@ -704,14 +705,16 @@ def git_workflow(
     paths: list[str] | None = None,
     sha: str | None = None,
 ) -> dict[str, Any]:
-    """Commit/push validated work or resume exact-SHA GitHub Actions verification."""
-    if action not in {"commit", "push", "checks"}:
-        return _error("git_workflow", "action must be 'commit', 'push', or 'checks'")
+    """Commit/push validated work, defer checkpoint CI, or verify an exact SHA."""
+    if action not in {"commit", "checkpoint", "push", "checks"}:
+        return _error("git_workflow", "action must be 'commit', 'checkpoint', 'push', or 'checks'")
     if action == "checks":
         target = sha or _git_stdout(["rev-parse", "HEAD"])
         if not SHA_RE.fullmatch(target):
             return _error("git_workflow", "sha must be a full 40-character lowercase commit SHA")
         return _watch_required_workflows(target)
+    if action == "checkpoint" and sha is not None:
+        return _error("git_workflow", "checkpoint derives its pushed SHA; sha input is not accepted")
 
     state = _repo_state()
     if state.get("branch") != WORK_BRANCH:
@@ -721,12 +724,12 @@ def git_workflow(
         return _error("git_workflow", receipt_error)
 
     commands: list[dict[str, Any]] = []
-    if action == "commit":
+    if action in {"commit", "checkpoint"}:
         if not message or not message.strip():
-            return _error("git_workflow", "message is required for action='commit'")
+            return _error("git_workflow", "message is required for commit or checkpoint")
         requested = _unique(paths or [])
         if not requested:
-            return _error("git_workflow", "Explicit paths are required for action='commit'")
+            return _error("git_workflow", "Explicit paths are required for commit or checkpoint")
         path_error = _validate_commit_paths(requested)
         if path_error:
             return _error("git_workflow", path_error)
@@ -776,6 +779,19 @@ def git_workflow(
             command_results=commands,
         )
     target = _git_stdout(["rev-parse", "HEAD"])
+    if action == "checkpoint":
+        if not SHA_RE.fullmatch(target):
+            return _error("git_workflow", "Pushed checkpoint SHA could not be verified locally.",
+                          command_results=commands)
+        return {
+            "ok": True,
+            "tool": "git_workflow",
+            "summary": "Pushed intermediate dev checkpoint; required exact-SHA workflows are deferred.",
+            "result": {"sha": target, "branch": WORK_BRANCH,
+                       "requiredWorkflowsVerified": False,
+                       "deferredReason": "intermediate-checkpoint"},
+            "command_results": commands,
+        }
     watched = _watch_required_workflows(target)
     watched["command_results"] = [*commands, *watched.get("command_results", [])]
     return watched
@@ -1836,15 +1852,17 @@ def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) ->
 
 _VM_NATIVE_ADAPTERS = (
     "native_vm_baseline_config", "native_acceptance_matrix", "native_fixture_preflight",
-    "native_scenario_batch", "native_artifact_reuse", "native_scenario_execution",
+    "native_scenario_batch", "native_artifact_reuse", "native_acceptance_overview", "native_scenario_execution",
     "native_scenario_ssh", "native_artifact_registry", "native_environment",
     "native_environment_observation", "native_scenario_bundle", "native_next_action",
+    "native_response_diagnostics", "native_build_timing",
     "native_failure_evidence", "macos_installer_recovery", "native_rpm_public_install_adapter",
     "native_rpm_public_install_ssh", "android_admission_readback", "windows_msi_public_scenario",
-    "linux_update_fixture_workflow", "linux_rpm_fixture_server_lifecycle", "windows_update_fixture_workflow", "windows_update_fixture_server", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare",
+    "linux_update_fixture_workflow", "linux_rpm_fixture_server_lifecycle", "linux_rpm_workspace_recovery", "linux_vm_readonly_inventory", "windows_vm_baseline_inventory", "windows_vm_driver_fetch", "windows_vm_fresh_setup", "windows_update_fixture_workflow", "windows_update_fixture_server", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare",
     "windows_msi_owner_observe", "windows_msi_target_prepare",
-    "android_package_install", "android_public_inspect", "android_document_acceptance", "android_document_recovery", "android_cli_stage",
-    "macos_fixture_guest_stage",
+    "android_package_install", "android_public_inspect", "android_document_acceptance", "android_document_recovery", "android_action_acceptance", "android_consent_acceptance", "android_native_fixture_lifecycle", "android_cli_stage",
+    "macos_fixture_guest_stage", "linux_deb_arch_guest_prepare", "linux_deb_arch_guest_prepare_remote",
+    "linux_deb_arch_acceptance", "linux_deb_arch_transport", "linux_deb_arch_host_supervisor",
 )
 
 
@@ -1865,12 +1883,118 @@ def _agent_module(name: str) -> Any:
     return module
 
 
+def _valid_uuid(value: str) -> bool:
+    try:
+        return str(uuid.UUID(value)) == value
+    except (ValueError, AttributeError):
+        return False
+
+
 def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Validate staged inputs or calculate memory admission; neither action starts a VM."""
     workflow = importlib.import_module(f"{__package__}.vm_workflow" if __package__ else "vm_workflow")
     try:
         if not isinstance(inputs, dict):
             return _error("vm_workflow", "VM workflow inputs must be an object.")
+        if action == "acceptance-status":
+            overview = _agent_module("native_acceptance_overview")
+            matrix = _agent_module("native_acceptance_matrix")
+            registry = _agent_module("native_artifact_registry")
+            try:
+                source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip()
+                artifacts = overview.read_artifact_index(REPO_ROOT, source, registry)
+                report = overview.matrix_status_readonly(REPO_ROOT, source, matrix, registry, artifacts)
+                artifact_verification = overview.verify_local_artifact_bytes(artifacts, registry)
+                known = overview.discover_source_correlations(
+                    REPO_ROOT, source, artifacts, _agent_module("android_document_acceptance"),
+                    _agent_module("linux_rpm_workspace_recovery"),
+                    _agent_module("linux_rpm_fixture_server_lifecycle"))
+                summaries = {"macos": overview.read_macos_denial_summary(REPO_ROOT, source, artifacts)}
+                def observe_correlation(item: dict[str, Any], current_source: str,
+                                        index: dict[str, Any]) -> dict[str, Any]:
+                    action, correlation = item["statusAction"], item["correlationId"]
+                    payload = ({"host": "archlinux", "correlationId": correlation}
+                               if action == "windows-msi-public-status" else
+                               {"cleanupCorrelationId": correlation}
+                               if action == "linux-rpm-workspace-cleanup-status" else
+                               {"correlationId": correlation})
+                    observed = _vm_workflow_impl(action, payload)
+                    if observed.get("correlationId") != correlation or observed.get("state") in {None, "unknown"}:
+                        return {}
+                    bound_source = observed.get("sourceSha")
+                    details: dict[str, Any] = {}
+                    if item["platform"] == "android":
+                        document = _agent_module("android_document_acceptance")
+                        intent = document._load(REPO_ROOT, correlation)
+                        if (not isinstance(intent, dict) or intent.get("device") not in {"api29", "api35"} or
+                                not isinstance(intent.get("artifactId"), str) or
+                                intent["artifactId"] not in index.get("records", {}) or
+                                "cliStageCorrelationId" not in intent):
+                            return {}
+                        bound_source = index["records"][intent["artifactId"]].get("sourceSha")
+                        details = {"ownerIdentity": intent.get("expectedOwner"),
+                                   "deviceAlias": intent["device"]}
+                    elif item["platform"] == "linux":
+                        server = _agent_module("linux_rpm_fixture_server_lifecycle")
+                        public_correlation = correlation
+                        if action == "linux-rpm-workspace-cleanup-status":
+                            recovery = _agent_module("linux_rpm_workspace_recovery")
+                            saved = recovery._read_cleanup_journal(recovery._cleanup_journal(REPO_ROOT, correlation))
+                            public_correlation = saved["correlationId"]
+                        intent = server._journal(REPO_ROOT, public_correlation)
+                        bound_source = intent.get("sourceSha") if isinstance(intent, dict) else None
+                    return {"state": "verified", "correlationId": correlation,
+                            "sourceSha": bound_source, "operationState": observed["state"], **details}
+                def observe_owner(item: dict[str, Any]) -> dict[str, Any]:
+                    action, payload = item["action"], item["inputs"]
+                    observed = (_ssh_workflow_impl("android-observe", payload["host"],
+                                                  payload["timeoutSeconds"], device=payload["device"])
+                                if action == "android-observe" else _vm_workflow_impl(action, payload))
+                    if action == "android-observe":
+                        if (observed.get("available") is True and observed.get("ownerConsistency") == "consistent" and
+                                isinstance(observed.get("status"), dict) and
+                                isinstance(observed["status"].get("controllerId"), str)):
+                            return {"state": "running", "evidenceScope": "owner", "source": "live-tool",
+                                    "controllerId": observed["status"]["controllerId"],
+                                    "deviceAlias": payload["device"]}
+                    elif action == "linux-rpm-owner-observe":
+                        if observed.get("state") == "observed" and observed.get("pid") == payload["pid"] and observed.get("startTicks") == payload["startTicks"]:
+                            return {"state": "running", "evidenceScope": "owner", "source": "live-tool",
+                                    "pid": observed["pid"], "startTicks": observed["startTicks"],
+                                    "runtimeRunning": observed.get("runtimeRunning")}
+                    elif action == "linux-owner-public-quit-status":
+                        if observed.get("state") == "terminal" and observed.get("result") == "passed" and observed.get("ownerGenerationGone") is True:
+                            return {"state": "stopped", "evidenceScope": "owner", "source": "live-tool"}
+                    elif (observed.get("state") == "READY" and observed.get("source") == "live-tool" and
+                          observed.get("ready") is True and observed.get("nativeActionAllowed") is False):
+                        return {"state": "running", "evidenceScope": "guest", "source": "live-tool"}
+                    return {}
+                result = overview.acceptance_status(report, inputs, artifacts,
+                    correlation_observer=observe_correlation, owner_observer=observe_owner,
+                    artifact_verification=artifact_verification, known_correlations=known,
+                    local_native_summaries=summaries)
+                if subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip() != source:
+                    raise ValueError("Source changed during read-only acceptance status.")
+                checkout = overview.checkout_state(REPO_ROOT)
+                return {"tool": "vm_workflow", "ok": True, "evidenceClass": "read-only-acceptance", **result, **checkout}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.CalledProcessError,
+                    subprocess.TimeoutExpired):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "read-only-acceptance-evidence-unavailable",
+                        "worktreeDirty": None, "checkoutExact": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action == "vm-preflight-batch":
+            overview = _agent_module("native_acceptance_overview")
+            result = overview.batch_preflight(inputs, _vm_workflow_impl)
+            return {"tool": "vm_workflow", "ok": result["observationsComplete"],
+                    "evidenceClass": "read-only-environment", **result}
+        if action == "build-timing-report":
+            timing = _agent_module("native_build_timing")
+            source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip()
+            result = timing.report(REPO_ROOT, source, inputs)
+            if subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip() != source:
+                return _error("vm_workflow", "Build timing source changed during the read-only report.")
+            return {"tool": "vm_workflow", "ok": True, "evidenceClass": "source-bound-build-timing", **result}
         if action in {"baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight"}:
             baselines = _agent_module("native_vm_baseline_config")
             result = baselines.handle(REPO_ROOT, action, inputs)
@@ -1972,18 +2096,49 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "evidenceClass": "fixture-build", "productAction": False}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
-        if action in {"linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect"}:
+        if action in {"linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop"}:
             server = _agent_module("linux_rpm_fixture_server_lifecycle")
             try:
                 method = {"linux-rpm-fixture-server-start": server.start,
                           "linux-rpm-fixture-server-status": server.status,
-                          "linux-rpm-fixture-server-collect": server.collect}[action]
+                          "linux-rpm-fixture-server-collect": server.collect,
+                          "linux-rpm-fixture-server-stop": server.stop}[action]
                 result = method(REPO_ROOT, inputs)
                 return {"tool": "vm_workflow", **result,
-                        "ok": result.get("state") in {"submitted", "ready"} and
+                        "ok": (result.get("state") in {"submitted", "ready"} or
+                               (action == "linux-rpm-fixture-server-stop" and
+                                result.get("state") == "terminal" and
+                                result.get("result") == "stopped" and
+                                result.get("pidfdExitObserved") is True)) and
                               result.get("replayAllowed") is not True,
                         "evidenceClass": "native-fixture-endpoint",
                         "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action == "linux-rpm-workspace-recovery-status":
+            recovery = _agent_module("linux_rpm_workspace_recovery")
+            try:
+                if set(inputs) != {"correlationId"} or not isinstance(inputs["correlationId"], str) or \
+                        not _valid_uuid(inputs["correlationId"]):
+                    return _error("vm_workflow", "RPM workspace recovery status requires only a canonical correlationId UUID.")
+                result = recovery.status(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result, "ok": result.get("state") == "observed",
+                        "evidenceClass": "native-workspace-recovery", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action in {"linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status"}:
+            recovery = _agent_module("linux_rpm_workspace_recovery")
+            try:
+                required = {"correlationId", "cleanupCorrelationId"} if action.endswith("-start") else {"cleanupCorrelationId"}
+                if set(inputs) != required or any(not isinstance(inputs[key], str) or
+                                                  not _valid_uuid(inputs[key]) for key in required):
+                    return _error("vm_workflow", "RPM workspace cleanup requires exact canonical correlation UUID fields.")
+                method = recovery.cleanup_start if action.endswith("-start") else recovery.cleanup_status
+                result = method(REPO_ROOT, inputs)
+                complete = (result.get("state") == "terminal" and result.get("result") == "passed" and
+                            result.get("workspaceRemoved") is True and result.get("replayAllowed") is False)
+                return {"tool": "vm_workflow", **result, "ok": complete,
+                        "evidenceClass": "native-workspace-cleanup", "productAction": action.endswith("-start")}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action in {"linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect"}:
@@ -2217,6 +2372,94 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "evidenceClass": "native-document-acceptance", "productAction": action.endswith("-start")}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
+        if action in {"android-action-acceptance-start", "android-action-acceptance-status",
+                      "android-action-acceptance-collect"}:
+            action_fixture = _agent_module("android_action_acceptance")
+            try:
+                if action.endswith("-start"):
+                    required = {"host", "device", "correlationId", "artifactId", "backupCorrelationId",
+                                "expectedBackupSha256", "expectedOwner", "expectedRevision"}
+                    if not isinstance(inputs, dict) or set(inputs) != required:
+                        return _error("vm_workflow", "Android action start requires exact guarded fixture fields.")
+                    result = action_fixture.start(REPO_ROOT, inputs["host"], inputs["device"],
+                        inputs["correlationId"], inputs["artifactId"], inputs["backupCorrelationId"],
+                        inputs["expectedBackupSha256"], inputs["expectedOwner"], inputs["expectedRevision"])
+                else:
+                    if not isinstance(inputs, dict) or set(inputs) != {"correlationId"}:
+                        return _error("vm_workflow", "Android action observation requires only correlationId.")
+                    method = action_fixture.status if action.endswith("-status") else action_fixture.collect
+                    result = method(REPO_ROOT, inputs["correlationId"])
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") in {"submitted", "running"} or
+                              (result.get("state") == "complete" and result.get("ok") is True),
+                        "evidenceClass": "native-action-acceptance", "productAction": action.endswith("-start")}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action in {"android-native-fixture-start", "android-native-fixture-status",
+                      "android-native-fixture-stop", "android-native-fixture-collect"}:
+            fixture = _agent_module("android_native_fixture_lifecycle")
+            start_fields = {"host", "device", "campaignId", "planPath", "certificatePath", "privateKeyPath"}
+            if (set(inputs) != (start_fields if action.endswith("-start") else {"campaignId"}) or
+                    not isinstance(inputs.get("campaignId"), str) or
+                    not _valid_uuid(inputs["campaignId"])):
+                return _error("vm_workflow", "Android fixture requires exact canonical campaign request.")
+            if action.endswith("-start"):
+                if (not isinstance(inputs["host"], str) or
+                        not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", inputs["host"]) or
+                        not isinstance(inputs["device"], str) or
+                        not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", inputs["device"]) or
+                        any(not isinstance(inputs[key], str) or not Path(inputs[key]).is_absolute()
+                            for key in ("planPath", "certificatePath", "privateKeyPath"))):
+                    return _error("vm_workflow", "Android fixture start requires configured aliases and absolute local paths.")
+            try:
+                if action.endswith("-start"):
+                    result = fixture.start(REPO_ROOT, inputs["host"], inputs["device"], inputs["campaignId"],
+                                           inputs["planPath"], inputs["certificatePath"], inputs["privateKeyPath"])
+                else:
+                    method = {"android-native-fixture-status": fixture.status,
+                              "android-native-fixture-stop": fixture.stop,
+                              "android-native-fixture-collect": fixture.collect}[action]
+                    result = method(REPO_ROOT, inputs["campaignId"])
+                return {"tool": "vm_workflow", **result, "evidenceClass": "host-only-fixture",
+                        "productAction": False, "deviceMutationAllowed": False,
+                        "installerTargetAdmitted": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "campaignId": inputs["campaignId"], "replayAllowed": False,
+                        "deviceMutationAllowed": False, "installerTargetAdmitted": False,
+                        "productAction": False, "reason": "android-host-fixture-outcome-unavailable"}
+        if action == "android-consent-acceptance-preflight":
+            if set(inputs) != {"host", "device", "cliStageCorrelationId"}:
+                return _error("vm_workflow", "Android consent preflight requires exact host, device and stage correlation.")
+            consent = _agent_module("android_consent_acceptance")
+            result = consent.preflight(REPO_ROOT, inputs["host"], inputs["device"], inputs["cliStageCorrelationId"])
+            return {"tool": "vm_workflow", "ok": result.get("ok") is True,
+                    "evidenceClass": "read-only-android-consent", "productAction": False, **result}
+        if action in {"android-consent-acceptance-start", "android-consent-acceptance-status",
+                      "android-consent-acceptance-collect"}:
+            consent = _agent_module("android_consent_acceptance")
+            try:
+                if action.endswith("-start"):
+                    required = {"host", "device", "correlationId", "artifactId", "cliStageCorrelationId",
+                                "openingReadbackCorrelationId", "expectedBackupSha256", "expectedOwner",
+                                "expectedRevision"}
+                    if set(inputs) != required:
+                        return _error("vm_workflow", "Android consent denial start requires exact guarded fields.")
+                    result = consent.start(REPO_ROOT, inputs["host"], inputs["device"],
+                        inputs["correlationId"], inputs["artifactId"], inputs["cliStageCorrelationId"],
+                        inputs["openingReadbackCorrelationId"], inputs["expectedBackupSha256"],
+                        inputs["expectedOwner"], inputs["expectedRevision"])
+                else:
+                    if set(inputs) != {"correlationId"}:
+                        return _error("vm_workflow", "Android consent denial observation requires only correlationId.")
+                    method = consent.status if action.endswith("-status") else consent.collect
+                    result = method(REPO_ROOT, inputs["correlationId"])
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") in {"submitted", "running"} or
+                              (result.get("state") == "complete" and result.get("ok") is True),
+                        "evidenceClass": "native-android-consent-denial", "productAction": action.endswith("-start")}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
         if action in {"android-document-recovery-start", "android-document-recovery-status",
                       "android-document-recovery-collect", "android-document-recovery-finalize"}:
             recovery = _agent_module("android_document_recovery")
@@ -2301,6 +2544,32 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "productAction": action.endswith("-start")}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
+        if action == "windows-msi-base-pre-effect-status":
+            if set(inputs) != {"host"} or inputs["host"] != "archlinux":
+                return _error("vm_workflow", "Windows base pre-effect status requires exact Arch host.")
+            base = _agent_module("windows_msi_base_prepare")
+            try:
+                result = base.pre_effect_status(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result, "ok": result.get("state") == "absent",
+                        "evidenceClass": "read-only-pre-effect", "productAction": False,
+                        "nativeActionAllowed": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-base-pre-effect-unavailable", "productAction": False,
+                        "nativeActionAllowed": False}
+        if action == "windows-msi-base-pre-effect-close":
+            if set(inputs) != {"host"} or inputs["host"] != "archlinux":
+                return _error("vm_workflow", "Windows base pre-effect closure requires exact Arch host.")
+            base = _agent_module("windows_msi_base_prepare")
+            try:
+                result = base.close_pre_effect(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") == "pre-effect-closed",
+                        "evidenceClass": "pre-dispatch-campaign-closure", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-base-pre-effect-close-unavailable", "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
         if action in {"windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect"}:
             observe = _agent_module("windows_msi_owner_observe")
             try:
@@ -2315,6 +2584,34 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "productAction": False}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
+        if action in {"windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect"}:
+            observe = _agent_module("windows_msi_owner_observe")
+            start_fields = {"host", "correlationId", "sourceSha", "controllerId", "installedCliSha256",
+                            "parentPid", "parentStartedAtUtc", "childPid", "childStartedAtUtc", "statusCorrelationId"}
+            expected = ({"host"} if action.endswith("-preflight") else start_fields if action.endswith("-start")
+                        else {"correlationId"})
+            if (set(inputs) != expected or
+                    ("host" in inputs and inputs["host"] != "archlinux") or
+                    ("correlationId" in inputs and
+                     (not isinstance(inputs["correlationId"], str) or not _valid_uuid(inputs["correlationId"]))) or
+                    ("statusCorrelationId" in inputs and
+                     (not isinstance(inputs["statusCorrelationId"], str) or not _valid_uuid(inputs["statusCorrelationId"])))):
+                return _error("vm_workflow", "Windows owner quit requires exact fixed-host and correlation request.")
+            try:
+                method = {"windows-msi-owner-quit-preflight": observe.quit_powershell_preflight,
+                          "windows-msi-owner-quit-start": observe.quit_start,
+                          "windows-msi-owner-quit-status": observe.quit_status,
+                          "windows-msi-owner-quit-collect": observe.quit_collect}[action]
+                result = method(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") in {"passed", "submitted", "running", "observed", "cleaned", "quit-complete"},
+                        "evidenceClass": "native-preflight" if action.endswith("-preflight") else "native-owner-quit",
+                        "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-owner-quit-outcome-unavailable",
+                        "correlationId": inputs.get("correlationId"), "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
         if action in {"windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status"}:
             target = _agent_module("windows_msi_target_prepare")
             try:
@@ -2355,6 +2652,21 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             accepted = result.get("verification") != "mismatch" and result.get("decision") != "rebuild-required"
             return {"tool": "vm_workflow", "ok": accepted,
                     "evidenceScope": "artifact-byte-reuse" if action == "artifact-reuse-check" else "artifact-bytes", **result}
+        if action == "artifact-cache-check":
+            if set(inputs) != {"sourceSha", "artifactSetId"} or not isinstance(inputs["sourceSha"], str) or not re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", inputs["sourceSha"]):
+                return _error("vm_workflow", "Artifact cache check requires exact sourceSha and artifactSetId.")
+            reuse = _agent_module("native_artifact_reuse")
+            result = reuse.artifact_reuse_check(REPO_ROOT, {"artifactSetId": inputs["artifactSetId"]})
+            eligible = (result.get("decision") == "same-source" and
+                        result.get("verification") == "verified" and
+                        result.get("currentSourceSha") == inputs["sourceSha"] and
+                        result.get("originalSourceSha") == inputs["sourceSha"] and
+                        not result.get("reasons"))
+            eligible = eligible and subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip() == inputs["sourceSha"]
+            return {"tool": "vm_workflow", "ok": eligible, "cacheEligible": eligible,
+                    "nativeActionAllowed": False, "productAction": False,
+                    "evidenceClass": "source-bound-artifact-cache", **result}
         if action in ("android-proxy-recover", "android-proxy-recovery-status"):
             fields = {"host", "device", "expectedPort", "correlationId"} if action == "android-proxy-recover" else {"host", "device", "identity"}
             if set(inputs) != fields or any(not isinstance(inputs[key], str) or not inputs[key] for key in ("host", "device")):
@@ -2469,6 +2781,223 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 return {"tool": "vm_workflow", "ok": True, **result}
             except (ValueError, OSError) as error:
                 return _error("vm_workflow", str(error))
+        if action in {"linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start",
+                      "linux-deb-arch-guest-prepare-status"}:
+            preparation = _agent_module("linux_deb_arch_guest_prepare")
+            request_fields = {"profile", "distribution", "correlationId", "sourceSha", "artifactIds"}
+            if set(inputs) != ({"correlationId"} if action.endswith("-status") else request_fields):
+                return _error("vm_workflow", "Linux guest preparation requires exact source-bound request.")
+            try:
+                if action.endswith("-status"):
+                    result = preparation.Adapter(REPO_ROOT,
+                        driver=_agent_module("linux_deb_arch_guest_prepare_remote").FixedRemoteDriver(REPO_ROOT)).status(
+                            inputs["correlationId"])
+                else:
+                    parsed = preparation.Request.parse(inputs)
+                    if action.endswith("-preflight"):
+                        result = preparation.preflight(REPO_ROOT, parsed)
+                    else:
+                        result = preparation.Adapter(REPO_ROOT,
+                            driver=_agent_module("linux_deb_arch_guest_prepare_remote").FixedRemoteDriver(REPO_ROOT)).start(inputs)
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("inputsVerified") is True if action.endswith("-preflight") else
+                              result.get("state") in {"submitted", "running", "ready"},
+                        "evidenceClass": "read-only-guest-preparation" if action.endswith("-preflight") else "native-guest-preparation",
+                        "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "linux-guest-preparation-unavailable",
+                        "correlationId": inputs.get("correlationId"), "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action in {"linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start",
+                      "linux-deb-arch-acceptance-status"}:
+            acceptance = _agent_module("linux_deb_arch_acceptance")
+            request_fields = {"profile", "distribution", "correlationId", "sourceSha", "artifactIds"}
+            if set(inputs) != ({"correlationId"} if action.endswith("-status") else request_fields):
+                return _error("vm_workflow", "Linux native acceptance requires exact prepared source-bound request.")
+            try:
+                observer = _agent_module("linux_deb_arch_transport").FixedLiveObserver(REPO_ROOT)
+                driver = _agent_module("linux_deb_arch_host_supervisor").FixedHostSupervisor(REPO_ROOT)
+                adapter = acceptance.Adapter(REPO_ROOT, driver=driver,
+                    admit=lambda intent: acceptance.preflight(REPO_ROOT, intent, observer))
+                method = adapter.status if action.endswith("-status") else (
+                    adapter.preflight if action.endswith("-preflight") else adapter.start)
+                result = method(inputs["correlationId"] if action.endswith("-status") else inputs)
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("ready") is True if action.endswith("-preflight") else
+                              result.get("state") in {"submitted", "running"} or
+                              (result.get("state") == "terminal" and result.get("result") in
+                               {"dependencies-installed", "installed", "rollback-restored"}),
+                        "evidenceClass": "read-only-linux-native-admission" if action.endswith("-preflight") else "native-linux-acceptance",
+                        "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "linux-native-acceptance-unavailable",
+                        "correlationId": inputs.get("correlationId"), "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action == "linux-vm-readonly-inventory":
+            inventory = _agent_module("linux_vm_readonly_inventory")
+            try:
+                if not isinstance(inputs, dict) or set(inputs) != {"host", "timeoutSeconds"} or \
+                        inputs["host"] != "archlinux" or type(inputs["timeoutSeconds"]) is not int or \
+                        not 1 <= inputs["timeoutSeconds"] <= 30:
+                    return _error("vm_workflow", "Linux VM inventory requires fixed archlinux host and bounded timeoutSeconds.")
+                result = inventory.observe(REPO_ROOT, inputs["host"],
+                                           timeout_seconds=inputs["timeoutSeconds"])
+                complete = result.get("inventoryComplete") is True and result.get("nativeActionAllowed") is False
+                return {"tool": "vm_workflow", **result, "state": "observed" if complete else "unknown",
+                        "ok": complete,
+                        "evidenceClass": "read-only-environment", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action == "windows-vm-baseline-inventory":
+            inventory = _agent_module("windows_vm_baseline_inventory")
+            try:
+                if (set(inputs) != {"host", "timeoutSeconds"} or inputs["host"] != "archlinux" or
+                        type(inputs["timeoutSeconds"]) is not int or not 1 <= inputs["timeoutSeconds"] <= 30):
+                    return _error("vm_workflow", "Windows baseline inventory requires fixed archlinux host and bounded timeoutSeconds.")
+                result = inventory.observe(REPO_ROOT, inputs["host"],
+                                           timeout_seconds=inputs["timeoutSeconds"])
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("inventoryComplete") is True and
+                              result.get("nativeActionAllowed") is False,
+                        "evidenceClass": "read-only-environment", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action == "windows-vm-media-fingerprint":
+            inventory = _agent_module("windows_vm_baseline_inventory")
+            if (set(inputs) != {"host", "timeoutSeconds"} or inputs["host"] != "archlinux" or
+                    type(inputs["timeoutSeconds"]) is not int or
+                    not 30 <= inputs["timeoutSeconds"] <= 240):
+                return _error("vm_workflow", "Windows media fingerprint requires fixed archlinux host and bounded timeoutSeconds.")
+            try:
+                result = inventory.media_fingerprint(REPO_ROOT, inputs["host"],
+                                                     timeout_seconds=inputs["timeoutSeconds"])
+                complete = result.get("mediaFingerprintComplete") is True and result.get("nativeActionAllowed") is False
+                return {"tool": "vm_workflow", **result, "ok": complete,
+                        "state": "observed" if complete else "unknown",
+                        "evidenceClass": "read-only-media-bytes", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-media-fingerprint-unavailable",
+                        "nativeActionAllowed": False, "productAction": False}
+        if action in {"windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status"}:
+            fetch = _agent_module("windows_vm_driver_fetch")
+            if (set(inputs) != {"host", "correlationId", "timeoutSeconds"} or
+                    inputs["host"] != "archlinux" or not isinstance(inputs["correlationId"], str) or
+                    not _valid_uuid(inputs["correlationId"]) or
+                    type(inputs["timeoutSeconds"]) is not int or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows driver fetch requires fixed host, canonical correlationId and bounded timeoutSeconds.")
+            try:
+                method = fetch.start if action.endswith("-start") else fetch.status
+                result = method(REPO_ROOT, host=inputs["host"],
+                                correlation_id=inputs["correlationId"],
+                                timeout_seconds=inputs["timeoutSeconds"])
+                return {"tool": "vm_workflow", **result, "ok": result.get("state") == "verified",
+                        "evidenceClass": "native-fixture-preparation", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "driver-fetch-outcome-unavailable",
+                        "correlationId": inputs["correlationId"], "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action in {"windows-vm-disk-probe-start", "windows-vm-disk-probe-status"}:
+            probe = _agent_module("windows_vm_fresh_setup")
+            if (set(inputs) != {"host", "correlationId", "timeoutSeconds"} or
+                    inputs["host"] != "archlinux" or not isinstance(inputs["correlationId"], str) or
+                    not _valid_uuid(inputs["correlationId"]) or
+                    type(inputs["timeoutSeconds"]) is not int or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows disk probe requires fixed host, canonical correlationId and bounded timeoutSeconds.")
+            try:
+                method = probe.probe_start if action.endswith("-start") else probe.probe_status
+                result = method(REPO_ROOT, host=inputs["host"],
+                                correlation_id=inputs["correlationId"],
+                                timeout_seconds=inputs["timeoutSeconds"])
+                return {"tool": "vm_workflow", **result, "ok": result.get("state") == "verified",
+                        "evidenceClass": "native-fixture-disk-probe", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-disk-probe-outcome-unavailable",
+                        "correlationId": inputs["correlationId"], "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action == "windows-vm-fresh-preflight":
+            setup = _agent_module("windows_vm_fresh_setup")
+            if (set(inputs) != {"host", "correlationId", "timeoutSeconds"} or
+                    inputs["host"] != "archlinux" or not isinstance(inputs["correlationId"], str) or
+                    not _valid_uuid(inputs["correlationId"]) or
+                    type(inputs["timeoutSeconds"]) is not int or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows fresh preflight requires fixed host, canonical correlationId and bounded timeoutSeconds.")
+            try:
+                result = setup.preflight(REPO_ROOT, host=inputs["host"],
+                                         correlation_id=inputs["correlationId"],
+                                         timeout_seconds=inputs["timeoutSeconds"])
+                return {"tool": "vm_workflow", **result, "ok": result.get("state") == "ready",
+                        "evidenceClass": "read-only-environment", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-fresh-preflight-unavailable",
+                        "correlationId": inputs["correlationId"],
+                        "nativeActionAllowed": False, "productAction": False}
+        if action in {"windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status"}:
+            setup = _agent_module("windows_vm_fresh_setup")
+            if (set(inputs) != {"host", "correlationId", "timeoutSeconds"} or
+                    inputs["host"] != "archlinux" or not isinstance(inputs["correlationId"], str) or
+                    not _valid_uuid(inputs["correlationId"]) or
+                    type(inputs["timeoutSeconds"]) is not int or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows screen observation requires fixed host, canonical correlationId and bounded timeoutSeconds.")
+            try:
+                method = setup.screen_start if action.endswith("-start") else setup.screen_status
+                result = method(REPO_ROOT, host=inputs["host"],
+                                correlation_id=inputs["correlationId"],
+                                timeout_seconds=inputs["timeoutSeconds"])
+                return {"tool": "vm_workflow", **result, "ok": result.get("state") == "observed",
+                        "evidenceClass": "native-fixture-screen", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-screen-outcome-unavailable",
+                        "correlationId": inputs["correlationId"], "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
+        if action in {"windows-vm-fresh-start", "windows-vm-fresh-status"}:
+            setup = _agent_module("windows_vm_fresh_setup")
+            required = {"host", "correlationId", "timeoutSeconds"}
+            if (set(inputs) != (required | {"reservationRequest"} if action.endswith("-start") else required) or
+                    inputs["host"] != "archlinux" or not isinstance(inputs["correlationId"], str) or
+                    not _valid_uuid(inputs["correlationId"]) or
+                    type(inputs["timeoutSeconds"]) is not int or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows fresh setup requires fixed host, canonical correlationId, bounded timeoutSeconds and exact reservation request for start.")
+            if action.endswith("-start"):
+                reservation = inputs["reservationRequest"]
+                fields = {"hostAlias", "environment", "operator", "requestedMemoryBytes",
+                          "allocationState", "reservationIdentity", "measurement", "headroomBytes"}
+                if (not isinstance(reservation, dict) or
+                        set(reservation) not in (fields, fields | {"observations"}) or
+                        reservation.get("hostAlias") != "archlinux" or
+                        reservation.get("environment") != "windows-vm-baseline-20260929" or
+                        reservation.get("operator") != "windows-baseline" or
+                        reservation.get("requestedMemoryBytes") != 6442450944 or
+                        reservation.get("allocationState") != "pending" or
+                        not isinstance(reservation.get("reservationIdentity"), dict) or
+                        not isinstance(reservation.get("measurement"), dict) or
+                        reservation.get("headroomBytes") != 8589934592 or
+                        ("observations" in reservation and not isinstance(reservation["observations"], list))):
+                    return _error("vm_workflow", "Windows fresh start requires exact pending Arch reservation evidence.")
+            try:
+                if action.endswith("-start"):
+                    result = setup.start(REPO_ROOT, host=inputs["host"],
+                                         correlation_id=inputs["correlationId"],
+                                         reservation_request=inputs["reservationRequest"],
+                                         timeout_seconds=inputs["timeoutSeconds"])
+                else:
+                    result = setup.status(REPO_ROOT, host=inputs["host"],
+                                          correlation_id=inputs["correlationId"],
+                                          timeout_seconds=inputs["timeoutSeconds"])
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") in {"running-observed", "stopped-observed"},
+                        "evidenceClass": "native-fixture-vm-state", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "windows-fresh-setup-outcome-unavailable",
+                        "correlationId": inputs["correlationId"], "replayAllowed": False,
+                        "nativeActionAllowed": False, "productAction": False}
         if action in ("artifact-register", "artifact-find", "artifact-verify"):
             registry = _agent_module("native_artifact_registry")
             try:
@@ -2516,17 +3045,58 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
     host = request.get("host") or request.get("hostAlias")
     if isinstance(host, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", host):
         enriched.setdefault("host", host)
+    identity = enriched.get("identity") if isinstance(enriched.get("identity"), dict) else {}
+    correlation = enriched.get("correlationId") or identity.get("correlationId") or request.get("correlationId")
+    if isinstance(correlation, str) and _valid_uuid(correlation):
+        enriched.setdefault("correlationId", correlation)
+    if str(enriched.get("state", "")).lower() in {"unknown", "submitting"}:
+        enriched["replayAllowed"] = False
+        phase = enriched.get("failurePhase")
+        failure_type = enriched.get("failureType")
+        typed_token = lambda value: isinstance(value, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", value)
+        if typed_token(phase) and typed_token(failure_type):
+            enriched["uncertainty"] = {"phase": phase, "failureType": failure_type}
     enriched["nextAction"] = guidance.next_action(tool, action, enriched)
+    if (tool == "vm_workflow" and action == "environment-status" and
+            enriched.get("requestedProbesReady") is True and
+            enriched.get("state") == "UNKNOWN"):
+        enriched["admissionGap"] = {"missingFact": "required environment receipts outside the requested live probes",
+                                    "readOnlyAction": None, "nativeActionAllowed": False}
+        return enriched
+    if tool == "vm_workflow" and action in {
+            "acceptance-status", "windows-vm-baseline-inventory", "vm-preflight-batch",
+            "environment-status", "windows-msi-base-pre-effect-status",
+            "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-status",
+            "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-status",
+            "build-timing-report", "artifact-cache-check", "android-consent-acceptance-preflight",
+            "windows-vm-driver-fetch-status", "windows-vm-disk-probe-status",
+            "windows-vm-media-fingerprint", "windows-vm-fresh-preflight",
+            "windows-vm-fresh-status", "windows-vm-fresh-screen-status"}:
+        if action == "acceptance-status" and enriched.get("ok") is True:
+            enriched.update(_agent_module("native_response_diagnostics").acceptance_guidance(enriched))
+        if enriched.get("ok") is False or str(enriched.get("state", "")).lower() == "unknown":
+            enriched.update(_agent_module("native_response_diagnostics").describe(tool, action, result))
+        return enriched
     if enriched.get("ok") is not False and str(enriched.get("state", "")).lower() not in {"unknown", "submitting"}:
         return enriched
+    diagnostic = _agent_module("native_response_diagnostics").describe(tool, action, result)
+    enriched.update(diagnostic)
+    if tool == "vm_workflow" and action in {"windows-vm-driver-fetch-start", "windows-vm-disk-probe-start",
+                                            "windows-vm-fresh-start"}:
+        followup = diagnostic.get("admissionGap", {}).get("readOnlyAction")
+        if isinstance(followup, dict):
+            enriched["nextAction"] = {"kind": "observe-existing-driver-fetch" if action == "windows-vm-driver-fetch-start" else
+                                              "observe-existing-windows-vm" if action == "windows-vm-fresh-start" else
+                                              "observe-existing-disk-probe",
+                                      "reason": "one-shot native fixture outcome needs exact status",
+                                      "action": followup, "replayAllowed": False,
+                                      "requiresFreshEvidence": True}
     recorder = _agent_module("native_failure_evidence")
     context: dict[str, Any] = {"tool": tool, "action": action}
     safe_token = lambda value: isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", value)
     environment = enriched.get("environment") or request.get("environment") or host
     if safe_token(environment):
         context["environmentAlias"] = environment
-    identity = enriched.get("identity") if isinstance(enriched.get("identity"), dict) else {}
-    correlation = enriched.get("correlationId") or identity.get("correlationId") or request.get("correlationId")
     if safe_token(correlation):
         context["operationCorrelation"] = correlation
     artifacts = enriched.get("artifactIds") or request.get("artifactIds")
@@ -2534,6 +3104,9 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
         context["artifactIds"] = list(artifacts.values())
     state = str(enriched.get("state", enriched.get("status", "failure")))
     uncertain = state.lower() in {"unknown", "submitting", "pending", "closing", "close_pending", "owner_unknown", "remote_forward_pending", "local_forward_pending", "recovery_intent_pending"}
+    if tool == "vm_workflow" and action in {"windows-vm-driver-fetch-start", "windows-vm-disk-probe-start",
+                                            "windows-vm-fresh-start"} and state.lower() in {"partial", "linked-partial", "mismatch", "running-unrecorded-observed"}:
+        uncertain = True
     category = enriched.get("reason") or enriched.get("verification") or state
     if not safe_token(category):
         category = "workflow_failure"
@@ -2550,7 +3123,12 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
         for path in sorted((REPO_ROOT / "agent_tools").glob("*.py")):
             digest.update(path.name.encode()); digest.update(path.read_bytes())
         context["sourceFingerprint"] = digest.hexdigest()
-        enriched["failureEvidence"] = recorder.record_failure(REPO_ROOT, context, receipt)
+        saved = recorder.record_failure(REPO_ROOT, context, receipt)
+        enriched["failureEvidence"] = saved if isinstance(saved, dict) else {"state": "unavailable"}
+        evidence_id = enriched["failureEvidence"].get("evidenceId")
+        signature = enriched.get("failureSignature")
+        if isinstance(evidence_id, str) and safe_token(evidence_id) and isinstance(signature, dict):
+            signature["sourceReceiptId"] = evidence_id
     except (ValueError, OSError):
         # Evidence storage must not replace or reclassify the original outcome.
         enriched["failureEvidence"] = {"state": "unavailable"}
@@ -2565,6 +3143,39 @@ def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_sec
 
 def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Manage verified artifacts, reservations, bundles and fixed resumable preflight scenarios."""
+    if action in {"windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status",
+                  "windows-vm-disk-probe-start", "windows-vm-disk-probe-status",
+                  "windows-vm-fresh-start", "windows-vm-fresh-status"}:
+        try:
+            return _native_response("vm_workflow", action, _vm_workflow_impl(action, inputs),
+                                    inputs if isinstance(inputs, dict) else {})
+        except Exception:
+            # A local intent may have been written before any transport or
+            # response-handling exception. Never expose a traceback, lose its
+            # correlation, or suggest replaying the one-shot download.
+            correlation = inputs.get("correlationId") if isinstance(inputs, dict) else None
+            valid = isinstance(correlation, str) and _valid_uuid(correlation)
+            status_action = ("windows-vm-driver-fetch-status" if action.startswith("windows-vm-driver-fetch")
+                             else "windows-vm-disk-probe-status" if action.startswith("windows-vm-disk-probe")
+                             else "windows-vm-fresh-status")
+            is_driver = action.startswith("windows-vm-driver-fetch")
+            is_fresh = action.startswith("windows-vm-fresh")
+            status_read = {"tool": "vm_workflow", "action": status_action,
+                           "inputs": {"host": "archlinux", "correlationId": correlation,
+                                      "timeoutSeconds": 120}} if valid else None
+            return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                    "reason": "driver-fetch-boundary-unknown" if is_driver else
+                              "windows-fresh-setup-boundary-unknown" if is_fresh else
+                              "windows-disk-probe-boundary-unknown",
+                    **({"correlationId": correlation} if valid else {}),
+                    "replayAllowed": False, "nativeActionAllowed": False,
+                    "productAction": False,
+                    "nextAction": {"kind": ("observe-existing-driver-fetch" if is_driver else
+                                            "observe-existing-windows-vm" if is_fresh else
+                                            "observe-existing-disk-probe") if valid else "inspect-evidence",
+                                   "reason": "one-shot native fixture outcome is uncertain",
+                                   "replayAllowed": False, "requiresFreshEvidence": True,
+                                   **({"action": status_read} if status_read else {})}}
     return _native_response("vm_workflow", action, _vm_workflow_impl(action, inputs), inputs if isinstance(inputs, dict) else {})
 
 
@@ -2581,7 +3192,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
+    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "windows-vm-baseline-inventory", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")
@@ -2623,7 +3234,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     visual_verdict.add_argument("verdict")
     visual_verdict.add_argument("--notes")
     git_parser = subparsers.add_parser("git-workflow")
-    git_parser.add_argument("action", choices=("commit", "push", "checks"))
+    git_parser.add_argument("action", choices=("commit", "checkpoint", "push", "checks"))
     git_parser.add_argument("--message")
     git_parser.add_argument("--path", action="append", dest="paths")
     git_parser.add_argument("--sha")

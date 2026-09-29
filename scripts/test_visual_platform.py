@@ -108,6 +108,77 @@ class VisualPlatformTest(unittest.TestCase):
                 "main-disconnected,not-a-scene",
             )
 
+    def test_arm64_tart_linux_routes_canonical_visual_capture_to_hosted_x86(self) -> None:
+        with (
+            mock.patch.object(visual_platform.host_platform, "system", return_value="Darwin"),
+            mock.patch.object(visual_platform.host_platform, "machine", return_value="arm64"),
+            mock.patch.object(visual_platform, "_tart_names", return_value={"vpn-control-visual-linux"}),
+        ):
+            probe = visual_platform.local_probe("linux")
+            plan = visual_platform.capture_plan("linux")
+        self.assertFalse(probe["ready"])
+        self.assertIn("x86_64", probe["detail"])
+        self.assertEqual([], plan["routes"]["local"])
+        self.assertEqual(59, len(plan["routes"]["hosted"]))
+
+    def test_resource_denied_macos_uses_hosted_capabilities_without_secure_scenes(self) -> None:
+        sha = "a" * 40
+        local_plan = {
+            "routes": {"local": [scene["id"] for scene in visual_platform.scenes_for("macos")], "hosted": [], "blocked": []},
+        }
+        with (
+            mock.patch.object(visual_platform, "capture_plan", return_value=local_plan),
+            mock.patch.object(visual_platform, "_run", return_value=mock.Mock(returncode=0, stderr="")) as run,
+        ):
+            result = visual_platform.dispatch_hosted("macos", sha, "dev", resource_fallback=True)
+        self.assertEqual(56, result["scene_count"])
+        dispatch_command = run.call_args.args[0]
+        scene_field = next(value for value in dispatch_command if value.startswith("scenes="))
+        self.assertNotIn("macos-gatekeeper", scene_field)
+        self.assertNotIn("macos-install-confirmation", scene_field)
+
+    def test_linux_capture_runs_awt_and_native_trays_in_separate_gradle_processes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "scripts").mkdir()
+            (root / "visual-tests").mkdir()
+            (root / "bin").mkdir()
+            shutil.copy2(visual_platform.ROOT / "scripts/capture_visual_desktop.sh", root / "scripts/capture_visual_desktop.sh")
+            shutil.copy2(SELECTOR_PATH, root / "scripts/select_visual_scenes.py")
+            shutil.copy2(visual_platform.MANIFEST_PATH, root / "visual-tests/scenes.json")
+            (root / "scripts/visual_platform.py").write_text("print('stamp stub')\n", encoding="utf-8")
+            (root / "gradlew").write_text(
+                "#!/bin/sh\nprintf '%s\\n' \"$VPN_CONTROL_VISUAL_NATIVE_SCENES\" >> \"$CAPTURE_LOG\"\n",
+                encoding="utf-8",
+            )
+            for command in ("openbox", "stalonetray"):
+                (root / "bin" / command).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            for path in (root / "gradlew", *(root / "bin").iterdir()):
+                path.chmod(0o755)
+            log = root / "capture.log"
+            result = subprocess.run(
+                [
+                    "bash", str(root / "scripts/capture_visual_desktop.sh"), "linux",
+                    str(root / "actual"),
+                    "linux-tray-awt-disconnected,linux-tray-native-disconnected",
+                ],
+                cwd=root,
+                env={
+                    **os.environ,
+                    "PATH": f"{root / 'bin'}:{os.environ.get('PATH', '')}",
+                    "VPN_CONTROL_VISUAL_ISOLATED": "1",
+                    "CAPTURE_LOG": str(log),
+                },
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(
+                ["linux-tray-awt-disconnected", "linux-tray-native-disconnected"],
+                log.read_text(encoding="utf-8").splitlines(),
+            )
+
     def test_native_file_dialogs_use_an_empty_synthetic_directory(self) -> None:
         source = (
             visual_platform.ROOT
@@ -296,6 +367,22 @@ class VisualPlatformTest(unittest.TestCase):
         for runner in ("ubuntu-24.04", "windows-2025", "macos-15"):
             self.assertIn(f"runs-on: {runner}", workflow)
         self.assertIn("name: Visual Capture", workflow)
+
+    def test_hosted_windows_capture_installs_locked_native_helper_sdk(self) -> None:
+        """The visual runner must provision the SDK before packaging its helpers."""
+        workflow = (visual_platform.ROOT / ".github/workflows/visual-regression.yml").read_text(
+            encoding="utf-8",
+        )
+        windows_job = workflow.split("\n  windows:\n", 1)[1].split("\n  macos:\n", 1)[0]
+        lock = json.loads((visual_platform.ROOT / "desktopApp/native/windows/toolchain.lock.json").read_text())
+        self.assertRegex(lock["sdkVersion"], r"^\d+\.\d+\.\d+$")
+        read_pin = windows_job.index("Get-Content desktopApp/native/windows/toolchain.lock.json -Raw")
+        setup = windows_job.index("uses: actions/setup-dotnet@v4")
+        capture = windows_job.index("name: Capture repeatable Windows scenes")
+        self.assertLess(read_pin, setup)
+        self.assertLess(setup, capture)
+        self.assertIn('"version=$($Pin.sdkVersion)"', windows_job[read_pin:setup])
+        self.assertIn("dotnet-version: ${{ steps.native-helper-sdk.outputs.version }}", windows_job[setup:capture])
 
     def test_hosted_fallback_cannot_replace_windows_secure_desktop(self) -> None:
         with mock.patch.object(
@@ -496,6 +583,7 @@ class VisualPlatformTest(unittest.TestCase):
                 "ADB_LOG": str(log),
                 "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
                 "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
+                "VPN_CONTROL_VISUAL_PROVIDER": "local",
             })
             completed = subprocess.run(
                 [_posix_bash(), "scripts/capture_visual_android.sh", str(output), "update-install-session-cancelled"],
@@ -520,6 +608,10 @@ class VisualPlatformTest(unittest.TestCase):
 
     def test_android_capture_handles_native_python_crlf_before_any_device_mutation(self) -> None:
         self._assert_foreign_avd_guard(python_crlf=True)
+
+    def test_local_android_capture_guard_ignores_inherited_hosted_provider(self) -> None:
+        with mock.patch.dict(os.environ, {"VPN_CONTROL_VISUAL_PROVIDER": "hosted"}):
+            self._assert_foreign_avd_guard()
 
     def test_android_capture_removes_native_python_crlf_from_scene_arguments_after_device_guard(self) -> None:
         """The Git Bash wrapper must not pass CRLF scene IDs to Gradle or stamping."""
@@ -581,6 +673,7 @@ class VisualPlatformTest(unittest.TestCase):
                 "GRADLE_LOG": str(gradle_log),
                 "STAMP_LOG": str(stamp_log),
                 "VPN_CONTROL_VISUAL_TARGET_SHA": "a" * 40,
+                "VPN_CONTROL_VISUAL_PROVIDER": "local",
             })
             completed = subprocess.run(
                 [_posix_bash(), "scripts/capture_visual_android.sh", str(output)], cwd=root, env=environment,
@@ -621,6 +714,7 @@ class VisualPlatformTest(unittest.TestCase):
                 "ADB_LOG": str(log),
                 "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
                 "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
+                "VPN_CONTROL_VISUAL_PROVIDER": "local",
             })
             if python_crlf:
                 fake_python = temporary_path / "python3"
@@ -1251,6 +1345,28 @@ class VisualPlatformTest(unittest.TestCase):
         popen.assert_not_called()
         self.assertFalse(result["started_by_agent"])
         self.assertEqual(1234, result["pid"])
+
+    def test_android_repeat_start_preserves_live_agent_ownership(self) -> None:
+        probe = {"ready": True, "backend": "android-emulator", "capabilities": ["app", "native"], "detail": ""}
+        prior = {
+            "schema_version": 1, "platform": "android", "backend": "android-emulator",
+            "identifier": "emulator-5580", "started_by_agent": True, "pid": 7848,
+        }
+        with (
+            mock.patch.object(visual_platform, "local_probe", return_value=probe),
+            mock.patch.object(visual_platform, "android_local_config", return_value={"avd_name": "vpn-control-visual-api35", "emulator_port": 5580}),
+            mock.patch.object(visual_platform, "_running_android_avds", return_value={"vpn-control-visual-api35": "emulator-5580"}),
+            mock.patch.object(visual_platform, "_read_state", return_value=prior),
+            mock.patch.object(visual_platform, "_pid_running", return_value=True),
+            mock.patch.object(visual_platform, "_run", return_value=mock.Mock(returncode=0, stdout="1\n", stderr="")),
+            mock.patch.object(visual_platform, "_write_state") as write_state,
+            mock.patch.object(visual_platform.subprocess, "Popen") as popen,
+        ):
+            result = visual_platform.start_platform("android")
+        popen.assert_not_called()
+        self.assertTrue(result["started_by_agent"])
+        self.assertEqual(7848, result["pid"])
+        self.assertTrue(write_state.call_args.args[1]["started_by_agent"])
 
     def test_qemu_start_refuses_an_in_use_disk_without_qmp(self) -> None:
         probe = {"ready": True, "backend": "qemu-windows", "capabilities": ["secure_desktop"], "detail": ""}

@@ -27,6 +27,276 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Eighth continuation checkpoint in progress — 2026-09-29
+
+`a876f46fa4582e6218d341ac7012fd31bc919758` is pushed on `origin/dev`
+after the full prepush tier. The user requested one required-workflow review at
+the **final delivered SHA**, so intermediate CI was not watched. Current dirty
+work includes Android native-document harness fixes, Fedora fixture diagnostics,
+Windows owner/probe tools, hosted visual workflow and reviewed Android baselines.
+No release is authorized; do not move HEAD while the Fedora source-bound native
+fixture is active.
+
+The exact `a876f46` Android native-fixture APK is 45,027,012 bytes, SHA256
+`e36e54a218c8e4191abe28977147155d5bdf0f34e4a76bd055fd310d84cf2ec9`;
+the exact Linux x86_64 target RPM is SHA256
+`7c662bece800a761032f0c20fa6b4aa46d941afdfa1475d91834b6da7373c83b`.
+Both are independently verified and MCP registered. API29 installed the APK,
+and its fresh readback/public inspection proved retained opening rules and
+runtime off. Two 48 MiB document correlations remain historical unknowns after
+their imports committed; each was separately restored with a guarded one-shot
+recovery and lease finalize. The later corrected API29 document correlation
+`32390627-3429-44b9-a07d-08d70136d6f2` completed full/cold reads, retained
+wait, new-request no-op, private export and restoration. Fresh closing readback
+`1b7e90e5-584c-4b88-aaf1-82f6d3b779ca` and public inspection proved the
+239-byte restored routing, exact APK, new owner and runtime off. Same-request
+retry was not exercised. API35 has a fresh 11,872,243-byte opening backup and
+completed one guarded `a876f46` replacement under
+`54df1051-2ed2-4d3c-b174-7db67e6364c4`; fresh readback
+`0e8dbb7c-8f51-475e-ad28-ef02a45c8671` and public inspection confirm exact
+APK, preserved 56,000-domain routing, new owner and runtime off. Its install
+lease was reconciled after that proof. API29 then completed a separate
+small-frame explicit-UUID provider retry under
+`214b85ef-eb8c-4efb-9d78-91d9a62be784`: identical request returned the
+same operation/revision, changed-payload reuse was rejected, and fresh closing
+readback `684a8ada-dc52-4216-879a-ab3f146c8630` proved 239-byte restored
+routing/runtime off. This does not claim a large-document transport retry.
+Current-source consent denial is preparing a fixed requestor-bound UI route;
+grant and cancellation remain open.
+
+Fedora installed the exact-source `2.1.19` base RPM by guarded same-version
+replacement and verified its header and `rpm -V`. The old unknown HTTPS fixture
+server correlation `0c2265fc` and fresh diagnostic correlation `e5cb22c8`
+each left a live loopback fixture server after Java probe failure; each server
+was stopped once through reviewed exact pidfd/identity MCP and absence verified.
+Both jobs remain UNKNOWN and unreplayed; product VPN/runtime was untouched.
+Subsequent guarded attempts exposed and causally fixed Java CONNECT Host,
+certificate-stream lifetime and a missing protected-intent JAR hash. The fifth
+server reached exact READY and the public update ran, but its terminal scenario
+failed on protected workspace cleanup. Fresh read-only state proves the target
+`2.2.0` RPM installed, `rpm -V` clean, protected job succeeded, replacement
+owner present with runtime off and credential restored. Preserve the failed
+correlation `944447ff` and retained workspace; do not replay the RPM update.
+A bounded read-only workspace recovery route is under final review before a
+separate one-shot cleanup. The historical
+Ubuntu DEB and Arch package cases were reviewed, but their older source does
+not close final-source package acceptance; the owned guest/resource map is
+being checked before fresh reruns. A new fixed read-only inventory found both
+old guest disks stopped and safe with no listeners or reservations, but its
+`nativeActionAllowed` is false; a fresh clone, source-matched package pairs and
+new guest/job admission remain required.
+
+The workspace route has since passed independent review and observed the
+retained workspace as `referenced` by replacement owner PID 84498, start ticks
+42693938, controller `4da9288d-dd73-4312-92d8-c7d96f046040`. Fresh public
+observation reports runtime off and no active or selected location. The Linux
+owner added a generation-bound public quit with a causal test and independent
+review. One exact public quit correlation `bf57271c` completed; fresh observation
+proves that owner generation exited and the retained workspace is no longer
+referenced. A separate one-shot cleanup remains under review. The update
+correlation remains failed and unreplayed. The read-only VM inventory received
+final independent review
+after socket-inode and process-generation corrections. It does not admit a
+native action.
+
+Fedora subsequently completed the separate exact cleanup correlation
+`5eac659d-a6d4-4005-b97a-40063b10d8bf`; read-only status verified workspace
+absence. The original public `944447ff` terminal failure remains unchanged.
+The exact loopback fixture server was then stopped once after target/header and
+cleanup proof; pidfd exit was observed, fresh server/worker process readback is
+absent, and the target RPM remains ready with no app runtime. This is recovered
+native evidence for `a876f46`, not a retroactive passing public receipt.
+
+Windows CP117 still has no guest mutation. Reviewed stage/server/base/target,
+owner-network and probe code retains fail-closed public starts; private intent,
+closed-campaign, ACL and scheduled-task cleanup regressions passed focused
+checks. Fresh read-only CP117 preflight found installed 2.1.17 and two
+original-user CLI processes, so this guest is not idle; both were preserved.
+There is no trusted stopped baseline disk for a fresh clone yet. One exact
+`a876f46` hosted MSI fixture build correlation `5c7f5da3` is submitted, not
+native acceptance. Native PowerShell 5.1/QGA behavior and actual owner-JVM
+HTTPS proof are still needed. The exact `a876f46` hosted Windows visual run failed before
+capture because its workflow omitted pinned .NET SDK setup; the workflow now
+reads the lockfile and installs the SDK, with a causal RED/GREEN check. It needs
+a new pushed SHA rerun.
+
+The exact `a876f46` Mac 2.1.19-to-2.2.0 hosted DMG pair is signed, hashed and
+MCP verified (review summary
+`continuation-macos/fixture-a876f46/reviewed-package-summary.json`). Native
+Tart had remained stopped while host GUI unlock was unverified; Finder AX now
+proves an unlocked Desktop and a fresh resource check passed. The Mac owner is
+reserving a graphical native Tart slot; no machine installer has been submitted
+yet. Android visual capture completed 74/74;
+69 pass and five independently reviewed expected changes were recorded, with
+five Git LFS baselines updated. A repeat-start AVD ownership defect was fixed
+with a causal test and the owned AVD was scoped-stopped. Desktop final-source
+visual capture/review remains open.
+
+The exact `a876f46` Mac machine install reached a visible SecurityAgent password
+prompt. One Escape dismissal yielded public `CANCELLED`, installed=false; a new
+owner reported `cleanupCode=OK`, the signed 2.1.19 base inode and JAR were
+unchanged, and runtime stayed off. The reviewed denial summary is
+`continuation-macos/fixture-a876f46/native-machine-denial/reviewed-denial-summary.json`
+(SHA256 `e300e7f6cd6541410ce56c43c5ea6276786bb87f7dbcc8cee3ef5d14eb544a3b`).
+Both owned app processes quit, fixture server stopped, and Tart/reservation were
+released. Machine grant, installed update, rollback and GUI return remain open.
+
+The separate MCP worker finished narrow route and boundary improvements:
+canonical correlation IDs, conservative retry flags for uncertain states,
+typed uncertainty only from allowlisted domain observations, reviewed Android
+consent-denial and Fedora workspace-status routes, and the read-only Linux VM
+inventory. Full agent-tool discovery passed 832 tests with four skips and docs
+hygiene passed. One lease test fixture was corrected for restrictive process
+umasks. Android consent preflight then exposed a 120-second SSH request against
+a 60-second transport limit; a causal 15-test fix passed independent review.
+Its next fresh denial attempt rejected before submission because permission was
+not freshly absent. The Android owner added a bounded read-only preflight
+classifier with a missing-mode causal correction; 18 focused tests and root
+review passed. Its MCP route and native category observation are pending; no
+grant or VPN start occurred.
+
+API35 then completed exact-current-source consent denial under correlation
+`06705397-240c-4729-b6cb-721f9286cf78`: the public operation returned
+`PERMISSION_DENIED`, permission remained absent, runtime stayed off, and its
+lease was released. Fresh closing readback preserved package, owner/revision
+and 11,872,243-byte routing export size; independent export hashes differ due
+to generated timestamps, so semantic rule identity is not claimed here. API29
+read-only preflight classified permission already granted; no reset was made.
+
+The user authorized additional development-speed work. A separate MCP owner
+implemented a source-bound read-only acceptance overview, verified artifact
+cache check, parallel read-only VM preflights, failure fingerprints and admission
+gaps, and a strict build timing report; 854 agent-tool tests passed with four
+skips. Root review requested live verification for caller-supplied correlation
+and owner fields before claiming the overview complete. A Gradle cache probe
+found two generator tasks incompatible with configuration cache; a separate
+worker recorded the causal RED and is validating the fix. A Windows baseline
+worker is inventorying stopped trusted sources without touching live CP117.
+The next package matrix will freeze source after current fixes; required CI is
+still reserved for one final exact SHA.
+
+The Gradle worker fixed both JSON generator configuration-cache captures and
+proved the real desktop task graph reuses cached configuration (1.42s cold,
+0.31s warm after the final edit). Both generators restored byte-identical
+outputs FROM-CACHE; a real task-graph regression is now in release hygiene.
+The Windows baseline read-only census found a flat historical disk with no
+observed QEMU holder, but its source state remains **unknown** until all-process
+holders, provenance and job state are verified. Live CP117 was not copied or
+stopped. The Linux timing helper emits opt-in, source-bound private receipts
+for runtime/native-helper preparation, Gradle, packaging, upload and staging;
+76 focused tests passed, while actual durations await a source-frozen build.
+
+Further current-source Android API35 acceptance correlation
+`266b647a-1504-4e2a-b3b6-604f06852819` completed a public noninteractive ON
+rejection (`INTERACTION_REQUIRED`, no VPN dialog), then an interactive consent
+Cancel (`PERMISSION_DENIED`). Fresh closing readback retained the exact APK,
+owner/revision and 11,872,243-byte routing export size; permission remained
+absent and runtime off, and the lease was released. Raw export hashes differ
+because `exported_at` is generated. API29's granted permission was preserved.
+This proves only these action slices, not actual VPN traffic or installer grant.
+
+The exact `a876f46` hosted Windows MSI fixture run `36551205532` completed and
+its pair was MCP collected and verified: base 2.1.19 MSI SHA256 `9a63e408...`,
+target 2.2.0 MSI SHA256 `dff5b596...`, receipt `086cf410...` and source
+fingerprint `424cb779...` (full values remain in the immutable receipt). CP117
+base readiness remains blocked by original-user CLI PIDs 3640/5520; runtime and
+selection facts require a fresh public owner snapshot before any public quit.
+The first owner observation `c9f7bd65` stayed UNKNOWN because its remote start
+used the MSI parser instead of the owner-specific empty-artifact payload. The
+corrected parser has causal RED/GREEN tests; bounded fresh status reports
+`preEffectAbsent=true` with no exact stage/task/result leaf, while the old
+correlation remains preserved and unreplayed. No CP117 installer was submitted.
+
+The fresh Windows baseline remains separate from CP117. Read-only all-process
+holder census is incomplete, so no historical qcow2 was cloned. The existing
+official Windows evaluation ISO was matched to Microsoft's published hash;
+the original small `virtio-win.iso` remains unverified. A pinned Microsoft
+VirtIO ISO download under correlation `414697b9` had an uncertain CLI start
+response and first status `partial`; a later read-only status verified the
+*original* completed 789,645,312-byte transfer at SHA256
+`e14cf2b94492c3e925f0070ba7fdfedeb2048c91eea9c5a5afb30232a3976331`.
+It was never resubmitted. The exact start-response traceback was not retained;
+the MCP boundary now has defensive unknown/status coverage, not a claimed
+causal diagnosis. No new Windows VM has been created. Vendor-controlled
+evaluation setup/account sign-in remains ahead.
+
+The new MCP acceptance overview performs bounded, read-only source-bound
+local verification: exact APK/RPM/DMG/MSI bytes and both Android consent
+correlations plus Fedora cleanup are visible; live owners remain unknown unless
+freshly observed, and the matrix gate remains open. The Gradle configuration
+cache fix is ready; measured package phases await a clean source checkpoint.
+Ubuntu/Arch fresh guest admission, package/fixture receipt binding and native
+worker code are under development, with no guest boot or package action. A
+Mac-only one-shot gate and diagnostic Tart observer are also code-only; fresh
+resource, owner, secure UI and terminal adapters remain required before a
+machine grant/rollback run.
+
+Subsequent reviewed `a876f46` Android API35 denial/cancel evidence is complete
+under both consent correlations above. The new Android host-only fixture
+lifecycle passed independent review and 18 focused tests after causal journal,
+lease, process-identity and terminal-read fixes; its scope explicitly excludes
+installer-target admission and no AVD fixture was started. CP117's fresh
+original-user public status correlation
+`5119871d-9df6-4205-b315-af24a9040fbc` completed and cleaned. It observed
+controller `d1040a53-ccaf-4f26-9a1b-76d910d4255f`, configured VPN mode,
+runtime off and no active or selected location. The one-shot public quit adapter
+passed 30 focused tests and root review; MCP wiring and a fresh native check
+remain before the approved quit. The fresh Windows baseline's Windows and
+Microsoft VirtIO media hashes, OVMF, KVM, QEMU, free VNC port, memory and disk
+passed read-only preflight. A separate 8 MiB qemu-img probe completed; the
+proposed 6 GiB VM reservation and one-shot start remain pending route review.
+No Windows installer or new VM has run.
+
+CP117 subsequently completed one reviewed public quit under correlation
+`46dc2dd5-d8ba-4e31-b607-8ac572128a3f`. Fresh guest admission checked the
+exact original-user CLI PID generations and runtime-off status before the
+single public command. Terminal status and cleanup report `quit-complete`:
+both PIDs exited, the endpoint and runtime process are absent, runtime remains
+off, and no location is selected or active. The response wrapper initially
+classified that successful new state as `ok:false`; a causal MCP regression
+corrected it without changing the immutable native receipt. Fresh base readiness
+and MSI installation remain open.
+
+The next CP117 base MSI start reserved its local campaign under correlation
+`30a6f33b-3ea2-42d0-8818-3d6711b34169` but rejected an 1800-second SSH
+connect timeout before remote dispatch. The original intent was not replayed.
+A causal transport-bound regression now validates the command before any
+reservation. One-off read-only MCP proof twice found no remote stage, guest
+task or installer leaf; fresh readiness still showed one installed 2.1.17
+product and zero active installers. The exact campaign was then journaled
+`failed-cleaned` and closed with receipt SHA256
+`dd6b954cef91496807fbf5d07057c6665f1a3dace787e3f81368c453bc905dc6`.
+The original intent remains archived and a new MSI campaign awaits the clean
+source checkpoint.
+
+The managed repository workflow now has an explicit intermediate `checkpoint`
+action. It keeps pre-push receipt, explicit-path, version and clean-worktree
+guards, then returns the pushed SHA with required CI marked deferred; the
+ordinary commit/push paths still watch exact-SHA CI. This follows the user's
+request for one required-workflow review at the final delivered SHA. Its causal
+RED/GREEN tests passed, and the quiescent agent-tool suite passed 1,047 tests
+with four skips. Full managed pre-push passed before the checkpoint action was
+added, so it must be rerun after that final tool change.
+
+Ubuntu/Arch fixed guest preparation and native acceptance remain blocked from
+guest action by independent review findings: process census could count its
+own probe or miss unreadable PIDs; final package effect needs fresh owner and
+runtime admission; rollback owner cleanup must cover activation timeout; and
+launcher version checks must match an exact displayed version. Owners are
+adding causal tests. Mac's source-bound machine boundary and observer passed
+21 focused tests, but historical unknown preservation, fixture-server stop and
+rollback trace lack fresh trusted evidence, so machine grant remains closed.
+No Tart boot or guest action was run in this code-only phase.
+
+The DEB/Arch source-level admission adapters subsequently passed independent
+review with 67 focused tests. Six narrow MCP guest-preparation/native-acceptance
+routes are available, but dirty-source preflight still denies native starts.
+The Mac machine boundary, receipt validators and dual-stack kernel observer
+passed separate independent reviews and 29 focused tests. Candidate validators
+still lack trusted server-stop/rollback producers and fresh proof that the
+legacy unknown job is unchanged; terminal acceptance flags stay false. Mac
+source edits are paused for the next checkpoint, with Tart stopped.
+
 ### Seventh continuation checkpoint in progress — 2026-09-29
 
 `fa05e690fad16a01675c223f1d9825ac257a6a65` is the current pushed

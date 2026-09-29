@@ -29,9 +29,19 @@ class WindowsMsiBasePrepareError(ValueError):
 
 _UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z")
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
+_HASH = re.compile(r"[0-9a-f]{64}\Z")
 _VERSION = re.compile(r"(?:[1-9]|1[0-9])\.(?:0|[1-9]|1[0-9])\.(?:0|[1-9]|1[0-9])\Z")
 _ARTIFACT = re.compile(r"sha256-[0-9a-f]{64}\Z")
 _LOCAL = ".rag_index/windows-msi-base-prepare"
+_PRE_EFFECT_REJECTED_CORRELATION = "30a6f33b-3ea2-42d0-8818-3d6711b34169"
+_PRE_EFFECT_REJECTED_COMMAND_SHA256 = "f490e8582bc84145fff84b92a5bb5b05ac6e4593c429289779de8eac5aa713ca"
+_PRE_EFFECT_REJECTED_REQUEST = {
+    "host": "archlinux", "correlationId": _PRE_EFFECT_REJECTED_CORRELATION,
+    "sourceSha": "a876f46fa4582e6218d341ac7012fd31bc919758",
+    "fixtureReceiptArtifactId": "sha256-086cf41006f4340e378123220b51c21f97649193b59237c529231727b2e29782",
+    "baseMsiArtifactId": "sha256-9a63e408ef6856234a2b40c121ede02a60482b5e8a6d8e624f3bd7bf70bce476",
+    "targetMsiArtifactId": "sha256-dff5b596f13fb0c9469ed4b9a4f67eaea9211f2a457e99697739b034731448b7",
+    "expectedCurrentVersion": "2.1.17"}
 _ROOT = r"C:\Users\vpncp117\AppData\Local\VpnControl"
 _ACCOUNT = r"VPNMSIX64\vpncp117"
 _PRODUCT = re.compile(r"\{[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}\}\Z")
@@ -75,6 +85,49 @@ def _private_intent(root: Path, correlation: str) -> dict[str, Any] | None:
     return record
 
 
+def _pre_effect_marker(root: Path) -> Path:
+    return root / _LOCAL / (_PRE_EFFECT_REJECTED_CORRELATION + ".pre-effect-closed.json")
+
+
+def _pre_effect_closed(root: Path) -> bool:
+    intent = _private_intent(root, _PRE_EFFECT_REJECTED_CORRELATION)
+    if (intent is None or intent.get("request") != _PRE_EFFECT_REJECTED_REQUEST
+            or intent.get("commandSha256") != _PRE_EFFECT_REJECTED_COMMAND_SHA256
+            or intent.get("environment") != "windows-cp117"
+            or intent.get("pid") != 589342 or intent.get("startTicks") != 520739
+            or not isinstance(intent.get("socketPath"), str)
+            or not isinstance(intent.get("expectedSid"), str)):
+        return False
+    marker = _pre_effect_marker(root)
+    try: fd = os.open(marker, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except FileNotFoundError: return False
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > 8192):
+            raise WindowsMsiBasePrepareError("Base pre-effect closure is unsafe.")
+        marker_value = json.load(stream)
+    if (not isinstance(marker_value, dict) or set(marker_value) != {
+            "correlationId", "commandSha256", "state", "cleanupReceiptSha256"}
+            or marker_value.get("correlationId") != _PRE_EFFECT_REJECTED_CORRELATION
+            or marker_value.get("commandSha256") != _PRE_EFFECT_REJECTED_COMMAND_SHA256
+            or marker_value.get("state") != "pre-effect-closed"
+            or not isinstance(marker_value.get("cleanupReceiptSha256"), str)
+            or not _HASH.fullmatch(marker_value["cleanupReceiptSha256"])):
+        return False
+    directory, lock = campaign_lease._locked(root)
+    try:
+        closed = campaign_lease._closed(directory, _PRE_EFFECT_REJECTED_CORRELATION)
+    finally: os.close(lock)
+    expected_identity = _campaign_identity(_PRE_EFFECT_REJECTED_REQUEST,
+        (intent["environment"], intent["socketPath"], intent["pid"],
+         intent["startTicks"], intent["expectedSid"]))
+    return (closed is not None and closed["identity"] == expected_identity
+            and closed["lastOutcome"] == "failed-cleaned"
+            and closed["lastEvidenceSha256"] == marker_value["cleanupReceiptSha256"]
+            and intent["pid"] == 589342 and intent["startTicks"] == 520739)
+
+
 def _reserve(root: Path, record: dict[str, Any]) -> None:
     directory = root / _LOCAL
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -84,7 +137,11 @@ def _reserve(root: Path, record: dict[str, Any]) -> None:
     lock_fd = os.open(directory / ".environment.lock", os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        if any(item.suffix == ".json" for item in directory.iterdir()):
+        archived = _pre_effect_closed(root)
+        if any(item.suffix == ".json" and not (archived and item.name in {
+                _PRE_EFFECT_REJECTED_CORRELATION + ".json",
+                _PRE_EFFECT_REJECTED_CORRELATION + ".pre-effect-closed.json"})
+                for item in directory.iterdir()):
             raise WindowsMsiBasePrepareError("CP117 has an active or unknown base preparation.")
         path = _intent_path(root, record["request"]["correlationId"])
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
@@ -510,7 +567,7 @@ def readiness(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
 
 def _remote(config: Any, program: str, args: tuple[str, ...], source: Path | None, timeout: int) -> bytes | None:
     command = windows_credential_probe_ssh._remote_command(program, *args)
-    argv = ssh_transport.build_ssh_argv(config, "archlinux", timeout, command=command)
+    argv = ssh_transport.build_ssh_argv(config, "archlinux", min(timeout, 60), command=command)
     try:
         if source is None:
             completed = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -522,6 +579,166 @@ def _remote(config: Any, program: str, args: tuple[str, ...], source: Path | Non
         return completed.stdout if completed.returncode == 0 and len(completed.stdout) <= 16384 else None
     except (OSError, subprocess.TimeoutExpired):
         return None
+
+
+_PRE_EFFECT_STATUS = _QGA + r'''import time
+root,env,corr,sock,pid,ticks=sys.argv[1:]
+def out(value):print(json.dumps(value,separators=(',',':'),sort_keys=True))
+try:
+ if env!='windows-cp117' or corr!='30a6f33b-3ea2-42d0-8818-3d6711b34169' or not live(sock,pid,ticks):raise ValueError()
+ parent=os.path.join(root,env);group=os.path.join(parent,'windows-msi-base')
+ for path in (root,parent):
+  info=os.lstat(path)
+  if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
+ if os.path.lexists(os.path.join(group,corr)):
+  out({'state':'present','correlationId':corr});raise SystemExit(0)
+ if os.path.lexists(group):
+  info=os.lstat(group)
+  if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
+ script="$ErrorActionPreference='Stop';$corr='"+corr+"';$task='VpnControlMcpBase-'+$corr;$leaf='C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-base-'+$corr;try{$registered=Get-ScheduledTask -TaskPath '\\' -TaskName $task -ErrorAction SilentlyContinue;if($registered -or [IO.Directory]::Exists($leaf) -or [IO.File]::Exists($leaf)){[Console]::Out.WriteLine('{\"version\":1,\"state\":\"present\"}')}else{[Console]::Out.WriteLine('{\"version\":1,\"state\":\"absent\"}')}}catch{[Console]::Out.WriteLine('{\"version\":1,\"state\":\"unknown\"}');exit 1}"
+ encoded=base64.b64encode(script.encode('utf-16le')).decode('ascii')
+ child=call(sock,'guest-exec',{'path':'powershell.exe','arg':['-NoProfile','-NonInteractive','-EncodedCommand',encoded],'capture-output':True})['pid']
+ if type(child) is not int or child<=0:raise ValueError()
+ for _ in range(40):
+  observed=call(sock,'guest-exec-status',{'pid':child})
+  if observed.get('exited') is True:break
+  time.sleep(.25)
+ else:raise ValueError()
+ if observed.get('exitcode')!=0 or observed.get('out-truncated') is not False or observed.get('err-truncated') is not False:raise ValueError()
+ raw=base64.b64decode(observed.get('out-data',''),validate=True)
+ if not 0<len(raw)<=512:raise ValueError()
+ lines=[line for line in decode(raw).splitlines() if line.startswith('{') and line.endswith('}')]
+ if len(lines)!=1 or json.loads(lines[0])!={'version':1,'state':'absent'}:raise ValueError()
+ out({'state':'absent','correlationId':corr,'qemuPid':int(pid),'startTicks':int(ticks)})
+except Exception:out({'state':'unknown','correlationId':corr})
+'''
+
+
+def pre_effect_status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != {"host"} or value["host"] != "archlinux":
+        raise WindowsMsiBasePrepareError("Base pre-effect status requires exact owned host.")
+    root = Path(root).resolve(strict=True)
+    intent = _private_intent(root, _PRE_EFFECT_REJECTED_CORRELATION)
+    if (intent is None or intent.get("commandSha256") != _PRE_EFFECT_REJECTED_COMMAND_SHA256
+            or intent.get("leaseId") != _PRE_EFFECT_REJECTED_CORRELATION
+            or intent.get("request", {}).get("correlationId") != _PRE_EFFECT_REJECTED_CORRELATION):
+        raise WindowsMsiBasePrepareError("Base pre-effect identity changed.")
+    config, target, (env, sock, pid, ticks, sid) = _descriptor(root)
+    if any(intent.get(key) != observed for key, observed in (("environment", env),
+            ("socketPath", sock), ("pid", pid), ("startTicks", ticks), ("expectedSid", sid))):
+        return {"state": "unknown", "correlationId": _PRE_EFFECT_REJECTED_CORRELATION}
+    raw = _remote(config, _PRE_EFFECT_STATUS,
+        (str(target.fixture_transfer_root), env, _PRE_EFFECT_REJECTED_CORRELATION,
+         sock, str(pid), str(ticks)), None, 30)
+    try: observed = json.loads(raw) if raw is not None else {}
+    except (TypeError, ValueError): observed = {}
+    exact = {"state": "absent", "correlationId": _PRE_EFFECT_REJECTED_CORRELATION,
+             "qemuPid": pid, "startTicks": ticks}
+    return exact if observed == exact else {"state": "unknown", "correlationId": _PRE_EFFECT_REJECTED_CORRELATION}
+
+
+def close_pre_effect(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Close only the known pre-dispatch SSH validation failure, preserving its intent."""
+    if not isinstance(value, Mapping) or set(value) != {"host"} or value["host"] != "archlinux":
+        raise WindowsMsiBasePrepareError("Base pre-effect closure requires exact owned host.")
+    root = Path(root).resolve(strict=True)
+    corr = _PRE_EFFECT_REJECTED_CORRELATION
+    intent = _private_intent(root, corr)
+    if (intent is None or intent.get("request") != _PRE_EFFECT_REJECTED_REQUEST
+            or intent.get("commandSha256") != _PRE_EFFECT_REJECTED_COMMAND_SHA256
+            or intent.get("leaseId") != corr):
+        raise WindowsMsiBasePrepareError("Base pre-effect intent changed.")
+    config, target, descriptor = _descriptor(root)
+    env, sock, pid, ticks, sid = descriptor
+    if (pid != 589342 or ticks != 520739 or
+            any(intent.get(key) != observed for key, observed in (("environment", env),
+                ("socketPath", sock), ("pid", pid), ("startTicks", ticks), ("expectedSid", sid)))):
+        raise WindowsMsiBasePrepareError("Base pre-effect guest generation changed.")
+    expected_absence = {"state": "absent", "correlationId": corr, "qemuPid": pid, "startTicks": ticks}
+    if (pre_effect_status(root, {"host": "archlinux"}) != expected_absence
+            or pre_effect_status(root, {"host": "archlinux"}) != expected_absence):
+        return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
+    idle = readiness(root, {"host": "archlinux", "expectedCurrentVersion": "2.1.17"})
+    if (idle.get("state") != "ready" or idle.get("ready") is not True
+            or idle.get("code") != "READY" or idle.get("installedVersion") != "2.1.17"
+            or idle.get("productCount") != 1 or idle.get("activeCount") != 0
+            or idle.get("activeProcesses") != []):
+        return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
+    identity = _campaign_identity(_PRE_EFFECT_REJECTED_REQUEST, descriptor)
+    proof = {"correlationId": corr, "commandSha256": _PRE_EFFECT_REJECTED_COMMAND_SHA256,
+             "sourceSha": _PRE_EFFECT_REJECTED_REQUEST["sourceSha"], "qemuPid": pid,
+             "startTicks": ticks, "remoteStageTaskGuestLeafAbsent": True,
+             "installedVersion": "2.1.17", "productCount": 1, "activeCount": 0,
+             "failure": "ssh-connect-timeout-rejected-before-dispatch"}
+    evidence_sha = hashlib.sha256(json.dumps(proof, sort_keys=True,
+        separators=(",", ":")).encode()).hexdigest()
+    cleanup = {"guestGeneration": {"socketPath": sock, "qemuPid": pid, "startTicks": ticks},
+               "serverStopped": True, "credentialsCleaned": True,
+               "protectedJobsTerminalCleaned": True, "activeInstallerProcessesAbsent": True,
+               "cleanupReceiptSha256": hashlib.sha256((evidence_sha + ":campaign-closed").encode()).hexdigest()}
+    remote = _campaign_remote(config, target)
+    directory, lock = campaign_lease._locked(root)
+    try:
+        record = campaign_lease._active(directory)
+        closed = campaign_lease._closed(directory, corr) if record is None else None
+        if record is not None and record["identity"] != identity:
+            raise WindowsMsiBasePrepareError("Base campaign identity changed.")
+        if closed is not None and closed["identity"] != identity:
+            raise WindowsMsiBasePrepareError("Closed base campaign identity changed.")
+    finally: os.close(lock)
+    if record is not None and record["state"] in {"pending-finish", "pending-close"}:
+        resumed = campaign_lease.reconcile(root, corr, remote)
+        if resumed["state"] == "unknown":
+            return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
+        directory, lock = campaign_lease._locked(root)
+        try:
+            record = campaign_lease._active(directory)
+            closed = campaign_lease._closed(directory, corr) if record is None else None
+        finally: os.close(lock)
+    if (record is not None and record["state"] == "role-active"
+            and record["role"] == "base" and record["correlationId"] == corr
+            and record["server"] == "stopped" and record["credentials"] == "absent"
+            and record["lastEvidenceSha256"] is None):
+        if not campaign_lease._remote_confirm(remote, "status", record, None):
+            return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
+        finished = campaign_lease.finish_role(root, corr, "base", corr, evidence_sha,
+                                               "failed-cleaned", remote)
+        if finished["state"] != "active":
+            return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
+        directory, lock = campaign_lease._locked(root)
+        try: record = campaign_lease._active(directory)
+        finally: os.close(lock)
+    if record is not None:
+        if (record["state"] != "active" or record["role"] is not None
+                or record["correlationId"] is not None or record["server"] != "stopped"
+                or record["credentials"] != "absent" or record["lastOutcome"] != "failed-cleaned"
+                or record["lastEvidenceSha256"] != evidence_sha):
+            raise WindowsMsiBasePrepareError("Base campaign is not verified failed-cleaned.")
+        if not campaign_lease._remote_confirm(remote, "status", record, None):
+            return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
+        finished = campaign_lease.close(root, corr, cleanup, remote)
+        if finished["state"] != "closed":
+            return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
+    if campaign_lease.reconcile(root, corr, remote)["state"] != "closed":
+        return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
+    marker = _pre_effect_marker(root)
+    marker_value = {"correlationId": corr, "commandSha256": _PRE_EFFECT_REJECTED_COMMAND_SHA256,
+                    "state": "pre-effect-closed", "cleanupReceiptSha256": cleanup["cleanupReceiptSha256"]}
+    if marker.exists():
+        if not _pre_effect_closed(root):
+            raise WindowsMsiBasePrepareError("Base pre-effect marker changed.")
+    else:
+        fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write((json.dumps(marker_value, sort_keys=True, separators=(",", ":")) + "\n").encode())
+            stream.flush(); os.fsync(stream.fileno())
+        parent = os.open(marker.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try: os.fsync(parent)
+        finally: os.close(parent)
+    if not _pre_effect_closed(root):
+        raise WindowsMsiBasePrepareError("Base pre-effect closure did not verify.")
+    return {"state": "pre-effect-closed", "correlationId": corr,
+            "cleanupReceiptSha256": cleanup["cleanupReceiptSha256"], "replayAllowed": False}
 
 
 def _campaign_remote(config: Any, target: Any):
@@ -678,15 +895,25 @@ def _require_base_route_free(root: Path) -> None:
         info = directory.lstat()
         if (not stat.S_ISDIR(info.st_mode) or directory.is_symlink()
                 or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700
-                or any(item.suffix == ".json" for item in directory.iterdir())):
+                or any(item.suffix == ".json" and not (_pre_effect_closed(root) and item.name in {
+                    _PRE_EFFECT_REJECTED_CORRELATION + ".json",
+                    _PRE_EFFECT_REJECTED_CORRELATION + ".pre-effect-closed.json"})
+                    for item in directory.iterdir())):
             raise WindowsMsiBasePrepareError("CP117 base route has active or unknown history.")
 
 
 def _open_base_campaign(root: Path, request: Mapping[str, Any], config: Any,
                         target: Any, descriptor: tuple[Any, ...]) -> str:
-    """Internal: starts only after artifact and exact legacy/guest admission."""
+    """Internal: begin and claim only after an exact fsynced local intent."""
+    intent = _private_intent(root, request["correlationId"])
+    if (intent is None or intent.get("request") != dict(request)
+            or intent.get("leaseId") != request["correlationId"]
+            or any(intent.get(key) != observed for key, observed in
+                   (("environment", descriptor[0]), ("socketPath", descriptor[1]),
+                    ("pid", descriptor[2]), ("startTicks", descriptor[3]),
+                    ("expectedSid", descriptor[4])))):
+        raise WindowsMsiBasePrepareError("CP117 base intent is absent or changed.")
     _require_reconciled_legacy(root, descriptor, request["expectedCurrentVersion"])
-    _require_base_route_free(root)
     identity = _campaign_identity(request, descriptor)
     remote = _campaign_remote(config, target)
     opened = campaign_lease.begin(root, identity, remote)
@@ -785,11 +1012,19 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     command_hash = hashlib.sha256(command.encode("utf-16le")).hexdigest()
     record = {"request": request, "pair": pair, "environment": env, "socketPath": sock,
               "pid": pid, "startTicks": ticks, "expectedSid": sid, "commandSha256": command_hash}
-    record["leaseId"] = _open_base_campaign(root, request, config, target, (env, sock, pid, ticks, sid))
+    _require_reconciled_legacy(root, (env, sock, pid, ticks, sid), request["expectedCurrentVersion"])
+    _require_base_route_free(root)
+    stage_args = (str(target.fixture_transfer_root), env, correlation, correlation, sock,
+                  str(pid), str(ticks), sid, str(size), encoded, command_hash,
+                  request["sourceSha"], pair["sourceFingerprint"],
+                  request["fixtureReceiptArtifactId"], request["baseMsiArtifactId"],
+                  request["targetMsiArtifactId"])
+    ssh_transport.build_ssh_argv(config, "archlinux", 60,
+        command=windows_credential_probe_ssh._remote_command(_STAGE, *stage_args))
+    record["leaseId"] = correlation
     _reserve(root, record)
-    raw = _remote(config, _STAGE, (str(target.fixture_transfer_root), env, record["leaseId"], correlation, sock, str(pid), str(ticks),
-        sid, str(size), encoded, command_hash, request["sourceSha"], pair["sourceFingerprint"],
-        request["fixtureReceiptArtifactId"], request["baseMsiArtifactId"], request["targetMsiArtifactId"]), source, 1800)
+    _open_base_campaign(root, request, config, target, (env, sock, pid, ticks, sid))
+    raw = _remote(config, _STAGE, stage_args, source, 1800)
     try:
         result = json.loads(raw) if raw is not None else {}
     except (TypeError, ValueError):

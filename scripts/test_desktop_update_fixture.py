@@ -880,6 +880,69 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "changed"):
                 load_resources(output)
 
+    def test_opt_in_linux_timing_records_phases_without_changing_packages(self):
+        from build_phase_timing import PhaseRecorder
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outputs = []
+            recorder = None
+            for label in ("plain", "timed"):
+                branch = root / label
+                branch.mkdir()
+                _, _, output, _ = self.prepared(branch)
+                snapshot = json.loads((output / "snapshot.json").read_text())
+                snapshot["sourceHead"] = "a" * 40
+                (output / "snapshot.json").write_text(json.dumps(snapshot))
+                _, runner = self.fake_gradle()
+                if label == "timed":
+                    recorder = PhaseRecorder(root / ".rag_index/build-timings", "a" * 40,
+                        "linux-fixture", "12345678-1234-4234-9234-123456789abc", "linux-builder")
+                with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
+                    receipt = native_build(output, True, runner, timing_recorder=recorder if label == "timed" else None)
+                assets = {asset["packageType"]: asset["sha256"]
+                          for stage in receipt["builds"] for asset in stage["assets"]
+                          if asset["packageType"] in {"deb", "rpm"}}
+                outputs.append((receipt, assets))
+            self.assertEqual(outputs[0][1], outputs[1][1])
+            self.assertEqual(outputs[0][0]["builds"][0]["codeFingerprint"],
+                             outputs[1][0]["builds"][0]["codeFingerprint"])
+            self.assertEqual(6, len(recorder.references))
+            phases = [json.loads((root / item["path"]).read_text())["phase"]
+                      for item in recorder.references]
+            self.assertEqual(2, phases.count("runtime-prep"))
+            self.assertEqual(2, phases.count("gradle"))
+            self.assertEqual(2, phases.count("packaging"))
+
+    def test_opt_in_timing_includes_native_helper_preparation(self):
+        from build_phase_timing import PhaseRecorder
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _, _, output, _ = self.prepared(root)
+            snapshot = json.loads((output / "snapshot.json").read_text())
+            snapshot["sourceHead"] = "a" * 40
+            (output / "snapshot.json").write_text(json.dumps(snapshot))
+            plan = json.loads((output / "build-plan.json").read_text())
+            plan["stages"][0]["preparation"] = [["bash", "./scripts/fixed-helper.sh"]]
+            (output / "build-plan.json").write_text(json.dumps(plan))
+            recorder = PhaseRecorder(root / ".rag_index/build-timings", "a" * 40,
+                "linux-fixture", "12345678-1234-4234-9234-123456789abc", "linux-builder")
+            _, gradle = self.fake_gradle()
+            helpers = []
+            def runner(command, **kwargs):
+                if command == ["bash", "./scripts/fixed-helper.sh"]:
+                    helpers.append(command)
+                    return subprocess.CompletedProcess(command, 0)
+                return gradle(command, **kwargs)
+            with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
+                native_build(output, True, runner, timing_recorder=recorder)
+            self.assertEqual(1, len(helpers))
+            receipts = [json.loads((root / item["path"]).read_text())
+                        for item in recorder.references]
+            self.assertEqual(7, len(receipts))
+            self.assertEqual(3, sum(item["phase"] == "runtime-prep" for item in receipts))
+            self.assertTrue(any("runtime-prep-base-preparation" in item["path"]
+                                for item in recorder.references))
+
     def test_native_stage_uses_only_frozen_runtime_when_ignored_linux_binary_exists(self):
         """An ignored host runtime cannot enter a same-source fixture stage."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -1271,6 +1334,48 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                 if tunneled is not None:
                     self.assertEqual(1, tunneled.closed)
                 self.assertNotIn("private fixture detail", json.dumps(diagnostics))
+
+    def test_java17_connect_host_without_port_is_admitted_only_for_exact_authority(self):
+        class Connection:
+            def __init__(self, data):
+                self.data = bytearray(data)
+                self.sent = bytearray()
+
+            def recv(self, length):
+                if not self.data:
+                    return b""
+                value = bytes(self.data[:length])
+                del self.data[:length]
+                return value
+
+            def sendall(self, value):
+                self.sent.extend(value)
+
+            def close(self):
+                pass
+
+        class Tls:
+            def wrap_socket(self, request, server_side):
+                return Connection(b"")
+
+        for authority, host, accepted in (
+            ("github.com:443", "github.com", True),
+            ("github.com:443", "github.com:443", True),
+            ("github.com:444", "github.com", False),
+            ("evil.invalid:443", "github.com", False),
+            ("github.com:443", "evil.invalid", False),
+        ):
+            with self.subTest(authority=authority, host=host):
+                connection = Connection((f"CONNECT {authority} HTTP/1.1\r\n"
+                                         f"Host: {host}\r\n\r\n").encode())
+                diagnostics = []
+                serve_connection(connection, Tls(), {"assets": []}, {}, b"{}", diagnostics.append)
+                if accepted:
+                    self.assertIn(b"200 Connection Established", connection.sent)
+                    self.assertEqual("tunneled-get", diagnostics[0]["stage"])
+                else:
+                    self.assertIn(b"403 Forbidden", connection.sent)
+                    self.assertEqual("connect-admission", diagnostics[0]["stage"])
 
     def test_probe_event_requires_exact_manifest_get_and_is_immutable(self):
         probe_id = "34c822fc-3b71-4c34-b765-02f3e6db745b"

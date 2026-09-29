@@ -17,11 +17,15 @@ from . import native_rpm_public_install_ssh, ssh_transport
 
 
 APPROVAL = "explicit-user-approved-disposable-owner-quit"
+RECOVERY_APPROVAL = "fedora-acceptance-disconnected-replacement-owner-quit"
 _HOST = "fedora2328"
 _GROUP = "linux-owner-public-quit"
 _APPROVED_PID = 18367
 _APPROVED_TICKS = 2078693
 _APPROVED_CONTROLLER = "1780cc81-65a6-4284-a424-2178b94e2690"
+_RECOVERY_PID = 84498
+_RECOVERY_TICKS = 42693938
+_RECOVERY_CONTROLLER = "4da9288d-dd73-4312-92d8-c7d96f046040"
 
 
 class LinuxOwnerPublicQuitError(ValueError):
@@ -32,6 +36,9 @@ _COMMON = r'''import json,os,pwd,stat,subprocess,sys,time
 ACCOUNT='vpnfixture';LAUNCHER='/opt/vpn-control/bin/vpn-control'
 APPROVAL='explicit-user-approved-disposable-owner-quit'
 APPROVED_PID=18367;APPROVED_TICKS=2078693;APPROVED_CONTROLLER='1780cc81-65a6-4284-a424-2178b94e2690'
+RECOVERY_APPROVAL='fedora-acceptance-disconnected-replacement-owner-quit'
+RECOVERY_PID=84498;RECOVERY_TICKS=42693938;RECOVERY_CONTROLLER='4da9288d-dd73-4312-92d8-c7d96f046040'
+RECOVERY_NEVRA='vpn-control-2.2.0-1.x86_64'
 def output(state,reason=None,**fields):
  value={'state':state,**fields}
  if reason is not None:value['reason']=reason
@@ -52,9 +59,10 @@ def same_owner(intent):
  if observed=='missing':return False
  return observed[1]==intent['startTicks']
 def public_status(intent):
- if intent.get('approval')!=APPROVAL:return None,'approval-unavailable'
- if (intent.get('pid')!=APPROVED_PID or intent.get('startTicks')!=APPROVED_TICKS or
-     intent.get('controllerId')!=APPROVED_CONTROLLER):return None,'approval-owner-mismatch'
+ if intent.get('approval') not in (APPROVAL,RECOVERY_APPROVAL):return None,'approval-unavailable'
+ approved=((APPROVAL,APPROVED_PID,APPROVED_TICKS,APPROVED_CONTROLLER),
+           (RECOVERY_APPROVAL,RECOVERY_PID,RECOVERY_TICKS,RECOVERY_CONTROLLER))
+ if (intent.get('approval'),intent.get('pid'),intent.get('startTicks'),intent.get('controllerId')) not in approved:return None,'approval-owner-mismatch'
  if os.geteuid()!=pwd.getpwnam(ACCOUNT).pw_uid:return None,'wrong-guest-user'
  if same_owner(intent) is not True:return None,'owner-generation-changed'
  try:
@@ -75,8 +83,12 @@ def public_status(intent):
   if (value.get('ok') is not True or value.get('final') is not True or value.get('code')!='OK'
       or value.get('controllerId')!=intent['controllerId'] or not isinstance(data,dict)):
    return None,'public-status-invalid'
-  if data.get('runtimeRunning') is not False or data.get('runtimeId') is not None or data.get('activeLocationId') is not None or data.get('activeMode') is not None:
+  if data.get('runtimeRunning') is not False or data.get('runtimeId') is not None or data.get('activeLocationId') is not None or data.get('activeMode') is not None or data.get('selectedLocationId') is not None:
    return None,'active-runtime'
+  if intent['approval']==RECOVERY_APPROVAL:
+   package=subprocess.run(['rpm','-q','--qf','%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}','vpn-control'],
+    capture_output=True,text=True,timeout=15)
+   if package.returncode!=0 or package.stdout!=RECOVERY_NEVRA:return None,'installed-package-mismatch'
   if same_owner(intent) is not True:return None,'owner-generation-changed'
   return workspace,None
  except Exception:return None,'owner-observation-unavailable'
@@ -161,7 +173,7 @@ try:
  if (receipt.get('blockedReason') in ('active-runtime','owner-generation-changed','public-status-unavailable',
       'public-status-invalid','owner-observation-unavailable','owner-command-unavailable','owner-launcher-mismatch',
       'state-directory-unavailable','state-directory-unsafe','owner-role-mismatch','wrong-guest-user',
-      'approval-unavailable','approval-owner-mismatch') and receipt.get('publicAccepted') is False and receipt.get('exitCode') is None):
+      'approval-unavailable','approval-owner-mismatch','installed-package-mismatch') and receipt.get('publicAccepted') is False and receipt.get('exitCode') is None):
   output('blocked',receipt['blockedReason'],correlationId=intent['correlationId'])
  elif type(receipt.get('exitCode')) is not int or receipt.get('publicAccepted') is not True:
   output('failed',correlationId=intent['correlationId'],exitCode=receipt.get('exitCode'))
@@ -178,12 +190,13 @@ except Exception:output('unknown','guest-status-unavailable',correlationId=inten
 
 def _request(value: Mapping[str, Any]) -> dict[str, Any]:
     fields = {"host", "environment", "pid", "startTicks", "controllerId", "approval", "correlationId"}
+    approved = ((APPROVAL, _APPROVED_PID, _APPROVED_TICKS, _APPROVED_CONTROLLER),
+                (RECOVERY_APPROVAL, _RECOVERY_PID, _RECOVERY_TICKS, _RECOVERY_CONTROLLER))
     if (not isinstance(value, Mapping) or set(value) != fields or value.get("host") != _HOST or
-            value.get("environment") != _HOST or type(value.get("pid")) is not int or value["pid"] != _APPROVED_PID or
-            type(value.get("startTicks")) is not int or value["startTicks"] != _APPROVED_TICKS or
+            value.get("environment") != _HOST or type(value.get("pid")) is not int or
+            type(value.get("startTicks")) is not int or
             not isinstance(value.get("controllerId"), str) or not 0 < len(value["controllerId"]) <= 128 or
-            value["controllerId"] != _APPROVED_CONTROLLER or
-            value.get("approval") != APPROVAL):
+            (value.get("approval"), value["pid"], value["startTicks"], value["controllerId"]) not in approved):
         raise LinuxOwnerPublicQuitError("Exact approved Fedora owner identity is required")
     try:
         if str(uuid.UUID(value["controllerId"])) != value["controllerId"]:

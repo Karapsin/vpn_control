@@ -75,6 +75,33 @@ def response(*, job: str = JOB, diagnostic: object = None) -> bytes:
 
 
 class WindowsMsiPreinstallStatusTest(unittest.TestCase):
+    def test_public_intent_write_failure_cannot_claim_or_dispatch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); ids, helper = fake_pair(root)
+            correlation = "11111111-1111-4111-8111-111111111111"
+            args = {"host": "archlinux", "correlationId": correlation, "sourceSha": SOURCE, **ids}
+            target = types.SimpleNamespace(fixture_transfer_root=Path("/private/fixture"))
+            config = types.SimpleNamespace(hosts={"archlinux": target})
+            descriptor = ("windows-cp117", "/private/qga.sock", 589342, 520739,
+                          "vpncp117", "S-1-5-21-1-2-3-1002", Path("private"))
+            fixture = {"probeReceiptSha256": "e" * 64,
+                       "controllerId": "33333333-3333-4333-8333-333333333333",
+                       "ownerPid": 4567, "ownerStartedAtUtc": "2026-09-28T10:00:00Z"}
+            with (patch.object(scenario.native_artifact_registry, "verify_artifact", side_effect=helper["verify"]),
+                  patch.object(scenario.ssh_transport, "load_config", return_value=config),
+                  patch.object(scenario.windows_credential_probe_ssh, "_descriptor", return_value=descriptor),
+                  patch("agent_tools.windows_msi_base_prepare._require_verified_live_fixture", return_value=correlation),
+                  patch("agent_tools.windows_fixture_network_probe.verified_owner_network_receipt",
+                        return_value={"originalSid": descriptor[5], **fixture}),
+                  patch("agent_tools.windows_msi_target_prepare._verified_network_context", return_value=fixture),
+                  patch.object(scenario, "_write_intent", side_effect=OSError("fsync failed")),
+                  patch.object(scenario.campaign_lease, "claim_role") as claim,
+                  patch.object(scenario.windows_credential_probe_ssh, "_run_ssh") as send):
+                with self.assertRaisesRegex(OSError, "fsync failed"):
+                    scenario.start(root, args)
+                claim.assert_not_called()
+                send.assert_not_called()
+
     def test_remote_duplicate_intent_never_dispatches_second_guest_exec(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); root.chmod(0o700)
@@ -196,6 +223,7 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
                   patch.object(scenario.ssh_transport, "load_config", return_value=config),
                   patch.object(scenario.windows_credential_probe_ssh, "_descriptor", return_value=descriptor),
                   patch.object(scenario, "_require_live_fixture_campaign", return_value=(args["correlationId"], fixture)),
+                  patch.object(scenario.campaign_lease, "claim_role", return_value={"state": "role-active"}),
                   patch("agent_tools.windows_msi_base_prepare._verified_claimed_campaign"),
                   patch("agent_tools.windows_msi_target_prepare._verified_network_context", return_value=fixture),
                   patch.object(scenario.windows_credential_probe_ssh, "_run_ssh", return_value=None) as send):
@@ -228,7 +256,7 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
                 send.assert_not_called()
                 self.assertFalse(scenario._intent_file(root, args["correlationId"]).exists())
 
-    def test_live_server_receipt_still_requires_public_route_claim(self) -> None:
+    def test_live_server_receipt_verification_does_not_claim_before_intent(self) -> None:
         from agent_tools import windows_msi_base_prepare as base
         with tempfile.TemporaryDirectory() as directory, \
              patch.object(base, "_require_verified_live_fixture", return_value="11111111-1111-4111-8111-111111111111"), \
@@ -239,9 +267,10 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
              patch("agent_tools.windows_msi_target_prepare._verified_network_context", return_value={}), \
              patch.object(scenario.campaign_lease, "claim_role", return_value={"state": "unknown"}):
             descriptor = ("windows-cp117", "/qga.sock", 1, 2, "vpncp117", "S-1-5-21-1-2-3-1002", Path("private"))
-            with self.assertRaisesRegex(scenario.WindowsMsiPreinstallStatusError,
-                                        "CP117 public claim is unknown"):
-                scenario._require_live_fixture_campaign(Path(directory), {"correlationId": "22222222-2222-4222-8222-222222222222"}, descriptor, object(), object())
+            observed = scenario._require_live_fixture_campaign(Path(directory),
+                {"correlationId": "22222222-2222-4222-8222-222222222222"}, descriptor, object(), object())
+            self.assertEqual(observed[0], "11111111-1111-4111-8111-111111111111")
+            scenario.campaign_lease.claim_role.assert_not_called()
 
     def test_command_size_fails_before_intent_or_qga(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

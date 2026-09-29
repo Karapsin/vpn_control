@@ -58,21 +58,36 @@ def _request(value: Mapping[str, Any]) -> dict[str, str]:
 
 def _require_cross_route_lease(root: Path, request: Mapping[str, str], config: Any,
                                target: Any, descriptor: tuple[Any, ...]) -> str:
-    """Join the exact active base campaign before the one-shot guest stage."""
-    group = root / _GROUP
-    if group.exists():
-        info = group.lstat()
-        if (not stat.S_ISDIR(info.st_mode) or group.is_symlink() or info.st_uid != os.getuid()
-                or stat.S_IMODE(info.st_mode) != 0o700
-                or any(item.suffix == ".json" for item in group.iterdir())):
-            raise WindowsUpdateFixtureStageError("CP117 fixture stage has active or unknown history.")
-    lease_id = base._verified_active_campaign(root, request, descriptor, config, target,
-                                              require_server=False)
-    claimed = campaign_lease.claim_role(root, lease_id, "stage", request["correlationId"],
-                                       base._campaign_remote(config, target))
-    if claimed.get("state") != "role-active":
-        raise WindowsUpdateFixtureStageError("CP117 stage claim is unknown; inspect, do not replay.")
-    return lease_id
+    """Read the exact active base campaign; its role is claimed after intent fsync."""
+    return base._verified_active_campaign(root, request, descriptor, config, target,
+                                          require_server=False)
+
+
+def _closed_stage_history(root: Path, current_lease_id: str) -> None:
+    """Retain prior stage evidence and admit only remotely confirmed closure."""
+    directory = root / _GROUP
+    if not directory.exists():
+        return
+    info = directory.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or directory.is_symlink()
+            or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700):
+        raise WindowsUpdateFixtureStageError("Fixture stage history is unsafe.")
+    config, target, _descriptor = base._descriptor(root)
+    remote = base._campaign_remote(config, target)
+    for path in directory.iterdir():
+        if path.suffix != ".json":
+            continue
+        if not _UUID.fullmatch(path.stem) or str(uuid.UUID(path.stem)) != path.stem:
+            raise WindowsUpdateFixtureStageError("Fixture stage history is unknown.")
+        prior = _read_intent(root, path.stem)
+        prior_lease = prior.get("leaseId") if prior else None
+        if prior_lease is None or prior_lease == current_lease_id:
+            raise WindowsUpdateFixtureStageError("Fixture stage history is active or unknown.")
+        campaign_directory, lock = campaign_lease._locked(root)
+        try: closed = campaign_lease._closed(campaign_directory, prior_lease)
+        finally: os.close(lock)
+        if closed is None or not campaign_lease._remote_confirm(remote, "status", closed, None):
+            raise WindowsUpdateFixtureStageError("Fixture stage history is active or unknown.")
 
 
 def _source_module(root: Path, source: str, name: str) -> bytes:
@@ -219,6 +234,7 @@ def _read_intent(root: Path, correlation: str) -> dict[str, Any] | None:
 
 
 def _reserve(root: Path, record: dict[str, Any], bundle: BinaryIO) -> Path:
+    _closed_stage_history(root, record["leaseId"])
     directory = root / _GROUP
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = directory.lstat()
@@ -230,8 +246,7 @@ def _reserve(root: Path, record: dict[str, Any], bundle: BinaryIO) -> Path:
     correlation = record["request"]["correlationId"]
     try:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if any(item.suffix == ".json" for item in directory.iterdir()):
-            raise WindowsUpdateFixtureStageError("CP117 has an active or unknown fixture stage.")
+        _closed_stage_history(root, record["leaseId"])
         bundle_path = directory / (correlation + ".zip")
         fd = os.open(bundle_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
                      getattr(os, "O_NOFOLLOW", 0), 0o600)
@@ -407,6 +422,10 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         source = _reserve(root, record, bundle)
     finally:
         bundle.close()
+    claimed = campaign_lease.claim_role(root, lease_id, "stage", corr,
+                                        base._campaign_remote(config, target))
+    if claimed.get("state") != "role-active":
+        return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
     raw = base._remote(config, _REMOTE_START, (str(target.fixture_transfer_root), env, lease_id, corr, socket,
         str(pid), str(ticks), sid, str(bundle_size), bundle_hash, create_encoded, encoded,
         request["sourceSha"], pair["sourceFingerprint"], request["fixtureReceiptArtifactId"],
@@ -418,7 +437,22 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     return {"state": "submitted", "correlationId": corr, "replayAllowed": False}
 
 
-_REMOTE_START = base._QGA + campaign_lease.remote_role_guard() + r'''import fcntl,time
+_PRIVATE_REMOTE_JSON = r'''
+def save_private_json(path,value):
+ raw=(json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode()
+ if not 0<len(raw)<=8192:raise ValueError()
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0),0o600)
+ with os.fdopen(fd,'wb') as file:
+  info=os.fstat(file.fileno())
+  if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600:raise ValueError()
+  file.write(raw);file.flush();os.fsync(file.fileno())
+ parent=os.open(os.path.dirname(path),os.O_RDONLY|getattr(os,'O_DIRECTORY',0))
+ try:os.fsync(parent)
+ finally:os.close(parent)
+'''
+
+
+_REMOTE_START = base._QGA + campaign_lease.remote_role_guard() + _PRIVATE_REMOTE_JSON + r'''import fcntl,time,uuid
 root,env,lease,corr,sock,pid,ticks,sid,size_text,bundle_hash,create_encoded,encoded,source,fingerprint,receipt_id,base_id,target_id=sys.argv[1:]
 def out(v):print(json.dumps(v,separators=(',',':'),sort_keys=True))
 try:
@@ -431,12 +465,27 @@ try:
   if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
  lock=os.open(os.path.join(group,'.environment.lock'),os.O_RDWR|os.O_CREAT|getattr(os,'O_NOFOLLOW',0),0o600)
  try:
+  info=os.fstat(lock)
+  if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600:raise ValueError()
   fcntl.flock(lock,fcntl.LOCK_EX)
-  if any(name!='.environment.lock' for name in os.listdir(group)):raise FileExistsError()
+  for name in os.listdir(group):
+   if name=='.environment.lock':continue
+   old_job=os.path.join(group,name);info=os.lstat(old_job)
+   if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700 or str(uuid.UUID(name))!=name:raise ValueError()
+   binding_path=os.path.join(old_job,'binding.json');info=os.lstat(binding_path)
+   if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>8192:raise ValueError()
+   with open(binding_path,encoding='utf-8') as file:old=json.load(file)
+   old_lease=old.get('leaseId')
+   if old.get('correlationId')!=name or not isinstance(old_lease,str) or str(uuid.UUID(old_lease))!=old_lease or old_lease==lease:raise ValueError()
+   closed_path=os.path.join(parent,'windows-cp117-campaign',old_lease+'.closed.json');info=os.lstat(closed_path)
+   if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>16384:raise ValueError()
+   with open(closed_path,encoding='utf-8') as file:closed=json.load(file)
+   identity=closed.get('identity',{})
+   if closed.get('state')!='closed' or closed.get('server')!='stopped' or closed.get('credentials')=='ready' or identity.get('leaseId')!=old_lease or identity.get('sourceSha')!=old.get('sourceSha') or identity.get('fixtureReceiptArtifactId')!=old.get('fixtureReceiptArtifactId') or identity.get('baseMsiArtifactId')!=old.get('baseMsiArtifactId') or identity.get('targetMsiArtifactId')!=old.get('targetMsiArtifactId') or identity.get('socketPath')!=old.get('socketPath') or identity.get('qemuPid')!=old.get('pid') or identity.get('startTicks')!=old.get('startTicks'):raise ValueError()
   stage=os.path.join(group,corr);os.mkdir(stage,0o700)
  finally:os.close(lock)
- binding={'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'leaseId':lease,'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid}
- with open(os.path.join(stage,'binding.json'),'x',encoding='utf-8') as file:json.dump(binding,file,separators=(',',':'));file.flush();os.fsync(file.fileno())
+ binding={'correlationId':corr,'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'leaseId':lease,'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid,'fixtureReceiptArtifactId':receipt_id,'baseMsiArtifactId':base_id,'targetMsiArtifactId':target_id}
+ save_private_json(os.path.join(stage,'binding.json'),binding)
  size=int(size_text)
  if not 0<size<=1075838976 or len(encoded)>30000 or len(create_encoded)>30000:raise ValueError()
  guest='C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-update-fixture-'+corr
@@ -463,14 +512,14 @@ try:
  finally:call(sock,'guest-file-close',{'handle':handle})
  if h.hexdigest()!=bundle_hash:raise ValueError()
  task=call(sock,'guest-exec',{'path':'powershell.exe','arg':['-NoProfile','-NonInteractive','-EncodedCommand',encoded],'capture-output':True})
- with open(os.path.join(stage,'dispatch.json'),'x',encoding='utf-8') as file:json.dump({'pid':task['pid']},file,separators=(',',':'));file.flush();os.fsync(file.fileno())
+ save_private_json(os.path.join(stage,'dispatch.json'),{'pid':task['pid']})
  out({'state':'submitted','correlationId':corr})
 except FileExistsError:out({'state':'unknown','correlationId':corr,'reason':'existing-intent'})
 except Exception:out({'state':'unknown','correlationId':corr,'reason':'submission-uncertain'})
 '''
 
 
-_REMOTE_STATUS = base._QGA + r'''root,env,lease,corr,sock,pid,ticks,sid,source,fingerprint,bundle_hash=sys.argv[1:]
+_REMOTE_STATUS = base._QGA + r'''root,env,lease,corr,sock,pid,ticks,sid,source,fingerprint,bundle_hash,receipt_id,base_id,target_id=sys.argv[1:]
 def out(v):print(json.dumps(v,separators=(',',':'),sort_keys=True))
 try:
  if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()
@@ -480,9 +529,9 @@ try:
   if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
  for name in ('binding.json','dispatch.json'):
   info=os.lstat(os.path.join(stage,name))
-  if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or info.st_size>4096:raise ValueError()
+  if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>8192:raise ValueError()
  binding=json.load(open(os.path.join(stage,'binding.json'),encoding='utf-8'))
- if binding!={'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'leaseId':lease,'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid}:raise ValueError()
+ if binding!={'correlationId':corr,'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'leaseId':lease,'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid,'fixtureReceiptArtifactId':receipt_id,'baseMsiArtifactId':base_id,'targetMsiArtifactId':target_id}:raise ValueError()
  dispatch=json.load(open(os.path.join(stage,'dispatch.json'),encoding='utf-8'))
  if type(dispatch.get('pid')) is not int or dispatch['pid']<=0:raise ValueError()
  process=call(sock,'guest-exec-status',{'pid':dispatch['pid']})
@@ -509,7 +558,8 @@ def status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
             ("pid", pid), ("startTicks", ticks), ("expectedSid", sid))): return unknown
     raw = base._remote(config, _REMOTE_STATUS, (str(target.fixture_transfer_root), env, intent["leaseId"], corr,
         socket, str(pid), str(ticks), sid, intent["request"]["sourceSha"], intent["sourceFingerprint"],
-        intent["bundleSha256"]), None, 30)
+        intent["bundleSha256"], intent["request"]["fixtureReceiptArtifactId"],
+        intent["request"]["baseMsiArtifactId"], intent["request"]["targetMsiArtifactId"]), None, 30)
     try: observed = json.loads(raw) if raw is not None else {}
     except (TypeError, ValueError): return unknown
     if not isinstance(observed, dict) or observed.get("correlationId") != corr: return unknown

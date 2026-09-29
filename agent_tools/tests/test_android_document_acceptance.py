@@ -19,6 +19,30 @@ from agent_tools import android_admission_readback, android_document_acceptance 
 
 
 class AndroidDocumentAcceptanceTest(unittest.TestCase):
+    def test_public_preflight_accepts_terminal_history_but_rejects_active_or_unknown(self) -> None:
+        owner = "e8d73f61-f7bf-4e24-b13a-aff40b1c8e1b"
+        base = {"ok": True, "final": True, "code": "OK", "controllerId": owner,
+                "configurationRevision": 2}
+        status = {**base, "data": {"runtimeRunning": False, "runtimeObservation": "stopped"}}
+        def observe(entries: list[dict], *, altered_status: dict | None = None) -> bool:
+            calls = iter((altered_status or status, {**base, "data": {"operations": entries}}))
+            def fake_run(_args, **_kwargs):
+                return SimpleNamespace(returncode=0, stdout=json.dumps(next(calls)).encode())
+            output = io.StringIO()
+            with mock.patch.object(sys, "argv", ["preflight", "/fake/adb", "/fake/cli.py",
+                                                "emulator-5554", owner, "2"]), \
+                    mock.patch.object(subprocess, "run", side_effect=fake_run), \
+                    redirect_stdout(output):
+                exec(subject._PUBLIC_PREFLIGHT, {"__name__": "__main__"})
+            return json.loads(output.getvalue())["ready"]
+
+        terminal = {"controllerId": owner, "id": "retained-restore", "operation": "routing.import",
+                    "phase": "succeeded", "final": True, "code": "OK"}
+        self.assertTrue(observe([terminal]))
+        self.assertFalse(observe([{**terminal, "phase": "running", "final": False}]))
+        self.assertFalse(observe([{**terminal, "final": "true"}]))
+        self.assertFalse(observe([terminal], altered_status={**status, "configurationRevision": 3}))
+
     def test_remote_fixture_is_exact_historical_56k_bytes(self) -> None:
         prefix = "." + "a" * 60 + "." + "b" * 60 + "." + "c" * 60 + ".example.test"
         fixture = {"type": "vpn_control_routing_rules", "version": 7,
@@ -210,6 +234,119 @@ class AndroidDocumentAcceptanceTest(unittest.TestCase):
             self.assertEqual(json.loads(output.getvalue()),
                              {"state": "unknown", "reason": "command_failed"})
             self.assertNotIn("SECRET_IMPORT_OUTPUT", output.getvalue())
+
+    def test_worker_rejects_foreign_terminal_history_before_export_or_import(self) -> None:
+        correlation = "b68a93e0-445d-4cf5-8fee-2f5d90065bd3"
+        owner, package_hash = "c" * 36, "d" * 64
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); root.chmod(0o700)
+            (root / ("android-document-job-" + correlation)).mkdir(mode=0o700)
+            public_words = []
+            def completed(payload):
+                return SimpleNamespace(returncode=0, stdout=payload.encode())
+            def fake_run(args, **_kwargs):
+                if args[0] == "/fake/adb":
+                    command = tuple(args[5:])
+                    answers = {("id", "-u"): "2000", ("getprop", "ro.build.version.sdk"): "29",
+                               ("getprop", "ro.kernel.qemu.avd_name"): "owned-api29",
+                               ("getprop", "ro.boot.qemu.avd_name"): "",
+                               ("getprop", "ro.product.cpu.abi"): "x86_64",
+                               ("getprop", "dalvik.vm.heapsize"): "48m",
+                               ("getprop", "dalvik.vm.heapgrowthlimit"): "48m",
+                               ("pm", "path", "com.kardinal.vpncontrol"): "package:/data/app/owned/base.apk",
+                               ("sha256sum", "/data/app/owned/base.apk"): package_hash + "  /data/app/owned/base.apk"}
+                    return completed(answers[command])
+                words = args[7:]; public_words.append(words)
+                base = {"ok": True, "final": True, "code": "OK", "controllerId": owner,
+                        "configurationRevision": 0}
+                if words == ["status"]:
+                    return completed(json.dumps({**base, "data": {"runtimeRunning": False,
+                        "runtimeObservation": "stopped"}}))
+                if words == ["operations", "list"]:
+                    return completed(json.dumps({**base, "data": {"operations": [
+                        {"controllerId": "foreign-owner", "id": "retained-restore", "operation": "routing.import",
+                         "phase": "succeeded", "final": True, "code": "OK"}]}}))
+                raise AssertionError("export/import must not run with foreign history")
+            argv = ["remote-worker", "/fake/adb", "/fake/cli.py", "emulator-5554",
+                    "owned-api29", "29", str(root), correlation, package_hash, owner, "0",
+                    subject._FIXTURE_SHA, str(subject._FIXTURE_SIZE)]
+            output = io.StringIO()
+            with mock.patch.object(sys, "argv", argv), \
+                    mock.patch.object(subprocess, "run", side_effect=fake_run), \
+                    redirect_stdout(output), self.assertRaises(SystemExit):
+                exec(subject._REMOTE, {"__name__": "__main__"})
+            self.assertEqual(public_words, [["status"], ["operations", "list"]])
+            self.assertEqual(json.loads(output.getvalue()),
+                             {"state": "unknown", "reason": "opening_history_nonterminal"})
+
+    def test_large_successful_import_result_reaches_full_read(self) -> None:
+        """The import may commit and return the full 56k-domain routing result."""
+        correlation = "b68a93e0-445d-4cf5-8fee-2f5d90065bd3"
+        owner, package_hash = "c" * 36, "d" * 64
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); root.chmod(0o700)
+            job = root / ("android-document-job-" + correlation)
+            job.mkdir(mode=0o700)
+            original = {"type": "vpn_control_routing_rules", "version": 7,
+                        "rules": {"ignore_rules": False, "block_quic_udp_443": False,
+                                  "proxy_packages": [], "direct_domain_suffixes": []}}
+            phases = []
+
+            def completed(payload: str, code: int = 0):
+                return SimpleNamespace(returncode=code, stdout=payload.encode())
+
+            def fake_run(args, **kwargs):
+                if args[0] == "/fake/adb":
+                    command = args[5:]
+                    answers = {("id", "-u"): "2000", ("getprop", "ro.build.version.sdk"): "29",
+                               ("getprop", "ro.kernel.qemu.avd_name"): "owned-api29",
+                               ("getprop", "ro.boot.qemu.avd_name"): "",
+                               ("getprop", "ro.product.cpu.abi"): "x86_64",
+                               ("getprop", "dalvik.vm.heapsize"): "48m",
+                               ("getprop", "dalvik.vm.heapgrowthlimit"): "48m",
+                               ("pm", "path", "com.kardinal.vpncontrol"): "package:/data/app/owned/base.apk",
+                               ("sha256sum", "/data/app/owned/base.apk"): package_hash + "  /data/app/owned/base.apk"}
+                    return completed(answers[tuple(command)])
+                words = args[7:]
+                base = {"ok": True, "final": True, "code": "OK",
+                        "controllerId": owner, "configurationRevision": 0}
+                if words == ["status"]:
+                    return completed(json.dumps({**base, "data": {
+                        "runtimeRunning": False, "runtimeObservation": "stopped"}}))
+                if words == ["operations", "list"]:
+                    return completed(json.dumps({**base, "data": {"operations": []}}))
+                if words[:2] == ["routing", "export"]:
+                    target = Path(words[words.index("--output") + 1])
+                    target.write_text(json.dumps(original)); target.chmod(0o600)
+                    return completed(json.dumps(base))
+                if "import" in words:
+                    phases.append(json.loads((job / "phase.json").read_text())["phase"])
+                    return completed(json.dumps({**base, "configurationRevision": 1,
+                        "operationId": "retained-import-op",
+                        "data": {"direct-domains": ["d" * 200] * 56_000}}))
+                if "wait" in words:
+                    phases.append(json.loads((job / "phase.json").read_text())["phase"])
+                    return completed(json.dumps({**base, "configurationRevision": 1,
+                        "operationId": "retained-import-op",
+                        "data": {"direct-domains": ["d" * 200] * 56_000}}))
+                if words == ["routing", "show"]:
+                    phases.append(json.loads((job / "phase.json").read_text())["phase"])
+                    return completed("SECRET_FULL_READ_FAILURE", code=1)
+                raise AssertionError(f"unexpected public command {words!r}")
+
+            args = ["remote-worker", "/fake/adb", "/fake/cli.py", "emulator-5554",
+                    "owned-api29", "29", str(root), correlation, package_hash, owner, "0",
+                    subject._FIXTURE_SHA, str(subject._FIXTURE_SIZE)]
+            output = io.StringIO()
+            with mock.patch.object(sys, "argv", args), \
+                    mock.patch.object(subprocess, "run", side_effect=fake_run), \
+                    redirect_stdout(output), self.assertRaises(SystemExit):
+                exec(subject._REMOTE, {"__name__": "__main__"})
+            self.assertEqual(phases, ["public_import_submitted", "retained_wait_submitted",
+                                      "full_read_submitted"])
+            self.assertEqual(json.loads(output.getvalue()),
+                             {"state": "unknown", "reason": "command_failed"})
+            self.assertNotIn("SECRET_", output.getvalue())
 
     def test_status_requires_exact_existing_intent_without_submission(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

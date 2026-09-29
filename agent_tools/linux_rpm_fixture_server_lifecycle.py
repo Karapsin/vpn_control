@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
@@ -30,6 +32,12 @@ _ARTIFACT = re.compile(r"sha256-[0-9a-f]{64}\Z")
 _HOST = "fedora2328"
 _ENVIRONMENT = "fedora2328"
 _STATE = Path(".rag_index/linux-rpm-fixture-server")
+_STOP_STATE = Path(".rag_index/linux-rpm-fixture-server-stop")
+_RECOVERED_PUBLIC = "944447ff-7ee3-42df-8ca8-f02dac670459"
+_RECOVERED_CLEANUP = "5eac659d-a6d4-4005-b97a-40063b10d8bf"
+_RECOVERED_SOURCE = "a876f46fa4582e6218d341ac7012fd31bc919758"
+_RECOVERED_TARGET = "vpn-control-2.2.0-1.x86_64"
+_RECOVERED_HEADER = "3ef23bc543b6302432f514edc94ba04d75a8dc3d"
 _SOURCE_FILES = (
     "scripts/prepare_desktop_update_fixture.py",
     "scripts/fixture_environment.py",
@@ -42,6 +50,255 @@ _MAX_PAYLOAD = 1024 * 1024 * 1024
 
 class LinuxRpmFixtureServerError(ValueError):
     pass
+
+
+def _guest_phase(job: Path, correlation: str, uid: int) -> str:
+    """Classify only fixed private journal markers; never infer product success."""
+    def marker(path: Path) -> bool | None:
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return None
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != uid or stat.S_IMODE(info.st_mode) != 0o600:
+            return None
+        return True
+
+    receipt = marker(job / "server-receipt.json")
+    ready = marker(job / "fixture-server-ready.json")
+    probe = marker(job / "stage" / "fixture" / "probe-events" / (correlation + ".json"))
+    worker = marker(job / "worker-process.json")
+    if None in (receipt, ready, probe, worker):
+        return "uninspectable"
+    if receipt:
+        return "receipt-present-unverified"
+    if ready and probe:
+        return "probe-present-no-receipt"
+    if ready:
+        return "server-ready-no-probe"
+    if worker:
+        return "worker-submitted-no-ready"
+    return "worker-marker-missing"
+
+
+def _guest_log_signal(job: Path, uid: int) -> dict[str, str] | None:
+    """Return only a fixed server failure stage and exception class."""
+    path = job / "fixture-server.log"
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+    try:
+        before = os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != uid or
+                stat.S_IMODE(before.st_mode) != 0o600 or not 0 < before.st_size <= 65536):
+            return None
+        raw = os.read(fd, before.st_size + 1)
+        after = os.fstat(fd)
+        current = path.lstat()
+        if (len(raw) != before.st_size or
+                (before.st_dev, before.st_ino, before.st_size) !=
+                (after.st_dev, after.st_ino, after.st_size) or
+                (before.st_dev, before.st_ino) != (current.st_dev, current.st_ino)):
+            return None
+        rows = raw.splitlines()
+        if not rows or len(rows[-1]) > 1024:
+            return None
+        value = json.loads(rows[-1])
+        stages = {"connect-admission", "tls-handshake", "tunneled-get"}
+        errors = {"SSLError", "TimeoutError", "ConnectionResetError", "BrokenPipeError",
+                  "ValueError", "EOFError", "OSError"}
+        if (not isinstance(value, dict) or set(value) != {"request", "stage", "exceptionType"} or
+                value["request"] != "closed-or-rejected" or value["stage"] not in stages or
+                value["exceptionType"] not in errors):
+            return None
+        return {"stage": value["stage"], "exceptionType": value["exceptionType"]}
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return None
+    finally:
+        os.close(fd)
+
+
+def _guest_log_activity(job: Path, uid: int) -> str:
+    """Classify the last private server log row without exporting its content."""
+    try:
+        fd = os.open(job / "fixture-server.log", os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return "empty"
+    except OSError:
+        return "uninspectable"
+    try:
+        info = os.fstat(fd)
+        mode = stat.S_IMODE(info.st_mode)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != uid or
+                mode not in (0o600, 0o644) or info.st_size > 65536):
+            return "uninspectable"
+        prefix = "unsafe-" if mode == 0o644 else ""
+        raw = os.read(fd, info.st_size + 1)
+        after = os.fstat(fd)
+        current = (job / "fixture-server.log").lstat()
+        if (len(raw) != info.st_size or (info.st_dev, info.st_ino, info.st_size) !=
+                (after.st_dev, after.st_ino, after.st_size) or
+                (info.st_dev, info.st_ino) != (current.st_dev, current.st_ino)):
+            return "uninspectable"
+        rows = raw.splitlines()
+        if not rows:
+            return prefix + "empty"
+        if len(rows[-1]) > 1024:
+            return prefix + "unrecognized"
+        value = json.loads(rows[-1])
+        if (isinstance(value, dict) and set(value) == {"served", "bytes"} and
+                value["served"] == "manifest" and type(value["bytes"]) is int and
+                0 < value["bytes"] <= 1048576):
+            return prefix + "manifest-served"
+        if (isinstance(value, dict) and set(value) == {"request", "stage", "exceptionType"} and
+                value.get("request") == "closed-or-rejected" and
+                value.get("stage") in {"connect-admission", "tls-handshake", "tunneled-get"} and
+                value.get("exceptionType") in {"SSLError", "TimeoutError", "ConnectionResetError",
+                                               "BrokenPipeError", "ValueError", "EOFError", "OSError"}):
+            return prefix + value["stage"] + "-" + value["exceptionType"]
+        return prefix + "unrecognized"
+    except (OSError, ValueError, UnicodeError, TypeError):
+        return "uninspectable"
+    finally:
+        os.close(fd)
+
+
+def _guest_private_json(path: Path, uid: int) -> dict[str, Any] | None:
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+    try:
+        before = os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != uid or
+                stat.S_IMODE(before.st_mode) != 0o600 or not 0 < before.st_size <= 8192):
+            return None
+        raw = os.read(fd, before.st_size + 1)
+        after = os.fstat(fd)
+        current = path.lstat()
+        if (len(raw) != before.st_size or
+                (before.st_dev, before.st_ino, before.st_size) !=
+                (after.st_dev, after.st_ino, after.st_size) or
+                (before.st_dev, before.st_ino) != (current.st_dev, current.st_ino)):
+            return None
+        value = json.loads(raw)
+        return value if isinstance(value, dict) else None
+    except (OSError, ValueError, UnicodeError):
+        return None
+    finally:
+        os.close(fd)
+
+
+def _guest_worker_failure(job: Path, uid: int) -> dict[str, str] | None:
+    value = _guest_private_json(job / "worker-failure.json", uid)
+    if (not isinstance(value, dict) or
+            set(value) not in ({"schemaVersion", "phase", "exceptionType"},
+                               {"schemaVersion", "phase", "exceptionType", "failureKind"}) or
+            value["schemaVersion"] != 1 or value["phase"] != "java-probe" or
+            value["exceptionType"] not in {"ValueError", "TimeoutExpired", "OSError"}):
+        return None
+    result = {"phase": value["phase"], "exceptionType": value["exceptionType"]}
+    if "failureKind" in value:
+        if value["failureKind"] not in {"tls-handshake", "manifest-digest", "certificate-digest",
+                                        "connection", "java-compile", "java-failed"}:
+            return None
+        result["failureKind"] = value["failureKind"]
+    return result
+
+
+def _guest_server_process(job: Path, uid: int, *, proc_root: Path = Path("/proc")) -> str:
+    ready = _guest_private_json(job / "fixture-server-ready.json", uid)
+    if ready is None:
+        return "unverified"
+    pid = ready.get("serverPid")
+    identity = ready.get("serverProcessStartIdentity")
+    if type(pid) is not int or pid <= 1 or not isinstance(identity, str):
+        return "unverified"
+    try:
+        boot = (proc_root / "sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+        prefix = "linux:" + boot + ":"
+        if not identity.startswith(prefix) or not identity[len(prefix):].isdigit():
+            return "unverified"
+        process = proc_root / str(pid)
+        if not process.exists():
+            return "absent"
+        parts = (process / "stat").read_text(encoding="ascii").rsplit(")", 1)[1].split()
+        status = (process / "status").read_text(encoding="ascii")
+        rows = [line.split()[1:] for line in status.splitlines() if line.startswith("Uid:")]
+        if len(parts) <= 19 or len(rows) != 1 or len(rows[0]) != 4:
+            return "unverified"
+        if any(int(value) != uid for value in rows[0]):
+            return "different-generation"
+        if parts[0] == "Z":
+            return "absent"
+        return "live" if int(parts[19]) == int(identity[len(prefix):]) else "different-generation"
+    except (OSError, ValueError, IndexError):
+        return "unverified"
+
+
+def _guest_stop_identity(job: Path, source: str, public_digest: str, uid: int,
+                         *, proc_root: Path = Path("/proc")) -> int | None:
+    """Admit only the exact fixture server process from this private job."""
+    if job.parent.name != "linux-rpm-fixture-server-jobs":
+        return None
+    intent = _guest_private_json(job / "intent.json", uid)
+    ready = _guest_private_json(job / "fixture-server-ready.json", uid)
+    if (not isinstance(intent, dict) or not isinstance(ready, dict) or
+            intent.get("correlationId") != job.name or intent.get("sourceSha") != source or
+            intent.get("publicIntentSha256") != public_digest):
+        return None
+    pid, identity = ready.get("serverPid"), ready.get("serverProcessStartIdentity")
+    if type(pid) is not int or pid <= 1 or not isinstance(identity, str):
+        return None
+    try:
+        boot = (proc_root / "sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+        prefix = "linux:" + boot + ":"
+        if not identity.startswith(prefix) or not identity[len(prefix):].isdigit():
+            return None
+        process = proc_root / str(pid)
+        parts = (process / "stat").read_text(encoding="ascii").rsplit(")", 1)[1].split()
+        status = (process / "status").read_text(encoding="ascii")
+        rows = [line.split()[1:] for line in status.splitlines() if line.startswith("Uid:")]
+        raw = (process / "cmdline").read_bytes()
+        if (len(parts) <= 19 or parts[0] in {"Z", "X"} or
+                int(parts[19]) != int(identity[len(prefix):]) or
+                len(rows) != 1 or len(rows[0]) != 4 or
+                any(int(value) != uid for value in rows[0]) or not 0 < len(raw) <= 8192):
+            return None
+        argv = [part.decode("utf-8") for part in raw.split(b"\0") if part]
+        script = job / "stage" / "scripts" / "prepare_desktop_update_fixture.py"
+        runner = ("import runpy,sys; "
+                  "from pathlib import Path; "
+                  "script=Path(sys.argv[1]).resolve(strict=True); "
+                  "sys.path.insert(0,str(script.parent)); "
+                  "sys.argv=[str(script),*sys.argv[2:]]; "
+                  "runpy.run_path(str(script),run_name='__main__')")
+        expected = [sys.executable, "-I", "-B", "-c", runner, str(script), "serve",
+                    "--directory", str(job / "stage" / "fixture"),
+                    "--certificate", str(job / "stage" / "fixture-certificate.pem"),
+                    "--private-key", str(job / "stage" / "fixture-private-key.pem"),
+                    "--ready-file", str(job / "fixture-server-ready.json"),
+                    "--confirm-owned-disposable-guest"]
+        return pid if argv == expected else None
+    except (OSError, ValueError, UnicodeError, IndexError):
+        return None
+
+
+def _guest_worker_state(job: Path, uid: int, *, proc_root: Path = Path("/proc")) -> str:
+    worker = _guest_private_json(job / "worker-process.json", uid)
+    if (not isinstance(worker, dict) or worker.get("correlationId") != job.name or
+            type(worker.get("pid")) is not int or worker["pid"] <= 1):
+        return "unverified"
+    process = proc_root / str(worker["pid"])
+    if not process.exists():
+        return "absent"
+    try:
+        fields = (process / "stat").read_text(encoding="ascii").rsplit(")", 1)[1].split()
+        return "zombie" if fields and fields[0] in {"Z", "X"} else "present"
+    except (OSError, ValueError, IndexError):
+        return "unverified"
 
 
 def _require(value: bool, reason: str) -> None:
@@ -110,6 +367,7 @@ def _admit(root: Path, request: Mapping[str, Any], intent: adapter.RpmPublicInst
               "expectedTargetVersion": typed["expectedTargetVersion"],
               "expectedBaseNevra": typed["expectedBaseNevra"],
               "expectedTargetNevra": typed["expectedTargetNevra"],
+              "expectedDesktopJarSha256": typed["expectedDesktopJarSha256"],
               "publicIntentSha256": hashlib.sha256(_canonical(intent.public_mapping())).hexdigest(),
               "authorizationHandleSha256": hashlib.sha256(intent.credential_handle.encode()).hexdigest()}
     return {"paths": paths, "typed": typed, "public": public,
@@ -250,40 +508,112 @@ print(json.dumps({'state':'submitted','correlationId':intent['correlationId'],'r
 '''
 
 
-_STATUS = r'''import hashlib,json,os,pwd,stat,subprocess,sys
+_STATUS = (r'''import hashlib,json,os,pwd,stat,subprocess,sys
+from pathlib import Path
+from typing import Any
+''' + inspect.getsource(_guest_phase) + inspect.getsource(_guest_log_signal) +
+           inspect.getsource(_guest_log_activity) +
+           inspect.getsource(_guest_private_json) + inspect.getsource(_guest_worker_failure) +
+           inspect.getsource(_guest_server_process) + inspect.getsource(_guest_stop_identity) +
+           inspect.getsource(_guest_worker_state) + r'''
 root,corr,worker_sha,guard_sha=sys.argv[1:]
-def unknown():print(json.dumps({'state':'unknown','correlationId':corr,'replayAllowed':False},separators=(',',':')));raise SystemExit(0)
-if pwd.getpwuid(os.geteuid()).pw_name!='vpnfixture' or not os.path.isabs(root) or '..' in root.split('/'):unknown()
+def unknown(phase='uninspectable'):
+ job=Path(root)/'linux-rpm-fixture-server-jobs'/corr
+ signal=_guest_log_signal(job,os.geteuid())
+ activity=_guest_log_activity(job,os.geteuid())
+ failure=_guest_worker_failure(job,os.geteuid())
+ server=_guest_server_process(job,os.geteuid())
+ worker_state=_guest_worker_state(job,os.geteuid())
+ intent=_guest_private_json(job/'intent.json',os.geteuid())
+ stop_admissible=(isinstance(intent,dict) and server=='live' and worker_state in ('absent','zombie') and
+  _guest_stop_identity(job,intent.get('sourceSha'),intent.get('publicIntentSha256'),os.geteuid()) is not None)
+ print(json.dumps({'state':'unknown','correlationId':corr,'phase':phase,'replayAllowed':False,
+  'serverProcess':server,'workerProcess':worker_state,'serverStopAdmissible':stop_admissible,
+  'serverActivity':activity,
+  **({'serverEvent':signal} if signal is not None else {}),
+  **({'workerFailure':failure} if failure is not None else {})},separators=(',',':')));raise SystemExit(0)
+if pwd.getpwuid(os.geteuid()).pw_name!='vpnfixture' or not os.path.isabs(root) or '..' in root.split('/'):unknown('guest-identity-unavailable')
 job=os.path.join(root,'linux-rpm-fixture-server-jobs',corr)
 try:
  info=os.stat(job,follow_symlinks=False)
- if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:unknown()
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:unknown('job-directory-unsafe')
  worker=os.path.join(job,'stage','agent_tools','linux_rpm_fixture_server_guest.py')
  info=os.stat(worker,follow_symlinks=False)
- if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>1048576:unknown()
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>1048576:unknown('worker-source-unsafe')
  fd=os.open(worker,os.O_RDONLY|os.O_NOFOLLOW);h=hashlib.sha256();chunks=[]
  try:
   while block:=os.read(fd,65536):h.update(block);chunks.append(block)
   after=os.fstat(fd)
  finally:os.close(fd)
- if h.hexdigest()!=worker_sha or (info.st_dev,info.st_ino,info.st_size)!=(after.st_dev,after.st_ino,after.st_size):unknown()
+ if h.hexdigest()!=worker_sha or (info.st_dev,info.st_ino,info.st_size)!=(after.st_dev,after.st_ino,after.st_size):unknown('worker-source-mismatch')
  worker_source=b''.join(chunks).decode('utf-8')
- guard=os.path.join(job,'stage','linux-rpm-fixture-server.py')
+ guard=os.path.join(job,'stage','agent_tools','linux_rpm_fixture_server.py')
  info=os.stat(guard,follow_symlinks=False)
- if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>1048576:unknown()
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>1048576:unknown('server-guard-unsafe')
  fd=os.open(guard,os.O_RDONLY|os.O_NOFOLLOW);h=hashlib.sha256()
  try:
   while block:=os.read(fd,65536):h.update(block)
   after=os.fstat(fd)
  finally:os.close(fd)
- if h.hexdigest()!=guard_sha or (info.st_dev,info.st_ino,info.st_size)!=(after.st_dev,after.st_ino,after.st_size):unknown()
+ if h.hexdigest()!=guard_sha or (info.st_dev,info.st_ino,info.st_size)!=(after.st_dev,after.st_ino,after.st_size):unknown('server-guard-mismatch')
  result=subprocess.run([sys.executable,'-I','-B','-c',worker_source,'status',job,guard_sha],capture_output=True,text=True,timeout=30)
- if result.returncode or len(result.stdout)>4096:unknown()
+ if result.returncode or len(result.stdout)>4096:unknown(_guest_phase(Path(job),corr,os.geteuid()))
  value=json.loads(result.stdout)
- if value.get('correlationId')!=corr or value.get('state') not in ('ready','unknown'):unknown()
+ if value.get('correlationId')!=corr or value.get('state') not in ('ready','unknown'):unknown('worker-response-invalid')
+ if value.get('state')=='unknown':unknown(_guest_phase(Path(job),corr,os.geteuid()))
+ server=_guest_server_process(Path(job),os.geteuid())
+ worker_state=_guest_worker_state(Path(job),os.geteuid())
+ intent=_guest_private_json(Path(job)/'intent.json',os.geteuid())
+ stop_admissible=(isinstance(intent,dict) and server=='live' and worker_state in ('absent','zombie') and
+  _guest_stop_identity(Path(job),intent.get('sourceSha'),intent.get('publicIntentSha256'),os.geteuid()) is not None)
+ value.update({'serverProcess':server,'workerProcess':worker_state,'serverStopAdmissible':stop_admissible})
  print(json.dumps(value,separators=(',',':')))
-except Exception:unknown()
-'''
+except Exception as error:unknown('guest-observer-exception-'+type(error).__name__)
+''')
+
+
+_STOP = (r'''import json,os,pwd,select,signal,stat,sys
+from pathlib import Path
+from typing import Any
+''' + inspect.getsource(_guest_private_json) + inspect.getsource(_guest_stop_identity) + r'''
+root,corr,source,public_digest=sys.argv[1:]
+def unknown(reason):
+ print(json.dumps({'state':'unknown','correlationId':corr,'reason':reason,'replayAllowed':False},separators=(',',':')));raise SystemExit(0)
+if pwd.getpwuid(os.geteuid()).pw_name!='vpnfixture' or not os.path.isabs(root) or '..' in root.split('/'):unknown('guest-identity-unavailable')
+job=Path(root)/'linux-rpm-fixture-server-jobs'/corr
+try:
+ info=job.lstat()
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:unknown('job-unsafe')
+ if (job/'server-stop-intent.json').exists():unknown('existing-stop-intent')
+ worker=_guest_private_json(job/'worker-process.json',os.geteuid())
+ if not isinstance(worker,dict) or worker.get('correlationId')!=corr or type(worker.get('pid')) is not int:unknown('worker-identity-unknown')
+ worker_proc=Path('/proc')/str(worker['pid'])
+ if worker_proc.exists():
+  fields=(worker_proc/'stat').read_text(encoding='ascii').rsplit(')',1)[1].split()
+  if not fields or fields[0] not in ('Z','X'):unknown('worker-may-be-active')
+ pid=_guest_stop_identity(job,source,public_digest,os.geteuid())
+ if pid is None:unknown('server-identity-unavailable')
+ if not hasattr(os,'pidfd_open') or not hasattr(signal,'pidfd_send_signal'):unknown('pidfd-unavailable')
+ pidfd=os.pidfd_open(pid,0)
+ try:
+  if _guest_stop_identity(job,source,public_digest,os.geteuid())!=pid:unknown('server-generation-changed')
+  receipt={'schemaVersion':1,'correlationId':corr,'sourceSha':source,
+   'publicIntentSha256':public_digest,'serverPid':pid}
+  path=job/'server-stop-intent.json'
+  fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+  with os.fdopen(fd,'wb') as out:
+   out.write((json.dumps(receipt,sort_keys=True,separators=(',',':'))+'\n').encode());out.flush();os.fsync(out.fileno())
+  fd=os.open(job,os.O_RDONLY|os.O_DIRECTORY);os.fsync(fd);os.close(fd)
+  signal.pidfd_send_signal(pidfd,signal.SIGTERM)
+  poller=select.poll();poller.register(pidfd,select.POLLIN)
+  exited=bool(poller.poll(5000))
+  if exited:
+   print(json.dumps({'state':'terminal','result':'stopped','correlationId':corr,
+    'pidfdExitObserved':True,'replayAllowed':False},separators=(',',':')))
+  else:unknown('stop-not-observed')
+ finally:os.close(pidfd)
+except Exception as error:unknown('stop-exception-'+type(error).__name__)
+''')
 
 
 def _remote(captured: Mapping[str, Any], program: str, args: tuple[str, ...],
@@ -383,6 +713,50 @@ def status(root: Path | str, inputs: Mapping[str, Any]) -> dict[str, Any]:
     captured = {"config": config}
     result = _remote(captured, _STATUS, (str(host.fixture_transfer_root), correlation,
                                          record["serverGuestSha256"], record["serverGuardSha256"]))
+    if isinstance(result, Mapping) and result.get("state") == "unknown" and result.get("correlationId") == correlation:
+        phase = result.get("phase")
+        allowed = {"uninspectable", "receipt-present-unverified", "probe-present-no-receipt",
+                   "server-ready-no-probe", "worker-submitted-no-ready", "worker-marker-missing",
+                   "guest-identity-unavailable", "job-directory-unsafe", "worker-source-unsafe",
+                   "worker-source-mismatch", "server-guard-unsafe", "server-guard-mismatch",
+                   "worker-response-invalid", "guest-observer-exception-FileNotFoundError",
+                   "guest-observer-exception-PermissionError", "guest-observer-exception-OSError",
+                   "guest-observer-exception-ValueError", "guest-observer-exception-KeyError",
+                   "guest-observer-exception-TimeoutExpired"}
+        public = {"state": "unknown", "correlationId": correlation,
+                  "phase": phase if phase in allowed else "uninspectable", "replayAllowed": False}
+        if result.get("serverProcess") in {"live", "absent", "different-generation", "unverified"}:
+            public["serverProcess"] = result["serverProcess"]
+        if result.get("workerProcess") in {"absent", "zombie", "present", "unverified"}:
+            public["workerProcess"] = result["workerProcess"]
+        if type(result.get("serverStopAdmissible")) is bool:
+            public["serverStopAdmissible"] = result["serverStopAdmissible"]
+        activity_allowed = {"empty", "manifest-served", "unrecognized", "uninspectable",
+                            "unsafe-empty", "unsafe-manifest-served", "unsafe-unrecognized"}
+        activity_allowed.update(prefix + stage + "-" + error
+                                for prefix in ("", "unsafe-")
+                                for stage in ("connect-admission", "tls-handshake", "tunneled-get")
+                                for error in ("SSLError", "TimeoutError", "ConnectionResetError",
+                                              "BrokenPipeError", "ValueError", "EOFError", "OSError"))
+        if result.get("serverActivity") in activity_allowed:
+            public["serverActivity"] = result["serverActivity"]
+        event = result.get("serverEvent")
+        if (isinstance(event, Mapping) and set(event) == {"stage", "exceptionType"} and
+                event["stage"] in {"connect-admission", "tls-handshake", "tunneled-get"} and
+                event["exceptionType"] in {"SSLError", "TimeoutError", "ConnectionResetError",
+                                           "BrokenPipeError", "ValueError", "EOFError", "OSError"}):
+            public["serverEvent"] = dict(event)
+        failure = result.get("workerFailure")
+        if (isinstance(failure, Mapping) and
+                set(failure) in ({"phase", "exceptionType"},
+                                 {"phase", "exceptionType", "failureKind"}) and
+                failure["phase"] == "java-probe" and
+                failure["exceptionType"] in {"ValueError", "TimeoutExpired", "OSError"} and
+                ("failureKind" not in failure or failure["failureKind"] in
+                 {"tls-handshake", "manifest-digest", "certificate-digest", "connection",
+                  "java-compile", "java-failed"})):
+            public["workerFailure"] = dict(failure)
+        return public
     if (result is None or result.get("state") != "ready" or
             result.get("correlationId") != correlation or
             result.get("sourceSha") != record["sourceSha"] or
@@ -393,6 +767,100 @@ def status(root: Path | str, inputs: Mapping[str, Any]) -> dict[str, Any]:
 
 def collect(root: Path | str, inputs: Mapping[str, Any]) -> dict[str, Any]:
     return status(root, inputs)
+
+
+def _stop_journal_path(root: Path, correlation: str, *, create: bool) -> Path | None:
+    directory = root / _STOP_STATE
+    if create:
+        directory.mkdir(parents=True, mode=0o700, exist_ok=True)
+    if not directory.exists():
+        return None
+    info = directory.lstat()
+    _require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and
+             stat.S_IMODE(info.st_mode) == 0o700, "Fixture server stop journal directory is unsafe.")
+    return directory / (correlation + ".json")
+
+
+def stop(root: Path | str, inputs: Mapping[str, Any]) -> dict[str, Any]:
+    """Send one scoped SIGTERM via pidfd; uncertainty never authorizes another."""
+    _require(isinstance(inputs, Mapping) and set(inputs) == {"correlationId"},
+             "Server stop requires only correlationId.")
+    correlation = inputs["correlationId"]
+    _require(isinstance(correlation, str) and bool(re.fullmatch(r"[0-9a-f-]{36}", correlation)),
+             "Server stop correlation is invalid.")
+    root = Path(root).resolve(strict=True)
+    record = _journal(root, correlation)
+    _require(record is not None and record.get("correlationId") == correlation and
+             isinstance(record.get("sourceSha"), str) and _SHA.fullmatch(record["sourceSha"]) and
+             isinstance(record.get("publicIntentSha256"), str) and
+             re.fullmatch(r"[0-9a-f]{64}", record["publicIntentSha256"]),
+             "Exact server intent is unavailable for scoped stop.")
+    path = _stop_journal_path(root, correlation, create=True)
+    assert path is not None
+    if path.exists() or path.is_symlink():
+        return {"state": "unknown", "correlationId": correlation,
+                "reason": "existing-stop-intent", "replayAllowed": False}
+    config = ssh_transport.load_config(root)
+    host = config.hosts.get(_HOST)
+    _require(host is not None and host.user == "vpnfixture" and host.fixture_transfer_root is not None,
+             "Fedora fixture guest is unavailable for scoped stop.")
+    observed = status(root, {"correlationId": correlation})
+    _require(observed.get("state") in {"unknown", "ready"} and
+             observed.get("serverProcess") == "live" and
+             observed.get("workerProcess") in {"absent", "zombie"} and
+             observed.get("serverStopAdmissible") is True,
+             "Exact live fixture server role is not admitted for stop.")
+    if observed["state"] == "ready":
+        from . import linux_rpm_base_prepare as base
+        public = rpm.RpmPublicInstallSshDriver(root).status(correlation)
+        _require(public.get("state") == "terminal" and
+                 public.get("correlationId") == correlation and
+                 type(public.get("exitCode")) is int and public["exitCode"] != 0,
+                 "READY server requires exact terminal failed public job before stop.")
+        if correlation == _RECOVERED_PUBLIC:
+            from . import linux_rpm_workspace_recovery as recovery
+            _require(record.get("sourceSha") == _RECOVERED_SOURCE and
+                     record.get("expectedTargetNevra") == _RECOVERED_TARGET,
+                     "Recovered READY server source or target changed.")
+            cleanup = recovery.cleanup_status(root, {"cleanupCorrelationId": _RECOVERED_CLEANUP})
+            _require(cleanup.get("state") == "terminal" and cleanup.get("result") == "passed" and
+                     cleanup.get("correlationId") == _RECOVERED_CLEANUP and
+                     cleanup.get("workspaceRemoved") is True,
+                     "Recovered READY server requires exact completed workspace cleanup.")
+            idle = base.preflight(root, {"host": _HOST, "environment": _ENVIRONMENT,
+                                         "expectedCurrentNevra": _RECOVERED_TARGET,
+                                         "includeCurrentHeader": True})
+            _require(idle.get("state") == "ready" and idle.get("currentNevra") == _RECOVERED_TARGET and
+                     idle.get("currentHeaderSha1") == _RECOVERED_HEADER,
+                     "Recovered READY server requires fresh idle exact target RPM.")
+        else:
+            idle = base.preflight(root, {"host": _HOST, "environment": _ENVIRONMENT,
+                                         "expectedCurrentNevra": record["expectedBaseNevra"]})
+            _require(idle.get("state") == "ready" and
+                     idle.get("currentNevra") == record["expectedBaseNevra"],
+                     "READY server requires fresh idle unchanged Fedora base before stop.")
+    local = {"schemaVersion": 1, "correlationId": correlation,
+             "sourceSha": record["sourceSha"], "publicIntentSha256": record["publicIntentSha256"]}
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "wb") as stream:
+        stream.write(_canonical(local))
+        stream.flush()
+        os.fsync(stream.fileno())
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(parent)
+    finally:
+        os.close(parent)
+    result = _remote({"config": config}, _STOP,
+                     (str(host.fixture_transfer_root), correlation,
+                      record["sourceSha"], record["publicIntentSha256"]))
+    if (isinstance(result, Mapping) and result.get("correlationId") == correlation and
+            result.get("state") == "terminal" and result.get("result") == "stopped" and
+            result.get("pidfdExitObserved") is True and result.get("replayAllowed") is False):
+        return {"state": "terminal", "result": "stopped", "correlationId": correlation,
+                "pidfdExitObserved": True, "replayAllowed": False}
+    return {"state": "unknown", "correlationId": correlation,
+            "reason": "stop-result-uncertain", "replayAllowed": False}
 
 
 def ready_for_public(root: Path | str, intent: adapter.RpmPublicInstallIntent,

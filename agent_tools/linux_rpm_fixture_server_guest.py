@@ -31,9 +31,9 @@ public class MakeTrust {
   var cert=CertificateFactory.getInstance("X.509").generateCertificate(new FileInputStream(args[0]));
   var store=KeyStore.getInstance("PKCS12"); store.load(null,null);
   store.setCertificateEntry("vpn-control-fixture",cert);
-  try(var out=new FileOutputStream(args[1])) { store.store(out,null); }
+  try(var out=new FileOutputStream(args[1])) { store.store(out,"fixtureonly".toCharArray()); }
   var check=KeyStore.getInstance("PKCS12");
-  try(var in=new FileInputStream(args[1])) { check.load(in,new char[0]); }
+  try(var in=new FileInputStream(args[1])) { check.load(in,"fixtureonly".toCharArray()); }
   if(check.size()!=1 || !check.isCertificateEntry("vpn-control-fixture")) throw new IllegalStateException();
  }
 }'''
@@ -50,9 +50,9 @@ public class FixtureProbe {
   connection.setConnectTimeout(10000); connection.setReadTimeout(10000);
   connection.setRequestProperty("X-Vpn-Control-Probe-Id",args[0]);
   if(connection.getResponseCode()!=200) throw new IllegalStateException("manifest status");
+  var cert=connection.getServerCertificates()[0];
   byte[] body; try(var in=connection.getInputStream()) { body=in.readNBytes(1048577); }
   if(body.length>1048576 || !hex(MessageDigest.getInstance("SHA-256").digest(body)).equals(args[1])) throw new IllegalStateException("manifest digest");
-  var cert=connection.getServerCertificates()[0];
   if(!hex(MessageDigest.getInstance("SHA-256").digest(cert.getEncoded())).equals(args[2])) throw new IllegalStateException("certificate digest");
   System.out.println(args[1]);
  }
@@ -112,7 +112,7 @@ def _hash(path: Path, maximum: int) -> str:
 def _verified_guard(stage: Path, expected_sha: str) -> dict[str, Any]:
     _require(isinstance(expected_sha, str) and _HEX.fullmatch(expected_sha) is not None,
              "server guard digest invalid")
-    raw = _private_file(stage / "linux-rpm-fixture-server.py", readonly=True)
+    raw = _private_file(stage / "agent_tools" / "linux_rpm_fixture_server.py", readonly=True)
     _require(hashlib.sha256(raw).hexdigest() == expected_sha, "server guard changed")
     namespace: dict[str, Any] = {"__name__": "linux_rpm_fixture_server_guard"}
     exec(compile(raw, "<verified-linux-rpm-fixture-server>", "exec"), namespace)
@@ -125,6 +125,45 @@ def _run(argv: list[str], *, timeout: int = 30) -> subprocess.CompletedProcess[s
                                  if key not in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS")})
     _require(result.returncode == 0, "fixture server prerequisite failed")
     return result
+
+
+def _probe_trust_password_property() -> list[str]:
+    # Fixed test-only password for a store containing only the public fixture CA.
+    return ["-Djavax.net.ssl.trustStorePassword=fixtureonly"]
+
+
+def _java_probe(job: Path, argv: list[str]) -> None:
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=60, check=False,
+                                env={key: value for key, value in os.environ.items()
+                                     if key not in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS")})
+        if result.returncode != 0:
+            stderr = result.stderr or ""
+            if "SSLHandshakeException" in stderr:
+                kind = "tls-handshake"
+            elif "manifest digest" in stderr:
+                kind = "manifest-digest"
+            elif "certificate digest" in stderr:
+                kind = "certificate-digest"
+            elif "ConnectException" in stderr or "SocketTimeoutException" in stderr:
+                kind = "connection"
+            elif "error: " in stderr:
+                kind = "java-compile"
+            else:
+                kind = "java-failed"
+            _durable(job / "worker-failure.json", {"schemaVersion": 1,
+                "phase": "java-probe", "exceptionType": "ValueError", "failureKind": kind})
+            raise ValueError("fixture server Java probe failed")
+    except Exception as error:
+        if not (job / "worker-failure.json").exists():
+            _durable(job / "worker-failure.json", {"schemaVersion": 1,
+                "phase": "java-probe", "exceptionType": type(error).__name__})
+        raise
+
+
+def _open_private_server_log(path: Path):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    return os.fdopen(fd, "wb")
 
 
 def _isolated_script_argv(script: Path, *arguments: str) -> list[str]:
@@ -187,7 +226,7 @@ def prepare(job: Path) -> None:
     ready = job / "fixture-server-ready.json"
     script = stage / "scripts" / "prepare_desktop_update_fixture.py"
     log = job / "fixture-server.log"
-    with log.open("xb") as output:
+    with _open_private_server_log(log) as output:
         server = subprocess.Popen([*_isolated_script_argv(script, "serve"),
                                    "--directory", str(fixture), "--certificate", str(cert),
                                    "--private-key", str(key), "--ready-file", str(ready),
@@ -211,11 +250,12 @@ def prepare(job: Path) -> None:
     probe_java = stage / "FixtureProbe.java"
     probe_java.write_text(_PROBE_JAVA)
     probe_java.chmod(0o600)
-    _run(["java", "-Dhttps.proxyHost=127.0.0.1",
+    _java_probe(job, ["java", "-Dhttps.proxyHost=127.0.0.1",
           f"-Dhttps.proxyPort={ready_value['port']}",
           f"-Djavax.net.ssl.trustStore={trust}",
           "-Djavax.net.ssl.trustStoreType=PKCS12",
-          str(probe_java), intent["correlationId"], expected_manifest, cert_digest], timeout=60)
+          *_probe_trust_password_property(),
+          str(probe_java), intent["correlationId"], expected_manifest, cert_digest])
     binding = {"schemaVersion": 1, "correlationId": intent["correlationId"],
                "serverInstanceId": ready_value["serverInstanceId"],
                "peerCertificateSha256": cert_digest,

@@ -26,6 +26,7 @@ from . import windows_msi_public_scenario as public
 from . import windows_update_fixture_server as server
 from . import windows_update_fixture_stage as stage
 from . import windows_cp117_lease as lease
+from . import windows_fixture_owner_network as owner_network
 
 
 _CLI = r"C:\Users\vpncp117\AppData\Local\vpn-control\vpn-control-cli.exe"
@@ -43,6 +44,44 @@ def _guest_root(correlation_id: str) -> str:
     return _ROOT + r"\mcp-network-probe-" + correlation_id
 
 
+_GUEST_PATH_GUARDS = r'''function GuardPath([string]$path,[bool]$allowMissingLeaf) {
+ $cursor=$path;$first=$true
+ while($true){
+  if(Test-Path -LiteralPath $cursor){
+   $entry=Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+   if(($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'REPARSE_PATH'}
+  }elseif(-not ($first -and $allowMissingLeaf)){throw 'MISSING_ANCESTOR'}
+  $parent=Split-Path -Path $cursor -Parent
+  if([string]::IsNullOrEmpty($parent) -or $parent -ceq $cursor){break}
+  $cursor=$parent;$first=$false
+ }
+}
+function GuardPrivate([string]$path,[bool]$directory,[string]$sid) {
+ GuardPath $path $false
+ $entry=Get-Item -LiteralPath $path -Force -ErrorAction Stop
+ if([bool]$entry.PSIsContainer -ne $directory){throw 'PRIVATE_KIND'}
+ $acl=Get-Acl -LiteralPath $path -ErrorAction Stop
+ $allowed=@('S-1-5-18','S-1-5-32-544',$sid)
+ $ownerSid=try{[Security.Principal.NTAccount]::new([string]$acl.Owner).Translate([Security.Principal.SecurityIdentifier]).Value}
+           catch{[string]$acl.Owner}
+ if(-not $acl.AreAccessRulesProtected -or $allowed -cnotcontains $ownerSid){throw 'PRIVATE_OWNER'}
+ $rules=@($acl.Access)
+ if($rules.Count -ne 3){throw 'PRIVATE_ACE_COUNT'}
+ $expectedInheritance=if($directory){3}else{0}
+ $seen=@()
+ foreach($rule in $rules){
+  $ruleSid=$rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+  if($allowed -cnotcontains $ruleSid -or $seen -ccontains $ruleSid -or
+     $rule.AccessControlType.ToString() -cne 'Allow' -or $rule.IsInherited -or
+     [int]$rule.FileSystemRights -ne 0x1F01FF -or
+     [int]$rule.InheritanceFlags -ne $expectedInheritance -or
+     [int]$rule.PropagationFlags -ne 0){throw 'PRIVATE_ACE'}
+  $seen+=@($ruleSid)
+ }
+}
+'''
+
+
 def _task_script(request: Mapping[str, Any], binding: Mapping[str, Any],
                  trust_store_path: str) -> str:
     """Fixed limited-user task. Only this process inherits proxy and trust."""
@@ -51,6 +90,7 @@ def _task_script(request: Mapping[str, Any], binding: Mapping[str, Any],
     if trust_store_path != expected_trust:
         raise WindowsFixtureNetworkProbeError("Probe trust store escaped fixed credential path.")
     script = r'''$ErrorActionPreference='Stop'
+@GUARDS@
 $root=@ROOT@;$cli=@CLI@;$state=@STATE@;$trust=@TRUST@
 $ownerPid=@OWNER_PID@;$ownerTime=@OWNER_TIME@;$controller=@CONTROLLER@
 $sid=@SID@;$corr=@CORR@;$port=@PORT@
@@ -70,6 +110,10 @@ try {
  $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
  $limited=-not ([Security.Principal.WindowsPrincipal]$identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
  if($identity.User.Value -cne $sid -or (Get-Process -Id $PID).SessionId -ne 1 -or -not $limited){throw 'ORIGINAL_USER'}
+ GuardPath $cli $false;GuardPath $state $false
+ GuardPrivate (Split-Path -Path $trust -Parent) $true $sid
+ GuardPrivate $trust $false $sid
+ GuardPrivate $root $true $sid
  Owner
  if((Get-FileHash -LiteralPath $cli -Algorithm SHA256).Hash.ToLowerInvariant() -cne @CLI_HASH@){throw 'CLI_CHANGED'}
  if((Get-FileHash -LiteralPath $trust -Algorithm SHA256).Hash.ToLowerInvariant() -cne @TRUST_HASH@){throw 'TRUST_CHANGED'}
@@ -109,6 +153,7 @@ try {
   [void]$acl.AddAccessRule($rule)
  }
  Set-Acl -LiteralPath $resultPath -AclObject $acl
+ GuardPrivate $resultPath $false $sid
 }catch{exit 1}
 '''
     values = {"ROOT": _guest_root(request["probeCorrelationId"]), "CLI": _CLI,
@@ -123,6 +168,7 @@ try {
     for key, value in values.items():
         script = script.replace("@" + key + "@", str(value) if key in {"OWNER_PID", "PORT", "BUILD", "TARGET_SIZE"}
                                 else _ps(str(value)))
+    script = script.replace("@GUARDS@", _GUEST_PATH_GUARDS)
     if re.search(r"@[A-Z][A-Z_]+@", script):
         raise WindowsFixtureNetworkProbeError("Probe task template is incomplete.")
     return script
@@ -135,13 +181,13 @@ def _bootstrap_script(request: Mapping[str, Any], binding: Mapping[str, Any],
     packed = base64.b64encode(gzip.compress(
         _task_script(request, binding, trust_store_path).encode("utf-16le"), mtime=0)).decode("ascii")
     script = r'''$ErrorActionPreference='Stop'
+@GUARDS@
 $root=@ROOT@;$task=@TASK@;$packed=@PACKED@
 if([IO.Directory]::Exists($root) -or $null -ne (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue)){
  throw 'EXISTING_PROBE'}
-[IO.Directory]::CreateDirectory($root)|Out-Null
-$acl=Get-Acl -LiteralPath $root
+GuardPath $root $true
+$acl=New-Object Security.AccessControl.DirectorySecurity
 $acl.SetAccessRuleProtection($true,$false)
-foreach($entry in @($acl.Access)){[void]$acl.RemoveAccessRuleSpecific($entry)}
 foreach($entrySid in @('S-1-5-18','S-1-5-32-544',@SID@)){
  $rule=[Security.AccessControl.FileSystemAccessRule]::new(
   [Security.Principal.SecurityIdentifier]::new($entrySid),
@@ -150,7 +196,8 @@ foreach($entrySid in @('S-1-5-18','S-1-5-32-544',@SID@)){
   [Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow)
  [void]$acl.AddAccessRule($rule)
 }
-Set-Acl -LiteralPath $root -AclObject $acl
+[IO.Directory]::CreateDirectory($root,$acl)|Out-Null
+GuardPrivate $root $true @SID@
 $bytes=[Convert]::FromBase64String($packed)
 $input=[IO.MemoryStream]::new([byte[]]$bytes)
 $gzip=[IO.Compression.GzipStream]::new($input,[IO.Compression.CompressionMode]::Decompress)
@@ -168,6 +215,7 @@ Start-ScheduledTask -TaskPath '\' -TaskName $task
                        "PACKED": packed, "ACCOUNT": r"VPNMSIX64\vpncp117",
                        "CORR": request["probeCorrelationId"], "SID": binding["originalSid"]}.items():
         script = script.replace("@" + key + "@", _ps(value))
+    script = script.replace("@GUARDS@", _GUEST_PATH_GUARDS)
     if len(base64.b64encode(script.encode("utf-16le"))) >= 30000:
         raise WindowsFixtureNetworkProbeError("Fixed probe bootstrap exceeds QGA bound.")
     return script
@@ -183,31 +231,45 @@ def _observation_script(request: Mapping[str, Any], binding: Mapping[str, Any]) 
                      + request["stageCorrelationId"] + r"\fixture-trust.p12").encode("utf-16le")).decode("ascii")
     digest = hashlib.sha256(arguments.encode()).hexdigest()
     script = r'''$ErrorActionPreference='Stop'
+@GUARDS@
 try {
  $root=@ROOT@;$eventPath=@EVENT@;$taskName=@TASK@;$sid=@SID@
- $task=Get-ScheduledTask -TaskPath '\' -TaskName $taskName -ErrorAction Stop
- $info=Get-ScheduledTaskInfo -TaskPath '\' -TaskName $taskName -ErrorAction Stop
- $action=@($task.Actions)
- if($task.State -ne 'Ready' -or $info.LastTaskResult -ne 0 -or $action.Count -ne 1 -or
-    $action[0].Execute -cne 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -or
-    $task.Principal.UserId -cne 'VPNMSIX64\vpncp117' -or
-    $task.Principal.RunLevel -ne 'Limited' -or $task.Principal.LogonType -ne 'Interactive'){
-   throw 'TASK_GENERATION'}
- $argumentHash=[Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$action[0].Arguments))
- $hex=([BitConverter]::ToString($argumentHash)).Replace('-','').ToLowerInvariant()
- if($hex -cne @ARGUMENT_HASH@){throw 'TASK_COMMAND_CHANGED'}
+ GuardPrivate $root $true $sid
+ GuardPrivate (Split-Path -Path $eventPath -Parent) $true $sid
+ GuardPath @CLI@ $false;GuardPath @STATE@ $false
+ GuardPrivate (Split-Path -Path @TRUST@ -Parent) $true $sid
+ GuardPrivate @TRUST@ $false $sid
+ if((Get-FileHash -LiteralPath @TRUST@ -Algorithm SHA256).Hash.ToLowerInvariant() -cne @TRUST_HASH@){throw 'TRUST_CHANGED'}
+ if((Get-FileHash -LiteralPath @CLI@ -Algorithm SHA256).Hash.ToLowerInvariant() -cne @CLI_HASH@){throw 'CLI_CHANGED'}
+ $task=Get-ScheduledTask -TaskPath '\' -TaskName $taskName -ErrorAction SilentlyContinue
+ $taskState='AbsentCleaned';$taskExit=0;$cleanupHash=$null
+ if($null -ne $task){
+  $info=Get-ScheduledTaskInfo -TaskPath '\' -TaskName $taskName -ErrorAction Stop
+  $action=@($task.Actions)
+  if($task.State -ne 'Ready' -or $info.LastTaskResult -ne 0 -or $action.Count -ne 1 -or
+     $action[0].Execute -cne 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -or
+     $task.Principal.UserId -cne 'VPNMSIX64\vpncp117' -or
+     $task.Principal.RunLevel -ne 'Limited' -or $task.Principal.LogonType -ne 'Interactive'){
+    throw 'TASK_GENERATION'}
+  $argumentHash=[Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$action[0].Arguments))
+  $hex=([BitConverter]::ToString($argumentHash)).Replace('-','').ToLowerInvariant()
+  if($hex -cne @ARGUMENT_HASH@){throw 'TASK_COMMAND_CHANGED'}
+  $taskState='Ready';$taskExit=[int]$info.LastTaskResult
+ }else{
+  $cleanupPath=Join-Path $root 'task-cleanup.json'
+  GuardPrivate $cleanupPath $false $sid
+  $cleanup=Get-Content -LiteralPath $cleanupPath -Raw|ConvertFrom-Json
+  if($cleanup.schemaVersion -ne 1 -or $cleanup.correlationId -cne @CORR@ -or
+     $cleanup.taskName -cne $taskName -or $cleanup.actionSha256 -cne @ARGUMENT_HASH@ -or
+     $cleanup.terminalExitCode -ne 0 -or $cleanup.taskWasPresent -ne $true){throw 'TASK_CLEANUP_CHANGED'}
+  $cleanupHash=(Get-FileHash -LiteralPath $cleanupPath -Algorithm SHA256).Hash.ToLowerInvariant()
+ }
  $resultPath=Join-Path $root 'result.json'
  foreach($path in @($resultPath,$eventPath)){
   $item=Get-Item -LiteralPath $path -Force -ErrorAction Stop
   if($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
      $item.Length -lt 2 -or $item.Length -gt 16384){throw 'PROOF_FILE_UNSAFE'}
-  $acl=Get-Acl -LiteralPath $path -ErrorAction Stop
-  if(-not $acl.AreAccessRulesProtected){throw 'PROOF_ACL_INHERITED'}
-  $allowed=@('S-1-5-18','S-1-5-32-544',$sid)
-  foreach($rule in @($acl.Access)){
-   $ruleSid=$rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
-   if($rule.AccessControlType -ne 'Allow' -or $rule.IsInherited -or $ruleSid -notin $allowed){throw 'PROOF_ACL_UNSAFE'}
-  }
+  GuardPrivate $path $false $sid
  }
  $record=Get-Content -LiteralPath $resultPath -Raw|ConvertFrom-Json
  $event=Get-Content -LiteralPath $eventPath -Raw|ConvertFrom-Json
@@ -224,7 +286,8 @@ try {
  $observed=[ordered]@{originalSid=$record.originalSid;sessionId=$record.sessionId;limited=$record.limited;
   ownerPid=$record.ownerPid;ownerStartedAtUtc=$record.ownerStartedAtUtc;controllerId=$record.controllerId;
   cliSha256=$record.cliSha256;proxyHost=$record.proxyHost;proxyPort=$record.proxyPort;
-  trustStoreSha256=$record.trustStoreSha256;taskState=[string]$task.State;taskExitCode=[int]$info.LastTaskResult;
+  trustStoreSha256=$record.trustStoreSha256;taskState=$taskState;taskExitCode=$taskExit;
+  cleanupProofSha256=$cleanupHash;
   ownerJvmNetworkVerified=$false;ownerJvmPid=$null;ownerJvmStartedAtUtc=$null;
   ownerJvmProxyPort=$null;ownerJvmTrustStoreSha256=$null}
  ([pscustomobject]@{schemaVersion=1;correlationId=@CORR@;observed=$observed;
@@ -234,14 +297,89 @@ try {
     values = {"ROOT": _guest_root(request["probeCorrelationId"]), "EVENT": event,
               "TASK": task_name, "SID": binding["originalSid"], "ARGUMENT_HASH": digest,
               "OWNER_PID": request["ownerPid"], "STATE": _STATE, "CLI": _CLI,
+              "TRUST": (_ROOT + r"\mcp-update-credentials-" + request["stageCorrelationId"]
+                        + r"\fixture-trust.p12"), "TRUST_HASH": binding["trustStoreSha256"],
+              "CLI_HASH": binding["baseCliSha256"],
               "OWNER_TIME": request["ownerStartedAtUtc"], "CONTROLLER": request["controllerId"],
               "OWNER_PID_TEXT": str(request["ownerPid"]), "CORR": request["probeCorrelationId"]}
     for key, value in values.items():
         script = script.replace("@" + key + "@", str(value) if key == "OWNER_PID" else _ps(str(value)))
+    script = script.replace("@GUARDS@", _GUEST_PATH_GUARDS)
     if re.search(r"@[A-Z][A-Z_]+@", script):
         raise WindowsFixtureNetworkProbeError("Probe observer template is incomplete.")
     if len(base64.b64encode(script.encode("utf-16le"))) >= 30000:
         raise WindowsFixtureNetworkProbeError("Fixed probe observer exceeds QGA bound.")
+    return script
+
+
+def _cleanup_script(request: Mapping[str, Any], binding: Mapping[str, Any]) -> str:
+    """One-shot task removal with prewritten reconciliation evidence."""
+    trust = (_ROOT + r"\mcp-update-credentials-" + request["stageCorrelationId"]
+             + r"\fixture-trust.p12")
+    action = "-NoProfile -NonInteractive -EncodedCommand " + base64.b64encode(
+        _task_script(request, binding, trust).encode("utf-16le")).decode("ascii")
+    action_hash = hashlib.sha256(action.encode()).hexdigest()
+    script = r'''$ErrorActionPreference='Stop'
+@GUARDS@
+try {
+ $root=@ROOT@;$sid=@SID@;$taskName=@TASK@;$proofPath=Join-Path $root 'task-cleanup.json'
+ GuardPrivate $root $true $sid
+ GuardPrivate (Join-Path $root 'result.json') $false $sid
+ $task=Get-ScheduledTask -TaskPath '\' -TaskName $taskName -ErrorAction SilentlyContinue
+ if($null -ne $task){
+  $info=Get-ScheduledTaskInfo -TaskPath '\' -TaskName $taskName -ErrorAction Stop
+  $actions=@($task.Actions)
+  if($task.State -ne 'Ready' -or $info.LastTaskResult -ne 0 -or $actions.Count -ne 1 -or
+     $actions[0].Execute -cne 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -or
+     $task.Principal.UserId -cne 'VPNMSIX64\vpncp117' -or
+     $task.Principal.RunLevel -ne 'Limited' -or $task.Principal.LogonType -ne 'Interactive'){
+    throw 'TASK_CHANGED'}
+  $digest=[Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$actions[0].Arguments))
+  if(([BitConverter]::ToString($digest)).Replace('-','').ToLowerInvariant() -cne @ACTION_HASH@){throw 'TASK_ACTION_CHANGED'}
+  if(-not [IO.File]::Exists($proofPath)){
+   $proof=[pscustomobject]@{schemaVersion=1;correlationId=@CORR@;taskName=$taskName;
+    actionSha256=@ACTION_HASH@;terminalExitCode=0;taskWasPresent=$true}
+   $proof|ConvertTo-Json -Compress|Set-Content -LiteralPath $proofPath -Encoding UTF8
+   $acl=Get-Acl -LiteralPath $proofPath
+   $acl.SetAccessRuleProtection($true,$false)
+   foreach($entry in @($acl.Access)){[void]$acl.RemoveAccessRuleSpecific($entry)}
+   foreach($entrySid in @('S-1-5-18','S-1-5-32-544',$sid)){
+    $rule=[Security.AccessControl.FileSystemAccessRule]::new(
+     [Security.Principal.SecurityIdentifier]::new($entrySid),
+     [Security.AccessControl.FileSystemRights]::FullControl,
+     [Security.AccessControl.InheritanceFlags]::None,[Security.AccessControl.PropagationFlags]::None,
+     [Security.AccessControl.AccessControlType]::Allow)
+    [void]$acl.AddAccessRule($rule)
+   }
+   Set-Acl -LiteralPath $proofPath -AclObject $acl
+  }
+  GuardPrivate $proofPath $false $sid
+  $proof=Get-Content -LiteralPath $proofPath -Raw|ConvertFrom-Json
+  if($proof.schemaVersion -ne 1 -or $proof.correlationId -cne @CORR@ -or
+     $proof.taskName -cne $taskName -or $proof.actionSha256 -cne @ACTION_HASH@ -or
+     $proof.terminalExitCode -ne 0 -or $proof.taskWasPresent -ne $true){throw 'CLEANUP_PROOF_CHANGED'}
+  Unregister-ScheduledTask -TaskPath '\' -TaskName $taskName -Confirm:$false -ErrorAction Stop
+ }
+ GuardPrivate $proofPath $false $sid
+ $proof=Get-Content -LiteralPath $proofPath -Raw|ConvertFrom-Json
+ if($proof.schemaVersion -ne 1 -or $proof.correlationId -cne @CORR@ -or
+    $proof.taskName -cne $taskName -or $proof.actionSha256 -cne @ACTION_HASH@ -or
+    $proof.terminalExitCode -ne 0 -or $proof.taskWasPresent -ne $true -or
+    $null -ne (Get-ScheduledTask -TaskPath '\' -TaskName $taskName -ErrorAction SilentlyContinue)){
+  throw 'TASK_CLEANUP_UNKNOWN'}
+ ([pscustomobject]@{schemaVersion=1;correlationId=@CORR@;taskName=$taskName;
+  actionSha256=@ACTION_HASH@;taskAbsent=$true;cleanupProofSha256=(Get-FileHash -LiteralPath $proofPath -Algorithm SHA256).Hash.ToLowerInvariant()}|
+  ConvertTo-Json -Compress)
+}catch{exit 1}
+'''
+    for key, value in {"ROOT": _guest_root(request["probeCorrelationId"]),
+                       "SID": binding["originalSid"],
+                       "TASK": "VpnControlMcpNetworkProbe-" + request["probeCorrelationId"],
+                       "ACTION_HASH": action_hash, "CORR": request["probeCorrelationId"]}.items():
+        script = script.replace("@" + key + "@", _ps(value))
+    script = script.replace("@GUARDS@", _GUEST_PATH_GUARDS)
+    if re.search(r"@[A-Z][A-Z_]+@", script) or len(base64.b64encode(script.encode("utf-16le"))) >= 30000:
+        raise WindowsFixtureNetworkProbeError("Fixed probe cleanup exceeds QGA bound.")
     return script
 
 
@@ -263,9 +401,21 @@ def _observe_native(root: Path, request: Mapping[str, Any], binding: Mapping[str
                                                      "publicResponse", "event"}
             or result["schemaVersion"] != 1 or result["correlationId"] != request["probeCorrelationId"]):
         raise WindowsFixtureNetworkProbeError("Original-owner QGA observation is unknown.")
+    observed = result["observed"]
+    if (not isinstance(observed, dict) or observed.get("ownerJvmNetworkVerified") is not False
+            or any(observed.get(key) is not None for key in
+                   ("ownerJvmPid", "ownerJvmStartedAtUtc", "ownerJvmProxyPort", "ownerJvmTrustStoreSha256"))):
+        raise WindowsFixtureNetworkProbeError("Probe task authored an owner JVM claim.")
+    current_owner = owner_network.verified_owner_jvm_receipt(root, request["leaseId"])
+    _require_owner_jvm_receipt(request, binding, current_owner)
+    observed = {**observed, "ownerJvmNetworkVerified": True,
+                "ownerJvmPid": current_owner["ownerJvmPid"],
+                "ownerJvmStartedAtUtc": current_owner["ownerJvmStartedAtUtc"],
+                "ownerJvmProxyPort": current_owner["ownerJvmProxyPort"],
+                "ownerJvmTrustStoreSha256": current_owner["ownerJvmTrustStoreSha256"]}
     manifest = server._fixture_manifest(root, request)
     manifest_bytes = len(json.dumps(manifest, separators=(",", ":")).encode())
-    return _validate_evidence(binding, result["observed"], result["publicResponse"], result["event"],
+    return _validate_evidence(binding, observed, result["publicResponse"], result["event"],
                               manifest_bytes=manifest_bytes)
 
 
@@ -279,6 +429,39 @@ _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _ARTIFACT = re.compile(r"sha256-[0-9a-f]{64}\Z")
 _UTC = re.compile(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z\Z")
+
+
+def _require_owner_jvm_receipt(request: Mapping[str, Any], binding: Mapping[str, Any],
+                               owner: Mapping[str, Any]) -> None:
+    """Owner JVM proof comes only from the separate fixed launch observer."""
+    if (not isinstance(owner, Mapping) or owner.get("ownerJvmNetworkVerified") is not False
+            or not _canonical(owner.get("ownerNetworkCorrelationId"))
+            or owner["ownerNetworkCorrelationId"] in
+                {request["leaseId"], request["stageCorrelationId"],
+                 request["serverCorrelationId"], request["probeCorrelationId"]}
+            or not isinstance(owner.get("ownerLaunchReceiptSha256"), str)
+            or not _HASH.fullmatch(owner["ownerLaunchReceiptSha256"])):
+        raise WindowsFixtureNetworkProbeError("Original owner JVM network receipt is unavailable.")
+    expected = {"leaseId": request["leaseId"], "sourceSha": request["sourceSha"],
+                "fixtureReceiptArtifactId": request["fixtureReceiptArtifactId"],
+                "baseMsiArtifactId": request["baseMsiArtifactId"],
+                "targetMsiArtifactId": request["targetMsiArtifactId"],
+                "stageCorrelationId": request["stageCorrelationId"],
+                "serverCorrelationId": request["serverCorrelationId"],
+                "socketPath": binding["socketPath"], "qemuPid": binding["qemuPid"],
+                "startTicks": binding["startTicks"], "originalSid": binding["originalSid"],
+                "ownerPid": request["ownerPid"],
+                "ownerStartedAtUtc": request["ownerStartedAtUtc"],
+                "controllerId": request["controllerId"],
+                "ownerJvmPid": request["ownerPid"],
+                "ownerJvmStartedAtUtc": request["ownerStartedAtUtc"],
+                "ownerJvmProxyPort": binding["serverPort"],
+                "ownerJvmTrustStoreSha256": binding["trustStoreSha256"],
+                "liveReceiptSha256": binding["liveReceiptSha256"],
+                "ownerNetworkCorrelationId": binding["ownerNetworkCorrelationId"],
+                "ownerLaunchReceiptSha256": binding["ownerLaunchReceiptSha256"]}
+    if any(owner.get(key) != value for key, value in expected.items()):
+        raise WindowsFixtureNetworkProbeError("Original owner JVM generation or trust changed.")
 
 
 def _canonical(value: Any) -> bool:
@@ -449,7 +632,7 @@ def _validate_evidence(binding: Mapping[str, Any], observed: Mapping[str, Any],
     """Correlate native owner, public client TLS data, and server-only event."""
     owner_fields = {"originalSid", "sessionId", "limited", "ownerPid", "ownerStartedAtUtc",
                     "controllerId", "cliSha256", "proxyHost", "proxyPort", "trustStoreSha256",
-                    "taskState", "taskExitCode", "ownerJvmNetworkVerified", "ownerJvmPid",
+                    "taskState", "taskExitCode", "cleanupProofSha256", "ownerJvmNetworkVerified", "ownerJvmPid",
                     "ownerJvmStartedAtUtc", "ownerJvmProxyPort", "ownerJvmTrustStoreSha256"}
     if (not isinstance(observed, Mapping) or set(observed) != owner_fields
             or observed["originalSid"] != binding["originalSid"]
@@ -461,7 +644,12 @@ def _validate_evidence(binding: Mapping[str, Any], observed: Mapping[str, Any],
             or observed["proxyHost"] != "127.0.0.1"
             or type(observed["proxyPort"]) is not int or observed["proxyPort"] != binding["serverPort"]
             or observed["trustStoreSha256"] != binding["trustStoreSha256"]
-            or observed["taskState"] != "Ready" or type(observed["taskExitCode"]) is not int
+            or observed["taskState"] not in {"Ready", "AbsentCleaned"}
+            or (observed["taskState"] == "Ready" and observed["cleanupProofSha256"] is not None)
+            or (observed["taskState"] == "AbsentCleaned" and
+                (not isinstance(observed["cleanupProofSha256"], str) or
+                 not _HASH.fullmatch(observed["cleanupProofSha256"])))
+            or type(observed["taskExitCode"]) is not int
             or observed["taskExitCode"] != 0
             or observed["ownerJvmNetworkVerified"] is not True
             or type(observed["ownerJvmPid"]) is not int
@@ -509,13 +697,15 @@ def _validate_evidence(binding: Mapping[str, Any], observed: Mapping[str, Any],
                 "originalSid", "socketPath", "qemuPid", "startTicks", "serverInstanceId",
                 "liveReceiptSha256", "manifestSha256", "manifestBuildNumber",
                 "peerCertificateSha256", "trustStoreSha256", "credentialProvisionId",
-                "targetVersion", "targetMsiSha256", "targetMsiSize")}
+                "targetVersion", "targetMsiSha256", "targetMsiSize",
+                "ownerNetworkCorrelationId", "ownerLaunchReceiptSha256")}
     receipt["ownerTransportVerified"] = True
     receipt["ownerJvmNetworkVerified"] = True
     receipt["ownerJvmPid"] = binding["ownerPid"]
     receipt["ownerJvmStartedAtUtc"] = binding["ownerStartedAtUtc"]
     receipt["ownerJvmProxyPort"] = binding["serverPort"]
     receipt["ownerJvmTrustStoreSha256"] = binding["trustStoreSha256"]
+    receipt["probeTaskCleanupSha256"] = observed["cleanupProofSha256"]
     receipt["probeReceiptSha256"] = hashlib.sha256(json.dumps(
         receipt, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return receipt
@@ -545,7 +735,48 @@ def _current_binding(root: Path, request: Mapping[str, Any]) -> dict[str, Any]:
             raise WindowsFixtureNetworkProbeError("CP117 network probe lease is unknown.")
     finally:
         os.close(lock)
-    return _exact_binding(root, request, live, descriptor, pair, (socket, pid, ticks, sid))
+    binding = _exact_binding(root, request, live, descriptor, pair, (socket, pid, ticks, sid))
+    owner = owner_network.verified_owner_jvm_receipt(root, request["leaseId"])
+    _require_owner_jvm_receipt(request, binding, owner)
+    binding["ownerNetworkCorrelationId"] = owner["ownerNetworkCorrelationId"]
+    binding["ownerLaunchReceiptSha256"] = owner["ownerLaunchReceiptSha256"]
+    return binding
+
+
+def _closed_probe_history(root: Path, current_lease_id: str) -> None:
+    """Only a remotely confirmed closed prior campaign can yield another probe."""
+    directory = _journal_directory(root)
+    if directory is None:
+        return
+    entries = [entry for entry in directory.iterdir() if entry.name != ".environment.lock"]
+    if not entries:
+        return
+    config, target, _guest = base._descriptor(root)
+    remote = base._campaign_remote(config, target)
+    for entry in entries:
+        if entry.name == ".environment.lock":
+            continue
+        if entry.suffix == ".receipt":
+            if not _canonical(entry.stem) or not _intent_path(root, entry.stem).exists():
+                raise WindowsFixtureNetworkProbeError("Probe history receipt is orphaned.")
+            _terminal_receipt(root, entry.stem)
+            continue
+        if entry.suffix != ".json" or not _canonical(entry.stem):
+            raise WindowsFixtureNetworkProbeError("Probe history is unknown.")
+        prior = _read_intent(root, entry.stem)
+        request = _request(prior["request"]) if prior is not None else None
+        if request is None or request["leaseId"] == current_lease_id:
+            raise WindowsFixtureNetworkProbeError("Probe history is active or unknown.")
+        campaign, lock = lease._locked(root)
+        try:
+            closed = lease._closed(campaign, request["leaseId"])
+        finally:
+            os.close(lock)
+        if (closed is None or any(closed["identity"].get(key) != request[key] for key in
+                                  ("sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId",
+                                   "targetMsiArtifactId"))
+                or not lease._remote_confirm(remote, "status", closed, None)):
+            raise WindowsFixtureNetworkProbeError("Probe history is active or unknown.")
 
 
 def _reserve(root: Path, request: Mapping[str, Any], binding: Mapping[str, Any]) -> None:
@@ -561,8 +792,7 @@ def _reserve(root: Path, request: Mapping[str, Any], binding: Mapping[str, Any])
                 or stat.S_IMODE(info.st_mode) != 0o600):
             raise WindowsFixtureNetworkProbeError("Probe journal lock is unsafe.")
         fcntl.flock(fd, fcntl.LOCK_EX)
-        if any(entry.suffix == ".json" for entry in directory.iterdir()):
-            raise WindowsFixtureNetworkProbeError("Probe history requires explicit reconciliation.")
+        _closed_probe_history(root, request["leaseId"])
         body = json.dumps({"request": request, "binding": binding, "state": "reserved"},
                           sort_keys=True, separators=(",", ":")).encode() + b"\n"
         if len(body) > 16384:
@@ -588,7 +818,7 @@ def _reserve(root: Path, request: Mapping[str, Any], binding: Mapping[str, Any])
         os.close(fd)
 
 
-_REMOTE_START = base._QGA + lease.remote_role_guard() + r'''import fcntl
+_REMOTE_START = base._QGA + lease.remote_role_guard() + r'''import fcntl,uuid
 root,env,lease_id,corr,sock,pid,ticks,encoded,command_hash,source,receipt_id,base_id,target_id=sys.argv[1:]
 def out(value):print(json.dumps(value,sort_keys=True,separators=(',',':')))
 try:
@@ -605,7 +835,23 @@ try:
   info=os.fstat(lock)
   if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600:raise ValueError()
   fcntl.flock(lock,fcntl.LOCK_EX)
-  if any(name!='.environment.lock' for name in os.listdir(group)):raise ValueError()
+  for name in os.listdir(group):
+   if name=='.environment.lock':continue
+   prior_dir=os.path.join(group,name)
+   info=os.lstat(prior_dir)
+   if name==corr or str(uuid.UUID(name))!=name or not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
+   prior_path=os.path.join(group,name,'binding.json')
+   info=os.lstat(prior_path)
+   if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>16384:raise ValueError()
+   with open(prior_path,encoding='utf-8') as file:prior=json.load(file)
+   old_lease=prior.get('leaseId')
+   if prior.get('probeCorrelationId')!=name or old_lease==lease_id or not isinstance(old_lease,str):raise ValueError()
+   closed_path=os.path.join(parent,'windows-cp117-campaign',old_lease+'.closed.json')
+   info=os.lstat(closed_path)
+   if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>16384:raise ValueError()
+   with open(closed_path,encoding='utf-8') as file:closed=json.load(file)
+   identity=closed.get('identity',{})
+   if closed.get('state')!='closed' or closed.get('server')!='stopped' or closed.get('credentials')=='ready' or identity.get('leaseId')!=old_lease or any(identity.get(key)!=prior.get(key) for key in ('sourceSha','fixtureReceiptArtifactId','baseMsiArtifactId','targetMsiArtifactId','socketPath','qemuPid','startTicks')):raise ValueError()
   job=os.path.join(group,corr);os.mkdir(job,0o700)
  finally:os.close(lock)
  binding={'leaseId':lease_id,'probeCorrelationId':corr,'socketPath':sock,
@@ -625,6 +871,65 @@ try:
  out({'state':'submitted','probeCorrelationId':corr})
 except Exception:out({'state':'unknown','probeCorrelationId':corr})
 '''
+
+
+_REMOTE_CLEANUP = base._QGA + lease.remote_role_guard() + r'''import time
+root,env,lease_id,corr,sock,pid,ticks,encoded,source,receipt_id,base_id,target_id=sys.argv[1:]
+def out(value):print(json.dumps(value,sort_keys=True,separators=(',',':')))
+try:
+ if env!='windows-cp117' or len(encoded)>=30000 or not live(sock,pid,ticks):raise ValueError()
+ require_campaign_role(root,env,lease_id,'network-probe',corr,source,receipt_id,base_id,target_id,sock,pid,ticks)
+ child=call(sock,'guest-exec',{'path':'powershell.exe',
+  'arg':['-NoProfile','-NonInteractive','-EncodedCommand',encoded],'capture-output':True})['pid']
+ if type(child) is not int or child<=0:raise ValueError()
+ for _ in range(80):
+  result=call(sock,'guest-exec-status',{'pid':child})
+  if result.get('exited') is True:break
+  time.sleep(.2)
+ else:raise ValueError()
+ if result.get('exitcode')!=0 or result.get('out-truncated') is not False or result.get('err-truncated') is not False:raise ValueError()
+ raw=base64.b64decode(result.get('out-data',''),validate=True)
+ if not 0<len(raw)<=4096:raise ValueError()
+ out({'state':'observed','result':json.loads(decode(raw))})
+except Exception:out({'state':'unknown'})
+'''
+
+
+def _cleanup_native(root: Path, request: Mapping[str, Any], binding: Mapping[str, Any]) -> str:
+    """Remove only the exact terminal task, or read its prior cleanup proof."""
+    config, target, guest = base._descriptor(root)
+    if (guest[0] != "windows-cp117" or
+            (guest[1], guest[2], guest[3], guest[4]) !=
+            (binding["socketPath"], binding["qemuPid"], binding["startTicks"], binding["originalSid"])):
+        raise WindowsFixtureNetworkProbeError("Probe cleanup guest generation changed.")
+    encoded = base64.b64encode(_cleanup_script(request, binding).encode("utf-16le")).decode("ascii")
+    raw = base._remote(config, _REMOTE_CLEANUP,
+                       (str(target.fixture_transfer_root), "windows-cp117", request["leaseId"],
+                        request["probeCorrelationId"], binding["socketPath"],
+                        str(binding["qemuPid"]), str(binding["startTicks"]), encoded,
+                        request["sourceSha"], request["fixtureReceiptArtifactId"],
+                        request["baseMsiArtifactId"], request["targetMsiArtifactId"]), None, 30)
+    try:
+        value = json.loads(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        value = None
+    result = value.get("result") if isinstance(value, dict) and value.get("state") == "observed" else None
+    if (not isinstance(result, dict) or set(result) != {"schemaVersion", "correlationId", "taskName",
+                                                     "actionSha256", "taskAbsent", "cleanupProofSha256"}
+            or result["schemaVersion"] != 1 or result["correlationId"] != request["probeCorrelationId"]
+            or result["taskName"] != "VpnControlMcpNetworkProbe-" + request["probeCorrelationId"]
+            or result["taskAbsent"] is not True
+            or not isinstance(result["actionSha256"], str) or not _HASH.fullmatch(result["actionSha256"])
+            or not isinstance(result["cleanupProofSha256"], str)
+            or not _HASH.fullmatch(result["cleanupProofSha256"])):
+        raise WindowsFixtureNetworkProbeError("Probe task cleanup is unknown.")
+    trust = (_ROOT + r"\mcp-update-credentials-" + request["stageCorrelationId"]
+             + r"\fixture-trust.p12")
+    expected_action = "-NoProfile -NonInteractive -EncodedCommand " + base64.b64encode(
+        _task_script(request, binding, trust).encode("utf-16le")).decode("ascii")
+    if result["actionSha256"] != hashlib.sha256(expected_action.encode()).hexdigest():
+        raise WindowsFixtureNetworkProbeError("Probe task cleanup action changed.")
+    return result["cleanupProofSha256"]
 
 
 def _submit_candidate(root: Path, request: Mapping[str, Any], binding: Mapping[str, Any],
@@ -706,12 +1011,18 @@ def status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
             os.close(lock)
         if current["state"] == "role-active" and current["role"] == "network-probe" and \
                 current["correlationId"] == request["probeCorrelationId"]:
+            cleaned_hash = _cleanup_native(root, request, binding)
+            receipt = _observe_native(root, request, binding)
+            if receipt["probeTaskCleanupSha256"] != cleaned_hash:
+                return _unknown(request["probeCorrelationId"], cleanup=True)
             finished = lease.finish_role(root, request["leaseId"], "network-probe",
                                          request["probeCorrelationId"], receipt["probeReceiptSha256"],
                                          "succeeded", base._campaign_remote(config, target))
             if finished.get("state") != "active":
                 return _unknown(request["probeCorrelationId"], cleanup=True)
         elif current["state"] == "active" and current["role"] is None:
+            if receipt["probeTaskCleanupSha256"] is None:
+                return _unknown(request["probeCorrelationId"], cleanup=True)
             prior = _terminal_receipt(root, request["probeCorrelationId"])
             if prior is None and (current["lastEvidenceSha256"] != receipt["probeReceiptSha256"]
                                   or current["lastOutcome"] != "succeeded"):
@@ -719,6 +1030,8 @@ def status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
             if prior is not None and prior != receipt:
                 return _unknown(request["probeCorrelationId"], cleanup=True)
         elif current["state"] == "role-active" and current["role"] in {"target", "public"}:
+            if receipt["probeTaskCleanupSha256"] is None:
+                return _unknown(request["probeCorrelationId"], cleanup=True)
             if _terminal_receipt(root, request["probeCorrelationId"]) != receipt:
                 return _unknown(request["probeCorrelationId"], cleanup=True)
         else:
@@ -760,6 +1073,8 @@ def verified_owner_network_receipt(root: Path | str, lease_id: str) -> dict[str,
     if intent["binding"] != binding:
         raise WindowsFixtureNetworkProbeError("OWNER_NETWORK_RECEIPT_UNAVAILABLE")
     receipt = _observe_native(root, request, binding)
+    if receipt["probeTaskCleanupSha256"] is None:
+        raise WindowsFixtureNetworkProbeError("OWNER_NETWORK_RECEIPT_UNAVAILABLE")
     if _terminal_receipt(root, request["probeCorrelationId"]) != receipt:
         raise WindowsFixtureNetworkProbeError("OWNER_NETWORK_RECEIPT_UNAVAILABLE")
     directory, lock = lease._locked(root)

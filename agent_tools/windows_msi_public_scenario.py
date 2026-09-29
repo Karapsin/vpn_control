@@ -487,6 +487,9 @@ def _write_intent(root: Path, correlation: str, record: dict[str, Any]) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as file:
             json.dump(record, file, sort_keys=True, separators=(",", ":"))
             file.write("\n"); file.flush(); os.fsync(file.fileno())
+        parent = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try: os.fsync(parent)
+        finally: os.close(parent)
     finally:
         os.close(lock_fd)
 
@@ -519,10 +522,6 @@ def _require_live_fixture_campaign(root: Path, inputs: dict[str, Any],
     request = {**inputs, "controllerId": probe["controllerId"],
                "ownerPid": probe["ownerPid"], "ownerStartedAtUtc": probe["ownerStartedAtUtc"]}
     fixture = windows_msi_target_prepare._verified_network_context(root, request, lease_id)
-    claimed = campaign_lease.claim_role(root, lease_id, "public", inputs["correlationId"],
-                                        windows_msi_base_prepare._campaign_remote(config, target))
-    if claimed["state"] != "role-active":
-        raise WindowsMsiPreinstallStatusError("CP117 public claim is unknown; inspect, do not replay.")
     return lease_id, fixture
 
 
@@ -563,7 +562,12 @@ def start(root: Path | str, inputs: dict[str, Any]) -> dict[str, Any]:
     intent["expectedControllerId"] = fixture["controllerId"]
     intent["expectedOwnerPid"] = fixture["ownerPid"]
     intent["expectedOwnerStartedAtUtc"] = fixture["ownerStartedAtUtc"]
+    _write_intent(root_path, correlation, intent)
     from agent_tools import windows_msi_base_prepare
+    claimed = campaign_lease.claim_role(root_path, lease_id, "public", correlation,
+        windows_msi_base_prepare._campaign_remote(config, target))
+    if claimed["state"] != "role-active":
+        raise WindowsMsiPreinstallStatusError("CP117 public claim is unknown; inspect, do not replay.")
     windows_msi_base_prepare._verified_claimed_campaign(root_path, inputs,
         (environment, socket, pid, ticks, sid), config, target, lease_id, "public")
     from agent_tools import windows_msi_target_prepare
@@ -572,7 +576,6 @@ def start(root: Path | str, inputs: dict[str, Any]) -> dict[str, Any]:
          "ownerStartedAtUtc": fixture["ownerStartedAtUtc"]}, lease_id)
     if refreshed["probeReceiptSha256"] != fixture["probeReceiptSha256"]:
         raise WindowsMsiPreinstallStatusError("CP117 owner network probe changed after claim.")
-    _write_intent(root_path, correlation, intent)
     payload = {"schema": 1, "leaseId": lease_id, "socketPath": socket, "pid": pid, "startTicks": ticks,
                "encodedCommand": encoded, "commandSha256": command_hash, "sourceSha": pair["sourceSha"],
                "artifactIds": [pair["receiptArtifactId"], pair["baseArtifactId"], pair["targetArtifactId"]]}

@@ -101,6 +101,62 @@ class McpSurfaceTest(unittest.TestCase):
             self.assertIsNotNone(mcp_server._validate_commit_paths(paths), paths)
         self.assertIsNone(mcp_server._validate_commit_paths(["AGENTS.md", "agent_tools"]))
 
+    def test_checkpoint_pushes_exact_sha_without_watching_only_when_explicit(self) -> None:
+        sha = "a" * 40
+        for action, watch_expected in (("checkpoint", False), ("commit", True)):
+            with self.subTest(action=action), \
+                 mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev"}), \
+                 mock.patch.object(mcp_server, "_receipt_error", return_value=None), \
+                 mock.patch.object(mcp_server, "_changed_paths", side_effect=[
+                     ["agent_tools/mcp_server.py", "docs/CHANGELOG.md"], []]), \
+                 mock.patch.object(mcp_server, "_run", return_value=command_result()) as run, \
+                 mock.patch.object(mcp_server, "_git_stdout", return_value=sha), \
+                 mock.patch.object(mcp_server, "_watch_required_workflows",
+                                   return_value={"ok": True, "tool": "git_workflow", "result": {"sha": sha}}) as watch:
+                result = mcp_server.git_workflow(action, "checkpoint message",
+                    ["agent_tools/mcp_server.py", "docs/CHANGELOG.md"])
+            self.assertTrue(result["ok"])
+            self.assertEqual(["git", "push", "origin", "HEAD:dev"], run.call_args_list[-1].args[0])
+            if watch_expected:
+                watch.assert_called_once_with(sha)
+            else:
+                watch.assert_not_called()
+                self.assertEqual(sha, result["result"]["sha"])
+                self.assertFalse(result["result"]["requiredWorkflowsVerified"])
+                self.assertEqual("intermediate-checkpoint", result["result"]["deferredReason"])
+        with mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev"}), \
+             mock.patch.object(mcp_server, "_receipt_error", return_value=None), \
+             mock.patch.object(mcp_server, "_changed_paths", return_value=[]), \
+             mock.patch.object(mcp_server, "_run", return_value=command_result()), \
+             mock.patch.object(mcp_server, "_git_stdout", return_value=sha), \
+             mock.patch.object(mcp_server, "_watch_required_workflows",
+                               return_value={"ok": True, "tool": "git_workflow", "result": {"sha": sha}}) as watch:
+            self.assertTrue(mcp_server.git_workflow("push")["ok"])
+        watch.assert_called_once_with(sha)
+
+    def test_checkpoint_rejects_invalid_receipt_and_uncovered_paths_before_push(self) -> None:
+        with mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev"}), \
+             mock.patch.object(mcp_server, "_receipt_error", return_value="stale receipt"), \
+             mock.patch.object(mcp_server, "_run") as run:
+            denied = mcp_server.git_workflow("checkpoint", "message", ["agent_tools/mcp_server.py"])
+        self.assertFalse(denied["ok"])
+        run.assert_not_called()
+        with mock.patch.object(mcp_server, "_repo_state", return_value={"branch": "dev"}), \
+             mock.patch.object(mcp_server, "_receipt_error", return_value=None), \
+             mock.patch.object(mcp_server, "_changed_paths", return_value=[
+                 "agent_tools/mcp_server.py", "docs/CHANGELOG.md", "agent_tools/README.md"]), \
+             mock.patch.object(mcp_server, "_run") as run:
+            denied = mcp_server.git_workflow("checkpoint", "message",
+                ["agent_tools/mcp_server.py", "docs/CHANGELOG.md"])
+        self.assertFalse(denied["ok"])
+        self.assertIn("uncovered", str(denied))
+        run.assert_not_called()
+        with mock.patch.object(mcp_server, "_run") as run:
+            denied = mcp_server.git_workflow("checkpoint", "message", ["docs/CHANGELOG.md"],
+                                             sha="a" * 40)
+        self.assertFalse(denied["ok"])
+        run.assert_not_called()
+
     def test_macos_package_pr_filters_include_native_installer_inputs(self) -> None:
         workflow = (mcp_server.REPO_ROOT / ".github/workflows/macos-desktop.yml").read_text(encoding="utf-8")
         pull_request = workflow.split("  pull_request:\n", 1)[1].split("\njobs:\n", 1)[0]

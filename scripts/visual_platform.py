@@ -582,7 +582,11 @@ def local_probe(platform: str) -> dict[str, Any]:
         else:
             detail = "Android adb, emulator, and avdmanager are required"
     elif platform == "linux":
-        if system == "linux" and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        canonical_arch = str(config.get("canonical_architecture", "x86_64"))
+        host_arch = host_platform.machine().lower()
+        if host_arch not in {canonical_arch.lower(), "amd64" if canonical_arch == "x86_64" else canonical_arch.lower()}:
+            detail = f"local Linux visual architecture {host_arch} does not match canonical {canonical_arch}; use hosted capture"
+        elif system == "linux" and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
             backend = "native-linux"
             capabilities.update(("app", "native"))
         else:
@@ -746,6 +750,17 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
         running = _running_android_avds(adb)
         if avd_name in running:
             identifier = running[avd_name]
+            prior_state = _read_state(platform)
+            prior_pid = int(prior_state.get("pid", 0))
+            if (
+                prior_state.get("started_by_agent") is True
+                and prior_state.get("backend") == backend
+                and prior_state.get("identifier") == identifier
+                and prior_pid > 0
+                and _pid_running(prior_pid)
+            ):
+                started_by_agent = True
+                process_id = prior_pid
         else:
             emulator = _android_tool("emulator") or "emulator"
             port = int(config["emulator_port"])
@@ -943,7 +958,9 @@ def stop_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
     return {"platform": platform, "stopped": True, "backend": backend}
 
 
-def dispatch_hosted(platform: str, target_sha: str, ref: str | None = None) -> dict[str, Any]:
+def dispatch_hosted(
+    platform: str, target_sha: str, ref: str | None = None, *, resource_fallback: bool = False,
+) -> dict[str, Any]:
     if len(target_sha) != 40 or any(char not in "0123456789abcdef" for char in target_sha):
         raise VisualPlatformError("target SHA must be 40 lowercase hexadecimal characters")
     if not ref:
@@ -952,6 +969,14 @@ def dispatch_hosted(platform: str, target_sha: str, ref: str | None = None) -> d
     if not ref:
         raise VisualPlatformError("hosted capture requires an explicit branch ref")
     hosted_scenes = capture_plan(platform)["routes"]["hosted"]
+    if resource_fallback:
+        if platform != "macos":
+            raise VisualPlatformError("resource fallback is supported only for macOS visual capture")
+        hosted_capabilities = set(_read_json(ENVIRONMENTS_PATH)["platforms"][platform]["hosted"]["capabilities"])
+        hosted_scenes = [
+            str(scene["id"]) for scene in scenes_for(platform)
+            if scene["required_capability"] in hosted_capabilities
+        ]
     if not hosted_scenes:
         raise VisualPlatformError(f"no {platform} scenes require a hosted fallback")
     command = [
@@ -1208,6 +1233,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     command.add_argument("--platform", required=True, choices=PLATFORMS)
     command.add_argument("--target-sha", required=True)
     command.add_argument("--ref")
+    command.add_argument("--resource-fallback", action="store_true")
     command = subparsers.add_parser("download-hosted")
     command.add_argument("--platform", required=True, choices=PLATFORMS)
     command.add_argument("--target-sha", required=True)
@@ -1247,7 +1273,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "stop":
             result = stop_platform(args.platform, dry_run=args.dry_run)
         elif args.action == "dispatch-hosted":
-            result = dispatch_hosted(args.platform, args.target_sha, args.ref)
+            result = dispatch_hosted(
+                args.platform, args.target_sha, args.ref, resource_fallback=args.resource_fallback,
+            )
         elif args.action == "download-hosted":
             result = download_hosted(
                 args.platform, args.target_sha, args.output, timeout_seconds=args.timeout_seconds,

@@ -144,6 +144,9 @@ with acquire(sys.argv[1]):
                     path.symlink_to(target)
                 else:
                     path.touch(mode=0o644 if unsafe == "mode" else 0o600)
+                    if unsafe == "mode":
+                        # touch(mode=...) is filtered by a suite-wide inherited umask.
+                        path.chmod(0o644)
                     if unsafe == "hardlink":
                         os.link(path, root / "other-link")
                 with self.assertRaises(lease.ManagedCheckLeaseError) as error:

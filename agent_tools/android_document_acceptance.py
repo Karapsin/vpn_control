@@ -55,7 +55,9 @@ def read(*words):
  except (ValueError,UnicodeError): return None
 status=read("status"); operations=read("operations","list")
 ready=all(isinstance(v,dict) and v.get("ok") is True and v.get("final") is True and v.get("code")=="OK" and v.get("controllerId")==owner and v.get("configurationRevision")==int(revision) for v in (status,operations))
-ready=ready and isinstance(status.get("data"),dict) and status["data"].get("runtimeRunning") is False and status["data"].get("runtimeObservation")=="stopped" and isinstance(operations.get("data"),dict) and operations["data"].get("operations")==[]
+history=operations.get("data",{}).get("operations") if isinstance(operations.get("data"),dict) else None
+terminal_history=isinstance(history,list) and all(isinstance(item,dict) and item.get("controllerId")==owner and isinstance(item.get("id"),str) and bool(item["id"]) and item.get("final") is True and item.get("phase") in ("succeeded","failed","cancelled") and isinstance(item.get("code"),str) for item in history)
+ready=ready and isinstance(status.get("data"),dict) and status["data"].get("runtimeRunning") is False and status["data"].get("runtimeObservation")=="stopped" and terminal_history
 print(json.dumps({"ready":ready},separators=(",",":")))'''
 
 
@@ -220,7 +222,7 @@ opening=public("opening_status","status",limit=16384,timeout=30); final(opening,
 if opening.get("configurationRevision")!=int(revision) or opening.get("data",{}).get("runtimeRunning") is not False or opening.get("data",{}).get("runtimeObservation")!="stopped": fail("opening_runtime_changed")
 operations=public("opening_operations","operations","list",limit=16384,timeout=30); final(operations,owner,"opening_operations_changed")
 history=operations.get("data",{}).get("operations")
-if operations.get("configurationRevision")!=int(revision) or not isinstance(history,list) or any(not isinstance(x,dict) or x.get("final") is not True for x in history): fail("opening_history_nonterminal")
+if operations.get("configurationRevision")!=int(revision) or not isinstance(history,list) or any(not isinstance(x,dict) or x.get("controllerId")!=owner or not isinstance(x.get("id"),str) or not x["id"] or x.get("final") is not True or x.get("phase") not in ("succeeded","failed","cancelled") or not isinstance(x.get("code"),str) for x in history): fail("opening_history_nonterminal")
 os.umask(0o077)
 original=job/"opening-routing.json"
 export=public("opening_export","routing","export","--output",str(original),limit=16384,timeout=300); final(export,owner,"opening_export_failed")
@@ -237,17 +239,17 @@ if len(fixture_bytes)!=int(fixture_size) or hashlib.sha256(fixture_bytes).hexdig
 target=job/"routing-v7-56000.json"
 with target.open("xb") as output: output.write(fixture_bytes); output.flush(); os.fsync(output.fileno())
 if stat.S_IMODE(target.stat().st_mode)!=0o600: fail("fixture_file_unsafe")
-imported=public("public_import_submitted","--controller-id",owner,"--if-revision",revision,"routing","import","--input",str(target),limit=16384,timeout=300)
+imported=public("public_import_submitted","--controller-id",owner,"--if-revision",revision,"routing","import","--input",str(target),limit=16777216,timeout=300)
 final(imported,owner,"import_not_final")
 operation_id=imported.get("operationId")
 if operation_id:
- waited=public("retained_wait_submitted","--controller-id",owner,"operations","wait",operation_id,limit=16384,timeout=300); final(waited,owner,"retained_wait_failed")
+ waited=public("retained_wait_submitted","--controller-id",owner,"operations","wait",operation_id,limit=16777216,timeout=300); final(waited,owner,"retained_wait_failed")
  if waited.get("operationId")!=operation_id: fail("retained_operation_changed")
 read=public("full_read_submitted","routing","show",limit=16777216,timeout=300); final(read,owner,"full_read_failed")
 routing=read.get("data",{}).get("routing")
 if not isinstance(routing,dict) or routing.get("rules")!=fixture["rules"] or read.get("configurationRevision",-1)<=int(revision): fail("full_read_mismatch")
 new_revision=read["configurationRevision"]
-noop=public("new_request_noop_submitted","--controller-id",owner,"--if-revision",str(new_revision),"routing","import","--input",str(target),limit=16384,timeout=300); final(noop,owner,"new_request_noop_failed")
+noop=public("new_request_noop_submitted","--controller-id",owner,"--if-revision",str(new_revision),"routing","import","--input",str(target),limit=16777216,timeout=300); final(noop,owner,"new_request_noop_failed")
 if noop.get("configurationRevision")!=new_revision: fail("new_request_changed_revision")
 private=job/"fixture-export.json"
 export=public("private_export_submitted","routing","export","--output",str(private),limit=16384,timeout=300); final(export,owner,"private_export_failed")

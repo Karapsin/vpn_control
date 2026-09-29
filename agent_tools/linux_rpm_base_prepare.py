@@ -20,6 +20,7 @@ from scripts.version_metadata import parse_version
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
+_HEADER = re.compile(r"[0-9a-f]{40}\Z")
 _ARTIFACT = re.compile(r"sha256-[0-9a-f]{64}\Z")
 _NEVRA = re.compile(r"vpn-control-[0-9]+\.[0-9]+\.[0-9]+-1\.x86_64\Z")
 _ROOT = "/var/lib/vpn-control-rpm-base-prep"
@@ -33,6 +34,7 @@ class LinuxRpmBasePrepareError(ValueError):
 _COMMON = r'''import fcntl,hashlib,json,os,pwd,stat,subprocess,sys,time
 ROOT='/var/lib/vpn-control-rpm-base-prep'
 FMT='%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}'
+HEADER_FMT='%{SHA1HEADER}'
 def result(state,reason=None,**extra):
  value={'state':state,**extra}
  if reason is not None:value['reason']=reason
@@ -40,6 +42,16 @@ def result(state,reason=None,**extra):
 def nevra(args):
  p=subprocess.run(args,capture_output=True,text=True,timeout=30)
  return p.stdout.strip() if p.returncode==0 and not p.stderr else None
+def header_sha(args):
+ value=nevra(args)
+ return value if isinstance(value,str) and len(value)==40 and all(c in '0123456789abcdef' for c in value) else None
+def base_install_command(current,target,current_header,target_header,path,expected_current_header=None):
+ if not isinstance(target_header,str) or len(target_header)!=40 or any(c not in '0123456789abcdef' for c in target_header):return None
+ if current==target:
+  if not isinstance(expected_current_header,str) or current_header!=expected_current_header or target_header==current_header:return None
+  return ['rpm','-Uvh','--replacepkgs','--',path]
+ if expected_current_header is not None:return None
+ return ['rpm','-Uvh','--',path]
 def protected_job_inventory():
  scope={}
  exec(PROTECTED_OBSERVER_CODE,scope)
@@ -103,13 +115,19 @@ def admit_protected_inventory(value,held_by_us=False):
  if guards!={'gate-linux','reservation-linux'}:
   return result('unknown','protected-job-guards-missing')
  return result('ready',completedJobCount=jobs)
-def inspect(expected,held_reservation_fd=None):
+def inspect(expected,held_reservation_fd=None,expected_current_header=None,require_header=False):
  if os.geteuid()!=0:return result('unknown','privilege-unavailable')
  try: uid=pwd.getpwnam('vpnfixture').pw_uid
  except KeyError:return result('unknown','fixture-account-missing')
  if uid<=0:return result('unknown','fixture-account-invalid')
  current=nevra(['rpm','-q','--qf',FMT,'vpn-control'])
  if current!=expected:return result('blocked','current-nevra-mismatch',currentNevra=current)
+ current_header=None
+ if expected_current_header is not None or require_header:
+  current_header=header_sha(['rpm','-q','--qf',HEADER_FMT,'vpn-control'])
+  if current_header is None:return result('unknown','current-header-unavailable')
+  if expected_current_header is not None and current_header!=expected_current_header:
+   return result('blocked','current-header-mismatch',currentNevra=current)
  try:
   entries=[p for p in os.scandir('/proc') if p.name.isdecimal()]
   if len(entries)>4096:return result('unknown','process-bound')
@@ -147,7 +165,7 @@ def inspect(expected,held_reservation_fd=None):
    return result('unknown','reservation-identity-changed')
   if protected.get('state')!='ready':return protected
  except (OSError,ValueError,KeyError):return result('unknown','guest-observation-unavailable')
- return result('ready',currentNevra=current)
+ return result('ready',currentNevra=current,**({'currentHeaderSha1':current_header} if current_header is not None else {}))
 def durable(path,value):
  tmp=path+'.tmp'; fd=os.open(tmp,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
  with os.fdopen(fd,'wb') as stream:
@@ -156,7 +174,7 @@ def durable(path,value):
 ''' + '\nPROTECTED_OBSERVER_CODE=' + repr(linux_rpm_protected_job_observe._COMMON) + '\n'
 
 _PREFLIGHT = _COMMON + r'''expected=sys.argv[1]
-try: observed=inspect(expected)
+try: observed=inspect(expected,require_header=len(sys.argv)==3 and sys.argv[2]=='header')
 except Exception as error: observed=result('unknown','observer-exception-'+type(error).__name__)
 print(json.dumps(observed,separators=(',',':')))
 '''
@@ -168,27 +186,37 @@ try:reservation_fd=hold_reservation()
 except OSError:
  durable(job+'/receipt.json',{'state':'blocked','correlationId':intent['correlationId'],'reason':'reservation-unavailable'})
  raise SystemExit(1)
-pre=inspect(intent['expectedCurrentNevra'],held_reservation_fd=reservation_fd)
+old_header=intent.get('expectedCurrentHeaderSha1')
+pre=inspect(intent['expectedCurrentNevra'],held_reservation_fd=reservation_fd,expected_current_header=old_header)
 if pre.get('state')!='ready':
  os.close(reservation_fd)
  durable(job+'/receipt.json',{'state':'blocked','correlationId':intent['correlationId'],'reason':pre.get('reason','preflight-unknown')})
  raise SystemExit(1)
+target_header=header_sha(['rpm','-qp','--qf',HEADER_FMT,job+'/base.rpm'])
+argv=base_install_command(pre['currentNevra'],intent['expectedBaseNevra'],pre.get('currentHeaderSha1'),target_header,job+'/base.rpm',expected_current_header=old_header)
+if argv is None:
+ os.close(reservation_fd)
+ durable(job+'/receipt.json',{'state':'blocked','correlationId':intent['correlationId'],'reason':'base-header-admission-failed'})
+ raise SystemExit(1)
 with open(job+'/rpm.stdout','xb') as out,open(job+'/rpm.stderr','xb') as err:
- command=subprocess.run(['rpm','-Uvh','--',job+'/base.rpm'],stdout=out,stderr=err)
+ command=subprocess.run(argv,stdout=out,stderr=err)
 current=nevra(['rpm','-q','--qf',FMT,'vpn-control'])
+installed_header=header_sha(['rpm','-q','--qf',HEADER_FMT,'vpn-control']) if current==intent['expectedBaseNevra'] else None
 verify=subprocess.run(['rpm','-V','vpn-control'],capture_output=True,timeout=30) if current==intent['expectedBaseNevra'] else None
-passed=(command.returncode==0 and current==intent['expectedBaseNevra'] and verify is not None
+passed=(command.returncode==0 and current==intent['expectedBaseNevra'] and installed_header==target_header and verify is not None
  and verify.returncode==0 and not verify.stdout and not verify.stderr)
 os.close(reservation_fd)
 durable(job+'/receipt.json',{'state':'terminal','correlationId':intent['correlationId'],
  'sourceSha':intent['sourceSha'],'baseArtifactId':intent['baseArtifactId'],
  'expectedBaseNevra':intent['expectedBaseNevra'],'observedNevra':current,
+ 'targetHeaderSha1':target_header,'observedHeaderSha1':installed_header,
  'exitCode':command.returncode,'rpmVerifyClean':bool(passed),'result':'passed' if passed else 'failed'})
 '''
 
 _SUBMIT = _COMMON + r'''metadata,size,digest=sys.argv[1:]
 intent=json.loads(metadata);size=int(size)
-pre=inspect(intent['expectedCurrentNevra'])
+old_header=intent.get('expectedCurrentHeaderSha1')
+pre=inspect(intent['expectedCurrentNevra'],expected_current_header=old_header)
 if pre.get('state')!='ready':print(json.dumps(pre,separators=(',',':')));raise SystemExit(0)
 if not 0<size<=1073741824 or digest!=intent['baseArtifactId'].removeprefix('sha256-'):
  print(json.dumps(result('unknown','payload-identity-invalid'),separators=(',',':')));raise SystemExit(0)
@@ -214,7 +242,10 @@ if h.hexdigest()!=digest:
 header=nevra(['rpm','-qp','--qf',FMT,job+'/base.rpm'])
 if header!=intent['expectedBaseNevra']:
  print(json.dumps(result('unknown','rpm-header-mismatch'),separators=(',',':')));raise SystemExit(0)
-pre=inspect(intent['expectedCurrentNevra'])
+target_header=header_sha(['rpm','-qp','--qf',HEADER_FMT,job+'/base.rpm'])
+if base_install_command(pre['currentNevra'],intent['expectedBaseNevra'],pre.get('currentHeaderSha1'),target_header,job+'/base.rpm',expected_current_header=old_header) is None:
+ print(json.dumps(result('blocked','base-header-admission-failed'),separators=(',',':')));raise SystemExit(0)
+pre=inspect(intent['expectedCurrentNevra'],expected_current_header=old_header)
 if pre.get('state')!='ready':print(json.dumps(pre,separators=(',',':')));raise SystemExit(0)
 worker=job+'/worker.py';fd=os.open(worker,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
 with os.fdopen(fd,'w') as out:out.write(WORKER_CODE);out.flush();os.fsync(out.fileno())
@@ -244,8 +275,9 @@ try:
   if receipt.get('state')!='terminal' or any(receipt.get(key)!=intent[key] for key in ('sourceSha','baseArtifactId','expectedBaseNevra')):raise ValueError()
   if receipt.get('result')=='passed':
    current=nevra(['rpm','-q','--qf',FMT,'vpn-control'])
+   installed_header=header_sha(['rpm','-q','--qf',HEADER_FMT,'vpn-control'])
    verify=subprocess.run(['rpm','-V','vpn-control'],capture_output=True,timeout=30)
-   if current!=intent['expectedBaseNevra'] or verify.returncode or verify.stdout or verify.stderr:raise ValueError()
+   if current!=intent['expectedBaseNevra'] or installed_header!=receipt.get('targetHeaderSha1') or verify.returncode or verify.stdout or verify.stderr:raise ValueError()
   print(json.dumps(receipt,separators=(',',':')));raise SystemExit(0)
  parts=open('/proc/%d/stat'%identity['pid'],encoding='ascii').read().rsplit(')',1)[1].split()
  if parts[0]=='Z' or int(parts[19])!=identity['startTicks']:raise ValueError()
@@ -294,7 +326,7 @@ except Exception:unknown('owner-observation-unavailable')
 def _request(value: Mapping[str, Any]) -> dict[str, str]:
     fields = {"host", "environment", "baseArtifactId", "sourceSha", "sourceFingerprint",
               "expectedCurrentNevra", "expectedBaseNevra", "correlationId"}
-    if not isinstance(value, Mapping) or set(value) != fields or value.get("host") != "fedora2328" or value.get("environment") != "fedora2328":
+    if not isinstance(value, Mapping) or not fields <= set(value) or set(value) - fields - {"expectedCurrentHeaderSha1"} or value.get("host") != "fedora2328" or value.get("environment") != "fedora2328":
         raise LinuxRpmBasePrepareError("Fedora RPM base preparation requires exact fields and environment")
     for field, pattern in (("baseArtifactId", _ARTIFACT), ("sourceSha", _SHA),
                            ("sourceFingerprint", _HASH), ("expectedCurrentNevra", _NEVRA),
@@ -308,8 +340,14 @@ def _request(value: Mapping[str, Any]) -> dict[str, str]:
         raise LinuxRpmBasePrepareError("Invalid correlationId") from error
     current = value["expectedCurrentNevra"].removeprefix("vpn-control-").split("-", 1)[0]
     target = value["expectedBaseNevra"].removeprefix("vpn-control-").split("-", 1)[0]
-    if parse_version(current) >= parse_version(target):
+    if parse_version(current) > parse_version(target):
         raise LinuxRpmBasePrepareError("Base RPM must be newer than installed version")
+    if current == target:
+        header = value.get("expectedCurrentHeaderSha1")
+        if not isinstance(header, str) or not _HEADER.fullmatch(header):
+            raise LinuxRpmBasePrepareError("Same-version replacement requires a pinned current RPM header")
+    elif "expectedCurrentHeaderSha1" in value:
+        raise LinuxRpmBasePrepareError("Current RPM header is only admitted for same-version replacement")
     return dict(value)
 
 
@@ -376,11 +414,13 @@ def _unknown(correlation, reason):
 
 def preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     """Read only the current disposable guest state before any base submission."""
-    if (not isinstance(value, Mapping) or set(value) !=
-            {"host", "environment", "expectedCurrentNevra"} or
+    required = {"host", "environment", "expectedCurrentNevra"}
+    if (not isinstance(value, Mapping) or not required <= set(value) or
+            set(value) - required - {"includeCurrentHeader"} or
             value.get("host") != "fedora2328" or value.get("environment") != "fedora2328" or
             not isinstance(value.get("expectedCurrentNevra"), str) or
-            not _NEVRA.fullmatch(value["expectedCurrentNevra"])):
+            not _NEVRA.fullmatch(value["expectedCurrentNevra"]) or
+            ("includeCurrentHeader" in value and value["includeCurrentHeader"] is not True)):
         raise LinuxRpmBasePrepareError("Fedora base preflight requires exact guest and current NEVRA")
     root = Path(root).resolve(strict=True)
     config = ssh_transport.load_config(root)
@@ -388,8 +428,9 @@ def preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     if host is None or host.user != "vpnfixture":
         return {"state": "unknown", "reason": "guest-config-unavailable"}
     try:
+        arguments = (value["expectedCurrentNevra"], "header") if value.get("includeCurrentHeader") else (value["expectedCurrentNevra"],)
         observed = _driver(root)._remote(config, "fedora2328", _PREFLIGHT,
-                                         (value["expectedCurrentNevra"],), privileged=True,
+                                         arguments, privileged=True,
                                          diagnostic=True)
     except Exception as error:
         observed = {"state": "unknown", "reason": "local-observer-exception-" + type(error).__name__}
@@ -399,6 +440,11 @@ def preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     result = {"state": observed["state"], "host": "fedora2328", "environment": "fedora2328"}
     if observed["state"] == "ready" and observed.get("currentNevra") == value["expectedCurrentNevra"]:
         result["currentNevra"] = value["expectedCurrentNevra"]
+        if value.get("includeCurrentHeader"):
+            header = observed.get("currentHeaderSha1")
+            if not isinstance(header, str) or not _HEADER.fullmatch(header):
+                return {"state": "unknown", "reason": "current-header-unavailable"}
+            result["currentHeaderSha1"] = header
     else:
         result["state"] = "blocked"
         result["reason"] = observed.get("reason", "guest-not-idle")
@@ -462,7 +508,8 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         return _unknown(request["correlationId"], "existing-intent")
     package, config = _admitted(root, request)
     driver = _driver(root)
-    pre = driver._remote(config, "fedora2328", _PREFLIGHT, (request["expectedCurrentNevra"],), privileged=True)
+    arguments = (request["expectedCurrentNevra"], "header") if "expectedCurrentHeaderSha1" in request else (request["expectedCurrentNevra"],)
+    pre = driver._remote(config, "fedora2328", _PREFLIGHT, arguments, privileged=True)
     if not isinstance(pre, Mapping) or pre.get("state") not in {"ready", "blocked"}:
         return _unknown(request["correlationId"], "preflight-unknown")
     if pre["state"] == "blocked":
@@ -470,6 +517,9 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
                 "reason": pre.get("reason", "guest-not-idle"), "replayAllowed": False}
     if pre.get("currentNevra") != request["expectedCurrentNevra"]:
         return _unknown(request["correlationId"], "preflight-nevra-mismatch")
+    if "expectedCurrentHeaderSha1" in request and pre.get("currentHeaderSha1") != request["expectedCurrentHeaderSha1"]:
+        return {"state": "blocked", "correlationId": request["correlationId"],
+                "reason": "current-header-mismatch", "replayAllowed": False}
     path = _journal(root, request["correlationId"], create=True)
     try: _save(path, request)
     except FileExistsError as error:
@@ -523,8 +573,15 @@ def status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         if (remote.get("result") not in {"passed", "failed"} or type(remote.get("exitCode")) is not int
                 or remote.get("expectedBaseNevra") != request["expectedBaseNevra"]):
             return _unknown(correlation, "terminal-receipt-invalid")
+        if remote["result"] == "passed" and (not isinstance(remote.get("targetHeaderSha1"), str)
+                or not _HEADER.fullmatch(remote["targetHeaderSha1"])
+                or remote.get("observedHeaderSha1") != remote["targetHeaderSha1"]):
+            return _unknown(correlation, "terminal-header-invalid")
         result.update(result=remote["result"], exitCode=remote["exitCode"],
-                      observedNevra=remote.get("observedNevra"), rpmVerifyClean=remote.get("rpmVerifyClean") is True)
+                      observedNevra=remote.get("observedNevra"),
+                      observedHeaderSha1=remote.get("observedHeaderSha1"),
+                      targetHeaderSha1=remote.get("targetHeaderSha1"),
+                      rpmVerifyClean=remote.get("rpmVerifyClean") is True)
     elif remote["state"] == "blocked":
         result["reason"] = remote.get("reason", "guest-not-idle")
     return result

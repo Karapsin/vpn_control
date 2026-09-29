@@ -93,7 +93,7 @@ class LinuxPublicInstallHarnessTest(unittest.TestCase):
             self.assertEqual('referenced', observe()['state'])
             (proc / '1235' / 'fd' / '13').unlink()
             (proc / '1235' / 'cwd').unlink()
-            self.assertEqual('unknown', observe()['state'])
+            self.assertEqual({'state': 'unknown', 'reason': 'process-links-unavailable'}, observe())
 
     @unittest.skipUnless(_POSIX_WORKSPACE_SUPPORTED, "real workspace deletion requires POSIX ownership and descriptors")
     def test_rpm_cleanup_removes_only_terminal_recovered_workspace_after_old_retention_would_fail(self):

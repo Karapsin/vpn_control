@@ -163,7 +163,8 @@ class WindowsFixtureCredentialsTest(unittest.TestCase):
                   patch.object(credentials.base, "_campaign_remote", return_value=object()),
                   patch.object(credentials.public, "_admit_pair", return_value={
                       "sourceFingerprint": BINDING["sourceFingerprint"]})):
-                for role, server_state in (("server-start", "starting"), ("target", "live")):
+                for role, server_state in (("server-start", "starting"), ("owner-network", "live"),
+                                           ("network-probe", "live"), ("target", "live")):
                     active.return_value = {"state": "role-active", "role": role,
                                            "server": server_state, "credentials": "ready",
                                            "identity": identity}

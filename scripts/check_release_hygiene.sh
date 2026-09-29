@@ -55,6 +55,7 @@ run_check bash scripts/test_arch_install_hygiene.sh
 run_check python3 scripts/test_arch_update_permissions.py
 run_check python3 scripts/test_assemble_update_release.py
 run_check python3 scripts/test_version_metadata.py
+run_check python3 scripts/test_gradle_configuration_cache.py
 run_check python3 scripts/test_vpn_integration_fixture.py
 run_check python3 scripts/test_https_subscription_relay_fixture.py
 run_check python3 scripts/test_desktop_scheduled_refresh_fixture.py

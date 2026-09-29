@@ -35,6 +35,24 @@ FIXTURE = {"trustStore": r"C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update
 
 
 class TargetPrepareTests(unittest.TestCase):
+    def test_intent_write_failure_cannot_claim_target_role_or_dispatch(self):
+        class Guest:
+            fixture_transfer_root = Path("/private/cp117")
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(target, "_require_fixture_network_admission", return_value=CORR), \
+             patch.object(target, "readiness", return_value={"state": "ready"}), \
+             patch.object(target, "_pair", return_value=PAIR), \
+             patch.object(target.base, "_descriptor", return_value=(object(), Guest(),
+                 ("windows-cp117", "/qga.sock", 589342, 520739, SID))), \
+             patch.object(target, "_verified_network_context", return_value=FIXTURE), \
+             patch.object(target, "_reserve", side_effect=OSError("fsync failed")), \
+             patch.object(target.base.campaign_lease, "claim_role") as claim, \
+             patch.object(target.base, "_remote") as remote:
+            with self.assertRaisesRegex(OSError, "fsync failed"):
+                target.start(directory, REQUEST)
+            claim.assert_not_called()
+            remote.assert_not_called()
+
     def test_cli_only_proxy_settings_cannot_admit_owner_jvm_network(self):
         probe = {"ownerTransportVerified": True, "ownerPid": REQUEST["ownerPid"],
                  "ownerStartedAtUtc": REQUEST["ownerStartedAtUtc"],
@@ -162,7 +180,7 @@ class TargetPrepareTests(unittest.TestCase):
             with self.assertRaises(target.base.campaign_lease.Cp117LeaseError):
                 target.start(directory, REQUEST)
             readiness.assert_called_once(); remote.assert_not_called()
-            self.assertIsNone(target._read_intent(Path(directory), CORR))
+            self.assertEqual(target._read_intent(Path(directory), CORR)["request"], REQUEST)
 
     def test_target_reservation_blocks_without_shared_cp117_lease(self):
         with tempfile.TemporaryDirectory() as directory:
