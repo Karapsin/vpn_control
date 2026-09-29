@@ -33,22 +33,28 @@ The user set the native acceptance order to Windows, Android, Linux, then
 macOS. Subagents for new slices use GPT-5.6 Terra at medium effort. Android,
 Linux guest and macOS native mutations are paused; already submitted hosted
 builds and captures retain their exact correlations and historical evidence.
-`dd10a9b019283d38b4a00ac592d679d6fe5d9326` is the latest clean pushed
+`29d6b188f289e55161629a1b067293d7cd672281` is the latest clean pushed
 `dev` checkpoint. Its full prepush tier passed, and the user requested one
-required exact-SHA CI check only at final delivery.
+required exact-SHA CI check only at final delivery. The fixed Arch firmware
+installer preflight repair is currently dirty and under independent review.
 
 CP117 remains at installed 2.1.17 with runtime and active product process count
 zero, one owned Explorer, passed read-only PowerShell/base/owner preflights and a
-successful credential probe. Exact-dd10 hosted MSI pair run `36620110827`,
-correlation `3ff2a91c-2e1e-4775-8d84-b0cc5b2e8b30`, was collected, byte
+successful credential probe. Exact-dd10 hosted MSI pair run `36620110827` is
+historical after later source checkpoints. Correlation
+`3ff2a91c-2e1e-4775-8d84-b0cc5b2e8b30` was collected, byte
 verified and registered with base 2.1.19 and target 2.2.1. No CP117 installer
 or VPN action has run. The separate blank Windows Setup VM is blocked before
 start because its Arch host lacks `virt-firmware 26.9-1`; it cannot copy the
 live source disk. A fixed MCP installer for the signed Arch package and private
-ignored `.codex/arch-sudo.local` input has passed independent review and
-focused/full agent-tool tests. Its tracked source is dirty and must be checked,
-checkpointed, and source-bound packages rebuilt before further native
-acceptance. The credential value is never documented or committed.
+ignored `.codex/arch-sudo.local` input is in place. Its first start returned
+unknown before any durable intent, credential read, or transaction. The
+read-only preflight identified an inherited global signature policy that the
+original repo-specific query misclassified. The corrected query now reports
+ready; the original correlation remains retired. After independent review and
+a checkpoint, use a fresh correlation for preflight and install, then recheck
+Secure Boot and resource admission. The credential value is never documented
+or committed.
 
 Exact-dd10 hosted visual captures were collected with source provenance:
 Linux 59/59 and Windows 57/57 hosted scenes. Linux has 17 automated passes,

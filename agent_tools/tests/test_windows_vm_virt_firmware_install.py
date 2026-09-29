@@ -59,9 +59,30 @@ class WindowsVmVirtFirmwareInstallTest(unittest.TestCase):
         self.assertTrue(response["packageIntegrityVerified"])
         self.assertTrue(response["firmwareToolPresent"])
         self.assertIn(["/usr/bin/sudo", "-S", "-p", "", "--", "/usr/bin/pacman", "-S",
-                       "--needed", "--noconfirm", "extra/virt-firmware=26.9-1"], calls)
+                       "--noconfirm", "extra/virt-firmware=26.9-1"], calls)
         self.assertIn(["/usr/bin/pacman", "-Qkk", "virt-firmware"], calls)
         self.assertNotIn(SECRET.decode().strip(), output.getvalue())
+
+    def test_same_version_installed_still_runs_signed_transaction_without_needed(self) -> None:
+        program = installer._REMOTE.replace("__MODE__", repr("start")).replace("__CORR__", repr(CORR))
+        calls: list[list[str]] = []
+
+        def command(argv, **_kwargs):
+            calls.append(argv)
+            if argv[:3] == ["/usr/bin/pacman", "-Q", "virt-firmware"]:
+                return SimpleNamespace(returncode=0, stdout=b"virt-firmware 26.9-1\n")
+            return SimpleNamespace(returncode=0, stdout=b"")
+
+        output = io.StringIO()
+        with mock.patch("subprocess.run", side_effect=command), \
+                mock.patch("os.lstat", return_value=SimpleNamespace(st_mode=stat.S_IFREG | 0o755)), \
+                mock.patch("os.access", return_value=True), \
+                mock.patch.object(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(SECRET))), \
+                contextlib.redirect_stdout(output):
+            exec(program, {"__name__": "__main__"})
+        transaction = next(argv for argv in calls if argv[:2] == ["/usr/bin/sudo", "-S"])
+        self.assertNotIn("--needed", transaction)
+        self.assertEqual(json.loads(output.getvalue())["state"], "verified")
 
     def test_private_credential_rejects_relative_symlink_wrong_mode_and_foreign_owner(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -98,26 +119,84 @@ class WindowsVmVirtFirmwareInstallTest(unittest.TestCase):
             program = installer._SIGNATURE_POLICY_REMOTE
             output = io.StringIO()
             with mock.patch("subprocess.run", return_value=SimpleNamespace(returncode=0, stdout=policy)), \
-                    mock.patch("os.lstat", return_value=SimpleNamespace(st_mode=stat.S_IFREG | 0o755)), \
+                    mock.patch("os.stat", return_value=SimpleNamespace(st_mode=stat.S_IFREG | 0o755)), \
                     mock.patch("os.access", return_value=True), contextlib.redirect_stdout(output):
                 exec(program, {"__name__": "__main__"})
             return json.loads(output.getvalue())
 
         self.assertIn("['/usr/bin/pacman-conf','--repo','extra','SigLevel']",
                       installer._SIGNATURE_POLICY_REMOTE)
-        self.assertTrue(run_for(b"PackageRequired PackageTrustedOnly\n")["signaturePolicyRequired"])
+        self.assertEqual(run_for(b"PackageRequired PackageTrustedOnly\n")["state"], "required-trusted-explicit")
+        self.assertEqual(run_for(b"Required DatabaseOptional\n")["state"], "required-trusted-implicit")
         # A global Required setting cannot override an extra-specific Never or
         # PackageOptional policy. The fixed extra probe must fail closed.
-        self.assertFalse(run_for(b"Required Never TrustedOnly\n")["signaturePolicyRequired"])
-        self.assertFalse(run_for(b"Required PackageNever TrustedOnly\n")["signaturePolicyRequired"])
-        self.assertFalse(run_for(b"Required PackageOptional TrustedOnly\n")["signaturePolicyRequired"])
-        self.assertFalse(run_for(b"PackageRequired TrustAll\n")["signaturePolicyRequired"])
+        self.assertEqual(run_for(b"Required Never TrustedOnly\n")["state"], "rejected")
+        self.assertEqual(run_for(b"Required PackageNever TrustedOnly\n")["state"], "rejected")
+        self.assertEqual(run_for(b"Required PackageOptional TrustedOnly\n")["state"], "rejected")
+        self.assertEqual(run_for(b"PackageRequired TrustAll\n")["state"], "rejected")
+        # A successful empty repo-local query means the value is inherited;
+        # prove the fixed fallback checks the absence of an override and then
+        # evaluates the global effective policy without exposing either output.
+        output = io.StringIO()
+        responses = [SimpleNamespace(returncode=0, stdout=b""),
+                     SimpleNamespace(returncode=0, stdout=b"Server = https://example.invalid\n"),
+                     SimpleNamespace(returncode=0, stdout=b"Required TrustedOnly\n")]
+        with mock.patch("subprocess.run", side_effect=responses), \
+                mock.patch("os.stat", return_value=SimpleNamespace(st_mode=stat.S_IFREG | 0o755)), \
+                mock.patch("os.access", return_value=True), contextlib.redirect_stdout(output):
+            exec(installer._SIGNATURE_POLICY_REMOTE, {"__name__": "__main__"})
+        self.assertEqual(json.loads(output.getvalue())["state"], "required-trusted-explicit")
         with tempfile.TemporaryDirectory() as root, \
                 mock.patch.object(installer, "_signature_policy", return_value=False), \
                 mock.patch.object(installer, "_read_credential") as read:
             with self.assertRaisesRegex(ValueError, "signature policy"):
                 installer.start(root, host="archlinux", correlation_id=CORR, timeout_seconds=60)
         read.assert_not_called()
+
+    def test_preflight_categorizes_preintent_failure_without_reading_credential_or_contacting_transaction(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            cases = (("signature-policy-rejected", "rejected", True),
+                     ("signature-policy-unavailable", "unavailable-repo-query", True),
+                     ("credential-metadata-invalid", "required-trusted-implicit", False))
+            for expected, policy, metadata in cases:
+                with self.subTest(expected=expected), \
+                        mock.patch.object(installer, "_intent_state", return_value="absent"), \
+                        mock.patch.object(installer, "_transport_diagnostic", return_value="ready"), \
+                        mock.patch.object(installer, "_signature_policy_state", return_value=policy), \
+                        mock.patch.object(installer, "_credential_metadata", return_value=metadata), \
+                        mock.patch.object(installer, "_read_credential") as read, \
+                        mock.patch.object(installer, "_remote") as remote:
+                    result = installer.preflight(root, host="archlinux", correlation_id=CORR, timeout_seconds=60)
+                self.assertEqual(result["state"], expected)
+                self.assertFalse(result["safeStartAllowed"])
+                read.assert_not_called(); remote.assert_not_called()
+
+    def test_preflight_ready_and_status_without_intent_are_truthful_and_nonmutating(self) -> None:
+        with tempfile.TemporaryDirectory() as root, \
+                mock.patch.object(installer, "_intent_state", return_value="absent"), \
+                mock.patch.object(installer, "_transport_diagnostic", return_value="ready"), \
+                mock.patch.object(installer, "_signature_policy_state", return_value="required-trusted-implicit"), \
+                mock.patch.object(installer, "_credential_metadata", return_value=True), \
+                mock.patch.object(installer, "_read_credential") as read, \
+                mock.patch.object(installer, "_remote") as remote:
+            ready = installer.preflight(root, host="archlinux", correlation_id=CORR, timeout_seconds=60)
+            status = installer.status(root, host="archlinux", correlation_id=CORR, timeout_seconds=60)
+        self.assertEqual(ready["state"], "ready")
+        self.assertEqual(ready["signaturePolicy"], "required-trusted-implicit")
+        self.assertTrue(ready["newCorrelationRequired"])
+        self.assertEqual(status["state"], "intent-absent")
+        read.assert_not_called(); remote.assert_not_called()
+
+    def test_preflight_reports_fixed_hop_failure_without_credential_read(self) -> None:
+        with tempfile.TemporaryDirectory() as root, \
+                mock.patch.object(installer, "_intent_state", return_value="absent"), \
+                mock.patch.object(installer, "_transport_diagnostic", return_value="nested-ssh-unavailable"), \
+                mock.patch.object(installer, "_signature_policy_state") as policy, \
+                mock.patch.object(installer, "_credential_metadata") as metadata:
+            result = installer.preflight(root, host="archlinux", correlation_id=CORR, timeout_seconds=60)
+        self.assertEqual(result["state"], "transport-unavailable")
+        self.assertEqual(result["transportDiagnostic"], "nested-ssh-unavailable")
+        policy.assert_not_called(); metadata.assert_not_called()
 
     def test_remote_sudo_or_pacman_nonzero_is_generic_without_returning_credential_or_diagnostics(self) -> None:
         program = installer._REMOTE.replace("__MODE__", repr("start")).replace("__CORR__", repr(CORR))
@@ -261,6 +340,17 @@ class WindowsVmVirtFirmwareInstallTest(unittest.TestCase):
                     rejected = mcp_server._vm_workflow_impl("windows-vm-virt-firmware-install-start",
                                                             {**REQUEST, **changed})
                     self.assertFalse(rejected["ok"])
+
+    def test_mcp_preflight_exposes_categorical_preintent_failure(self) -> None:
+        preflight = {"correlationId": CORR, "host": "archlinux", "state": "signature-policy-rejected",
+                     "signaturePolicy": None, "transportDiagnostic": "ready", "credentialMetadataValid": False, "safeStartAllowed": False,
+                     "newCorrelationRequired": True, "nativeActionAllowed": False}
+        with mock.patch.object(mcp_server, "_agent_module") as module:
+            module.return_value.preflight.return_value = preflight
+            result = mcp_server._vm_workflow_impl("windows-vm-virt-firmware-install-preflight", REQUEST)
+        self.assertEqual(result["state"], "signature-policy-rejected")
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["safeStartAllowed"])
 
 
 if __name__ == "__main__":

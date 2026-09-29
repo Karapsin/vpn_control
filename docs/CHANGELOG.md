@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Harden parity acceptance fixtures, recovery, and visual capture guards.
 - Close terminal Linux fixture claims safely and reject Windows MSI base-version mismatches before dispatch.
 - Add guarded Arch firmware installation and read-only ai_loop observation to MCP.
+- Harden the fixed Arch firmware installer with read-only admission and truthful signature verification.
 
 ## 2.2.1 - 2026-09-29
 

@@ -58,7 +58,10 @@ try:
  if MODE=='start':
   secret=sys.stdin.buffer.read(513)
   if not 1<=len(secret)<=512 or b'\0' in secret:raise ValueError()
-  install=subprocess.run(['/usr/bin/sudo','-S','-p','','--','/usr/bin/pacman','-S','--needed','--noconfirm',REPOSITORY+'/'+PACKAGE+'='+VERSION],input=secret,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=180,check=False,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
+  # Deliberately omit --needed: a same-version installed package must still
+  # traverse pacman's signature-checked transaction before signature success
+  # can be published.
+  install=subprocess.run(['/usr/bin/sudo','-S','-p','','--','/usr/bin/pacman','-S','--noconfirm',REPOSITORY+'/'+PACKAGE+'='+VERSION],input=secret,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=180,check=False,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
   if install.returncode!=0:
    # stderr is deliberately suppressed to protect the credential.  It cannot
    # truthfully distinguish sudo authentication from a pacman transaction
@@ -74,19 +77,43 @@ except (OSError,ValueError,UnicodeDecodeError,subprocess.TimeoutExpired):emit('u
 '''
 
 _SIGNATURE_POLICY_REMOTE = r'''import json,os,stat,subprocess
-def emit(required):
- print(json.dumps({'schemaVersion':1,'host':'archlinux','signaturePolicyRequired':required},separators=(',',':'),sort_keys=True))
+def emit(state):
+ print(json.dumps({'schemaVersion':1,'host':'archlinux','state':state},separators=(',',':'),sort_keys=True))
 try:
- info=os.lstat('/usr/bin/pacman-conf')
+ phase='path'
+ info=os.stat('/usr/bin/pacman-conf')
  if not stat.S_ISREG(info.st_mode) or not os.access('/usr/bin/pacman-conf',os.X_OK):raise ValueError()
- run=subprocess.run(['/usr/bin/pacman-conf','--repo','extra','SigLevel'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10,check=False,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
- if run.returncode!=0 or not 0<len(run.stdout)<=256:raise ValueError()
- values=set(run.stdout.decode('utf-8','strict').split())
+ def query(argv):return subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=10,check=False,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
+ phase='repo-query';run=query(['/usr/bin/pacman-conf','--repo','extra','SigLevel'])
+ if run.returncode!=0 or not 0<len(run.stdout)<=256:
+  # pacman-conf returns nonzero for an unset repo-local value.  Determine
+  # whether extra declares one without exporting it; only then inherit the
+  # global effective value.  Any explicit repo SigLevel remains fail-closed.
+  phase='repo-listing';listing=query(['/usr/bin/pacman-conf','--repo','extra'])
+  if listing.returncode!=0 or len(listing.stdout)>4096:emit('repo-listing-failed');raise SystemExit
+  lines=listing.stdout.decode('utf-8','strict').splitlines()
+  if any(line.strip().startswith('SigLevel') for line in lines):emit('repo-override-unreadable');raise SystemExit
+  phase='global-query';run=query(['/usr/bin/pacman-conf','SigLevel'])
+  if run.returncode!=0:emit('global-query-failed');raise SystemExit
+ if not 0<len(run.stdout)<=256:raise ValueError()
+ phase='policy-parse';values=set(run.stdout.decode('utf-8','strict').split())
  rejected={'Never','Optional','PackageNever','PackageOptional','TrustAll','PackageTrustAll'}
  signatures=bool({'Required','PackageRequired'}&values)
- trusted=bool({'TrustedOnly','PackageTrustedOnly'}&values)
- emit(signatures and trusted and not values.intersection(rejected))
-except (OSError,ValueError,UnicodeDecodeError,subprocess.TimeoutExpired):emit(False)
+ explicit=bool({'TrustedOnly','PackageTrustedOnly'}&values)
+ # pacman defaults to TrustedOnly when TrustAll is absent; pacman-conf omits
+ # that default from otherwise effective output, so expose it categorically.
+ if signatures and not values.intersection(rejected):emit('required-trusted-explicit' if explicit else 'required-trusted-implicit')
+ else:emit('rejected')
+except (OSError,ValueError,UnicodeDecodeError,subprocess.TimeoutExpired):emit('unavailable-'+phase)
+'''
+
+_RUNTIME_REMOTE = r'''import json,os,stat
+def executable(path):
+ try:
+  info=os.stat(path);return stat.S_ISREG(info.st_mode) and os.access(path,os.X_OK)
+ except OSError:return False
+state='remote-python-unavailable' if not executable('/usr/bin/python3') else 'pacman-conf-unavailable' if not executable('/usr/bin/pacman-conf') else 'ready'
+print(json.dumps({'schemaVersion':1,'host':'archlinux','state':state},separators=(',',':'),sort_keys=True))
 '''
 
 
@@ -137,6 +164,25 @@ def _read_credential(root: str | Path, *, credential_path: Path | None = None) -
             os.close(descriptor)
     finally:
         os.close(parent)
+
+
+def _credential_metadata(root: str | Path) -> bool:
+    """Validate only credential filesystem metadata; never open for reading."""
+    path = _credential_path(root)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        parent = os.open(path.parent, flags)
+        try:
+            directory = os.fstat(parent)
+            item = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+            return (stat.S_ISDIR(directory.st_mode) and directory.st_uid == os.getuid()
+                    and not directory.st_mode & 0o022 and stat.S_ISREG(item.st_mode)
+                    and item.st_uid == os.getuid() and stat.S_IMODE(item.st_mode) == 0o600
+                    and 0 < item.st_size <= _MAX_CREDENTIAL_BYTES)
+        finally:
+            os.close(parent)
+    except OSError:
+        return False
 
 
 def _journal(root: str | Path, *, create: bool) -> Path:
@@ -221,10 +267,10 @@ def _remote(root: str | Path, correlation_id: str, mode: str, timeout_seconds: i
     return _parse_result(json.loads(completed.stdout), correlation_id)
 
 
-def _signature_policy(root: str | Path, timeout_seconds: int) -> bool:
+def _signature_policy_state(root: str | Path, timeout_seconds: int) -> str:
     config = ssh_transport.load_config(Path(root).resolve(strict=True))
     if HOST not in config.hosts or ssh_transport.connection_host(config, HOST).password is not None:
-        return False
+        return "unavailable"
     argv = ssh_transport.build_ssh_argv(
         config, HOST, min(timeout_seconds, 60),
         command=("/usr/bin/python3", "-c", "exec(" + repr(_SIGNATURE_POLICY_REMOTE) + ")"),
@@ -233,11 +279,97 @@ def _signature_policy(root: str | Path, timeout_seconds: int) -> bool:
         completed = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                    stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
         if completed.returncode != 0 or not 0 < len(completed.stdout) <= 256:
-            return False
+            return "unavailable"
         value = json.loads(completed.stdout)
-        return value == {"schemaVersion": 1, "host": HOST, "signaturePolicyRequired": True}
+        if (isinstance(value, Mapping) and set(value) == {"schemaVersion", "host", "state"}
+                and value.get("schemaVersion") == 1 and value.get("host") == HOST
+                and (value.get("state") in {"required-trusted-explicit", "required-trusted-implicit", "rejected", "repo-listing-failed", "repo-override-unreadable", "global-query-failed"}
+                     or isinstance(value.get("state"), str) and value["state"].startswith("unavailable-"))):
+            return value["state"]
+        return "unavailable"
     except (OSError, ValueError, subprocess.TimeoutExpired, json.JSONDecodeError):
-        return False
+        return "unavailable"
+
+
+def _transport_diagnostic(root: str | Path, timeout_seconds: int) -> str:
+    """Check only fixed executable/hop facts; no credential or raw diagnostics."""
+    local = Path("/usr/bin/ssh")
+    if not local.is_file() or not os.access(local, os.X_OK):
+        return "local-ssh-unavailable"
+    try:
+        config = ssh_transport.load_config(Path(root).resolve(strict=True))
+        gateway = ssh_transport.connection_host(config, HOST)
+        fixed = {"ssh_binary": "/usr/bin/ssh", "nested_ssh_binary": "/usr/bin/ssh"}
+        gateway_argv = ssh_transport.build_ssh_argv(config, gateway.alias, min(timeout_seconds, 60),
+                                                     command=("/usr/bin/test", "-x", "/usr/bin/ssh"), **fixed)
+        gateway_run = subprocess.run(gateway_argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
+        if gateway_run.returncode != 0:
+            return "gateway-ssh-unavailable"
+        target_argv = ssh_transport.build_ssh_argv(config, HOST, min(timeout_seconds, 60),
+                                                    command=("/usr/bin/true",), **fixed)
+        target_run = subprocess.run(target_argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
+        if target_run.returncode != 0:
+            return "nested-ssh-unavailable"
+        runtime_argv = ssh_transport.build_ssh_argv(config, HOST, min(timeout_seconds, 60),
+            command=("/usr/bin/python3", "-c", "exec(" + repr(_RUNTIME_REMOTE) + ")"), **fixed)
+        runtime = subprocess.run(runtime_argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
+        if runtime.returncode != 0 or not 0 < len(runtime.stdout) <= 256:
+            return "remote-runtime-unavailable"
+        payload = json.loads(runtime.stdout)
+        if (isinstance(payload, Mapping) and set(payload) == {"schemaVersion", "host", "state"}
+                and payload.get("schemaVersion") == 1 and payload.get("host") == HOST
+                and payload.get("state") in {"ready", "remote-python-unavailable", "pacman-conf-unavailable"}):
+            return payload["state"]
+        return "remote-runtime-unavailable"
+    except (OSError, ValueError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return "transport-unavailable"
+
+
+def _signature_policy(root: str | Path, timeout_seconds: int) -> bool:
+    return _signature_policy_state(root, timeout_seconds).startswith("required-trusted-")
+
+
+def _intent_state(root: str | Path, correlation_id: str) -> str:
+    try:
+        path = _journal(root, create=False)
+    except FileNotFoundError:
+        return "absent"
+    try:
+        _read_intent(path, correlation_id)
+        return "existing"
+    except (OSError, ValueError):
+        return "existing"
+
+
+def preflight(root: str | Path, *, host: str, correlation_id: str, timeout_seconds: int = 60) -> dict[str, Any]:
+    """Return categorical read-only admission facts without reading credentials."""
+    _validate(host, correlation_id, timeout_seconds)
+    policy: str | None = None
+    diagnostic: str | None = None
+    if _intent_state(root, correlation_id) != "absent":
+        state = "intent-existing"
+    else:
+        diagnostic = _transport_diagnostic(root, timeout_seconds)
+        if diagnostic != "ready":
+            state = "transport-unavailable"
+        else:
+            policy = _signature_policy_state(root, timeout_seconds)
+            if policy.startswith("unavailable-") or policy in {"repo-listing-failed", "repo-override-unreadable", "global-query-failed"}:
+                state = "signature-policy-unavailable"
+            elif policy == "rejected":
+                state = "signature-policy-rejected"
+            elif not _credential_metadata(root):
+                state = "credential-metadata-invalid"
+            else:
+                state = "ready"
+    return {"correlationId": correlation_id, "host": HOST, "state": state,
+            "signaturePolicy": policy,
+            "transportDiagnostic": diagnostic,
+            "credentialMetadataValid": state == "ready", "safeStartAllowed": state == "ready",
+            "newCorrelationRequired": True, "nativeActionAllowed": False}
 
 
 def _public(result: Mapping[str, Any], correlation_id: str) -> dict[str, Any]:
@@ -281,7 +413,13 @@ def start(root: str | Path, *, host: str, correlation_id: str, timeout_seconds: 
 
 def status(root: str | Path, *, host: str, correlation_id: str, timeout_seconds: int = 60) -> dict[str, Any]:
     _validate(host, correlation_id, timeout_seconds)
-    _read_intent(_journal(root, create=False), correlation_id)
+    try:
+        _read_intent(_journal(root, create=False), correlation_id)
+    except FileNotFoundError:
+        return {"correlationId": correlation_id, "host": HOST, "state": "intent-absent",
+                "package": PACKAGE, "version": VERSION, "pacmanSignatureVerified": False,
+                "packageIntegrityVerified": False, "firmwareToolPresent": False,
+                "replayAllowed": False, "nativeActionAllowed": False}
     try:
         result = _remote(root, correlation_id, "status", timeout_seconds)
     except (OSError, ValueError, subprocess.TimeoutExpired, json.JSONDecodeError):

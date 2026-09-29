@@ -149,6 +149,15 @@ timeoutSeconds: 10..300}` and installs only `virt-firmware=26.9-1`. Its status
 counterpart accepts the same exact fields and only observes the durable local
 intent plus the fixed package identity and integrity checks.
 
+Before any start, call `windows-vm-virt-firmware-install-preflight` with a new
+canonical correlation and the same fixed host/timeout fields. It performs no
+credential read and returns only `ready`, `intent-existing`,
+`signature-policy-rejected`, `credential-metadata-invalid`, or
+`signature-policy-unavailable`, or `transport-unavailable`. The categorical
+transport diagnostic identifies the local SSH, gateway SSH, nested SSH, remote
+Python, and `pacman-conf` hop without exposing raw stderr. A status call with no durable intent returns
+`intent-absent`; it does not contact the host or manufacture a remote `unknown`.
+
 The start route reads the local ignored `.codex/arch-sudo.local` file. It must
 be a nonempty regular non-symlink file owned by the current POSIX user with mode
 `0600` and at most 512 bytes. The credential never enters MCP fields, SSH/shell
@@ -163,6 +172,8 @@ and `TrustAll`.
 The remote transaction uses pacman's configured signature verification, then
 checks `pacman -Q virt-firmware`, `pacman -Qkk virt-firmware`, and executable
 `/usr/bin/virt-fw-vars` before it can report `verified`.
+The fixed transaction does not use `--needed`, so an already installed matching
+version is reinstalled through pacman's signature verification.
 
 Sudo and pacman diagnostics stay suppressed so credential bytes cannot enter
 public logs. A nonzero fixed transaction therefore reports only
