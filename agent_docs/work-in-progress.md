@@ -27,6 +27,42 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Windows-first continuation — 2026-09-29
+
+The user set the native acceptance order to Windows, Android, Linux, then
+macOS. Subagents for new slices use GPT-5.6 Terra at medium effort. Android,
+Linux guest and macOS native mutations are paused; already submitted hosted
+builds and captures retain their exact correlations and historical evidence.
+`dd10a9b019283d38b4a00ac592d679d6fe5d9326` is the latest clean pushed
+`dev` checkpoint. Its full prepush tier passed, and the user requested one
+required exact-SHA CI check only at final delivery.
+
+CP117 remains at installed 2.1.17 with runtime and active product process count
+zero, one owned Explorer, passed read-only PowerShell/base/owner preflights and a
+successful credential probe. Exact-dd10 hosted MSI pair run `36620110827`,
+correlation `3ff2a91c-2e1e-4775-8d84-b0cc5b2e8b30`, was collected, byte
+verified and registered with base 2.1.19 and target 2.2.1. No CP117 installer
+or VPN action has run. The separate blank Windows Setup VM is blocked before
+start because its Arch host lacks `virt-firmware 26.9-1`; it cannot copy the
+live source disk. A fixed MCP installer for the signed Arch package and private
+ignored `.codex/arch-sudo.local` input has passed independent review and
+focused/full agent-tool tests. Its tracked source is dirty and must be checked,
+checkpointed, and source-bound packages rebuilt before further native
+acceptance. The credential value is never documented or committed.
+
+Exact-dd10 hosted visual captures were collected with source provenance:
+Linux 59/59 and Windows 57/57 hosted scenes. Linux has 17 automated passes,
+40 reviewed expected pixel differences and two missing add/edit baselines;
+Windows has 15 passes, 40 pixel differences, two missing add/edit baselines,
+and one local-only UAC scene still absent. No geometry or contrast defect was
+found. The user also requested a read-only Arch `ai_loop` token-efficiency
+review; the configured SSH route had no fixed observer, so a narrow redacting
+MCP observer was added and independently reviewed. Its first remote read-only
+result found no system package or standard-path executable, inactive service
+units, a running `ai_loop` process, and no safe model/budget/token projection.
+The actual entrypoint and token savings are unverified; the user was asked for
+its path. No `ai_loop` job was started.
+
 ### Eleventh continuation checkpoint pushed — 2026-09-29
 
 `f7c09aa3c02f486d3e93b38c7684a25dba36c0d4` is on `origin/dev` at

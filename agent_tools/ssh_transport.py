@@ -389,7 +389,9 @@ def inventory(root: Path | str) -> tuple[str, ...]:
     return tuple(sorted(load_config(root).hosts))
 
 
-def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS, command: Sequence[str] = ("true",), ssh_binary: str = "ssh") -> list[str]:
+def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+                   command: Sequence[str] = ("true",), ssh_binary: str = "ssh",
+                   nested_ssh_binary: str = "ssh") -> list[str]:
     """Build an argv-only OpenSSH invocation. No values are shell-interpolated."""
     if host not in config.hosts:
         raise SshConfigError("Unknown VM host alias.")
@@ -398,6 +400,7 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
     if not command or any(not isinstance(part, str) or _CONTROL_RE.search(part) for part in command):
         raise SshConfigError("SSH command must be a non-empty sequence of safe strings.")
     ssh_binary = _string(ssh_binary, "ssh executable")
+    nested_ssh_binary = _string(nested_ssh_binary, "nested ssh executable")
     route = _route_hosts(config.hosts, host)
     # Compose from the destination outward. Each layer quotes one complete argv
     # for the shell used by that layer's OpenSSH remote command, retaining every
@@ -405,7 +408,7 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
     for nested in route[:-1]:
         if not nested.remote_host_alias:
             raise SshConfigError("Nested transport needs a remote host alias.")
-        remote_command = ["ssh"]
+        remote_command = [nested_ssh_binary]
         if nested.remote_config_file is not None:
             remote_command.extend(("-F", str(nested.remote_config_file)))
         if nested.remote_control_path is not None:

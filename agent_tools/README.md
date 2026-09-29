@@ -140,6 +140,56 @@ establishes completion, and PID reuse or lost observation remains unknown. The C
 accepts this mapping through `--identity-file`. No job-status action starts, stops
 or retries remote work.
 
+### Fixed Secure Boot firmware prerequisite
+
+`vm_workflow("windows-vm-virt-firmware-install-start", inputs=...)` is the
+single remote installer for the Windows Secure Boot VM prerequisite. It accepts
+only `{host: "archlinux", correlationId: "<canonical lowercase UUID>",
+timeoutSeconds: 10..300}` and installs only `virt-firmware=26.9-1`. Its status
+counterpart accepts the same exact fields and only observes the durable local
+intent plus the fixed package identity and integrity checks.
+
+The start route reads the local ignored `.codex/arch-sudo.local` file. It must
+be a nonempty regular non-symlink file owned by the current POSIX user with mode
+`0600` and at most 512 bytes. The credential never enters MCP fields, SSH/shell
+arguments, environment variables, journals, stdout, stderr, or public results;
+it is supplied only over SSH stdin to the fixed remote `sudo -S pacman` command.
+The `.codex` parent is opened as a non-symlink directory descriptor before the
+credential is opened. Before the credential is read or sent, the fixed remote
+`/usr/bin/pacman-conf --repo extra SigLevel` check requires a package signature
+token (`Required` or `PackageRequired`) and trusted-key token (`TrustedOnly` or
+`PackageTrustedOnly`), rejecting `Never`/`PackageNever`, optional signatures,
+and `TrustAll`.
+The remote transaction uses pacman's configured signature verification, then
+checks `pacman -Q virt-firmware`, `pacman -Qkk virt-firmware`, and executable
+`/usr/bin/virt-fw-vars` before it can report `verified`.
+
+Sudo and pacman diagnostics stay suppressed so credential bytes cannot enter
+public logs. A nonzero fixed transaction therefore reports only
+`transaction-failed`; it does not claim whether sudo authentication or pacman
+caused the failure.
+
+Start validates the local credential, then writes one owner-private intent before
+SSH submission. An invalid local credential writes no intent. A duplicate start,
+timeout, response loss, or `unknown` result is never replayed. Call
+`windows-vm-virt-firmware-install-status` with the exact correlation instead;
+its `replayAllowed: false` remains authoritative. This route does not copy a
+live VM disk, open CP117, or start, stop, reset, or modify any VM.
+
+The installer pins both the local and each configured nested SSH hop to
+`/usr/bin/ssh`; remote Python is `/usr/bin/python3`. Its one fixed pacman target
+is `extra/virt-firmware=26.9-1`.
+
+`vm_workflow("arch-ai-loop-observe", inputs={"host":"archlinux",
+"timeoutSeconds":15})` is a fixed read-only inventory for the Arch host's
+`ai_loop` tool. It accepts no executable, command, path, prompt, credential, or
+job identifier and never runs `ai_loop`. It reports bounded package/executable
+presence, service/process state, and a version from package metadata only. An
+optional owner-private `~/.local/state/ai_loop/observer-v1.json` may expose a
+strict safe projection of provider/model, budgets, and aggregate token counts;
+unknown fields, malformed data, and secret-like values are rejected. Absence of
+that projection means token-saving behavior remains unverified.
+
 `vm_workflow("inspect-input", inputs={"input": {"path": "...", "size": 123,
 "sha256": "..."}})` verifies exact nonempty Python input bytes. Optional
 `preflight: "desktop-update-entrypoint"` checks canonical staged siblings and
