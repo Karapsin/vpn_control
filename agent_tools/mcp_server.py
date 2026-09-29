@@ -1839,6 +1839,7 @@ def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) ->
     vm_actions = {"artifact-verify", "bundle-verify", "environment-status", "credential-status",
                   "windows-credential-probe-start", "windows-credential-probe-status",
                   "windows-vm-swtpm-repair-preflight", "windows-vm-swtpm-repair-start", "windows-vm-swtpm-repair-status",
+                  "windows-vm-swtpm-owner-observe",
                   "scenario-start", "scenario-status", "scenario-resume", "scenario-collect",
                   "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect"}
     ssh_actions = {"inventory", "probe", "job-status", "android-observe"}
@@ -3522,6 +3523,35 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 return {"tool": "vm_workflow", **result, "ok": result["state"] == "verified", "evidenceClass": "remote-swtpm-repair", "productAction": action.endswith("-start")}
             except (ValueError, OSError, KeyError, TypeError):
                 return {"tool": "vm_workflow", "ok": False, "state": "unknown", "host": "archlinux", "correlationId": inputs.get("correlationId"), "package": "swtpm", "version": "0.10.2-1", "pacmanSignatureVerified": False, "packageIntegrityVerified": False, "activeSwtpmProcesses": False, "replayAllowed": False, "nativeActionAllowed": False, "productAction": action.endswith("-start")}
+        if action == "windows-vm-swtpm-owner-observe":
+            if (set(inputs) != {"host", "timeoutSeconds"} or inputs.get("host") != "archlinux" or
+                    type(inputs.get("timeoutSeconds")) is not int or not 10 <= inputs["timeoutSeconds"] <= 60):
+                return _error("vm_workflow", "swtpm owner observation requires exact Arch host and bounded timeout.")
+            try:
+                result = _agent_module("windows_vm_swtpm_repair").owner_observe(
+                    REPO_ROOT, host=inputs["host"], timeout_seconds=inputs["timeoutSeconds"])
+                required = {"host", "state", "censusReason", "censusComplete", "activeSwtpmProcesses", "processes", "nativeActionAllowed"}
+                if (not isinstance(result, dict) or set(result) != required or result.get("host") != "archlinux" or
+                        result.get("state") not in {"observed", "unknown"} or
+                        ((result["state"] == "observed") != result.get("censusComplete")) or
+                        (result["censusComplete"] and result.get("censusReason") is not None) or
+                        (not result["censusComplete"] and result.get("censusReason") not in {"proc-visibility-incomplete", "process-read-unavailable", "fd-census-incomplete", "census-capacity", "census-unavailable"}) or
+                        any(type(result.get(key)) is not bool for key in ("censusComplete", "activeSwtpmProcesses", "nativeActionAllowed")) or
+                        not isinstance(result.get("processes"), list) or len(result["processes"]) > 16 or result["nativeActionAllowed"] is not False):
+                    raise ValueError("swtpm owner observation response is invalid.")
+                for item in result["processes"]:
+                    if (not isinstance(item, dict) or set(item) != {"pid", "startTicks", "uid", "relationship"} or
+                            type(item.get("pid")) is not int or item["pid"] <= 0 or
+                            type(item.get("startTicks")) is not int or item["startTicks"] <= 0 or
+                            type(item.get("uid")) is not int or item["uid"] < 0 or
+                            item.get("relationship") not in {"task-owned-swtpm-socket", "unattributed-vm-or-socket-path", "no-visible-socket-path"}):
+                        raise ValueError("swtpm owner observation process is invalid.")
+                return {"tool": "vm_workflow", **result, "ok": result["state"] == "observed",
+                        "evidenceClass": "read-only-swtpm-owner-observation", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return {"tool": "vm_workflow", "ok": False, "host": "archlinux", "state": "unknown", "censusReason": "census-unavailable",
+                        "censusComplete": False, "activeSwtpmProcesses": False, "processes": [],
+                        "nativeActionAllowed": False, "productAction": False}
         if action == "windows-vm-secureboot-clone-preflight":
             required = {"host", "ownerPid", "ownerStartTicks", "baselineReservationId", "timeoutSeconds"}
             if (set(inputs) != required or inputs.get("host") != "archlinux"
@@ -4411,6 +4441,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                                       "windows-vm-swtpm-repair-preflight",
                                       "windows-vm-swtpm-repair-start",
                                       "windows-vm-swtpm-repair-status",
+                                      "windows-vm-swtpm-owner-observe",
                                       "arch-ai-loop-observe")
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")

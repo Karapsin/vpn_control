@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import base64
 import io
 import json
 import os
@@ -211,6 +212,103 @@ class WindowsVmSwtpmRepairTest(unittest.TestCase):
             start = mcp_server._vm_workflow_impl("windows-vm-swtpm-repair-start", REQUEST)
         self.assertTrue({"packageIntegrityFailed", "activeSwtpmProcesses", "safeStartAllowed", "newCorrelationRequired", "nativeActionAllowed"} <= set(preflight))
         self.assertTrue({"package", "version", "pacmanSignatureVerified", "packageIntegrityVerified", "activeSwtpmProcesses", "replayAllowed", "nativeActionAllowed"} <= set(start))
+
+    def test_owner_observe_attributes_active_swtpm_without_raw_path_or_command_exposure(self) -> None:
+        raw = {"schemaVersion": 1, "host": "archlinux", "censusComplete": True, "censusReason": None,
+               "observedAtUnixMs": 1, "processes": [{"pid": 417, "startTicks": 9917,
+               "uid": 1000, "relationship": "task-owned-swtpm-socket"}]}
+        config = SimpleNamespace(hosts={"archlinux": object()})
+        with mock.patch.object(repair.ssh_transport, "load_config", return_value=config), \
+                mock.patch.object(repair.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
+                mock.patch.object(repair.ssh_transport, "build_ssh_argv", return_value=["/usr/bin/ssh", "archlinux"]) as argv, \
+                mock.patch.object(repair.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(raw).encode())):
+            result = repair.owner_observe(".", host="archlinux", timeout_seconds=30)
+        self.assertEqual(result, {"host": "archlinux", "state": "observed", "censusReason": None, "censusComplete": True,
+                                  "activeSwtpmProcesses": True, "processes": raw["processes"],
+                                  "nativeActionAllowed": False})
+        command = argv.call_args.kwargs["command"][-1]
+        decoded = base64.b64decode(command.split("b64decode(", 1)[1].split(")", 1)[0].strip("'\"")).decode()
+        compile(decoded, "<swtpm-owner-observe>", "exec")
+        self.assertIn("TPM_SOCKET", decoded)
+        self.assertNotIn("cmdline", decoded)
+        self.assertNotIn("kill", decoded)
+
+    def test_owner_observe_fails_closed_on_incomplete_census_and_mcp_schema_is_fixed(self) -> None:
+        raw = {"schemaVersion": 1, "host": "archlinux", "censusComplete": False, "censusReason": "fd-census-incomplete",
+               "observedAtUnixMs": 1, "processes": []}
+        config = SimpleNamespace(hosts={"archlinux": object()})
+        with mock.patch.object(repair.ssh_transport, "load_config", return_value=config), \
+                mock.patch.object(repair.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
+                mock.patch.object(repair.ssh_transport, "build_ssh_argv", return_value=["/usr/bin/ssh", "archlinux"]), \
+                mock.patch.object(repair.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(raw).encode())):
+            self.assertEqual(repair.owner_observe(".", host="archlinux")["state"], "unknown")
+        observed = {"host": "archlinux", "state": "observed", "censusReason": None, "censusComplete": True,
+                    "activeSwtpmProcesses": True, "processes": [{"pid": 417, "startTicks": 9917,
+                    "uid": 1000, "relationship": "unattributed-vm-or-socket-path"}], "nativeActionAllowed": False}
+        with mock.patch.object(mcp_server, "_agent_module") as module:
+            module.return_value.owner_observe.return_value = observed
+            result = mcp_server._vm_workflow_impl("windows-vm-swtpm-owner-observe", {"host": "archlinux", "timeoutSeconds": 30})
+        self.assertEqual(result["state"], "observed")
+        self.assertEqual(result["processes"][0]["relationship"], "unattributed-vm-or-socket-path")
+        self.assertFalse(result["nativeActionAllowed"])
+        self.assertIsNone(result["censusReason"])
+        with mock.patch.object(mcp_server, "_agent_module", side_effect=ValueError):
+            failed = mcp_server._vm_workflow_impl("windows-vm-swtpm-owner-observe", {"host": "archlinux", "timeoutSeconds": 30})
+        self.assertEqual(failed["state"], "unknown")
+        self.assertEqual(failed["processes"], [])
+        self.assertEqual(failed["censusReason"], "census-unavailable")
+
+    def test_owner_observe_mcp_rejects_contradictory_state_and_census_completeness(self) -> None:
+        base = {"host": "archlinux", "activeSwtpmProcesses": False, "processes": [],
+                "nativeActionAllowed": False}
+        for contradictory in (
+                {**base, "state": "observed", "censusComplete": False, "censusReason": "fd-census-incomplete"},
+                {**base, "state": "unknown", "censusComplete": True, "censusReason": None}):
+            with self.subTest(contradictory=contradictory), mock.patch.object(mcp_server, "_agent_module") as module:
+                module.return_value.owner_observe.return_value = contradictory
+                result = mcp_server._vm_workflow_impl("windows-vm-swtpm-owner-observe", {"host": "archlinux", "timeoutSeconds": 30})
+            self.assertEqual(result["state"], "unknown")
+            self.assertFalse(result["censusComplete"])
+            self.assertEqual(result["censusReason"], "census-unavailable")
+
+    def test_owner_observe_mountinfo_parser_handles_comma_separated_hidepid(self) -> None:
+        body = repair._OWNER_OBSERVE_REMOTE.split("def visibility():", 1)[1].split("def unix():", 1)[0]
+        scope: dict[str, object] = {}
+        exec("import os\ndef visibility():" + body, scope)
+        mount = "36 25 0:32 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw,hidepid=2\n"
+        with mock.patch("builtins.open", mock.mock_open(read_data=mount)), \
+                mock.patch.object(repair.os, "readlink", return_value="pid:[1]"):
+            self.assertEqual(scope["visibility"](), "proc-visibility-incomplete")
+        complete = "36 25 0:32 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw\n"
+        with mock.patch("builtins.open", mock.mock_open(read_data=complete)), \
+                mock.patch.object(repair.os, "readlink", return_value="pid:[1]"):
+            self.assertEqual(scope["visibility"](), "complete")
+
+    def test_task_owned_socket_requires_exact_private_receipts(self) -> None:
+        self.assertIn("receipt=={'pid':pid,'startTicks':start}", repair._OWNER_OBSERVE_REMOTE)
+        self.assertIn("qemu-started.json", repair._OWNER_OBSERVE_REMOTE)
+        self.assertIn("linked and task_claim(pid,start)", repair._OWNER_OBSERVE_REMOTE)
+
+    def test_task_claim_rejects_stale_qemu_generation(self) -> None:
+        body = repair._OWNER_OBSERVE_REMOTE.split("def live_qemu", 1)[1].split("def task_claim", 1)[0]
+        scope: dict[str, object] = {"ticks": lambda _pid: 98}
+        exec("def live_qemu" + body, scope)
+        with mock.patch("builtins.open", mock.mock_open(read_data="qemu-system-x86_64\n")):
+            self.assertFalse(scope["live_qemu"](88, 99))
+        self.assertIn("live_qemu(qemu['pid'],qemu['startTicks'])", repair._OWNER_OBSERVE_REMOTE)
+
+    def test_cli_parser_dispatches_fixed_owner_action_and_rejects_unknown_action(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            inputs = Path(root) / "inputs.json"
+            inputs.write_text('{"host":"archlinux","timeoutSeconds":30}', encoding="utf-8")
+            output = io.StringIO()
+            with mock.patch.object(mcp_server, "vm_workflow", return_value={"ok": False, "state": "unknown"}) as dispatch, \
+                    contextlib.redirect_stdout(output):
+                mcp_server.main(["vm-workflow", "windows-vm-swtpm-owner-observe", "--inputs-file", str(inputs)])
+            dispatch.assert_called_once_with("windows-vm-swtpm-owner-observe", {"host": "archlinux", "timeoutSeconds": 30})
+            self.assertIn('"state": "unknown"', output.getvalue())
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                mcp_server.main(["vm-workflow", "windows-vm-swtpm-owner-observe-mutate", "--inputs-file", str(inputs)])
 
 
 if __name__ == "__main__":

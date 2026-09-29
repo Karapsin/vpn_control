@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.2 - 2026-09-30
 
 - Allow guarded dev checkpoints with final exact-SHA CI verification.
 - Add guarded native acceptance and VM evidence workflows for GUI/CLI parity.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Add guarded Arch firmware installation and read-only ai_loop observation to MCP.
 - Harden the fixed Arch firmware installer with read-only admission and truthful signature verification.
 - Add fixed swtpm integrity repair and precise Windows Secure Boot admission diagnostics.
+- Add read-only Arch swtpm owner attribution for guarded Windows VM repair.
 
 ## 2.2.1 - 2026-09-29
 

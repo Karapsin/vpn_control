@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import base64
 from pathlib import Path
 import re
 import stat
@@ -17,9 +18,11 @@ from typing import Any, Mapping
 try:
     from . import ssh_transport
     from . import windows_vm_virt_firmware_install
+    from . import windows_vm_secureboot_fresh
 except ImportError:  # CLI fallback
     import ssh_transport  # type: ignore[no-redef]
     import windows_vm_virt_firmware_install  # type: ignore[no-redef]
+    import windows_vm_secureboot_fresh  # type: ignore[no-redef]
 
 HOST = "archlinux"; PACKAGE = "swtpm"; VERSION = "0.10.2-1"; REPOSITORY = "extra"
 CREDENTIAL_RELATIVE_PATH = Path(".codex") / "arch-sudo.local"
@@ -64,6 +67,88 @@ try:
  integrity=run(['/usr/bin/pacman','-Qkk',PACKAGE]).returncode==0
  emit('verified' if integrity else 'integrity-failed',signature,integrity)
 except (OSError,ValueError,UnicodeDecodeError,subprocess.TimeoutExpired): emit('unknown')
+'''
+
+# This observer examines only the fixed secure-boot fixture's known TPM socket.
+# It never publishes command lines, descriptor targets, or any other path.
+_OWNER_OBSERVE_REMOTE = r'''import json,os,stat,time
+TPM_SOCKET=__TPM_SOCKET__;GUEST=__GUEST__;MAX_PROCS=8192;MAX_SWTPM=16;MAX_FDS=8192
+def ticks(pid):
+ try:return int(open('/proc/%d/stat'%pid,encoding='ascii').read(4096).rsplit(')',1)[1].split()[19])
+ except (OSError,ValueError,IndexError):return None
+def visibility():
+ try:
+  if os.readlink('/proc/1/ns/pid')!=os.readlink('/proc/self/ns/pid'):return 'proc-visibility-incomplete'
+  with open('/proc/self/mountinfo',encoding='ascii') as f: rows=f.read(1048576).splitlines()
+  if len(rows)>=65536:return 'proc-visibility-incomplete'
+  proc=[line for line in rows if ' - proc ' in line and line.split(' - ',1)[0].split()[4]=='/proc']
+  if len(proc)!=1:return 'proc-visibility-incomplete'
+  options={token for field in proc[0].replace(' - ',' ').split() for token in field.split(',')}
+  return 'complete' if 'subset=pid' not in options and not any(item.startswith('hidepid=') and item!='hidepid=0' for item in options) else 'proc-visibility-incomplete'
+ except (OSError,IndexError,ValueError):return 'proc-visibility-incomplete'
+def unix():
+ table={}
+ with open('/proc/net/unix',encoding='ascii') as f:
+  data=f.read(1048577)
+ if len(data)>1048576:raise ValueError()
+ for line in data.splitlines()[1:]:
+  fields=line.split()
+  if len(fields)>=7 and fields[6].isdigit():table[int(fields[6])]=fields[7] if len(fields)>=8 else None
+ return table
+def private_receipt(path,limit):
+ info=os.lstat(path)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size<2 or info.st_size>limit:raise ValueError()
+ with open(path,encoding='utf-8') as f:return json.load(f)
+def live_qemu(pid,start):
+ before=ticks(pid)
+ if before!=start:return False
+ try:comm=open('/proc/%d/comm'%pid,encoding='ascii').read(128).strip()
+ except OSError:return False
+ return comm=='qemu-system-x86_64' and ticks(pid)==start
+def task_claim(pid,start):
+ try:
+  guest=os.lstat(GUEST);tpm=os.lstat(GUEST+'/tpm')
+  if not stat.S_ISDIR(guest.st_mode) or not stat.S_ISDIR(tpm.st_mode) or guest.st_uid!=os.geteuid() or tpm.st_uid!=os.geteuid() or stat.S_IMODE(guest.st_mode)!=0o700 or stat.S_IMODE(tpm.st_mode)!=0o700: return False
+  receipt=private_receipt(GUEST+'/swtpm-started.json',256)
+  qemu=private_receipt(GUEST+'/qemu-started.json',256)
+  return receipt=={'pid':pid,'startTicks':start} and type(qemu.get('pid')) is int and qemu['pid']>0 and type(qemu.get('startTicks')) is int and qemu['startTicks']>0 and live_qemu(qemu['pid'],qemu['startTicks'])
+ except (OSError,ValueError,TypeError):return False
+def relationship(pid,start,table):
+ names=os.listdir('/proc/%d/fd'%pid)
+ if len(names)>MAX_FDS:raise ValueError()
+ linked=False;unattributed=False
+ for name in names:
+  link=os.readlink('/proc/%d/fd/%s'%(pid,name))
+  if not link.startswith('socket:[') or not link.endswith(']'):continue
+  inode=int(link[8:-1]);path=table.get(inode)
+  if path==TPM_SOCKET:linked=True
+  elif path is not None:unattributed=True
+ return 'task-owned-swtpm-socket' if linked and task_claim(pid,start) else 'unattributed-vm-or-socket-path' if linked or unattributed else 'no-visible-socket-path'
+try:
+ reason=visibility();complete=reason=='complete';table=unix();items=[];entries=[name for name in os.listdir('/proc') if name.isdecimal()]
+ if len(entries)>MAX_PROCS:raise ValueError('census-capacity')
+ for name in entries:
+  pid=int(name)
+  try: comm=open('/proc/%d/comm'%pid,encoding='ascii').read(128).strip()
+  except FileNotFoundError:
+   if os.path.exists('/proc/%d'%pid):complete=False;reason='process-read-unavailable'
+   continue
+  except OSError:complete=False;reason='process-read-unavailable';continue
+  if comm!='swtpm':continue
+  if len(items)>=MAX_SWTPM:complete=False;reason='census-capacity';break
+  start=ticks(pid)
+  try:
+   uid=os.stat('/proc/%d'%pid).st_uid
+   if start is None or uid<0:raise ValueError()
+   relation=relationship(pid,start,table)
+   if ticks(pid)!=start:raise ValueError()
+   items.append({'pid':pid,'startTicks':start,'uid':uid,'relationship':relation})
+  except (OSError,ValueError):
+   complete=False;reason='fd-census-incomplete';items.append({'pid':pid,'startTicks':start,'uid':None,'relationship':'unattributed-vm-or-socket-path'})
+ print(json.dumps({'schemaVersion':1,'host':'archlinux','censusComplete':complete,'censusReason':None if complete else reason,'observedAtUnixMs':int(time.time()*1000),'processes':items},sort_keys=True,separators=(',',':')))
+except (OSError,ValueError) as error:
+ reason=str(error) if str(error) in ('census-capacity',) else 'census-unavailable'
+ print(json.dumps({'schemaVersion':1,'host':'archlinux','censusComplete':False,'censusReason':reason,'observedAtUnixMs':int(time.time()*1000),'processes':[]},sort_keys=True,separators=(',',':')))
 '''
 
 def _validate(host: str, correlation_id: str, timeout_seconds: int) -> None:
@@ -137,6 +222,55 @@ def _remote(root: str | Path, correlation_id: str, mode: str, timeout_seconds: i
     states={'verified','already-healthy','integrity-failed','package-not-exact','active-swtpm-processes','process-census-unavailable','transaction-failed','unknown'}
     if not isinstance(value,Mapping) or set(value)!=required or value.get('schemaVersion')!=1 or value.get('host')!=HOST or value.get('correlationId')!=correlation_id or value.get('state') not in states or value.get('package')!=PACKAGE or value.get('version')!=VERSION or any(type(value.get(k)) is not bool for k in ('pacmanSignatureVerified','packageIntegrityVerified','activeSwtpmProcesses')): raise ValueError("swtpm repair response is invalid.")
     return dict(value)
+
+def owner_observe(root: str | Path, *, host: str, timeout_seconds: int = 30) -> dict[str, Any]:
+    """Return bounded, read-only identities for all visible swtpm processes."""
+    if host != HOST or type(timeout_seconds) is not int or not 10 <= timeout_seconds <= 60:
+        raise ValueError("swtpm owner observation requires fixed host and bounded timeout.")
+    config = ssh_transport.load_config(Path(root).resolve(strict=True))
+    if HOST not in config.hosts or ssh_transport.connection_host(config, HOST).password is not None:
+        raise ValueError("Configured Arch transport is unavailable.")
+    socket = windows_vm_secureboot_fresh.GUEST + "/tpm/swtpm.sock"
+    program = (_OWNER_OBSERVE_REMOTE.replace("__TPM_SOCKET__", repr(socket))
+               .replace("__GUEST__", repr(windows_vm_secureboot_fresh.GUEST)))
+    encoded = base64.b64encode(program.encode("utf-8")).decode("ascii")
+    argv = ssh_transport.build_ssh_argv(config, HOST, min(timeout_seconds, 60),
+        command=("/usr/bin/python3", "-c", "import base64;exec(base64.b64decode(" + repr(encoded) + "))"),
+        ssh_binary="/usr/bin/ssh", nested_ssh_binary="/usr/bin/ssh")
+    try:
+        run = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
+        value = json.loads(run.stdout)
+        if run.returncode or not isinstance(value, Mapping) or set(value) != {
+                "schemaVersion", "host", "censusComplete", "censusReason", "observedAtUnixMs", "processes"} or \
+                value.get("schemaVersion") != 1 or value.get("host") != HOST or \
+                type(value.get("censusComplete")) is not bool or \
+                type(value.get("observedAtUnixMs")) is not int or value["observedAtUnixMs"] < 0 or \
+                not isinstance(value.get("processes"), list) or len(value["processes"]) > 16:
+            raise ValueError("swtpm owner observation is invalid.")
+        if value["censusComplete"]:
+            if value.get("censusReason") is not None:
+                raise ValueError("swtpm owner observation reason is contradictory.")
+        elif value.get("censusReason") not in {"proc-visibility-incomplete", "process-read-unavailable", "fd-census-incomplete", "census-capacity", "census-unavailable"}:
+            raise ValueError("swtpm owner observation reason is invalid.")
+        processes: list[dict[str, Any]] = []
+        saw_process = bool(value["processes"])
+        complete = value["censusComplete"]
+        seen: set[int] = set()
+        for item in value["processes"]:
+            if (not isinstance(item, Mapping) or set(item) != {"pid", "startTicks", "uid", "relationship"} or
+                    type(item.get("pid")) is not int or item["pid"] <= 0 or item["pid"] in seen or
+                    type(item.get("startTicks")) is not int or item["startTicks"] <= 0 or
+                    type(item.get("uid")) is not int or item["uid"] < 0 or
+                    item.get("relationship") not in {"task-owned-swtpm-socket", "unattributed-vm-or-socket-path", "no-visible-socket-path"}):
+                raise ValueError("swtpm owner observation process is invalid.")
+            seen.add(item["pid"]); processes.append(dict(item))
+        return {"host": HOST, "state": "observed" if complete else "unknown", "censusReason": value["censusReason"],
+                "censusComplete": complete, "activeSwtpmProcesses": saw_process or len(processes) > 0,
+                "processes": processes, "nativeActionAllowed": False}
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return {"host": HOST, "state": "unknown", "censusReason": "census-unavailable", "censusComplete": False,
+                "activeSwtpmProcesses": False, "processes": [], "nativeActionAllowed": False}
 
 def _policy(root: str | Path, timeout_seconds: int) -> bool:
     # The firmware installer owns the bounded pacman-conf fallback: an unset

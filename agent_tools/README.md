@@ -227,6 +227,23 @@ An accepted intent, timeout, response loss, or `unknown` result is never
 replayed; use status with the same correlation. Results, SSH arguments,
 environment, and journals never include the credential or raw remote stderr.
 
+When repair preflight reports `active-swtpm-processes`,
+`vm_workflow("windows-vm-swtpm-owner-observe", inputs={host: "archlinux",
+timeoutSeconds: 10..60})` provides a separate fixed read-only census. It returns
+only each visible swtpm process's PID, start ticks, UID, and a categorical
+relationship: `task-owned-swtpm-socket`,
+`unattributed-vm-or-socket-path`, or `no-visible-socket-path`. The task-owned
+category requires both the exact secure-boot fixture TPM socket and matching
+owner-private `swtpm-started` plus `qemu-started` receipts. The QEMU PID and
+start ticks must still identify a stable `qemu-system-x86_64` process; a stale
+receipt or known path prefix alone never establishes ownership. No path, command line, descriptor target,
+credential, or raw process data is returned.
+An incomplete `/proc` census returns `unknown` with one bounded categorical
+reason: `proc-visibility-incomplete`, `process-read-unavailable`,
+`fd-census-incomplete`, `census-capacity`, or `census-unavailable`; it is not
+evidence of process absence. The observer does not kill, park, signal, modify, or otherwise affect
+any process, socket, or VM. Its result always has `nativeActionAllowed: false`.
+
 `vm_workflow("arch-ai-loop-observe", inputs={"host":"archlinux",
 "timeoutSeconds":15})` is a fixed read-only inventory for the Arch host's
 `ai_loop` tool. It accepts no executable, command, path, prompt, credential, or

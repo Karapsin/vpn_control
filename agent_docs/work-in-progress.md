@@ -33,11 +33,11 @@ The user set the native acceptance order to Windows, Android, Linux, then
 macOS. Subagents for new slices use GPT-5.6 Terra at medium effort. Android,
 Linux guest and macOS native mutations are paused; already submitted hosted
 builds and captures retain their exact correlations and historical evidence.
-`00e8897b59bfdf6bb53808721c158e067a6d08f9` is the latest clean pushed
+`97f63af670a0b68f266e1fa3a0bdf7c4af429739` is the latest clean pushed
 `dev` checkpoint. Its full prepush tier passed, and the user requested one
 required exact-SHA CI check only at final delivery. The Secure Boot preflight
-diagnostic and fixed swtpm repair are reviewed and currently dirty for the next
-coherent checkpoint.
+diagnostic and fixed swtpm repair are in this checkpoint. A read-only swtpm
+owner census is reviewed and currently dirty for the next coherent checkpoint.
 
 CP117 remains at installed 2.1.17 with runtime and active product process count
 zero, one owned Explorer, passed read-only PowerShell/base/owner preflights and a
@@ -61,8 +61,14 @@ before resource/digest sampling; its corrected read-only diagnostic, correlation
 read-only correlation `4c625eba-2441-4dd2-a4bf-4e7f44e2d8f3` classified
 the exact installed `swtpm 0.10.2-1` as `integrity-failed` by `pacman -Qkk`.
 A fixed signed same-version repair tool passed focused/full agent-tool tests
-and independent security review; no repair or VM start has run. The credential
-value is never documented or committed.
+and independent security review. Its fresh preflight
+`3c10ed24-d542-431f-b858-bf20a7155fbd` blocked on an active swtpm process.
+The new fixed read-only owner census sees PID `589341`, start ticks `520739`,
+UID `1000`, but classifies the socket relationship as unattributed and `/proc`
+visibility as incomplete. CP117 QEMU PID `589342` has adjacent start ticks,
+which is not ownership proof. No repair, process stop or VM start has run. CP117
+remains running for its public MSI acceptance. The credential value is never
+documented or committed.
 
 Exact-dd10 hosted visual captures were collected with source provenance:
 Linux 59/59 and Windows 57/57 hosted scenes. Linux has 17 automated passes,
