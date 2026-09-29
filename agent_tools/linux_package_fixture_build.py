@@ -359,6 +359,133 @@ def pre_effect_close(root: Path | str, raw: Mapping[str, Any]) -> dict[str, Any]
             "oldIntentPreserved": True, "replayAllowed": False}
 
 
+def terminal_ready_status(root: Path | str, raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Read-only proof that one collected, ended build owns the fixed host claim."""
+    _need(isinstance(raw, Mapping) and set(raw) == {"correlationId"} and
+          _correlation(raw["correlationId"]), "Build terminal closure requires exact correlation")
+    correlation = raw["correlationId"]
+    unknown = _unknown(correlation, "terminal-ready-proof-unavailable")
+    root = Path(root).resolve(strict=True)
+    directory = _directory(root, create=False)
+    if directory is None:
+        return unknown
+    try:
+        request = _read(directory / (correlation + ".json"))
+        if request is None or _request(request) != request:
+            return unknown
+        job = directory / correlation
+        job_info = job.lstat()
+        if (not stat.S_ISDIR(job_info.st_mode) or job_info.st_uid != os.getuid() or
+                stat.S_IMODE(job_info.st_mode) != 0o700):
+            return unknown
+        state = _read(job / "state.json")
+        worker = _read(job / "worker-pid.json")
+        if (state != {"state": "ready", "liveReady": True,
+                      "correlationId": correlation, "sourceSha": request["sourceSha"]} or
+                not isinstance(worker, dict) or set(worker) != {"pid", "start"} or
+                type(worker["pid"]) is not int or worker["pid"] <= 0 or
+                not isinstance(worker["start"], str) or not worker["start"] or
+                not _ended_worker(worker["pid"], worker["start"])):
+            return unknown
+        from . import native_artifact_registry
+        paths = _verify_built(job / "output", request)
+        snapshot = json.loads((job / "output/default/snapshot.json").read_bytes())
+        fingerprint = snapshot["sourceFingerprint"]
+        artifact_facts = []
+        for path in paths:
+            if path.name != "fixture-receipt.json" and "packages" not in path.parts:
+                continue
+            size, digest = _digest(path)
+            verified = native_artifact_registry.verify_artifact(root, "sha256-" + digest)
+            record, location = verified.get("artifact", {}), verified.get("location", {})
+            if (verified.get("verification") != "verified" or
+                    record.get("platform") != "linux" or
+                    record.get("artifactKind") != ("fixture-receipt" if path.name == "fixture-receipt.json" else "package") or
+                    record.get("sourceSha") != request["sourceSha"] or
+                    record.get("sourceFingerprint") != fingerprint or
+                    record.get("sha256") != digest or record.get("size") != size or
+                    location.get("evidenceClass") != "local-verified" or
+                    location.get("localPath") != str(path)):
+                return unknown
+            artifact_facts.append({"path": str(path.relative_to(job / "output")),
+                                   "sha256": digest, "size": size})
+        if len(artifact_facts) != 10:
+            return unknown
+        timing = job / "output/.rag_index/build-timings"
+        timing_files = _timing_inventory(timing, request)
+        for path in timing_files:
+            published = root / ".rag_index/build-timings" / path.name
+            if _digest(path, 4096) != _digest(published, 4096):
+                return unknown
+        claim_path = directory / "archlinux.claim"
+        claim_value = _read(claim_path)
+        own_claim = claim_value == {"correlationId": correlation, "host": _HOST}
+        if claim_value is not None and not own_claim:
+            return unknown
+        claim_info = claim_path.lstat() if own_claim else None
+        if own_claim and (not stat.S_ISREG(claim_info.st_mode) or
+                          claim_info.st_uid != os.getuid() or
+                          stat.S_IMODE(claim_info.st_mode) != 0o600 or
+                          claim_info.st_nlink != 1):
+            return unknown
+        marker = _read(job / "terminal-ready-closure.json")
+        if not own_claim and marker is None:
+            return unknown
+        claim_device = claim_info.st_dev if own_claim else marker.get("claimDevice")
+        claim_inode = claim_info.st_ino if own_claim else marker.get("claimInode")
+        if type(claim_device) is not int or claim_device <= 0 or type(claim_inode) is not int or claim_inode <= 0:
+            return unknown
+        facts = {"correlationId": correlation, "sourceSha": request["sourceSha"],
+                 "workerPid": worker["pid"], "workerStart": worker["start"],
+                 "jobDevice": job_info.st_dev, "jobInode": job_info.st_ino,
+                 "claimDevice": claim_device, "claimInode": claim_inode,
+                 "artifacts": sorted(artifact_facts, key=lambda item: item["path"]),
+                 "timings": sorted((path.name, _digest(path, 4096)[1]) for path in timing_files)}
+        digest = hashlib.sha256((json.dumps(facts, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
+        expected_marker = {"state": "closed-terminal-ready", "correlationId": correlation,
+                           "sourceSha": request["sourceSha"], "closureDigest": digest,
+                           "claimDevice": claim_device, "claimInode": claim_inode}
+        if marker is not None and marker != expected_marker:
+            return unknown
+        return {"state": "ready" if marker is None else "closing" if own_claim else "closed",
+                "correlationId": correlation, "sourceSha": request["sourceSha"],
+                "closureDigest": digest, "claimDevice": claim_device,
+                "claimInode": claim_inode, "oldIntentPreserved": True,
+                "replayAllowed": False}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return unknown
+
+
+def terminal_ready_close(root: Path | str, raw: Mapping[str, Any]) -> dict[str, Any]:
+    _need(isinstance(raw, Mapping) and set(raw) == {"correlationId", "closureDigest"} and
+          _correlation(raw["correlationId"]) and
+          isinstance(raw["closureDigest"], str) and
+          re.fullmatch(r"[0-9a-f]{64}", raw["closureDigest"]) is not None,
+          "Build terminal closure requires exact correlation and proof")
+    observed = terminal_ready_status(root, {"correlationId": raw["correlationId"]})
+    if (observed.get("state") not in {"ready", "closing", "closed"} or
+            observed.get("closureDigest") != raw["closureDigest"]):
+        return _unknown(raw["correlationId"], "terminal-ready-proof-differs")
+    if observed["state"] == "closed":
+        return observed
+    directory = _directory(Path(root).resolve(strict=True), create=False)
+    assert directory is not None
+    claim = directory / "archlinux.claim"
+    if (_read(claim) != {"correlationId": raw["correlationId"], "host": _HOST} or
+            (claim.lstat().st_dev, claim.lstat().st_ino) !=
+            (observed["claimDevice"], observed["claimInode"])):
+        return _unknown(raw["correlationId"], "build-host-claim-changed")
+    if observed["state"] == "ready":
+        _write_once(directory / raw["correlationId"] / "terminal-ready-closure.json", {
+            "state": "closed-terminal-ready", "correlationId": raw["correlationId"],
+            "sourceSha": observed["sourceSha"], "closureDigest": observed["closureDigest"],
+            "claimDevice": observed["claimDevice"], "claimInode": observed["claimInode"]})
+    claim.unlink()
+    return {"state": "closed", "correlationId": raw["correlationId"],
+            "sourceSha": observed["sourceSha"], "closureDigest": observed["closureDigest"],
+            "oldIntentPreserved": True, "replayAllowed": False}
+
+
 _BOOTSTRAP = r'''
 import base64,json,os,pathlib,subprocess,sys
 request=json.loads(base64.b64decode(sys.argv[1],validate=True))

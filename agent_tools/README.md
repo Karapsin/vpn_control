@@ -856,6 +856,13 @@ builder. `linux-package-fixture-build-status/collect` take only
 `{correlationId}`; collect registers verified Linux package and fixture
 receipts plus bound timing receipts only after a `ready` build. Unknown
 submission or worker status is never replay authorization.
+After collection, `linux-package-fixture-build-terminal-ready-status` takes
+only `{correlationId}` and gives a read-only proof digest for an ended worker,
+registered package bytes, timing receipts and its exact host claim.
+`linux-package-fixture-build-terminal-ready-close` takes that correlation and
+`closureDigest`; it preserves the build intent and releases only the matching
+claim after writing a durable marker. Foreign, changed or uncertain claims stay
+held. This releases a build slot, not a guest or package installer.
 
 `linux-guest-park-preflight/start` take exactly `{correlationId,
 preparationCorrelationId, guestRole, sourceSha}` for one of the four fixed

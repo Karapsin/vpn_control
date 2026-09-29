@@ -231,6 +231,93 @@ class LinuxPackageFixtureBuildTest(unittest.TestCase):
             self.assertEqual(fixture._read(journal / (CORRELATION + ".json")), REQUEST)
             self.assertTrue((job / "pre-effect-closure.json").exists())
 
+    def test_terminal_ready_collect_releases_only_verified_original_claim(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            journal = fixture._directory(root, create=True)
+            fixture._write_once(journal / (CORRELATION + ".json"), REQUEST)
+            fixture._write_once(journal / "archlinux.claim",
+                                {"correlationId": CORRELATION, "host": "archlinux"})
+            job = journal / CORRELATION
+            job.mkdir(mode=0o700)
+            output = job / "output"
+            output.mkdir()
+            self._built(output)
+            fixture._write_once(job / "state.json", {"state": "ready", "liveReady": True,
+                "correlationId": CORRELATION, "sourceSha": SOURCE})
+            fixture._write_once(job / "worker-pid.json", {"pid": 12345,
+                "start": "Mon Jan  1 00:00:00 2024"})
+            timing = output / ".rag_index/build-timings"
+            timing.mkdir(parents=True)
+            for family in ("default", "arch"):
+                for phase in ("runtime-prep", "gradle", "packaging"):
+                    for stage in ("base", "target"):
+                        fixture._write_once(timing / f"linux-package-{family}-{CORRELATION}-{phase}-{stage}.json",
+                            {"schemaVersion": 1, "sourceSha": SOURCE,
+                             "pipelineId": "linux-package-" + family, "runId": CORRELATION,
+                             "hostAlias": "archlinux", "phase": phase,
+                             "startedMonotonicNs": 100, "finishedMonotonicNs": 200})
+            collected = fixture.collect(root, {"correlationId": CORRELATION})
+            self.assertEqual(collected["state"], "ready")
+            next_request = {**REQUEST, "correlationId": "22222222-2222-4222-8222-222222222222"}
+            self.assertEqual(fixture.start(root, next_request)["reason"], "build-host-already-claimed")
+            with patch.object(fixture, "_ended_worker", return_value=False):
+                self.assertEqual(fixture.terminal_ready_status(root,
+                    {"correlationId": CORRELATION})["state"], "unknown")
+            with patch.object(fixture, "_ended_worker", return_value=True):
+                observed = fixture.terminal_ready_status(root, {"correlationId": CORRELATION})
+                self.assertEqual(observed["state"], "ready")
+                self.assertEqual(fixture.terminal_ready_close(root, {"correlationId": CORRELATION,
+                    "closureDigest": "0" * 64})["state"], "unknown")
+                self.assertTrue((journal / "archlinux.claim").exists())
+                self.assertEqual(fixture.terminal_ready_status(root,
+                    {"correlationId": next_request["correlationId"]})["state"], "unknown")
+                (journal / "archlinux.claim").unlink()
+                fixture._write_once(journal / "archlinux.claim",
+                                    {"correlationId": next_request["correlationId"], "host": "archlinux"})
+                self.assertEqual(fixture.terminal_ready_status(root,
+                    {"correlationId": CORRELATION})["state"], "unknown")
+                self.assertEqual(fixture.terminal_ready_close(root, {"correlationId": CORRELATION,
+                    "closureDigest": observed["closureDigest"]})["state"], "unknown")
+                self.assertTrue((journal / "archlinux.claim").exists())
+                (journal / "archlinux.claim").unlink()
+                fixture._write_once(journal / "archlinux.claim",
+                                    {"correlationId": CORRELATION, "host": "archlinux"})
+                observed = fixture.terminal_ready_status(root, {"correlationId": CORRELATION})
+                package = output / "default/packages/base/vpn-control-2.2.0.deb"
+                original = package.read_bytes()
+                package.write_bytes(b"changed")
+                self.assertEqual(fixture.terminal_ready_status(root,
+                    {"correlationId": CORRELATION})["state"], "unknown")
+                package.write_bytes(original)
+                with patch.object(Path, "unlink", side_effect=OSError("interrupted after marker")):
+                    with self.assertRaises(OSError):
+                        fixture.terminal_ready_close(root, {"correlationId": CORRELATION,
+                            "closureDigest": observed["closureDigest"]})
+                self.assertEqual(fixture.terminal_ready_status(root,
+                    {"correlationId": CORRELATION})["state"], "closing")
+                saved_claim = journal / "archlinux.saved-claim"
+                (journal / "archlinux.claim").rename(saved_claim)
+                fixture._write_once(journal / "archlinux.claim",
+                                    {"correlationId": next_request["correlationId"], "host": "archlinux"})
+                self.assertEqual(fixture.terminal_ready_status(root,
+                    {"correlationId": CORRELATION})["state"], "unknown")
+                self.assertEqual(fixture.terminal_ready_close(root, {"correlationId": CORRELATION,
+                    "closureDigest": observed["closureDigest"]})["state"], "unknown")
+                self.assertTrue((journal / "archlinux.claim").exists())
+                (journal / "archlinux.claim").unlink()
+                saved_claim.rename(journal / "archlinux.claim")
+                closed = fixture.terminal_ready_close(root, {"correlationId": CORRELATION,
+                    "closureDigest": observed["closureDigest"]})
+                self.assertEqual(closed["state"], "closed")
+                self.assertFalse((journal / "archlinux.claim").exists())
+                self.assertEqual(fixture.terminal_ready_status(root,
+                    {"correlationId": CORRELATION})["state"], "closed")
+                self.assertEqual(fixture.terminal_ready_close(root, {"correlationId": CORRELATION,
+                    "closureDigest": observed["closureDigest"]})["state"], "closed")
+            self.assertTrue((job / "terminal-ready-closure.json").exists())
+            self.assertEqual(fixture._read(journal / (CORRELATION + ".json")), REQUEST)
+
     def test_verified_timing_is_published_for_source_bound_report(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

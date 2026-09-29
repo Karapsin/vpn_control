@@ -27,12 +27,62 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
-### Eleventh continuation in progress — 2026-09-29
+### Eleventh continuation checkpoint pushed — 2026-09-29
 
-`f414471de3bac3a4cda3161ea2b5cd47b2b10caf` is the latest pushed
+`f7c09aa3c02f486d3e93b38c7684a25dba36c0d4` is on `origin/dev` at
+product version 2.2.1 with a clean managed prepush receipt. It delivered the
+reviewed Android unknown-install/retry recovery, Linux/Windows/macOS fixture
+portability, Secure Boot/TPM read-only/fresh admission tools and visual capture
+guards. Its required exact-SHA CI is deferred by user request until the final
+delivery SHA; this is a source checkpoint, not native/visual completion.
+
+Verified f414 artifacts could not be relabelled f7: no f414 frozen artifact set
+exists, and the source-bound CLI/retry adapters require artifact source SHA equal
+to HEAD. An exact-f7 nondebuggable Android APK was built, registered and
+published for API29 staging: SHA256
+`08836f869c4cb404ae0922b3c8fe1c55b4dd8afcd4a0140a4c737e90651389f0`,
+45,027,012 bytes, package 2.2.1/code16820, nondebuggable x86_64 and original
+signer. No API29 install or product action ran. Exact-f7 hosted Windows MSI,
+Mac DMG, Linux RPM and Linux/Windows visual jobs were dispatched once and
+retain their own f7 evidence.
+
+The first exact-f7 Linux builder start `989f435d...` was refused before journal
+or worker because the earlier collected f414 build retained `archlinux.claim`.
+A causal terminal-ready closure route was implemented and independently
+reviewed. It closed only the f414 claim under digest `1f4d2923...`, preserving
+the f414 intent, verified artifacts, timings and a durable closure marker.
+That tool repair is currently dirty and needs the next clean source checkpoint
+before a new builder correlation and native Linux preparation. Hosted f7
+package/visual jobs already running remain component evidence for their exact
+SHA; do not treat them as final-source after the tool repair commits.
+
+The exact-f7 hosted RPM pair completed and passed byte, receipt, NEVRA and
+source-fingerprint verification. Fedora2328's guarded base preflight is ready:
+installed 2.2.0, pinned current RPM header `3ef23bc...`, clear privileged
+app/runtime/package process census, and no pending protected job. The f7 base
+RPM has a different header, so a same-version source-bound base replacement is
+needed before its target-update scenario. No installer has run.
+
+The exact-f7 hosted Windows MSI pair and Mac DMG pair passed package and signing
+verification. The Windows pair used base 2.1.17, equal to CP117's installed
+version, and was refused before transfer or install. A reviewed read-only
+pre-dispatch version gate now catches that mismatch; the next clean source needs
+a 2.1.19 base and 2.2.1 target pair. The Mac guest remains stopped because host
+free-memory pressure has not met its admission threshold; no install ran.
+
+Linux visual capture completed with 59/59 source-provenance scenes and no
+geometry or contrast failures. Forty pixel differences and two absent add/edit
+dialog baselines were individually reviewed as expected changes from older
+baselines, including owner-state projection and chooser decoration. The exact
+final-SHA baseline/review gate remains open. Windows visual capture and the
+other platform reviews are separate outstanding work.
+
+### f414 native component review (historical) — 2026-09-29
+
+`f414471de3bac3a4cda3161ea2b5cd47b2b10caf` was the preceding pushed
 `origin/dev` checkpoint at product version 2.2.1. Its managed prepush tier
 passed; the user requested one required exact-SHA CI check at the final source
-freeze, so this checkpoint is not final delivery. Current dirty source includes
+freeze, so this checkpoint was not final delivery. Subsequent source work included
 Android unknown-install recovery, two hosted Windows test portability repairs,
 and visual fixture/capture guards. Preserve `f414` native evidence as historical
 when the next source checkpoint is made.

@@ -10,6 +10,7 @@ from unittest.mock import patch
 import zipfile
 
 from agent_tools import windows_update_fixture_workflow as fixture
+from agent_tools import windows_msi_base_prepare as base_prepare
 
 
 SHA = 'a' * 40
@@ -42,8 +43,63 @@ class Runner:
 
 
 class WindowsFixtureWorkflowTest(unittest.TestCase):
+    def setUp(self):
+        observer = patch.object(base_prepare, 'readiness', return_value={
+            'state': 'blocked', 'code': 'PRODUCT_VERSION',
+            'installedVersion': '2.1.17', 'productCount': 1,
+            'activeCount': 0, 'ownedExplorerCount': 1})
+        observer.start()
+        self.addCleanup(observer.stop)
+
     def request(self):
         return {'sourceSha': SHA, 'baseVersion': '2.1.19', 'correlationId': CORR}
+
+    def test_equal_installed_base_is_rejected_before_hosted_dispatch_intent(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(base_prepare, 'readiness', return_value={
+                 'state': 'ready', 'code': 'READY',
+                 'installedVersion': '2.1.17', 'productCount': 1,
+                 'activeCount': 0, 'ownedExplorerCount': 1}):
+            root = Path(tmp)
+            runner = Runner([])
+            with self.assertRaisesRegex(ValueError, 'newer than installed'):
+                fixture.dispatch(root, {**self.request(), 'baseVersion': '2.1.17'}, runner=runner)
+            self.assertFalse((root / '.runtime').exists())
+            self.assertEqual([], runner.calls)
+
+    def test_newer_base_accepts_observed_product_version_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(base_prepare, 'readiness', return_value={
+                 'state': 'blocked', 'code': 'PRODUCT_VERSION',
+                 'installedVersion': '2.1.17', 'productCount': 1,
+                 'activeCount': 0, 'ownedExplorerCount': 1}) as observe:
+            root = Path(tmp)
+            runner = Runner([(0, SHA + '\n'), (0, '')])
+            result = fixture.dispatch(root, self.request(), runner=runner)
+            self.assertEqual('submitted', result['state'])
+            observe.assert_called_once_with(root, {
+                'host': 'archlinux', 'expectedCurrentVersion': '2.1.19'})
+            self.assertTrue((root / '.runtime/windows-msi-fixture-dispatch' /
+                             (CORR + '.json')).is_file())
+            self.assertEqual(1, sum(call[:3] == ['gh', 'workflow', 'run']
+                                    for call in runner.calls))
+
+    def test_unknown_or_busy_installed_version_never_dispatches(self):
+        for inventory in (
+            {'state': 'unknown', 'installedVersion': None},
+            {'state': 'blocked', 'code': 'PRODUCT_VERSION', 'installedVersion': '2.1.17',
+             'productCount': 1, 'activeCount': 1, 'ownedExplorerCount': 1},
+            {'state': 'blocked', 'code': 'PRODUCT_VERSION', 'installedVersion': '2.1.17',
+             'productCount': 1, 'activeCount': 0, 'ownedExplorerCount': 0},
+        ):
+            with self.subTest(inventory=inventory), tempfile.TemporaryDirectory() as tmp, \
+                 patch.object(base_prepare, 'readiness', return_value=inventory):
+                root = Path(tmp)
+                runner = Runner([])
+                with self.assertRaisesRegex(ValueError, 'Fresh idle CP117'):
+                    fixture.dispatch(root, self.request(), runner=runner)
+                self.assertFalse((root / '.runtime').exists())
+                self.assertEqual([], runner.calls)
 
     def test_intent_is_durable_before_dispatch_and_response_loss_is_not_replayed(self):
         with tempfile.TemporaryDirectory() as tmp:

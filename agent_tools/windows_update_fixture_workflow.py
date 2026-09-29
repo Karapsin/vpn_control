@@ -112,6 +112,24 @@ def _source_workflow_contract(root, source, runner):
         "Exact-source Windows artifact does not bind fixture correlation")
 
 
+def _require_newer_than_installed(root, base_version):
+    """Observe the owned CP117 installation before spending a hosted build."""
+    from . import windows_msi_base_prepare
+
+    observed = windows_msi_base_prepare.readiness(
+        root, {"host": "archlinux", "expectedCurrentVersion": base_version})
+    installed = observed.get("installedVersion") if isinstance(observed, dict) else None
+    _require(isinstance(installed, str) and VERSION_PATTERN.fullmatch("vpnControlVersion=" + installed)
+             and (observed.get("state"), observed.get("code")) in
+                 {("ready", "READY"), ("blocked", "PRODUCT_VERSION")}
+             and observed.get("productCount") == 1
+             and observed.get("activeCount") == 0
+             and observed.get("ownedExplorerCount") == 1,
+             "Fresh idle CP117 installed version is unavailable")
+    _require(parse_version(base_version) > parse_version(installed),
+             "Fixture baseVersion must be newer than installed CP117 version")
+
+
 def dispatch(root, request: Mapping, runner=None):
     _require(isinstance(request, Mapping) and set(request) ==
              {"sourceSha", "baseVersion", "correlationId"}, "Invalid Windows fixture dispatch inputs")
@@ -120,6 +138,7 @@ def dispatch(root, request: Mapping, runner=None):
     _correlation(correlation)
     _require(isinstance(base, str), "Invalid baseVersion")
     parse_version(base)
+    _require_newer_than_installed(root, base)
     runner = runner or _run
     try:
         tracked = runner(["git", "-C", str(Path(root).resolve(strict=True)), "show",

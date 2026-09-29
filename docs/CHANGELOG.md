@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Fix agent-tool test discovery in managed checks and CI.
 - Harden native acceptance workflows and desktop visual fixtures.
 - Harden parity acceptance fixtures, recovery, and visual capture guards.
+- Close terminal Linux fixture claims safely and reject Windows MSI base-version mismatches before dispatch.
 
 ## 2.2.1 - 2026-09-29
 
