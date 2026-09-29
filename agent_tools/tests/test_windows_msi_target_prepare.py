@@ -30,9 +30,30 @@ PAIR = {"sourceSha": SOURCE, "sourceFingerprint": "c" * 64,
         "baseAppJarName": "desktopApp-2.1.19.jar", "baseAppJarSha256": "e" * 64,
         "baseHelperSha256": "f" * 64, "targetMsiSha256": "1" * 64,
         "targetMsiSize": 123456}
+FIXTURE = {"trustStore": r"C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-credentials-11111111-1111-4111-8111-111111111111\fixture-trust.p12",
+           "trustStoreSha256": "e" * 64, "port": 53633, "probeReceiptSha256": "f" * 64}
 
 
 class TargetPrepareTests(unittest.TestCase):
+    def test_cli_only_proxy_settings_cannot_admit_owner_jvm_network(self):
+        probe = {"ownerTransportVerified": True, "ownerPid": REQUEST["ownerPid"],
+                 "ownerStartedAtUtc": REQUEST["ownerStartedAtUtc"],
+                 "proxyPort": FIXTURE["port"], "trustStoreSha256": FIXTURE["trustStoreSha256"]}
+        self.assertFalse(target._owner_jvm_network_bound(probe, REQUEST, FIXTURE["port"],
+                                                          FIXTURE["trustStoreSha256"]))
+        admitted = dict(probe, ownerJvmNetworkVerified=True, ownerJvmPid=REQUEST["ownerPid"],
+                        ownerJvmStartedAtUtc=REQUEST["ownerStartedAtUtc"],
+                        ownerJvmProxyPort=FIXTURE["port"],
+                        ownerJvmTrustStoreSha256=FIXTURE["trustStoreSha256"])
+        self.assertTrue(target._owner_jvm_network_bound(admitted, REQUEST, FIXTURE["port"],
+                                                         FIXTURE["trustStoreSha256"]))
+        for changed in ({"ownerJvmPid": True}, {"ownerJvmProxyPort": 443},
+                        {"ownerJvmTrustStoreSha256": "0" * 64},
+                        {"ownerJvmStartedAtUtc": "2026-09-29T10:00:00Z"},
+                        {"ownerJvmNetworkVerified": False}):
+            self.assertFalse(target._owner_jvm_network_bound(dict(admitted, **changed), REQUEST,
+                                                              FIXTURE["port"], FIXTURE["trustStoreSha256"]))
+
     def test_exact_bound_request_rejects_changed_owner_and_extra_field(self):
         self.assertEqual(target._request(REQUEST), REQUEST)
         for change in ({"ownerPid": True}, {"ownerStartedAtUtc": "now"},
@@ -42,9 +63,9 @@ class TargetPrepareTests(unittest.TestCase):
                 target._request(dict(REQUEST, **change))
 
     def test_task_uses_public_check_download_and_exact_cache_readback(self):
-        body = target._task(CORR, REQUEST, PAIR, SID)
+        body = target._task(CORR, REQUEST, PAIR, SID, FIXTURE)
         for token in ("RunLevel Limited", "Start-ScheduledTask"):
-            self.assertIn(token, target._bootstrap(CORR, REQUEST, PAIR, SID))
+            self.assertIn(token, target._bootstrap(CORR, REQUEST, PAIR, SID, FIXTURE))
         for token in ("updates','check", "updates','download", "updates','status",
                       "--controller-id", CONTROLLER, PAIR["targetMsiSha256"],
                       PAIR["baseCliSha256"], "OWNER_GENERATION", "RUNTIME_ON",
@@ -53,7 +74,7 @@ class TargetPrepareTests(unittest.TestCase):
             self.assertIn(token, body)
         self.assertNotIn("updates','install", body)
         self.assertNotIn("msiexec.exe' -ArgumentList", body)
-        self.assertLess(len(base64.b64encode(target._bootstrap(CORR, REQUEST, PAIR, SID).encode("utf-16le"))), 30000)
+        self.assertLess(len(base64.b64encode(target._bootstrap(CORR, REQUEST, PAIR, SID, FIXTURE).encode("utf-16le"))), 30000)
 
     def test_readiness_is_inert_and_rejects_forged_ready(self):
         script = target._readiness_script(REQUEST, PAIR, SID)
@@ -135,12 +156,12 @@ class TargetPrepareTests(unittest.TestCase):
              patch.object(target.base, "_descriptor", return_value=(object(), Guest(),
                  ("windows-cp117", "/qga.sock", 589342, 520739, SID))), \
              patch.object(target.base, "_require_verified_live_fixture", return_value=CORR), \
-             patch.object(target, "readiness") as readiness, \
+             patch.object(target, "readiness", return_value={"state": "ready"}) as readiness, \
+             patch.object(target, "_verified_network_context", return_value=FIXTURE), \
              patch.object(target.base, "_remote") as remote:
-            with self.assertRaisesRegex(target.WindowsMsiTargetPrepareError,
-                                        "CP117_TARGET_ROUTE_CLAIM_UNAVAILABLE"):
+            with self.assertRaises(target.base.campaign_lease.Cp117LeaseError):
                 target.start(directory, REQUEST)
-            readiness.assert_not_called(); remote.assert_not_called()
+            readiness.assert_called_once(); remote.assert_not_called()
             self.assertIsNone(target._read_intent(Path(directory), CORR))
 
     def test_target_reservation_blocks_without_shared_cp117_lease(self):
@@ -156,10 +177,12 @@ class TargetPrepareTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
              patch.object(target, "_require_fixture_network_admission", return_value=CORR), \
              patch.object(target, "_require_cross_route_lease"), \
+             patch.object(target, "_verified_network_context", return_value=FIXTURE), \
              patch.object(target, "readiness", return_value={"state": "ready"}), \
              patch.object(target, "_pair", return_value=PAIR), \
              patch.object(target.base, "_descriptor", return_value=(object(), Guest(),
                  ("windows-cp117", "/qga.sock", 589342, 520739, SID))), \
+             patch.object(target.base.campaign_lease, "claim_role", return_value={"state": "role-active"}), \
              patch.object(target.base, "_remote", return_value=None) as remote:
             self.assertEqual(target.start(directory, REQUEST)["state"], "unknown")
             self.assertEqual(target.start(directory, REQUEST)["state"], "unknown")

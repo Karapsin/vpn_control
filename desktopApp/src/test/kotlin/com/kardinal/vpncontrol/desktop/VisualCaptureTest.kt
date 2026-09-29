@@ -18,6 +18,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.semantics.SemanticsActions
@@ -62,6 +63,39 @@ class VisualCaptureTest {
     private lateinit var compose: ComposeUiTest
 
     @Test
+    fun invalidDnsVisualDraftShowsFeedbackOnlyAfterSaveAndClearsOnEdit() {
+        val directory = Files.createTempDirectory("vpn-control-visual-dns-error")
+        val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+        try {
+            service.replaceStateForVisualCapture(visualState("settings-dns-custom-error"), visualLocations())
+            runDesktopComposeUiTest(width = 1280, height = 800) {
+                setContent {
+                    VpnControlTheme {
+                        DesktopVpnControlApp(
+                            windowProvider = { error("Native file dialogs are not used by visual tests") },
+                            service = service,
+                            onCheckAndDownloadUpdate = {},
+                            onDismissOrCancelUpdate = {},
+                            onInstallUpdate = {},
+                        )
+                    }
+                }
+                waitForIdle()
+                onNodeWithTag("dns-endpoint-error", useUnmergedTree = true).assertDoesNotExist()
+                onNodeWithTag("dialog-save", useUnmergedTree = true).performClick()
+                waitForIdle()
+                onNodeWithTag("dns-endpoint-error", useUnmergedTree = true).assertExists()
+                onNodeWithTag("dns-endpoint", useUnmergedTree = true)
+                    .performTextReplacement("https://dns.example.invalid/dns-query")
+                waitForIdle()
+                onNodeWithTag("dns-endpoint-error", useUnmergedTree = true).assertDoesNotExist()
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun renameDialogFixtureReferencesSavedSubscription() {
         val state = visualState("profile-rename-dialog")
         check(state.showProfileHistoryRenameDialog)
@@ -80,6 +114,21 @@ class VisualCaptureTest {
             check(entries.single().id != "0")
             check(visualGeometryTag("connection-log-row-0", entries) == "connection-log-row-${entries.single().id}") {
                 "Visual geometry must resolve the owner-assigned connection-log cursor"
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun customRefreshVisualSceneOpensTheOwnerCustomPolicyDraft() {
+        val directory = Files.createTempDirectory("vpn-control-visual-refresh-policy")
+        val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+        try {
+            service.replaceStateForVisualCapture(visualState("settings-refresh-custom-hours"), visualLocations())
+            val policy = service.controlSettingsSnapshot().values["refresh.policy"]
+            check(policy == com.kardinal.vpncontrol.model.ControlValue.Text("custom")) {
+                "The custom-hours visual scene must open a CUSTOM owner settings draft"
             }
         } finally {
             directory.toFile().deleteRecursively()
@@ -172,6 +221,11 @@ class VisualCaptureTest {
             compose.waitForIdle()
             openSceneMenu(sceneId)
             compose.waitForIdle()
+            if (sceneId == "settings-dns-custom-error") {
+                compose.onNodeWithTag("dialog-save", useUnmergedTree = true).performClick()
+                compose.waitForIdle()
+                compose.onNodeWithTag("dns-endpoint-error", useUnmergedTree = true).assertExists()
+            }
 
             val image = captureScene(
                 output.resolve("$sceneId.png"),
@@ -556,8 +610,15 @@ internal fun visualState(sceneId: String): MainUiState {
             homeSshRestartPending = true,
         )
         "settings-app-mode" -> state.copy(showAppModeDialog = true)
-        "settings-refresh-policy", "settings-refresh-custom-hours" -> state.copy(
+        "settings-refresh-policy" -> state.copy(
             showRefreshPolicyDialog = true,
+            subscriptionRefreshPolicyDraft = SubscriptionRefreshPolicy.CUSTOM,
+            subscriptionRefreshCustomHoursDraft = "2.5",
+        )
+        "settings-refresh-custom-hours" -> state.copy(
+            showRefreshPolicyDialog = true,
+            subscriptionRefreshPolicy = SubscriptionRefreshPolicy.CUSTOM,
+            subscriptionRefreshCustomHours = 2.5,
             subscriptionRefreshPolicyDraft = SubscriptionRefreshPolicy.CUSTOM,
             subscriptionRefreshCustomHoursDraft = "2.5",
         )

@@ -12,6 +12,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Guard the approved Fedora owner quit before RPM tests.
 - Harden native update fixture admission and visual benchmark capture.
 - Harden cross-platform native fixture admission and visual capture.
+- Harden guarded native update fixtures and visible DNS validation for parity acceptance.
+- Record guarded Android document command phase for native diagnosis.
 
 ## 2.2.0 - 2026-09-28
 

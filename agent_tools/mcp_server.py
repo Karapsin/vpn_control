@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+_MCP_BOOT_TIME_NS = time.time_ns()
 # Direct CLI/MCP execution has no package context.  Make the checked-in
 # package available so fixed adapters can use qualified imports rather than
 # resolving same-named guest fixture helpers from an inherited script path.
@@ -1840,9 +1841,9 @@ _VM_NATIVE_ADAPTERS = (
     "native_environment_observation", "native_scenario_bundle", "native_next_action",
     "native_failure_evidence", "macos_installer_recovery", "native_rpm_public_install_adapter",
     "native_rpm_public_install_ssh", "android_admission_readback", "windows_msi_public_scenario",
-    "linux_update_fixture_workflow", "windows_update_fixture_workflow", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare",
+    "linux_update_fixture_workflow", "linux_rpm_fixture_server_lifecycle", "windows_update_fixture_workflow", "windows_update_fixture_server", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare",
     "windows_msi_owner_observe", "windows_msi_target_prepare",
-    "android_package_install", "android_public_inspect", "android_document_acceptance", "android_cli_stage",
+    "android_package_install", "android_public_inspect", "android_document_acceptance", "android_document_recovery", "android_cli_stage",
     "macos_fixture_guest_stage",
 )
 
@@ -1851,7 +1852,17 @@ def _agent_module(name: str) -> Any:
     """Load a fixed native adapter from this repository's package."""
     if name not in _VM_NATIVE_ADAPTERS:
         raise ValueError("Unknown fixed native adapter.")
-    return importlib.import_module(f"{__package__ or 'agent_tools'}.{name}")
+    module = importlib.import_module(f"{__package__ or 'agent_tools'}.{name}")
+    source = getattr(module, "__file__", None)
+    if not isinstance(source, str) or not source.endswith(".py"):
+        raise ValueError("Fixed native adapter source is unavailable.")
+    try:
+        modified_ns = Path(source).stat().st_mtime_ns
+    except OSError as error:
+        raise ValueError("Fixed native adapter source is unavailable.") from error
+    if modified_ns > _MCP_BOOT_TIME_NS:
+        raise ValueError("MCP adapter source changed after this server started; use the fresh-process mcp_tool.sh route or restart MCP.")
+    return module
 
 
 def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -1961,6 +1972,20 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "evidenceClass": "fixture-build", "productAction": False}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
+        if action in {"linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect"}:
+            server = _agent_module("linux_rpm_fixture_server_lifecycle")
+            try:
+                method = {"linux-rpm-fixture-server-start": server.start,
+                          "linux-rpm-fixture-server-status": server.status,
+                          "linux-rpm-fixture-server-collect": server.collect}[action]
+                result = method(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") in {"submitted", "ready"} and
+                              result.get("replayAllowed") is not True,
+                        "evidenceClass": "native-fixture-endpoint",
+                        "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
         if action in {"linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect"}:
             owner_quit = _agent_module("linux_owner_public_quit")
             try:
@@ -1996,6 +2021,19 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "ok": result.get("state") in {"submitted", "pending", "complete", "collected", "failed-log"} and
                               result.get("replayAllowed") is False,
                         "evidenceClass": "hosted-fixture", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action == "windows-fixture-python-preflight":
+            server = _agent_module("windows_update_fixture_server")
+            try:
+                required = {"host", "leaseId", "stageCorrelationId", "serverCorrelationId",
+                            "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}
+                if set(inputs) != required:
+                    return _error("vm_workflow", "Windows Python preflight requires exact campaign and artifact fields.")
+                result = server.python_preflight(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") == "observed" and result.get("serverReady") is False,
+                        "evidenceClass": "native-preflight", "productAction": False}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action in {"linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status"}:
@@ -2125,6 +2163,22 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "evidenceClass": "installed-package", "productAction": action.endswith("-start")}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
+        if action == "android-package-install-reconcile":
+            installer = _agent_module("android_package_install")
+            try:
+                required = {"installCorrelationId", "currentReadbackCorrelationId",
+                            "expectedCurrentOwner", "expectedCurrentRevision"}
+                if set(inputs) != required:
+                    return _error("vm_workflow", "Android install lease reconciliation requires exact terminal and current readback fields.")
+                result = installer.reconcile_terminal_lease(REPO_ROOT, inputs["installCorrelationId"],
+                    inputs["currentReadbackCorrelationId"], inputs["expectedCurrentOwner"],
+                    inputs["expectedCurrentRevision"])
+                return {"tool": "vm_workflow", **result,
+                        "ok": result.get("state") == "complete" and result.get("leaseReleased") is True and
+                              result.get("replayAllowed") is False,
+                        "evidenceClass": "native-lease-reconciliation", "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
         if action in {"android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect"}:
             stage = _agent_module("android_cli_stage")
             try:
@@ -2161,6 +2215,41 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "ok": result.get("state") in {"submitted", "running"} or
                               (result.get("state") == "complete" and result.get("ok") is True),
                         "evidenceClass": "native-document-acceptance", "productAction": action.endswith("-start")}
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+        if action in {"android-document-recovery-start", "android-document-recovery-status",
+                      "android-document-recovery-collect", "android-document-recovery-finalize"}:
+            recovery = _agent_module("android_document_recovery")
+            try:
+                if action.endswith("-start"):
+                    required = {"host", "device", "recoveryCorrelationId", "unknownDocumentCorrelationId",
+                                "openingReadbackCorrelationId", "currentReadbackCorrelationId", "artifactId",
+                                "cliStageCorrelationId", "expectedOwner", "expectedRevision"}
+                    if set(inputs) != required:
+                        return _error("vm_workflow", "Android document recovery start requires exact guarded fields.")
+                    result = recovery.start(REPO_ROOT, inputs["host"], inputs["device"],
+                        inputs["recoveryCorrelationId"], inputs["unknownDocumentCorrelationId"],
+                        inputs["openingReadbackCorrelationId"], inputs["currentReadbackCorrelationId"],
+                        inputs["artifactId"], inputs["cliStageCorrelationId"],
+                        inputs["expectedOwner"], inputs["expectedRevision"])
+                elif action.endswith("-finalize"):
+                    required = {"recoveryCorrelationId", "closingReadbackCorrelationId",
+                                "expectedOwner", "expectedRevision"}
+                    if set(inputs) != required:
+                        return _error("vm_workflow", "Android document recovery finalization requires exact closing readback.")
+                    result = recovery.finalize(REPO_ROOT, inputs["recoveryCorrelationId"],
+                        inputs["closingReadbackCorrelationId"], inputs["expectedOwner"],
+                        inputs["expectedRevision"])
+                else:
+                    if set(inputs) != {"recoveryCorrelationId"}:
+                        return _error("vm_workflow", "Android document recovery observation requires only recoveryCorrelationId.")
+                    method = recovery.status if action.endswith("-status") else recovery.collect
+                    result = method(REPO_ROOT, inputs["recoveryCorrelationId"])
+                complete = result.get("state") == "complete" and result.get("ok") is True
+                return {"tool": "vm_workflow", **result,
+                        "ok": (result.get("state") in {"submitted", "running"} and not action.endswith("-finalize")) or
+                              (complete and (not action.endswith("-finalize") or result.get("leaseReleased") is True)),
+                        "evidenceClass": "native-document-recovery", "productAction": action.endswith("-start")}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action == "android-public-inspect":
@@ -2492,7 +2581,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
+    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")

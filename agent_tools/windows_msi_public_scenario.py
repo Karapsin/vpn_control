@@ -26,10 +26,12 @@ except ImportError:  # pragma: no cover - native coordinator is POSIX
 
 try:
     from . import native_artifact_registry, ssh_transport, windows_credential_probe_ssh
+    from . import windows_cp117_lease as campaign_lease
 except ImportError:  # pragma: no cover - CLI fallback
     import native_artifact_registry  # type: ignore[no-redef]
     import ssh_transport  # type: ignore[no-redef]
     import windows_credential_probe_ssh  # type: ignore[no-redef]
+    import windows_cp117_lease as campaign_lease  # type: ignore[no-redef]
 
 
 _JOB = re.compile(r"^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$")
@@ -378,7 +380,7 @@ Start-ScheduledTask -TaskName $task
            corr=_ps_literal(correlation), source=_ps_literal(pair["sourceSha"]), account=_ps_literal(account))
 
 
-_REMOTE_START = r'''import base64,fcntl,json,os,socket,stat,struct,sys,secrets
+_REMOTE_START = campaign_lease.remote_role_guard() + r'''import base64,fcntl,json,os,socket,stat,struct,sys,secrets
 root,env,corr=sys.argv[1:]
 os.umask(0o077)
 def out(v): print(json.dumps(v,separators=(',',':'),sort_keys=True))
@@ -432,11 +434,13 @@ try:
  raw=sys.stdin.buffer.read(length)
  if len(raw)!=length or sys.stdin.buffer.read(1): raise ValueError()
  value=json.loads(raw)
- if set(value)!={'schema','socketPath','pid','startTicks','encodedCommand','commandSha256','sourceSha','artifactIds'} or value['schema']!=1: raise ValueError()
+ if set(value)!={'schema','leaseId','socketPath','pid','startTicks','encodedCommand','commandSha256','sourceSha','artifactIds'} or value['schema']!=1: raise ValueError()
  sock=value['socketPath']; pid=value['pid']; ticks=value['startTicks']; encoded=value['encodedCommand']
  if not isinstance(sock,str) or not sock.startswith('/') or not isinstance(pid,int) or not isinstance(ticks,int) or not live(sock,pid,ticks): raise ValueError()
  if not isinstance(encoded,str) or len(encoded)>30000 or len(encoded)<100: raise ValueError()
  if __import__('hashlib').sha256(base64.b64decode(encoded,validate=True)).hexdigest()!=value['commandSha256']: raise ValueError()
+ if not isinstance(value['artifactIds'],list) or len(value['artifactIds'])!=3:raise ValueError()
+ require_campaign_role(root,env,value['leaseId'],'public',corr,value['sourceSha'],*value['artifactIds'],sock,pid,ticks)
  parent=os.path.join(root,env)
  if not os.path.exists(parent): os.mkdir(parent,0o700)
  if not safe_dir(parent): raise ValueError()
@@ -499,15 +503,27 @@ def _read_intent(root: Path, correlation: str) -> dict[str, Any]:
 
 
 def _require_live_fixture_campaign(root: Path, inputs: dict[str, Any],
-                                   descriptor: tuple[Any, ...], config: Any, target: Any) -> str:
+                                   descriptor: tuple[Any, ...], config: Any, target: Any) -> tuple[str, dict[str, Any]]:
     """Internal only; fail before a public request without a live server receipt."""
     from agent_tools import windows_msi_base_prepare
     environment, socket, pid, ticks, _account, sid, _ = descriptor
-    windows_msi_base_prepare._require_verified_live_fixture(
+    lease_id = windows_msi_base_prepare._require_verified_live_fixture(
         root, inputs, (environment, socket, pid, ticks, sid), config, target)
-    # The public route must claim its correlation in both campaign journals
-    # before writing a local intent or asking QGA to create a task.
-    raise WindowsMsiPreinstallStatusError("CP117_PUBLIC_ROUTE_CLAIM_UNAVAILABLE")
+    from agent_tools import windows_fixture_network_probe, windows_msi_target_prepare
+    probe = windows_fixture_network_probe.verified_owner_network_receipt(root, lease_id)
+    if (not isinstance(probe, dict) or probe.get("originalSid") != sid
+            or not isinstance(probe.get("controllerId"), str)
+            or not isinstance(probe.get("ownerPid"), int)
+            or not isinstance(probe.get("ownerStartedAtUtc"), str)):
+        raise WindowsMsiPreinstallStatusError("CP117 original-owner network probe is unavailable.")
+    request = {**inputs, "controllerId": probe["controllerId"],
+               "ownerPid": probe["ownerPid"], "ownerStartedAtUtc": probe["ownerStartedAtUtc"]}
+    fixture = windows_msi_target_prepare._verified_network_context(root, request, lease_id)
+    claimed = campaign_lease.claim_role(root, lease_id, "public", inputs["correlationId"],
+                                        windows_msi_base_prepare._campaign_remote(config, target))
+    if claimed["state"] != "role-active":
+        raise WindowsMsiPreinstallStatusError("CP117 public claim is unknown; inspect, do not replay.")
+    return lease_id, fixture
 
 
 def start(root: Path | str, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -537,14 +553,27 @@ def start(root: Path | str, inputs: dict[str, Any]) -> dict[str, Any]:
     if len(encoded) >= 30000:
         raise WindowsMsiPreinstallStatusError("Fixed MSI bootstrap exceeds Windows command-line admission.")
     command_hash = hashlib.sha256(command.encode("utf-16le")).hexdigest()
-    lease_id = _require_live_fixture_campaign(root_path, inputs,
+    lease_id, fixture = _require_live_fixture_campaign(root_path, inputs,
         (environment, socket, pid, ticks, account, sid, _), config, target)
     intent = {"schemaVersion": 1, "host": host, "correlationId": correlation, "environment": environment,
               "socketPath": socket, "pid": pid, "startTicks": ticks, "pair": pair, "commandSha256": command_hash}
     intent["expectedSid"] = sid
     intent["leaseId"] = lease_id
+    intent["networkProbeReceiptSha256"] = fixture["probeReceiptSha256"]
+    intent["expectedControllerId"] = fixture["controllerId"]
+    intent["expectedOwnerPid"] = fixture["ownerPid"]
+    intent["expectedOwnerStartedAtUtc"] = fixture["ownerStartedAtUtc"]
+    from agent_tools import windows_msi_base_prepare
+    windows_msi_base_prepare._verified_claimed_campaign(root_path, inputs,
+        (environment, socket, pid, ticks, sid), config, target, lease_id, "public")
+    from agent_tools import windows_msi_target_prepare
+    refreshed = windows_msi_target_prepare._verified_network_context(root_path,
+        {**inputs, "controllerId": fixture["controllerId"], "ownerPid": fixture["ownerPid"],
+         "ownerStartedAtUtc": fixture["ownerStartedAtUtc"]}, lease_id)
+    if refreshed["probeReceiptSha256"] != fixture["probeReceiptSha256"]:
+        raise WindowsMsiPreinstallStatusError("CP117 owner network probe changed after claim.")
     _write_intent(root_path, correlation, intent)
-    payload = {"schema": 1, "socketPath": socket, "pid": pid, "startTicks": ticks,
+    payload = {"schema": 1, "leaseId": lease_id, "socketPath": socket, "pid": pid, "startTicks": ticks,
                "encodedCommand": encoded, "commandSha256": command_hash, "sourceSha": pair["sourceSha"],
                "artifactIds": [pair["receiptArtifactId"], pair["baseArtifactId"], pair["targetArtifactId"]]}
     raw = windows_credential_probe_ssh._run_ssh(config, host,
@@ -745,6 +774,7 @@ def _status_result(raw: bytes | None, correlation: str, intent: dict[str, Any]) 
     controller = value.get("controllerId")
     if (value.get("originalSid") != intent.get("expectedSid") or value.get("sessionId") != 1
             or not isinstance(controller, str) or not _JOB.fullmatch(controller)
+            or ("expectedControllerId" in intent and controller != intent["expectedControllerId"])
             or type(value.get("revision")) is not int or value["revision"] < 0
             or value.get("targetSha256") != intent["pair"]["targetMsiSha256"]
             or value.get("targetVersion") != intent["pair"]["targetVersion"]):

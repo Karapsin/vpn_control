@@ -39,11 +39,46 @@ def remote_at(root: Path):
 
 
 class Cp117CampaignLeaseTests(unittest.TestCase):
+    def test_native_route_guard_requires_exact_remote_claim_without_creating_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); root.chmod(0o700)
+            bound = dict(identity(), operator="windows-base")
+            corr = str(uuid.uuid4())
+            def observe(role: str, source: str = bound["sourceSha"]) -> bool:
+                args = [str(root), "windows-cp117", bound["leaseId"], role, corr, source,
+                        bound["fixtureReceiptArtifactId"], bound["baseMsiArtifactId"],
+                        bound["targetMsiArtifactId"], bound["socketPath"],
+                        str(bound["qemuPid"]), str(bound["startTicks"])]
+                script = lease.remote_role_guard() + "\ntry:\n require_campaign_role(*sys.argv[1:]);print('admitted')\nexcept Exception:print('unknown')\n"
+                run = subprocess.run([sys.executable, "-c", "import sys\n" + script, *args],
+                                     capture_output=True, timeout=5, check=True)
+                return run.stdout.strip() == b"admitted"
+            self.assertFalse(observe("public"))
+            self.assertEqual(list(root.iterdir()), [])
+            group = root / "windows-cp117/windows-cp117-campaign"
+            group.mkdir(parents=True, mode=0o700)
+            group.parent.chmod(0o700)
+            (group / ".environment.lock").write_bytes(b"")
+            (group / ".environment.lock").chmod(0o600)
+            record = {"version": 1, "sequence": 3, "state": "role-active", "role": "public",
+                      "correlationId": corr, "server": "live", "credentials": "ready",
+                      "lastEvidenceSha256": "e" * 64, "lastOutcome": "succeeded", "identity": bound}
+            (group / "active.json").write_text(json.dumps(record))
+            (group / "active.json").chmod(0o600)
+            self.assertTrue(observe("public"))
+            self.assertFalse(observe("target"))
+            self.assertFalse(observe("public", "f" * 40))
+            (group / "active.json").write_text(json.dumps({key: value for key, value in record.items()
+                                                           if key != "credentials"}))
+            self.assertFalse(observe("public"))
+            (group / "active.json").write_text(json.dumps(record))
+            self.assertEqual(record, json.loads((group / "active.json").read_text()))
+
     def test_remote_status_never_creates_missing_journal(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); remote = remote_at(root); bound = identity()
             desired = {"version": 1, "identity": bound, "sequence": 0, "state": "active",
-                       "role": None, "correlationId": None, "server": "stopped",
+                       "role": None, "correlationId": None, "server": "stopped", "credentials": "absent",
                        "lastEvidenceSha256": None, "lastOutcome": None}
             for action in ("status", "finalize"):
                 receipt = json.loads(remote(action, {"action": action, "desired": desired,
@@ -82,21 +117,48 @@ class Cp117CampaignLeaseTests(unittest.TestCase):
             lease.finish_role(root, lease_id, "base", base_corr, "e" * 64, "succeeded", remote)
             with self.assertRaises(lease.Cp117LeaseError):
                 lease.claim_role(root, lease_id, "target", str(uuid.uuid4()), remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "server-start", str(uuid.uuid4()), remote)
+            credentials_corr = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "credentials", credentials_corr, remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "server-start", str(uuid.uuid4()), remote)
+            lease.finish_role(root, lease_id, "credentials", credentials_corr, "4" * 64, "succeeded", remote)
             server_corr = str(uuid.uuid4())
             lease.claim_role(root, lease_id, "server-start", server_corr, remote)
             lease.finish_role(root, lease_id, "server-start", server_corr, "f" * 64, "succeeded", remote)
             self.assertEqual(lease.inspect(root, lease_id)["server"], "live")
+            owner_network_corr = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "owner-network", owner_network_corr, remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "network-probe", str(uuid.uuid4()), remote)
+            lease.finish_role(root, lease_id, "owner-network", owner_network_corr,
+                              "9" * 64, "succeeded", remote)
+            probe_corr = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "network-probe", probe_corr, remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "public", str(uuid.uuid4()), remote)
+            lease.finish_role(root, lease_id, "network-probe", probe_corr, "0" * 64, "succeeded", remote)
             target_corr = str(uuid.uuid4())
             lease.claim_role(root, lease_id, "target", target_corr, remote)
             lease.finish_role(root, lease_id, "target", target_corr, "1" * 64, "succeeded", remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "credentials-cleanup", str(uuid.uuid4()), remote)
             with self.assertRaises(lease.Cp117LeaseError):
                 lease.close(root, lease_id, {}, remote)
             stop_corr = str(uuid.uuid4())
             lease.claim_role(root, lease_id, "server-stop", stop_corr, remote)
             lease.finish_role(root, lease_id, "server-stop", stop_corr, "2" * 64, "succeeded", remote)
+            cleanup_corr = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "credentials-cleanup", cleanup_corr, remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "server-start", str(uuid.uuid4()), remote)
+            lease.finish_role(root, lease_id, "credentials-cleanup", cleanup_corr, "5" * 64, "succeeded", remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "server-start", str(uuid.uuid4()), remote)
             proof = {"guestGeneration": {"socketPath": bound["socketPath"], "qemuPid": bound["qemuPid"],
                                          "startTicks": bound["startTicks"]},
-                     "serverStopped": True, "protectedJobsTerminalCleaned": True,
+                     "serverStopped": True, "credentialsCleaned": True, "protectedJobsTerminalCleaned": True,
                      "activeInstallerProcessesAbsent": True, "cleanupReceiptSha256": "3" * 64}
             self.assertEqual(lease.close(root, lease_id, proof, remote)["state"], "closed")
             self.assertEqual(lease.inspect(root, lease_id)["state"], "closed")
@@ -142,6 +204,48 @@ class Cp117CampaignLeaseTests(unittest.TestCase):
             self.assertEqual(lease.reconcile(root, lease_id, actual)["state"], "role-active")
             self.assertEqual(calls, ["claim"])
 
+    def test_failed_server_start_stays_serialized_until_verified_failed_cleaned_finish(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); remote = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            lease.begin(root, bound, remote)
+            credentials_corr = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "credentials", credentials_corr, remote)
+            lease.finish_role(root, lease_id, "credentials", credentials_corr, "a" * 64, "succeeded", remote)
+            server_corr = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "server-start", server_corr, remote)
+            self.assertEqual(lease.inspect(root, lease_id)["server"], "starting")
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "server-stop", str(uuid.uuid4()), remote)
+            observed = lease.finish_role(root, lease_id, "server-start", server_corr,
+                                         "b" * 64, "failed-cleaned", remote)
+            self.assertEqual(observed["state"], "active")
+            self.assertEqual(lease.inspect(root, lease_id)["server"], "stopped")
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "server-stop", str(uuid.uuid4()), remote)
+
+    def test_owner_network_claim_requires_live_server_and_ready_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); remote = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            lease.begin(root, bound, remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "owner-network", str(uuid.uuid4()), remote)
+            credentials = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "credentials", credentials, remote)
+            lease.finish_role(root, lease_id, "credentials", credentials, "1" * 64, "succeeded", remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "owner-network", str(uuid.uuid4()), remote)
+            server = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "server-start", server, remote)
+            lease.finish_role(root, lease_id, "server-start", server, "2" * 64, "succeeded", remote)
+            owner = str(uuid.uuid4())
+            self.assertEqual(lease.claim_role(root, lease_id, "owner-network", owner, remote)["state"],
+                             "role-active")
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.claim_role(root, lease_id, "server-stop", str(uuid.uuid4()), remote)
+            lease.finish_role(root, lease_id, "owner-network", owner, "3" * 64,
+                              "failed-cleaned", remote)
+            self.assertEqual(lease.inspect(root, lease_id)["server"], "live")
+
     def test_two_route_campaigns_race_for_one_local_and_remote_slot(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); remote = remote_at(root)
@@ -173,7 +277,7 @@ class Cp117CampaignLeaseTests(unittest.TestCase):
             lease.begin(root, bound, actual)
             proof = {"guestGeneration": {"socketPath": bound["socketPath"], "qemuPid": bound["qemuPid"],
                                          "startTicks": bound["startTicks"]},
-                     "serverStopped": True, "protectedJobsTerminalCleaned": True,
+                     "serverStopped": True, "credentialsCleaned": True, "protectedJobsTerminalCleaned": True,
                      "activeInstallerProcessesAbsent": True, "cleanupReceiptSha256": "6" * 64}
 
             def lost(action, payload):
@@ -193,7 +297,7 @@ class Cp117CampaignLeaseTests(unittest.TestCase):
             lease.begin(root, bound, actual)
             proof = {"guestGeneration": {"socketPath": bound["socketPath"], "qemuPid": bound["qemuPid"],
                                          "startTicks": bound["startTicks"]},
-                     "serverStopped": True, "protectedJobsTerminalCleaned": True,
+                     "serverStopped": True, "credentialsCleaned": True, "protectedJobsTerminalCleaned": True,
                      "activeInstallerProcessesAbsent": True, "cleanupReceiptSha256": "7" * 64}
 
             def interrupted_remote_close(action, payload):

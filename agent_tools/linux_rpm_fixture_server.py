@@ -20,17 +20,13 @@ from uuid import UUID
 
 
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
+_SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
-def host_endpoint_ready(_root: Path | str, _intent: Any, _source_fingerprint: str) -> bool:
-    """Hold public submission until a journaled server lifecycle route exists.
-
-    A READY JSON alone is not a safe host authorization: the later route must
-    verify live guest owner, TLS probe and exact artifact binding before this
-    function can admit a correlation. This checkpoint deliberately has no
-    enabling branch.
-    """
-    return False
+def host_endpoint_ready(root: Path | str, intent: Any, source_fingerprint: str) -> bool:
+    """Require the exact journaled server intent and a fresh guest observation."""
+    from . import linux_rpm_fixture_server_lifecycle
+    return linux_rpm_fixture_server_lifecycle.ready_for_public(root, intent, source_fingerprint)
 def _private_json(path: Path, *, readonly: bool = False,
                   include_digest: bool = False) -> dict[str, Any] | tuple[dict[str, Any], str]:
     try:
@@ -87,6 +83,63 @@ def _uuid(value: Any) -> bool:
         return isinstance(value, str) and str(UUID(value)) == value
     except (ValueError, TypeError):
         return False
+
+
+def _private_directory(path: Path) -> None:
+    info = path.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or
+            stat.S_IMODE(info.st_mode) != 0o700):
+        raise ValueError("fixture endpoint workspace unsafe")
+
+
+def admit_protected_server(public_job: Path | str, public_stage: Path | str,
+                           public_intent: Mapping[str, Any]) -> dict[str, str]:
+    """Admit the live protected server for one exact public launcher intent."""
+    job, stage = Path(public_job), Path(public_stage)
+    if (not job.is_absolute() or stage != job / "stage" or
+            job.parent.name != "linux-rpm-public-install-recovery" or
+            job.parent.parent.name != "fedora2328" or
+            job.parent.parent.parent.name != "native-scenario-jobs" or
+            not isinstance(public_intent, Mapping) or
+            not _uuid(public_intent.get("correlationId")) or
+            job.name != public_intent["correlationId"]):
+        raise ValueError("fixture endpoint workspace invalid")
+    root = job.parent.parent.parent.parent
+    server = root / "linux-rpm-fixture-server-jobs" / job.name
+    server_stage = server / "stage"
+    for directory in (root, job.parent.parent.parent, job.parent.parent,
+                      job.parent, job, stage, server.parent, server, server_stage):
+        _private_directory(directory)
+    protected_intent = _private_json(server / "intent.json")
+    receipt = _private_json(server / "server-receipt.json")
+    public_keys = ("scenarioId", "host", "environment", "bundleHash",
+                   "artifactIds", "correlationId")
+    try:
+        mapping = {key: public_intent[key] for key in public_keys}
+        digest = hashlib.sha256((json.dumps(mapping, sort_keys=True,
+                         separators=(",", ":")) + "\n").encode()).hexdigest()
+        bound = (public_intent.get("publicIntentSha256") == digest ==
+                 protected_intent.get("publicIntentSha256") == receipt.get("publicIntentSha256") and
+                 all(protected_intent.get(key) == public_intent.get(key) for key in public_keys) and
+                 all(isinstance(public_intent.get(key), str) and
+                     protected_intent.get(key) == public_intent[key] for key in
+                     ("authorizationHandleSha256", "sourceFingerprint", "expectedBaseVersion",
+                      "expectedTargetVersion", "expectedBaseNevra", "expectedTargetNevra",
+                      "expectedDesktopJarSha256")) and
+                 isinstance(protected_intent.get("sourceSha"), str) and
+                 _SHA.fullmatch(protected_intent["sourceSha"]) is not None and
+                 receipt.get("state") == "ready" and
+                 receipt.get("correlationId") == job.name and
+                 receipt.get("sourceSha") == protected_intent["sourceSha"] and
+                 receipt.get("sourceFixtureArtifactId") ==
+                 public_intent["artifactIds"]["sourceFixture"] and
+                 receipt.get("targetPackageArtifactId") ==
+                 public_intent["artifactIds"]["targetPackage"])
+    except (KeyError, TypeError, ValueError):
+        bound = False
+    if not bound:
+        raise ValueError("fixture endpoint protected intent differs")
+    return admit_endpoint(server, server_stage, protected_intent)
 
 
 def _certificate(path: Path) -> str:

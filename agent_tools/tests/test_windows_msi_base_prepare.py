@@ -142,12 +142,46 @@ class BasePrepareTests(unittest.TestCase):
             with patch.object(base, "_admit", return_value=(PAIR, package, 1)), \
                  patch.object(base, "_descriptor", return_value=(object(), Target(),
                     ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002"))), \
+                 patch.object(base.windows_msi_public_scenario, "preinstall_status", return_value={
+                    "state": "observed", "jobId": base._LEGACY_JOB, "phase": "Failed",
+                    "code": "RUNTIME_FAILED", "sequence": 3}), \
+                 patch.object(base, "readiness", return_value={"state": "ready", "activeCount": 0}), \
+                 patch.object(base, "_legacy_task_observation", return_value={"state": "blocked"}), \
                  patch.object(base, "_remote") as remote:
                 with self.assertRaisesRegex(base.WindowsMsiBasePrepareError,
-                                            "CP117_LEGACY_RECONCILIATION_UNAVAILABLE"):
+                                            "CP117_LEGACY_CLEANUP_UNVERIFIED"):
                     base.start(root, REQUEST)
                 remote.assert_not_called()
                 self.assertIsNone(base._private_intent(root, CORR))
+
+    def test_legacy_cleanup_requires_exact_terminal_idle_task_absence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            descriptor = ("windows-cp117", "/qga.sock", 589342, 520739,
+                          "S-1-5-21-1-2-3-1002")
+            protected = {"state": "observed", "jobId": base._LEGACY_JOB,
+                         "phase": "Failed", "code": "RUNTIME_FAILED", "sequence": 3}
+            clean = {"state": "cleaned", "version": 1, "code": "CLEANED",
+                     "legacyTaskCount": 0, "otherTaskCount": 0, "activeInstallerCount": 0}
+            history = {"state": "clean", "groups": {"windows-msi-base": [],
+                "windows-msi-target": [], "windows-msi-public": [base._LEGACY_CORRELATION]}}
+            with patch.object(base.windows_msi_public_scenario, "preinstall_status", return_value=protected), \
+                 patch.object(base, "readiness", return_value={"state": "ready", "activeCount": 0}), \
+                 patch.object(base, "_legacy_task_observation", return_value=clean), \
+                 patch.object(base, "_legacy_history_observation", return_value=history), \
+                 patch.object(base.campaign_lease, "attest_legacy_closed") as attest:
+                base._require_reconciled_legacy(root, descriptor, "2.1.17")
+                proof = attest.call_args.args[1]
+                self.assertEqual(proof["terminalJobId"], base._LEGACY_JOB)
+                self.assertEqual(proof["correlationId"], base._LEGACY_CORRELATION)
+                self.assertTrue(proof["activeInstallerProcessesAbsent"])
+            body = base._legacy_task_script()
+            self.assertIn("Get-ScheduledTask", body)
+            self.assertIn(base._LEGACY_CORRELATION, body)
+            self.assertNotIn("Unregister-ScheduledTask", body)
+            self.assertNotIn("Start-ScheduledTask", body)
+            self.assertNotIn("Stop-Process", body)
+            self.assertNotIn("os.mkdir", base._LEGACY_HISTORY)
 
     def test_shared_campaign_rejects_second_route_and_mismatched_pair(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -170,6 +204,17 @@ class BasePrepareTests(unittest.TestCase):
                 with self.assertRaises(base.WindowsMsiBasePrepareError):
                     base._verified_active_campaign(root, dict(REQUEST, targetMsiArtifactId=
                         "sha256-" + "f" * 64), descriptor, object(), Target(), require_server=False)
+
+    def test_live_receipt_recheck_binds_pair_and_generation_after_claim(self):
+        expected = base._campaign_identity(REQUEST, ("windows-cp117", "/qga.sock", 589342,
+            520739, "S-1-5-21-1-2-3-1002"))
+        receipt = {key: expected[key] for key in ("leaseId", "sourceSha",
+            "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId",
+            "socketPath", "qemuPid", "startTicks")}
+        receipt.update(serverReady=True, liveReceiptSha256="a" * 64)
+        self.assertTrue(base._live_receipt_matches(receipt, expected))
+        self.assertFalse(base._live_receipt_matches(dict(receipt, startTicks=520740), expected))
+        self.assertFalse(base._live_receipt_matches(dict(receipt, serverReady=False), expected))
 
     def test_second_correlation_is_blocked_after_unknown(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -195,6 +240,35 @@ class BasePrepareTests(unittest.TestCase):
                  ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002"))), \
                  patch.object(base, "_remote", return_value=json.dumps(forged).encode()):
                 self.assertEqual(base.status(root, {"correlationId": CORR})["state"], "unknown")
+
+    def test_base_role_finish_requires_native_terminal_and_idle_readback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base._reserve(root, {"request": REQUEST, "pair": PAIR, "leaseId": CORR})
+            terminal = {"state": "terminal", "correlationId": CORR, "result": "PASSED",
+                        "stage": "READBACK", "exitCode": 0, "sourceSha": SOURCE,
+                        "baseArtifactId": ARTIFACT}
+            idle = {"state": "ready", "activeCount": 0, "installedVersion": PAIR["baseVersion"]}
+            with patch.object(base, "status", return_value=dict(terminal, result="FAILED")), \
+                 patch.object(base, "readiness", return_value=idle), \
+                 patch.object(base.campaign_lease, "finish_role") as finish:
+                with self.assertRaisesRegex(base.WindowsMsiBasePrepareError, "terminal"):
+                    base.finish_observed(root, CORR)
+                finish.assert_not_called()
+            with patch.object(base, "status", return_value=terminal), \
+                 patch.object(base, "readiness", return_value=dict(idle, activeCount=1)), \
+                 patch.object(base.campaign_lease, "finish_role") as finish:
+                with self.assertRaisesRegex(base.WindowsMsiBasePrepareError, "cleanup"):
+                    base.finish_observed(root, CORR)
+                finish.assert_not_called()
+            with patch.object(base, "status", return_value=terminal), \
+                 patch.object(base, "readiness", return_value=idle), \
+                 patch.object(base, "_descriptor", return_value=(object(), object(),
+                    ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002"))), \
+                 patch.object(base, "_verified_claimed_campaign"), \
+                 patch.object(base.campaign_lease, "finish_role", return_value={"state": "active"}) as finish:
+                self.assertEqual(base.finish_observed(root, CORR)["state"], "active")
+                self.assertEqual(finish.call_args.args[1:4], (CORR, "base", CORR))
 
 
 if __name__ == "__main__":

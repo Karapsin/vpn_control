@@ -36,6 +36,8 @@ _ROOT = r"C:\Users\vpncp117\AppData\Local\VpnControl"
 _ACCOUNT = r"VPNMSIX64\vpncp117"
 _PRODUCT = re.compile(r"\{[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}\}\Z")
 _INSTALL = "C:\\Users\\vpncp117\\AppData\\Local\\vpn-control\\"
+_LEGACY_CORRELATION = "99126312-977f-4a61-a9ef-fb6884d2d26f"
+_LEGACY_JOB = "9107428f-9c80-4284-9f4e-926350105a59"
 
 
 def _request(value: Mapping[str, Any]) -> dict[str, str]:
@@ -189,11 +191,12 @@ def decode(raw):
 '''
 
 
-_STAGE = _QGA + r'''import fcntl,struct
-root,env,corr,sock,pid,ticks,expected,size_text,encoded,command_hash,source,fingerprint,receipt_id,base_id,target_id=sys.argv[1:]
+_STAGE = _QGA + campaign_lease.remote_role_guard() + r'''import fcntl,struct
+root,env,lease,corr,sock,pid,ticks,expected,size_text,encoded,command_hash,source,fingerprint,receipt_id,base_id,target_id=sys.argv[1:]
 def out(v):print(json.dumps(v,separators=(',',':'),sort_keys=True))
 try:
  if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()
+ require_campaign_role(root,env,lease,'base',corr,source,receipt_id,base_id,target_id,sock,pid,ticks)
  parent=os.path.join(root,env);group=os.path.join(parent,'windows-msi-base')
  for path in (root,parent,group):
   if not os.path.exists(path):os.mkdir(path,0o700)
@@ -203,8 +206,9 @@ try:
  try:
   fcntl.flock(lock,fcntl.LOCK_EX)
   if any(name!='.environment.lock' for name in os.listdir(group)):raise FileExistsError()
-  public=os.path.join(parent,'windows-msi-public')
-  if os.path.exists(public) and any(name!='.environment.lock' for name in os.listdir(public)):raise FileExistsError()
+  # Earlier public receipts remain archival; fixed CP176 terminal/task cleanup
+  # is checked before the shared campaign is reserved. The shared remote role
+  # guard above serializes all new routes across those historical directories.
   stage=os.path.join(group,corr);os.mkdir(stage,0o700)
  finally:os.close(lock)
  binding={'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'sourceSha':source,'sourceFingerprint':fingerprint,'receiptArtifactId':receipt_id,'baseArtifactId':base_id,'targetArtifactId':target_id,'commandSha256':command_hash,'expectedSid':expected}
@@ -538,9 +542,134 @@ def _campaign_identity(request: Mapping[str, Any], descriptor: tuple[Any, ...]) 
             "socketPath": socket, "qemuPid": pid, "startTicks": ticks}
 
 
-def _require_reconciled_legacy(_root: Path, _descriptor: tuple[Any, ...]) -> None:
-    """A fixed CP176/other-prior native reconciler has not been admitted yet."""
-    raise WindowsMsiBasePrepareError("CP117_LEGACY_RECONCILIATION_UNAVAILABLE")
+def _legacy_task_script() -> str:
+    """Inert CP176 task/process inventory; no delete, stop, or replay."""
+    return r'''$ErrorActionPreference='Stop'
+try {
+ $tasks=@(Get-ScheduledTask -TaskName 'VpnControlMcp*' -ErrorAction SilentlyContinue)
+ $active=@(Get-CimInstance Win32_Process|Where-Object {$_.Name -match '^(msiexec|consent)\.exe$'})
+ $legacy=@($tasks|Where-Object {$_.TaskName -ceq @TASK@})
+ $other=@($tasks|Where-Object {$_.TaskName -cne @TASK@})
+ $code=if($legacy.Count -eq 0 -and $other.Count -eq 0 -and $active.Count -eq 0){'CLEANED'}else{'BUSY_OR_UNKNOWN'}
+ [Console]::Out.WriteLine(([pscustomobject]@{version=1;code=$code;
+  legacyTaskCount=$legacy.Count;otherTaskCount=$other.Count;activeInstallerCount=$active.Count}|ConvertTo-Json -Compress))
+}catch{[Console]::Out.WriteLine('{"version":1,"code":"UNKNOWN"}');exit 1}
+'''.replace("@TASK@", windows_msi_public_scenario._ps_literal("VpnControlMcpMsi-" + _LEGACY_CORRELATION))
+
+
+def _legacy_task_observation(root: Path, descriptor: tuple[Any, ...]) -> dict[str, Any]:
+    env, socket, pid, ticks, _sid = descriptor
+    if env != "windows-cp117":
+        return {"state": "unknown"}
+    config, _target, current = _descriptor(root)
+    if current != descriptor:
+        return {"state": "unknown"}
+    encoded = base64.b64encode(_legacy_task_script().encode("utf-16le")).decode()
+    if len(encoded) >= 30000:
+        return {"state": "unknown"}
+    raw = _remote(config, _READINESS, (socket, str(pid), str(ticks), encoded), None, 30)
+    try: value = json.loads(raw) if raw is not None else None
+    except (TypeError, ValueError): return {"state": "unknown"}
+    item = value.get("inventory") if isinstance(value, dict) and value.get("state") == "observed" else None
+    if (not isinstance(item, dict) or set(item) != {"version", "code", "legacyTaskCount",
+            "otherTaskCount", "activeInstallerCount"} or item["version"] != 1
+            or item["code"] not in {"CLEANED", "BUSY_OR_UNKNOWN"}
+            or any(type(item[key]) is not int or item[key] < 0 for key in
+                   ("legacyTaskCount", "otherTaskCount", "activeInstallerCount"))):
+        return {"state": "unknown"}
+    clean = all(item[key] == 0 for key in ("legacyTaskCount", "otherTaskCount", "activeInstallerCount"))
+    if (item["code"] == "CLEANED") != clean:
+        return {"state": "unknown"}
+    return {"state": "cleaned" if clean else "blocked", **item}
+
+
+_LEGACY_HISTORY = _QGA + r'''root,env,sock,pid,ticks,corr=sys.argv[1:]
+def out(value):print(json.dumps(value,separators=(',',':'),sort_keys=True))
+try:
+ if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()
+ parent=os.path.join(root,env)
+ for path in (root,parent):
+  info=os.lstat(path)
+  if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
+ groups=('windows-msi-base','windows-msi-target','windows-msi-public')
+ result={}
+ for group in groups:
+  path=os.path.join(parent,group)
+  if not os.path.lexists(path):result[group]=[];continue
+  info=os.lstat(path)
+  if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
+  lock=os.path.join(path,'.environment.lock')
+  if os.path.lexists(lock):
+   item=os.lstat(lock)
+   if not stat.S_ISREG(item.st_mode) or stat.S_ISLNK(item.st_mode) or item.st_uid!=os.geteuid() or stat.S_IMODE(item.st_mode)!=0o600:raise ValueError()
+  names=sorted(name for name in os.listdir(path) if name!='.environment.lock')
+  if len(names)>1 or (names and (group!='windows-msi-public' or names!=[corr])):raise ValueError()
+  for name in names:
+   item=os.lstat(os.path.join(path,name))
+   if not stat.S_ISDIR(item.st_mode) or stat.S_ISLNK(item.st_mode) or item.st_uid!=os.geteuid() or stat.S_IMODE(item.st_mode)!=0o700:raise ValueError()
+  result[group]=names
+ out({'version':1,'state':'clean','groups':result})
+except Exception:out({'version':1,'state':'unknown'})
+'''
+
+
+def _legacy_history_observation(root: Path, descriptor: tuple[Any, ...]) -> dict[str, Any]:
+    config, target, current = _descriptor(root)
+    if current != descriptor:
+        return {"state": "unknown"}
+    env, socket, pid, ticks, _sid = descriptor
+    raw = _remote(config, _LEGACY_HISTORY, (str(target.fixture_transfer_root), env,
+        socket, str(pid), str(ticks), _LEGACY_CORRELATION), None, 30)
+    try: value = json.loads(raw) if raw is not None else None
+    except (TypeError, ValueError): return {"state": "unknown"}
+    expected = {"windows-msi-base": [], "windows-msi-target": [],
+                "windows-msi-public": []}
+    if (not isinstance(value, dict) or set(value) != {"version", "state", "groups"}
+            or value["version"] != 1 or value["state"] != "clean"
+            or not isinstance(value["groups"], dict)
+            or value["groups"] not in (expected,
+                dict(expected, **{"windows-msi-public": [_LEGACY_CORRELATION]}))):
+        return {"state": "unknown"}
+    return {"state": "clean", "groups": value["groups"]}
+
+
+def _require_reconciled_legacy(root: Path, descriptor: tuple[Any, ...],
+                               expected_version: str) -> None:
+    """Read the exact old protected job and idle guest before a new campaign.
+
+    This is intentionally still an admission block. The old scheduled task and
+    other prior route journals need a fixed cleanup observer before the terminal
+    CP176 receipt can authorize a new native operation.
+    """
+    env, _socket, _pid, _ticks, _sid = descriptor
+    if env != "windows-cp117":
+        raise WindowsMsiBasePrepareError("CP117_LEGACY_RECONCILIATION_UNAVAILABLE")
+    try:
+        status = windows_msi_public_scenario.preinstall_status(root, "archlinux", _LEGACY_JOB)
+    except ValueError as error:
+        raise WindowsMsiBasePrepareError("CP117_LEGACY_RECONCILIATION_UNAVAILABLE") from error
+    if (status.get("state") != "observed" or status.get("jobId") != _LEGACY_JOB
+            or status.get("phase") != "Failed" or status.get("code") != "RUNTIME_FAILED"
+            or type(status.get("sequence")) is not int or status["sequence"] < 3):
+        raise WindowsMsiBasePrepareError("CP117_LEGACY_RECONCILIATION_UNAVAILABLE")
+    inventory = readiness(root, {"host": "archlinux", "expectedCurrentVersion": expected_version})
+    if inventory.get("state") != "ready" or inventory.get("activeCount") != 0:
+        raise WindowsMsiBasePrepareError("CP117_LEGACY_RECONCILIATION_UNAVAILABLE")
+    tasks = _legacy_task_observation(root, descriptor)
+    if tasks.get("state") != "cleaned":
+        raise WindowsMsiBasePrepareError("CP117_LEGACY_CLEANUP_UNVERIFIED")
+    history = _legacy_history_observation(root, descriptor)
+    if history.get("state") != "clean":
+        raise WindowsMsiBasePrepareError("CP117_LEGACY_ROUTE_HISTORY_UNVERIFIED")
+    proof = {"correlationId": _LEGACY_CORRELATION,
+             "guestGeneration": {"socketPath": _socket, "qemuPid": _pid, "startTicks": _ticks},
+             "terminalJobId": _LEGACY_JOB, "terminalPhase": "Failed", "cleanupCode": "OK",
+             "activeInstallerProcessesAbsent": True,
+             "evidenceSha256": hashlib.sha256(json.dumps({"protected": status, "tasks": tasks,
+                 "history": history,
+                 "generation": [_socket, _pid, _ticks]}, sort_keys=True,
+                 separators=(",", ":")).encode()).hexdigest()}
+    campaign_lease.attest_legacy_closed(root, proof)
 
 
 def _require_base_route_free(root: Path) -> None:
@@ -556,7 +685,7 @@ def _require_base_route_free(root: Path) -> None:
 def _open_base_campaign(root: Path, request: Mapping[str, Any], config: Any,
                         target: Any, descriptor: tuple[Any, ...]) -> str:
     """Internal: starts only after artifact and exact legacy/guest admission."""
-    _require_reconciled_legacy(root, descriptor)
+    _require_reconciled_legacy(root, descriptor, request["expectedCurrentVersion"])
     _require_base_route_free(root)
     identity = _campaign_identity(request, descriptor)
     remote = _campaign_remote(config, target)
@@ -590,6 +719,41 @@ def _verified_active_campaign(root: Path, request: Mapping[str, Any],
         os.close(lock)
 
 
+def _verified_claimed_campaign(root: Path, request: Mapping[str, Any],
+                               descriptor: tuple[Any, ...], config: Any, target: Any,
+                               lease_id: str, role: str) -> None:
+    """Recheck the exact native route claim in both journals before its intent."""
+    directory, lock = campaign_lease._locked(root)
+    try:
+        record = campaign_lease._active(directory)
+        expected = _campaign_identity({**request, "correlationId": lease_id}, descriptor)
+        if (record is None or record["identity"] != expected
+                or record["state"] != "role-active" or record["role"] != role
+                or record["correlationId"] != request["correlationId"]
+                or record["server"] != ("live" if role in {"target", "public"} else "stopped")
+                or record["credentials"] != ("ready" if role in {"target", "public"} else "absent")
+                or not campaign_lease._remote_confirm(_campaign_remote(config, target),
+                                                      "status", record, None)):
+            raise WindowsMsiBasePrepareError("CP117 route claim is absent or unknown.")
+    finally:
+        os.close(lock)
+    if role in {"target", "public"}:
+        from . import windows_update_fixture_server
+        receipt = windows_update_fixture_server.verified_live_receipt(root, lease_id)
+        if not _live_receipt_matches(receipt, expected):
+            raise WindowsMsiBasePrepareError("CP117 live fixture changed after route claim.")
+
+
+def _live_receipt_matches(receipt: Any, expected: Mapping[str, Any]) -> bool:
+    return (isinstance(receipt, dict) and
+            all(receipt.get(key) == expected[key] for key in (
+                "leaseId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId",
+                "targetMsiArtifactId", "socketPath", "qemuPid", "startTicks"))
+            and receipt.get("serverReady") is True
+            and isinstance(receipt.get("liveReceiptSha256"), str)
+            and bool(re.fullmatch(r"[0-9a-f]{64}", receipt["liveReceiptSha256"])))
+
+
 def _require_verified_live_fixture(root: Path, request: Mapping[str, Any],
                                    descriptor: tuple[Any, ...], config: Any, target: Any) -> str:
     """Join only one fixed, source-bound live server; no caller-supplied proof."""
@@ -598,17 +762,7 @@ def _require_verified_live_fixture(root: Path, request: Mapping[str, Any],
     from . import windows_update_fixture_server
     receipt = windows_update_fixture_server.verified_live_receipt(root, lease_id)
     expected = _campaign_identity({**request, "correlationId": lease_id}, descriptor)
-    if (not isinstance(receipt, dict) or receipt.get("leaseId") != lease_id
-            or receipt.get("sourceSha") != expected["sourceSha"]
-            or receipt.get("fixtureReceiptArtifactId") != expected["fixtureReceiptArtifactId"]
-            or receipt.get("baseMsiArtifactId") != expected["baseMsiArtifactId"]
-            or receipt.get("targetMsiArtifactId") != expected["targetMsiArtifactId"]
-            or receipt.get("socketPath") != expected["socketPath"]
-            or receipt.get("qemuPid") != expected["qemuPid"]
-            or receipt.get("startTicks") != expected["startTicks"]
-            or receipt.get("serverReady") is not True
-            or not isinstance(receipt.get("liveReceiptSha256"), str)
-            or not re.fullmatch(r"[0-9a-f]{64}", receipt["liveReceiptSha256"])):
+    if not _live_receipt_matches(receipt, expected):
         raise WindowsMsiBasePrepareError("CP117 live fixture receipt does not match campaign.")
     return lease_id
 
@@ -633,7 +787,7 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
               "pid": pid, "startTicks": ticks, "expectedSid": sid, "commandSha256": command_hash}
     record["leaseId"] = _open_base_campaign(root, request, config, target, (env, sock, pid, ticks, sid))
     _reserve(root, record)
-    raw = _remote(config, _STAGE, (str(target.fixture_transfer_root), env, correlation, sock, str(pid), str(ticks),
+    raw = _remote(config, _STAGE, (str(target.fixture_transfer_root), env, record["leaseId"], correlation, sock, str(pid), str(ticks),
         sid, str(size), encoded, command_hash, request["sourceSha"], pair["sourceFingerprint"],
         request["fixtureReceiptArtifactId"], request["baseMsiArtifactId"], request["targetMsiArtifactId"]), source, 1800)
     try:
@@ -725,3 +879,32 @@ def status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
             "correlationId": correlation, "result": payload["result"], "stage": payload["stage"],
             "exitCode": payload["exitCode"], "sourceSha": intent["request"]["sourceSha"],
             "baseArtifactId": intent["request"]["baseMsiArtifactId"], "replayAllowed": False}
+
+
+def finish_observed(root: Path | str, correlation: str) -> dict[str, Any]:
+    """Internal: release base role after exact installed readback and idle guest.
+
+    A caller cannot provide terminal or cleanup claims. Both observations are
+    reread from fixed native routes before the lease transition.
+    """
+    root = Path(root).resolve(strict=True)
+    intent = _private_intent(root, correlation)
+    if intent is None or intent.get("leaseId") != correlation:
+        raise WindowsMsiBasePrepareError("CP117 base intent is absent or unbound.")
+    observed = status(root, {"correlationId": correlation})
+    request = intent["request"]
+    if (observed.get("state") != "terminal" or observed.get("result") != "PASSED"
+            or observed.get("stage") != "READBACK" or observed.get("exitCode") != 0
+            or observed.get("sourceSha") != request["sourceSha"]
+            or observed.get("baseArtifactId") != request["baseMsiArtifactId"]):
+        raise WindowsMsiBasePrepareError("CP117 base terminal readback is unavailable.")
+    idle = readiness(root, {"host": "archlinux", "expectedCurrentVersion": intent["pair"]["baseVersion"]})
+    if (idle.get("state") != "ready" or idle.get("activeCount") != 0
+            or idle.get("installedVersion") != intent["pair"]["baseVersion"]):
+        raise WindowsMsiBasePrepareError("CP117 base cleanup is not observed.")
+    config, target, descriptor = _descriptor(root)
+    _verified_claimed_campaign(root, request, descriptor, config, target, correlation, "base")
+    evidence = hashlib.sha256(json.dumps({"terminal": observed, "idle": idle,
+        "leaseId": correlation}, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return campaign_lease.finish_role(root, correlation, "base", correlation,
+                                      evidence, "succeeded", _campaign_remote(config, target))

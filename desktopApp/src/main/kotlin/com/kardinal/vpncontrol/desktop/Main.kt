@@ -73,10 +73,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.ControlCommand
@@ -800,8 +802,8 @@ internal fun DesktopVpnControlApp(
         sshKeyPresent = sshKeyPresent,
         systemLanguageCode = systemLanguageCode,
         onToggleDnsDialog = ::toggleLocalDns,
-        onDnsModeDraftChange = { mode -> dnsDraft = dnsDraft?.copy(mode = mode) },
-        onCustomDnsDraftChange = { endpoint -> dnsDraft = dnsDraft?.copy(endpoint = endpoint) },
+        onDnsModeDraftChange = { mode -> dnsDraft = dnsDraft?.copy(mode = mode, failure = null) },
+        onCustomDnsDraftChange = { endpoint -> dnsDraft = dnsDraft?.copy(endpoint = endpoint, failure = null) },
         onSaveDns = ::saveLocalDns,
         onToggleHomeSshRouteDialog = { toggleLocalSettings(DesktopSettingsDraftGroup.SSH) },
         onHomeSshEnabledChange = { editLocalSettings("ssh.enabled", it.toString()) },
@@ -1854,6 +1856,7 @@ private fun DesktopSettingsDialogs(
     }
 
     if (state.showDnsDialog) {
+        var dnsEndpointErrorVisible by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = onToggleDnsDialog,
             title = { Text(strings.get(UiText.SETTINGS_CUSTOM_DNS), color = Color.White) },
@@ -1861,7 +1864,9 @@ private fun DesktopSettingsDialogs(
             textContentColor = Color.White,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    dnsFailure?.let { Text(it.wireName, color = MaterialTheme.colorScheme.error) }
+                    dnsFailure?.takeUnless {
+                        it == ControlCode.INVALID_ARGUMENT && dnsEndpointErrorVisible
+                    }?.let { Text(it.wireName, color = MaterialTheme.colorScheme.error) }
                     Text(
                         strings.get(UiText.DNS_APPLIES_NEW_DESKTOP_SESSIONS),
                         color = Color(0xFFD3E3EE),
@@ -1871,7 +1876,10 @@ private fun DesktopSettingsDialogs(
                         DesktopSecureDnsModeOption(
                             label = strings.get(mode.uiText()),
                             selected = state.dnsModeDraft == mode,
-                            onClick = { onDnsModeDraftChange(mode) },
+                            onClick = {
+                                dnsEndpointErrorVisible = false
+                                onDnsModeDraftChange(mode)
+                            },
                             visualId = when (mode) {
                                 DnsMode.AUTOMATIC -> "dns-automatic"
                                 DnsMode.CUSTOM_DOH -> "dns-doh"
@@ -1888,7 +1896,10 @@ private fun DesktopSettingsDialogs(
                     }
                     OutlinedTextField(
                         value = state.customDnsEndpointDraft,
-                        onValueChange = onCustomDnsDraftChange,
+                        onValueChange = {
+                            dnsEndpointErrorVisible = false
+                            onCustomDnsDraftChange(it)
+                        },
                         modifier = Modifier.fillMaxWidth().testTag("dns-endpoint"),
                         label = { Text(strings.get(UiText.DNS_SECURE_ENDPOINT)) },
                         placeholder = {
@@ -1901,12 +1912,24 @@ private fun DesktopSettingsDialogs(
                             )
                         },
                         enabled = state.dnsModeDraft != DnsMode.AUTOMATIC,
+                        isError = dnsEndpointErrorVisible,
                         singleLine = true,
                     )
+                    if (dnsEndpointErrorVisible) {
+                        Text(
+                            text = strings.statusMessage(SettingsStatusMessages.customDnsEndpointInvalid()),
+                            modifier = Modifier.testTag("dns-endpoint-error"),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             },
             confirmButton = {
-                TextButton(enabled = !dnsSaving, onClick = onSaveDns, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
+                TextButton(enabled = !dnsSaving, onClick = {
+                    dnsEndpointErrorVisible = MainDraftLogic.resolveDnsSave(state).isFailure
+                    if (!dnsEndpointErrorVisible) onSaveDns()
+                }, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(strings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },

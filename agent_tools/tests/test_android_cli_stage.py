@@ -52,14 +52,24 @@ class AndroidCliStageTest(unittest.TestCase):
             subject._validate_entries(names, details)
 
     def test_start_rejects_wrong_source_before_snapshot_or_remote(self) -> None:
-        artifact = {"verification": "verified", "artifact": {"platform": "linux", "artifactKind": "package",
-                    "sourceSha": "a" * 40, "sha256": "b" * 64, "size": 123},
-                    "location": {"localPath": "/some/vpn-control-2.2.0-1.x86_64.rpm"}}
+        for kind in ("package", "desktop-package-target"):
+            with self.subTest(kind=kind):
+                artifact = {"verification": "verified", "artifact": {"platform": "linux", "artifactKind": kind,
+                            "sourceSha": "a" * 40, "sha256": "b" * 64, "size": 123},
+                            "location": {"localPath": "/some/vpn-control-2.2.0-1.x86_64.rpm"}}
+                with mock.patch.object(subject.native_artifact_registry, "verify_artifact", return_value=artifact), \
+                        mock.patch.object(subject.subprocess, "run", return_value=SimpleNamespace(stdout="c" * 40 + "\n")), \
+                        mock.patch.object(subject.ssh_transport, "load_config", side_effect=AssertionError("remote reached")):
+                    with self.assertRaisesRegex(ValueError, "source differs"):
+                        subject.start("/unused", "archlinux", "b68a93e0-445d-4cf5-8fee-2f5d90065bd3", "sha256-" + "b" * 64)
+
+    def test_start_rejects_unrelated_linux_kind_before_source_or_remote(self) -> None:
+        artifact = {"verification": "verified", "artifact": {"platform": "linux", "artifactKind": "apk"}}
         with mock.patch.object(subject.native_artifact_registry, "verify_artifact", return_value=artifact), \
-                mock.patch.object(subject.subprocess, "run", return_value=SimpleNamespace(stdout="c" * 40 + "\n")), \
-                mock.patch.object(subject.ssh_transport, "load_config", side_effect=AssertionError("remote reached")):
-            with self.assertRaisesRegex(ValueError, "source differs"):
+                mock.patch.object(subject.subprocess, "run") as source:
+            with self.assertRaisesRegex(ValueError, "verified Linux RPM"):
                 subject.start("/unused", "archlinux", "b68a93e0-445d-4cf5-8fee-2f5d90065bd3", "sha256-" + "b" * 64)
+            source.assert_not_called()
 
     def test_status_missing_local_intent_has_no_remote_side_effect(self) -> None:
         with mock.patch.object(subject.ssh_transport, "load_config", side_effect=AssertionError("remote reached")):

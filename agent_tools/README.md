@@ -504,6 +504,27 @@ The Windows `windows-credential-validity-v1` profile admits an owned environment
 and opaque private credential; its batch then uses the existing real credential
 probe. A stored credential alone never establishes a working login.
 
+**Fedora RPM HTTPS fixture server.** `linux-rpm-fixture-server-start` takes the
+same exact public RPM intent fields as `rpm-public-install-start`, plus
+`sourceSha` bound to the current checkout. It requires the owner-only public
+authorization record, registered same-source RPM-only fixture and package,
+then writes a private server journal before sending any guest bytes. A lost
+response is unknown and the start correlation must never be replayed.
+`linux-rpm-fixture-server-status` and `linux-rpm-fixture-server-collect` take
+only `{correlationId}`. They report `ready` only after a fresh guest Java HTTPS
+manifest probe, certificate/trust check and exact journal identity. The public
+RPM launcher independently requires that protected server state and live
+endpoint for the same intent before submission. This is fixture readiness, not
+evidence that the RPM update installed successfully.
+
+**Windows interpreter preflight.** `windows-fixture-python-preflight` takes
+exact `host`, `leaseId`, `stageCorrelationId`, `serverCorrelationId`,
+`sourceSha`, `fixtureReceiptArtifactId`, `baseMsiArtifactId`, and
+`targetMsiArtifactId`. It performs bounded read-only CP117 QGA inspection of
+the fixed signed Python interpreter and reports only its hash/version. This
+does not provision credentials, start a server, or admit an MSI update; those
+routes remain gated by their full lifecycle and original-owner network proof.
+
 `batch-plan` takes `batchId`, `recipe`, and recipe inputs. For
 `linux-scheduled-refresh`, use the preflight fields above without `scenarioId` or
 `timeoutSeconds`. Prepare a `linux-scheduled-refresh-driver` bundle and register
@@ -577,6 +598,16 @@ collect observe only the same correlation. Read-only admission actions are
 collect result is package evidence only until a fresh post-install mutation
 guard succeeds. Use the exact input schemas enforced by the fixed adapters and
 the CLI fallback when a long-running MCP server has an older action inventory.
+The MCP dispatcher rejects a directly selected native adapter whose source
+file changed after that server process started and points to the fresh-process
+fallback, so that adapter cannot silently apply pre-edit admission rules.
+`android-package-install-reconcile` accepts only `installCorrelationId`,
+`currentReadbackCorrelationId`, `expectedCurrentOwner` and
+`expectedCurrentRevision`. It releases a historical device lease only after
+the exact install is terminal, a detached current readback matches its target
+package and owner, and a fresh public inspection confirms runtime off and no
+operations. Unknown or changed state retains the lease; it never repeats an
+install.
 
 `vm_workflow("rpm-proc-observe", inputs={"host":"fedora2328","environment":"fedora2328"})`
 is a fixed read-only process-visibility check for the disposable RPM guest. It
@@ -768,6 +799,20 @@ after the exact APK and current CLI stage are admitted. Status and collect accep
 only `correlationId`. Its receipt reports full and cold reads, export, restore,
 retained wait and same-request retry separately; false fields must not be
 promoted as passed scenarios. Unknown outcomes retain their device lease.
+
+`android-document-recovery-start` is a separate one-shot API29 restore for an
+exact unknown document correlation. It requires `host`, `device`,
+`recoveryCorrelationId`, `unknownDocumentCorrelationId`,
+`openingReadbackCorrelationId`, `currentReadbackCorrelationId`, `artifactId`,
+`cliStageCorrelationId`, `expectedOwner`, and `expectedRevision`. Admission
+checks the original worker's exact terminal failure and stopped PID generation,
+the preserved 239-byte opening export, current larger routing readback, exact
+package/CLI bytes and runtime-off owner. `status` and `collect` accept only
+`recoveryCorrelationId`; they never resubmit. `android-document-recovery-finalize`
+takes that correlation plus `closingReadbackCorrelationId`, `expectedOwner`,
+and `expectedRevision`. It releases the original document lease only after a
+fresh live readback and public inspection prove the opening rules returned.
+Unknown recovery keeps both journals and the lease for inspection.
 
 `vm_workflow("macos-fixture-guest-stage-start", inputs={correlationId,
 sourceSha, guestRoot, baseSha256, baseSizeBytes, targetSha256,

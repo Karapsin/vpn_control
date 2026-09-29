@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 from types import SimpleNamespace
@@ -87,7 +88,7 @@ class AndroidPackageInstallTest(unittest.TestCase):
         configured=SimpleNamespace(android_devices={"api35":profile},fixture_transfer_root=Path("/private/fixtures"))
         config=SimpleNamespace(hosts={"archlinux":configured})
         target="a"*64; old="b"*64; backup_hash="c"*64
-        target_artifact={"verification":"verified","artifact":{"platform":"android","artifactKind":"apk",
+        target_artifact={"verification":"verified","artifact":{"platform":"android","artifactKind":"native-fixture-apk",
             "sha256":target,"size":100,"sourceSha":"source-sha"},"location":{"localPath":"/tmp/target.apk"}}
         old_artifact={"verification":"verified","artifact":{"platform":"android","artifactKind":"apk",
             "sha256":old,"size":90,"sourceSha":"old-source"},"location":{"localPath":"/tmp/old.apk"}}
@@ -103,7 +104,7 @@ class AndroidPackageInstallTest(unittest.TestCase):
              mock.patch.object(installer.ssh_transport,"connection_host",return_value=SimpleNamespace(password=None)), \
              mock.patch.object(installer.native_artifact_registry,"verify_artifact",side_effect=lambda _root,aid: target_artifact if aid=="sha256-"+target else old_artifact), \
              mock.patch.object(installer,"_inspect_apk",side_effect=lambda _root,path: {"package":"com.kardinal.vpncontrol",
-                 "code":16800 if str(path)=="/tmp/target.apk" else 16760,"version":"2.2.0" if str(path)=="/tmp/target.apk" else "2.1.18",
+                 "code":16800,"version":"2.2.0",
                  "abi":"x86_64","signerSha256":"e"*64,"debuggable":False}), \
              mock.patch.object(installer.ssh_transfer,"android_apk_stage_status",return_value={"state":"published","destinationHashes":{"app-nativeFixture.apk":target},"destinationSizes":{"app-nativeFixture.apk":100}}), \
              mock.patch.object(installer.android_admission_readback,"readback_status",return_value=backup), \
@@ -123,11 +124,152 @@ class AndroidPackageInstallTest(unittest.TestCase):
                                 "sha256-"+target,stage,backup_correlation,backup_hash,old,"old-owner",4)
             remote.assert_called_once()
 
+    def test_start_rejects_unrelated_verified_artifact_kind_before_apk_inspection(self):
+        configured=SimpleNamespace(android_devices={"api29":{}},fixture_transfer_root=Path("/private/fixtures"))
+        config=SimpleNamespace(hosts={"archlinux":configured})
+        foreign={"verification":"verified","artifact":{"platform":"android","artifactKind":"desktop-package"}}
+        with mock.patch.object(installer.ssh_transport,"load_config",return_value=config), \
+             mock.patch.object(installer.ssh_transport,"connection_host",return_value=SimpleNamespace(password=None)), \
+             mock.patch.object(installer.android_observation,"_profile",return_value={"expectedAvd":"owned-api29","api":29}), \
+             mock.patch.object(installer.native_artifact_registry,"verify_artifact",return_value=foreign), \
+             mock.patch.object(installer,"_inspect_apk") as inspect:
+            with self.assertRaisesRegex(ValueError,"not verified"):
+                installer.start(".","archlinux","api29","6e348905-10c0-4e79-9b06-3453893507b8",
+                    "sha256-"+"a"*64,{},"df6e6c61-66d0-4bd6-a15a-dc5a2a016090","b"*64,"c"*64,"owner",0)
+            inspect.assert_not_called()
+
+    def test_start_reaches_apk_inspection_for_canonical_kind(self):
+        config=SimpleNamespace(hosts={"archlinux":SimpleNamespace(android_devices={"api29":{}},fixture_transfer_root=Path("/fixture"))})
+        artifact={"verification":"verified","artifact":{"platform":"android","artifactKind":"apk","sourceSha":"source",
+            "sha256":"a"*64},"location":{"localPath":"/target.apk"}}
+        with mock.patch.object(installer.ssh_transport,"load_config",return_value=config), \
+             mock.patch.object(installer.ssh_transport,"connection_host",return_value=SimpleNamespace(password=None)), \
+             mock.patch.object(installer.android_observation,"_profile",return_value={"expectedAvd":"owned-api29","api":29}), \
+             mock.patch.object(installer.native_artifact_registry,"verify_artifact",return_value=artifact), \
+             mock.patch.object(installer.subprocess,"run",return_value=SimpleNamespace(stdout="source\n")), \
+             mock.patch.object(installer,"_inspect_apk",side_effect=RuntimeError("apk inspected")) as inspect:
+            with self.assertRaisesRegex(RuntimeError,"apk inspected"):
+                installer.start(".","archlinux","api29","6e348905-10c0-4e79-9b06-3453893507b8",
+                    "sha256-"+"a"*64,{},"df6e6c61-66d0-4bd6-a15a-dc5a2a016090","b"*64,"c"*64,"owner",0)
+            inspect.assert_called_once()
+
+    def test_start_rejects_downgrade_and_same_bytes_before_stage(self):
+        config=SimpleNamespace(hosts={"archlinux":SimpleNamespace(android_devices={"api29":{}},fixture_transfer_root=Path("/fixture"))})
+        for target_hash,target_version,target_code,old_hash in (("a"*64,"2.1.18",16760,"b"*64),
+                                                                  ("a"*64,"2.2.0",16800,"a"*64)):
+            with self.subTest(target_version=target_version,old_hash=old_hash):
+                artifact={"verification":"verified","artifact":{"platform":"android","artifactKind":"native-fixture-apk",
+                    "sourceSha":"source","sha256":target_hash},"location":{"localPath":"/target.apk"}}
+                previous={"verification":"verified","artifact":{"platform":"android","artifactKind":"apk",
+                    "sha256":old_hash},"location":{"localPath":"/old.apk"}}
+                def inspect(_root,path):
+                    current=str(path)=="/target.apk"
+                    return {"version":target_version if current else "2.2.0","code":target_code if current else 16800,
+                            "signerSha256":"e"*64}
+                with mock.patch.object(installer.ssh_transport,"load_config",return_value=config), \
+                     mock.patch.object(installer.ssh_transport,"connection_host",return_value=SimpleNamespace(password=None)), \
+                     mock.patch.object(installer.android_observation,"_profile",return_value={"expectedAvd":"owned-api29","api":29}), \
+                     mock.patch.object(installer.native_artifact_registry,"verify_artifact",side_effect=[artifact,previous]), \
+                     mock.patch.object(installer.subprocess,"run",return_value=SimpleNamespace(stdout="source\n")), \
+                     mock.patch.object(installer,"_inspect_apk",side_effect=inspect), \
+                     mock.patch.object(installer.ssh_transfer,"android_apk_stage_status") as stage:
+                    with self.assertRaisesRegex(ValueError,"not compatible"):
+                        installer.start(".","archlinux","api29","6e348905-10c0-4e79-9b06-3453893507b8",
+                            "sha256-"+target_hash,{},"df6e6c61-66d0-4bd6-a15a-dc5a2a016090","b"*64,old_hash,"owner",0)
+                    stage.assert_not_called()
+
     def test_collect_rejects_missing_or_unbound_terminal_fields(self):
         correlation = "9304d8aa-578d-4df1-9eaa-81021744cd43"
         bad = {"state":"complete","receipt":{"result":{"state":"complete","package":{"baseSha256":"a"*64}}}}
         with mock.patch.object(installer,"status",return_value=bad):
             self.assertFalse(installer.collect(".",correlation)["ok"])
+
+    def test_terminal_lease_reconciliation_requires_current_admission_and_exact_owner(self):
+        old="17ccbfc7-e8dc-4c2a-aa07-ad47bdc390a0"
+        readback="7e65c7cb-7a4f-4952-9655-c321c6335d86"
+        target="a"*64; owner="new-owner"
+        with tempfile.TemporaryDirectory() as raw:
+            root=Path(raw); root.chmod(0o700)
+            installer._save(root,{"host":"archlinux","device":"api29","correlationId":old,
+                                  "targetSha256":target,"expectedAvd":"owned-api29","api":29})
+            installer._claim_device(root,"archlinux","api29",old)
+            lease=installer._device_lease(root,"archlinux","api29")
+            terminal={"ok":True,"state":"complete","result":{"package":{"baseSha256":target},
+                       "owner":{"controllerId":"historical-owner"}}}
+            observed={"ok":True,"result":{"stage":"backup_present","deviceIdentity":True,
+                       "controllerId":owner,"configurationRevision":0,"backup":{"sha256":"b"*64,"formatValid":True}}}
+            current={"ok":True,"state":"complete","result":{"package":{"baseSha256":target},
+                     "guard":{"controllerId":owner,"configurationRevision":0},
+                     "backup":{"sha256":"b"*64},"device":{"uid":"2000","avd":"owned-api29","api":29}}}
+            public={"ok":True,"outcome":"admitted","result":{"runtime":{"running":False,"observation":"stopped"},
+                    "operationCount":0,"packageSha256":target,"controllerId":owner,"configurationRevision":0}}
+            with mock.patch.object(installer,"collect",return_value={"ok":False,"state":"unknown"}), \
+                 mock.patch.object(installer.android_admission_readback,"readback_status") as readback_probe:
+                rejected=installer.reconcile_terminal_lease(root,old,readback,owner,0)
+            self.assertEqual("install_not_terminal",rejected["reason"])
+            self.assertTrue(lease.exists())
+            readback_probe.assert_not_called()
+            with mock.patch.object(installer,"collect",return_value=terminal), \
+                 mock.patch.object(installer.android_admission_readback,"readback_status",return_value=observed), \
+                 mock.patch.object(installer.android_admission_readback,"async_collect",return_value=current), \
+                 mock.patch.object(installer.android_public_inspect,"inspect",return_value={"ok":False,"outcome":"unknown"}):
+                rejected=installer.reconcile_terminal_lease(root,old,readback,owner,0)
+            self.assertFalse(rejected["ok"])
+            self.assertTrue(lease.exists())
+            changed=json.loads(json.dumps(current)); changed["result"]["guard"]["controllerId"]="other-owner"
+            with mock.patch.object(installer,"collect",return_value=terminal), \
+                 mock.patch.object(installer.android_admission_readback,"readback_status",return_value=observed), \
+                 mock.patch.object(installer.android_admission_readback,"async_collect",return_value=changed), \
+                 mock.patch.object(installer.android_public_inspect,"inspect") as public_probe:
+                rejected=installer.reconcile_terminal_lease(root,old,readback,owner,0)
+            self.assertEqual("current_readback_changed",rejected["reason"])
+            self.assertTrue(lease.exists())
+            public_probe.assert_not_called()
+            with mock.patch.object(installer,"collect",return_value=terminal), \
+                 mock.patch.object(installer.android_admission_readback,"readback_status",return_value=observed), \
+                 mock.patch.object(installer.android_admission_readback,"async_collect",return_value=current), \
+                 mock.patch.object(installer.android_public_inspect,"inspect",return_value=public):
+                accepted=installer.reconcile_terminal_lease(root,old,readback,owner,0)
+            self.assertTrue(accepted["ok"],accepted)
+            self.assertFalse(lease.exists())
+            self.assertTrue(installer._journal(root,old).exists())
+            installer._claim_device(root,"archlinux","api29","different-correlation")
+            self.assertFalse(installer._release_device(root,"archlinux","api29",old))
+            self.assertTrue(lease.exists())
+
+    def test_terminal_release_serializes_with_new_device_claim(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root=Path(raw); root.chmod(0o700)
+            old="17ccbfc7-e8dc-4c2a-aa07-ad47bdc390a0"
+            new="ca4582eb-f8e1-48a9-8d59-2b6298221408"
+            installer._claim_device(root,"archlinux","api29",old)
+            lease=installer._device_lease(root,"archlinux","api29")
+            release_entered=threading.Event(); resume_release=threading.Event(); claim_done=threading.Event()
+            outcomes={}; original_unlink=Path.unlink
+            def held_unlink(path,*args,**kwargs):
+                if path==lease and not release_entered.is_set():
+                    release_entered.set()
+                    if not resume_release.wait(3): raise TimeoutError("release test timed out")
+                return original_unlink(path,*args,**kwargs)
+            def release(): outcomes["release"]=installer._release_device(root,"archlinux","api29",old)
+            def claim():
+                try: installer._claim_device(root,"archlinux","api29",new); outcomes["claim"]="claimed"
+                except Exception as error: outcomes["claim"]=type(error).__name__
+                finally: claim_done.set()
+            with mock.patch.object(Path,"unlink",held_unlink):
+                releasing=threading.Thread(target=release); claiming=threading.Thread(target=claim)
+                releasing.start()
+                try:
+                    self.assertTrue(release_entered.wait(2))
+                    claiming.start()
+                    self.assertFalse(claim_done.wait(.3),"new claim must wait for terminal release")
+                finally:
+                    resume_release.set()
+                    releasing.join(3)
+                    if claiming.ident is not None: claiming.join(3)
+            self.assertEqual(True,outcomes.get("release"))
+            self.assertEqual("claimed",outcomes.get("claim"))
+            self.assertEqual(new,json.loads(lease.read_text())["correlationId"])
 
     def test_worker_adapter_recognizes_install_complete_only(self):
         worker = installer._worker_source("print(1)",[])

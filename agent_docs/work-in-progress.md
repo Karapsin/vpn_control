@@ -27,6 +27,85 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Seventh continuation checkpoint in progress — 2026-09-29
+
+`fa05e690fad16a01675c223f1d9825ac257a6a65` is the current pushed
+`origin/dev` checkpoint, version `2.2.0`. Its full prepush tier passed before
+push. Per the user's delivery preference, required development CI is reserved
+for the **final delivered SHA**; the exact-source hosted package/visual runs
+below are component evidence. No release is authorized.
+
+The exact `fa05e69` Android native-fixture APK is frozen at SHA256
+`0657316f2d8d9ac8f6a4677ddc70c476282ea3b3c2ed80adde4b2d60cc7c6b41`.
+API29 and API35 each had a fresh backup and runtime-off owner admission.
+Independent review cleared the Android-only artifact-kind alias, equal-version
+different-byte signer guard and per-device lease lock. The historical API29
+terminal lease was reconciled through MCP after current package/owner/backup
+proof, then one `fa05e69` API29 install completed under correlation
+`e506c6ec-36fd-4338-95a3-503240ff6957`: target bytes, new controller,
+239-byte routing and runtime-off state passed terminal and fresh public
+inspection (`fa05e69-android/install29-terminal.json` and
+`install29-public-inspect.json`). The historical API35 terminal install lease
+was separately reconciled against its old receipt and fresh admission; no new
+guest action occurred on the rejected pre-submit correlation. One guarded
+API35 install `9ef0ce38-5c06-4d31-87af-3c7cf7dfe050` replaced old APK
+bytes with the exact `fa05e69` APK and retained the 11,872,243-byte routing
+document with runtime off. Fresh public inspection `29fd22f2` and detached
+readback `d1877484` confirmed the new owner, exact APK and zero operations.
+The verified APK's immutable `native-fixture-apk` registry record remains
+intact. The exact `fa05e69` Linux RPM target is registered at SHA256
+`777083fadda70257498d8026a16b89c995eef4e49358a9ccb16f79a1a372451b`;
+Android CLI stage `3a60c550-6f62-4fb8-a72f-c6fd6f2012e9` is published and
+rehash-verified. The first API29 48 MiB document scenario correlation
+`2d74c7fb-11f8-4a2b-8b98-4a195875a7b1` ended `unknown/command_failed`
+after its 56,000-domain import committed. Fresh readback shows unchanged
+`fa05e69` package, runtime off, owner revision 1 and 11,872,243-byte routing.
+Its opening 239-byte export and unknown result are preserved. A separate
+journaled guarded restore completed under fresh correlation
+`cb114417-209f-4063-85d6-27c0b508f64a` with exactly one public restore
+operation. The independent closing readback
+`368c2fa3-f621-428c-ab02-1cc76592bded` verified the same `fa05e69`
+package and controller, runtime off, a 239-byte routing backup and all
+persistent fields from the opening export (ignoring only the export timestamp).
+The original unknown document lease was then released through the guarded
+finalize route. Preserve the unknown scenario and its evidence; do not replay
+it. A full new-source Android document, cancellation, consent and resource
+matrix has not passed on either emulator.
+The next guarded document run will use a durable, fixed-token command-phase
+marker added after a causal RED/GREEN test; no phase is inferred for the old
+unknown correlation.
+
+The `fa05e69` hosted Linux RPM, Windows MSI and Mac DMG pairs were verified
+and MCP registered without relabelling old source artifacts. Fedora still has
+the verified `2.1.19` base, runtime off and no public target update. A separate
+journaled HTTPS server lifecycle and protected public launcher binding passed
+independent review; the fixed MCP route is wired with causal tests and a new
+pushed source is the next native gate.
+Windows CP117 remains untouched: shared lease, stage, credential and server
+code is dirty and fail closed. Independent credential path ancestor review
+passed, but server stop/abort failure-order fixes and original-owner JVM
+proxy/trust plus actual HTTPS probe still need review before server start can
+be exposed to native use. The historical CP176 cleanup proof has a guarded
+adapter under review and remains a base-install gate.
+
+Mac's `fa05e69` user-local native update completed `SUCCEEDED/OK`, with strict
+target signature/bytes and a new app controller while runtime stayed off
+(`continuation-macos/fixture-fa05e69/native-user-local-summary.json`). Tart
+was stopped and released. The machine authorization/visible GUI return case is
+still open because the host Mac locked before SecurityAgent submission; its
+READY machine fixture was left untouched. The prior unknown job remains
+historical and unreplayed.
+
+Android visual capture at `fa05e69` has 74/74 scenes; comparison is 71 pass
+and three independently reviewed intended-change candidates (`locations-qr`,
+`routing-qr`, `routing-error`). All three desktop hosted captures exposed one
+`settings-refresh-custom-hours` fixture defect; a causal fix is dirty and
+requires a new-SHA rerun. The Android `locations-empty` stale selection and
+Android/desktop hidden DNS validation feedback were reproduced with focused
+RED tests, corrected and passed focused GREEN tests plus diagnostic captures.
+No baseline has been changed. Full native document, four-platform visual and final exact-SHA
+required-workflow acceptance remain open.
+
 ### Sixth continuation checkpoint and next dirty source — 2026-09-29
 
 `2a7b6a4cbbca75a8a3e9740f6be33f9ed1bac6bf` is pushed on `origin/dev`.

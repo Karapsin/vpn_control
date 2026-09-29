@@ -23,6 +23,7 @@ from typing import Any, BinaryIO, Mapping
 
 from . import windows_msi_base_prepare as base
 from . import windows_msi_public_scenario as public
+from . import windows_cp117_lease as campaign_lease
 from scripts.windows_fixture_stage_acl import stage_acl_powershell, validate_stage_acl_receipt
 
 
@@ -55,9 +56,23 @@ def _request(value: Mapping[str, Any]) -> dict[str, str]:
     return dict(value)
 
 
-def _require_cross_route_lease(root: Path, request: Mapping[str, str]) -> None:
-    """Native publication is disabled until the shared CP117 lease can join it."""
-    raise WindowsUpdateFixtureStageError("CP117_CROSS_ROUTE_LEASE_UNAVAILABLE")
+def _require_cross_route_lease(root: Path, request: Mapping[str, str], config: Any,
+                               target: Any, descriptor: tuple[Any, ...]) -> str:
+    """Join the exact active base campaign before the one-shot guest stage."""
+    group = root / _GROUP
+    if group.exists():
+        info = group.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or group.is_symlink() or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o700
+                or any(item.suffix == ".json" for item in group.iterdir())):
+            raise WindowsUpdateFixtureStageError("CP117 fixture stage has active or unknown history.")
+    lease_id = base._verified_active_campaign(root, request, descriptor, config, target,
+                                              require_server=False)
+    claimed = campaign_lease.claim_role(root, lease_id, "stage", request["correlationId"],
+                                       base._campaign_remote(config, target))
+    if claimed.get("state") != "role-active":
+        raise WindowsUpdateFixtureStageError("CP117 stage claim is unknown; inspect, do not replay.")
+    return lease_id
 
 
 def _source_module(root: Path, source: str, name: str) -> bytes:
@@ -79,6 +94,7 @@ def _modules(root: Path, source: str) -> dict[str, bytes]:
         tree = ast.parse(modules[_MODULES[0]].decode("utf-8"))
     except (SyntaxError, UnicodeDecodeError) as error:
         raise WindowsUpdateFixtureStageError("Exact-source fixture entrypoint is invalid.") from error
+    _require_split_server_layout(tree)
     imports = {name for name in (
         [node.module.split(".", 1)[0] for node in ast.walk(tree)
          if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module] +
@@ -97,6 +113,25 @@ def _modules(root: Path, source: str) -> dict[str, bytes]:
     if local != expected:
         raise WindowsUpdateFixtureStageError("Exact-source fixture import inventory changed.")
     return modules
+
+
+def _require_split_server_layout(tree: ast.Module) -> None:
+    """Admit only an entrypoint with the Windows immutable/private sibling layout."""
+    serve = next((node for node in tree.body if isinstance(node, ast.FunctionDef)
+                  and node.name == "serve"), None)
+    if serve is None:
+        raise WindowsUpdateFixtureStageError("Exact-source fixture server layout is unavailable.")
+    strings = {node.value for node in ast.walk(serve)
+               if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    calls = {node.func.id for node in ast.walk(serve)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    if (not {"content", "server-state", "ready.json", "fixture-receipt.json"}.issubset(strings)
+            or not {"require_windows_private_acl", "probe_events_path",
+                    "write_private_ready_json"}.issubset(calls)
+            or not any(isinstance(node, ast.IfExp) and isinstance(node.test, ast.Name)
+                       and node.test.id == "windows" and isinstance(node.body, ast.Name)
+                       and node.body.id == "state" for node in ast.walk(serve))):
+        raise WindowsUpdateFixtureStageError("Exact-source fixture server layout is unavailable.")
 
 
 def _open_registered(path: Path, maximum: int) -> BinaryIO:
@@ -177,6 +212,9 @@ def _read_intent(root: Path, correlation: str) -> dict[str, Any] | None:
             or not _HASH.fullmatch(value["bundleSha256"])
             or not isinstance(value.get("fileHashes"), dict)):
         raise WindowsUpdateFixtureStageError("Fixture stage intent is invalid.")
+    if not isinstance(value.get("leaseId"), str) or not _UUID.fullmatch(value["leaseId"]) or \
+            str(uuid.UUID(value["leaseId"])) != value["leaseId"]:
+        raise WindowsUpdateFixtureStageError("Fixture stage lease identity is invalid.")
     return value
 
 
@@ -304,6 +342,42 @@ def _validate_state_acl(receipt: Any, sid: str, expected_path: str) -> None:
         raise WindowsUpdateFixtureStageError("Fixture server state ACL is invalid.")
 
 
+def _complete_stage_lease(root: Path, intent: Mapping[str, Any], result: Mapping[str, Any],
+                          config: Any, target: Any, descriptor: tuple[Any, ...]) -> bool:
+    lease_id = intent.get("leaseId")
+    if not isinstance(lease_id, str) or not _UUID.fullmatch(lease_id) or str(uuid.UUID(lease_id)) != lease_id:
+        return False
+    remote = base._campaign_remote(config, target)
+    directory, lock = campaign_lease._locked(root)
+    try:
+        current = campaign_lease._active(directory)
+        expected = base._campaign_identity({**intent["request"], "correlationId": lease_id}, descriptor)
+        if current is None or current["identity"] != expected or current["server"] not in {
+                "stopped", "starting", "live", "stopping"}:
+            return False
+        if current["state"] == "role-active" and current["role"] == "stage" and \
+                current["correlationId"] == intent["request"]["correlationId"] and current["server"] == "stopped":
+            pending = True
+        elif current["state"] == "active" and current["role"] is None:
+            pending = False
+        elif current["state"] == "role-active" and current["role"] in {
+                "credentials", "credentials-cleanup", "server-start", "server-stop", "target", "public"}:
+            pending = False
+        else:
+            return False
+        if not campaign_lease._remote_confirm(remote, "status", current, None):
+            return False
+    finally:
+        os.close(lock)
+    if pending:
+        digest = hashlib.sha256(json.dumps(result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        completed = campaign_lease.finish_role(root, lease_id, "stage",
+                                               intent["request"]["correlationId"],
+                                               digest, "succeeded", remote)
+        return completed.get("state") == "active"
+    return True
+
+
 def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     root = Path(root).resolve(strict=True)
     request = _request(value)
@@ -313,10 +387,10 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         if prior.get("request") != request:
             raise WindowsUpdateFixtureStageError("Correlation binds another fixture stage.")
         return {"state": "unknown", "correlationId": corr, "replayAllowed": False}
-    _require_cross_route_lease(root, request)
     pair = public._admit_pair(root, request["sourceSha"], request["fixtureReceiptArtifactId"],
                               request["baseMsiArtifactId"], request["targetMsiArtifactId"])
-    config, target, (env, socket, pid, ticks, sid) = base._descriptor(root)
+    config, target, descriptor = base._descriptor(root)
+    env, socket, pid, ticks, sid = descriptor
     bundle, hashes, bundle_size, bundle_hash = _bundle(root, request, pair)
     try:
         script = _stage_script(corr, sid, hashes, bundle_hash)
@@ -324,16 +398,19 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         create_encoded = base64.b64encode(_create_script(corr, sid).encode("utf-16le")).decode("ascii")
         if len(encoded) >= 30000 or len(create_encoded) >= 30000:
             raise WindowsUpdateFixtureStageError("Fixed fixture stage script exceeds QGA command admission.")
+        lease_id = _require_cross_route_lease(root, request, config, target, descriptor)
         record = {"request": request, "environment": env, "socketPath": socket, "pid": pid,
                   "startTicks": ticks, "expectedSid": sid, "sourceFingerprint": pair["sourceFingerprint"],
                   "bundleSha256": bundle_hash, "bundleSize": bundle_size, "fileHashes": hashes,
-                  "commandSha256": hashlib.sha256(script.encode("utf-16le")).hexdigest()}
+                  "commandSha256": hashlib.sha256(script.encode("utf-16le")).hexdigest(),
+                  "leaseId": lease_id}
         source = _reserve(root, record, bundle)
     finally:
         bundle.close()
-    raw = base._remote(config, _REMOTE_START, (str(target.fixture_transfer_root), env, corr, socket,
+    raw = base._remote(config, _REMOTE_START, (str(target.fixture_transfer_root), env, lease_id, corr, socket,
         str(pid), str(ticks), sid, str(bundle_size), bundle_hash, create_encoded, encoded,
-        request["sourceSha"], pair["sourceFingerprint"]), source, 1800)
+        request["sourceSha"], pair["sourceFingerprint"], request["fixtureReceiptArtifactId"],
+        request["baseMsiArtifactId"], request["targetMsiArtifactId"]), source, 1800)
     try: result = json.loads(raw) if raw is not None else {}
     except (TypeError, ValueError): result = {}
     if not isinstance(result, dict) or result.get("state") != "submitted" or result.get("correlationId") != corr:
@@ -341,11 +418,12 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     return {"state": "submitted", "correlationId": corr, "replayAllowed": False}
 
 
-_REMOTE_START = base._QGA + r'''import fcntl,time
-root,env,corr,sock,pid,ticks,sid,size_text,bundle_hash,create_encoded,encoded,source,fingerprint=sys.argv[1:]
+_REMOTE_START = base._QGA + campaign_lease.remote_role_guard() + r'''import fcntl,time
+root,env,lease,corr,sock,pid,ticks,sid,size_text,bundle_hash,create_encoded,encoded,source,fingerprint,receipt_id,base_id,target_id=sys.argv[1:]
 def out(v):print(json.dumps(v,separators=(',',':'),sort_keys=True))
 try:
  if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()
+ require_campaign_role(root,env,lease,'stage',corr,source,receipt_id,base_id,target_id,sock,pid,ticks)
  parent=os.path.join(root,env);group=os.path.join(parent,'windows-update-fixture-stage')
  for path in (root,parent,group):
   if not os.path.exists(path):os.mkdir(path,0o700)
@@ -357,7 +435,7 @@ try:
   if any(name!='.environment.lock' for name in os.listdir(group)):raise FileExistsError()
   stage=os.path.join(group,corr);os.mkdir(stage,0o700)
  finally:os.close(lock)
- binding={'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid}
+ binding={'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'leaseId':lease,'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid}
  with open(os.path.join(stage,'binding.json'),'x',encoding='utf-8') as file:json.dump(binding,file,separators=(',',':'));file.flush();os.fsync(file.fileno())
  size=int(size_text)
  if not 0<size<=1075838976 or len(encoded)>30000 or len(create_encoded)>30000:raise ValueError()
@@ -392,7 +470,7 @@ except Exception:out({'state':'unknown','correlationId':corr,'reason':'submissio
 '''
 
 
-_REMOTE_STATUS = base._QGA + r'''root,env,corr,sock,pid,ticks,sid,source,fingerprint,bundle_hash=sys.argv[1:]
+_REMOTE_STATUS = base._QGA + r'''root,env,lease,corr,sock,pid,ticks,sid,source,fingerprint,bundle_hash=sys.argv[1:]
 def out(v):print(json.dumps(v,separators=(',',':'),sort_keys=True))
 try:
  if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()
@@ -404,7 +482,7 @@ try:
   info=os.lstat(os.path.join(stage,name))
   if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or info.st_size>4096:raise ValueError()
  binding=json.load(open(os.path.join(stage,'binding.json'),encoding='utf-8'))
- if binding!={'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid}:raise ValueError()
+ if binding!={'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'leaseId':lease,'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid}:raise ValueError()
  dispatch=json.load(open(os.path.join(stage,'dispatch.json'),encoding='utf-8'))
  if type(dispatch.get('pid')) is not int or dispatch['pid']<=0:raise ValueError()
  process=call(sock,'guest-exec-status',{'pid':dispatch['pid']})
@@ -424,10 +502,12 @@ def status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     intent = _read_intent(root, corr)
     unknown = {"state": "unknown", "correlationId": corr, "replayAllowed": False}
     if intent is None: return unknown
-    config, target, (env, socket, pid, ticks, sid) = base._descriptor(root)
+    if not isinstance(intent.get("leaseId"), str) or not _UUID.fullmatch(intent["leaseId"]): return unknown
+    config, target, descriptor = base._descriptor(root)
+    env, socket, pid, ticks, sid = descriptor
     if any(intent.get(key) != observed for key, observed in (("environment", env), ("socketPath", socket),
             ("pid", pid), ("startTicks", ticks), ("expectedSid", sid))): return unknown
-    raw = base._remote(config, _REMOTE_STATUS, (str(target.fixture_transfer_root), env, corr,
+    raw = base._remote(config, _REMOTE_STATUS, (str(target.fixture_transfer_root), env, intent["leaseId"], corr,
         socket, str(pid), str(ticks), sid, intent["request"]["sourceSha"], intent["sourceFingerprint"],
         intent["bundleSha256"]), None, 30)
     try: observed = json.loads(raw) if raw is not None else {}
@@ -446,6 +526,8 @@ def status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         validate_stage_acl_receipt(result["rootAcl"], sid, _GUEST + "\\mcp-update-fixture-" + corr)
         _validate_state_acl(result["stateAcl"], sid, _GUEST + "\\mcp-update-fixture-" + corr + "\\server-state")
     except ValueError: return unknown
+    if not _complete_stage_lease(root, intent, result, config, target, descriptor):
+        return unknown
     return {"state": "staged-not-server-ready", "correlationId": corr,
             "sourceSha": intent["request"]["sourceSha"], "targetMsiSha256": intent["request"]["targetMsiArtifactId"].removeprefix("sha256-"),
             "bundleSha256": intent["bundleSha256"], "fileHashes": dict(intent["fileHashes"]),

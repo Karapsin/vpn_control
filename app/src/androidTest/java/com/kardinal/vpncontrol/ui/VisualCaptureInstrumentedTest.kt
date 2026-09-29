@@ -9,10 +9,12 @@ import android.app.NotificationManager
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.captureToImage
@@ -30,6 +32,7 @@ import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.AppUpdatePhase
 import com.kardinal.vpncontrol.AppUpdateState
 import com.kardinal.vpncontrol.MainActivity
+import com.kardinal.vpncontrol.MainViewModel
 import com.kardinal.vpncontrol.MainUiState
 import com.kardinal.vpncontrol.QrCaptureActivity
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
@@ -104,8 +107,10 @@ class VisualCaptureInstrumentedTest {
                     configuredFontScale = requestedFontScale
                 }
                 freezeSystemUi(instrumentation)
+                val visualState = androidVisualState(sceneId)
+                requireVisualFixtureContract(sceneId, visualState)
                 compose.activityRule.scenario.onActivity { activity ->
-                    activity.replaceStateForVisualCapture(androidVisualState(sceneId))
+                    activity.replaceStateForVisualCapture(visualState)
                 }
                 compose.waitForIdle()
 
@@ -164,6 +169,43 @@ class VisualCaptureInstrumentedTest {
         }
     }
 
+    @Test
+    fun emptyLocationsFixtureHasNoStaleSelection() {
+        requireVisualFixtureContract("locations-empty", androidVisualState("locations-empty"))
+    }
+
+    @Test
+    fun invalidDnsVisualDraftShowsFeedbackOnlyAfterSaveAndClearsOnEdit() {
+        val sentinelStatus = "Visual DNS save callback must not run"
+        lateinit var viewModel: MainViewModel
+        compose.activityRule.scenario.onActivity { activity ->
+            viewModel = ViewModelProvider(
+                activity,
+                MainViewModel.factory(activity.applicationContext),
+            )[MainViewModel::class.java]
+            viewModel.postStatus(sentinelStatus)
+            activity.replaceStateForVisualCapture(androidVisualState("settings-dns-custom-error"))
+        }
+        compose.waitUntil(timeoutMillis = 5_000L) {
+            viewModel.uiState.value.statusMessage == sentinelStatus
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("dns-endpoint-error", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("dialog-save", useUnmergedTree = true).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("dns-endpoint-error", useUnmergedTree = true).assertExists()
+        // The real owner remains active beneath the visual override. A submitted save would
+        // change its status, even though the override keeps the rendered scene unchanged.
+        SystemClock.sleep(500L)
+        check(viewModel.uiState.value.statusMessage == sentinelStatus) {
+            "Invalid DNS visual Save reached the owner callback"
+        }
+        compose.onNodeWithTag("dns-endpoint", useUnmergedTree = true)
+            .performTextReplacement("https://dns.example.invalid/dns-query")
+        compose.waitForIdle()
+        compose.onNodeWithTag("dns-endpoint-error", useUnmergedTree = true).assertDoesNotExist()
+    }
+
     private fun requireNoPrimaryAnrWindow(instrumentation: android.app.Instrumentation) {
         AndroidVisualWindowGuard.requireNoPrimaryAnr(instrumentation.shell("dumpsys window windows"))
     }
@@ -208,11 +250,15 @@ class VisualCaptureInstrumentedTest {
             "locations-qr", "locations-error" -> listOf("locations-export", "export-qr")
             "routing-transfer-menu" -> listOf("routing-import-menu")
             "routing-qr", "routing-error" -> listOf("routing-export-menu", "export-qr")
+            "settings-dns-custom-error" -> listOf("dialog-save")
             else -> emptyList()
         }
         clicks.forEach { tag ->
             compose.onNodeWithTag(tag, useUnmergedTree = true).performClick()
             compose.waitForIdle()
+        }
+        if (sceneId == "settings-dns-custom-error") {
+            compose.onNodeWithTag("dns-endpoint-error", useUnmergedTree = true).assertExists()
         }
     }
 
@@ -591,6 +637,11 @@ private fun androidVisualState(sceneId: String): MainUiState {
             profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
             currentLocations = emptyList(),
             subscriptions = emptyList(),
+            selectedProfileName = "",
+            selectedProfileServer = "",
+            selectedProfileRawLink = "",
+            selectedProfileSourceUrl = "",
+            selectedProfileJson = "",
         )
         "locations-populated" -> state.copy(
             selectedProfileName = "",
@@ -676,6 +727,20 @@ private fun androidVisualState(sceneId: String): MainUiState {
         else -> state
     }
     return state
+}
+
+private fun requireVisualFixtureContract(sceneId: String, state: MainUiState) {
+    if (sceneId == "locations-empty") {
+        check(state.profileSourceMode == ProfileSourceMode.CURRENT_LOCATIONS)
+        check(state.currentLocations.isEmpty() && state.subscriptions.isEmpty())
+        check(
+            state.selectedProfileName.isBlank() &&
+                state.selectedProfileServer.isBlank() &&
+                state.selectedProfileRawLink.isBlank() &&
+                state.selectedProfileSourceUrl.isBlank() &&
+                state.selectedProfileJson.isBlank(),
+        ) { "Empty locations visual fixture retained a selected location" }
+    }
 }
 
 private fun androidVisualInstallSession(phase: com.kardinal.vpncontrol.AppInstallSessionPhase): AppUpdateState =

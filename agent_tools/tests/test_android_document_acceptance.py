@@ -2,14 +2,18 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
+import os
 from pathlib import Path
 import subprocess
+import stat
 import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest import mock
+from contextlib import redirect_stdout
 
 from agent_tools import android_admission_readback, android_document_acceptance as subject
 
@@ -86,6 +90,127 @@ class AndroidDocumentAcceptanceTest(unittest.TestCase):
             observed = self._run_status(subject._STATUS, Path(tmp), intent)
             self.assertEqual(observed["state"], "unknown")
 
+    def test_unknown_command_failure_reports_only_fixed_private_stage_presence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            intent, job = self._terminal(Path(tmp))
+            receipt = job / "result.json"
+            receipt.write_text(json.dumps({"state": "unknown", "reason": "command_failed"}))
+            receipt.chmod(0o600)
+            (job / "fixture-export.json").unlink()
+            observed = self._run_status(subject._STATUS, Path(tmp), intent)
+            self.assertEqual("unknown", observed["state"])
+            self.assertEqual("command_failed", observed["reason"])
+            self.assertEqual({"openingRouting": "present", "fixture": "present", "privateExport": "absent"},
+                             observed["stageFiles"])
+            self.assertNotIn("routing-v7-56000.json", json.dumps(observed))
+
+    def test_unknown_command_failure_reports_durable_nonsecret_phase(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            intent, job = self._terminal(Path(tmp))
+            receipt = job / "result.json"
+            receipt.write_text(json.dumps({"state": "unknown", "reason": "command_failed",
+                                           "command": "SECRET_COMMAND", "stdout": "SECRET_OUTPUT",
+                                           "config": "SECRET_CONFIG"}))
+            receipt.chmod(0o600)
+            phase = job / "phase.json"
+            phase.write_text(json.dumps({"phase": "public_import_submitted"}))
+            phase.chmod(0o600)
+            observed = self._run_status(subject._STATUS, Path(tmp), intent)
+            self.assertEqual(observed["state"], "unknown")
+            self.assertEqual(observed["reason"], "command_failed")
+            self.assertEqual(observed["phase"], "public_import_submitted")
+            self.assertNotIn("SECRET_", json.dumps(observed))
+            self.assertNotIn("command", observed)
+            self.assertNotIn("stdout", observed)
+            self.assertNotIn("config", observed)
+
+    def test_unknown_command_failure_rejects_symlinked_phase(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            intent, job = self._terminal(Path(tmp))
+            receipt = job / "result.json"
+            receipt.write_text(json.dumps({"state": "unknown", "reason": "command_failed"}))
+            receipt.chmod(0o600)
+            target = job / "foreign-phase.json"
+            target.write_text(json.dumps({"phase": "public_import_submitted"}))
+            target.chmod(0o600)
+            (job / "phase.json").symlink_to(target)
+            observed = self._run_status(subject._STATUS, Path(tmp), intent)
+            self.assertEqual(observed["state"], "unknown")
+            self.assertNotEqual(observed.get("phase"), "public_import_submitted")
+            self.assertNotIn("foreign-phase.json", json.dumps(observed))
+
+    def test_worker_writes_durable_phase_before_public_import_failure(self) -> None:
+        correlation = "b68a93e0-445d-4cf5-8fee-2f5d90065bd3"
+        owner = "c" * 36
+        package_hash = "d" * 64
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); root.chmod(0o700)
+            job = root / ("android-document-job-" + correlation)
+            job.mkdir(mode=0o700)
+            original = {"type": "vpn_control_routing_rules", "version": 7,
+                        "rules": {"ignore_rules": False, "block_quic_udp_443": False,
+                                  "proxy_packages": [], "direct_domain_suffixes": []}}
+            original_bytes = json.dumps(original).encode()
+            observed_phase = []
+
+            def completed(payload: str | bytes, code: int = 0):
+                raw = payload.encode() if isinstance(payload, str) else payload
+                return SimpleNamespace(returncode=code, stdout=raw)
+
+            def fake_run(args, **kwargs):
+                if args[0] == "/fake/adb":
+                    command = args[5:]
+                    if command == ["id", "-u"]: return completed("2000")
+                    if command == ["getprop", "ro.build.version.sdk"]: return completed("29")
+                    if command == ["getprop", "ro.kernel.qemu.avd_name"]: return completed("owned-api29")
+                    if command == ["getprop", "ro.boot.qemu.avd_name"]: return completed("")
+                    if command == ["getprop", "ro.product.cpu.abi"]: return completed("x86_64")
+                    if command == ["getprop", "dalvik.vm.heapsize"]: return completed("48m")
+                    if command == ["getprop", "dalvik.vm.heapgrowthlimit"]: return completed("48m")
+                    if command == ["pm", "path", "com.kardinal.vpncontrol"]:
+                        return completed("package:/data/app/owned/base.apk")
+                    if command == ["sha256sum", "/data/app/owned/base.apk"]:
+                        return completed(package_hash + "  /data/app/owned/base.apk")
+                    raise AssertionError(f"unexpected shell command {command!r}")
+                self.assertEqual(args[0], "/fake/cli.py")
+                words = args[7:]
+                base = {"ok": True, "final": True, "code": "OK",
+                        "controllerId": owner, "configurationRevision": 0}
+                if words == ["status"]:
+                    return completed(json.dumps({**base, "data": {
+                        "runtimeRunning": False, "runtimeObservation": "stopped"}}))
+                if words == ["operations", "list"]:
+                    return completed(json.dumps({**base, "data": {"operations": []}}))
+                if words[:2] == ["routing", "export"]:
+                    target = Path(words[words.index("--output") + 1])
+                    target.write_bytes(original_bytes); target.chmod(0o600)
+                    return completed(json.dumps(base))
+                if "import" in words:
+                    marker = job / "phase.json"
+                    self.assertTrue(marker.exists(), "phase must precede public import invoke")
+                    self.assertEqual(stat.S_IMODE(marker.stat().st_mode), 0o600)
+                    observed_phase.append(json.loads(marker.read_text()))
+                    return completed("SECRET_IMPORT_OUTPUT", code=1)
+                raise AssertionError(f"unexpected public command {words!r}")
+
+            args = ["remote-worker", "/fake/adb", "/fake/cli.py", "emulator-5554",
+                    "owned-api29", "29", str(root), correlation, package_hash, owner, "0",
+                    subject._FIXTURE_SHA, str(subject._FIXTURE_SIZE)]
+            output = io.StringIO()
+            old_mask = os.umask(0o077)
+            os.umask(old_mask)
+            try:
+                with mock.patch.object(sys, "argv", args), \
+                        mock.patch.object(subprocess, "run", side_effect=fake_run), \
+                        redirect_stdout(output), self.assertRaises(SystemExit):
+                    exec(subject._REMOTE, {"__name__": "__main__"})
+            finally:
+                os.umask(old_mask)
+            self.assertEqual(observed_phase, [{"phase": "public_import_submitted"}])
+            self.assertEqual(json.loads(output.getvalue()),
+                             {"state": "unknown", "reason": "command_failed"})
+            self.assertNotIn("SECRET_IMPORT_OUTPUT", output.getvalue())
+
     def test_status_requires_exact_existing_intent_without_submission(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             response = subject.status(tmp, "b68a93e0-445d-4cf5-8fee-2f5d90065bd3")
@@ -124,7 +249,7 @@ class AndroidDocumentAcceptanceTest(unittest.TestCase):
         config = SimpleNamespace(hosts={"archlinux": SimpleNamespace(
             android_devices={"api29": profile}, fixture_transfer_root=Path("/fixture"))})
         artifact = {"verification": "verified", "artifact": {"platform": "android",
-                    "artifactKind": "apk", "sourceSha": "a" * 40,
+                    "artifactKind": "native-fixture-apk", "sourceSha": "a" * 40,
                     "sha256": "b" * 64}, "location": {"localPath": "/verified.apk"}}
         with mock.patch.object(subject.ssh_transport, "load_config", return_value=config), \
                 mock.patch.object(subject.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
@@ -137,7 +262,28 @@ class AndroidDocumentAcceptanceTest(unittest.TestCase):
                 subject.start("/unused", "archlinux", "api29", "b68a93e0-445d-4cf5-8fee-2f5d90065bd3",
                               "sha256-" + "b" * 64, "b68a93e0-445d-4cf5-8fee-2f5d90065bd3",
                               "b68a93e0-445d-4cf5-8fee-2f5d90065bd3", 0)
-            apk_check.assert_called_once()
+            artifact["artifact"]["artifactKind"] = "apk"
+            with self.assertRaisesRegex(RuntimeError, "apk check reached"):
+                subject.start("/unused", "archlinux", "api29", "b68a93e0-445d-4cf5-8fee-2f5d90065bd3",
+                              "sha256-" + "b" * 64, "b68a93e0-445d-4cf5-8fee-2f5d90065bd3",
+                              "b68a93e0-445d-4cf5-8fee-2f5d90065bd3", 0)
+            self.assertEqual(2, apk_check.call_count)
+
+    def test_start_rejects_unrelated_artifact_kind_before_apk_inspection(self) -> None:
+        profile = {"api": 29, "adb": "/adb", "cli": "/cli", "serial": "emulator-1", "expectedAvd": "owned-api29"}
+        config = SimpleNamespace(hosts={"archlinux": SimpleNamespace(
+            android_devices={"api29": profile}, fixture_transfer_root=Path("/fixture"))})
+        artifact = {"verification": "verified", "artifact": {"platform": "android", "artifactKind": "desktop-package"}}
+        with mock.patch.object(subject.ssh_transport, "load_config", return_value=config), \
+                mock.patch.object(subject.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
+                mock.patch.object(subject.android_observation, "_profile", return_value=profile), \
+                mock.patch.object(subject.native_artifact_registry, "verify_artifact", return_value=artifact), \
+                mock.patch.object(subject.android_package_install, "_inspect_apk") as apk_check:
+            with self.assertRaisesRegex(ValueError, "not verified"):
+                subject.start("/unused", "archlinux", "api29", "b68a93e0-445d-4cf5-8fee-2f5d90065bd3",
+                              "sha256-" + "a" * 64, "b68a93e0-445d-4cf5-8fee-2f5d90065bd3",
+                              "b68a93e0-445d-4cf5-8fee-2f5d90065bd3", 0)
+            apk_check.assert_not_called()
 
     def test_heap_probe_rejects_a_larger_guest_without_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

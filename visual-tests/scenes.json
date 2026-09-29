@@ -82,7 +82,7 @@
     {"id":"settings-language","platforms":["android","linux","windows","macos"],"required_elements":["language-search","language-system","dialog-close"]},
     {"id":"settings-language-english","platforms":["android","linux","windows","macos"],"required_elements":["language-en","dialog-close"]},
     {"id":"settings-dns-automatic","platforms":["android","linux","windows","macos"],"required_elements":["dns-automatic","dns-doh","dns-dot","dialog-save","dialog-cancel"]},
-    {"id":"settings-dns-custom-error","platforms":["android","linux","windows","macos"],"required_elements":["dns-endpoint","dialog-save","dialog-cancel"]},
+    {"id":"settings-dns-custom-error","platforms":["android","linux","windows","macos"],"required_elements":["dns-endpoint","dns-endpoint-error","dialog-save","dialog-cancel"]},
     {"id":"settings-ssh-disabled","platforms":["android","linux","windows","macos"],"required_elements":["ssh-enabled","ssh-host","ssh-port","ssh-user","ssh-host-keys","ssh-relay-port","dialog-save","dialog-cancel"]},
     {"id":"settings-ssh-key","platforms":["android","linux","windows","macos"],"required_elements":["ssh-key","ssh-host-keys","ssh-relay-port","dialog-save","dialog-cancel"]},
     {"id":"settings-ssh-pending-restart","platforms":["android","linux","windows","macos"],"required_elements":["ssh-restart-description","restart-now","restart-later"]},

@@ -5,6 +5,11 @@ from agent_tools import mcp_server
 
 
 class NativeOptimizationRoutesTest(unittest.TestCase):
+    def test_loaded_native_adapter_changed_after_mcp_boot_requires_fresh_process(self):
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 0, create=True):
+            with self.assertRaisesRegex(ValueError, "MCP adapter source changed"):
+                mcp_server._agent_module("android_package_install")
+
     def test_preflight_routes_current_readiness_without_promoting_failure(self):
         from agent_tools import native_fixture_preflight
         request = {"scenarioId": "linux-public-update-preflight"}
@@ -59,6 +64,26 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         with patch.object(linux_update_fixture_workflow, "status", side_effect=ValueError("Invalid inputs")):
             self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-fixture-status", {"correlationId": request["correlationId"], "shell": "id"})["ok"])
 
+    def test_linux_https_server_route_preserves_unknown_and_requires_fresh_ready(self):
+        from agent_tools import linux_rpm_fixture_server_lifecycle
+        request = {"sourceSha": "a" * 40, "scenarioId": "linux-rpm-public-install-recovery",
+                   "host": "fedora2328", "environment": "fedora2328", "bundleHash": "b" * 64,
+                   "artifactIds": {}, "credentialHandle": "opaque",
+                   "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+        observe = {"correlationId": request["correlationId"]}
+        with patch.object(linux_rpm_fixture_server_lifecycle, "start", return_value={"state": "unknown", "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("linux-rpm-fixture-server-start", request)
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, request)
+        with patch.object(linux_rpm_fixture_server_lifecycle, "status", return_value={"state": "ready", "correlationId": request["correlationId"]}) as status:
+            self.assertTrue(mcp_server._vm_workflow_impl("linux-rpm-fixture-server-status", observe)["ok"])
+            status.assert_called_once_with(mcp_server.REPO_ROOT, observe)
+        with patch.object(linux_rpm_fixture_server_lifecycle, "collect", return_value={"state": "unknown", "replayAllowed": False}):
+            self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-fixture-server-collect", observe)["ok"])
+        with patch.object(linux_rpm_fixture_server_lifecycle, "status", side_effect=ValueError("invalid observation")):
+            self.assertFalse(mcp_server._vm_workflow_impl("linux-rpm-fixture-server-status", {**observe, "shell": "id"})["ok"])
+
     def test_windows_fixture_route_requires_correlated_artifact_collection(self):
         from agent_tools import windows_update_fixture_workflow
         request = {"sourceSha": "a" * 40, "baseVersion": "2.1.19",
@@ -79,6 +104,23 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         with patch.object(windows_update_fixture_workflow, "failed_log", return_value={"state": "failed-log", "replayAllowed": False}) as failed_log:
             self.assertTrue(mcp_server._vm_workflow_impl("windows-msi-fixture-failed-log", status_request)["ok"])
             failed_log.assert_called_once_with(mcp_server.REPO_ROOT, status_request)
+
+    def test_windows_server_python_preflight_is_read_only_and_exact(self):
+        from agent_tools import windows_update_fixture_server
+        request = {"host": "archlinux", "leaseId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                   "stageCorrelationId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                   "serverCorrelationId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                   "sourceSha": "d" * 40, "fixtureReceiptArtifactId": "sha256-" + "e" * 64,
+                   "baseMsiArtifactId": "sha256-" + "f" * 64,
+                   "targetMsiArtifactId": "sha256-" + "1" * 64}
+        with patch.object(windows_update_fixture_server, "python_preflight",
+                          return_value={"state": "observed", "serverReady": False}) as preflight:
+            result = mcp_server._vm_workflow_impl("windows-fixture-python-preflight", request)
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["productAction"])
+            preflight.assert_called_once_with(mcp_server.REPO_ROOT, request)
+            self.assertFalse(mcp_server._vm_workflow_impl("windows-fixture-python-preflight", {**request, "command": "id"})["ok"])
+            preflight.assert_called_once()
 
     def test_linux_public_owner_quit_route_keeps_uncertain_exit_unverified(self):
         from agent_tools import linux_owner_public_quit
@@ -256,6 +298,26 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
                 self.assertNotIn("failureEvidence", result)
                 record.assert_not_called()
 
+    def test_android_install_lease_reconcile_requires_exact_readback_and_never_replays(self):
+        from agent_tools import android_package_install
+        request = {"installCorrelationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                   "currentReadbackCorrelationId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                   "expectedCurrentOwner": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                   "expectedCurrentRevision": 0}
+        with patch.object(android_package_install, "reconcile_terminal_lease",
+                          return_value={"ok": False, "state": "unknown", "replayAllowed": False}) as reconcile:
+            result = mcp_server._vm_workflow_impl("android-package-install-reconcile", request)
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            reconcile.assert_called_once_with(mcp_server.REPO_ROOT, request["installCorrelationId"],
+                                              request["currentReadbackCorrelationId"],
+                                              request["expectedCurrentOwner"], 0)
+            self.assertFalse(mcp_server._vm_workflow_impl("android-package-install-reconcile", {**request, "shell": "rm"})["ok"])
+            reconcile.assert_called_once()
+        with patch.object(android_package_install, "reconcile_terminal_lease",
+                          return_value={"ok": True, "state": "complete", "leaseReleased": True, "replayAllowed": False}):
+            self.assertTrue(mcp_server._vm_workflow_impl("android-package-install-reconcile", request)["ok"])
+
     def test_android_document_route_requires_fixed_start_and_observation_fields(self):
         from agent_tools import android_document_acceptance
         correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -282,6 +344,45 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
                 self.assertFalse(result["productAction"])
                 observed.assert_called_once_with(mcp_server.REPO_ROOT, correlation)
                 self.assertFalse(mcp_server._vm_workflow_impl(action, {"correlationId": correlation, "device": "api29"})["ok"])
+
+    def test_android_document_recovery_routes_exact_unknown_and_fresh_closing_readback(self):
+        from agent_tools import android_document_recovery
+        request = {"host": "archlinux", "device": "api29",
+                   "recoveryCorrelationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                   "unknownDocumentCorrelationId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                   "openingReadbackCorrelationId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                   "currentReadbackCorrelationId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                   "artifactId": "sha256-" + "e" * 64,
+                   "cliStageCorrelationId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+                   "expectedOwner": "11111111-1111-4111-8111-111111111111",
+                   "expectedRevision": 1}
+        recovery = request["recoveryCorrelationId"]
+        with patch.object(android_document_recovery, "start",
+                          return_value={"state": "unknown", "ok": False, "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("android-document-recovery-start", request)
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            start.assert_called_once_with(mcp_server.REPO_ROOT, *request.values())
+            self.assertFalse(mcp_server._vm_workflow_impl("android-document-recovery-start", {**request, "shell": "id"})["ok"])
+            start.assert_called_once()
+        for action, method in (("android-document-recovery-status", "status"),
+                               ("android-document-recovery-collect", "collect")):
+            with self.subTest(action=action), patch.object(android_document_recovery, method,
+                    return_value={"state": "unknown", "ok": False, "replayAllowed": False}) as observed:
+                self.assertFalse(mcp_server._vm_workflow_impl(action, {"recoveryCorrelationId": recovery})["ok"])
+                observed.assert_called_once_with(mcp_server.REPO_ROOT, recovery)
+                self.assertFalse(mcp_server._vm_workflow_impl(action, {"recoveryCorrelationId": recovery, "shell": "id"})["ok"])
+        closing = {"recoveryCorrelationId": recovery,
+                   "closingReadbackCorrelationId": "22222222-2222-4222-8222-222222222222",
+                   "expectedOwner": request["expectedOwner"], "expectedRevision": 2}
+        with patch.object(android_document_recovery, "finalize",
+                          return_value={"ok": True, "state": "complete", "leaseReleased": True, "replayAllowed": False}) as finalize:
+            result = mcp_server._vm_workflow_impl("android-document-recovery-finalize", closing)
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["productAction"])
+            finalize.assert_called_once_with(mcp_server.REPO_ROOT, recovery,
+                                              closing["closingReadbackCorrelationId"],
+                                              closing["expectedOwner"], 2)
 
     def test_android_cli_stage_route_has_exact_nonreplayable_fields(self):
         from agent_tools import android_cli_stage

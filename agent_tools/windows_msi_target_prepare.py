@@ -96,9 +96,8 @@ def _require_cross_route_lease(root: Path, record: Mapping[str, Any]) -> None:
     if not isinstance(request, dict) or not isinstance(record.get("leaseId"), str):
         raise WindowsMsiTargetPrepareError("CP117_CROSS_ROUTE_LEASE_UNAVAILABLE")
     config, guest, descriptor = base._descriptor(root)
-    actual = base._require_verified_live_fixture(root, request, descriptor, config, guest)
-    if actual != record["leaseId"]:
-        raise WindowsMsiTargetPrepareError("CP117 target lease identity changed.")
+    base._verified_claimed_campaign(root, request, descriptor, config, guest,
+                                    record["leaseId"], "target")
 
 
 def _reserve(root: Path, value: dict[str, Any]) -> None:
@@ -141,12 +140,88 @@ def _require_fixture_network_admission(root: Path, request: Mapping[str, Any]) -
     _pair(root, dict(request))
     config, guest, descriptor = base._descriptor(root)
     try:
-        base._require_verified_live_fixture(root, request, descriptor, config, guest)
+        lease_id = base._require_verified_live_fixture(root, request, descriptor, config, guest)
     except ValueError as error:
         raise WindowsMsiTargetPrepareError("FIXTURE_ADMISSION_UNAVAILABLE: no live CP117 HTTPS proxy/TLS receipt") from error
-    # A verified server alone cannot serialize target preparation with the
-    # public installer. The exact target correlation must claim the campaign.
-    raise WindowsMsiTargetPrepareError("CP117_TARGET_ROUTE_CLAIM_UNAVAILABLE")
+    return lease_id
+
+
+def _owner_jvm_network_bound(probe: Mapping[str, Any], request: Mapping[str, Any],
+                             port: int, trust_sha256: str) -> bool:
+    """Require trusted evidence for the existing owner JVM, not the forwarding CLI."""
+    return (probe.get("ownerJvmNetworkVerified") is True
+            and type(probe.get("ownerJvmPid")) is int
+            and probe["ownerJvmPid"] == request["ownerPid"]
+            and probe.get("ownerJvmStartedAtUtc") == request["ownerStartedAtUtc"]
+            and type(probe.get("ownerJvmProxyPort")) is int
+            and probe["ownerJvmProxyPort"] == port
+            and probe.get("ownerJvmTrustStoreSha256") == trust_sha256)
+
+
+def _verified_network_context(root: Path, request: Mapping[str, Any],
+                              lease_id: str) -> dict[str, Any]:
+    """Internal process-scoped transport settings from fresh private receipts."""
+    from . import windows_fixture_credentials, windows_fixture_network_probe
+    from . import windows_update_fixture_server
+    live = windows_update_fixture_server.verified_live_receipt(root, lease_id)
+    stage_id = live.get("stageCorrelationId") if isinstance(live, dict) else None
+    if not isinstance(stage_id, str) or not _UUID.fullmatch(stage_id):
+        raise WindowsMsiTargetPrepareError("CP117 owner network stage is unknown.")
+    trusted = windows_fixture_credentials.verified_descriptor(root, lease_id, stage_id)
+    probe = windows_fixture_network_probe.verified_owner_network_receipt(root, lease_id)
+    if not isinstance(trusted, dict) or not isinstance(probe, dict):
+        raise WindowsMsiTargetPrepareError("CP117 owner network receipt is unavailable.")
+    manifest = windows_update_fixture_server._fixture_manifest(root, request)
+    pair = _pair(root, dict(request))
+    _config, _target, (env, socket, pid, ticks, sid) = base._descriptor(root)
+    port = live.get("serverPort")
+    trust_path = trusted.get("paths", {}).get("trustStore") if isinstance(trusted, dict) else None
+    if (type(port) is not int or not 1 <= port <= 65535
+            or not isinstance(trust_path, str)
+            or not trust_path.startswith(r"C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-credentials-")
+            or not trust_path.endswith(r"\fixture-trust.p12")
+            or trusted.get("peerCertificateSha256") != live.get("peerCertificateSha256")
+            or not isinstance(trusted.get("trustStoreSha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", trusted["trustStoreSha256"])
+            or live.get("targetMsiSha256") != pair["targetMsiSha256"]
+            or live.get("targetMsiSize") != pair["targetMsiSize"]
+            or type(manifest.get("buildNumber")) is not int or manifest["buildNumber"] <= 0
+            or not isinstance(live.get("manifestSha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", live["manifestSha256"])
+            or env != "windows-cp117" or probe.get("ownerTransportVerified") is not True
+            or not _owner_jvm_network_bound(probe, request, port, trusted["trustStoreSha256"])
+            or any(probe.get(key) != request[key] for key in
+                   ("sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId",
+                    "controllerId", "ownerPid", "ownerStartedAtUtc"))
+            or any(probe.get(key) != value for key, value in
+                   (("leaseId", lease_id), ("stageCorrelationId", stage_id),
+                    ("serverCorrelationId", live.get("serverCorrelationId")),
+                    ("liveReceiptSha256", live.get("liveReceiptSha256")),
+                    ("manifestSha256", live.get("manifestSha256")),
+                    ("peerCertificateSha256", live.get("peerCertificateSha256")),
+                    ("trustStoreSha256", trusted.get("trustStoreSha256")),
+                    ("targetVersion", pair["targetVersion"]),
+                    ("targetMsiSha256", pair["targetMsiSha256"]),
+                    ("targetMsiSize", pair["targetMsiSize"]),
+                    ("originalSid", sid), ("socketPath", socket),
+                    ("qemuPid", pid), ("startTicks", ticks)))
+            or not isinstance(probe.get("probeReceiptSha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", probe["probeReceiptSha256"])):
+        raise WindowsMsiTargetPrepareError("CP117 owner network receipt changed.")
+    return {"port": port, "trustStore": trust_path,
+            "trustStoreSha256": trusted["trustStoreSha256"],
+            "manifestSha256": live["manifestSha256"],
+            "peerCertificateSha256": live["peerCertificateSha256"],
+            "manifestBuildNumber": manifest["buildNumber"],
+            "targetVersion": pair["targetVersion"],
+            "targetMsiSha256": pair["targetMsiSha256"],
+            "targetMsiSize": pair["targetMsiSize"],
+            "serverInstanceId": live["serverInstanceId"],
+            "probeReceiptSha256": probe["probeReceiptSha256"],
+            "controllerId": probe["controllerId"], "ownerPid": probe["ownerPid"],
+            "ownerStartedAtUtc": probe["ownerStartedAtUtc"],
+            "originalSid": probe["originalSid"],
+            "liveReceiptSha256": live["liveReceiptSha256"]}
 
 
 def _readiness_script(request: Mapping[str, Any], pair: Mapping[str, Any], sid: str) -> str:
@@ -211,6 +286,18 @@ def readiness(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
              and item["controllerId"] == request["controllerId"]
              and item["cliSha256"] == pair["baseCliSha256"] and item["activeCount"] == 0)
     if item["code"] == "READY" and not ready: return unknown
+    if ready:
+        try:
+            lease_id = _require_fixture_network_admission(root, request)
+            _verified_network_context(root, request, lease_id)
+        except ValueError:
+            return {"state": "blocked", "ready": False, "code": "FIXTURE_ADMISSION_UNAVAILABLE",
+                    "fixtureReady": False, "crossRouteLeaseReady": False, "productAction": False}
+        return {"state": "ready", "ready": True, "code": "READY",
+                "installedVersion": item["installedVersion"], "productCount": item["productCount"],
+                "activeCount": item["activeCount"], "ownerPid": item["ownerPid"],
+                "controllerId": item["controllerId"], "fixtureReady": True,
+                "crossRouteLeaseReady": True, "productAction": False}
     return {"state": "blocked", "ready": False, "code": "FIXTURE_ADMISSION_UNAVAILABLE" if ready else item["code"],
             "installedVersion": item["installedVersion"], "productCount": item["productCount"],
             "activeCount": item["activeCount"], "ownerPid": item["ownerPid"],
@@ -218,13 +305,15 @@ def readiness(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
             "crossRouteLeaseReady": False, "productAction": False}
 
 
-def _task(correlation: str, request: Mapping[str, Any], pair: Mapping[str, Any], sid: str) -> str:
+def _task(correlation: str, request: Mapping[str, Any], pair: Mapping[str, Any],
+          sid: str, fixture: Mapping[str, Any]) -> str:
     """Fixed PowerShell 5.1 body; public check/download only, no install."""
     guest = _GUEST + "\\mcp-target-" + correlation
     cache = _STATE + "\\updates\\vpn-control-" + pair["targetVersion"] + ".msi"
     jar = "C:\\Users\\vpncp117\\AppData\\Local\\vpn-control\\app\\" + pair["baseAppJarName"]
     helper = r"C:\Users\vpncp117\AppData\Local\vpn-control\app\native\windows-amd64\vpn-control-install-helper.exe"
     return r'''$ErrorActionPreference='Stop';$root=@ROOT@;$state=@STATE@;$cli=@CLI@;$cache=@CACHE@
+$trust=@TRUST@;$trustHash=@TRUST_HASH@;$port=@PORT@
 $stage='IDENTITY';$checked=$null;$downloaded=$null;$ready=$null;$cacheHash=$null
 function P([string]$result,[string]$code){
  ([pscustomobject]@{version=1;correlationId=@CORR@;stage=$stage;result=$result;code=$code;
@@ -267,6 +356,8 @@ try {
   if((Get-FileHash -LiteralPath $item.path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $item.hash){throw 'BASE_BYTES'}
  }
  if(@(Get-CimInstance Win32_Process|Where-Object {$_.Name -match '^(msiexec|consent|sing-box)\.exe$'}).Count -ne 0){throw 'ACTIVE_INSTALLER_OR_RUNTIME'}
+ if((Get-FileHash -LiteralPath $trust -Algorithm SHA256).Hash.ToLowerInvariant() -cne $trustHash){throw 'TRUST_CHANGED'}
+ $env:JAVA_TOOL_OPTIONS='-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort='+$port+' -Djavax.net.ssl.trustStore='+$trust+' -Djavax.net.ssl.trustStoreType=PKCS12 -Djavax.net.ssl.trustStorePassword=changeit'
  Owner
  $status=Public -command @('status')
  if($status.data.runtimeRunning -ne $false){throw 'RUNTIME_ON'}
@@ -287,13 +378,14 @@ try {
   $cacheHash -cne @TARGET_HASH@){throw 'TARGET_READBACK'}
  P 'PASSED' 'READY'
 }catch{P 'FAILED' 'UNKNOWN';exit 1}
-'''.replace("@ROOT@", _PS(guest)).replace("@STATE@", _PS(_STATE)).replace("@CLI@", _PS(_CLI)).replace("@CACHE@", _PS(cache)).replace("@CORR@", _PS(correlation)).replace("@CONTROLLER@", _PS(request["controllerId"])).replace("@OWNER_PID@", str(request["ownerPid"])).replace("@OWNER_PID_TEXT@", _PS(str(request["ownerPid"]))).replace("@OWNER_TIME@", _PS(request["ownerStartedAtUtc"])).replace("@SID@", _PS(sid)).replace("@BASE_VERSION@", _PS(pair["baseVersion"])).replace("@CLI_HASH@", _PS(pair["baseCliSha256"])).replace("@JAR@", _PS(jar)).replace("@JAR_HASH@", _PS(pair["baseAppJarSha256"])).replace("@HELPER@", _PS(helper)).replace("@HELPER_HASH@", _PS(pair["baseHelperSha256"])).replace("@TARGET_VERSION@", _PS(pair["targetVersion"])).replace("@TARGET_SIZE@", str(pair["targetMsiSize"])).replace("@TARGET_HASH@", _PS(pair["targetMsiSha256"]))
+'''.replace("@ROOT@", _PS(guest)).replace("@STATE@", _PS(_STATE)).replace("@CLI@", _PS(_CLI)).replace("@CACHE@", _PS(cache)).replace("@CORR@", _PS(correlation)).replace("@CONTROLLER@", _PS(request["controllerId"])).replace("@OWNER_PID@", str(request["ownerPid"])).replace("@OWNER_PID_TEXT@", _PS(str(request["ownerPid"]))).replace("@OWNER_TIME@", _PS(request["ownerStartedAtUtc"])).replace("@SID@", _PS(sid)).replace("@BASE_VERSION@", _PS(pair["baseVersion"])).replace("@CLI_HASH@", _PS(pair["baseCliSha256"])).replace("@JAR@", _PS(jar)).replace("@JAR_HASH@", _PS(pair["baseAppJarSha256"])).replace("@HELPER@", _PS(helper)).replace("@HELPER_HASH@", _PS(pair["baseHelperSha256"])).replace("@TRUST@", _PS(fixture["trustStore"])).replace("@TRUST_HASH@", _PS(fixture["trustStoreSha256"])).replace("@PORT@", str(fixture["port"])).replace("@TARGET_VERSION@", _PS(pair["targetVersion"])).replace("@TARGET_SIZE@", str(pair["targetMsiSize"])).replace("@TARGET_HASH@", _PS(pair["targetMsiSha256"]))
 
 
-def _bootstrap(correlation: str, request: Mapping[str, Any], pair: Mapping[str, Any], sid: str) -> str:
+def _bootstrap(correlation: str, request: Mapping[str, Any], pair: Mapping[str, Any],
+               sid: str, fixture: Mapping[str, Any]) -> str:
     guest = _GUEST + "\\mcp-target-" + correlation
     task = "VpnControlMcpTarget-" + correlation
-    packed = base64.b64encode(gzip.compress(_task(correlation, request, pair, sid).encode("utf-16le"), mtime=0)).decode()
+    packed = base64.b64encode(gzip.compress(_task(correlation, request, pair, sid, fixture).encode("utf-16le"), mtime=0)).decode()
     return r'''$ErrorActionPreference='Stop';$root=@ROOT@;$task=@TASK@
 try {
  if([IO.Directory]::Exists($root) -or (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue)){throw 'EXCLUSIVE'}
@@ -348,10 +440,12 @@ def powershell_preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str
     pair = {"baseVersion": "2.1.19", "targetVersion": "2.2.0", "baseAppJarName": "desktopApp-2.1.19.jar",
             "baseCliSha256": "a" * 64, "baseAppJarSha256": "b" * 64, "baseHelperSha256": "c" * 64,
             "targetMsiSha256": "d" * 64, "targetMsiSize": 123456}
+    fixture = {"trustStore": _GUEST + r"\mcp-update-credentials-11111111-1111-4111-8111-111111111111\fixture-trust.p12",
+               "trustStoreSha256": "e" * 64, "port": 53633}
     corr = "22222222-2222-4222-8222-222222222222"
     scripts = (_readiness_script(request, pair, "S-1-5-21-1-2-3-1002"),
-               _task(corr, request, pair, "S-1-5-21-1-2-3-1002"),
-               _bootstrap(corr, request, pair, "S-1-5-21-1-2-3-1002"),
+               _task(corr, request, pair, "S-1-5-21-1-2-3-1002", fixture),
+               _bootstrap(corr, request, pair, "S-1-5-21-1-2-3-1002", fixture),
                _task_probe_script(corr))
     for body in scripts:
         encoded = base64.b64encode(_powershell_preflight_script(body).encode("utf-16le")).decode()
@@ -365,11 +459,12 @@ def powershell_preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str
     return {"state": "passed", "checks": ["ps5-parse", "gzip"]}
 
 
-_REMOTE_START = base._QGA + r'''import fcntl
-root,env,corr,sock,pid,ticks,encoded,command_hash,source,fingerprint,receipt_id,base_id,target_id,sid=sys.argv[1:]
+_REMOTE_START = base._QGA + base.campaign_lease.remote_role_guard() + r'''import fcntl
+root,env,lease,corr,sock,pid,ticks,encoded,command_hash,source,fingerprint,receipt_id,base_id,target_id,sid=sys.argv[1:]
 def out(v):print(json.dumps(v,separators=(',',':'),sort_keys=True))
 try:
  if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()
+ require_campaign_role(root,env,lease,'target',corr,source,receipt_id,base_id,target_id,sock,pid,ticks)
  if len(encoded)>=30000 or hashlib.sha256(base64.b64decode(encoded,validate=True)).hexdigest()!=command_hash:raise ValueError()
  parent=os.path.join(root,env);group=os.path.join(parent,'windows-msi-target')
  for path in (root,parent,group):
@@ -406,17 +501,25 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         raise WindowsMsiTargetPrepareError("Installed base or original owner is not ready.")
     pair = _pair(root, request)
     config, target, (env, sock, pid, ticks, sid) = base._descriptor(root)
-    command = _bootstrap(correlation, request, pair, sid)
+    fixture = _verified_network_context(root, request, lease_id)
+    command = _bootstrap(correlation, request, pair, sid, fixture)
     encoded = base64.b64encode(command.encode("utf-16le")).decode()
     if len(encoded) >= 30000:
         raise WindowsMsiTargetPrepareError("Fixed target bootstrap exceeds Windows command admission.")
     command_hash = hashlib.sha256(command.encode("utf-16le")).hexdigest()
+    claimed = base.campaign_lease.claim_role(root, lease_id, "target", correlation,
+                                              base._campaign_remote(config, target))
+    if claimed["state"] != "role-active":
+        raise WindowsMsiTargetPrepareError("CP117 target claim is unknown; inspect, do not replay.")
+    refreshed = _verified_network_context(root, request, lease_id)
+    if refreshed["probeReceiptSha256"] != fixture["probeReceiptSha256"]:
+        raise WindowsMsiTargetPrepareError("CP117 owner network probe changed after target claim.")
     record = {"request": request, "pair": pair, "environment": env, "socketPath": sock,
               "pid": pid, "startTicks": ticks, "expectedSid": sid, "commandSha256": command_hash}
     record["leaseId"] = lease_id
     record["createdAtUtc"] = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     _reserve(root, record)
-    raw = base._remote(config, _REMOTE_START, (str(target.fixture_transfer_root), env, correlation, sock,
+    raw = base._remote(config, _REMOTE_START, (str(target.fixture_transfer_root), env, lease_id, correlation, sock,
         str(pid), str(ticks), encoded, command_hash, request["sourceSha"], pair["sourceFingerprint"],
         request["fixtureReceiptArtifactId"], request["baseMsiArtifactId"], request["targetMsiArtifactId"], sid), None, 30)
     try: result = json.loads(raw) if raw is not None else {}

@@ -257,7 +257,7 @@ def start(root: Path | str, host: str, correlation_id: str, artifact_id: str) ->
         raise ValueError("Android CLI stage requires owned Arch host and UUID")
     verified = native_artifact_registry.verify_artifact(root, artifact_id)
     if (verified.get("verification") != "verified" or verified["artifact"].get("platform") != "linux" or
-            verified["artifact"].get("artifactKind") != "package"):
+            verified["artifact"].get("artifactKind") not in {"package", "desktop-package-target"}):
         raise ValueError("Android CLI stage requires a verified Linux RPM")
     source_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, timeout=10, check=True).stdout.strip()
     if verified["artifact"].get("sourceSha") != source_sha:

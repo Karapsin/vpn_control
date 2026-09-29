@@ -109,6 +109,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.kardinal.vpncontrol.AppScreen
 import com.kardinal.vpncontrol.BuildConfig
 import com.kardinal.vpncontrol.MainUiState
+import com.kardinal.vpncontrol.MainDraftLogic
 import com.kardinal.vpncontrol.data.LocationConfigs
 import com.kardinal.vpncontrol.data.LocationsExportDocument
 import com.kardinal.vpncontrol.data.RemoteSourcePreview
@@ -117,6 +118,7 @@ import com.kardinal.vpncontrol.data.RoutingRulesTransfer
 import com.kardinal.vpncontrol.data.SingBoxConfigFactory
 import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.DnsMode
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.model.AppLanguage
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.RoutingRules
@@ -479,6 +481,7 @@ fun VpnControlApp(
     }
 
     if (state.showDnsDialog) {
+        var dnsEndpointErrorVisible by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = onToggleDnsDialog,
             title = { Text(appStrings.get(UiText.SETTINGS_CUSTOM_DNS), color = Color.White) },
@@ -490,7 +493,10 @@ fun VpnControlApp(
                         SecureDnsModeOption(
                             label = appStrings.get(mode.uiText()),
                             selected = state.dnsModeDraft == mode,
-                            onClick = { onDnsModeChange(mode) },
+                            onClick = {
+                                dnsEndpointErrorVisible = false
+                                onDnsModeChange(mode)
+                            },
                             visualId = when (mode) {
                                 DnsMode.AUTOMATIC -> "dns-automatic"
                                 DnsMode.CUSTOM_DOH -> "dns-doh"
@@ -507,7 +513,10 @@ fun VpnControlApp(
                     }
                     OutlinedTextField(
                         value = state.customDnsEndpointDraft,
-                        onValueChange = onDnsChange,
+                        onValueChange = {
+                            dnsEndpointErrorVisible = false
+                            onDnsChange(it)
+                        },
                         modifier = Modifier.fillMaxWidth().testTag("dns-endpoint"),
                         label = { Text(appStrings.get(UiText.DNS_SECURE_ENDPOINT)) },
                         placeholder = {
@@ -520,12 +529,24 @@ fun VpnControlApp(
                             )
                         },
                         enabled = state.dnsModeDraft != DnsMode.AUTOMATIC,
+                        isError = dnsEndpointErrorVisible,
                         colors = routingTextFieldColors(),
                     )
+                    if (dnsEndpointErrorVisible) {
+                        Text(
+                            text = appStrings.statusMessage(SettingsStatusMessages.customDnsEndpointInvalid()),
+                            modifier = Modifier.testTag("dns-endpoint-error"),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = onSaveDns, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
+                TextButton(onClick = {
+                    dnsEndpointErrorVisible = MainDraftLogic.resolveDnsSave(state).isFailure
+                    if (!dnsEndpointErrorVisible) onSaveDns()
+                }, modifier = Modifier.heightIn(min = 48.dp).testTag("dialog-save")) {
                     Text(appStrings.get(UiText.SAVE), color = Color(0xFF9ED6FF))
                 }
             },

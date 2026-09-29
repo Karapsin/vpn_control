@@ -6,6 +6,7 @@ remote path, or retry is accepted.  An uncertain job is observed, never replayed
 from __future__ import annotations
 
 import hashlib
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -13,11 +14,17 @@ import re
 import stat
 import subprocess
 from typing import Any
+from uuid import uuid4
 
 try:
-    from . import android_admission_readback, android_observation, native_artifact_registry, ssh_transfer, ssh_transport
+    import fcntl
+except ImportError:  # pragma: no cover - native fixture coordinator is POSIX.
+    fcntl = None
+
+try:
+    from . import android_admission_readback, android_observation, android_public_inspect, native_artifact_registry, ssh_transfer, ssh_transport
 except ImportError:  # pragma: no cover
-    import android_admission_readback, android_observation, native_artifact_registry, ssh_transfer, ssh_transport
+    import android_admission_readback, android_observation, android_public_inspect, native_artifact_registry, ssh_transfer, ssh_transport
 
 
 _UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z")
@@ -46,20 +53,70 @@ def _device_lease(root: Path | str, host: str, device: str) -> Path:
     return _journal(root, "unused").parent / ("lease-" + host + "-" + device + ".json")
 
 
-def _claim_device(root: Path | str, host: str, device: str, correlation: str) -> None:
-    path = _device_lease(root, host, device)
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    info = path.parent.lstat()
-    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+@contextmanager
+def _device_guard(root: Path | str, host: str, device: str):
+    """Serialize exact-device lease creation and release across tool processes."""
+    if fcntl is None:
+        raise ValueError("Android install device lock requires POSIX")
+    lease = _device_lease(root, host, device)
+    lease.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    parent = lease.parent.lstat()
+    if not stat.S_ISDIR(parent.st_mode) or parent.st_uid != os.getuid() or stat.S_IMODE(parent.st_mode) != 0o700:
         raise ValueError("Android install lease directory is not private")
-    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
-    with os.fdopen(fd, "wb") as out:
-        out.write(json.dumps({"host":host,"device":device,"correlationId":correlation},
-                             sort_keys=True,separators=(",", ":")).encode()+b"\n")
-        out.flush(); os.fsync(out.fileno())
-    directory=os.open(path.parent,os.O_RDONLY)
-    try: os.fsync(directory)
-    finally: os.close(directory)
+    lock = lease.with_name("lock-" + host + "-" + device + ".json")
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+            raise ValueError("Android install device lock is unsafe")
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield lease
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def _claim_device(root: Path | str, host: str, device: str, correlation: str) -> None:
+    with _device_guard(root, host, device) as path:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "wb") as out:
+            out.write(json.dumps({"host":host,"device":device,"correlationId":correlation},
+                                 sort_keys=True,separators=(",", ":")).encode()+b"\n")
+            out.flush(); os.fsync(out.fileno())
+        directory=os.open(path.parent,os.O_RDONLY)
+        try: os.fsync(directory)
+        finally: os.close(directory)
+
+
+def _release_device(root: Path | str, host: str, device: str, correlation: str) -> bool:
+    """Release only the exact terminal lease inode, retaining unknown work."""
+    with _device_guard(root, host, device) as path:
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        except FileNotFoundError:
+            return True
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+                return False
+            with os.fdopen(fd, "rb", closefd=False) as source:
+                raw = source.read(1025)
+            if len(raw) > 1024 or json.loads(raw) != {"host": host, "device": device, "correlationId": correlation}:
+                return False
+            current = path.lstat()
+            if current.st_dev != info.st_dev or current.st_ino != info.st_ino:
+                return False
+            path.unlink()
+            directory = os.open(path.parent, os.O_RDONLY)
+            try: os.fsync(directory)
+            finally: os.close(directory)
+            return True
+        except (OSError, ValueError, TypeError):
+            return False
+        finally:
+            os.close(fd)
 
 
 def _save(root: Path | str, intent: dict[str, Any]) -> None:
@@ -307,7 +364,8 @@ def start(root: Path | str, host: str, device: str, correlation_id: str, artifac
         raise ValueError("Android install requires a private key route")
     profile=android_observation._profile(config.hosts[host].android_devices[device])
     verified=native_artifact_registry.verify_artifact(root,artifact_id)
-    if verified.get("verification")!="verified" or verified["artifact"].get("platform")!="android" or verified["artifact"].get("artifactKind")!="apk":
+    if (verified.get("verification")!="verified" or verified["artifact"].get("platform")!="android" or
+            verified["artifact"].get("artifactKind") not in {"apk","native-fixture-apk"}):
         raise ValueError("Android APK artifact is not verified")
     artifact=verified["artifact"]; apk=Path(verified["location"]["localPath"])
     source_sha=subprocess.run(["git","rev-parse","HEAD"],cwd=root,capture_output=True,text=True,
@@ -318,7 +376,8 @@ def start(root: Path | str, host: str, device: str, correlation_id: str, artifac
     previous=native_artifact_registry.verify_artifact(root,"sha256-"+expected_old_base_sha256)
     previous_package=_inspect_apk(root,Path(previous["location"]["localPath"])) if previous.get("verification")=="verified" else None
     if (previous_package is None or previous_package["signerSha256"]!=package["signerSha256"] or
-            _version_identity(previous_package)>=_version_identity(package)):
+            _version_identity(previous_package)>_version_identity(package) or
+            artifact["sha256"]==expected_old_base_sha256):
         raise ValueError("Android upgrade signer is not compatible with installed package")
     stage=ssh_transfer.android_apk_stage_status(root,host,stage_identity,timeout_seconds=30)
     if (stage.get("state")!="published" or stage.get("destinationHashes",{}).get("app-nativeFixture.apk")!=artifact["sha256"] or
@@ -415,3 +474,55 @@ def collect(root: Path | str, correlation_id: str) -> dict[str, Any]:
         return {"ok":False,"state":"unknown","reason":"invalid_terminal_receipt","correlationId":correlation_id,"replayAllowed":False}
     return {"ok":True,"state":"complete","correlationId":correlation_id,"result":value,"identity":observed.get("identity"),
             "replayAllowed":False,"admissionReady":False,"nextRequired":"fresh_post_install_mutation_guard"}
+
+
+def reconcile_terminal_lease(root: Path | str, correlation_id: str, current_readback_correlation_id: str,
+                             expected_current_owner: str, expected_current_revision: int) -> dict[str, Any]:
+    """Clear a historical install lease only after terminal and current read-only proof."""
+    if not all(isinstance(value, str) and _UUID.fullmatch(value)
+               for value in (correlation_id, current_readback_correlation_id)):
+        raise ValueError("Android install reconciliation requires UUID correlations")
+    if (not isinstance(expected_current_owner, str) or not expected_current_owner or
+            type(expected_current_revision) is not int or expected_current_revision < 0):
+        raise ValueError("Android install reconciliation requires exact current owner")
+    intent = _load(root, correlation_id)
+    if not isinstance(intent, dict):
+        return {"ok":False,"state":"unknown","reason":"missing_install_intent","correlationId":correlation_id,"replayAllowed":False}
+    host, device, target = intent.get("host"), intent.get("device"), intent.get("targetSha256")
+    if (not isinstance(host, str) or not isinstance(device, str) or
+            not isinstance(target, str) or not _SHA.fullmatch(target)):
+        return {"ok":False,"state":"unknown","reason":"invalid_install_intent","correlationId":correlation_id,"replayAllowed":False}
+    terminal = collect(root, correlation_id)
+    if (terminal.get("ok") is not True or terminal.get("state") != "complete" or
+            terminal.get("result", {}).get("package", {}).get("baseSha256") != target):
+        return {"ok":False,"state":"unknown","reason":"install_not_terminal","correlationId":correlation_id,"replayAllowed":False}
+    observed = android_admission_readback.readback_status(root, host, device, current_readback_correlation_id)
+    state = observed.get("result", {})
+    current = android_admission_readback.async_collect(root, current_readback_correlation_id)
+    result = current.get("result", {})
+    guard, package, backup, current_device = (result.get(key, {}) for key in ("guard", "package", "backup", "device"))
+    if (observed.get("ok") is not True or state.get("stage") != "backup_present" or
+            state.get("deviceIdentity") is not True or state.get("controllerId") != expected_current_owner or
+            state.get("configurationRevision") != expected_current_revision or
+            state.get("backup", {}).get("formatValid") is not True or
+            current.get("ok") is not True or current.get("state") != "complete" or
+            package.get("baseSha256") != target or guard.get("controllerId") != expected_current_owner or
+            guard.get("configurationRevision") != expected_current_revision or
+            backup.get("sha256") != state.get("backup", {}).get("sha256") or
+            current_device.get("uid") != "2000" or current_device.get("avd") != intent.get("expectedAvd") or
+            current_device.get("api") != intent.get("api")):
+        return {"ok":False,"state":"unknown","reason":"current_readback_changed","correlationId":correlation_id,"replayAllowed":False}
+    public = android_public_inspect.inspect(root, host, device, str(uuid4()), target,
+                                            expected_current_owner, expected_current_revision)
+    seen = public.get("result", {})
+    if (public.get("ok") is not True or public.get("outcome") != "admitted" or
+            seen.get("packageSha256") != target or seen.get("controllerId") != expected_current_owner or
+            seen.get("configurationRevision") != expected_current_revision or
+            seen.get("runtime", {}).get("running") is not False or
+            seen.get("runtime", {}).get("observation") != "stopped" or
+            seen.get("operationCount") != 0):
+        return {"ok":False,"state":"unknown","reason":"current_public_state_changed","correlationId":correlation_id,"replayAllowed":False}
+    released = _release_device(root, host, device, correlation_id)
+    return {"ok":released,"state":"complete" if released else "unknown",
+            "reason":None if released else "lease_not_released","correlationId":correlation_id,
+            "currentReadbackCorrelationId":current_readback_correlation_id,"leaseReleased":released,"replayAllowed":False}

@@ -13,6 +13,7 @@ from agent_tools import windows_update_fixture_stage as stage
 
 
 CORR = "11111111-1111-4111-8111-111111111111"
+LEASE = "22222222-2222-4222-8222-222222222222"
 SOURCE = "a" * 40
 SID = "S-1-5-21-1-2-3-1002"
 REQUEST = {"host": "archlinux", "correlationId": CORR, "sourceSha": SOURCE,
@@ -29,6 +30,18 @@ STATE_ACL = {"stage": stage._GUEST + "\\mcp-update-fixture-" + CORR + "\\server-
              "acl": [{"sid": sid, "rights": 0x1F01FF, "type": "Allow", "inherited": False,
                       "inheritance": 3, "propagation": 0}
                      for sid in ("S-1-5-18", "S-1-5-32-544", SID)]}
+LAYOUT = '''
+def serve(directory):
+    if stage.name == "content":
+        state = stage.parent / "server-state"
+        ready = state / "ready.json"
+        receipt = directory / "fixture-receipt.json"
+        require_windows_private_acl(stage)
+        require_windows_private_acl(state)
+        event_root = state if windows else directory
+        probe_events_path(event_root)
+        write_private_ready_json(ready, {})
+'''
 
 
 class WindowsUpdateFixtureStageTest(unittest.TestCase):
@@ -44,7 +57,7 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
         class Result:
             def __init__(self, out):
                 self.stdout = out; self.returncode = 0
-        imports = b"from fixture_environment import x\nfrom macos_packaging_jdk_preflight import y\nimport secret_local\n"
+        imports = ("from fixture_environment import x\nfrom macos_packaging_jdk_preflight import y\nimport secret_local\n" + LAYOUT).encode()
         def run(argv, **_):
             if "ls-tree" in argv:
                 return Result("prepare_desktop_update_fixture.py\nfixture_environment.py\nmacos_packaging_jdk_preflight.py\nsecret_local.py\n")
@@ -58,7 +71,7 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
         class Result:
             def __init__(self, out):
                 self.stdout = out; self.returncode = 0
-        imports = b"from fixture_environment import x\nfrom macos_packaging_jdk_preflight import y\n"
+        imports = ("from fixture_environment import x\nfrom macos_packaging_jdk_preflight import y\n" + LAYOUT).encode()
         def run(argv, **_):
             if "ls-tree" in argv:
                 return Result("prepare_desktop_update_fixture.py\nfixture_environment.py\nmacos_packaging_jdk_preflight.py\n")
@@ -66,6 +79,12 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
             return Result(imports if name == "prepare_desktop_update_fixture.py" else b"pass\n")
         with patch.object(stage.subprocess, "run", side_effect=run):
             self.assertEqual(set(stage._modules(Path("."), SOURCE)), set(stage._MODULES))
+
+    def test_source_layout_rejects_in_stage_ready_public_event_root(self):
+        tree = stage.ast.parse("def serve(directory):\n ready = directory / 'ready.json'\n"
+                               " probe_events_path(directory)\n write_private_ready_json(ready,{})\n")
+        with self.assertRaisesRegex(stage.WindowsUpdateFixtureStageError, "layout is unavailable"):
+            stage._require_split_server_layout(tree)
 
     def test_bundle_contains_only_registered_receipt_target_and_exact_source_modules(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -155,14 +174,84 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
         pair.assert_not_called(); remote.assert_not_called()
 
     def test_native_start_fails_closed_without_shared_cp117_lease(self):
+        pair = {"sourceFingerprint": "a" * 64, "targetMsiSha256": "d" * 64}
+        descriptor = (object(), type("Host", (), {"fixture_transfer_root": Path("/fixture")})(),
+                      ("windows-cp117", "/qga", 42, 99, SID))
         with tempfile.TemporaryDirectory() as temporary, \
              patch.object(stage, "_read_intent", return_value=None), \
-             patch.object(stage.public, "_admit_pair") as pair, \
+             patch.object(stage.public, "_admit_pair", return_value=pair), \
+             patch.object(stage.base, "_descriptor", return_value=descriptor), \
+             patch.object(stage, "_bundle", return_value=(io.BytesIO(b"bundle"), HASHES, 6, "2" * 64)), \
+             patch.object(stage.base, "_verified_active_campaign", side_effect=stage.WindowsUpdateFixtureStageError("CP117_CROSS_ROUTE_LEASE_UNAVAILABLE")), \
              patch.object(stage.base, "_remote") as remote:
             with self.assertRaisesRegex(stage.WindowsUpdateFixtureStageError,
                                         "CP117_CROSS_ROUTE_LEASE_UNAVAILABLE"):
                 stage.start(temporary, REQUEST)
-        pair.assert_not_called(); remote.assert_not_called()
+        remote.assert_not_called()
+
+    def test_stage_claim_requires_exact_campaign_and_remote_role_guard(self):
+        config = object()
+        target = type("Host", (), {"fixture_transfer_root": Path("/fixture")})()
+        descriptor = ("windows-cp117", "/qga", 42, 99, SID)
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.object(stage.base, "_verified_active_campaign", return_value=LEASE) as verified, \
+             patch.object(stage.base, "_campaign_remote", return_value=lambda *_: None), \
+             patch.object(stage.campaign_lease, "claim_role", return_value={"state": "role-active"}) as claim:
+            self.assertEqual(LEASE, stage._require_cross_route_lease(
+                Path(temporary), REQUEST, config, target, descriptor))
+            verified.assert_called_once()
+            self.assertEqual(claim.call_args.args[1:4], (LEASE, "stage", CORR))
+
+    def test_lost_stage_role_claim_never_submits_guest_job(self):
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.object(stage.base, "_verified_active_campaign", return_value=LEASE), \
+             patch.object(stage.base, "_campaign_remote", return_value=lambda *_: None), \
+             patch.object(stage.campaign_lease, "claim_role", return_value={"state": "unknown"}):
+            with self.assertRaisesRegex(stage.WindowsUpdateFixtureStageError, "claim is unknown"):
+                stage._require_cross_route_lease(Path(temporary), REQUEST, object(), object(),
+                                                ("windows-cp117", "/qga", 42, 99, SID))
+
+    def test_prior_stage_history_blocks_before_claiming_shared_lease(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / stage._GROUP
+            directory.mkdir(parents=True, mode=0o700)
+            (directory / "old.json").write_text("{}")
+            with patch.object(stage.base, "_verified_active_campaign") as verified, \
+                 patch.object(stage.campaign_lease, "claim_role") as claim:
+                with self.assertRaisesRegex(stage.WindowsUpdateFixtureStageError, "active or unknown history"):
+                    stage._require_cross_route_lease(Path(temporary), REQUEST, object(), object(),
+                                                    ("windows-cp117", "/qga", 42, 99, SID))
+                verified.assert_not_called()
+                claim.assert_not_called()
+
+    def test_stage_role_finishes_only_after_exact_terminal_receipt(self):
+        intent = {"request": REQUEST, "leaseId": LEASE}
+        result = {"version": 1, "correlationId": CORR, "code": "STAGED_NOT_SERVER_READY"}
+        identity = {"leaseId": LEASE, "sourceSha": SOURCE}
+        current = {"identity": identity, "state": "role-active", "server": "stopped",
+                   "role": "stage", "correlationId": CORR}
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.object(stage.base, "_campaign_remote", return_value=lambda *_: None), \
+             patch.object(stage.base, "_campaign_identity", return_value=identity), \
+             patch.object(stage.campaign_lease, "_active", return_value=current) as active, \
+             patch.object(stage.campaign_lease, "_remote_confirm", return_value=True), \
+             patch.object(stage.campaign_lease, "finish_role", return_value={"state": "active"}) as finish:
+            self.assertTrue(stage._complete_stage_lease(Path(temporary), intent, result,
+                            object(), object(), ("windows-cp117", "/qga", 42, 99, SID)))
+            expected_digest = hashlib.sha256(json.dumps(result, sort_keys=True,
+                                         separators=(",", ":")).encode()).hexdigest()
+            self.assertEqual(finish.call_args.args[1:6],
+                             (LEASE, "stage", CORR, expected_digest, "succeeded"))
+            active.return_value = {**current, "correlationId": "33333333-3333-4333-8333-333333333333"}
+            finish.reset_mock()
+            self.assertFalse(stage._complete_stage_lease(Path(temporary), intent, result,
+                             object(), object(), ("windows-cp117", "/qga", 42, 99, SID)))
+            finish.assert_not_called()
+            active.return_value = {**current, "role": "credentials",
+                                   "correlationId": "33333333-3333-4333-8333-333333333333"}
+            self.assertTrue(stage._complete_stage_lease(Path(temporary), intent, result,
+                            object(), object(), ("windows-cp117", "/qga", 42, 99, SID)))
+            finish.assert_not_called()
 
     def test_lost_remote_response_keeps_unknown_no_replay(self):
         pair = {"sourceFingerprint": "a" * 64, "targetMsiSha256": "d" * 64}
@@ -172,7 +261,7 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
              patch.object(stage, "_read_intent", return_value=None), \
              patch.object(stage.public, "_admit_pair", return_value=pair), \
              patch.object(stage.base, "_descriptor", return_value=descriptor), \
-             patch.object(stage, "_require_cross_route_lease"), \
+             patch.object(stage, "_require_cross_route_lease", return_value=LEASE), \
              patch.object(stage, "_bundle", return_value=(io.BytesIO(b"bundle"), HASHES, 6, "2" * 64)), \
              patch.object(stage, "_reserve", return_value=Path(temporary) / "bundle.zip") as reserve, \
              patch.object(stage.base, "_remote", return_value=None) as remote:
@@ -182,7 +271,7 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
         reserve.assert_called_once(); remote.assert_called_once()
 
     def test_status_rejects_changed_guest_or_file_hash(self):
-        intent = {"request": REQUEST, "environment": "windows-cp117", "socketPath": "/qga",
+        intent = {"request": REQUEST, "leaseId": LEASE, "environment": "windows-cp117", "socketPath": "/qga",
                   "pid": 42, "startTicks": 99, "expectedSid": SID, "sourceFingerprint": "a" * 64,
                   "bundleSha256": "2" * 64, "fileHashes": HASHES}
         descriptor = (object(), type("Host", (), {"fixture_transfer_root": Path("/fixture")})(),
@@ -205,7 +294,7 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
             remote.assert_not_called()
 
     def test_status_reports_only_staged_not_server_ready(self):
-        intent = {"request": REQUEST, "environment": "windows-cp117", "socketPath": "/qga",
+        intent = {"request": REQUEST, "leaseId": LEASE, "environment": "windows-cp117", "socketPath": "/qga",
                   "pid": 42, "startTicks": 99, "expectedSid": SID, "sourceFingerprint": "a" * 64,
                   "bundleSha256": "2" * 64, "fileHashes": HASHES}
         descriptor = (object(), type("Host", (), {"fixture_transfer_root": Path("/fixture")})(),
@@ -218,6 +307,7 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
              patch.object(stage, "_read_intent", return_value=intent), \
              patch.object(stage.base, "_descriptor", return_value=descriptor), \
              patch.object(stage.base, "_remote", return_value=json.dumps(observed).encode()), \
+             patch.object(stage, "_complete_stage_lease", return_value=True), \
              patch.object(stage, "validate_stage_acl_receipt") as acl:
             result = stage.status(temporary, {"correlationId": CORR})
         self.assertEqual("staged-not-server-ready", result["state"])

@@ -459,7 +459,7 @@ _ASSESS_HARNESS = r'''def assess_harness(out_path,intent,rc,run=subprocess.run):
   return None,rc if rc!=0 else 1
 '''
 
-_LAUNCHER = r'''import json,os,runpy,subprocess,sys,time,stat
+_LAUNCHER = r'''import hashlib,json,os,subprocess,sys,time,stat
 job,stage=sys.argv[1:]
 while not os.path.exists(os.path.join(job,'release')): time.sleep(.02)
 with open(os.path.join(job,'intent.json'),encoding='utf-8') as source:intent=json.load(source)
@@ -472,7 +472,18 @@ fixture=os.path.join(stage,'fixture')
 runner="import pathlib,runpy,sys;p=pathlib.Path(sys.argv[1]);sys.path.insert(0,str(p.parent));sys.argv=[str(p),*sys.argv[2:]];runpy.run_path(str(p),run_name='__main__')"
 args=[sys.executable,'-I','-B','-c',runner,entry,'--launcher','/opt/vpn-control/bin/vpn-control','--expected-target-version',intent['expectedTargetVersion'],'--confirm-owned-disposable-vm','--require-same-source-recovery','--rpm-source-fixture',fixture,'--retained-fixture-auth','--preserve-existing-fixture-password','--cleanup-synthetic-workspace']
 try:
- endpoint=runpy.run_path(os.path.join(stage,'linux-rpm-fixture-server.py'))['admit_endpoint']
+ guard_path=os.path.join(stage,'linux-rpm-fixture-server.py')
+ fd=os.open(guard_path,os.O_RDONLY|os.O_NOFOLLOW)
+ try:
+  before=os.fstat(fd)
+  if not stat.S_ISREG(before.st_mode) or before.st_uid!=os.geteuid() or stat.S_IMODE(before.st_mode)!=0o600 or not 0<before.st_size<=1048576: raise ValueError('guard file unsafe')
+  raw=os.read(fd,before.st_size+1);after=os.fstat(fd)
+  if len(raw)!=before.st_size or (before.st_dev,before.st_ino,before.st_size)!=(after.st_dev,after.st_ino,after.st_size): raise ValueError('guard changed')
+ finally:os.close(fd)
+ if hashlib.sha256(raw).hexdigest()!=intent['serverGuardSha256']: raise ValueError('guard digest changed')
+ guard={'__name__':'linux_rpm_fixture_server_guard'}
+ exec(compile(raw,'<verified-linux-rpm-fixture-server>','exec'),guard)
+ endpoint=guard['admit_protected_server']
  environment={**os.environ,**endpoint(job,stage,intent)}
 except Exception:
  identity=intent['identity']
@@ -576,6 +587,7 @@ def durable(name,value):
  path=os.path.join(job,name); tmp=path+'.tmp'; fd=os.open(tmp,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
  with os.fdopen(fd,'wb') as out: out.write((json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode()); out.flush(); os.fsync(out.fileno())
  os.replace(tmp,path); d=os.open(job,os.O_RDONLY); os.fsync(d); os.close(d)
+intent['serverGuardSha256']=intent['fileHashes']['linux-rpm-fixture-server.py']['sha256']
 intent={k:v for k,v in intent.items() if k!='fileHashes'}
 durable('intent.json',intent)
 launcher=os.path.join(job,'launch.py'); fd=os.open(launcher,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
@@ -764,7 +776,11 @@ class RpmPublicInstallSshDriver:
                         'expectedBaseNevra': captured['typed']['expectedBaseNevra'],
                         'expectedTargetNevra': captured['typed']['expectedTargetNevra'],
                         'expectedDesktopJarSha256': captured['typed']['expectedDesktopJarSha256'],
-                        'sourceFingerprint': captured['typed']['sourceFingerprint'], 'fileHashes': hashes}
+                        'sourceFingerprint': captured['typed']['sourceFingerprint'],
+                        'publicIntentSha256': hashlib.sha256((json.dumps(intent.public_mapping(), sort_keys=True,
+                            separators=(',', ':')) + '\n').encode()).hexdigest(),
+                        'authorizationHandleSha256': hashlib.sha256(intent.credential_handle.encode()).hexdigest(),
+                        'fileHashes': hashes}
             result = self._remote(captured['config'], intent.host, _SUBMIT,
                 (captured['remoteRoot'], json.dumps(metadata, sort_keys=True, separators=(',', ':')),
                  str(transfer.stat().st_size), _sha(transfer, 4 * 1024 * 1024 * 1024)), transfer)

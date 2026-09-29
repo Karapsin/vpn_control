@@ -8,6 +8,8 @@ resubmitted.
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -65,49 +67,65 @@ def _lease(root: Path | str, host: str, device: str, correlation: str) -> Path:
     return _journal(root, correlation).parent / ("lease-" + host + "-" + device + ".json")
 
 
-def _claim_device(root: Path | str, host: str, device: str, correlation: str) -> None:
-    path = _lease(root, host, device, correlation)
+@contextmanager
+def _device_guard(root: Path | str, host: str, device: str):
+    path = _lease(root, host, device, "unused")
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = path.parent.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
         raise ValueError("Android document lease directory is not private")
-    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
-    with os.fdopen(fd, "wb") as output:
-        output.write(json.dumps({"host": host, "device": device, "correlationId": correlation},
-                                sort_keys=True, separators=(",", ":")).encode() + b"\n")
-        output.flush(); os.fsync(output.fileno())
-    directory = os.open(path.parent, os.O_RDONLY)
-    try: os.fsync(directory)
-    finally: os.close(directory)
+    lock = path.with_name("lock-" + host + "-" + device + ".json")
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+            raise ValueError("Android document lease lock is unsafe")
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try: yield path
+        finally: fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def _claim_device(root: Path | str, host: str, device: str, correlation: str) -> None:
+    with _device_guard(root, host, device) as path:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "wb") as output:
+            output.write(json.dumps({"host": host, "device": device, "correlationId": correlation},
+                                    sort_keys=True, separators=(",", ":")).encode() + b"\n")
+            output.flush(); os.fsync(output.fileno())
+        directory = os.open(path.parent, os.O_RDONLY)
+        try: os.fsync(directory)
+        finally: os.close(directory)
 
 
 def _release_device(root: Path | str, host: str, device: str, correlation: str) -> bool:
     """Release only the exact terminal owner; unknown work retains its lease."""
-    path = _lease(root, host, device, correlation)
-    try:
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-    except FileNotFoundError:
-        return True  # An earlier collect already released this terminal lease.
-    try:
-        info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+    with _device_guard(root, host, device) as path:
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        except FileNotFoundError:
+            return True  # An earlier collect already released this terminal lease.
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+                return False
+            with os.fdopen(fd, "rb", closefd=False) as source:
+                raw = source.read(1025)
+            if len(raw) > 1024 or json.loads(raw) != {"host": host, "device": device, "correlationId": correlation}:
+                return False
+            current = path.lstat()
+            if current.st_dev != info.st_dev or current.st_ino != info.st_ino:
+                return False
+            path.unlink()
+            directory = os.open(path.parent, os.O_RDONLY)
+            try: os.fsync(directory)
+            finally: os.close(directory)
+            return True
+        except (OSError, ValueError, TypeError):
             return False
-        with os.fdopen(fd, "rb", closefd=False) as source:
-            raw = source.read(1025)
-        if len(raw) > 1024 or json.loads(raw) != {"host": host, "device": device, "correlationId": correlation}:
-            return False
-        current = path.lstat()
-        if current.st_dev != info.st_dev or current.st_ino != info.st_ino:
-            return False
-        path.unlink()
-        directory = os.open(path.parent, os.O_RDONLY)
-        try: os.fsync(directory)
-        finally: os.close(directory)
-        return True
-    except (OSError, ValueError, TypeError):
-        return False
-    finally:
-        os.close(fd)
+        finally:
+            os.close(fd)
 
 
 def _save(root: Path | str, intent: dict[str, Any]) -> None:
@@ -159,7 +177,24 @@ def invoke(args,timeout=45,limit=16777216,env=None,allowed=(0,)):
  try: return done.stdout.decode("utf-8","strict").strip()
  except UnicodeError: fail("command_encoding")
 def shell(*words): return invoke([adb,"-s",serial,"shell","-T",*words])
-def public(*words,limit=16777216,timeout=120,allowed=(0,)):
+def mark_phase(name):
+ allowed={"opening_status","opening_operations","opening_export","public_import_submitted",
+  "retained_wait_submitted","full_read_submitted","new_request_noop_submitted",
+  "private_export_submitted","cold_status_submitted","cold_read_submitted",
+  "restore_import_submitted","closing_read_submitted","closing_status_submitted"}
+ if name not in allowed: fail("phase_invalid")
+ temporary=job/"phase.json.tmp"; final_path=job/"phase.json"
+ payload=json.dumps({"phase":name},separators=(",",":")).encode()+b"\n"
+ try:
+  fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,"O_NOFOLLOW",0),0o600)
+  with os.fdopen(fd,"wb") as output: output.write(payload); output.flush(); os.fsync(output.fileno())
+  os.replace(temporary,final_path)
+  directory=os.open(job,os.O_RDONLY|getattr(os,"O_DIRECTORY",0)|getattr(os,"O_NOFOLLOW",0))
+  try: os.fsync(directory)
+  finally: os.close(directory)
+ except OSError: fail("phase_journal_failed")
+def public(phase_name,*words,limit=16777216,timeout=120,allowed=(0,)):
+ mark_phase(phase_name)
  raw=invoke([cli,"--json","--android","--serial",serial,"--timeout-seconds",str(timeout),*words],timeout=timeout+15,limit=limit,env=environment,allowed=allowed)
  try: value=json.loads(raw)
  except ValueError: fail("public_result_invalid")
@@ -181,14 +216,14 @@ base=pathlib.Path(root); info=base.lstat()
 if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o700: fail("private_root_invalid")
 job=base/("android-document-job-"+correlation); info=job.lstat()
 if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o700: fail("job_invalid")
-opening=public("status",limit=16384,timeout=30); final(opening,owner,"opening_status_changed")
+opening=public("opening_status","status",limit=16384,timeout=30); final(opening,owner,"opening_status_changed")
 if opening.get("configurationRevision")!=int(revision) or opening.get("data",{}).get("runtimeRunning") is not False or opening.get("data",{}).get("runtimeObservation")!="stopped": fail("opening_runtime_changed")
-operations=public("operations","list",limit=16384,timeout=30); final(operations,owner,"opening_operations_changed")
+operations=public("opening_operations","operations","list",limit=16384,timeout=30); final(operations,owner,"opening_operations_changed")
 history=operations.get("data",{}).get("operations")
 if operations.get("configurationRevision")!=int(revision) or not isinstance(history,list) or any(not isinstance(x,dict) or x.get("final") is not True for x in history): fail("opening_history_nonterminal")
 os.umask(0o077)
 original=job/"opening-routing.json"
-export=public("routing","export","--output",str(original),limit=16384,timeout=300); final(export,owner,"opening_export_failed")
+export=public("opening_export","routing","export","--output",str(original),limit=16384,timeout=300); final(export,owner,"opening_export_failed")
 oinfo=original.lstat()
 if not stat.S_ISREG(oinfo.st_mode) or oinfo.st_uid!=os.getuid() or stat.S_IMODE(oinfo.st_mode)!=0o600 or not 0<oinfo.st_size<=67108864: fail("opening_export_unsafe")
 original_bytes=original.read_bytes(); original_hash=hashlib.sha256(original_bytes).hexdigest()
@@ -202,20 +237,20 @@ if len(fixture_bytes)!=int(fixture_size) or hashlib.sha256(fixture_bytes).hexdig
 target=job/"routing-v7-56000.json"
 with target.open("xb") as output: output.write(fixture_bytes); output.flush(); os.fsync(output.fileno())
 if stat.S_IMODE(target.stat().st_mode)!=0o600: fail("fixture_file_unsafe")
-imported=public("--controller-id",owner,"--if-revision",revision,"routing","import","--input",str(target),limit=16384,timeout=300)
+imported=public("public_import_submitted","--controller-id",owner,"--if-revision",revision,"routing","import","--input",str(target),limit=16384,timeout=300)
 final(imported,owner,"import_not_final")
 operation_id=imported.get("operationId")
 if operation_id:
- waited=public("--controller-id",owner,"operations","wait",operation_id,limit=16384,timeout=300); final(waited,owner,"retained_wait_failed")
+ waited=public("retained_wait_submitted","--controller-id",owner,"operations","wait",operation_id,limit=16384,timeout=300); final(waited,owner,"retained_wait_failed")
  if waited.get("operationId")!=operation_id: fail("retained_operation_changed")
-read=public("routing","show",limit=16777216,timeout=300); final(read,owner,"full_read_failed")
+read=public("full_read_submitted","routing","show",limit=16777216,timeout=300); final(read,owner,"full_read_failed")
 routing=read.get("data",{}).get("routing")
 if not isinstance(routing,dict) or routing.get("rules")!=fixture["rules"] or read.get("configurationRevision",-1)<=int(revision): fail("full_read_mismatch")
 new_revision=read["configurationRevision"]
-noop=public("--controller-id",owner,"--if-revision",str(new_revision),"routing","import","--input",str(target),limit=16384,timeout=300); final(noop,owner,"new_request_noop_failed")
+noop=public("new_request_noop_submitted","--controller-id",owner,"--if-revision",str(new_revision),"routing","import","--input",str(target),limit=16384,timeout=300); final(noop,owner,"new_request_noop_failed")
 if noop.get("configurationRevision")!=new_revision: fail("new_request_changed_revision")
 private=job/"fixture-export.json"
-export=public("routing","export","--output",str(private),limit=16384,timeout=300); final(export,owner,"private_export_failed")
+export=public("private_export_submitted","routing","export","--output",str(private),limit=16384,timeout=300); final(export,owner,"private_export_failed")
 pinfo=private.lstat()
 if not stat.S_ISREG(pinfo.st_mode) or pinfo.st_uid!=os.getuid() or stat.S_IMODE(pinfo.st_mode)!=0o600 or pinfo.st_size<=int(fixture_size): fail("private_export_unsafe")
 try: exported=json.loads(private.read_bytes())
@@ -230,17 +265,17 @@ for _ in range(40):
  if pid[0] not in observed: break
  time.sleep(.25)
 else: fail("old_owner_process_survived")
-cold=public("status",limit=16384,timeout=60)
+cold=public("cold_status_submitted","status",limit=16384,timeout=60)
 cold_owner=cold.get("controllerId")
 if not isinstance(cold_owner,str) or not cold_owner or cold_owner==owner: fail("cold_owner_not_replaced")
 final(cold,cold_owner,"cold_status_invalid")
 if cold.get("data",{}).get("runtimeRunning") is not False: fail("cold_runtime_started")
-cold_read=public("routing","show",limit=16777216,timeout=300); final(cold_read,cold_owner,"cold_read_failed")
+cold_read=public("cold_read_submitted","routing","show",limit=16777216,timeout=300); final(cold_read,cold_owner,"cold_read_failed")
 if cold_read.get("data",{}).get("routing",{}).get("rules")!=fixture["rules"]: fail("cold_read_mismatch")
-restore=public("--controller-id",cold_owner,"--if-revision",str(cold_read["configurationRevision"]),"routing","import","--input",str(original),limit=16384,timeout=300); final(restore,cold_owner,"restore_not_final")
-closing=public("routing","show",limit=16777216,timeout=300); final(closing,cold_owner,"closing_read_failed")
+restore=public("restore_import_submitted","--controller-id",cold_owner,"--if-revision",str(cold_read["configurationRevision"]),"routing","import","--input",str(original),limit=16384,timeout=300); final(restore,cold_owner,"restore_not_final")
+closing=public("closing_read_submitted","routing","show",limit=16777216,timeout=300); final(closing,cold_owner,"closing_read_failed")
 if closing.get("data",{}).get("routing",{}).get("rules")!=original_document["rules"]: fail("restore_mismatch")
-last=public("status",limit=16384,timeout=30); final(last,cold_owner,"closing_status_invalid")
+last=public("closing_status_submitted","status",limit=16384,timeout=30); final(last,cold_owner,"closing_status_invalid")
 if last.get("data",{}).get("runtimeRunning") is not False: fail("closing_runtime_started")
 if package()!=package_hash: fail("closing_package_changed")
 print(json.dumps({"state":"complete","sourcePackageSha256":package_hash,"device":{"uid":"2000","api":int(api),"avd":avd,"heap":"48m"},"opening":{"controllerId":owner,"revision":int(revision),"routingSha256":original_hash,"routingBytes":len(original_bytes)},"fixture":{"sha256":fixture_hash,"bytes":len(fixture_bytes),"domainCount":56000},"import":{"operationId":operation_id,"revision":new_revision},"fullRead":True,"newRequestNoop":True,"retainedWait":bool(operation_id),"privateExport":{"sha256":private_hash,"bytes":pinfo.st_size,"mode":"0600"},"coldRead":True,"restore":{"controllerId":cold_owner,"openingRulesRestored":True,"runtimeOff":True},"sameRequestRetry":False},separators=(",",":")))
@@ -314,7 +349,22 @@ try:
       if digest.hexdigest()!=expected: emit("unknown","private_hash_mismatch",identity=identity)
    finally: os.close(directory)
    emit("complete",None,identity=identity,receipt=receipt)
-  emit("unknown",receipt.get("reason","worker_unknown"),identity=identity)
+  def stage_file(name):
+   try: info=(job/name).lstat()
+   except FileNotFoundError: return "absent"
+   return "present" if (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and
+           stat.S_IMODE(info.st_mode)==0o600 and info.st_nlink==1 and 0<info.st_size<=67108864) else "unsafe"
+  try: phase=private("phase.json",1024).get("phase")
+  except FileNotFoundError: phase=None
+  allowed={"opening_status","opening_operations","opening_export","public_import_submitted",
+   "retained_wait_submitted","full_read_submitted","new_request_noop_submitted",
+   "private_export_submitted","cold_status_submitted","cold_read_submitted",
+   "restore_import_submitted","closing_read_submitted","closing_status_submitted"}
+  if phase is not None and phase not in allowed: emit("unknown","phase_invalid",identity=identity)
+  emit("unknown",receipt.get("reason","worker_unknown"),identity=identity,phase=phase,stageFiles={
+   "openingRouting":stage_file("opening-routing.json"),
+   "fixture":stage_file("routing-v7-56000.json"),
+   "privateExport":stage_file("fixture-export.json")})
  try:
   fields=pathlib.Path(f"/proc/{pid}/stat").read_text(encoding="ascii").rsplit(")",1)[1].split()
   live=fields[0]!="Z" and int(fields[19])==ticks
@@ -343,7 +393,8 @@ def start(root: Path | str, host: str, device: str, correlation_id: str, artifac
     if profile["api"] != 29:
         raise ValueError("Android document fixture API is not 29")
     artifact = native_artifact_registry.verify_artifact(root, artifact_id)
-    if artifact.get("verification") != "verified" or artifact["artifact"].get("platform") != "android" or artifact["artifact"].get("artifactKind") != "apk":
+    if (artifact.get("verification") != "verified" or artifact["artifact"].get("platform") != "android" or
+            artifact["artifact"].get("artifactKind") not in {"apk", "native-fixture-apk"}):
         raise ValueError("Android document APK is not verified")
     source_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, timeout=10, check=True).stdout.strip()
     if artifact["artifact"].get("sourceSha") != source_sha:

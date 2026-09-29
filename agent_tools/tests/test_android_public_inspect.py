@@ -8,12 +8,31 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 from agent_tools import android_public_inspect as inspection
 
 
 class AndroidPublicInspectTest(unittest.TestCase):
+    def test_ssh_exit_255_reports_authentication_failure_without_mutation(self):
+        config=SimpleNamespace(hosts={"archlinux":SimpleNamespace(android_devices={"api29":object()},transport="nested")})
+        profile={"adb":"adb","cli":"cli","serial":"emulator-5554","expectedAvd":"owned-api29","api":29}
+        probe=inspection.ssh_transport.ProbeResult("archlinux",inspection.ssh_transport.ProbeStatus.AUTHENTICATION_FAILED)
+        with mock.patch.object(inspection.ssh_transport,"load_config",return_value=config), \
+             mock.patch.object(inspection.ssh_transport,"connection_host",return_value=SimpleNamespace(password=None)), \
+             mock.patch.object(inspection.android_observation,"_profile",return_value=profile), \
+             mock.patch.object(inspection.ssh_transport,"build_ssh_argv",return_value=["ssh"]), \
+             mock.patch.object(inspection.android_observation,"_run_probe",return_value=(255,b"")), \
+             mock.patch.object(inspection.ssh_transport,"probe",return_value=probe) as ssh_probe:
+            result=inspection.inspect(".","archlinux","api29","b20b3b85-cbbc-4f04-ad83-97a8b71a26be","a"*64,"owner",0)
+        self.assertEqual("authentication_failed",result["reason"])
+        self.assertFalse(result["nativeMutationAllowed"])
+        self.assertFalse(result["replayAllowed"])
+        self.assertEqual({"tool":"ssh_workflow","action":"connection-recover","host":"archlinux"},
+                         result["recoveryHint"])
+        ssh_probe.assert_called_once()
+
     def test_invalid_identity_rejected_before_transport(self):
         with mock.patch.object(inspection.ssh_transport,"load_config") as load:
             with self.assertRaisesRegex(ValueError,"UUID"):

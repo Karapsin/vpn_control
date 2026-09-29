@@ -85,6 +85,15 @@ def inspect(root: Path | str, host: str, device: str, correlation_id: str,
         str(profile["api"]),expected_base_sha256,expected_owner,str(expected_revision)))
     try:
         code,output=android_observation._run_probe(argv,timeout_seconds)
+        if code==255:
+            connectivity=ssh_transport.probe(root,host,timeout_seconds)
+            if not connectivity.ok:
+                response={"ok":False,"outcome":"unknown","reason":connectivity.status.value,
+                          "correlationId":correlation_id,"nativeMutationAllowed":False,"replayAllowed":False}
+                if (connectivity.status is ssh_transport.ProbeStatus.AUTHENTICATION_FAILED and
+                        config.hosts[host].transport=="nested"):
+                    response["recoveryHint"]={"tool":"ssh_workflow","action":"connection-recover","host":host}
+                return response
         value=json.loads(output.decode("utf-8","strict")) if code==0 else None
         if isinstance(value,dict) and value.get("admitted") is True and value.get("controllerId")==expected_owner and value.get("configurationRevision")==expected_revision and value.get("packageSha256")==expected_base_sha256:
             return {"ok":True,"outcome":"admitted","correlationId":correlation_id,"host":host,"deviceAlias":device,
