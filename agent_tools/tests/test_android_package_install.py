@@ -14,6 +14,7 @@ from unittest import mock
 from types import SimpleNamespace
 
 from agent_tools import android_package_install as installer
+from agent_tools import android_installer_dispatch as shared_dispatch
 
 
 class AndroidPackageInstallTest(unittest.TestCase):
@@ -111,6 +112,7 @@ class AndroidPackageInstallTest(unittest.TestCase):
              mock.patch.object(installer.android_admission_readback,"async_collect",return_value=opening), \
              mock.patch.object(installer.subprocess,"run",return_value=GitResult()), \
              mock.patch.object(installer.ssh_transport,"build_ssh_argv",return_value=["ssh"]), \
+             mock.patch.object(shared_dispatch,"remote_shared_lease",return_value={"state":"claimed"}), \
              mock.patch.object(installer.android_observation,"_run_probe",return_value=(0,json.dumps({"state":"submitted","correlationId":correlation,"identity":{"pid":1,"startTicks":2}}).encode())) as remote:
             first=installer.start(raw,"archlinux","api35",correlation,"sha256-"+target,stage,
                                   backup_correlation,backup_hash,old,"old-owner",4)
@@ -193,6 +195,7 @@ class AndroidPackageInstallTest(unittest.TestCase):
             installer._save(root,{"host":"archlinux","device":"api29","correlationId":old,
                                   "targetSha256":target,"expectedAvd":"owned-api29","api":29})
             installer._claim_device(root,"archlinux","api29",old)
+            shared_dispatch._claim_local(root,"archlinux","api29",old,"android-package-install")
             lease=installer._device_lease(root,"archlinux","api29")
             terminal={"ok":True,"state":"complete","result":{"package":{"baseSha256":target},
                        "owner":{"controllerId":"historical-owner"}}}
@@ -209,7 +212,8 @@ class AndroidPackageInstallTest(unittest.TestCase):
             self.assertEqual("install_not_terminal",rejected["reason"])
             self.assertTrue(lease.exists())
             readback_probe.assert_not_called()
-            with mock.patch.object(installer,"collect",return_value=terminal), \
+            with mock.patch.object(shared_dispatch,"remote_shared_lease",return_value={"state":"released"}), \
+                 mock.patch.object(installer,"collect",return_value=terminal), \
                  mock.patch.object(installer.android_admission_readback,"readback_status",return_value=observed), \
                  mock.patch.object(installer.android_admission_readback,"async_collect",return_value=current), \
                  mock.patch.object(installer.android_public_inspect,"inspect",return_value={"ok":False,"outcome":"unknown"}):
@@ -225,7 +229,8 @@ class AndroidPackageInstallTest(unittest.TestCase):
             self.assertEqual("current_readback_changed",rejected["reason"])
             self.assertTrue(lease.exists())
             public_probe.assert_not_called()
-            with mock.patch.object(installer,"collect",return_value=terminal), \
+            with mock.patch.object(shared_dispatch,"remote_shared_lease",return_value={"state":"released"}), \
+                 mock.patch.object(installer,"collect",return_value=terminal), \
                  mock.patch.object(installer.android_admission_readback,"readback_status",return_value=observed), \
                  mock.patch.object(installer.android_admission_readback,"async_collect",return_value=current), \
                  mock.patch.object(installer.android_public_inspect,"inspect",return_value=public):
@@ -289,6 +294,9 @@ class AndroidPackageInstallTest(unittest.TestCase):
             marker=root/"install-called"
             correlation="9304d8aa-578d-4df1-9eaa-81021744cd43"
             (root/("android-install-job-"+correlation)).mkdir(mode=0o700)
+            shared=root/"android-native-device-api35.lease"
+            shared.write_text(json.dumps({"owner":"android-package-install","host":"archlinux",
+                "device":"api35","correlationId":correlation})+"\n"); shared.chmod(0o600)
             adb.write_text('''#!/usr/bin/env python3
 import os,sys
 from pathlib import Path
@@ -325,9 +333,16 @@ print(json.dumps({'ok':True,'final':True,'code':'OK','controllerId':('new-owner'
 ''')
             adb.chmod(0o700); cli.chmod(0o700)
             args=[str(adb),str(cli),"emulator-5554","owned-api35","35",str(root),correlation,str(stage),target,
-                  old,target,"old-owner","4",str(backup),backup_hash,"16800","2.2.0"]
+                  old,target,"old-owner","4",str(backup),backup_hash,"16800","2.2.0","archlinux","api35"]
             command=[sys.executable,"-c","exec("+repr(installer._remote_source())+")",*args]
             env={**os.environ,"TARGET_HASH":target,"INSTALL_MARKER":str(marker),"INSTALL_BACKUP":str(backup)}
+            shared.write_text(json.dumps({"owner":"android-endpoint","host":"archlinux",
+                "device":"api35","correlationId":correlation})+"\n")
+            foreign=subprocess.run(command,capture_output=True,text=True,env=env,timeout=10)
+            self.assertEqual("shared_device_lease_changed",json.loads(foreign.stdout)["reason"])
+            self.assertFalse(marker.exists())
+            shared.write_text(json.dumps({"owner":"android-package-install","host":"archlinux",
+                "device":"api35","correlationId":correlation})+"\n")
             running=subprocess.run(command,capture_output=True,text=True,env={**env,"INSTALL_RUNNING":"1"},timeout=10)
             self.assertEqual(0,running.returncode,running.stderr)
             self.assertEqual("preinstall_owner_or_runtime_changed",json.loads(running.stdout)["reason"])
@@ -354,6 +369,8 @@ print(json.dumps({'ok':True,'final':True,'code':'OK','controllerId':('new-owner'
             changed_correlation="a2c8cd03-4324-45dd-ae91-28421bfd05d6"
             (root/("android-install-job-"+changed_correlation)).mkdir(mode=0o700)
             changed_args=args.copy(); changed_args[6]=changed_correlation
+            shared.write_text(json.dumps({"owner":"android-package-install","host":"archlinux",
+                "device":"api35","correlationId":changed_correlation})+"\n")
             changed_command=[sys.executable,"-c","exec("+repr(installer._remote_source())+")",*changed_args]
             altered=subprocess.run(changed_command,capture_output=True,text=True,
                                    env={**env,"INSTALL_EXPORT_TAMPER":"1"},timeout=10)

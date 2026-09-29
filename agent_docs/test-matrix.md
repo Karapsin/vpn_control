@@ -9,7 +9,7 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 ```bash
 ./scripts/check_release_hygiene.sh
 ./scripts/check_docs_hygiene.sh
-python3 -m unittest discover -s agent_tools/tests
+python3 -m unittest discover -s agent_tools/tests -t .
 python3 scripts/check_ui_theme.py
 python3 scripts/test_visual_regression.py
 python3 scripts/test_visual_platform.py
@@ -107,7 +107,7 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | Windows packaging | `./scripts/package_windows_desktop_vm.sh` when a VM is available, or `.\scripts\package_windows_desktop.ps1` on Windows |
 | macOS packaging | `./scripts/package_macos_desktop.sh` on macOS |
 | Documentation only | `git diff --check` and `./scripts/check_docs_hygiene.sh` |
-| `agent_tools/`, `.codex/config.toml`, or `.github/required-workflows.json` | `python3 -m unittest discover -s agent_tools/tests`, `./scripts/check_docs_hygiene.sh`, `./scripts/check_release_hygiene.sh`, and `git diff --check`; use the full pre-push tier when lifecycle or CI behavior changes |
+| `agent_tools/`, `.codex/config.toml`, or `.github/required-workflows.json` | `python3 -m unittest discover -s agent_tools/tests -t .`, `./scripts/check_docs_hygiene.sh`, `./scripts/check_release_hygiene.sh`, and `git diff --check`; use the full pre-push tier when lifecycle or CI behavior changes |
 | Release workflow/package guardrails | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, agent tool tests, visual comparator tests, and `git diff --check` |
 
 The `VPN Integration` workflow has two profiles. `core` runs fast deterministic contracts and is advisory on `dev`; `all` additionally runs full traffic on an Android emulator, Windows, Arch Linux, Ubuntu, and Linux Mint, including Linux update install/relaunch. Release readiness accepts only explicit exhaustive VPN success plus a complete exact-SHA agent visual receipt and matching commit status. Never run the full desktop probe on a machine carrying an active VPN connection; its environment opt-in is reserved for disposable runners. Visual capture uses only isolated agent-owned environments or eligible GitHub-hosted ephemeral fallbacks with synthetic fixtures.
@@ -712,7 +712,7 @@ a terminal restart-required flag does not itself indicate active work.
 
 ### Native MCP workflow regressions
 
-Run `python3 -m unittest discover -s agent_tools/tests` for private SSH profile
+Run `python3 -m unittest discover -s agent_tools/tests -t .` for private SSH profile
 validation, strict host-key routing, actual fake-SSH timeout/quoting behavior,
 canonical staged-input isolation, resource planning, and public MCP/CLI dispatch.
 This suite is already included in managed prepush. These checks do not substitute

@@ -170,7 +170,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r agent_tools/requirements-mcp.txt
 
       - name: Test agent tools
-        run: python -m unittest discover -s agent_tools/tests
+        run: python -m unittest discover -s agent_tools/tests -t .
 
       - name: Check fixed UI theme and visual comparator
         run: |

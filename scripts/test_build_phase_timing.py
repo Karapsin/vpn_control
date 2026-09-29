@@ -51,7 +51,7 @@ class PhaseRecorderTest(unittest.TestCase):
             root = Path(temporary)
             recorder = self.recorder(root)
             with mock.patch("prepare_desktop_update_fixture.time.monotonic_ns", return_value=100):
-                for phase, start in (("bad", 1), ("gradle", 100), ("gradle", -1)):
+                for phase, start in (("bad", 1), ("gradle", 101), ("gradle", -1)):
                     with self.subTest(phase=phase, start=start), self.assertRaises(ValueError):
                         recorder.finish(phase, "base", start)
             private = root / ".rag_index"
@@ -60,6 +60,17 @@ class PhaseRecorderTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "directory unsafe"):
                     recorder.finish("gradle", "base", 100)
             self.assertFalse((private / "build-timings").exists())
+
+    def test_equal_clock_ticks_record_minimum_positive_duration(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            recorder = self.recorder(root)
+            with mock.patch("prepare_desktop_update_fixture.time.monotonic_ns", return_value=100):
+                reference = recorder.finish("gradle", "base", recorder.start())
+            record = json.loads((root / reference["path"]).read_text())
+            self.assertEqual(100, record["startedMonotonicNs"])
+            self.assertEqual(101, record["finishedMonotonicNs"])
+            self.assertEqual(1, record["finishedMonotonicNs"] - record["startedMonotonicNs"])
 
     def test_invalid_source_and_identity_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:

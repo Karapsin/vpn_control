@@ -33,6 +33,18 @@ def command_result(*, stdout: str = "", stderr: str = "", ok: bool = True) -> di
 
 
 class McpSurfaceTest(unittest.TestCase):
+    def test_managed_agent_suite_discovery_uses_repository_top_level(self) -> None:
+        expected = [mcp_server.AGENT_TEST_PYTHON, "-m", "unittest", "discover",
+                    "-s", "agent_tools/tests", "-t", "."]
+        for area, level in (("agent_tools", "focused"), ("agent_tools", "prepush")):
+            with self.subTest(level=level):
+                commands = mcp_server._commands_for(area, level)
+                agent_suites = [command for command in commands
+                                if "discover" in command and "agent_tools/tests" in command]
+                self.assertEqual([expected], agent_suites)
+        workflow = (mcp_server.REPO_ROOT / ".github/workflows/fast-checks.yml").read_text()
+        self.assertIn("python -m unittest discover -s agent_tools/tests -t .", workflow)
+
     def test_android_native_tool_setup_uses_sdk_resolver(self) -> None:
         for name in ("android-release.yml", "fast-checks.yml"):
             workflow = (mcp_server.REPO_ROOT / ".github/workflows" / name).read_text()

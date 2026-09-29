@@ -7,7 +7,7 @@ This is the authoritative entry point for developer and agent documentation. Sta
 | Task | Read First | Inspect | Minimum Checks |
 | --- | --- | --- | --- |
 | Low-context patch or dirty worktree | `development.md`, `test-matrix.md` | `git status --short`, owner files from `architecture.md` | `git diff --check` plus the mapped test tier |
-| Agent startup, MCP, RAG, commit, or CI finish | `../agent_tools/README.md`, `development.md`, `test-matrix.md` | `.codex/config.toml`, `agent_tools/`, `.github/required-workflows.json` | `python3 -m unittest discover -s agent_tools/tests` plus the full pre-push tier for lifecycle changes |
+| Agent startup, MCP, RAG, commit, or CI finish | `../agent_tools/README.md`, `development.md`, `test-matrix.md` | `.codex/config.toml`, `agent_tools/`, `.github/required-workflows.json` | `python3 -m unittest discover -s agent_tools/tests -t .` plus the full pre-push tier for lifecycle changes |
 | Unknown file or ambiguous ownership | `development.md`, `contracts.md`, `architecture.md` | `git diff --name-status`, nearest owner docs, existing tests beside the touched file | `git diff --check`; then use the closest owner row before editing |
 | Documentation-only changes | `development.md`, `test-matrix.md` | Changed docs, links, scripts that validate docs | `git diff --check`, `./scripts/check_docs_hygiene.sh` |
 | Localization, UI labels, status/log text | `localization.md`, `test-matrix.md` | `shared/ui/src/commonMain/resources/i18n/`, `shared/ui/src/commonMain/resources/i18n-status/`, status facades in `shared/model/` | `./scripts/check_localization.py`, `./scripts/status_catalog_tool.py check`, `./gradlew :shared:ui:desktopTest` |

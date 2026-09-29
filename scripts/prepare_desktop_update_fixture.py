@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import signal
 import shutil
 import socketserver
 import ssl
@@ -23,6 +24,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 import uuid
 import zipfile
@@ -77,9 +79,13 @@ class PhaseRecorder:
     def finish(self, phase, sample, started_ns):
         finished_ns = time.monotonic_ns()
         if (phase not in self._PHASES or not isinstance(sample, str) or not self._TOKEN.fullmatch(sample)
-                or type(started_ns) is not int or not 0 <= started_ns < finished_ns
+                or type(started_ns) is not int or not 0 <= started_ns <= finished_ns
                 or finished_ns - started_ns > 24 * 60 * 60 * 1_000_000_000):
             raise ValueError("Invalid monotonic build phase")
+        # Short fixture phases can fit inside one Windows monotonic clock tick.
+        # The receipt schema requires a positive duration; record its 1 ns floor.
+        if finished_ns == started_ns:
+            finished_ns += 1
         self._directory()
         name = f"{self.pipeline_id}-{self.run_id}-{phase}-{sample}.json"
         if len(name) > 132:
@@ -1295,6 +1301,91 @@ def write_private_ready_json(path, value):
         temporary.unlink(missing_ok=True)
 
 
+def _macos_stop_intent(ready_file, ready_bytes):
+    """Read one private, exact-generation stop intent without following links."""
+    ready_file = Path(ready_file)
+    ready = json.loads(ready_bytes)
+    parent = ready_file.parent
+    require(ready_file.name == "server-ready.json" and parent.parent.name == "acceptance-evidence",
+            "Mac fixture stop path is not fixed")
+    try:
+        correlation = str(uuid.UUID(parent.name))
+    except (TypeError, ValueError) as error:
+        raise ValueError("Mac fixture stop correlation is invalid") from error
+    require(correlation == parent.name, "Mac fixture stop correlation is not canonical")
+    directory = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(directory)
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and
+                stat.S_IMODE(info.st_mode) == 0o700, "Mac fixture stop directory is unsafe")
+        try:
+            descriptor = os.open("server-stop-intent.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
+        except (FileNotFoundError, OSError) as error:
+            raise ValueError("Mac fixture stop intent is unavailable") from error
+        try:
+            before = os.fstat(descriptor)
+            require(stat.S_ISREG(before.st_mode) and before.st_uid == os.getuid() and
+                    stat.S_IMODE(before.st_mode) == 0o600 and before.st_nlink == 1 and
+                    0 < before.st_size <= 8192, "Mac fixture stop intent is unsafe")
+            raw = os.read(descriptor, 8193)
+            after = os.fstat(descriptor)
+            current = os.stat("server-stop-intent.json", dir_fd=directory, follow_symlinks=False)
+            identity = lambda value: (value.st_dev, value.st_ino, value.st_size,
+                                      value.st_mtime_ns, value.st_uid, value.st_mode, value.st_nlink)
+            require(len(raw) == before.st_size and identity(before) == identity(after) == identity(current),
+                    "Mac fixture stop intent changed during read")
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(directory)
+    intent = json.loads(raw)
+    fields = {"schemaVersion", "sourceSha", "correlationId", "scenario", "jobId",
+              "operationId", "bootSessionUuid", "reservationId", "fixtureReceiptArtifactId",
+              "serverInstanceId", "serverPid", "serverProcessStartIdentity", "readySha256",
+              "stopRequestCount", "port"}
+    require(isinstance(intent, dict) and set(intent) == fields and
+            type(intent["schemaVersion"]) is int and intent["schemaVersion"] == 1 and
+            intent["correlationId"] == correlation and
+            isinstance(intent["sourceSha"], str) and
+            re.fullmatch(r"[0-9a-f]{40}", intent["sourceSha"]) is not None and
+            parent.parent.parent.parent.name == "macos-parity" + intent["sourceSha"][:7] and
+            intent["scenario"] in ("install", "rollback") and
+            isinstance(intent["reservationId"], str) and
+            re.fullmatch(r"env-[A-Za-z0-9]+", intent["reservationId"]) is not None and
+            isinstance(intent["fixtureReceiptArtifactId"], str) and
+            re.fullmatch(r"sha256-[0-9a-f]{64}", intent["fixtureReceiptArtifactId"]) is not None and
+            intent["fixtureReceiptArtifactId"] == "sha256-" + str(ready.get("fixtureReceiptSha256")) and
+            type(intent["serverPid"]) is int and intent["serverPid"] == os.getpid() and
+            intent["serverPid"] == ready.get("serverPid") and
+            type(intent["stopRequestCount"]) is int and intent["stopRequestCount"] == 1 and
+            type(intent["port"]) is int and intent["port"] == ready.get("port") and
+            intent["serverInstanceId"] == ready.get("serverInstanceId") and
+            intent["serverProcessStartIdentity"] == ready.get("serverProcessStartIdentity") and
+            intent["readySha256"] == hashlib.sha256(ready_bytes).hexdigest(),
+            "Mac fixture stop intent does not bind the serving generation")
+    for name in ("jobId", "operationId", "bootSessionUuid", "serverInstanceId"):
+        try:
+            require(str(uuid.UUID(intent[name].lower() if name == "bootSessionUuid" else intent[name])) ==
+                    (intent[name].lower() if name == "bootSessionUuid" else intent[name]),
+                    "Mac fixture stop UUID is invalid")
+        except (TypeError, ValueError, AttributeError) as error:
+            raise ValueError("Mac fixture stop UUID is invalid") from error
+    return intent
+
+
+def write_macos_graceful_exit(ready_file, ready_bytes):
+    """Publish zero exit only after the current server's graceful loop returns."""
+    intent = _macos_stop_intent(ready_file, ready_bytes)
+    receipt = {key: intent[key] for key in (
+        "schemaVersion", "sourceSha", "correlationId", "scenario", "jobId",
+        "operationId", "bootSessionUuid", "reservationId", "fixtureReceiptArtifactId",
+        "serverInstanceId", "serverPid", "serverProcessStartIdentity", "readySha256",
+        "stopRequestCount")}
+    receipt.update(kind="server-stop", serverExitCode=0, stopReceiptFinal=True)
+    write_private_ready_json(Path(ready_file).parent / "server-stop.json", receipt)
+    return receipt
+
+
 def server_process_identity():
     """Use the native kernel creation identity for this serving process."""
     pid = os.getpid()
@@ -1546,7 +1637,35 @@ def serve(directory, certificate, private_key, ready_file, confirmed):
                                  "manifestSha256": hashlib.sha256(body).hexdigest(),
                                  "peerCertificateSha256": certificate_digest,
                                  "manifest": manifest})
-        server.serve_forever()
+        if platform.system() == "Darwin" and Path(ready_file).name == "server-ready.json":
+            # A same-thread call to shutdown() deadlocks serve_forever(). The
+            # signal handler verifies the private one-shot intent first, then
+            # wakes the serving loop through another thread.
+            ready_bytes = Path(ready_file).read_bytes()
+            stopping = False
+            shutdown_thread = None
+            previous = signal.getsignal(signal.SIGTERM)
+
+            def graceful_stop(_signum, _frame):
+                nonlocal stopping, shutdown_thread
+                if stopping:
+                    return
+                _macos_stop_intent(ready_file, ready_bytes)
+                stopping = True
+                shutdown_thread = threading.Thread(target=server.shutdown, daemon=True)
+                shutdown_thread.start()
+
+            signal.signal(signal.SIGTERM, graceful_stop)
+            try:
+                server.serve_forever()
+                if stopping:
+                    shutdown_thread.join(timeout=30)
+                    require(not shutdown_thread.is_alive(), "Mac fixture server shutdown is incomplete")
+                    write_macos_graceful_exit(ready_file, ready_bytes)
+            finally:
+                signal.signal(signal.SIGTERM, previous)
+        else:
+            server.serve_forever()
 
 
 def main():

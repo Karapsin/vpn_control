@@ -104,6 +104,22 @@ class MacMachineAcceptanceTest(unittest.TestCase):
                 subject.start(Path(directory), wanted, boundary)
             self.assertEqual(boundary.submit_count, 0)
 
+    def test_prospective_legacy_preservation_is_separate_and_requires_postcheck(self):
+        wanted = request()
+        with tempfile.TemporaryDirectory() as directory:
+            boundary = FakeBoundary(wanted)
+            boundary.changed.update(legacyUnknownPreserved=False,
+                legacyProspectivePreserved=True,
+                legacyProspectiveBaselineId="sha256-" + "9" * 64)
+            first = subject.start(Path(directory), wanted, boundary)
+            self.assertEqual("unknown", first["state"])
+            self.assertEqual(1, boundary.submit_count)
+            boundary.terminal_changed["legacyProspectivePreservedAfter"] = False
+            self.assertEqual("unknown", subject.status(Path(directory), CORRELATION, boundary)["state"])
+            boundary.terminal_changed["legacyProspectivePreservedAfter"] = True
+            boundary.terminal_changed["legacyProspectiveBaselineId"] = "sha256-" + "9" * 64
+            self.assertEqual("complete", subject.status(Path(directory), CORRELATION, boundary)["state"])
+
     def test_durable_intent_prevents_duplicate_install_after_lost_response(self):
         wanted = request()
         with tempfile.TemporaryDirectory() as directory:

@@ -184,7 +184,7 @@ def _remote_source() -> str:
     helper = android_observation._canonical_cli_environment_source()
     return helper + r'''
 import hashlib,json,os,pathlib,re,stat,subprocess,sys,time
-adb,cli,serial,avd,api,root,correlation,stage_path,stage_hash,old_hash,target_hash,old_owner,old_revision,backup_path,backup_hash,target_code,target_version=sys.argv[1:]
+adb,cli,serial,avd,api,root,correlation,stage_path,stage_hash,old_hash,target_hash,old_owner,old_revision,backup_path,backup_hash,target_code,target_version,host,device=sys.argv[1:]
 def fail(reason):
  print(json.dumps({"state":"unknown","reason":reason},separators=(",",":"))); raise SystemExit(0)
 def run(args,timeout=30,env=None,max_bytes=1048576):
@@ -205,6 +205,13 @@ def base():
  return digest[0]
 if shell("id","-u")!="2000" or shell("getprop","ro.build.version.sdk")!=api or {x for x in (shell("getprop","ro.kernel.qemu.avd_name"),shell("getprop","ro.boot.qemu.avd_name")) if x}!={avd} or shell("getprop","ro.product.cpu.abi")!="x86_64": fail("device_identity")
 if base()!=old_hash: fail("preinstall_package_changed")
+shared=pathlib.Path(root)/("android-native-device-"+device+".lease")
+try:
+ fd=os.open(shared,os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+ with os.fdopen(fd,"rb") as source:
+  lease_info=os.fstat(source.fileno()); lease_raw=source.read(1025)
+ if not stat.S_ISREG(lease_info.st_mode) or lease_info.st_uid!=os.getuid() or stat.S_IMODE(lease_info.st_mode)!=0o600 or lease_info.st_nlink!=1 or len(lease_raw)>1024 or json.loads(lease_raw)!={"owner":"android-package-install","host":host,"device":device,"correlationId":correlation}: fail("shared_device_lease_changed")
+except (OSError,ValueError): fail("shared_device_lease_unavailable")
 environment=public_cli_environment(adb,pathlib.Path(cli))
 private_root=pathlib.Path(root); root_info=private_root.lstat()
 if not stat.S_ISDIR(root_info.st_mode) or root_info.st_uid!=os.getuid() or stat.S_IMODE(root_info.st_mode)!=0o700: fail("private_root_invalid")
@@ -409,13 +416,28 @@ def start(root: Path | str, host: str, device: str, correlation_id: str, artifac
     args=[profile["adb"],profile["cli"],profile["serial"],profile["expectedAvd"],str(profile["api"]),
           str(remote_root),correlation_id,str(stage_path),artifact["sha256"],expected_old_base_sha256,artifact["sha256"],
           expected_owner,str(expected_revision),str(backup_path),expected_backup_sha256,
-          str(package["code"]),package["version"]]
+          str(package["code"]),package["version"],host,device]
     import base64
     encoded=base64.urlsafe_b64encode(_worker_source(_remote_source(),args).encode()).decode("ascii")
     argv=ssh_transport.build_ssh_argv(config,host,60,command=("python3","-I","-B","-c","exec("+repr(_SUBMIT)+")",
         str(remote_root),correlation_id,json.dumps(intent,sort_keys=True,separators=(",",":")),encoded))
-    _claim_device(root,host,device,correlation_id)
     _save(root,intent)
+    try:
+        from . import android_installer_dispatch
+    except ImportError:  # standalone MCP loader
+        import android_installer_dispatch
+    _claim_device(root,host,device,correlation_id)
+    try:
+        android_installer_dispatch._claim_local(Path(root).resolve(),host,device,correlation_id,"android-package-install")
+    except FileExistsError:
+        # The shared lease is held by another native Android owner.  No remote
+        # submission has occurred, so remove only this exact local claim.
+        _release_device(root,host,device,correlation_id)
+        raise
+    shared=android_installer_dispatch.remote_shared_lease(root,host,device,correlation_id,"android-package-install","claim")
+    if shared.get("state")!="claimed":
+        return {"ok":False,"state":"unknown","reason":"shared_remote_lease_unknown",
+                "correlationId":correlation_id,"replayAllowed":False}
     try:
         code,output=android_observation._run_probe(argv,60)
         value=json.loads(output.decode("utf-8","strict")) if code==0 else None
@@ -522,7 +544,19 @@ def reconcile_terminal_lease(root: Path | str, correlation_id: str, current_read
             seen.get("runtime", {}).get("observation") != "stopped" or
             seen.get("operationCount") != 0):
         return {"ok":False,"state":"unknown","reason":"current_public_state_changed","correlationId":correlation_id,"replayAllowed":False}
-    released = _release_device(root, host, device, correlation_id)
+    try:
+        from . import android_installer_dispatch
+    except ImportError:  # standalone MCP loader
+        import android_installer_dispatch
+    remote = android_installer_dispatch.remote_shared_lease(root,host,device,correlation_id,
+                                                              "android-package-install","release")
+    if remote.get("state")!="released":
+        return {"ok":False,"state":"unknown","reason":"shared_remote_lease_not_released",
+                "correlationId":correlation_id,"replayAllowed":False}
+    package_released = _release_device(root, host, device, correlation_id)
+    shared_released = android_installer_dispatch._release_local(Path(root).resolve(),host,device,
+                                                                 correlation_id,"android-package-install") if package_released else False
+    released = package_released and shared_released
     return {"ok":released,"state":"complete" if released else "unknown",
             "reason":None if released else "lease_not_released","correlationId":correlation_id,
             "currentReadbackCorrelationId":current_readback_correlation_id,"leaseReleased":released,"replayAllowed":False}

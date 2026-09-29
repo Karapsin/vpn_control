@@ -15,7 +15,8 @@ from agent_tools import macos_machine_boundary as subject
 SOURCE = "a" * 40
 REQUEST = {"correlationId": "11111111-1111-4111-8111-111111111111",
            "scenario": "install", "sourceSha": SOURCE, "sourceFingerprint": "b" * 64,
-           "baseJarSha256": "c" * 64, "targetJarSha256": "d" * 64}
+           "baseJarSha256": "c" * 64, "targetJarSha256": "d" * 64,
+           "fixtureReceiptArtifactId": "sha256-" + "e" * 64}
 
 
 class Provider:
@@ -143,7 +144,9 @@ class MacMachineBoundaryTest(unittest.TestCase):
                 ("prompt", gate.VM_NAME, "job-1", "operation-1"),
                 ("terminal", gate.VM_NAME, subject.NativeTerminalQuery(
                     SOURCE, "install", "operation-1", "job-1", admission["app"],
-                    admission["guestRoot"], 123, 456, "boot", "reservation", "controller"))])
+                    admission["guestRoot"], 123, 456, "boot", "reservation", "controller",
+                    REQUEST["correlationId"], REQUEST["fixtureReceiptArtifactId"],
+                    REQUEST["baseJarSha256"], REQUEST["targetJarSha256"]))])
             self.assertNotIn("password", repr(provider.calls).lower())
 
     def test_symlinked_fixture_ancestor_rejects_before_guest_read(self):

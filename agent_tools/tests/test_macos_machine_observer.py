@@ -142,6 +142,40 @@ class TartMacObserverTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "allocation or boot changed"):
                 observer.observe_admission(gate.VM_NAME, SOURCE, PAIR)
 
+    def test_admission_records_only_a_bound_prospective_legacy_baseline(self):
+        correlation = "11111111-1111-4111-8111-111111111111"
+        pair = boundary.VerifiedPair(SOURCE, PAIR.source_fingerprint,
+            PAIR.fixture_receipt_artifact_id, PAIR.base_dmg_artifact_id,
+            PAIR.target_dmg_artifact_id, correlation)
+        observer = self.observer(Runner())
+        baseline_id = "sha256-" + "9" * 64
+        with patch.object(subject.MacLegacyProspectiveJournal, "verify", side_effect=FileNotFoundError), \
+             patch.object(subject.MacLegacyProspectiveJournal, "baseline", return_value={
+                 "legacyProspectivePreserved": True, "legacyProspectiveBaselineId": baseline_id}) as baseline:
+            observed = observer.observe_admission(gate.VM_NAME, SOURCE, pair)
+        self.assertTrue(observed["legacyProspectivePreserved"])
+        self.assertEqual(observed["legacyProspectiveBaselineId"], baseline_id)
+        self.assertFalse(observed["legacyUnknownPreserved"])
+        context = baseline.call_args.args[0]
+        self.assertEqual((context.source_sha, context.correlation_id,
+                          context.fixture_receipt_artifact_id,
+                          context.boot_session_uuid, context.reservation_id),
+                         (SOURCE, correlation, PAIR.fixture_receipt_artifact_id,
+                          "boot-session", "env-owned"))
+
+    def test_first_prospective_baseline_cannot_be_created_after_install_begins(self):
+        correlation = "11111111-1111-4111-8111-111111111111"
+        pair = boundary.VerifiedPair(SOURCE, PAIR.source_fingerprint,
+            PAIR.fixture_receipt_artifact_id, PAIR.base_dmg_artifact_id,
+            PAIR.target_dmg_artifact_id, correlation)
+        runner = Runner(); runner.phase = "installing"; runner.prompts = 1
+        observer = self.observer(runner)
+        with patch.object(subject.MacLegacyProspectiveJournal, "verify", side_effect=FileNotFoundError), \
+             patch.object(subject.MacLegacyProspectiveJournal, "baseline") as baseline:
+            observed = observer.observe_admission(gate.VM_NAME, SOURCE, pair)
+        baseline.assert_not_called()
+        self.assertFalse(observed["legacyProspectivePreserved"])
+
     def test_terminal_requires_exact_new_owner_gui_public_job_and_protected_receipt(self):
         class TerminalRunner(Runner):
             def __init__(self):
@@ -151,6 +185,7 @@ class TartMacObserverTest(unittest.TestCase):
                 self.job_match = True
                 self.gui_present = True
                 self.origin_controller = "controller"
+                self.rollback = False
             def __call__(self, argv, **options):
                 if "/bin/ps" in argv:
                     self.calls.append(argv)
@@ -161,7 +196,8 @@ class TartMacObserverTest(unittest.TestCase):
                 if "/usr/bin/sudo" in argv:
                     self.calls.append(argv)
                     return SimpleNamespace(returncode=0, stdout=json.dumps({
-                        "jobId": self.job, "phase": "SUCCEEDED", "code": "OK",
+                        "jobId": self.job, "phase": "FAILED" if self.rollback else "SUCCEEDED",
+                        "code": "PERSISTENCE_FAILED" if self.rollback else "OK",
                         "stageAbsent": True, "backupAbsent": True}), stderr="")
                 if "updates" in argv:
                     self.calls.append(argv)
@@ -169,8 +205,8 @@ class TartMacObserverTest(unittest.TestCase):
                         "ok": True, "code": "OK", "final": True, "controllerId": "new-controller",
                         "data": {"installations": [{"jobId": self.job if self.job_match else "other",
                             "operationId": self.operation, "originControllerId": self.origin_controller,
-                            "final": True, "code": "OK",
-                            "installed": True, "cleanupCode": "OK"}]}}), stderr="")
+                            "final": True, "code": "PERSISTENCE_FAILED" if self.rollback else "OK",
+                            "installed": None if self.rollback else True, "cleanupCode": "OK"}]}}), stderr="")
                 if LAUNCHER in argv:
                     self.calls.append(argv)
                     return SimpleNamespace(returncode=0, stdout=json.dumps({
@@ -181,12 +217,37 @@ class TartMacObserverTest(unittest.TestCase):
         observer = self.observer(runner)
         query = boundary.NativeTerminalQuery(SOURCE, "install", runner.operation, runner.job,
                                             FIXED["app"], FIXED["guestRoot"], 123, 456,
-                                            "boot-session", "env-owned", "controller")
+                                            "boot-session", "env-owned", "controller",
+                                            "11111111-1111-4111-8111-111111111111",
+                                            PAIR.fixture_receipt_artifact_id,
+                                            "b" * 64, "a" * 64)
         result = observer.observe_terminal(gate.VM_NAME, query)
         self.assertTrue(result["guiReturned"])
         self.assertEqual(result["newOwnerPid"], 999)
         self.assertEqual(result["protectedPhase"], "SUCCEEDED")
         self.assertFalse(result["fixtureServerStopped"], "a separate server receipt is required")
+        baseline_id = "sha256-" + "9" * 64
+        with patch.object(subject.MacLegacyProspectiveJournal, "verify_bound", return_value={
+            "legacyProspectivePreservedAfter": True,
+            "legacyProspectiveBaselineId": baseline_id}) as verify:
+            preserved = observer.observe_terminal(gate.VM_NAME, query)
+        self.assertTrue(preserved["legacyProspectivePreservedAfter"])
+        self.assertEqual(preserved["legacyProspectiveBaselineId"], baseline_id)
+        verify.assert_called_once_with(SOURCE, query.correlation_id,
+            query.fixture_receipt_artifact_id, query.boot_session_uuid, query.reservation_id)
+        bound_stop = {"sourceSha": query.source_sha, "correlationId": query.correlation_id,
+                      "scenario": query.scenario, "jobId": query.job_id,
+                      "operationId": query.operation_id,
+                      "bootSessionUuid": query.boot_session_uuid,
+                      "reservationId": query.reservation_id,
+                      "fixtureReceiptArtifactId": query.fixture_receipt_artifact_id}
+        with patch.object(subject.macos_machine_server_stop, "status",
+                          return_value={"state": "complete", "receipt": bound_stop}):
+            self.assertTrue(observer.observe_terminal(gate.VM_NAME, query)["fixtureServerStopped"])
+            with patch.object(subject.macos_machine_server_stop, "status",
+                              return_value={"state": "complete", "receipt": {
+                                  **bound_stop, "jobId": "other"}}):
+                self.assertFalse(observer.observe_terminal(gate.VM_NAME, query)["fixtureServerStopped"])
         runner.job_match = False
         with self.assertRaisesRegex(ValueError, "not terminal"):
             observer.observe_terminal(gate.VM_NAME, query)
@@ -200,6 +261,34 @@ class TartMacObserverTest(unittest.TestCase):
         with patch.object(observer, "_reservation", side_effect=["env-owned", "env-other"]):
             with self.assertRaisesRegex(ValueError, "allocation or boot changed"):
                 observer.observe_terminal(gate.VM_NAME, query)
+        runner.rollback = True
+        rollback_boot = "44444444-4444-4444-8444-444444444444"
+        rollback_query = boundary.NativeTerminalQuery(SOURCE, "rollback", runner.operation,
+            runner.job, FIXED["app"], FIXED["guestRoot"], 123, 456,
+            rollback_boot, "env-owned", "controller", query.correlation_id,
+            query.fixture_receipt_artifact_id, "b" * 64, "a" * 64)
+        with patch.object(observer, "_boot_session", return_value=rollback_boot):
+            self.assertFalse(observer.observe_terminal(gate.VM_NAME, rollback_query)["rollbackFaultObserved"])
+            names = ("base-observed", "candidate-armed", "base-moved-to-backup",
+                     "candidate-move-failed", "base-restored", "candidate-cleaned")
+            events = [{"sequence": index, "type": name, "observedAtUnixMs": 100 + index,
+                       "device": 1, "inode": 2 if index in (0, 2, 4) else 3,
+                       "sha256": "b" * 64 if index in (0, 2, 4) else "a" * 64}
+                      for index, name in enumerate(names)]
+            worker = [{"jobId": runner.job, **event} for event in events[:5]]
+            trace = {"schemaVersion": 1, "kind": "rollback-trace", "sourceSha": SOURCE,
+                     "correlationId": query.correlation_id, "scenario": "rollback",
+                     "jobId": runner.job, "operationId": runner.operation,
+                     "bootSessionUuid": rollback_boot, "reservationId": "env-owned",
+                     "fixtureReceiptArtifactId": query.fixture_receipt_artifact_id,
+                     "events": events, "finalBaseDevice": 1, "finalBaseInode": 2,
+                     "finalBaseJarSha256": "b" * 64}
+            with patch.object(subject, "read_worker_events", return_value=worker), \
+                 patch.object(subject, "read_guest_candidate", return_value=trace):
+                self.assertTrue(observer.observe_terminal(gate.VM_NAME, rollback_query)["rollbackFaultObserved"])
+                changed = json.loads(json.dumps(trace)); changed["events"][3]["inode"] = 44
+                with patch.object(subject, "read_guest_candidate", return_value=changed):
+                    self.assertFalse(observer.observe_terminal(gate.VM_NAME, rollback_query)["rollbackFaultObserved"])
 
 
 if __name__ == "__main__":

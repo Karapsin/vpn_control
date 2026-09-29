@@ -86,10 +86,16 @@ def _admit(request: Mapping[str, Any], observed: Mapping[str, Any], *, expected_
                 "targetDmgArtifactId": request["targetDmgArtifactId"], **fixed}
     if any(observed.get(key) != value for key, value in expected.items()):
         raise MacMachineAcceptanceError("Exact source, artifact, or guest path changed.")
+    historical = observed.get("legacyUnknownPreserved") is True
+    prospective_id = observed.get("legacyProspectiveBaselineId")
+    prospective = observed.get("legacyProspectivePreserved") is True and \
+        isinstance(prospective_id, str) and prospective_id.startswith("sha256-") and \
+        _SHA.fullmatch(prospective_id[7:]) is not None
+    if not historical and not prospective:
+        raise MacMachineAcceptanceError("Historical unknown job preservation is unproven.")
     if observed.get("vmRunning") is not True or observed.get("resourceAdmitted") is not True or \
             observed.get("ownerReady") is not True or observed.get("runtimeRunning") is not False or \
-            observed.get("existingPromptCount") != expected_prompt_count or observed.get("conflictingJobCount") != 0 or \
-            observed.get("legacyUnknownPreserved") is not True:
+            observed.get("existingPromptCount") != expected_prompt_count or observed.get("conflictingJobCount") != 0:
         raise MacMachineAcceptanceError("Guest, owner, or resource admission is incomplete.")
     for field in ("reservationId", "bootSessionUuid", "controllerId"):
         if not isinstance(observed.get(field), str) or not observed[field]:
@@ -103,9 +109,13 @@ def _admit(request: Mapping[str, Any], observed: Mapping[str, Any], *, expected_
             observed.get("targetDmgSha256") != request["targetDmgArtifactId"][7:] or \
             observed.get("baseDmgSha256") != request["baseDmgArtifactId"][7:]:
         raise MacMachineAcceptanceError("Installed base or frozen DMG proof changed.")
-    return {key: observed[key] for key in (*expected, "reservationId", "bootSessionUuid", "controllerId",
+    admission = {key: observed[key] for key in (*expected, "reservationId", "bootSessionUuid", "controllerId",
             "ownerPid", "ownerStartTicks", "baseDevice", "baseInode", "baseJarSha256",
             "baseSignatureValid", "baseRootOwned", "targetDmgSha256", "baseDmgSha256")}
+    admission["legacyPreservationMode"] = "historical" if historical else "prospective"
+    if not historical:
+        admission["legacyProspectiveBaselineId"] = prospective_id
+    return admission
 
 
 def _private_group(root: Path) -> Path:
@@ -278,6 +288,10 @@ def _verify_terminal(record: Mapping[str, Any], evidence: Mapping[str, Any]) -> 
                 "publicFinal": True}
     if any(evidence.get(key) != value for key, value in expected.items()):
         raise MacMachineAcceptanceError("Native terminal identity or cleanup is incomplete.")
+    if admission.get("legacyPreservationMode") == "prospective" and \
+            (evidence.get("legacyProspectivePreservedAfter") is not True or
+             evidence.get("legacyProspectiveBaselineId") != admission.get("legacyProspectiveBaselineId")):
+        raise MacMachineAcceptanceError("Historical unknown job changed during the new campaign.")
     if request["scenario"] == "install":
         wanted = {"protectedPhase": "SUCCEEDED", "protectedCode": "OK", "publicCode": "OK",
                   "installed": True, "installedJarSha256": request["targetJarSha256"],

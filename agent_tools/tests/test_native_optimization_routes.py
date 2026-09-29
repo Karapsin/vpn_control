@@ -5,6 +5,415 @@ from agent_tools import mcp_server
 
 
 class NativeOptimizationRoutesTest(unittest.TestCase):
+    def test_windows_optical_current_screen_routes_are_fixed_and_one_shot(self):
+        from agent_tools import windows_vm_optical_boot, windows_vm_optical_current_screen
+        observation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "observationCorrelationId": observation,
+                   "timeoutSeconds": 90}
+        for action, method, state, accepted in (
+                ("windows-vm-optical-current-screen-preflight", "preflight", "ready", True),
+                ("windows-vm-optical-current-screen-start", "start", "unknown", False),
+                ("windows-vm-optical-current-screen-status", "status", "observed", True),
+                ("windows-vm-optical-current-screen-collect", "collect", "collected", True)):
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_vm_optical_current_screen, method, return_value={
+                     "state": state, "observationCorrelationId": observation,
+                     "nativeActionAllowed": False, "replayAllowed": False}) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, request)
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                observation_correlation_id=observation, timeout_seconds=90)
+            self.assertEqual(accepted, result["ok"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertFalse(result["replayAllowed"])
+        with patch.object(windows_vm_optical_current_screen, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "other"}, {**request, "timeoutSeconds": True},
+                        {**request, "observationCorrelationId": windows_vm_optical_boot.SECOND_CORRELATION},
+                        {**request, "observationCorrelationId": windows_vm_optical_current_screen.ATTEMPT_CORRELATION},
+                        {**request, "observationCorrelationId": windows_vm_optical_current_screen.CLOSURE_CORRELATION},
+                        {**request, "imagePath": "/tmp/untrusted.png"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-current-screen-start", bad)["ok"])
+        with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
+            uncertain = mcp_server.vm_workflow("windows-vm-optical-current-screen-start", request)
+        self.assertEqual("unknown", uncertain["state"])
+        self.assertFalse(uncertain["replayAllowed"])
+        self.assertEqual(observation, uncertain["observationCorrelationId"])
+        self.assertEqual("windows-vm-optical-current-screen-status", uncertain["nextAction"]["action"]["action"])
+        self.assertEqual(observation, uncertain["nextAction"]["action"]["inputs"]["observationCorrelationId"])
+
+    def test_windows_optical_attempt3_frame_collect_is_fixed_and_no_replay(self):
+        from agent_tools import windows_vm_optical_post_collect
+        correlation = "e80d5b29-d44f-4b22-a821-5612304564b5"
+        closure = "7cbc014c-3890-422a-891a-a114d7cb779e"
+        request = {"host": "archlinux", "correlationId": correlation,
+                   "closureCorrelationId": closure, "timeoutSeconds": 90}
+        for state, accepted in (("collected", True), ("unknown", False)):
+            with self.subTest(state=state), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_vm_optical_post_collect, "collect", return_value={
+                     "state": state, "correlationId": correlation,
+                     "imagePath": "/private/ignored/post.png" if accepted else None,
+                     "pngSha256": "a" * 64 if accepted else None,
+                     "nativeActionAllowed": False, "replayAllowed": False}) as collect:
+                result = mcp_server._vm_workflow_impl("windows-vm-optical-attempt3-frame-collect", request)
+            collect.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                correlation_id=correlation, closure_correlation_id=closure, timeout_seconds=90)
+            self.assertEqual(accepted, result["ok"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertFalse(result["replayAllowed"])
+        with patch.object(windows_vm_optical_post_collect, "collect", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "other"}, {**request, "timeoutSeconds": True},
+                        {**request, "timeoutSeconds": 301},
+                        {**request, "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+                        {**request, "closureCorrelationId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"},
+                        {**request, "imagePath": "/tmp/untrusted.png"}):
+                self.assertFalse(mcp_server._vm_workflow_impl(
+                    "windows-vm-optical-attempt3-frame-collect", bad)["ok"])
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(windows_vm_optical_post_collect, "collect", side_effect=ValueError("uncertain owner")):
+            result = mcp_server._vm_workflow_impl("windows-vm-optical-attempt3-frame-collect", request)
+        self.assertEqual("unknown", result["state"])
+        self.assertFalse(result["replayAllowed"])
+
+    def test_arch_qemu_holder_census_is_read_only_and_fails_closed(self):
+        from agent_tools import arch_qemu_holder_census
+        request = {"host": "archlinux", "timeoutSeconds": 20}
+        for complete, expected_state in ((True, "observed"), (False, "unknown")):
+            with self.subTest(complete=complete), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(arch_qemu_holder_census, "observe", return_value={
+                     "state": expected_state, "inventoryComplete": complete,
+                     "nativeActionAllowed": False, "processes": []}) as observe:
+                result = mcp_server._vm_workflow_impl("arch-qemu-holder-census", request)
+            observe.assert_called_once_with(mcp_server.REPO_ROOT, request)
+            self.assertEqual(complete, result["ok"])
+            self.assertEqual(expected_state, result["state"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertFalse(result["productAction"])
+        with patch.object(arch_qemu_holder_census, "observe", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "fedora2328"}, {**request, "timeoutSeconds": True},
+                        {**request, "timeoutSeconds": 31}, {**request, "park": True}):
+                self.assertFalse(mcp_server._vm_workflow_impl("arch-qemu-holder-census", bad)["ok"])
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(arch_qemu_holder_census, "observe", side_effect=ValueError("transport unknown")):
+            uncertain = mcp_server._vm_workflow_impl("arch-qemu-holder-census", request)
+        self.assertEqual("unknown", uncertain["state"])
+        self.assertFalse(uncertain["nativeActionAllowed"])
+
+    def test_windows_optical_attempt2_close_routes_are_exact_and_one_shot(self):
+        from agent_tools import windows_vm_optical_boot, windows_vm_optical_boot_attempt2
+        closure = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "closureCorrelationId": closure, "timeoutSeconds": 90}
+        for action, method, state, accepted in (
+                ("windows-vm-optical-attempt2-close-preflight", "close_preflight", "ready", True),
+                ("windows-vm-optical-attempt2-close-start", "close_start", "unknown", False),
+                ("windows-vm-optical-attempt2-close-status", "close_status", "pre-effect-closed", True)):
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_vm_optical_boot_attempt2, method, return_value={
+                     "state": state, "closureCorrelationId": closure,
+                     "replayAllowed": False, "nativeActionAllowed": False}) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, request)
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                closure_correlation_id=closure, timeout_seconds=90)
+            self.assertEqual(accepted, result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            self.assertFalse(result["nativeActionAllowed"])
+        with patch.object(windows_vm_optical_boot_attempt2, "close_start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "other"}, {**request, "timeoutSeconds": True},
+                        {**request, "closureCorrelationId": windows_vm_optical_boot.FIRST_CORRELATION},
+                        {**request, "closureCorrelationId": windows_vm_optical_boot.FIRST_CLOSURE},
+                        {**request, "closureCorrelationId": windows_vm_optical_boot.SECOND_CORRELATION},
+                        {**request, "resetCount": 2}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-attempt2-close-start", bad)["ok"])
+        with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after close intent")):
+            uncertain = mcp_server.vm_workflow("windows-vm-optical-attempt2-close-start", request)
+        self.assertEqual("unknown", uncertain["state"])
+        self.assertFalse(uncertain["replayAllowed"])
+        self.assertEqual("windows-vm-optical-attempt2-close-status", uncertain["nextAction"]["action"]["action"])
+        self.assertEqual(closure, uncertain["nextAction"]["action"]["inputs"]["closureCorrelationId"])
+
+    def test_windows_optical_attempt3_routes_bind_second_closure_and_never_replay(self):
+        from agent_tools import windows_vm_optical_boot, windows_vm_optical_boot_attempt3
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        closure = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        request = {"host": "archlinux", "correlationId": correlation,
+                   "closureCorrelationId": closure, "timeoutSeconds": 90}
+        for action, method, state, accepted in (
+                ("windows-vm-optical-attempt3-preflight", "preflight", "ready", True),
+                ("windows-vm-optical-attempt3-start", "start", "unknown", False),
+                ("windows-vm-optical-attempt3-status", "status", "post-screen-observed", True)):
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_vm_optical_boot_attempt3, method, return_value={
+                     "state": state, "correlationId": correlation,
+                     "closureCorrelationId": closure, "replayAllowed": False,
+                     "nativeActionAllowed": False}) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, request)
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                correlation_id=correlation, closure_correlation_id=closure, timeout_seconds=90)
+            self.assertEqual(accepted, result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            self.assertFalse(result["nativeActionAllowed"])
+        with patch.object(windows_vm_optical_boot_attempt3, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "other"}, {**request, "timeoutSeconds": True},
+                        {**request, "correlationId": windows_vm_optical_boot.SECOND_CORRELATION},
+                        {**request, "closureCorrelationId": windows_vm_optical_boot.FIRST_CLOSURE},
+                        {**request, "closureCorrelationId": correlation},
+                        {**request, "spaceKey": True}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-attempt3-start", bad)["ok"])
+        with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
+            uncertain = mcp_server.vm_workflow("windows-vm-optical-attempt3-start", request)
+        self.assertEqual("unknown", uncertain["state"])
+        self.assertFalse(uncertain["replayAllowed"])
+        self.assertEqual("windows-vm-optical-attempt3-status", uncertain["nextAction"]["action"]["action"])
+        self.assertEqual(closure, uncertain["nextAction"]["action"]["inputs"]["closureCorrelationId"])
+
+    def test_windows_optical_attempt2_phase_probe_is_exact_and_read_only(self):
+        from agent_tools import windows_vm_optical_boot_attempt2
+        request = {"host": "archlinux",
+                   "correlationId": "98b4f1e0-968c-455b-a85b-d87490f5b256",
+                   "closureCorrelationId": "b76bfd72-2d7b-459a-91da-a063e35c8007",
+                   "timeoutSeconds": 90}
+        for state, admitted in (("ready", True), ("unknown", False)):
+            with self.subTest(state=state), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_vm_optical_boot_attempt2, "phase_probe", return_value={
+                     "state": "phase-probed", "correlationId": request["correlationId"],
+                     "closureCorrelationId": request["closureCorrelationId"],
+                     "probe": {"state": state, "phase": "complete" if admitted else "admission"},
+                     "replayAllowed": False, "nativeActionAllowed": False}) as probe:
+                result = mcp_server._vm_workflow_impl("windows-vm-optical-attempt2-phase-probe", request)
+            probe.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                correlation_id=request["correlationId"],
+                closure_correlation_id=request["closureCorrelationId"], timeout_seconds=90)
+            self.assertEqual(admitted, result["ok"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertFalse(result["replayAllowed"])
+        with patch.object(windows_vm_optical_boot_attempt2, "phase_probe", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+                        {**request, "closureCorrelationId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"},
+                        {**request, "timeoutSeconds": True},
+                        {**request, "key": "spc"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-attempt2-phase-probe", bad)["ok"])
+
+    def test_windows_optical_attempt2_routes_bind_exact_closure_and_never_replay(self):
+        from agent_tools import windows_vm_optical_boot, windows_vm_optical_boot_attempt2
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        closure = "b76bfd72-2d7b-459a-91da-a063e35c8007"
+        request = {"host": "archlinux", "correlationId": correlation,
+                   "closureCorrelationId": closure, "timeoutSeconds": 90}
+        for action, method, state, accepted in (
+                ("windows-vm-optical-attempt2-preflight", "preflight", "ready", True),
+                ("windows-vm-optical-attempt2-start", "start", "unknown", False),
+                ("windows-vm-optical-attempt2-status", "status", "post-screen-observed", True)):
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_vm_optical_boot_attempt2, method, return_value={
+                     "state": state, "correlationId": correlation,
+                     "closureCorrelationId": closure, "replayAllowed": False,
+                     "nativeActionAllowed": False}) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, request)
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                correlation_id=correlation, closure_correlation_id=closure, timeout_seconds=90)
+            self.assertEqual(accepted, result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            self.assertFalse(result["nativeActionAllowed"])
+        with patch.object(windows_vm_optical_boot_attempt2, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "other"}, {**request, "timeoutSeconds": True},
+                        {**request, "correlationId": windows_vm_optical_boot.FIRST_CORRELATION},
+                        {**request, "correlationId": closure},
+                        {**request, "closureCorrelationId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc"},
+                        {**request, "resetCount": 2}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-attempt2-start", bad)["ok"])
+        with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
+            uncertain = mcp_server.vm_workflow("windows-vm-optical-attempt2-start", request)
+        self.assertEqual("unknown", uncertain["state"])
+        self.assertFalse(uncertain["replayAllowed"])
+        self.assertEqual("windows-vm-optical-attempt2-status", uncertain["nextAction"]["action"]["action"])
+        self.assertEqual(closure, uncertain["nextAction"]["action"]["inputs"]["closureCorrelationId"])
+
+    def test_windows_optical_close_routes_bind_first_attempt_and_never_replay(self):
+        from agent_tools import windows_vm_optical_boot
+        closure = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "closureCorrelationId": closure, "timeoutSeconds": 90}
+        for action, method, state, accepted in (
+                ("windows-vm-optical-close-preflight", "close_preflight", "ready", True),
+                ("windows-vm-optical-close-start", "close_start", "unknown", False),
+                ("windows-vm-optical-close-status", "close_status", "pre-effect-closed", True)):
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_vm_optical_boot, method, return_value={
+                     "state": state, "closureCorrelationId": closure,
+                     "originalCorrelationId": windows_vm_optical_boot.FIRST_CORRELATION,
+                     "replayAllowed": False, "nativeActionAllowed": False}) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, request)
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                closure_correlation_id=closure, timeout_seconds=90)
+            self.assertEqual(accepted, result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            self.assertFalse(result["nativeActionAllowed"])
+        with patch.object(windows_vm_optical_boot, "close_start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "other"}, {**request, "timeoutSeconds": True},
+                        {**request, "closureCorrelationId": windows_vm_optical_boot.FIRST_CORRELATION},
+                        {**request, "closureCorrelationId": windows_vm_optical_boot.VM_CORRELATION},
+                        {**request, "correlationId": "foreign"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-close-start", bad)["ok"])
+        with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after close intent")):
+            uncertain = mcp_server.vm_workflow("windows-vm-optical-close-start", request)
+        self.assertEqual("unknown", uncertain["state"])
+        self.assertEqual(closure, uncertain["closureCorrelationId"])
+        self.assertFalse(uncertain["replayAllowed"])
+        self.assertEqual("windows-vm-optical-close-status", uncertain["nextAction"]["action"]["action"])
+        self.assertEqual(closure, uncertain["nextAction"]["action"]["inputs"]["closureCorrelationId"])
+
+    def test_android_installer_dispatch_routes_bind_fixed_campaign_and_ui_phases(self):
+        from agent_tools import android_installer_dispatch
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "device": "api29", "correlationId": correlation,
+                   "sourceSha": "a" * 40, "baseArtifactId": "sha256-" + "b" * 64,
+                   "targetArtifactId": "sha256-" + "c" * 64,
+                   "backupCorrelationId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                   "inspectCorrelationId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                   "expectedOwner": "controller-1", "expectedRevision": 4,
+                   "expectedBackupSha256": "d" * 64, "expectedTerminal": "installed",
+                   "cliStageCorrelationId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                   "caArtifactId": "sha256-" + "e" * 64,
+                   "leafArtifactId": "sha256-" + "f" * 64,
+                   "keyArtifactId": "sha256-" + "a" * 64}
+        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+             patch.object(android_installer_dispatch, "start", return_value={
+                 "ok": True, "state": "submitted", "correlationId": correlation,
+                 "replayAllowed": False}) as start:
+            result = mcp_server._vm_workflow_impl("android-installer-dispatch-start", request)
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["nativeActionAllowed"])
+        self.assertFalse(result["replayAllowed"])
+        start.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", "api29", correlation,
+            request["sourceSha"], request["baseArtifactId"], request["targetArtifactId"],
+            request["backupCorrelationId"], request["inspectCorrelationId"],
+            request["expectedOwner"], request["expectedRevision"],
+            request["expectedBackupSha256"], "installed", request["cliStageCorrelationId"],
+            request["caArtifactId"], request["leafArtifactId"], request["keyArtifactId"])
+        with patch.object(android_installer_dispatch, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "shell": "id"}, {**request, "expectedRevision": True},
+                        {**request, "expectedTerminal": ["installed"]},
+                        {**request, "caArtifactId": "a" * 64},
+                        {**request, "correlationId": correlation.upper()}):
+                self.assertFalse(mcp_server._vm_workflow_impl("android-installer-dispatch-start", bad)["ok"])
+        observed = {"correlationId": correlation}
+        cases = (
+            ("android-installer-dispatch-status", "status", observed, (correlation,)),
+            ("android-installer-dispatch-collect", "collect", observed, (correlation,)),
+            ("android-installer-callback-handoff-ready", "callback", observed, (correlation, "handoff-ready")),
+            ("android-installer-callback-continue", "callback", observed, (correlation, "continue")),
+            ("android-installer-callback-status-handoff-ready", "callback_status", observed, (correlation, "handoff-ready")),
+            ("android-installer-callback-status-continue", "callback_status", observed, (correlation, "continue")),
+            ("android-installer-abort-prelaunch", "abort_prelaunch",
+             {**observed, "closingReadbackCorrelationId": request["backupCorrelationId"]},
+             (correlation, request["backupCorrelationId"])),
+            ("android-installer-reconcile", "reconcile",
+             {**observed, "closingReadbackCorrelationId": request["backupCorrelationId"],
+              "expectedClosingOwner": "controller-2", "expectedClosingRevision": 5},
+             (correlation, request["backupCorrelationId"], "controller-2", 5)))
+        for action, method, inputs, args in cases:
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(android_installer_dispatch, method, return_value={
+                     "ok": False, "state": "unknown", "correlationId": correlation,
+                     "replayAllowed": False}) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, inputs)
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT, *args)
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertFalse(mcp_server._vm_workflow_impl(action, {**inputs, "shell": "id"})["ok"])
+        with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
+            uncertain = mcp_server.vm_workflow("android-installer-callback-continue", observed)
+        self.assertEqual("unknown", uncertain["state"])
+        self.assertFalse(uncertain["replayAllowed"])
+        self.assertEqual("android-installer-callback-status-continue",
+                         uncertain["nextAction"]["action"]["action"])
+
+    def test_windows_optical_boot_routes_require_new_fixed_identity_and_no_replay(self):
+        from agent_tools import windows_vm_optical_boot
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "correlationId": correlation, "timeoutSeconds": 90}
+        for action, method, state, accepted in (
+                ("windows-vm-optical-boot-preflight", "preflight", "ready", True),
+                ("windows-vm-optical-boot-start", "start", "unknown", False),
+                ("windows-vm-optical-boot-status", "status", "post-screen-observed", True)):
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(windows_vm_optical_boot, method, return_value={
+                     "state": state, "correlationId": correlation,
+                     "nativeActionAllowed": False, "replayAllowed": False}) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, request)
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux",
+                                             correlation_id=correlation, timeout_seconds=90)
+            self.assertEqual(accepted, result["ok"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertFalse(result["replayAllowed"])
+        with patch.object(windows_vm_optical_boot, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "other"}, {**request, "timeoutSeconds": True},
+                        {**request, "correlationId": windows_vm_optical_boot.VM_CORRELATION},
+                        {**request, "correlationId": correlation.upper()},
+                        {**request, "key": "spc"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-boot-start", bad)["ok"])
+        with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
+            uncertain = mcp_server.vm_workflow("windows-vm-optical-boot-start", request)
+        self.assertEqual("unknown", uncertain["state"])
+        self.assertFalse(uncertain["replayAllowed"])
+        self.assertEqual(correlation, uncertain["correlationId"])
+        self.assertEqual("windows-vm-optical-boot-status", uncertain["nextAction"]["action"]["action"])
+
+    def test_android_endpoint_routes_bind_exact_inputs_and_never_replay_unknown(self):
+        from agent_tools import android_endpoint_admission
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"host": "archlinux", "device": "api29", "correlationId": correlation,
+                   "campaignId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                   "sourceSha": "c" * 40, "targetArtifactId": "sha256-" + "d" * 64,
+                   "caArtifactId": "sha256-" + "e" * 64,
+                   "backupCorrelationId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+                   "expectedOwner": "owner-1", "expectedRevision": 7,
+                   "expectedBackupSha256": "a" * 64}
+        for action, method, payload, state, accepted in (
+                ("android-endpoint-admission-start", "start", request, "unknown", False),
+                ("android-endpoint-admission-status", "status", {"correlationId": correlation}, "ready", True),
+                ("android-endpoint-admission-cleanup", "cleanup", {"correlationId": correlation}, "cleaned", True)):
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(android_endpoint_admission, method, return_value={
+                     "ok": accepted, "state": state, "correlationId": correlation,
+                     "replayAllowed": False}) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, payload)
+            if method == "start":
+                dispatch.assert_called_once_with(mcp_server.REPO_ROOT, "archlinux", "api29",
+                    correlation, request["campaignId"], request["sourceSha"],
+                    request["targetArtifactId"], request["caArtifactId"],
+                    request["backupCorrelationId"], request["expectedOwner"],
+                    request["expectedRevision"], request["expectedBackupSha256"])
+            else:
+                dispatch.assert_called_once_with(mcp_server.REPO_ROOT, correlation)
+            self.assertEqual(accepted, result["ok"])
+            self.assertFalse(result["productMutationAllowed"])
+            self.assertFalse(result["installerTargetAdmitted"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertFalse(result["replayAllowed"])
+        with patch.object(android_endpoint_admission, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({key: value for key, value in request.items() if key != "caArtifactId"},
+                        {**request, "targetArtifactId": "a" * 64},
+                        {**request, "expectedRevision": True},
+                        {**request, "sourceSha": "z" * 40},
+                        {**request, "correlationId": "aaaaaaaa-aaaa-0aaa-8aaa-aaaaaaaaaaaa"},
+                        {**request, "extra": "unsafe"}):
+                self.assertFalse(mcp_server._vm_workflow_impl("android-endpoint-admission-start", bad)["ok"])
+        with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
+            uncertain = mcp_server.vm_workflow("android-endpoint-admission-start", request)
+        self.assertEqual("unknown", uncertain["state"])
+        self.assertFalse(uncertain["replayAllowed"])
+        self.assertEqual("android-endpoint-admission-status", uncertain["nextAction"]["action"]["action"])
+
     def test_acceptance_status_is_read_only_and_does_not_promote_supplied_owner(self):
         from agent_tools import native_acceptance_overview
         source = "a" * 40
@@ -650,6 +1059,123 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             for bad in ({**request, "host": "other"}, {**request, "reservationRequest": {}},
                         {**request, "timeoutSeconds": 301}):
                 self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-fresh-screen-start", bad)["ok"])
+
+    def test_mac_server_stop_routes_keep_live_and_historical_evidence_distinct(self):
+        from agent_tools import macos_machine_server_stop
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"schemaVersion": 1, "sourceSha": "a" * 40, "correlationId": correlation,
+                   "scenario": "install", "jobId": "job", "operationId": correlation,
+                   "bootSessionUuid": correlation, "reservationId": correlation,
+                   "fixtureReceiptArtifactId": "sha256-" + "b" * 64,
+                   "serverInstanceId": correlation, "serverPid": 1234,
+                   "serverProcessStartIdentity": "darwin:123:456",
+                   "readySha256": "c" * 64}
+        actions = (("macos-machine-server-stop-start", "start", request, "unknown", False),
+                   ("macos-machine-server-stop-status", "status", {"correlationId": correlation}, "complete", True),
+                   ("macos-machine-server-stop-collect", "collect", {"correlationId": correlation},
+                    "historical-receipt", False))
+        for action, method, inputs, state, accepted in actions:
+            response = {"state": state, "correlationId": correlation, "replayAllowed": False}
+            if state == "historical-receipt":
+                response["currentState"] = "unverified"
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(macos_machine_server_stop, method, return_value=response) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, inputs)
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT,
+                                             inputs if method == "start" else correlation)
+            self.assertEqual(accepted, result["ok"])
+            self.assertFalse(result["productAction"])
+            self.assertFalse(result["nativeActionAllowed"])
+        with patch.object(macos_machine_server_stop, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "extra": True}, {**request, "schemaVersion": True},
+                        {**request, "serverPid": 0}, {**request, "sourceSha": "z" * 40}):
+                self.assertFalse(mcp_server._vm_workflow_impl("macos-machine-server-stop-start", bad)["ok"])
+
+    def test_linux_guest_park_routes_load_fixed_evidence_and_never_replay(self):
+        from agent_tools import linux_guest_park
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"correlationId": correlation,
+                   "preparationCorrelationId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                   "guestRole": "ubuntu-update", "sourceSha": "c" * 40}
+        for action, method, inputs, state, accepted in (
+                ("linux-guest-park-preflight", "preflight", request, "ready", True),
+                ("linux-guest-park-start", "start", request, "unknown", False),
+                ("linux-guest-park-status", "status", {"correlationId": correlation}, "parked", True)):
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(linux_guest_park, "FixedRemoteDriver") as driver, \
+                 patch.object(linux_guest_park, "Adapter") as adapter:
+                getattr(adapter.return_value, method).return_value = {
+                    "state": state, "correlationId": correlation, "replayAllowed": False}
+                result = mcp_server._vm_workflow_impl(action, inputs)
+                getattr(adapter.return_value, method).assert_called_once_with(
+                    request if method != "status" else correlation)
+                driver.assert_called_once_with(mcp_server.REPO_ROOT)
+            self.assertEqual(accepted, result["ok"])
+            self.assertFalse(result["replayAllowed"])
+            self.assertFalse(result["productAction"])
+        with patch.object(linux_guest_park, "Adapter", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "guestRole": "other"}, {**request, "sourceSha": "z" * 40},
+                        {**request, "preparationCorrelationId": correlation},
+                        {**request, "guestManifest": {}}):
+                self.assertFalse(mcp_server._vm_workflow_impl("linux-guest-park-start", bad)["ok"])
+
+    def test_one_shot_fixture_boundary_preserves_correlation_without_replay(self):
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        cases = (
+            ("linux-guest-park-start", {"correlationId": correlation}, "linux-guest-park-status"),
+            ("macos-machine-server-stop-start", {"correlationId": correlation}, "macos-machine-server-stop-status"))
+        for action, request, status_action in cases:
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
+                result = mcp_server.vm_workflow(action, request)
+            self.assertEqual("unknown", result["state"])
+            self.assertEqual(correlation, result["correlationId"])
+            self.assertFalse(result["replayAllowed"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertEqual(status_action, result["nextAction"]["action"]["action"])
+
+    def test_linux_package_fixture_build_routes_preserve_one_shot_identity(self):
+        from agent_tools import linux_package_fixture_build
+        correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        request = {"sourceSha": "b" * 40, "baseVersion": "2.2.0",
+                   "targetVersion": "2.2.1", "correlationId": correlation}
+        actions = (("linux-package-fixture-build-preflight", "preflight", request,
+                    {"state": "ready", "nativeActionAllowed": False}),
+                   ("linux-package-fixture-build-start", "start", request,
+                    {"state": "submitted", "correlationId": correlation, "replayAllowed": False}),
+                   ("linux-package-fixture-build-status", "status", {"correlationId": correlation},
+                    {"state": "running", "correlationId": correlation, "replayAllowed": False}),
+                   ("linux-package-fixture-build-collect", "collect", {"correlationId": correlation},
+                    {"state": "ready", "correlationId": correlation, "artifacts": [],
+                     "timingReferences": {"sourceSha": request["sourceSha"], "phases": []},
+                     "replayAllowed": False}))
+        for action, method, inputs, response in actions:
+            with self.subTest(action=action), \
+                 patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                 patch.object(linux_package_fixture_build, method, return_value=response) as dispatch:
+                result = mcp_server._vm_workflow_impl(action, inputs)
+            dispatch.assert_called_once_with(mcp_server.REPO_ROOT, inputs)
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["productAction"])
+            if action.endswith("-collect"):
+                self.assertEqual(request["sourceSha"], result["timingReferences"]["sourceSha"])
+        with patch.object(linux_package_fixture_build, "start", side_effect=AssertionError("unsafe dispatch")):
+            for bad in ({**request, "host": "other"}, {**request, "correlationId": correlation.upper()},
+                        {**request, "sourceSha": "z" * 40},
+                        {**request, "targetVersion": None}):
+                self.assertFalse(mcp_server._vm_workflow_impl("linux-package-fixture-build-start", bad)["ok"])
+        with patch.object(linux_package_fixture_build, "start", return_value={
+                "state": "unknown", "correlationId": correlation, "replayAllowed": False}):
+            unknown = mcp_server._vm_workflow_impl("linux-package-fixture-build-start", request)
+        self.assertFalse(unknown["ok"])
+        self.assertFalse(unknown["replayAllowed"])
+        with patch.object(linux_package_fixture_build, "start", side_effect=RuntimeError("private transport")):
+            bounded = mcp_server.vm_workflow("linux-package-fixture-build-start", request)
+        self.assertEqual("unknown", bounded["state"])
+        self.assertFalse(bounded["replayAllowed"])
+        self.assertEqual("linux-package-fixture-build-status", bounded["nextAction"]["action"]["action"])
 
     def test_windows_owner_quit_routes_require_exact_request(self):
         from agent_tools import windows_msi_owner_observe

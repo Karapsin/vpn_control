@@ -21,6 +21,12 @@ from . import macos_machine_acceptance as gate
 from . import native_environment
 from .macos_machine_boundary import MacMachineBoundaryError, NativeTerminalQuery, VerifiedPair
 from .macos_machine_tart_readonly import TartReadOnlyProvider
+from .macos_machine_receipts import (ReceiptBinding, read_guest_candidate,
+    validate_rollback_trace, MacReceiptError)
+from .macos_machine_evidence import read_worker_events, verify_worker_events
+from . import macos_machine_server_stop
+from .macos_machine_legacy_prospective import (LegacyProspectiveError,
+    MacLegacyProspectiveJournal, ProspectiveContext, TartLegacyObservationBoundary)
 
 
 _PROTECTED_READ = r'''import json,os,pathlib,stat,sys,uuid
@@ -179,14 +185,37 @@ class TartMacObserver(TartReadOnlyProvider):
         active = sum(1 for item in installations if isinstance(item, dict) and item.get("final") is False)
         conflicts = active if prompt_count == 0 else max(0, active - 1)
         start_identity = int.from_bytes(hashlib.sha256(before.started.encode()).digest()[:8], "big") or 1
-        # The historical unknown job needs an independent unchanged readback.
-        # Workspace disjointness alone does not prove its protected state.
+        # A new baseline can prove only preservation during this campaign. It
+        # never upgrades the CP174 unknown or claims a CP174 input fingerprint.
+        prospective = {"legacyProspectivePreserved": False}
+        if pair.correlation_id:
+            context = ProspectiveContext(source_sha, pair.source_fingerprint,
+                pair.fixture_receipt_artifact_id, pair.base_dmg_artifact_id,
+                pair.target_dmg_artifact_id, pair.correlation_id, boot, reservation_id)
+            legacy = MacLegacyProspectiveJournal(self.root,
+                TartLegacyObservationBoundary(
+                    generation=lambda: (self._boot_session(), self._reservation()),
+                    runner=self.runner))
+            try:
+                observation = legacy.verify(context)
+                prospective = {"legacyProspectivePreserved": observation["legacyProspectivePreservedAfter"],
+                    "legacyProspectiveBaselineId": observation["legacyProspectiveBaselineId"]}
+            except FileNotFoundError:
+                if phase == "ready" and prompt_count == 0 and active == 0:
+                    try:
+                        observation = legacy.baseline(context)
+                        prospective = {"legacyProspectivePreserved": observation["legacyProspectivePreserved"],
+                            "legacyProspectiveBaselineId": observation["legacyProspectiveBaselineId"]}
+                    except (LegacyProspectiveError, OSError, ValueError):
+                        pass
+            except (LegacyProspectiveError, OSError, ValueError):
+                pass
         return {**guest, "resourceAdmitted": True, "reservationId": reservation_id,
                 "ownerReady": True, "controllerId": status["controllerId"],
                 "ownerPid": before.pid, "ownerStartTicks": start_identity,
                 "bootSessionUuid": boot, "runtimeRunning": False,
                 "existingPromptCount": prompt_count, "conflictingJobCount": conflicts,
-                "legacyUnknownPreserved": False,
+                "legacyUnknownPreserved": False, **prospective,
                 "sourceFingerprint": pair.source_fingerprint,
                 "fixtureReceiptArtifactId": pair.fixture_receipt_artifact_id,
                 "baseDmgArtifactId": "sha256-" + guest["baseDmgSha256"],
@@ -252,16 +281,73 @@ class TartMacObserver(TartReadOnlyProvider):
         if self._reservation() != query.reservation_id or self._boot_session() != query.boot_session_uuid:
             raise MacMachineBoundaryError("Tart allocation or boot changed during terminal readback.")
         entry = matched[0]
+        server_stopped = False
+        try:
+            stop = macos_machine_server_stop.status(self.root, query.correlation_id,
+                macos_machine_server_stop.TartBoundary(runner=self.runner))
+            receipt = stop.get("receipt") if stop.get("state") == "complete" else None
+            server_stopped = isinstance(receipt, dict) and all(receipt.get(key) == value for key, value in {
+                "sourceSha": query.source_sha, "correlationId": query.correlation_id,
+                "scenario": query.scenario, "jobId": query.job_id,
+                "operationId": query.operation_id, "bootSessionUuid": query.boot_session_uuid,
+                "reservationId": query.reservation_id,
+                "fixtureReceiptArtifactId": query.fixture_receipt_artifact_id}.items())
+        except (MacReceiptError, OSError, ValueError):
+            server_stopped = False
+        rollback_proven = False
+        if query.scenario == "rollback":
+            binding = ReceiptBinding(query.source_sha, query.correlation_id,
+                query.scenario, query.job_id, query.operation_id,
+                query.boot_session_uuid, query.reservation_id,
+                query.fixture_receipt_artifact_id)
+            try:
+                worker = read_worker_events(query.job_id, runner=self.runner)
+                base = (guest["baseDevice"], guest["baseInode"], query.base_jar_sha256)
+                candidate = (worker[1]["device"], worker[1]["inode"],
+                             query.target_jar_sha256)
+                verify_worker_events(worker, job_id=query.job_id, base=base,
+                                     candidate=candidate)
+                trace = read_guest_candidate(query.source_sha, query.correlation_id,
+                    "rollback-trace", runner=self.runner)
+                for index, event in enumerate(worker):
+                    if trace["events"][index] != {key: event[key] for key in (
+                            "sequence", "type", "observedAtUnixMs", "device", "inode", "sha256")}:
+                        raise MacReceiptError("Mac rollback receipt differs from protected worker trace.")
+                validate_rollback_trace(trace, binding,
+                    base_device=base[0], base_inode=base[1], base_jar_sha256=base[2],
+                    candidate_device=candidate[0], candidate_inode=candidate[1],
+                    candidate_jar_sha256=candidate[2],
+                    protected_code=protected["code"], public_code=entry.get("code"),
+                    fresh_stage_absent=protected["stageAbsent"],
+                    fresh_backup_absent=protected["backupAbsent"])
+                rollback_proven = True
+            except (MacReceiptError, KeyError, IndexError, TypeError, ValueError):
+                rollback_proven = False
+        prospective = {"legacyProspectivePreservedAfter": False}
+        try:
+            legacy = MacLegacyProspectiveJournal(self.root,
+                TartLegacyObservationBoundary(
+                    generation=lambda: (self._boot_session(), self._reservation()),
+                    runner=self.runner))
+            observation = legacy.verify_bound(query.source_sha, query.correlation_id,
+                query.fixture_receipt_artifact_id, query.boot_session_uuid,
+                query.reservation_id)
+            prospective = {
+                "legacyProspectivePreservedAfter": observation["legacyProspectivePreservedAfter"],
+                "legacyProspectiveBaselineId": observation["legacyProspectiveBaselineId"]}
+        except (LegacyProspectiveError, OSError, ValueError):
+            pass
         return {"sourceSha": query.source_sha, "operationId": query.operation_id,
                 "jobId": query.job_id, "bootSessionUuid": query.boot_session_uuid,
                 "app": query.app, "runtimeRunning": False,
                 "cleanupCode": entry.get("cleanupCode"), "signatureValid": guest["baseSignatureValid"],
                 "oldOwnerExited": True, "guiReturned": True, "guiBundlePath": query.app,
-                "fixtureServerStopped": False,  # separate server lifecycle proof required
+                "fixtureServerStopped": server_stopped,
                 "publicFinal": True, "publicCode": entry.get("code"), "installed": entry.get("installed"),
                 "protectedPhase": protected["phase"], "protectedCode": protected["code"],
                 "installedJarSha256": guest["baseJarSha256"],
                 "baseDevice": guest["baseDevice"], "baseInode": guest["baseInode"],
                 "backupAbsent": protected["backupAbsent"], "stageAbsent": protected["stageAbsent"],
-                "rollbackFaultObserved": False,  # separate fixture driver proof required
+                "rollbackFaultObserved": rollback_proven,
+                **prospective,
                 "newOwnerPid": new_owner.pid, "guiPid": gui.pid}

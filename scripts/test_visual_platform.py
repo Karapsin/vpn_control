@@ -138,6 +138,7 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertNotIn("macos-install-confirmation", scene_field)
 
     def test_linux_capture_runs_awt_and_native_trays_in_separate_gradle_processes(self) -> None:
+        shell = _posix_bash()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "scripts").mkdir()
@@ -150,30 +151,34 @@ class VisualPlatformTest(unittest.TestCase):
             (root / "gradlew").write_text(
                 "#!/bin/sh\nprintf '%s\\n' \"$VPN_CONTROL_VISUAL_NATIVE_SCENES\" >> \"$CAPTURE_LOG\"\n",
                 encoding="utf-8",
+                newline="\n",
             )
             for command in ("openbox", "stalonetray"):
-                (root / "bin" / command).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                (root / "bin" / command).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8", newline="\n")
+            if os.name != "nt":
+                # A bare "bash" lookup must not silently bypass the selected POSIX shell.
+                (root / "bin" / "bash").write_text("#!/bin/sh\nexit 97\n", encoding="utf-8", newline="\n")
             for path in (root / "gradlew", *(root / "bin").iterdir()):
                 path.chmod(0o755)
             log = root / "capture.log"
             result = subprocess.run(
                 [
-                    "bash", str(root / "scripts/capture_visual_desktop.sh"), "linux",
-                    str(root / "actual"),
+                    shell, "scripts/capture_visual_desktop.sh", "linux",
+                    "actual",
                     "linux-tray-awt-disconnected,linux-tray-native-disconnected",
                 ],
                 cwd=root,
                 env={
                     **os.environ,
-                    "PATH": f"{root / 'bin'}:{os.environ.get('PATH', '')}",
+                    "PATH": f"{root / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}",
                     "VPN_CONTROL_VISUAL_ISOLATED": "1",
-                    "CAPTURE_LOG": str(log),
+                    "CAPTURE_LOG": "capture.log",
                 },
                 capture_output=True,
                 text=True,
                 timeout=20,
             )
-            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(0, result.returncode, _shell_failure(result))
             self.assertEqual(
                 ["linux-tray-awt-disconnected", "linux-tray-native-disconnected"],
                 log.read_text(encoding="utf-8").splitlines(),

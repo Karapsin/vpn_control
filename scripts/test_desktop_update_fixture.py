@@ -30,6 +30,82 @@ from test_fixture_environment import symlink_probe_available
 
 
 class DesktopUpdateFixtureTest(unittest.TestCase):
+    def test_macos_graceful_stop_receipt_requires_exact_private_intent(self):
+        """A bare SIGTERM or replaced intent cannot claim a zero-exit stop."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "macos-parityaaaaaaa"
+            correlation = "11111111-1111-4111-8111-111111111111"
+            evidence = root / "state" / "acceptance-evidence" / correlation
+            evidence.mkdir(parents=True)
+            evidence.chmod(0o700)
+            ready_path = evidence / "server-ready.json"
+            ready = {"port": 53633, "fixtureReceiptSha256": "b" * 64,
+                     "serverInstanceId": "22222222-2222-4222-8222-222222222222",
+                     "serverPid": os.getpid(), "serverProcessStartIdentity": "darwin:123456:123"}
+            prepare_desktop_update_fixture.write_private_ready_json(ready_path, ready)
+            raw = ready_path.read_bytes()
+            with self.assertRaises(ValueError):
+                prepare_desktop_update_fixture.write_macos_graceful_exit(ready_path, raw)
+            intent = {"schemaVersion": 1, "sourceSha": "a" * 40,
+                      "correlationId": correlation, "scenario": "install",
+                      "jobId": "33333333-3333-4333-8333-333333333333",
+                      "operationId": "44444444-4444-4444-8444-444444444444",
+                      "bootSessionUuid": "55555555-5555-4555-8555-555555555555",
+                      "reservationId": "env-1234", "fixtureReceiptArtifactId": "sha256-" + "b" * 64,
+                      "serverInstanceId": ready["serverInstanceId"], "serverPid": os.getpid(),
+                      "serverProcessStartIdentity": ready["serverProcessStartIdentity"],
+                      "readySha256": hashlib.sha256(raw).hexdigest(), "stopRequestCount": 1,
+                      "port": ready["port"]}
+            (evidence / "server-stop-intent.json").write_text(json.dumps(intent))
+            (evidence / "server-stop-intent.json").chmod(0o600)
+            receipt = prepare_desktop_update_fixture.write_macos_graceful_exit(ready_path, raw)
+            self.assertEqual(0, receipt["serverExitCode"])
+            self.assertEqual(1, receipt["stopRequestCount"])
+            self.assertTrue(receipt["stopReceiptFinal"])
+            self.assertEqual(receipt, json.loads((evidence / "server-stop.json").read_text()))
+
+    def test_macos_graceful_stop_rejects_linked_or_wrong_generation_intent(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            correlation = "11111111-1111-4111-8111-111111111111"
+            evidence = Path(temporary) / "macos-parityaaaaaaa" / "state" / "acceptance-evidence" / correlation
+            evidence.mkdir(parents=True)
+            evidence.chmod(0o700)
+            ready_file = evidence / "server-ready.json"
+            ready = {"port": 53633, "fixtureReceiptSha256": "b" * 64,
+                     "serverInstanceId": "22222222-2222-4222-8222-222222222222",
+                     "serverPid": os.getpid(), "serverProcessStartIdentity": "darwin:123456:123"}
+            prepare_desktop_update_fixture.write_private_ready_json(ready_file, ready)
+            raw = ready_file.read_bytes()
+            intent = {"schemaVersion": 1, "sourceSha": "a" * 40, "correlationId": correlation,
+                      "scenario": "install", "jobId": "33333333-3333-4333-8333-333333333333",
+                      "operationId": "44444444-4444-4444-8444-444444444444",
+                      "bootSessionUuid": "55555555-5555-4555-8555-555555555555",
+                      "reservationId": "env-1234", "fixtureReceiptArtifactId": "sha256-" + "b" * 64,
+                      "serverInstanceId": ready["serverInstanceId"], "serverPid": os.getpid(),
+                      "serverProcessStartIdentity": ready["serverProcessStartIdentity"],
+                      "readySha256": hashlib.sha256(raw).hexdigest(), "stopRequestCount": 1,
+                      "port": 53633}
+            external = evidence / "outside.json"
+            external.write_text(json.dumps(intent))
+            external.chmod(0o600)
+            stop_intent = evidence / "server-stop-intent.json"
+            stop_intent.symlink_to(external)
+            with self.assertRaises(ValueError):
+                prepare_desktop_update_fixture.write_macos_graceful_exit(ready_file, raw)
+            stop_intent.unlink()
+            intent["serverPid"] += 1
+            stop_intent.write_text(json.dumps(intent))
+            stop_intent.chmod(0o600)
+            with self.assertRaises(ValueError):
+                prepare_desktop_update_fixture.write_macos_graceful_exit(ready_file, raw)
+            intent["serverPid"] = os.getpid()
+            intent["fixtureReceiptArtifactId"] = "sha256-" + "c" * 64
+            stop_intent.write_text(json.dumps(intent))
+            stop_intent.chmod(0o600)
+            with self.assertRaises(ValueError):
+                prepare_desktop_update_fixture.write_macos_graceful_exit(ready_file, raw)
+            self.assertFalse((evidence / "server-stop.json").exists())
+
     @staticmethod
     def synthetic_windows_acl_receipt(path, *, private, establish=True):
         """Model the fixed protected stage and current-owner private children."""
@@ -897,7 +973,8 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                 if label == "timed":
                     recorder = PhaseRecorder(root / ".rag_index/build-timings", "a" * 40,
                         "linux-fixture", "12345678-1234-4234-9234-123456789abc", "linux-builder")
-                with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
+                with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"), \
+                     patch("prepare_desktop_update_fixture.time.monotonic_ns", return_value=1_000_000_000):
                     receipt = native_build(output, True, runner, timing_recorder=recorder if label == "timed" else None)
                 assets = {asset["packageType"]: asset["sha256"]
                           for stage in receipt["builds"] for asset in stage["assets"]
@@ -933,7 +1010,8 @@ class DesktopUpdateFixtureTest(unittest.TestCase):
                     helpers.append(command)
                     return subprocess.CompletedProcess(command, 0)
                 return gradle(command, **kwargs)
-            with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"):
+            with patch("platform.system", return_value="Linux"), patch("platform.machine", return_value="x86_64"), \
+                 patch("prepare_desktop_update_fixture.time.monotonic_ns", return_value=1_000_000_000):
                 native_build(output, True, runner, timing_recorder=recorder)
             self.assertEqual(1, len(helpers))
             receipts = [json.loads((root / item["path"]).read_text())

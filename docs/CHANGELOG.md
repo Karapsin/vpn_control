@@ -6,6 +6,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Allow guarded dev checkpoints with final exact-SHA CI verification.
+- Add guarded native acceptance and VM evidence workflows for GUI/CLI parity.
+- Fix agent-tool test discovery in managed checks and CI.
 
 ## 2.2.1 - 2026-09-29
 

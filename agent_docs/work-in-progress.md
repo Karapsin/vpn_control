@@ -27,6 +27,180 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Ninth continuation checkpoint pushed — 2026-09-29
+
+`096804e8228540d4f7b59aeb6f7e56a58a11e245` is on `origin/dev` at
+product version 2.2.1. Two managed prepush runs passed before its reviewed
+checkpoint push. Its five required workflows are deliberately deferred until
+the final exact SHA, as the user requested. This is a source and tool checkpoint,
+not completion of native acceptance. Later source edits are dirty and require
+a new clean checkpoint before source-matched packages are admitted.
+
+The `096804e` nondebuggable Android x86_64 fixture APK was verified at SHA256
+`19f7df032c95e2caa8d26ec9b523a124b427c9e288b9b6d1a59a6ad78c0b200b`,
+registered and staged on the host for API29 and API35. Neither guest installed
+it. Both still have installed 2.2.0, runtime off and preserved routing backups
+(239 and 11,872,243 bytes respectively). Rebuild and reverify at the next
+source freeze before guarded native update, action and endpoint acceptance.
+
+CP117's old pre-dispatch MSI start was closed `failed-cleaned` with its original
+intent retained; no MSI effect was inferred. A new exact-`096804e` hosted MSI
+fixture run `36564027924` failed in release hygiene before package creation:
+one opt-in build timer rejected equal monotonic ticks, and a visual platform
+test called an unselected `bash` on Windows. Both failures have deterministic
+RED/GREEN regressions and narrow fixes in the current dirty source; the MSI
+pair must be built anew after the next checkpoint. CP117 is idle with installed
+2.1.17, original-user CLI exited and runtime off. The fresh Windows baseline
+VM is separate: its exact one-shot 6 GiB start is observed running but booted
+past an optical `Press any key` prompt to PXE. Read-only ISO/OVMF/QMP/owner
+diagnostics support the missed prompt. A minimal, guarded one-shot optical
+reset/key action is being implemented; no reset or key has been sent.
+
+The Linux same-source DEB/RPM/Arch package builder passed independent code
+review and ten focused tests; MCP route wiring and a clean source checkpoint
+remain before its first native use. No new guest was booted. The hosted
+exact-`096804e` RPM fixture run
+`36564346563` completed successfully, and its downloaded base/target pair
+passed hosted verification (SHA256 `222e8452...` / `7e73ab93...`, fingerprint
+`667f5778...`). The pair is historical at this source and is not registered
+for the final native update after later edits.
+Ubuntu and Arch final-source native replacement/rollback remain open. The Mac
+Tart guest is stopped. Current host memory pressure did not admit its 4 GiB
+boot, and candidate machine rollback/server-stop receipts remain untrusted;
+no new machine installer ran. A host-only `096804e` source snapshot is retained
+as historical preparation, not a signed final-source DMG pair.
+
+Current work is limited to the timing/visual harness fixes, Linux package
+builder, Windows boot diagnostic/recovery and their MCP routes. Root owns the
+next metadata/prepush/checkpoint and final exact-SHA CI loop. No release action
+is authorized.
+
+Subsequent code-only reviews passed for the Linux same-source package builder
+and an exact-owner guest park adapter; the latter requires a fresh privileged
+read-only holder census before QMP powerdown and cannot accept caller-supplied
+guest safety claims. Both have MCP route work, but neither has built packages
+or parked a guest. Windows optical-boot recovery now has independently reviewed
+ISO-FD, positive OCR and durable receipt guards, and a separately reviewed
+post-key capture; read-only preflight found `ocr-unavailable` on the Arch host.
+A user-local, signed two-phase OCR source/provision tool is under review. It has
+not downloaded packages, reset the VM or sent a key. Mac's rollback worker,
+fixture driver and observer now have an independently reviewed five-transition
+root trace plus owner-bound cleanup receipt. A one-shot fixture-server stop
+controller passed independent review after full campaign and fresh dual-stack
+status binding. A prospective baseline for the old unknown Mac job is still
+being developed; it must not claim historical preservation since CP174.
+
+The Mac prospective baseline subsequently passed independent review after
+causal pre-effect phase and short-write fixes. It records two matching
+read-only input/worker/unknown-status samples under the current boot and
+reservation, then requires the same baseline ID and fresh equality after a
+new campaign. It does not change the CP174 outcome or prove its input was
+unchanged before this new baseline. Mac rollback/fixture focused checks and
+native worker compile passed; no Tart action occurred. Mac server-stop,
+Linux guest-park and two-phase Windows OCR MCP routes passed 93 focused route
+tests; full agent-tool discovery passed 1,142 tests with four skips. OCR source
+preflight found the fixed Arch tools/keyring and 64 MiB headroom, but no fetch
+or extraction ran. Root review found unchecked short writes in the pre-effect
+source-stage intent; its owner added a causal fix and requested re-review.
+Windows VM still shows the preserved PXE frame.
+
+After full-write re-review passed, one guarded OCR source-stage fetch under
+`3e8ef3d0-fe71-4e11-878d-9b452e6dd0d0` stopped as `partial-unknown`.
+The first Tesseract package and signature are retained at SHA256
+`75e96e4f...` and `4db444af...`; the English-data pair was not downloaded.
+Read-only signature diagnostics found the selected Arch package-export
+keyring returned `NO_PUBKEY`, while pacman's populated root-owned trust store
+verified the exact signer subkey and primary. A separate v2 source root and
+new correlation are being developed; the original partial intent will not
+be replayed. No OCR extraction or Windows VM reset/key/capture ran.
+
+The separately reviewed v2 stage used pacman's populated trust store under
+new correlation `96ac7b5e-5159-4848-a38f-e78c50439a87`. All four package
+and signature files were downloaded, but the stage remained `partial-unknown`:
+the English-data package was validly signed by Christian Heusel's primary
+fingerprint `F00B96D15228013FFC9C9D0393B11DAA4C197E3D`, while the v2
+policy expected a different subkey. V1 and v2 roots/journals remain intact
+and neither start will be replayed. A separate adopt-only verification of
+those frozen v2 bytes is being developed under a new correlation; no OCR
+extraction or Windows VM reset/key/capture has occurred.
+
+The v3 adopt-only source verification was independently reviewed and admitted
+under new correlation `b142de63-ad87-4258-afb3-de030c44d1be`. It copied no
+network bytes and returned `verified` for all four frozen v2 package/signature
+hashes. A local tuple/list JSON status mismatch initially hid readback; a
+causal status-after-start fix passed independent review, and exact MCP status
+now reports the same verified pins. V1/V2 partial intents remain unchanged.
+OCR provision preflight exposed a separate source-correlation versus action-
+correlation ABI gap; it is being fixed before any extraction. The Windows VM
+has still received no reset, key or new capture.
+
+One reviewed OCR provision preflight against the verified v3 stage admitted
+three signed archive members and a fixed private runtime path. The single
+provision start under `76e47261-f262-4887-94ab-d9513509e293` ended
+`partial-unknown`; exact read-only status found all three extracted files
+with matching signed hashes, but `--list-langs` exited 127 because the Arch
+host lacks `libleptonica.so.6`. The intent remains non-replayable. A bounded
+dependency inventory is underway before a separately signed remedy; no
+Windows VM reset, key or capture has occurred. Android endpoint routes are
+wired but native start is held until its shared device lease integrates with
+the public installer and package-install paths.
+
+The signed Leptonica package was later verified, but the OCR runtime
+finalizer did not yield a verified receipt. Its partial journal and all
+fetched bytes remain historical evidence. The user questioned the dependency
+chain; work has pivoted to a single exact-owner QMP optical reset/key action
+for this disposable blank Windows guest. The OCR/Leptonica path is stopped.
+Independent code review and MCP route admission are required before that
+native action. Windows CP117 and its installed 2.1.17 remain separate.
+
+The minimal optical adapter subsequently passed independent review after
+causal QMP peer, actual 6 GiB allocation and orphan-receipt corrections.
+Read-only preflight for new correlation
+`ca76aff1-b67b-47cf-9e82-e61b1fe76ebb` matched QEMU PID 3369984/start
+45177745, the 7,092,807,680-byte Microsoft ISO at SHA256 `a61adeab...`,
+zero allocated guest clusters and the fixed reservation. Its single native
+start returned UNKNOWN; fresh exact status is `intent-only`, with no
+before-screen, reset or key receipt. The attempt is non-replayable. A narrow
+read-only phase diagnostic and pre-effect closure proof are in development;
+no new reset/key is authorized from this attempt. Evidence is in ignored
+`optical-boot-20260929/`.
+
+Android installer dispatch teardown/lease and visible PackageInstaller
+callback gates passed independent code review after causal orphan-listener
+and foreign-focused-package fixes. The callback binds an exact UI snapshot,
+public operation/session, owner/revision/runtime and source/artifact before a
+one-shot handoff or continuation; it never taps a dialog. MCP route wiring
+is complete; current-source native acceptance remains open. The Mac Tart guest is still
+stopped: fresh host reclaimable memory was about 6.95 GiB, below the 8 GiB
+observer gate for a 4 GiB boot.
+
+Windows optical attempt 1 was closed pre-effect under
+`b76bfd72-2d7b-459a-91da-a063e35c8007` after two matching read-only
+samples. Attempt 2 `98b4f1e0-968c-455b-a85b-d87490f5b256` also stopped
+at intent-only: a read-only phase probe proved a second closure/QMP handshake
+ran while the action QMP socket was open, before any screenshot, reset or key.
+It was separately closed pre-effect under
+`7cbc014c-3890-422a-891a-a114d7cb779e`. Causal socket-census,
+single-QMP-client and post-reset status regressions passed independent
+review. Attempt 3 `e80d5b29-d44f-4b22-a821-5612304564b5` then completed
+one reset and one space key: exact status is `post-screen-observed`, with
+before/after PPM SHA256 `85410c93...` / `37488297...`, the same QEMU
+PID 3369984/start 45177745, and no replay. A reviewed one-shot current-screen
+observer/collector under `0dea2405-6b21-43b6-8629-38f77fa05e31` then
+captured PNG SHA256 `db09c43c...`: it visibly shows Windows 11 Setup at
+`Select language settings`. No installer option was selected or VM setup input
+sent after the boot key. All raw MCP outputs and sealed images are retained in
+ignored `optical-boot-20260929/`.
+
+A reviewed read-only Arch QEMU census reached six live PID generations. Its
+evidence remains incomplete for two unknown memory arguments and all older
+role ownership, so it authorizes no parking. Six live guests alone block the
+Linux new-guest preparation gate requiring fewer than four. The exact Windows
+baseline is the only receipt-claimed role in this census. Source and MCP tool
+edits are now quiescent for version metadata, full prepush and the next dev
+checkpoint. Required workflows remain deferred to the final exact SHA per the
+user's instruction.
+
 ### Eighth continuation checkpoint in progress — 2026-09-29
 
 `a876f46fa4582e6218d341ac7012fd31bc919758` is pushed on `origin/dev`

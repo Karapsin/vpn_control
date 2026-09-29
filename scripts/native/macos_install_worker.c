@@ -628,8 +628,81 @@ struct transaction {
     int parent, old_bundle, candidate, gate, executable;
     char target[NAME_MAX+1], stage[NAME_MAX+1], backup[NAME_MAX+1];
     unsigned int renamed;
+    bool acceptance_trace;
+    unsigned int acceptance_sequence;
+    uint64_t acceptance_time_ms;
 };
 static struct transaction active = {.parent=-1, .old_bundle=-1, .candidate=-1, .gate=-1, .executable=-1};
+/* Root-owned fixture evidence is written only for the fixed disposable parity app. */
+static bool parity_target(const char *target) {
+    const char *prefix = "vpn-control-parity";
+    size_t prefix_size = strlen(prefix);
+    if (strncmp(target, prefix, prefix_size) || strlen(target) != prefix_size + 7 + 4 ||
+        strcmp(target + prefix_size + 7, ".app")) return false;
+    for (size_t i = 0; i < 7; ++i) {
+        char ch = target[prefix_size + i];
+        if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) return false;
+    }
+    return true;
+}
+static void acceptance_jar_hash(int bundle, char out[65]) {
+    int contents = openat(bundle, "Contents", O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+    require(contents >= 0, "PERSISTENCE_FAILED");
+    int app = openat(contents, "app", O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+    close(contents); require(app >= 0, "PERSISTENCE_FAILED");
+    DIR *listing = fdopendir(dup(app)); require(listing != NULL, "PERSISTENCE_FAILED");
+    char name[NAME_MAX+1] = {0}; struct dirent *entry;
+    while ((entry = readdir(listing)) != NULL) {
+        size_t size = strlen(entry->d_name);
+        if (size > 15 && !strncmp(entry->d_name, "desktopApp-", 11) &&
+            !strcmp(entry->d_name + size - 4, ".jar")) {
+            require(!name[0], "PERSISTENCE_FAILED");
+            text_copy(name, sizeof(name), entry->d_name);
+        }
+    }
+    closedir(listing); require(name[0], "PERSISTENCE_FAILED");
+    int jar = openat(app, name, O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
+    close(app); require(jar >= 0, "PERSISTENCE_FAILED");
+    struct stat before, after; require(fstat(jar, &before) == 0 && S_ISREG(before.st_mode) &&
+        before.st_nlink == 1, "PERSISTENCE_FAILED");
+    CC_SHA256_CTX context; CC_SHA256_Init(&context); unsigned char bytes[65536];
+    for (;;) {
+        ssize_t count = read(jar, bytes, sizeof(bytes));
+        if (count < 0 && errno == EINTR) continue;
+        require(count >= 0, "PERSISTENCE_FAILED");
+        if (!count) break;
+        CC_SHA256_Update(&context, bytes, (CC_LONG)count);
+    }
+    require(fstat(jar, &after) == 0 && before.st_dev == after.st_dev &&
+        before.st_ino == after.st_ino && before.st_size == after.st_size &&
+        before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec &&
+        before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec, "PERSISTENCE_FAILED");
+    close(jar);
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH]; CC_SHA256_Final(digest, &context);
+    digest_hex(digest, sizeof(digest), out);
+}
+static void acceptance_event(const char *type, int bundle) {
+    if (!active.acceptance_trace) return;
+    struct stat info; require(fstat(bundle, &info) == 0 && S_ISDIR(info.st_mode), "PERSISTENCE_FAILED");
+    char hash[65]; acceptance_jar_hash(bundle, hash);
+    struct timespec now; require(clock_gettime(CLOCK_REALTIME, &now) == 0, "PERSISTENCE_FAILED");
+    uint64_t millis = (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
+    if (millis <= active.acceptance_time_ms) millis = active.acceptance_time_ms + 1;
+    active.acceptance_time_ms = millis;
+    int fd = openat(active.writer->directory, "acceptance-events.jsonl",
+        O_WRONLY|O_APPEND|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0600);
+    require(fd >= 0, "PERSISTENCE_FAILED");
+    struct stat file; require(fstat(fd, &file) == 0 && S_ISREG(file.st_mode) &&
+        file.st_uid == 0 && (file.st_mode & 0777) == 0600 && file.st_nlink == 1 &&
+        file.st_size < 8192, "PERSISTENCE_FAILED");
+    char line[512]; int size = snprintf(line, sizeof(line),
+        "{\"jobId\":\"%s\",\"sequence\":%u,\"type\":\"%s\",\"observedAtUnixMs\":%llu,\"device\":%llu,\"inode\":%llu,\"sha256\":\"%s\"}\n",
+        active.writer->job, active.acceptance_sequence++, type, (unsigned long long)millis,
+        (unsigned long long)info.st_dev, (unsigned long long)info.st_ino, hash);
+    require(size > 0 && (size_t)size < sizeof(line), "PERSISTENCE_FAILED");
+    write_all(fd, line, (size_t)size);
+    require(fsync(fd) == 0 && close(fd) == 0 && fsync(active.writer->directory) == 0, "PERSISTENCE_FAILED");
+}
 static void stage_bundle(const char *source, const char *stage, struct transaction *transaction, uid_t authority, struct pins *pins) {
     require(copyfile(source, stage, NULL, COPYFILE_ALL|COPYFILE_RECURSIVE|COPYFILE_NOFOLLOW|COPYFILE_EXCL) == 0, "PERSISTENCE_FAILED");
     size_t entries = 0; tree_verify(stage, stage, 0, &entries, true, authority);
@@ -647,7 +720,10 @@ static void transaction_failed(const char *code) {
         restored = same_inode(active.old_bundle, active.parent, active.backup) &&
             renameatx_np(active.parent, active.backup, active.parent, active.target, RENAME_EXCL) == 0 &&
             fsync(active.parent) == 0 && same_inode(active.old_bundle, active.parent, active.target);
-        if (restored) active.renamed = 0;
+        if (restored) {
+            active.renamed = 0;
+            acceptance_event("base-restored", active.old_bundle);
+        }
     }
     // Unknown mutation/rollback never produces a terminal receipt or clears admission.
     // Preserve the exact UUID backup and pending job for protected reconciliation.
@@ -713,6 +789,7 @@ static void coordinator(struct request *request, int input) {
     char parent_path[PATH_MAX]; text_copy(parent_path, sizeof(parent_path), request->bundle);
     char *target = strrchr(parent_path, '/'); require(target && target[1], "INVALID_ARGUMENT");
     text_copy(active.target, sizeof(active.target), target+1); *target = 0;
+    active.acceptance_trace = request->machine && parity_target(active.target);
     active.parent = directory_open(parent_path, authority, false, true, &pins);
     active.old_bundle = openat(active.parent, active.target, O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
     retain(&pins, active.old_bundle);
@@ -767,10 +844,22 @@ static void coordinator(struct request *request, int input) {
     require(generation_alive(&original_watcher, watcher_image), "CONFLICT");
     require(same_inode(active.old_bundle, active.parent, active.target) &&
         same_inode(active.candidate, active.parent, active.stage), "CONFLICT");
+    if (active.acceptance_trace) {
+        struct stat candidate_info;
+        require(fstat(active.candidate, &candidate_info) == 0, "PERSISTENCE_FAILED");
+        if (candidate_info.st_flags & UF_IMMUTABLE) {
+            acceptance_event("base-observed", active.old_bundle);
+            acceptance_event("candidate-armed", active.candidate);
+        } else active.acceptance_trace = false;
+    }
     publish(&writer, "INSTALLING", "OK");
     require(renameatx_np(active.parent, active.target, active.parent, active.backup, RENAME_EXCL) == 0, "PERSISTENCE_FAILED");
     active.renamed = 1;
-    require(renameatx_np(active.parent, active.stage, active.parent, active.target, RENAME_EXCL) == 0, "PERSISTENCE_FAILED");
+    acceptance_event("base-moved-to-backup", active.old_bundle);
+    if (renameatx_np(active.parent, active.stage, active.parent, active.target, RENAME_EXCL) != 0) {
+        acceptance_event("candidate-move-failed", active.candidate);
+        fail("PERSISTENCE_FAILED");
+    }
     active.renamed = 2;
     require(fsync(active.parent) == 0 && same_inode(active.candidate, active.parent, active.target), "PERSISTENCE_FAILED");
     gate_pending(gate, false); require(flock(gate, LOCK_UN) == 0 && flock(executable, LOCK_UN) == 0, "UNAVAILABLE");

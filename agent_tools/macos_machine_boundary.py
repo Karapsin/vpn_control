@@ -50,6 +50,7 @@ class VerifiedPair:
     fixture_receipt_artifact_id: str
     base_dmg_artifact_id: str
     target_dmg_artifact_id: str
+    correlation_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,10 @@ class NativeTerminalQuery:
     boot_session_uuid: str
     reservation_id: str
     prior_controller_id: str
+    correlation_id: str
+    fixture_receipt_artifact_id: str
+    base_jar_sha256: str
+    target_jar_sha256: str
 
 
 class NativeProvider(Protocol):
@@ -186,7 +191,8 @@ class MacMachineBoundary:
         if _sha256(summary_path, len(summary_bytes)) != hashlib.sha256(summary_bytes).hexdigest():
             raise MacMachineBoundaryError("Mac fixture summary changed during pair admission.")
         return VerifiedPair(source, request["sourceFingerprint"], request["fixtureReceiptArtifactId"],
-                            request["baseDmgArtifactId"], request["targetDmgArtifactId"])
+                            request["baseDmgArtifactId"], request["targetDmgArtifactId"],
+                            request["correlationId"])
 
     def admission(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         pair = self._pair(request)
@@ -222,5 +228,7 @@ class MacMachineBoundary:
                                     admission["app"], admission["guestRoot"],
                                     admission["ownerPid"], admission["ownerStartTicks"],
                                     admission["bootSessionUuid"], admission["reservationId"],
-                                    admission["controllerId"])
+                                    admission["controllerId"], request["correlationId"],
+                                    request["fixtureReceiptArtifactId"],
+                                    request["baseJarSha256"], request["targetJarSha256"])
         return self.provider.observe_terminal(gate.VM_NAME, query)

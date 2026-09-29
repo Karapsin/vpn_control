@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise one Android self-update installer interaction on an admitted AVD."""
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -13,8 +14,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 from scripts import android_no_update_tls_preflight as tls
 from scripts.integration import android_update_fixture as fixture
+from agent_tools import android_installer_target as target_admission
 
 EXIT = {"OK": 0, "ACCEPTED": 0, "INTERACTION_REQUIRED": 1,
         "PERMISSION_DENIED": 1, "CANCELLED": 130, "TIMEOUT": 2,
@@ -223,9 +226,45 @@ def await_callback(args):
         return
     print("Handle the requested OS-dialog case, then create the private continue callback. Do not invoke install again.", flush=True)
     wait_for_continue_file(callback, args.fixture_parent)
+    if getattr(args, "governed_callbacks", False):
+        verify_governed_callback(args, "continue")
 
 
-def await_handoff_ready(args):
+def verify_governed_callback(args, phase, operation=None):
+    """A literal callback alone cannot authorize an installer phase."""
+    path = args.output / ("callback-" + phase + "-evidence.json")
+    value = json.loads(target_admission._private_file(path, 4096))
+    if (value.get("correlationId") != args.intent["correlationId"] or
+            value.get("phase") != phase or
+            value.get("sourceSha") != args.intent["pair"]["sourceSha"] or
+            value.get("targetArtifactId") != args.intent["pair"]["targetArtifactId"] or
+            not isinstance(value.get("uiSha256"), str) or
+            re.fullmatch(r"[0-9a-f]{64}", value["uiSha256"]) is None or
+            not isinstance(value.get("operationId"), str) or not value["operationId"] or
+            operation is not None and value["operationId"] != operation or
+            not isinstance(value.get("receiptId"), str) or not value["receiptId"] or
+            not valid_session_id(value.get("sessionId"))):
+        raise RuntimeError("governed installer callback evidence changed")
+    snapshot = target_admission._private_file(args.output / ("callback-" + phase + "-ui.xml"), 1_048_576)
+    if hashlib.sha256(snapshot).hexdigest() != value["uiSha256"]:
+        raise RuntimeError("governed installer UI snapshot changed")
+    if phase == "handoff-ready":
+        if (value.get("owner") != args.intent["expectedOwner"] or
+                value.get("revision") != args.intent["expectedRevision"] or
+                value.get("focusedInstaller") not in
+                ("com.google.android.packageinstaller", "com.android.packageinstaller")):
+            raise RuntimeError("governed installer dialog owner changed")
+    else:
+        identity = json.loads(target_admission._private_file(args.output / "handoff.json", 1_048_576)).get("identity", {})
+        if (value.get("focusedInstaller") is not None or
+                identity.get("operationId") != value["operationId"] or
+                identity.get("receiptId") != value["receiptId"] or
+                identity.get("sessionId") != value["sessionId"]):
+            raise RuntimeError("governed installer callback session changed")
+    return value
+
+
+def await_handoff_ready(args, operation=None):
     callback = getattr(args, "handoff_ready_file", None)
     if callback is None:
         if (getattr(args, "expected_terminal", "capture") != "installed"
@@ -236,6 +275,8 @@ def await_handoff_ready(args):
         return True
     print("Grant Unknown Sources if requested. When the Package Installer update dialog is visible, create the private handoff-ready callback before choosing Update or Cancel.", flush=True)
     wait_for_continue_file(callback, args.fixture_parent)
+    if getattr(args, "governed_callbacks", False):
+        verify_governed_callback(args, "handoff-ready", operation)
     return True
 
 
@@ -272,17 +313,35 @@ def action(args, adb, receipt):
     if adb.shell_id() != "uid=2000":
         raise RuntimeError("product action requires public UID 2000")
     environment = getattr(args, "cli_environment", None)
+    def same_owner(record):
+        if getattr(args, "intent", None) is not None and (
+                record.get("response", {}).get("controllerId") != args.intent["expectedOwner"] or
+                record.get("response", {}).get("configurationRevision") != args.intent["expectedRevision"]):
+            raise RuntimeError("installer public owner changed during session")
+    if getattr(args, "intent", None) is not None:
+        receipt["installerIntent"] = {"correlationId": args.intent["correlationId"],
+            "sourceSha": args.intent["pair"]["sourceSha"],
+            "targetArtifactId": args.intent["pair"]["targetArtifactId"],
+            "backupSha256": args.intent["backupSha256"]}
+        phase(args, "check")
     check = invoke(args.cli, args.serial, "updates", "check", environment=environment)
     final(check, "OK")
+    same_owner(check)
+    if getattr(args, "intent", None) is not None: phase(args, "download")
     download = invoke(args.cli, args.serial, "updates", "download", environment=environment)
     final(download, "OK")
+    same_owner(download)
     before_windows = focused_dialog_state(adb)
+    if getattr(args, "intent", None) is not None: phase(args, "noninteractive")
     rejected = invoke(args.cli, args.serial, "updates", "install", environment=environment)
     final(rejected, "INTERACTION_REQUIRED")
+    same_owner(rejected)
     if focused_dialog_state(adb) != before_windows:
         raise RuntimeError("noninteractive install opened a focused OS dialog")
+    if getattr(args, "intent", None) is not None: phase(args, "interactive")
     accepted = invoke(args.cli, args.serial, "updates", "install", interactive=True,
                       asynchronous=True, environment=environment)
+    same_owner(accepted)
     operation = accepted["response"].get("operationId")
     accepted_controller = accepted["response"].get("controllerId")
     if (accepted["exit"] != 0 or accepted["response"].get("code") != "ACCEPTED"
@@ -292,12 +351,19 @@ def action(args, adb, receipt):
         raise RuntimeError(f"interactive install was not accepted once: {accepted}")
     receipt["installerLifecycle"] = {"check": check, "download": download,
         "noninteractiveRejected": rejected, "interactiveAccepted": accepted,
-        "operationId": operation}
+        "operationId": operation, "targetSha256": args.target_sha256,
+        "terminalExpectation": getattr(args, "expected_terminal", "capture")}
     checkpoint(args, receipt)
-    two_phase = await_handoff_ready(args)
+    two_phase = await_handoff_ready(args, operation)
     expected_terminal = getattr(args, "expected_terminal", "capture")
     if two_phase:
         handoff = await_handoff_identity(args, operation, accepted_controller)
+        if getattr(args, "governed_callbacks", False):
+            callback_identity = verify_governed_callback(args, "handoff-ready", operation)
+            identity = handoff.get("identity", {})
+            if (identity.get("receiptId") != callback_identity["receiptId"] or
+                    identity.get("sessionId") != callback_identity["sessionId"]):
+                raise RuntimeError("governed installer handoff session changed")
         receipt["installerLifecycle"]["handoffCapture"] = handoff
         if handoff.get("outcome") == "OUTCOME_UNKNOWN":
             raise RuntimeError(f"installer handoff outcome unknown: {handoff}")
@@ -363,8 +429,11 @@ def parse_args():
     parser.add_argument("--leaf-certificate", type=Path, required=True)
     parser.add_argument("--private-key", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--intent-file", type=Path, required=True,
+                        help="exact durable target admission created before guest work")
     parser.add_argument("--continue-file", type=Path)
     parser.add_argument("--handoff-ready-file", type=Path)
+    parser.add_argument("--governed-callbacks", action="store_true")
     parser.add_argument("--expected-terminal", choices=("capture", "installed", "cancelled"), default="capture",
                         help="capture records an observation only and is not acceptance evidence")
     parser.add_argument("--reconciliation-timeout-seconds", type=float, default=120.0)
@@ -377,16 +446,109 @@ def parse_args():
     return parser.parse_args()
 
 
+def phase(args, name):
+    """Record an immutable may-have-started marker before every public step."""
+    if name not in {"check", "download", "noninteractive", "interactive"}:
+        raise ValueError("installer phase is not fixed")
+    target_admission._write_private(args.output / ("phase-" + name + ".json"),
+        {"correlationId": args.intent["correlationId"], "phase": name})
+
+
+def fixture_start_ticks(pid):
+    """Bind the detached HTTPS child to its exact Linux process generation."""
+    try:
+        value = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        ticks = int(value.rsplit(")", 1)[1].split()[19])
+    except (OSError, ValueError, IndexError) as error:
+        raise RuntimeError("installer fixture process identity unavailable") from error
+    if ticks < 1:
+        raise RuntimeError("installer fixture process identity invalid")
+    return ticks
+
+
+def validate_intent(args):
+    """Reobserve the exact source, package, owner, backup and idle session."""
+    if args.intent_file != args.output / "intent.json":
+        raise ValueError("installer intent path is not the task-owned file")
+    intent = target_admission.load_intent(args.intent_file)
+    pair = intent.get("pair")
+    if not isinstance(pair, dict) or any(pair.get(field) != value for field, value in (
+            ("baseSha256", args.base_sha256),
+            ("baseVersion", args.base_version), ("baseCode", int(args.base_code)),
+            ("targetSha256", args.target_sha256),
+            ("targetVersion", args.target_version), ("targetCode", int(args.target_code)))):
+        raise ValueError("installer driver arguments differ from exact intent")
+    if (intent.get("expectedAvd") != args.avd or intent.get("expectedApi") != int(args.api) or
+            intent.get("expectedTerminal") != args.expected_terminal):
+        raise ValueError("installer device or terminal intent changed")
+    opening_bytes = target_admission._private_file(Path(intent["backupPath"]), 67_108_864)
+    if (hashlib.sha256(opening_bytes).hexdigest() != intent["backupSha256"] or
+            len(opening_bytes) != intent["backupSize"]):
+        raise ValueError("installer opening backup bytes changed")
+    opening = json.loads(opening_bytes)
+    if (not isinstance(opening, dict) or opening.get("type") != "vpn_control_routing_rules" or
+            opening.get("version") != 7 or not isinstance(opening.get("rules"), dict)):
+        raise ValueError("installer opening backup content changed")
+    target_admission.verify_staged_pair(pair, args.base_apk, args.target_apk)
+    adb = tls.Adb(args.adb, args.serial)
+    if adb.shell_id() != "uid=2000":
+        raise ValueError("installer public UID changed")
+    baseline = tls.verify_public_baseline(adb, args.cli, args.serial, args.avd, args.api,
+                                           args.base_version, args.base_code,
+                                           args.base_sha256, args.cli_environment)
+    if baseline.get("controllerId") != intent["expectedOwner"]:
+        raise ValueError("installer owner changed")
+    observed = invoke(args.cli, args.serial, "status", environment=args.cli_environment)
+    data = observed.get("response", {}).get("data")
+    if (observed.get("exit") != 0 or observed["response"].get("ok") is not True or
+            observed["response"].get("final") is not True or
+            observed["response"].get("controllerId") != intent["expectedOwner"] or
+            observed["response"].get("configurationRevision") != intent["expectedRevision"] or
+            not isinstance(data, dict) or data.get("runtimeRunning") is not False or
+            data.get("runtimeObservation") != "stopped"):
+        raise ValueError("installer owner, revision or runtime changed")
+    history = invoke(args.cli, args.serial, "operations", "list", environment=args.cli_environment)
+    entries = history.get("response", {}).get("data", {}).get("operations")
+    if (history.get("exit") != 0 or history["response"].get("ok") is not True or
+            history["response"].get("final") is not True or
+            history["response"].get("controllerId") != intent["expectedOwner"] or
+            history["response"].get("configurationRevision") != intent["expectedRevision"] or
+            not isinstance(entries, list) or any(not isinstance(entry, dict) or
+                entry.get("final") is not True for entry in entries)):
+        raise ValueError("installer has pending or changed operation history")
+    session = invoke(args.cli, args.serial, "updates", "status", environment=args.cli_environment)
+    session_data = session.get("response", {}).get("data")
+    if (session.get("exit") != 0 or session["response"].get("ok") is not True or
+            session["response"].get("final") is not True or
+            session["response"].get("controllerId") != intent["expectedOwner"] or
+            session["response"].get("configurationRevision") != intent["expectedRevision"] or
+            not isinstance(session_data, dict) or session_data.get("phase") != "idle" or
+            session_data.get("activeOperationId") is not None or
+            session_data.get("installPhase") not in (None, "installed", "cancelled")):
+        raise ValueError("installer session is not idle")
+    retained = session_data.get("installReceipt")
+    if retained is not None and (not isinstance(retained, dict) or
+            retained.get("installPhase") not in {"installed", "cancelled"} or
+            retained.get("installed") is not (retained.get("installPhase") == "installed") or
+            not isinstance(retained.get("installReceiptId"), str) or not retained["installReceiptId"] or
+            not valid_session_id(retained.get("installSessionId"))):
+        raise ValueError("installer retained session is not terminal")
+    return intent
+
+
 def main():
     args = parse_args()
     args.device_port = int(args.device_port)
-    if args.api not in ("29", "35") or args.output.exists():
-        raise SystemExit("API must be 29/35 and output must be new")
+    if args.api not in ("29", "35"):
+        raise SystemExit("API must be 29/35")
     if (not math.isfinite(args.reconciliation_timeout_seconds) or not math.isfinite(args.reconciliation_poll_seconds)
             or args.reconciliation_timeout_seconds <= 0 or args.reconciliation_poll_seconds <= 0):
         raise SystemExit("reconciliation timeout and poll interval must be finite positive values")
+    args.output.mkdir(mode=0o700, parents=True, exist_ok=True)
     args.cli_environment = tls.public_cli_environment(args.adb, args.cli)
-    args.output.mkdir(mode=0o700, parents=True)
+    args.intent = validate_intent(args)
+    target_admission._write_private(args.output / "run-started.json",
+        {"correlationId": args.intent["correlationId"], "state": "may_have_started"})
     if (args.continue_file is not None and args.expected_terminal == "installed" and args.handoff_ready_file is None):
         raise SystemExit("installed callback runs require a distinct handoff-ready callback")
     if args.handoff_ready_file is not None:
@@ -402,9 +564,14 @@ def main():
     ready, log, served = args.output / "ready.json", args.output / "fixture.log", args.output / "fixture-receipt.json"
     process = fixture.launch_supervised_fixture(args.target_apk, args.target_version, int(args.target_code),
                                                 args.leaf_certificate, args.private_key, ready, log, served)
+    fixture_identity = None
     try:
         args.host_port = fixture.read_ready_file(
             ready, fixture.make_manifest(args.target_apk, args.target_version, int(args.target_code)))
+        fixture_identity = {
+            "correlationId": args.intent["correlationId"], "pid": process.pid,
+            "startTicks": fixture_start_ticks(process.pid), "port": args.host_port}
+        target_admission._write_private(args.output / "fixture-identity.json", fixture_identity)
         lifecycle = argparse.Namespace(
             adb=args.adb, serial=args.serial, cli=args.cli, certificate=args.ca_certificate,
             leaf_certificate=args.leaf_certificate, fixture_parent=args.output, server_log=log,
@@ -414,8 +581,10 @@ def main():
             expected_code=args.base_code, base_apk=args.base_apk, base_sha256=args.base_sha256,
             target_sha256=args.target_sha256, continue_file=args.continue_file,
             handoff_ready_file=args.handoff_ready_file,
+            governed_callbacks=args.governed_callbacks,
             target_version=args.target_version, target_code=args.target_code,
             expected_terminal=args.expected_terminal,
+            intent=args.intent, output=args.output,
             reconciliation_timeout_seconds=args.reconciliation_timeout_seconds,
             reconciliation_poll_seconds=args.reconciliation_poll_seconds,
             cli_environment=args.cli_environment)
@@ -424,6 +593,9 @@ def main():
                                   expected_proxy="null")
     finally:
         fixture._stop_fixture(process)
+        if fixture_identity is not None:
+            target_admission._write_private(args.output / "worker-finished.json",
+                {**fixture_identity, "state": "fixture_stopped"})
 
 
 if __name__ == "__main__":

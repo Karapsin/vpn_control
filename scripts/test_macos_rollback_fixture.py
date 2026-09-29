@@ -36,6 +36,8 @@ class FakeBoundary:
         self.terminal_job = JOB
         self.identity_value = BASE
         self.receipt_calls = []
+        self.cleanup_value = {"jobId": JOB, "candidateAbsent": True, "backupAbsent": True,
+                              "baseUnchanged": True, "cleanupAtUnixMs": 105}
     def now(self): return self.clock
     def sleep(self, seconds): self.clock += seconds
     def sha256(self, path): return "b" * 64 if "target" in str(path) else "a" * 64
@@ -50,6 +52,19 @@ class FakeBoundary:
     def clear_immutable(self, candidate, identity, job, authority):
         if not self.immutable: raise AssertionError("cleared without an armed candidate")
         self.cleared = True; self.immutable = False; self.events.append(("clear", str(candidate), authority))
+    def clean_candidate(self, candidate, identity, app, base, job, authority):
+        if not self.cleared or self.receipt_value.get("phase") != "FAILED":
+            raise AssertionError("cleanup before exact terminal and immutable release")
+        self.events.append(("clean", str(candidate), authority))
+        return dict(self.cleanup_value)
+    def worker_events(self, job, authority):
+        names = ("base-observed", "candidate-armed", "base-moved-to-backup",
+                 "candidate-move-failed", "base-restored")
+        return [{"jobId": job, "sequence": index, "type": name,
+                 "observedAtUnixMs": 100 + index,
+                 "device": 10, "inode": 20 if index in (0, 2, 4) else 30,
+                 "sha256": "a" * 64 if index in (0, 2, 4) else "c" * 64}
+                for index, name in enumerate(names)]
     def coordinator_absent(self, job, pid):
         if self.coordinator_polls:
             self.coordinator_polls -= 1
@@ -117,15 +132,43 @@ class RollbackFixtureTest(unittest.TestCase):
     def test_machine_authority_uses_machine_receipt_and_narrow_candidate_actions(self):
         boundary = FakeBoundary()
         base = self.spec()
-        spec = FixtureSpec(base.app, base.state_dir, base.expected_base_package, base.expected_target_package,
+        temporary = tempfile.TemporaryDirectory(); self.addCleanup(temporary.cleanup)
+        state = Path(temporary.name) / "state"
+        spec = FixtureSpec(base.app, state, base.expected_base_package, base.expected_target_package,
             base.expected_base_package_sha256, base.expected_target_package_sha256, base.expected_target_code_sha256,
-            base.expected_base_identity, ReceiptAuthority.MACHINE, Path("/"), base.timeout_seconds, base.poll_seconds)
+            base.expected_base_identity, ReceiptAuthority.MACHINE, Path("/"), base.timeout_seconds, base.poll_seconds,
+            "a" * 40, "33333333-3333-4333-8333-333333333333",
+            "44444444-4444-4444-8444-444444444444", "env-owned123", "sha256-" + "d" * 64)
         events = []; fixture = RollbackFixture(spec, boundary, events.append)
         original_sleep = boundary.sleep
         boundary.sleep = lambda seconds: (original_sleep(seconds), boundary.terminal_receipt_after_unlock())
         fixture.run()
         self.assertTrue(boundary.receipt_calls and all(call[1] is ReceiptAuthority.MACHINE for call in boundary.receipt_calls))
         self.assertTrue(all(event[-1] is ReceiptAuthority.MACHINE for event in boundary.events if event[0] in ("arm", "clear")))
+        self.assertEqual(["arm", "clear", "clean"], [event[0] for event in boundary.events
+                         if event[0] in ("arm", "clear", "clean")])
+        self.assertTrue(events[-1]["cleanup"]["candidateAbsent"])
+        trace = state / "acceptance-evidence" / spec.correlation_id / "rollback-trace.json"
+        self.assertEqual(OPERATION, __import__("json").loads(trace.read_text())["operationId"])
+    def test_machine_cleanup_fails_closed_when_candidate_or_backup_remains(self):
+        for field in ("candidateAbsent", "backupAbsent", "baseUnchanged", "jobId"):
+            boundary = FakeBoundary(); boundary.cleanup_value[field] = False
+            base = self.spec()
+            temporary = tempfile.TemporaryDirectory(); self.addCleanup(temporary.cleanup)
+            spec = FixtureSpec(base.app, Path(temporary.name) / "state", base.expected_base_package,
+                base.expected_target_package, base.expected_base_package_sha256,
+                base.expected_target_package_sha256, base.expected_target_code_sha256,
+                base.expected_base_identity, ReceiptAuthority.MACHINE, Path("/"),
+                base.timeout_seconds, base.poll_seconds, "a" * 40,
+                "33333333-3333-4333-8333-333333333333",
+                "44444444-4444-4444-8444-444444444444", "env-owned123",
+                "sha256-" + "d" * 64)
+            fixture = RollbackFixture(spec, boundary, lambda _: None)
+            original_sleep = boundary.sleep
+            boundary.sleep = lambda seconds: (original_sleep(seconds), boundary.terminal_receipt_after_unlock())
+            expected = "incomplete" if field == "jobId" else "not independently proven"
+            with self.subTest(field=field), self.assertRaisesRegex(FixtureError, expected):
+                fixture.run()
     def test_omitted_public_ack_does_not_release_lock_or_clear_candidate(self):
         boundary = FakeBoundary(); boundary.ack = False
         with self.assertRaisesRegex(FixtureError, "same-operation public handoff"):
@@ -265,6 +308,22 @@ class MacBoundaryAuthorityTest(unittest.TestCase):
             with mock.patch.object(subject.sys, "platform", "darwin"), \
                  mock.patch.object(subject, "RollbackFixture", side_effect=AssertionError("fixture constructed")):
                 with self.assertRaises(SystemExit): subject.main(args)
+
+    def test_machine_cli_requires_campaign_binding_before_evidence_or_native_call(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary) / "state"; state.mkdir()
+            evidence = Path(temporary) / "new.jsonl"
+            args = ["--app", "/owned/app.app", "--state-dir", str(state),
+                    "--base-package", "/base.dmg", "--target-package", "/target.dmg",
+                    "--base-package-sha256", "a" * 64,
+                    "--target-package-sha256", "b" * 64,
+                    "--target-code-sha256", "c" * 64,
+                    "--base-identity", "1:2:" + "d" * 64,
+                    "--receipt-authority", "machine", "--evidence", str(evidence)]
+            with mock.patch.object(subject.sys, "platform", "darwin"), \
+                 mock.patch.object(subject, "RollbackFixture", side_effect=AssertionError("native call")):
+                with self.assertRaises(SystemExit): subject.main(args)
+            self.assertFalse(evidence.exists())
 
     def test_machine_receipt_uses_only_helper_not_user_home(self):
         boundary = MacBoundary()

@@ -109,7 +109,7 @@ The index is a navigation aid. `AGENTS.md` remains the agent hard-rule layer, `a
 Run the stdlib-only unit suite with:
 
 ```bash
-python3 -m unittest discover -s agent_tools/tests
+python3 -m unittest discover -s agent_tools/tests -t .
 ```
 
 The complete local pre-push tier is documented in `agent_docs/test-matrix.md` and is also encoded by `run_checks(level="prepush")`.
@@ -682,6 +682,13 @@ descriptor census and QEMU generation recheck; otherwise it is `unknown`.
 `noQemuObserved` alone does not prove a source is stopped. The census never
 admits cloning, capture, shutdown or package testing.
 
+`arch-qemu-holder-census` takes exactly `{host: "archlinux",
+timeoutSeconds: 1..30}`. It reports a bounded read-only census of Arch QEMU
+process generations, allocated memory, and file and socket holders. A
+Windows baseline role is assigned only when the fixed source receipts and
+live descriptors agree; incomplete observations return `unknown`. It never
+admits parking, shutdown, or another native action.
+
 `windows-vm-media-fingerprint` takes exactly `{host: "archlinux",
 timeoutSeconds: 30..240}` and rehashes only two fixed existing Windows media
 paths through a stable read-only file observation. It reports SHA256 and size
@@ -727,6 +734,69 @@ The reviewed one-shot screen capture and status adapter returns only a bounded
 frame path, SHA256 and dimensions; it never returns image bytes. Unknown
 capture outcomes require exact status, without a repeated capture start.
 
+`windows-vm-optical-boot-preflight/start/status` each take exactly
+`{host: "archlinux", correlationId: "<new canonical lowercase UUID>",
+timeoutSeconds: 30..300}`. Preflight checks the fixed running VM, reservation,
+blank disk, and Microsoft ISO. Start writes one-shot intents before one QMP
+reset and timed space key, then records before and after frame hashes. It does
+not enter Windows setup. Unknown outcomes require exact status and cannot be
+replayed; the route accepts no arbitrary key or VM command.
+
+`windows-vm-optical-close-preflight/start/status` each take exactly
+`{host: "archlinux", closureCorrelationId: "<new canonical lowercase UUID>",
+timeoutSeconds: 30..300}`. Preflight checks that the first optical attempt
+has no observed VM effect. Start writes one durable closure intent and exact
+pre-effect receipt after two bounded idle samples; it sends no QMP reset or
+key. Unknown closure outcomes require exact close status and cannot be
+replayed.
+
+`windows-vm-optical-attempt2-preflight/start/status` take exactly
+`{host: "archlinux", correlationId: "<new canonical lowercase UUID>",
+closureCorrelationId: "<verified first-attempt closure UUID>",
+timeoutSeconds: 30..300}`. The closure correlation is fixed to the reviewed
+pre-effect closure, and the action correlation must be new. Start has a
+separate one-shot journal and permits one reset and space key only after the
+first attempt's terminal closure is reverified. Unknown outcomes require
+exact attempt-2 status and never authorize replay.
+
+`windows-vm-optical-attempt2-phase-probe` takes only the fixed Arch host, the
+exact existing attempt-2 and closure correlations, and `timeoutSeconds:
+30..300`. It reads the current owner and typed QMP phase without a frame,
+reset, or key. `phase-probed` with a `ready` probe is diagnostic evidence;
+unknown phases never authorize another attempt.
+
+`windows-vm-optical-attempt2-close-preflight/start/status` take exactly
+`{host: "archlinux", closureCorrelationId: "<new canonical lowercase UUID>",
+timeoutSeconds: 30..300}`. The adapter binds the fixed second attempt and
+first closure, then proves no observed guest effect before recording a
+second pre-effect closure. Unknown outcomes require exact closure status;
+the one-shot start cannot be replayed.
+
+`windows-vm-optical-attempt3-preflight/start/status` take exactly
+`{host: "archlinux", correlationId: "<new canonical lowercase UUID>",
+closureCorrelationId: "<verified second-closure UUID>", timeoutSeconds:
+30..300}`. The two IDs must be distinct and cannot reuse earlier optical
+correlations. The adapter verifies the exact second closure before a
+third one-shot optical attempt. Unknown outcomes require exact attempt-3
+status and never authorize replay.
+
+`windows-vm-optical-attempt3-frame-collect` takes the fixed Arch host,
+existing attempt-3 correlation `e80d5b29-d44f-4b22-a821-5612304564b5`,
+second closure `7cbc014c-3890-422a-891a-a114d7cb779e`, and
+`timeoutSeconds: 30..300`. It verifies the sealed post-frame state and saves
+a private local PNG under ignored runtime evidence, returning its path and
+hash. It accepts no caller image path or VM input; uncertain collection is
+`unknown` with no replay authorization.
+
+`windows-vm-optical-current-screen-preflight/start/status/collect` take
+exactly `{host: "archlinux", observationCorrelationId: "<new canonical
+lowercase UUID>", timeoutSeconds: 30..300}`. The adapter fixes the same
+attempt-3 and second-closure correlations and verifies the sealed previous
+frame and live QEMU owner. Start makes one QMP screen observation without a
+reset or key; status reads its bound journal, and collect saves a private
+PNG under ignored runtime evidence. An unknown start requires exact status
+and cannot be replayed; callers cannot choose an image path or VM action.
+
 `windows-msi-owner-quit-preflight` takes only `{host: "archlinux"}`. The
 reviewed `windows-msi-owner-quit-start` requires the fixed Arch host, a new
 canonical `correlationId`, exact source/controller/installed CLI identities,
@@ -751,6 +821,50 @@ started; the receipt explicitly leaves device mutation and installer target
 admission false. `android-native-fixture-status/stop/collect` take only
 `{campaignId}`. Unknown outcomes are not replay authorization. No certificate
 or private key bytes are accepted or returned by these routes.
+
+`android-endpoint-admission-start` takes exactly `{host, device,
+correlationId, campaignId, sourceSha, targetArtifactId, caArtifactId,
+backupCorrelationId, expectedOwner, expectedRevision,
+expectedBackupSha256}`. It binds the configured disposable emulator, running
+host fixture, exact package and CA artifacts, and fresh guarded OFF/backup
+readback before its one-shot CA mount and two fixed ADB reverses. It neither
+installs the package nor admits an installer target. `status/cleanup` take
+only `{correlationId}`; uncertain outcomes require exact status and never
+authorize replay. Cleanup removes only the bound temporary endpoint effects.
+
+`android-installer-dispatch-start` takes exact configured `host`/`device`, a
+new `correlationId`, `sourceSha`, base and target package artifact IDs,
+backup and public inspect correlations, expected owner/revision/backup hash,
+`expectedTerminal` (`installed` or `cancelled`), CLI-stage correlation, and
+three fixture CA/leaf/key artifact IDs. It owns one source-bound device lease
+and a single detached installer job. `status/collect` take only
+`{correlationId}` and never authorize replay. Fixed
+`android-installer-callback-handoff-ready/continue` and their
+`callback-status-handoff-ready/continue` observations also take only
+`{correlationId}`; each callback checks its exact UI phase and operation
+session before signaling once. `android-installer-abort-prelaunch` takes
+`{correlationId, closingReadbackCorrelationId}`; `android-installer-reconcile`
+also requires `expectedClosingOwner` and `expectedClosingRevision`. These
+closure routes release only the exact lease after their respective fresh
+prelaunch or terminal proofs. No route accepts an arbitrary guest command.
+
+`linux-package-fixture-build-preflight/start` take exactly `{sourceSha,
+baseVersion, targetVersion, correlationId}`. Preflight verifies a clean
+exact `origin/dev` source and the fixed Arch build host. Start writes a
+one-shot source-bound intent and host claim before dispatching the fixed
+builder. `linux-package-fixture-build-status/collect` take only
+`{correlationId}`; collect registers verified Linux package and fixture
+receipts plus bound timing receipts only after a `ready` build. Unknown
+submission or worker status is never replay authorization.
+
+`linux-guest-park-preflight/start` take exactly `{correlationId,
+preparationCorrelationId, guestRole, sourceSha}` for one of the four fixed
+Ubuntu/Arch guest roles. The reviewed adapter loads the owner-private guest
+manifest and preparation receipt itself, verifies registered source-bound
+artifacts, and runs the fixed privileged idle/process census. Start writes a
+one-shot intent before a graceful, exact-generation QEMU park. Status takes
+only `{correlationId}`; only `parked` proves terminal absence. Unknown or
+blocked outcomes never authorize replay or guest restart.
 
 `linux-deb-arch-guest-prepare-preflight/start` take exactly `{profile,
 distribution, correlationId, sourceSha, artifactIds}`. The four fixed
@@ -1068,3 +1182,13 @@ targetSizeBytes})` verifies registered same-source DMGs and repairs only the
 mode of exact task-owned copies in the disposable Tart guest after hashing both.
 Status and collect accept only `correlationId`. It neither starts a fixture
 server nor submits an installer. An uncertain mutation cannot be resubmitted.
+
+`macos-machine-server-stop-start` takes the exact accepted machine campaign
+and HTTPS server identity: schema version, source SHA, correlation, scenario,
+job/operation/boot/reservation IDs, fixture receipt artifact ID, server
+instance/PID/start identity, and ready-receipt SHA256. The reviewed adapter
+checks the trusted campaign, writes a durable stop intent, then sends one
+generation-bound server signal; its start state remains unknown and cannot
+be replayed. `macos-machine-server-stop-status/collect` take only
+`{correlationId}`. Only fresh status `complete` proves current server absence;
+collect labels its receipt historical with `currentState: unverified`.

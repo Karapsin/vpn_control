@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import shutil
 from pathlib import Path
@@ -20,7 +21,7 @@ class Adb:
 
 def record(code, final, operation=None, data=None, ok=None, controller="controller"):
     response = {"code": code, "final": final, "ok": code in {"OK", "ACCEPTED"} if ok is None else ok,
-                "controllerId": controller}
+                "controllerId": controller, "configurationRevision": 4}
     if operation: response["operationId"] = operation
     if data is not None: response["data"] = data
     return {"argv": [], "exit": driver.EXIT[code], "response": response, "stderr": ""}
@@ -30,7 +31,8 @@ def argv(root, output, callback=None, handoff_ready=None, adb=None, expected_ter
     values = ["driver", "--adb", str(adb or root / "adb"), "--serial", "serial", "--api", "35", "--avd", "avd",
         "--device-port", "45635", "--cli", str(root / "cli"), "--ca-certificate", str(root / "ca.pem"),
         "--leaf-certificate", str(root / "leaf.pem"), "--private-key", str(root / "leaf.key"),
-        "--output", str(output), "--base-apk", str(root / "base.apk"), "--base-sha256", "base-hash",
+        "--output", str(output), "--intent-file", str(output / "intent.json"),
+        "--base-apk", str(root / "base.apk"), "--base-sha256", "base-hash",
         "--base-version", "2.1.13", "--base-code", "16660", "--target-apk", str(root / "target.apk"),
         "--target-sha256", "target-hash", "--target-version", "2.1.14", "--target-code", "16680"]
     if callback is not None: values.extend(["--continue-file", str(callback)])
@@ -57,6 +59,62 @@ def portable_private_file_privacy(*paths, windows=None):
 
 
 class InstallerLifecycleTest(unittest.TestCase):
+    def test_governed_callback_rejects_missing_mismatched_and_foreign_session_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary); output.chmod(0o700)
+            intent = {"correlationId": "3a328d13-28a6-442b-bcc0-266ca20368f5",
+                "expectedOwner": "owner", "expectedRevision": 4,
+                "pair": {"sourceSha": "a" * 40,
+                    "targetArtifactId": "sha256-" + "c" * 64}}
+            args = SimpleNamespace(output=output, fixture_parent=output,
+                handoff_ready_file=output / "handoff-ready", continue_file=output / "continue",
+                intent=intent, governed_callbacks=True)
+            args.handoff_ready_file.write_text("continue\n"); args.handoff_ready_file.chmod(0o600)
+            with self.assertRaises((OSError, ValueError)):
+                driver.await_handoff_ready(args, "operation")
+            ui = b"<hierarchy/>"
+            for phase in ("handoff-ready", "continue"):
+                path = output / ("callback-" + phase + "-ui.xml")
+                path.write_bytes(ui); path.chmod(0o600)
+            value = {"correlationId": intent["correlationId"], "phase": "handoff-ready",
+                "sourceSha": "a" * 40, "targetArtifactId": "sha256-" + "c" * 64,
+                "uiSha256": hashlib.sha256(ui).hexdigest(), "operationId": "operation", "receiptId": "receipt",
+                "sessionId": 17, "owner": "owner", "revision": 4,
+                "focusedInstaller": "com.android.packageinstaller"}
+            evidence = output / "callback-handoff-ready-evidence.json"
+            evidence.write_text(json.dumps(value)); evidence.chmod(0o600)
+            self.assertTrue(driver.await_handoff_ready(args, "operation"))
+            for field, changed in (("sourceSha", "b" * 40), ("operationId", "foreign"),
+                                   ("owner", "foreign")):
+                modified = {**value, field: changed}
+                evidence.write_text(json.dumps(modified))
+                with self.assertRaises(RuntimeError):
+                    driver.await_handoff_ready(args, "operation")
+            evidence.write_text(json.dumps(value))
+            (output / "callback-handoff-ready-ui.xml").write_bytes(b"changed")
+            with self.assertRaisesRegex(RuntimeError, "snapshot changed"):
+                driver.await_handoff_ready(args, "operation")
+            (output / "callback-handoff-ready-ui.xml").write_bytes(ui)
+            handoff = output / "handoff.json"
+            handoff.write_text(json.dumps({"identity": {"operationId": "operation",
+                "receiptId": "receipt", "sessionId": 17}})); handoff.chmod(0o600)
+            next_value = {**value, "phase": "continue", "focusedInstaller": None,
+                "owner": "new-owner", "revision": 5}
+            next_evidence = output / "callback-continue-evidence.json"
+            next_evidence.write_text(json.dumps(next_value)); next_evidence.chmod(0o600)
+            self.assertEqual("continue", driver.verify_governed_callback(args, "continue")["phase"])
+            next_evidence.write_text(json.dumps({**next_value, "sessionId": 18}))
+            with self.assertRaises(RuntimeError):
+                driver.verify_governed_callback(args, "continue")
+
+    def setUp(self):
+        self.intent_patch = patch.object(driver, "validate_intent", return_value={
+            "correlationId": "3a328d13-28a6-442b-bcc0-266ca20368f5",
+            "pair": {"sourceSha": "a" * 40, "targetArtifactId": "sha256-" + "b" * 64},
+            "backupSha256": "c" * 64, "expectedOwner": "controller", "expectedRevision": 4})
+        self.intent_patch.start()
+        self.addCleanup(self.intent_patch.stop)
+
     class InstalledAdb(Adb):
         def shell(self, *words):
             self.calls.append(words)
@@ -119,7 +177,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                 observed["launch"] = parameters
                 callback.write_text("continue\n")
                 if os.name != "nt": callback.chmod(0o600)
-                return object()
+                return SimpleNamespace(pid=23456)
             def lifecycle(args, action, **kwargs):
                 observed["args"] = args; observed["lifecycle"] = kwargs
                 return action(args, Adb(), {})
@@ -135,6 +193,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                  patch.object(driver.fixture, "launch_supervised_fixture", side_effect=launched), \
                  patch.object(driver.fixture, "read_ready_file", return_value=12345), \
                  patch.object(driver.fixture, "make_manifest", return_value={}), \
+                 patch.object(driver, "fixture_start_ticks", return_value=777), \
                  patch.object(driver.fixture, "_stop_fixture"), \
                  patch.object(driver.tls, "run_fixture_lifecycle", side_effect=lifecycle), \
                  patch.object(driver, "invoke", side_effect=replies), \
@@ -151,6 +210,25 @@ class InstallerLifecycleTest(unittest.TestCase):
             self.assertEqual((root / "target.apk", "2.1.14", 16680), observed["launch"][:3])
             self.assertEqual([(root / "base.apk", "base-hash"), (root / "target.apk", "target-hash")],
                              [call.args for call in hashed.call_args_list])
+            self.assertTrue((output / "run-started.json").is_file())
+            self.assertTrue((output / "phase-interactive.json").is_file())
+            self.assertEqual({"correlationId": "3a328d13-28a6-442b-bcc0-266ca20368f5",
+                "pid": 23456, "startTicks": 777, "port": 12345},
+                json.loads((output / "fixture-identity.json").read_text()))
+
+    def test_duplicate_run_marker_rejects_before_fixture_or_guest_effect(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); output = root / "output"; output.mkdir(mode=0o700)
+            marker = output / "run-started.json"
+            marker.write_text(json.dumps({"correlationId": "3a328d13-28a6-442b-bcc0-266ca20368f5",
+                "state": "may_have_started"}))
+            marker.chmod(0o600)
+            with patch.object(sys, "argv", argv(root, output)), \
+                 patch.object(driver.tls, "public_cli_environment", return_value={}), \
+                 patch.object(driver.fixture, "launch_supervised_fixture") as launched:
+                with self.assertRaises(FileExistsError):
+                    driver.main()
+            launched.assert_not_called()
 
     def test_main_forwards_handoff_ready_to_two_phase_action(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -161,7 +239,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                 for path in (ready, callback):
                     path.write_text("continue\n")
                     if os.name != "nt": path.chmod(0o600)
-                return object()
+                return SimpleNamespace(pid=23456)
             def lifecycle(args, action, **_):
                 observed["args"] = args
                 return action(args, self.InstalledAdb(), {})
@@ -181,6 +259,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                  patch.object(driver.fixture, "launch_supervised_fixture", side_effect=launched), \
                  patch.object(driver.fixture, "read_ready_file", return_value=12345), \
                  patch.object(driver.fixture, "make_manifest", return_value={}), \
+                 patch.object(driver, "fixture_start_ticks", return_value=777), \
                  patch.object(driver.fixture, "_stop_fixture"), \
                  patch.object(driver.tls, "run_fixture_lifecycle", side_effect=lifecycle), \
                  patch.object(driver, "invoke", side_effect=replies), \
@@ -619,6 +698,69 @@ class InstallerLifecycleTest(unittest.TestCase):
             with patch.object(driver, "invoke", side_effect=replies), patch("builtins.input"):
                 with self.assertRaisesRegex(RuntimeError, "not accepted"):
                     driver.action(args, ChurnAdb(), {})
+
+
+class StrictInstallerAdmissionTest(unittest.TestCase):
+    def test_foreign_public_owner_stops_before_download_or_session(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary); output.chmod(0o700)
+            args = SimpleNamespace(cli=Path("cli"), serial="serial", output=output,
+                intent={"correlationId": "3a328d13-28a6-442b-bcc0-266ca20368f5",
+                    "pair": {"sourceSha": "a" * 40, "targetArtifactId": "sha256-" + "b" * 64},
+                    "backupSha256": "c" * 64, "expectedOwner": "owner", "expectedRevision": 4})
+            with patch.object(driver, "invoke", return_value=record("OK", True, controller="foreign")) as public:
+                with self.assertRaisesRegex(RuntimeError, "owner changed"):
+                    driver.action(args, Adb(), {})
+            self.assertEqual(1, public.call_count)
+            self.assertTrue((output / "phase-check.json").is_file())
+            self.assertFalse((output / "phase-download.json").exists())
+
+    def test_live_idle_session_and_owner_are_required_before_fixture_effect(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); output = root / "output"
+            opening = b'{"type":"vpn_control_routing_rules","version":7,"rules":{}}'
+            backup_hash = hashlib.sha256(opening).hexdigest()
+            pair = {"sourceSha": "a" * 40, "baseArtifactId": "sha256-" + "b" * 64,
+                "targetArtifactId": "sha256-" + "c" * 64,
+                "basePath": str(root / "base.apk"), "baseSha256": "b" * 64,
+                "baseVersion": "2.2.0", "baseCode": 16800,
+                "targetPath": str(root / "target.apk"), "targetSha256": "c" * 64,
+                "targetVersion": "2.2.1", "targetCode": 16820}
+            intent = {"pair": pair, "expectedAvd": "owned-api35", "expectedApi": 35,
+                "expectedTerminal": "installed", "backupPath": str(root / "backup.json"),
+                "backupSha256": backup_hash, "backupSize": len(opening),
+                "expectedOwner": "owner", "expectedRevision": 4}
+            args = SimpleNamespace(intent_file=output / "intent.json", output=output,
+                base_apk=root / "base.apk", base_sha256="b" * 64, base_version="2.2.0",
+                base_code="16800", target_apk=root / "target.apk", target_sha256="c" * 64,
+                target_version="2.2.1", target_code="16820", avd="owned-api35", api="35",
+                expected_terminal="installed", adb="adb", serial="serial", cli=Path("cli"),
+                cli_environment={})
+            status = record("OK", True, data={"runtimeRunning": False,
+                "runtimeObservation": "stopped"}, controller="owner")
+            status["response"]["configurationRevision"] = 4
+            operations = record("OK", True, data={"operations": []}, controller="owner")
+            operations["response"]["configurationRevision"] = 4
+            idle = record("OK", True, data={"phase": "idle", "activeOperationId": None,
+                "installReceipt": None}, controller="owner")
+            idle["response"]["configurationRevision"] = 4
+            with patch.object(driver.target_admission, "load_intent", return_value=intent), \
+                 patch.object(driver.target_admission, "_private_file", return_value=opening), \
+                 patch.object(driver.target_admission, "verify_staged_pair"), \
+                 patch.object(driver.tls, "Adb", return_value=SimpleNamespace(shell_id=lambda: "uid=2000")), \
+                 patch.object(driver.tls, "verify_public_baseline", return_value={"controllerId": "owner"}), \
+                 patch.object(driver, "invoke", side_effect=[status, operations, idle]) as public:
+                self.assertEqual(intent, driver.validate_intent(args))
+                self.assertEqual(3, public.call_count)
+            busy = {**idle, "response": {**idle["response"], "data": {"phase": "downloading"}}}
+            with patch.object(driver.target_admission, "load_intent", return_value=intent), \
+                 patch.object(driver.target_admission, "_private_file", return_value=opening), \
+                 patch.object(driver.target_admission, "verify_staged_pair"), \
+                 patch.object(driver.tls, "Adb", return_value=SimpleNamespace(shell_id=lambda: "uid=2000")), \
+                 patch.object(driver.tls, "verify_public_baseline", return_value={"controllerId": "owner"}), \
+                 patch.object(driver, "invoke", side_effect=[status, operations, busy]):
+                with self.assertRaisesRegex(ValueError, "session is not idle"):
+                    driver.validate_intent(args)
 
 
 if __name__ == "__main__":
