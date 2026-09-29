@@ -18,6 +18,111 @@ from agent_tools import android_installer_dispatch as shared_dispatch
 
 
 class AndroidPackageInstallTest(unittest.TestCase):
+    def test_private_rule_compare_accepts_canonical_equality_and_rejects_changed_rules(self):
+        opening_corr="a8a59aa1-bd8e-4aa4-a801-d563e5538609"
+        current_corr="4c018b9a-79b0-4036-aea3-9d0f0dee7678"
+        with tempfile.TemporaryDirectory() as raw:
+            root=Path(raw); root.chmod(0o700)
+            opening_dir=root/("android-readback-"+opening_corr); opening_dir.mkdir(mode=0o700)
+            current_dir=root/("android-readback-"+current_corr); current_dir.mkdir(mode=0o700)
+            opening=b'{"type":"vpn_control_routing_rules","version":7,"rules":{"ignore_rules":false}}'
+            current=b'{"rules":{"ignore_rules":false},"version":7,"type":"vpn_control_routing_rules"}'
+            for directory,content in ((opening_dir,opening),(current_dir,current)):
+                file=directory/"routing.json"; file.write_bytes(content); file.chmod(0o600)
+            opening_sha=hashlib.sha256(opening).hexdigest()
+            current_sha=hashlib.sha256(current).hexdigest()
+            def compare():
+                completed=subprocess.run([sys.executable,"-c","exec("+repr(installer._PRIVATE_ROUTING_COMPARE)+")",
+                    str(root),opening_corr,current_corr,opening_sha,current_sha],capture_output=True,text=True,timeout=5)
+                self.assertEqual(0,completed.returncode,completed.stderr)
+                self.assertNotIn("ignore_rules",completed.stdout)
+                return json.loads(completed.stdout)
+            self.assertNotEqual(opening_sha,current_sha)
+            self.assertTrue(compare()["sameRules"])
+            altered=current.replace(b"false",b"true ")
+            (current_dir/"routing.json").write_bytes(altered)
+            current_sha=hashlib.sha256(altered).hexdigest()
+            self.assertFalse(compare()["sameRules"])
+            numeric=current.replace(b"false",b"0")
+            (current_dir/"routing.json").write_bytes(numeric)
+            current_sha=hashlib.sha256(numeric).hexdigest()
+            self.assertFalse(compare()["sameRules"],"JSON boolean and numeric zero are distinct routing rules")
+            (current_dir/"routing.json").write_bytes(current)
+            self.assertEqual("unknown",compare()["state"])
+
+    def test_unknown_postinstall_requires_private_rules_proof_before_lease_release(self):
+        old="f25b67e7-9031-4dc5-8283-9e3517307f51"
+        opening_corr="a8a59aa1-bd8e-4aa4-a801-d563e5538609"
+        current_corr="4c018b9a-79b0-4036-aea3-9d0f0dee7678"
+        target="a"*64; opening_hash="b"*64; current_hash="c"*64
+        owner="new-owner"
+        with tempfile.TemporaryDirectory() as raw:
+            root=Path(raw); root.chmod(0o700)
+            installer._save(root,{"host":"archlinux","device":"api29","correlationId":old,
+                "fixtureRoot":"/private/fixtures","backupCorrelationId":opening_corr,
+                "backupSha256":opening_hash,"targetSha256":target,"oldBaseSha256":"d"*64,
+                "oldOwner":"old-owner","oldRevision":0,"expectedAvd":"owned-api29","api":29})
+            installer._claim_device(root,"archlinux","api29",old)
+            shared_dispatch._claim_local(root,"archlinux","api29",old,"android-package-install")
+            observed={"ok":True,"result":{"stage":"backup_present","deviceIdentity":True,
+                "controllerId":owner,"configurationRevision":0,
+                "backup":{"sha256":current_hash,"formatValid":True}}}
+            opening={"ok":True,"state":"complete","result":{"package":{"baseSha256":"d"*64},
+                "guard":{"controllerId":"old-owner","configurationRevision":0},
+                "backup":{"sha256":opening_hash},"device":{"uid":"2000","api":29,"avd":"owned-api29"}}}
+            current={"ok":True,"state":"complete","result":{"package":{"baseSha256":target},
+                "guard":{"controllerId":owner,"configurationRevision":0},
+                "backup":{"sha256":current_hash},"device":{"uid":"2000","api":29,"avd":"owned-api29"}}}
+            public={"ok":True,"outcome":"admitted","result":{"packageSha256":target,
+                "controllerId":owner,"configurationRevision":0,"runtime":{"running":False,"observation":"stopped"},
+                "operationCount":0}}
+            config=SimpleNamespace(hosts={"archlinux":SimpleNamespace(fixture_transfer_root=Path("/private/fixtures"))})
+            def collect(_root,corr): return opening if corr==opening_corr else current
+            with mock.patch.object(installer,"status",return_value={"ok":False,"state":"unknown",
+                    "reason":"postinstall_owner_unknown","correlationId":old}), \
+                 mock.patch.object(installer.ssh_transport,"load_config",return_value=config), \
+                 mock.patch.object(installer.ssh_transport,"connection_host",return_value=SimpleNamespace(password=None)), \
+                 mock.patch.object(installer.android_admission_readback,"readback_status",return_value=observed), \
+                 mock.patch.object(installer.android_admission_readback,"async_collect",side_effect=collect), \
+                 mock.patch.object(installer.android_public_inspect,"inspect",return_value=public), \
+                 mock.patch.object(installer.ssh_transport,"build_ssh_argv",return_value=["ssh"]), \
+                 mock.patch.object(installer.android_observation,"_run_probe",return_value=(0,json.dumps({
+                     "state":"verified","openingSha256":opening_hash,"currentSha256":current_hash,
+                     "sameRules":True}).encode())) as private_probe, \
+                 mock.patch.object(shared_dispatch,"remote_shared_lease",return_value={"state":"released"}) as remote_lease:
+                private_probe.return_value=(0,json.dumps({"state":"verified","openingSha256":opening_hash,
+                    "currentSha256":current_hash,"sameRules":False}).encode())
+                mismatch=installer.prove_unknown_install(root,old,current_corr,owner,0)
+                self.assertEqual("private_routing_rules_unverified",mismatch["reason"])
+                self.assertTrue(installer._device_lease(root,"archlinux","api29").exists())
+                remote_lease.assert_not_called()
+                private_probe.return_value=(0,json.dumps({"state":"verified","openingSha256":opening_hash,
+                    "currentSha256":current_hash,"sameRules":True}).encode())
+                proof=installer.prove_unknown_install(root,old,current_corr,owner,0)
+                self.assertTrue(proof["ok"],proof)
+                self.assertTrue(installer._device_lease(root,"archlinux","api29").exists())
+                remote_lease.assert_not_called()
+                rejected=installer.release_unknown_install_lease(root,old,current_corr,owner,0,"0"*64)
+                self.assertFalse(rejected["ok"])
+                self.assertTrue(installer._device_lease(root,"archlinux","api29").exists())
+                private_probe.return_value=(0,json.dumps({"state":"verified","openingSha256":opening_hash,
+                    "currentSha256":current_hash,"sameRules":False}).encode())
+                rejected=installer.release_unknown_install_lease(root,old,current_corr,owner,0,proof["proofSha256"])
+                self.assertFalse(rejected["ok"])
+                remote_lease.assert_not_called()
+                private_probe.return_value=(0,json.dumps({"state":"verified","openingSha256":opening_hash,
+                    "currentSha256":current_hash,"sameRules":True}).encode())
+                lease=installer._device_lease(root,"archlinux","api29")
+                lease.write_text(json.dumps({"host":"archlinux","device":"api29","correlationId":current_corr}))
+                rejected=installer.release_unknown_install_lease(root,old,current_corr,owner,0,proof["proofSha256"])
+                self.assertEqual("local_install_lease_changed",rejected["reason"])
+                remote_lease.assert_not_called()
+                lease.write_text(json.dumps({"host":"archlinux","device":"api29","correlationId":old}))
+                accepted=installer.release_unknown_install_lease(root,old,current_corr,owner,0,proof["proofSha256"])
+                self.assertTrue(accepted["ok"],accepted)
+                self.assertFalse(installer._device_lease(root,"archlinux","api29").exists())
+                self.assertEqual("unknown",installer.status(root,old)["state"])
+
     def test_apksigner_single_signer_output_without_count_is_admitted(self):
         badging = ("package: name='com.kardinal.vpncontrol' versionCode='16800' versionName='2.2.0'\n"
                    "native-code: 'x86_64'\n")

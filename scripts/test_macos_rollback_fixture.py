@@ -155,10 +155,25 @@ class RollbackFixtureTest(unittest.TestCase):
         trace = state / "acceptance-evidence" / spec.correlation_id / "rollback-trace.json"
         self.assertEqual(OPERATION, __import__("json").loads(trace.read_text())["operationId"])
         with mock.patch.object(subject.sys, "platform", "darwin"), \
-                mock.patch.object(subject.os, "getuid", return_value=-1):
+                mock.patch.object(subject.os, "getuid", return_value=-1, create=True):
             with self.assertRaisesRegex(FixtureError, "evidence directory is unsafe"):
                 fixture._write_machine_trace(boundary.worker_events(JOB, ReceiptAuthority.MACHINE),
                                              boundary.cleanup_value)
+
+    def test_machine_authority_test_runs_without_posix_getuid(self):
+        program = (
+            "import os, unittest; "
+            "from scripts import test_macos_rollback_fixture as suite; "
+            "os.__dict__.pop('getuid', None); "
+            "result = unittest.TextTestRunner().run("
+            "unittest.defaultTestLoader.loadTestsFromName("
+            "'RollbackFixtureTest.test_machine_authority_uses_machine_receipt_and_narrow_candidate_actions', suite)); "
+            "raise SystemExit(not result.wasSuccessful())"
+        )
+        result = subprocess.run([sys.executable, "-c", program],
+                                cwd=Path(__file__).resolve().parents[1],
+                                text=True, capture_output=True, timeout=30)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
     def test_machine_cleanup_fails_closed_when_candidate_or_backup_remains(self):
         for field in ("candidateAbsent", "backupAbsent", "baseUnchanged", "jobId"):
             boundary = FakeBoundary(); boundary.cleanup_value[field] = False

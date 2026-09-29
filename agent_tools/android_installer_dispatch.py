@@ -74,7 +74,7 @@ def _shared_lock(root: Path, host: str, device: str):
 
 
 def _lease_value(owner: str, host: str, device: str, correlation_id: str) -> dict[str, str]:
-    if owner not in {"android-installer", "android-package-install", "android-endpoint"}:
+    if owner not in {"android-installer", "android-package-install", "android-endpoint", "android-document-retry"}:
         raise ValueError("Android shared lease owner is invalid")
     return {"owner": owner, "host": host, "device": device, "correlationId": correlation_id}
 

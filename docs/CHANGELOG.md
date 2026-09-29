@@ -9,6 +9,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Add guarded native acceptance and VM evidence workflows for GUI/CLI parity.
 - Fix agent-tool test discovery in managed checks and CI.
 - Harden native acceptance workflows and desktop visual fixtures.
+- Harden parity acceptance fixtures, recovery, and visual capture guards.
 
 ## 2.2.1 - 2026-09-29
 

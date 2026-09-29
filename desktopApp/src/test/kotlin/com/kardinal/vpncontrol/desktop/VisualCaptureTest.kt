@@ -19,6 +19,7 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.semantics.SemanticsActions
@@ -61,6 +62,25 @@ import org.junit.Test
 
 class VisualCaptureTest {
     private lateinit var compose: ComposeUiTest
+
+    @Test
+    fun routineRuntimeFixtureMatchesOwnerRenderedMessages() {
+        val directory = Files.createTempDirectory("vpn-control-visual-runtime-status")
+        val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+        try {
+            for (sceneId in listOf("main-disconnected", "main-proxy-only", "stress-narrow-long-german")) {
+                val sceneState = visualState(sceneId)
+                val declared = visualRuntimeStatusDetails(sceneState)
+                service.replaceStateForVisualCapture(sceneState, visualLocations(), runtimeStatusDetails = declared)
+                val rendered = service.controlPresentationSnapshot("visual-fixture").frontend.activity.runtimeDetails.messages()
+                check(declared == rendered) {
+                    "$sceneId fixture status $declared differs from owner-rendered status $rendered"
+                }
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
 
     @Test
     fun invalidLocationFixtureSurvivesOwnerPresentationFiltering() {
@@ -194,6 +214,36 @@ class VisualCaptureTest {
     }
 
     @Test
+    fun refreshPolicyVisualSceneShowsPersistedCustomInterval() {
+        val directory = Files.createTempDirectory("vpn-control-visual-refresh-policy-persisted")
+        val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+        try {
+            service.replaceStateForVisualCapture(visualState("settings-refresh-policy"), visualLocations())
+            val owner = service.controlPresentationSnapshot("visual-fixture").frontend
+            check(owner.settings.refreshPolicy == "custom" && owner.settings.refreshCustomHours == 2.5) {
+                "Refresh-policy visual scene must present persisted Custom / 2.5 hours through the owner"
+            }
+            runDesktopComposeUiTest(width = 1280, height = 800) {
+                setContent {
+                    VpnControlTheme {
+                        DesktopVpnControlApp(
+                            windowProvider = { error("Native file dialogs are not used by visual tests") },
+                            service = service,
+                            onCheckAndDownloadUpdate = {},
+                            onDismissOrCancelUpdate = {},
+                            onInstallUpdate = {},
+                        )
+                    }
+                }
+                waitForIdle()
+                onNodeWithTag("refresh-hours", useUnmergedTree = true).assertTextContains("2.5")
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun captureRequestedScenes() {
         if (System.getenv("VPN_CONTROL_VISUAL_OUTPUT") == null) return
         runDesktopComposeUiTest(width = 1280, height = 800) capture@{
@@ -258,20 +308,10 @@ class VisualCaptureTest {
                     "locations-populated" -> locations.map { it.copy(isSelected = false) }
                     else -> locations
                 }
-                val stressScene = sceneId == "stress-narrow-long-german"
                 service.replaceStateForVisualCapture(
                     sceneState,
                     sceneLocations,
-                    runtimeStatusDetails = if (stressScene) {
-                        emptyList()
-                    } else {
-                        buildList {
-                            add(RuntimeStatusMessages.runtimeMode(sceneState.appMode.name))
-                            if (sceneState.appMode == AppMode.VPN) {
-                                add(RuntimeStatusMessages.desktopVpnCapabilityReady())
-                            }
-                        }
-                    },
+                    runtimeStatusDetails = visualRuntimeStatusDetails(sceneState),
                 )
                 viewport.value = visualViewport(sceneId)
                 sceneKey.value = sceneId
@@ -423,6 +463,9 @@ class VisualCaptureTest {
         Files.writeString(path, Json { prettyPrint = true }.encodeToString(JsonObject.serializer(), document) + "\n")
     }
 }
+
+private fun visualRuntimeStatusDetails(state: MainUiState): List<String> =
+    listOf(RuntimeStatusMessages.runtimeMode(state.appMode.name))
 
 private data class VisualViewport(
     val width: Int = 1280,
@@ -670,6 +713,8 @@ internal fun visualState(sceneId: String): MainUiState {
         "settings-app-mode" -> state.copy(showAppModeDialog = true)
         "settings-refresh-policy" -> state.copy(
             showRefreshPolicyDialog = true,
+            subscriptionRefreshPolicy = SubscriptionRefreshPolicy.CUSTOM,
+            subscriptionRefreshCustomHours = 2.5,
             subscriptionRefreshPolicyDraft = SubscriptionRefreshPolicy.CUSTOM,
             subscriptionRefreshCustomHoursDraft = "2.5",
         )

@@ -2,6 +2,9 @@ package com.kardinal.vpncontrol.desktop
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.awt.ComposeWindow
+import com.sun.jna.platform.win32.User32
+import com.sun.jna.platform.win32.WinUser
+import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import com.kardinal.vpncontrol.shared.ui.VpnControlTheme
 import dorkbox.systemTray.SystemTray as DorkboxSystemTray
 import java.awt.EventQueue
@@ -30,11 +33,83 @@ import org.junit.Test
  */
 class DesktopNativeVisualCaptureTest {
     private var macosPrivateWindowPermissionPrepared = false
+
+    @Test
+    fun nativeWindowRuntimeFixtureMatchesOwnerRenderedMessages() {
+        val directory = Files.createTempDirectory("vpn-control-native-visual-runtime-status")
+        val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+        try {
+            val declared = nativeVisualRuntimeStatusDetails()
+            service.replaceStateForVisualCapture(visualState("main-disconnected"), visualLocations(),
+                runtimeStatusDetails = declared)
+            val rendered = service.controlPresentationSnapshot("visual-fixture").frontend.activity.runtimeDetails.messages()
+            check(declared == rendered) {
+                "Native window fixture status $declared differs from owner-rendered status $rendered"
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    private fun nativeVisualRuntimeStatusDetails() = listOf(RuntimeStatusMessages.runtimeMode("VPN"))
     private val robot by lazy {
         Robot().apply {
             autoDelay = 120
             isAutoWaitForIdle = true
         }
+    }
+
+    @Test
+    fun windowsForeignSystemPropertiesDialogRejectsFrameBeforeAndAfterCapture() {
+        var captures = 0
+        val before = runCatching {
+            captureWindowsNativeFrame("windows-tray-disconnected", { listOf("System Properties") }) {
+                captures++
+                "frame"
+            }
+        }.exceptionOrNull()
+        check(before is IllegalStateException && before.message.orEmpty().contains("System Properties"))
+        check(captures == 0) { "Foreign pre-frame dialog must prevent screenshot publication" }
+
+        var census = 0
+        val after = runCatching {
+            captureWindowsNativeFrame("windows-tray-connected", {
+                census++
+                if (census == 1) listOf("VPN Control") else listOf("VPN Control", "System Properties")
+            }) {
+                captures++
+                "frame"
+            }
+        }.exceptionOrNull()
+        check(after is IllegalStateException && after.message.orEmpty().contains("System Properties"))
+        check(captures == 1) { "Post-frame dialog must reject the captured screenshot" }
+
+        val suffixedBefore = runCatching {
+            captureWindowsNativeFrame("windows-tray-disconnected", { listOf("SYSTEM PROPERTIES - Virtual Memory") }) {
+                captures++
+                "frame"
+            }
+        }.exceptionOrNull()
+        check(suffixedBefore is IllegalStateException)
+        check(captures == 1) { "Suffixed pre-frame dialog must prevent screenshot publication" }
+
+        val suffixedAfter = runCatching {
+            captureWindowsNativeFrame("windows-tray-connected", {
+                census++
+                if (census == 3) listOf("VPN Control") else listOf("System Properties: Paging File")
+            }) {
+                captures++
+                "frame"
+            }
+        }.exceptionOrNull()
+        check(suffixedAfter is IllegalStateException)
+        check(captures == 2) { "Suffixed post-frame dialog must reject the captured screenshot" }
+
+        val clean = captureWindowsNativeFrame("windows-tray-disconnected", { listOf("VPN Control") }) {
+            captures++
+            "clean frame"
+        }
+        check(clean == "clean frame" && captures == 3)
     }
 
     @Test
@@ -101,7 +176,7 @@ class DesktopNativeVisualCaptureTest {
         service.replaceStateForVisualCapture(
             visualState(if ("connected" in sceneId) "main-connected" else "main-disconnected"),
             visualLocations(),
-            runtimeStatusDetails = listOf("Runtime mode: VPN", "Desktop VPN capability: ready"),
+            runtimeStatusDetails = nativeVisualRuntimeStatusDetails(),
         )
         val window = ComposeWindow()
         onEventThread {
@@ -465,9 +540,49 @@ class DesktopNativeVisualCaptureTest {
         return output.trim()
     }
 
+    private fun windowsVisualTopLevelTitles(): List<String> {
+        val titles = mutableListOf<String>()
+        check(User32.INSTANCE.EnumWindows(WinUser.WNDENUMPROC { handle, _ ->
+            if (User32.INSTANCE.IsWindowVisible(handle)) {
+                val length = User32.INSTANCE.GetWindowTextLength(handle)
+                if (length > 0) {
+                    val buffer = CharArray(length + 1)
+                    val copied = User32.INSTANCE.GetWindowText(handle, buffer, buffer.size)
+                    if (copied > 0) titles += String(buffer, 0, copied)
+                }
+            }
+            true
+        }, null)) { "Windows top-level visual window census failed" }
+        return titles
+    }
+
+    private fun <T> captureWindowsNativeFrame(
+        sceneId: String,
+        windowTitles: () -> List<String>,
+        capture: () -> T,
+    ): T {
+        fun rejectForeignDialog(phase: String) {
+            check(windowTitles().none { it.startsWith("System Properties", ignoreCase = true) }) {
+                "$sceneId: foreign System Properties dialog visible $phase native screenshot"
+            }
+        }
+        rejectForeignDialog("before")
+        val frame = capture()
+        rejectForeignDialog("after")
+        return frame
+    }
+
     private fun captureScreen(output: Path, bounds: Rectangle) {
         Thread.sleep(800)
-        ImageIO.write(robot.createScreenCapture(bounds), "png", output.toFile())
+        val image = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+            val sceneId = output.fileName.toString().removeSuffix(".png")
+            captureWindowsNativeFrame(sceneId, ::windowsVisualTopLevelTitles) {
+                robot.createScreenCapture(bounds)
+            }
+        } else {
+            robot.createScreenCapture(bounds)
+        }
+        ImageIO.write(image, "png", output.toFile())
     }
 
     private fun captureVisibleSurface(output: Path, bounds: Rectangle) {

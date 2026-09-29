@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,67 @@ def inventory() -> tuple[list[str], list[str]]:
 
 
 class AndroidCliStageTest(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("bsdtar") and shutil.which("rpm2archive") and shutil.which("rpmbuild"),
+                         "RPM archive fixture tools unavailable")
+    def test_rpm6_payload_uses_bounded_archive_when_host_bsdtar_cannot_open_rpm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            top = root / "rpmbuild"
+            (top / "SPECS").mkdir(parents=True)
+            spec = top / "SPECS/fixture.spec"
+            spec.write_text("""Name: vpn-control-stage-fixture
+Version: 1.0
+Release: 1
+Summary: Android CLI stage test fixture
+License: MIT
+BuildArch: noarch
+%description
+Android CLI stage test fixture.
+%prep
+%build
+%install
+mkdir -p %{buildroot}/opt/vpn-control/bin %{buildroot}/opt/vpn-control/lib/app
+printf '#!/bin/sh\\n' > %{buildroot}/opt/vpn-control/bin/vpn-control
+chmod 755 %{buildroot}/opt/vpn-control/bin/vpn-control
+printf 'app' > %{buildroot}/opt/vpn-control/lib/app/desktopApp-aaaaaaaaaaaaaaaa.jar
+for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19; do
+  printf 'library' > %{buildroot}/opt/vpn-control/lib/app/library-$i.jar
+done
+%files
+%dir /opt
+/opt/vpn-control
+""")
+            built = subprocess.run(["rpmbuild", "-bb", "--define", f"_topdir {top}",
+                                    "--define", "_binary_payload w9.zstdio", str(spec)],
+                                   capture_output=True, timeout=60)
+            self.assertEqual(built.returncode, 0, built.stderr.decode("utf-8", "replace"))
+            rpm = next((top / "RPMS").rglob("*.rpm"))
+            stage = root / "stage"
+            stage.mkdir(mode=0o700)
+            original_run = subprocess.run
+
+            def host_without_rpm_zstd(argv, *args, **kwargs):
+                if argv[:2] in (["bsdtar", "-tf"], ["bsdtar", "-tvf"]) and argv[2] == str(rpm):
+                    raise subprocess.CalledProcessError(1, argv, stderr=b"Child process exited with status 70")
+                return original_run(argv, *args, **kwargs)
+
+            with mock.patch.object(subject.subprocess, "run", side_effect=host_without_rpm_zstd):
+                manifest = subject._manifest(rpm, stage)
+            paths = {item["path"] for item in manifest["files"]}
+            self.assertIn("opt/vpn-control/bin/vpn-control", paths)
+            self.assertIn("opt/vpn-control/lib/app/desktopApp-" + "a" * 16 + ".jar", paths)
+            remote = root / "remote"
+            remote.mkdir(mode=0o700)
+            correlation = "b68a93e0-445d-4cf5-8fee-2f5d90065bd3"
+            canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+            header = {"correlationId": correlation, "rpmSha256": hashlib.sha256(rpm.read_bytes()).hexdigest(),
+                      "rpmSize": rpm.stat().st_size, "manifest": manifest,
+                      "manifestSha256": hashlib.sha256(canonical).hexdigest()}
+            received = subprocess.run([sys.executable, "-I", "-B", "-c", "exec(" + repr(subject._RECEIVE) + ")",
+                                       str(remote), correlation, json.dumps(header)], input=rpm.read_bytes(),
+                                      capture_output=True, timeout=30, check=True)
+            self.assertEqual(json.loads(received.stdout)["state"], "published", received.stdout.decode())
+
     def test_real_packaged_31_hex_jar_is_admitted(self) -> None:
         names, details = inventory()
         result = subject._validate_entries(names, details)
@@ -70,6 +132,30 @@ class AndroidCliStageTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "verified Linux RPM"):
                 subject.start("/unused", "archlinux", "b68a93e0-445d-4cf5-8fee-2f5d90065bd3", "sha256-" + "b" * 64)
             source.assert_not_called()
+
+    def test_local_archive_failure_preserves_correlation_without_remote_submission(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); root.chmod(0o700)
+            rpm = root / "vpn-control-2.2.1-1.x86_64.rpm"
+            rpm.write_bytes(b"verified-rpm")
+            digest = hashlib.sha256(rpm.read_bytes()).hexdigest()
+            artifact = {"verification": "verified", "artifact": {"platform": "linux", "artifactKind": "package",
+                        "sourceSha": "a" * 40, "sha256": digest, "size": rpm.stat().st_size},
+                        "location": {"localPath": str(rpm)}}
+            config = SimpleNamespace(hosts={"archlinux": SimpleNamespace(fixture_transfer_root=Path("/private/fixture"))})
+            correlation = "b68a93e0-445d-4cf5-8fee-2f5d90065bd3"
+            with mock.patch.object(subject.native_artifact_registry, "verify_artifact", return_value=artifact), \
+                    mock.patch.object(subject.subprocess, "run", return_value=SimpleNamespace(stdout="a" * 40 + "\n")), \
+                    mock.patch.object(subject.ssh_transport, "load_config", return_value=config), \
+                    mock.patch.object(subject.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
+                    mock.patch.object(subject, "_manifest", side_effect=subprocess.CalledProcessError(1, ["bsdtar"])), \
+                    mock.patch.object(subject.ssh_transport, "build_ssh_argv", side_effect=AssertionError("remote reached")):
+                result = subject.start(root, "archlinux", correlation, "sha256-" + digest)
+            self.assertEqual(result["state"], "unknown")
+            self.assertFalse(result["replayAllowed"])
+            state = root / ".rag_index/android-cli-stages" / correlation
+            self.assertTrue((state / "package.rpm").is_file())
+            self.assertFalse((state / "intent.json").exists())
 
     def test_status_missing_local_intent_has_no_remote_side_effect(self) -> None:
         with mock.patch.object(subject.ssh_transport, "load_config", side_effect=AssertionError("remote reached")):

@@ -64,6 +64,17 @@ function Dismiss-HostedVisualResidue {
     Start-Sleep -Seconds 2
 }
 
+function Assert-NoHostedVisualResidue {
+    if ($env:VPN_CONTROL_VISUAL_PROVIDER -ne "hosted") { return }
+    # Capture can outlive the initial dismissal. A late OS dialog invalidates
+    # every full-screen scene it covered, so fail before provenance is stamped.
+    $foreign = @(Get-Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like "System Properties*" })
+    if ($foreign.Count -ne 0) {
+        throw "Foreign System Properties dialog remained after native visual capture"
+    }
+}
+
 Hide-HostConsoleWindows
 $Manifest = Join-Path $RepoRoot "visual-tests\scenes.json"
 $Selector = Join-Path $RepoRoot "scripts\select_visual_scenes.py"
@@ -108,6 +119,7 @@ if ($NativeScenes) {
         Set-Date -Date $OriginalDate | Out-Null
         Notify-SystemClockChanged
     }
+    Assert-NoHostedVisualResidue
 }
 
 $Driver = if ($IsWindows) { "cmd.exe /c exit 0" } else { "/usr/bin/true" }

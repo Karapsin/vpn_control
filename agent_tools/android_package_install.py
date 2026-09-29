@@ -119,6 +119,22 @@ def _release_device(root: Path | str, host: str, device: str, correlation: str) 
             os.close(fd)
 
 
+def _device_lease_matches(root: Path | str, host: str, device: str, correlation: str) -> bool:
+    with _device_guard(root,host,device) as path:
+        try:
+            fd=os.open(path,os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+            with os.fdopen(fd,"rb") as source:
+                info=os.fstat(source.fileno()); raw=source.read(1025)
+            after=path.lstat()
+            return (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and
+                    stat.S_IMODE(info.st_mode)==0o600 and info.st_nlink==1 and
+                    (info.st_dev,info.st_ino)==(after.st_dev,after.st_ino) and
+                    len(raw)<=1024 and json.loads(raw)==
+                    {"host":host,"device":device,"correlationId":correlation})
+        except (OSError,ValueError,TypeError):
+            return False
+
+
 def _save(root: Path | str, intent: dict[str, Any]) -> None:
     path = _journal(root, intent["correlationId"])
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -560,3 +576,176 @@ def reconcile_terminal_lease(root: Path | str, correlation_id: str, current_read
     return {"ok":released,"state":"complete" if released else "unknown",
             "reason":None if released else "lease_not_released","correlationId":correlation_id,
             "currentReadbackCorrelationId":current_readback_correlation_id,"leaseReleased":released,"replayAllowed":False}
+
+
+_PRIVATE_ROUTING_COMPARE = r'''import hashlib,json,os,pathlib,stat,sys
+root,opening,current,opening_sha,current_sha=sys.argv[1:]
+def fail(reason): print(json.dumps({"state":"unknown","reason":reason})); raise SystemExit(0)
+base=pathlib.Path(root)
+try:
+ info=base.lstat()
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o700: fail("private_root_invalid")
+ def read(correlation,expected):
+  directory=base/("android-readback-"+correlation)
+  directory_info=directory.lstat()
+  if not stat.S_ISDIR(directory_info.st_mode) or directory_info.st_uid!=os.getuid() or stat.S_IMODE(directory_info.st_mode)!=0o700: fail("private_backup_directory_invalid")
+  path=directory/"routing.json"
+  fd=os.open(path,os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+  with os.fdopen(fd,"rb") as source:
+   file_info=os.fstat(source.fileno())
+   if not stat.S_ISREG(file_info.st_mode) or file_info.st_uid!=os.getuid() or stat.S_IMODE(file_info.st_mode)!=0o600 or file_info.st_nlink!=1 or not 0<file_info.st_size<=67108864: fail("private_backup_file_invalid")
+   raw=source.read(67108865)
+  if len(raw)!=file_info.st_size or hashlib.sha256(raw).hexdigest()!=expected: fail("private_backup_hash_changed")
+  value=json.loads(raw.decode("utf-8","strict"))
+  if not isinstance(value,dict) or value.get("type")!="vpn_control_routing_rules" or value.get("version")!=7 or not isinstance(value.get("rules"),dict): fail("private_backup_format_invalid")
+  return json.dumps(value["rules"],sort_keys=True,separators=(",",":"),ensure_ascii=False)
+ same=read(opening,opening_sha)==read(current,current_sha)
+ print(json.dumps({"state":"verified","openingSha256":opening_sha,"currentSha256":current_sha,"sameRules":same},separators=(",",":")))
+except (OSError,ValueError,UnicodeError,TypeError): fail("private_routing_unavailable")'''
+
+
+def prove_unknown_install(root: Path | str, correlation_id: str, current_readback_correlation_id: str,
+                          expected_current_owner: str, expected_current_revision: int) -> dict[str, Any]:
+    """Read-only proof for an installed APK whose original owner wait was unknown.
+
+    The original unknown receipt and all leases remain intact. Routing rules are
+    compared on the private host; their contents never cross the transport.
+    """
+    if not all(isinstance(value,str) and _UUID.fullmatch(value)
+               for value in (correlation_id,current_readback_correlation_id)):
+        raise ValueError("Android unknown install proof requires UUID correlations")
+    if not isinstance(expected_current_owner,str) or not expected_current_owner or \
+            type(expected_current_revision) is not int or expected_current_revision<0:
+        raise ValueError("Android unknown install proof requires exact current owner")
+    def reject(reason):
+        return {"ok":False,"state":"unknown","reason":reason,"correlationId":correlation_id,
+                "replayAllowed":False,"leaseReleased":False}
+    intent=_load(root,correlation_id)
+    if not isinstance(intent,dict): return reject("missing_install_intent")
+    host,device=intent.get("host"),intent.get("device")
+    opening_corr=intent.get("backupCorrelationId")
+    opening_sha=intent.get("backupSha256")
+    target=intent.get("targetSha256")
+    if not all(isinstance(value,str) and _UUID.fullmatch(value) for value in (opening_corr,)) or \
+            not all(isinstance(value,str) and _SHA.fullmatch(value) for value in (opening_sha,target)) or \
+            not isinstance(host,str) or not isinstance(device,str):
+        return reject("invalid_install_intent")
+    original=status(root,correlation_id)
+    if original.get("state")!="unknown" or original.get("reason")!="postinstall_owner_unknown":
+        return reject("original_outcome_not_owner_unknown")
+    config=ssh_transport.load_config(root)
+    if host not in config.hosts or ssh_transport.connection_host(config,host).password is not None:
+        return reject("route_unavailable")
+    remote_root=config.hosts[host].fixture_transfer_root
+    if remote_root is None or str(remote_root)!=intent.get("fixtureRoot"):
+        return reject("fixture_root_changed")
+    opening=android_admission_readback.async_collect(root,opening_corr)
+    opening_result=opening.get("result",{})
+    opening_guard=opening_result.get("guard",{})
+    opening_backup=opening_result.get("backup",{})
+    opening_device=opening_result.get("device",{})
+    if (opening.get("ok") is not True or opening.get("state")!="complete" or
+            opening_result.get("package",{}).get("baseSha256")!=intent.get("oldBaseSha256") or
+            opening_guard.get("controllerId")!=intent.get("oldOwner") or
+            opening_guard.get("configurationRevision")!=intent.get("oldRevision") or
+            opening_backup.get("sha256")!=opening_sha or
+            opening_device.get("uid")!="2000" or opening_device.get("api")!=intent.get("api") or
+            opening_device.get("avd")!=intent.get("expectedAvd")):
+        return reject("opening_readback_changed")
+    observed=android_admission_readback.readback_status(root,host,device,current_readback_correlation_id)
+    state=observed.get("result",{})
+    current=android_admission_readback.async_collect(root,current_readback_correlation_id)
+    result=current.get("result",{})
+    guard,package,backup,current_device=(result.get(key,{}) for key in ("guard","package","backup","device"))
+    current_sha=backup.get("sha256")
+    if (observed.get("ok") is not True or state.get("stage")!="backup_present" or
+            state.get("deviceIdentity") is not True or
+            state.get("controllerId")!=expected_current_owner or
+            state.get("configurationRevision")!=expected_current_revision or
+            state.get("backup",{}).get("formatValid") is not True or
+            current.get("ok") is not True or current.get("state")!="complete" or
+            package.get("baseSha256")!=target or guard.get("controllerId")!=expected_current_owner or
+            guard.get("configurationRevision")!=expected_current_revision or
+            not isinstance(current_sha,str) or not _SHA.fullmatch(current_sha) or
+            current_sha!=state.get("backup",{}).get("sha256") or
+            current_device.get("uid")!="2000" or current_device.get("api")!=intent.get("api") or
+            current_device.get("avd")!=intent.get("expectedAvd")):
+        return reject("current_readback_changed")
+    argv=ssh_transport.build_ssh_argv(config,host,30,command=("python3","-I","-B","-c",
+        "exec("+repr(_PRIVATE_ROUTING_COMPARE)+")",str(remote_root),opening_corr,
+        current_readback_correlation_id,opening_sha,current_sha))
+    try:
+        code,output=android_observation._run_probe(argv,30)
+        private=json.loads(output.decode("utf-8","strict")) if code==0 and len(output)<=4096 else None
+    except (OSError,RuntimeError,TimeoutError,UnicodeError,ValueError):
+        private=None
+    if (not isinstance(private,dict) or private.get("state")!="verified" or
+            private.get("openingSha256")!=opening_sha or private.get("currentSha256")!=current_sha or
+            private.get("sameRules") is not True):
+        return reject("private_routing_rules_unverified")
+    public=android_public_inspect.inspect(root,host,device,str(uuid4()),target,
+                                          expected_current_owner,expected_current_revision)
+    seen=public.get("result",{})
+    if (public.get("ok") is not True or public.get("outcome")!="admitted" or
+            seen.get("packageSha256")!=target or seen.get("controllerId")!=expected_current_owner or
+            seen.get("configurationRevision")!=expected_current_revision or
+            seen.get("runtime",{}).get("running") is not False or
+            seen.get("runtime",{}).get("observation")!="stopped" or
+            seen.get("operationCount")!=0):
+        return reject("current_public_state_changed")
+    proof={"schemaVersion":1,"originalCorrelationId":correlation_id,
+           "originalReason":"postinstall_owner_unknown","currentReadbackCorrelationId":current_readback_correlation_id,
+           "targetSha256":target,"openingRoutingSha256":opening_sha,"currentRoutingSha256":current_sha,
+           "sameCanonicalRules":True,"controllerId":expected_current_owner,
+           "configurationRevision":expected_current_revision,"runtimeObservation":"stopped",
+           "operationCount":0,"host":host,"device":device}
+    proof_sha=hashlib.sha256(json.dumps(proof,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+    return {"ok":True,"state":"proved","reason":None,"correlationId":correlation_id,
+            "proof":proof,"proofSha256":proof_sha,"replayAllowed":False,"leaseReleased":False}
+
+
+def release_unknown_install_lease(root: Path | str, correlation_id: str, current_readback_correlation_id: str,
+                                  expected_current_owner: str, expected_current_revision: int,
+                                  reviewed_proof_sha256: str) -> dict[str, Any]:
+    """Release only after a reviewed proof is recomputed against fresh read-only state."""
+    if not isinstance(reviewed_proof_sha256,str) or not _SHA.fullmatch(reviewed_proof_sha256):
+        raise ValueError("Android unknown install release requires reviewed proof SHA-256")
+    observed=prove_unknown_install(root,correlation_id,current_readback_correlation_id,
+                                   expected_current_owner,expected_current_revision)
+    if observed.get("ok") is not True or observed.get("proofSha256")!=reviewed_proof_sha256:
+        return {"ok":False,"state":"unknown","reason":"reviewed_proof_changed",
+                "correlationId":correlation_id,"replayAllowed":False,"leaseReleased":False}
+    proof=observed["proof"]
+    host,device=proof["host"],proof["device"]
+    try:
+        from . import android_installer_dispatch
+    except ImportError:  # standalone MCP loader
+        import android_installer_dispatch
+    if not _device_lease_matches(root,host,device,correlation_id):
+        return {"ok":False,"state":"unknown","reason":"local_install_lease_changed",
+                "correlationId":correlation_id,"replayAllowed":False,"leaseReleased":False}
+    with android_installer_dispatch._shared_lock(Path(root).resolve(),host,device) as shared_path:
+        try:
+            from . import android_installer_target
+        except ImportError:  # standalone MCP loader
+            import android_installer_target
+        try:
+            shared_value=json.loads(android_installer_target._private_file(shared_path,1024))
+        except (OSError,ValueError,TypeError):
+            shared_value=None
+    if shared_value!={"owner":"android-package-install","host":host,"device":device,
+                      "correlationId":correlation_id}:
+        return {"ok":False,"state":"unknown","reason":"local_shared_lease_changed",
+                "correlationId":correlation_id,"replayAllowed":False,"leaseReleased":False}
+    remote=android_installer_dispatch.remote_shared_lease(root,host,device,correlation_id,
+                                                            "android-package-install","release")
+    if remote.get("state")!="released":
+        return {"ok":False,"state":"unknown","reason":"shared_remote_lease_not_released",
+                "correlationId":correlation_id,"replayAllowed":False,"leaseReleased":False}
+    package_released=_release_device(root,host,device,correlation_id)
+    shared_released=android_installer_dispatch._release_local(Path(root).resolve(),host,device,
+                                                               correlation_id,"android-package-install") if package_released else False
+    released=package_released and shared_released
+    return {"ok":released,"state":"complete" if released else "unknown",
+            "reason":None if released else "lease_not_released","correlationId":correlation_id,
+            "reviewedProofSha256":reviewed_proof_sha256,"leaseReleased":released,"replayAllowed":False}

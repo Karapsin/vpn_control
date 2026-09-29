@@ -1419,6 +1419,24 @@ class VisualPlatformTest(unittest.TestCase):
         residue_start = windows.index("function Dismiss-HostedVisualResidue")
         self.assertGreater(residue_start, add_type_end)
 
+    def test_windows_foreign_dialog_is_checked_after_native_capture_before_provenance(self) -> None:
+        wrapper = (visual_platform.ROOT / "scripts/capture_visual_desktop.ps1").read_text(
+            encoding="utf-8",
+        )
+        native = (
+            visual_platform.ROOT
+            / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopNativeVisualCaptureTest.kt"
+        ).read_text(encoding="utf-8")
+        native_capture = wrapper.index(':desktopApp:nativeVisualCapture')
+        post_capture_guard = wrapper.index('Assert-NoHostedVisualResidue', native_capture)
+        provenance = wrapper.index('"capture-local", "--platform"', native_capture)
+        self.assertLess(native_capture, post_capture_guard)
+        self.assertLess(post_capture_guard, provenance)
+        assertion = wrapper.split('function Assert-NoHostedVisualResidue {', 1)[1].split('\n}', 1)[0]
+        self.assertIn('-like "System Properties*"', assertion)
+        self.assertIn('captureWindowsNativeFrame(', native)
+        self.assertIn('windowsVisualTopLevelTitles()', native)
+
     def test_hosted_macos_capture_disables_first_run_desktop_help(self) -> None:
         workflow = (visual_platform.ROOT / ".github/workflows/visual-regression.yml").read_text(
             encoding="utf-8",

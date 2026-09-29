@@ -10,8 +10,10 @@ import json
 import os
 from pathlib import Path
 import re
+import select
 import stat
 import subprocess
+import time
 from typing import Any
 
 try:
@@ -71,12 +73,14 @@ def _validate_entries(names: list[str], details: list[str]) -> list[tuple[str, s
     result: list[tuple[str, str]] = []
     seen: set[str] = set()
     for name, detail in zip(names, details):
+        kind = detail[:1]
         normalized = name.removeprefix("./")
+        if kind == "d" and normalized.endswith("/"):
+            normalized = normalized[:-1]
         if (not _SAFE.fullmatch(normalized) or normalized.startswith("/") or
                 normalized in seen or any(part in {"", ".", ".."} for part in normalized.split("/")) or
                 (normalized != "opt" and normalized != "opt/vpn-control" and not normalized.startswith(_PREFIX))):
             raise ValueError("Android CLI RPM has unsafe entries")
-        kind = detail[:1]
         if kind not in {"-", "d"}:
             raise ValueError("Android CLI RPM contains a nonregular entry")
         seen.add(normalized); result.append((normalized, kind))
@@ -92,11 +96,51 @@ def _list_rpm(rpm: Path) -> list[tuple[str, str]]:
     return _validate_entries(names, details)
 
 
+def _rpm2archive(rpm: Path, output_root: Path) -> Path:
+    """Convert a verified RPM snapshot, including 07070X payloads, to bounded tar."""
+    archive = output_root / "package.tar"
+    fd = os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    with os.fdopen(fd, "wb") as output:
+        process = subprocess.Popen(["rpm2archive", "--nocompression", str(rpm)], stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            assert process.stdout is not None
+            total = 0
+            deadline = time.monotonic() + 120
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ValueError("Android CLI RPM conversion timed out")
+                if not select.select([process.stdout], [], [], min(remaining, 1))[0]:
+                    continue
+                chunk = os.read(process.stdout.fileno(), 65536)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > 512_000_000:
+                    raise ValueError("Android CLI RPM conversion exceeds bounds")
+                output.write(chunk)
+            if process.wait(timeout=5) != 0 or total == 0:
+                raise ValueError("Android CLI RPM conversion failed")
+            output.flush(); os.fsync(output.fileno())
+        finally:
+            if process.poll() is None:
+                process.kill(); process.wait(timeout=5)
+            if process.stdout is not None:
+                process.stdout.close()
+    return archive
+
+
 def _manifest(snapshot: Path, output_root: Path) -> dict[str, Any]:
-    inventory = _list_rpm(snapshot)
+    try:
+        inventory = _list_rpm(snapshot)
+        archive = snapshot
+    except subprocess.CalledProcessError:
+        archive = _rpm2archive(snapshot, output_root)
+        inventory = _list_rpm(archive)
     tree = output_root / "tree"
     tree.mkdir(mode=0o700)
-    subprocess.run(["bsdtar", "-xf", str(snapshot), "-C", str(tree)], capture_output=True, timeout=90, check=True)
+    subprocess.run(["bsdtar", "-xf", str(archive), "-C", str(tree)], capture_output=True, timeout=90, check=True)
     entries: list[dict[str, Any]] = []
     directories: list[dict[str, Any]] = []
     for name, kind in inventory:
@@ -124,7 +168,7 @@ def _manifest(snapshot: Path, output_root: Path) -> dict[str, Any]:
     return manifest
 
 
-_RECEIVE = r'''import hashlib,json,os,pathlib,re,stat,subprocess,sys
+_RECEIVE = r'''import hashlib,json,os,pathlib,re,select,stat,subprocess,sys,time
 root,correlation,header_json=sys.argv[1:]
 def fail(reason): print(json.dumps({"state":"unknown","reason":reason,"correlationId":correlation},separators=(",",":"))); raise SystemExit(0)
 try: header=json.loads(header_json)
@@ -154,8 +198,47 @@ with os.fdopen(fd,"wb") as out:
   out.write(chunk); digest.update(chunk); remaining-=len(chunk)
  out.flush(); os.fsync(out.fileno())
 if sys.stdin.buffer.read(1) or digest.hexdigest()!=expected: fail("package_hash_mismatch")
+archive=rpm
+listed=subprocess.run(["bsdtar","-tf",str(rpm)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30,check=False)
+if listed.returncode:
+ archive=job/"package.tar"
+ fd=os.open(archive,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,"O_NOFOLLOW",0),0o600)
+ with os.fdopen(fd,"wb") as out:
+  try: process=subprocess.Popen(["rpm2archive","--nocompression",str(rpm)],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+  except OSError: fail("converter_unavailable")
+  try:
+   total=0; deadline=time.monotonic()+120
+   while True:
+    remaining=deadline-time.monotonic()
+    if remaining<=0: fail("converter_timeout")
+    if not select.select([process.stdout],[],[],min(remaining,1))[0]: continue
+    chunk=os.read(process.stdout.fileno(),65536)
+    if not chunk: break
+    total+=len(chunk)
+    if total>512000000: fail("converter_size_limit")
+    out.write(chunk)
+   if process.wait(timeout=5)!=0 or total==0: fail("converter_failed")
+   out.flush(); os.fsync(out.fileno())
+  finally:
+   if process.poll() is None: process.kill(); process.wait(timeout=5)
+   process.stdout.close()
+ names=subprocess.run(["bsdtar","-tf",str(archive)],capture_output=True,timeout=30,check=False)
+ details=subprocess.run(["bsdtar","-tvf",str(archive)],capture_output=True,timeout=30,check=False)
+ if names.returncode or details.returncode: fail("converted_archive_unreadable")
+ try: names=names.stdout.decode("utf-8","strict").splitlines(); details=details.stdout.decode("utf-8","strict").splitlines()
+ except UnicodeError: fail("converted_archive_names_invalid")
+ expected_files={item.get("path") for item in manifest.get("files",[]) if isinstance(item,dict)}
+ expected_dirs={item.get("path") for item in manifest.get("directories",[]) if isinstance(item,dict)}
+ if len(names)!=len(details) or len(names)!=len(expected_files)+len(expected_dirs): fail("converted_archive_inventory_changed")
+ seen=set()
+ for name,detail in zip(names,details):
+  kind=detail[:1]; normalized=name.removeprefix("./")
+  if kind=="d" and normalized.endswith("/"): normalized=normalized[:-1]
+  if normalized in seen or (kind=="d" and normalized not in expected_dirs) or (kind=="-" and normalized not in expected_files) or kind not in ("d","-"): fail("converted_archive_inventory_changed")
+  seen.add(normalized)
+ if seen!=expected_files|expected_dirs: fail("converted_archive_inventory_changed")
 tree=job/"tree"; tree.mkdir(mode=0o700)
-done=subprocess.run(["bsdtar","-xf",str(rpm),"-C",str(tree)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=120,check=False)
+done=subprocess.run(["bsdtar","-xf",str(archive),"-C",str(tree)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=120,check=False)
 if done.returncode: fail("extract_failed")
 files=manifest.get("files")
 directory_manifest=manifest.get("directories")
@@ -286,7 +369,13 @@ def start(root: Path | str, host: str, correlation_id: str, artifact_id: str) ->
         output.flush(); os.fsync(output.fileno())
     if digest.hexdigest() != verified["artifact"]["sha256"] or total != verified["artifact"]["size"]:
         raise ValueError("Android CLI RPM changed during snapshot")
-    manifest = _manifest(snapshot, state)
+    try:
+        manifest = _manifest(snapshot, state)
+        if _sha(snapshot) != digest.hexdigest():
+            raise ValueError("Android CLI RPM snapshot changed during conversion")
+    except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return {"ok": False, "state": "unknown", "reason": "local_archive_unavailable",
+                "correlationId": correlation_id, "replayAllowed": False}
     canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
     manifest_hash = hashlib.sha256(canonical).hexdigest()
     intent = {"correlationId": correlation_id, "host": host, "artifactId": artifact_id, "sourceSha": source_sha,

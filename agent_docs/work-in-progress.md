@@ -27,6 +27,114 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Eleventh continuation in progress — 2026-09-29
+
+`f414471de3bac3a4cda3161ea2b5cd47b2b10caf` is the latest pushed
+`origin/dev` checkpoint at product version 2.2.1. Its managed prepush tier
+passed; the user requested one required exact-SHA CI check at the final source
+freeze, so this checkpoint is not final delivery. Current dirty source includes
+Android unknown-install recovery, two hosted Windows test portability repairs,
+and visual fixture/capture guards. Preserve `f414` native evidence as historical
+when the next source checkpoint is made.
+
+The exact-`f414` API29 nondebuggable APK SHA256
+`4398ac2659a1fe7d9bfabf8545793c0b9b73d353c9ed957f9263a541dd75ab06`
+was installed by the guarded public path. The original owner wait stayed
+`unknown/postinstall_owner_unknown` and was never replayed. A separate fresh
+readback and public inspect proved owner
+`a16efca1-d742-411b-9fa7-20b4826cf830`, revision 0, runtime stopped, no
+operations, and unchanged canonical routing rules across the private backups.
+Reviewed proof digest `c0fff5a275ade6e607d434dd36d737122690191411379b8e1ab054d4c45200da`
+recomputed successfully before only the exact held install lease was released.
+The original unknown receipt remains. API29 action/document acceptance is in
+progress; API35 has not been updated.
+
+The exact-`f414` Linux package builder correlation
+`07d961ae-3189-4e6e-b4bc-3f8c8d1e0ee5` collected `ready` with verified
+2.2.0/2.2.1 DEB, RPM and Arch packages and source-bound receipts. The target
+RPM artifact ID is
+`sha256-a57667e362d4447d1f5d66735f79f57f92908df8642a6bc8f1a33828d7c0ffc9`;
+fresh byte verification passed. This enables same-source Android CLI staging,
+subject to that adapter's admission. The first API29 stage correlation
+`fbd6b8ea-06d1-456c-89d7-6f82d0795dd1` failed locally before remote
+intent: macOS `bsdtar` could not list the newer zstd RPM with stripped CPIO.
+A bounded RPM-aware `rpm2archive` fallback passed real-format local/remote
+regressions and independent review. New correlation
+`8b671747-b4ca-4ce7-9db4-f01ddd30f4c6` published and collected the exact
+`f414` RPM CLI companion; the old partial state remains. API29's small-frame
+same-request action `b1586f83...` passed: idempotent retry, conflicting
+payload rejection, restored routing rules at revision 2 and runtime OFF.
+Its large-document job `3db8fd9c...` collected complete under UID2000/API29
+with a 48 MiB Dalvik heap limit and 11,536,164-byte/56,000-domain fixture:
+full and cold reads, retained wait, new-request no-op, private
+export and opening-rule restoration passed; runtime remains OFF. The receipt
+reported `sameRequestRetry=false`, which remains an acceptance gap. Fresh
+post-scenario readback admitted the exact APK with new owner
+`66ce5143-2e32-4cd6-ba20-c8c88de9df93`, revision 1 and 239-byte backup.
+The first dedicated same-request retry correlation `a2fbb6f0...` returned
+`unknown/command_failed` with no phase and was never replayed. Fresh readback,
+public inspect and reviewed categorical proof established exact terminal
+PID/start ticks, `before_first_upload`, no transfer/product effect, unchanged
+owner/rev, operation history 1→1, canonical routing and stopped runtime. The
+packaged CLI `status` returned rc0 with nonempty stderr, which the retry worker
+had misclassified as command failure; a causal regression and narrow adapter
+fix are in progress. Exact MCP no-effect close recomputed proof, wrote a durable
+marker and released only the held a2f lease (`state=closed`, `replayAllowed=false`).
+The original unknown receipt and prior successful document receipt remain.
+No Linux guest was booted or installed. Ubuntu2307 and Arch2317 are
+stopped and lack current source-bound bundle/preparation receipts; one 6 GiB
+host reservation is pending. Fedora2328 has ready read-only base preflight at
+installed 2.2.0-1 with pinned header `3ef23bc...` and clear privileged process
+census. Guest preparation waits for a clean final source checkpoint and
+matching package/bundle manifest rather than reusing historical `f414` bytes.
+The exact-`f414` hosted Mac DMG pair run `36603278497` succeeded. Both DMGs,
+fixture receipt and signing metadata were byte verified and registered through
+MCP; mounted apps passed strict expected ad-hoc codesign and JAR hash checks.
+Reviewed ignored evidence is at
+`continuation-macos/fixture-f414471/reviewed-package-summary.json`. Tart remains
+stopped under host memory pressure; fresh read-only sample found 42% free,
+pressure level 2 and 3,582 MiB swap used, below the 50%/normal admission gate.
+No Mac reservation or monitor is active. This is package component evidence only.
+
+The exact-`f414` hosted MSI fixture run `36602892567` failed before packaging
+on two test-only Windows portability cases: strict Android installer admission
+used POSIX private-file APIs, and Mac rollback test patching assumed
+`os.getuid` existed. Causal RED/GREEN platform tests and independent review
+now pass; CP117 remains installed at 2.1.17 with runtime OFF. The separate
+blank Windows Setup guest is still paused at its TPM 2.0/Secure Boot blocker;
+the reviewed read-only MCP inventory bound QEMU PID 3369984/start ticks
+45177745 to its held disk/QMP and confirmed no linked TPM and ordinary
+`OVMF_CODE.4m.fd`. Arch has `swtpm`, `swtpm_setup` and
+`OVMF_CODE.secboot.4m.fd`; key-enrolled variable firmware still needs
+identification. Prepare a stopped separate secure guest clone rather than
+altering the current running VM. A reviewed read-only clone preflight
+`windows-vm-secureboot-clone-preflight` returned
+`unknown/failurePhase=source-holders`: complete `/proc` holder visibility is
+not established for the Arch account. It remains `nativeActionAllowed=false`;
+no new input or VM lifecycle action ran. A fresh independent blank disk and
+the already verified ISO avoids copying the live source disk. Its source-only
+one-shot preflight/start/status adapter passed focused review and a read-only
+native preflight returned `blocked/virt-fw-vars-unavailable`. A separate
+reviewed noninteractive `sudo -n -l` MCP privilege probe returned
+`sudo-unavailable-or-auth-required` with `noninteractivePacmanEligible=false`.
+No package, disk or VM mutation ran. A task-private pinned `virt-firmware`
+install or user-provided Arch package installation is needed before fresh
+secure guest admission; CP117's installed-VM update path is separate.
+
+Hosted `f414` Linux/Windows visual captures passed provenance and have zero
+geometry/contrast failures. Linux's synthetic refresh-policy scene had draft
+state without persisted policy; a focused fixture regression corrected it.
+Windows tray frames were contaminated by a native `System Properties` paging
+warning. A causal per-frame and pre-provenance guard now rejects visible exact
+or suffixed `System Properties` windows; focused tests and independent review
+pass. The common missing `Desktop VPN capability: ready` row is an intended
+owner-presentation change: the old fixtures injected an unverified healthy
+message through a legacy path. Two causal fixture/owner projection regressions
+passed after removing that synthetic claim from app and native scenes; old
+baselines predate the presentation change and require review rather than an
+invented ready status. The contaminated captures remain as failure evidence. Current-source
+four-platform visual review and missing baselines are still open.
+
 ### Tenth continuation checkpoint pushed — 2026-09-29
 
 `df05f3fec37d1d12de492592bcc118c4b8babd0f` is on `origin/dev` at

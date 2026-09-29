@@ -725,6 +725,10 @@ class InstallerLifecycleTest(unittest.TestCase):
 
 
 class StrictInstallerAdmissionTest(unittest.TestCase):
+    def test_unsupported_private_backend_rejects_before_public_or_download(self):
+        with patch.object(driver.target_admission, "os", SimpleNamespace(name="nt")):
+            self.test_foreign_public_owner_stops_before_download_or_session()
+
     def test_foreign_public_owner_stops_before_download_or_session(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary); output.chmod(0o700)
@@ -733,10 +737,16 @@ class StrictInstallerAdmissionTest(unittest.TestCase):
                     "pair": {"sourceSha": "a" * 40, "targetArtifactId": "sha256-" + "b" * 64},
                     "backupSha256": "c" * 64, "expectedOwner": "owner", "expectedRevision": 4})
             with patch.object(driver, "invoke", return_value=record("OK", True, controller="foreign")) as public:
-                with self.assertRaisesRegex(RuntimeError, "owner changed"):
-                    driver.action(args, Adb(), {})
-            self.assertEqual(1, public.call_count)
-            self.assertTrue((output / "phase-check.json").is_file())
+                if driver.target_admission.os.name == "posix":
+                    with self.assertRaisesRegex(RuntimeError, "owner changed"):
+                        driver.action(args, Adb(), {})
+                    self.assertEqual(1, public.call_count)
+                    self.assertTrue((output / "phase-check.json").is_file())
+                else:
+                    with self.assertRaisesRegex(ValueError, "POSIX file APIs"):
+                        driver.action(args, Adb(), {})
+                    public.assert_not_called()
+                    self.assertFalse((output / "phase-check.json").exists())
             self.assertFalse((output / "phase-download.json").exists())
 
     def test_live_idle_session_and_owner_are_required_before_fixture_effect(self):
