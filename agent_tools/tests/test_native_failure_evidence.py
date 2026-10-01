@@ -66,3 +66,46 @@ class NativeFailureEvidenceTest(unittest.TestCase):
         with mock.patch.object(evidence.os, "name", "nt"):
             with self.assertRaisesRegex(evidence.NativeFailureEvidenceError, "Windows"):
                 evidence.record_failure(Path("/tmp"), context, result)
+
+    def test_cp117_failure_details_use_only_bounded_reader_fields(self):
+        cases = (
+            ("windows-fixture-stage-recover-7f27", {"state": "unknown", "receipt": "secret"},
+             "fixture_stage_recovery", "outcome_unknown",
+             "agent_tools.tests.test_windows_update_fixture_stage_recovery.StageRecoveryTest"),
+            ("windows-msi-owner-census", {"state": "unknown", "raw": "secret"},
+             "owner_census", "outcome_unknown",
+             "agent_tools.tests.test_windows_msi_owner_census.OwnerCensusTests"),
+            ("windows-fixture-stage-diagnostic", {"state": "unknown", "phase": "remote-stage-partial",
+                                                    "path": "/private/secret"},
+             "fixture_stage_diagnostic", "remote_stage_partial",
+             "agent_tools.tests.test_windows_update_fixture_stage.WindowsUpdateFixtureStageTest"),
+        )
+        for action, result, phase, reason, reference in cases:
+            with self.subTest(action=action):
+                details = evidence.bounded_failure_details(action, result)
+                self.assertEqual({"failurePhase": phase, "failureType": reason,
+                                  "regressionReference": reference}, details)
+                self.assertNotIn("secret", str(details))
+
+    def test_cp117_failure_details_fall_back_to_unknown_without_inventing_a_cause(self):
+        expected = {"failurePhase": "fixture_stage_diagnostic", "failureType": "outcome_unknown",
+                    "regressionReference": "agent_tools.tests.test_windows_update_fixture_stage.WindowsUpdateFixtureStageTest"}
+        self.assertEqual(expected, evidence.bounded_failure_details(
+            "windows-fixture-stage-diagnostic", {"state": "unknown", "phase": "unrecognized-private-cause"}))
+        self.assertEqual({}, evidence.bounded_failure_details(
+            "windows-fixture-stage-diagnostic", {"state": "diagnosed", "phase": "remote-stage-partial"}))
+        self.assertEqual({}, evidence.bounded_failure_details("unrelated-action", {"state": "unknown"}))
+
+    @unittest.skipIf(os.name == "nt", "requires POSIX private ownership")
+    def test_cp117_detail_is_fingerprinted_only_when_it_matches_the_closed_table(self):
+        with tempfile.TemporaryDirectory() as temp:
+            context, result = self.values()
+            context["action"] = "windows-fixture-stage-diagnostic"
+            result.update(evidence.bounded_failure_details(
+                context["action"], {"state": "unknown", "phase": "remote-stage-partial"}))
+            stored = json.loads(Path(evidence.record_failure(Path(temp), context, result)["evidencePath"]).read_text())
+            self.assertEqual("fixture_stage_diagnostic", stored["failurePhase"])
+            self.assertEqual("remote_stage_partial", stored["failureType"])
+            result["failureType"] = "invented_cause"
+            with self.assertRaisesRegex(evidence.NativeFailureEvidenceError, "detail is invalid"):
+                evidence.record_failure(Path(temp), context, result)

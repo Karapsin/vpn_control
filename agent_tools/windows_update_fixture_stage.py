@@ -65,29 +65,86 @@ def _require_cross_route_lease(root: Path, request: Mapping[str, str], config: A
 
 def _closed_stage_history(root: Path, current_lease_id: str) -> None:
     """Retain prior stage evidence and admit only remotely confirmed closure."""
+    detail = _closed_stage_history_detail(root, current_lease_id)
+    if detail == "history-malformed-name":
+        raise WindowsUpdateFixtureStageError("Fixture stage history is unknown.")
+    if detail != "confirmed":
+        raise WindowsUpdateFixtureStageError("Fixture stage history is active or unknown.")
+
+
+def _closed_stage_history_detail(root: Path, current_lease_id: str) -> str:
+    """Bound the prior-history admission without exposing leases or paths."""
     directory = root / _GROUP
     if not directory.exists():
-        return
+        return "confirmed"
     info = directory.lstat()
     if (not stat.S_ISDIR(info.st_mode) or directory.is_symlink()
             or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700):
-        raise WindowsUpdateFixtureStageError("Fixture stage history is unsafe.")
-    config, target, _descriptor = base._descriptor(root)
-    remote = base._campaign_remote(config, target)
+        return "history-invalid"
+    try:
+        config, target, descriptor = base._descriptor(root)
+        remote = base._campaign_remote(config, target)
+    except (OSError, ValueError, KeyError, TypeError, base.WindowsMsiBasePrepareError):
+        return "unknown"
     for path in directory.iterdir():
         if path.suffix != ".json":
             continue
         if not _UUID.fullmatch(path.stem) or str(uuid.UUID(path.stem)) != path.stem:
-            raise WindowsUpdateFixtureStageError("Fixture stage history is unknown.")
-        prior = _read_intent(root, path.stem)
+            return "history-malformed-name"
+        try:
+            prior = _read_intent(root, path.stem)
+        except (OSError, ValueError, WindowsUpdateFixtureStageError):
+            return "history-record-invalid"
         prior_lease = prior.get("leaseId") if prior else None
         if prior_lease is None or prior_lease == current_lease_id:
-            raise WindowsUpdateFixtureStageError("Fixture stage history is active or unknown.")
-        campaign_directory, lock = campaign_lease._locked(root)
-        try: closed = campaign_lease._closed(campaign_directory, prior_lease)
-        finally: os.close(lock)
-        if closed is None or not campaign_lease._remote_confirm(remote, "status", closed, None):
-            raise WindowsUpdateFixtureStageError("Fixture stage history is active or unknown.")
+            return "history-record-invalid"
+        # A filename and lease alone do not authorize historical admission.
+        # Bind the original stage request, admitted source fingerprint and the
+        # exact QEMU generation to the closed campaign identity before either
+        # direct or successor remote confirmation can be used.
+        try:
+            prior_request = _request(prior.get("request", {}))
+            pair = public._admit_pair(root, prior_request["sourceSha"], prior_request["fixtureReceiptArtifactId"],
+                                      prior_request["baseMsiArtifactId"], prior_request["targetMsiArtifactId"])
+            expected_identity = base._campaign_identity({**prior_request, "correlationId": prior_lease}, descriptor)
+            if (prior_request["correlationId"] != path.stem
+                    or prior.get("sourceFingerprint") != pair.get("sourceFingerprint")
+                    or any(prior.get(name) != expected for name, expected in (("environment", descriptor[0]),
+                        ("socketPath", descriptor[1]), ("pid", descriptor[2]), ("startTicks", descriptor[3]),
+                        ("expectedSid", descriptor[4])))):
+                return "history-record-invalid"
+        except (OSError, ValueError, KeyError, TypeError, base.WindowsMsiBasePrepareError):
+            return "history-record-invalid"
+        try:
+            campaign_directory, lock = campaign_lease._locked(root)
+            try:
+                closed = campaign_lease._closed(campaign_directory, prior_lease)
+            finally:
+                os.close(lock)
+        except (OSError, ValueError, campaign_lease.Cp117LeaseError):
+            return "unknown"
+        if closed is None:
+            return "old-closed-missing"
+        if closed.get("identity") != expected_identity:
+            return "history-record-invalid"
+        if campaign_lease._remote_confirm(remote, "status", closed, None):
+            continue
+        # A campaign rebase keeps the old closed receipt locally while the
+        # remote journal has a distinct active successor.  Its dedicated proof
+        # binds both records in one read-only observation; no general bypass of
+        # the ordinary closed-status requirement is allowed.
+        try:
+            active = campaign_lease._active(campaign_directory)
+            current_identity = active.get("identity") if isinstance(active, dict) else None
+            if (not isinstance(current_identity, dict) or current_identity.get("leaseId") != current_lease_id):
+                return "remote-status-mismatch"
+            from . import windows_cp117_campaign_status as campaign_status
+            if not campaign_status._remote_closed_proof(config, target, closed, current_identity):
+                return "remote-status-mismatch"
+        except (OSError, ValueError, TypeError, ImportError, campaign_lease.Cp117LeaseError,
+                base.WindowsMsiBasePrepareError):
+            return "remote-status-mismatch"
+    return "confirmed"
 
 
 def _source_module(root: Path, source: str, name: str) -> bytes:
@@ -275,9 +332,12 @@ def _stage_script(correlation: str, sid: str, hashes: Mapping[str, str], bundle_
                              .replace("@HASH@", public._ps_literal(hashes[name])) for name in names)
     acl = stage_acl_powershell(content, sid)
     root_acl = stage_acl_powershell(stage, sid)
-    return r'''$ErrorActionPreference='Stop';$root=@ROOT@;$content=@CONTENT@;$archive=Join-Path $root 'bundle.zip'
+    return r'''$ErrorActionPreference='Stop';$root=@ROOT@;$content=@CONTENT@;$download=Join-Path $root 'download';$incoming=Join-Path $download 'bundle.zip';$archive=Join-Path $root 'bundle.zip'
 try {
- if(-not [IO.File]::Exists($archive) -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne @BUNDLE_HASH@){throw 'BUNDLE_HASH'}
+ if(-not [IO.File]::Exists($incoming) -or (Get-FileHash -LiteralPath $incoming -Algorithm SHA256).Hash.ToLowerInvariant() -cne @BUNDLE_HASH@){throw 'BUNDLE_HASH'}
+ Move-Item -LiteralPath $incoming -Destination $archive -ErrorAction Stop
+ Remove-Item -LiteralPath $download -Force -Recurse -ErrorAction Stop
+ if((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne @BUNDLE_HASH@){throw 'PLACED_BUNDLE_HASH'}
  if([IO.Directory]::Exists($content)){throw 'EXISTING_CONTENT'}
  Add-Type -AssemblyName System.IO.Compression.FileSystem
  [IO.Compression.ZipFile]::ExtractToDirectory($archive,$content)
@@ -285,11 +345,19 @@ try {
 @ASSIGNMENTS@
  $files=@(Get-ChildItem -LiteralPath $content -Recurse -File)
  if($files.Count -ne $expected.Count){throw 'FILE_COUNT'}
+ $targetCount=0
  foreach($file in $files){
   if(($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'REPARSE'}
   $relative=$file.FullName.Substring($content.Length+1).Replace('\','/')
   if(-not $expected.ContainsKey($relative) -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected[$relative]){throw 'FILE_HASH'}
+  if($relative -cmatch '^packages/target/[^/\\]+\.msi$'){
+   $targetCount++
+   $file.IsReadOnly=$true
+   $file.Refresh()
+   if(-not $file.IsReadOnly -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected[$relative]){throw 'TARGET_READONLY'}
+  }
  }
+ if($targetCount -ne 1){throw 'TARGET_COUNT'}
  $aclReceipt=(& { @ACL@ })
  $aclObject=ConvertFrom-Json -InputObject ($aclReceipt|Out-String)
  if($aclObject.stage -cne $content -or $aclObject.protected -ne $true){throw 'ACL'}
@@ -312,10 +380,16 @@ def _create_script(correlation: str, sid: str) -> str:
     root = _GUEST + "\\mcp-update-fixture-" + correlation
     return r'''$ErrorActionPreference='Stop';$root=@ROOT@;$recipient=@SID@
 function SafeAncestors([string]$path) {
- $item=Get-Item -LiteralPath $path -Force -ErrorAction Stop
- while($null -ne $item){
+ $current=$path
+ while($null -ne $current -and $current -ne ''){
+  # Re-fetch every ancestor.  ``DirectoryInfo.Parent`` loses the provider's
+  # PSIsContainer note, which can turn a valid ancestor into a false type
+  # failure before any fixture directory is created.
+  $item=Get-Item -LiteralPath $current -Force -ErrorAction Stop
   if(-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'REPARSE_ANCESTOR'}
-  $item=$item.Parent
+  $parent=Split-Path -Parent $current
+  if($parent -ceq $current){break}
+  $current=$parent
  }
 }
 SafeAncestors (Split-Path -Parent $root)
@@ -332,8 +406,10 @@ function Security([bool]$private) {
  return $acl
 }
 [IO.Directory]::CreateDirectory($root,(Security $false))|Out-Null
+[IO.Directory]::CreateDirectory((Join-Path $root 'download'),(Security $true))|Out-Null
 [IO.Directory]::CreateDirectory((Join-Path $root 'server-state'),(Security $true))|Out-Null
 SafeAncestors $root
+SafeAncestors (Join-Path $root 'download')
 SafeAncestors (Join-Path $root 'server-state')
 '''.replace("@ROOT@", public._ps_literal(root)).replace("@SID@", public._ps_literal(sid))
 
@@ -497,7 +573,7 @@ try:
    break
   time.sleep(.2)
  else:raise ValueError()
- handle=call(sock,'guest-file-open',{'path':guest+'\\bundle.zip','mode':'wb'});h=hashlib.sha256();remaining=size
+ handle=call(sock,'guest-file-open',{'path':guest+'\\download\\bundle.zip','mode':'wb'});h=hashlib.sha256();remaining=size
  try:
   while remaining:
    part=sys.stdin.buffer.read(min(49152,remaining))
@@ -534,14 +610,157 @@ try:
  if binding!={'correlationId':corr,'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'leaseId':lease,'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid,'fixtureReceiptArtifactId':receipt_id,'baseMsiArtifactId':base_id,'targetMsiArtifactId':target_id}:raise ValueError()
  dispatch=json.load(open(os.path.join(stage,'dispatch.json'),encoding='utf-8'))
  if type(dispatch.get('pid')) is not int or dispatch['pid']<=0:raise ValueError()
+ # QGA guest-exec-status may be consumed by the original one-shot wait.  A
+ # bounded result receipt is therefore the first terminal proof.  The caller
+ # still validates its full hashes and ACLs before completing the stage lease.
+ raw=read(sock,'C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-update-fixture-'+corr+'\\result.json')
+ if raw is not None:
+  if not 0<len(raw)<=8192:raise ValueError()
+  out({'state':'observed','correlationId':corr,'result':json.loads(decode(raw))});raise SystemExit(0)
  process=call(sock,'guest-exec-status',{'pid':dispatch['pid']})
  if process.get('exited') is not True:out({'state':'running','correlationId':corr});raise SystemExit(0)
  if process.get('exitcode')!=0 or process.get('out-truncated') is not False or process.get('err-truncated') is not False:raise ValueError()
- raw=read(sock,'C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-update-fixture-'+corr+'\\result.json')
- if raw is None:raise ValueError()
- out({'state':'observed','correlationId':corr,'result':json.loads(decode(raw))})
+ out({'state':'unknown','correlationId':corr})
 except Exception:out({'state':'unknown','correlationId':corr})
 '''
+
+
+# This projection is deliberately read-only.  It exists for a lost stage
+# response: a one-shot QGA bundle write cannot be safely retried merely because
+# the observer did not receive its receipt.  It reveals no guest path, account,
+# handle, process identifier, or raw receipt/log content.
+_REMOTE_DIAGNOSTIC = base._QGA + r'''import time
+root,env,lease,corr,sock,pid,ticks,sid,source,fingerprint,bundle_hash,size_text,receipt_id,base_id,target_id=sys.argv[1:]
+def out(phase,binding='exact'):print(json.dumps({'state':'diagnosed','correlationId':corr,'binding':binding,'phase':phase},separators=(',',':'),sort_keys=True))
+def directory(path):
+ info=os.lstat(path)
+ return stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode) and info.st_uid==os.geteuid() and stat.S_IMODE(info.st_mode)==0o700
+def private_file(path):
+ info=os.lstat(path)
+ return stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode) and info.st_uid==os.geteuid() and stat.S_IMODE(info.st_mode)==0o600 and info.st_size<=8192
+def guest_stage():
+ script="$ErrorActionPreference='Stop';$leaf='C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-update-fixture-"+corr+"\\download';$bundle=Join-Path $leaf 'bundle.zip';$expected="+size_text+";$hash='"+bundle_hash+"';try{if(-not [IO.Directory]::Exists($leaf) -or -not [IO.File]::Exists($bundle)){[Console]::Out.WriteLine('{\"version\":1,\"stage\":\"absent\"}')}else{$item=Get-Item -LiteralPath $bundle -Force;if($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'TYPE'};$ok=($item.Length -eq $expected -and (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $hash);$state=if($ok){'full'}else{'partial'};[Console]::Out.WriteLine(([pscustomobject]@{version=1;stage=$state}|ConvertTo-Json -Compress))}}catch{[Console]::Out.WriteLine('{\"version\":1,\"stage\":\"unknown\"}');exit 1}"
+ encoded=base64.b64encode(script.encode('utf-16le')).decode('ascii')
+ if len(encoded)>=30000:raise ValueError()
+ child=call(sock,'guest-exec',{'path':'powershell.exe','arg':['-NoProfile','-NonInteractive','-EncodedCommand',encoded],'capture-output':True})['pid']
+ if type(child) is not int or child<=0:raise ValueError()
+ for _ in range(40):
+  item=call(sock,'guest-exec-status',{'pid':child})
+  if item.get('exited') is True:break
+  if item.get('exited') is not False:raise ValueError()
+  time.sleep(.25)
+ else:raise ValueError()
+ if (type(item.get('exitcode')) is not int or item.get('exitcode')!=0
+     or item.get('out-truncated') is not False or item.get('err-truncated') is not False):raise ValueError()
+ raw=base64.b64decode(item.get('out-data',''),validate=True)
+ if not 0<len(raw)<=512:raise ValueError()
+ lines=[line for line in decode(raw).splitlines() if line.startswith('{') and line.endswith('}')]
+ value=json.loads(lines[0]) if len(lines)==1 else None
+ if value not in ({'version':1,'stage':'absent'},{'version':1,'stage':'partial'},{'version':1,'stage':'full'}):raise ValueError()
+ return value['stage']
+try:
+ if env!='windows-cp117' or not live(sock,pid,ticks) or not 0<int(size_text)<=1075838976:raise ValueError()
+ parent=os.path.join(root,env);group=os.path.join(parent,'windows-update-fixture-stage');stage=os.path.join(group,corr)
+ if not all(directory(path) for path in (root,parent)):out('remote-layout-invalid');raise SystemExit(0)
+ if not os.path.lexists(group):out('remote-stage-absent');raise SystemExit(0)
+ if not directory(group):out('remote-layout-invalid');raise SystemExit(0)
+ if not os.path.lexists(stage):out('remote-stage-absent');raise SystemExit(0)
+ if not directory(stage):out('remote-stage-partial');raise SystemExit(0)
+ names=set(os.listdir(stage))
+ if 'binding.json' not in names or not private_file(os.path.join(stage,'binding.json')):out('remote-binding-mismatch','mismatch');raise SystemExit(0)
+ binding=json.load(open(os.path.join(stage,'binding.json'),encoding='utf-8'))
+ expected={'correlationId':corr,'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'leaseId':lease,'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid,'fixtureReceiptArtifactId':receipt_id,'baseMsiArtifactId':base_id,'targetMsiArtifactId':target_id}
+ if binding!=expected:out('remote-binding-mismatch','mismatch');raise SystemExit(0)
+ if names=={'binding.json'}:
+  try:stage_state=guest_stage()
+  except Exception:out('guest-stage-probe-failed');raise SystemExit(0)
+  out('guest-stage-'+stage_state);raise SystemExit(0)
+ if names!={'binding.json','dispatch.json'} or not private_file(os.path.join(stage,'dispatch.json')):out('remote-dispatch-malformed');raise SystemExit(0)
+ dispatch=json.load(open(os.path.join(stage,'dispatch.json'),encoding='utf-8'))
+ if set(dispatch)!={'pid'} or type(dispatch['pid']) is not int or dispatch['pid']<=0:out('remote-dispatch-malformed');raise SystemExit(0)
+ # A durable result receipt remains observable after the original QGA status
+ # poll consumed the child status.  It is only a diagnostic here; status()
+ # performs full receipt, hash, and ACL validation before reconciliation.
+ try:raw=read(sock,'C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-update-fixture-'+corr+'\\result.json')
+ except Exception:out('result-read-failed');raise SystemExit(0)
+ if raw is not None:
+  if not 0<len(raw)<=8192:out('receipt-invalid');raise SystemExit(0)
+  try:value=json.loads(decode(raw))
+  except Exception:out('receipt-invalid');raise SystemExit(0)
+  if not isinstance(value,dict) or value.get('correlationId')!=corr:out('receipt-invalid');raise SystemExit(0)
+  out('receipt-present-unverified');raise SystemExit(0)
+ try:process=call(sock,'guest-exec-status',{'pid':dispatch['pid']})
+ except Exception:out('dispatch-status-unknown');raise SystemExit(0)
+ if process.get('exited') is False:out('receipt-pending');raise SystemExit(0)
+ if (process.get('exited') is not True or type(process.get('exitcode')) is not int
+     or process.get('out-truncated') is not False or process.get('err-truncated') is not False):out('dispatch-status-unknown');raise SystemExit(0)
+ out('receipt-absent')
+except Exception:out('qga-protocol','unverified')
+'''
+
+
+_DIAGNOSTIC_PHASES = {
+    "remote-layout-invalid", "remote-stage-absent", "remote-stage-partial",
+    "remote-binding-mismatch", "remote-dispatch-malformed", "guest-stage-absent",
+    "guest-stage-partial", "guest-stage-full", "guest-stage-probe-failed",
+    "dispatch-status-unknown", "receipt-pending", "receipt-absent",
+    "result-read-failed", "receipt-invalid", "receipt-present-unverified",
+    "qga-protocol",
+}
+
+
+def diagnose(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Bound an uncertain stage to its original source, campaign, and VM generation."""
+    if (not isinstance(value, Mapping) or set(value) != {"correlationId"}
+            or not isinstance(value["correlationId"], str) or not _UUID.fullmatch(value["correlationId"])
+            or str(uuid.UUID(value["correlationId"])) != value["correlationId"]):
+        raise WindowsUpdateFixtureStageError("Fixture stage diagnostic requires exact correlationId.")
+    corr = value["correlationId"]
+    unknown = {"state": "unknown", "correlationId": corr, "binding": "unverified",
+               "phase": "local-intent", "replayAllowed": False, "nativeActionAllowed": False}
+    root = Path(root).resolve(strict=True)
+    try:
+        intent = _read_intent(root, corr)
+        if intent is None:
+            return unknown
+        request = _request(intent["request"])
+        if (not isinstance(intent.get("bundleSize"), int) or not 0 < intent["bundleSize"] <= 1075838976
+                or not isinstance(intent.get("bundleSha256"), str) or not _HASH.fullmatch(intent["bundleSha256"])
+                or not isinstance(intent.get("fileHashes"), dict)):
+            return unknown
+        pair = public._admit_pair(root, request["sourceSha"], request["fixtureReceiptArtifactId"],
+                                  request["baseMsiArtifactId"], request["targetMsiArtifactId"])
+        if intent["sourceFingerprint"] != pair["sourceFingerprint"]:
+            return {**unknown, "phase": "local-artifact"}
+        config, target, descriptor = base._descriptor(root)
+        env, socket, pid, ticks, sid = descriptor
+        if any(intent.get(key) != expected for key, expected in (
+                ("environment", env), ("socketPath", socket), ("pid", pid),
+                ("startTicks", ticks), ("expectedSid", sid))):
+            return {**unknown, "binding": "mismatch", "phase": "descriptor"}
+        base._verified_claimed_campaign(root, request, descriptor, config, target,
+                                       intent["leaseId"], "stage")
+        raw = base._remote(config, _REMOTE_DIAGNOSTIC, (str(target.fixture_transfer_root), env,
+            intent["leaseId"], corr, socket, str(pid), str(ticks), sid, request["sourceSha"],
+            pair["sourceFingerprint"], intent["bundleSha256"], str(intent["bundleSize"]),
+            request["fixtureReceiptArtifactId"], request["baseMsiArtifactId"],
+            request["targetMsiArtifactId"]), None, 120)
+        observed = json.loads(raw) if raw is not None else {}
+    except (OSError, ValueError, TypeError, KeyError, WindowsUpdateFixtureStageError,
+            base.WindowsMsiBasePrepareError):
+        return {**unknown, "phase": "qga-protocol"}
+    if (not isinstance(observed, dict) or set(observed) != {"state", "correlationId", "binding", "phase"}
+            or observed.get("state") != "diagnosed" or observed.get("correlationId") != corr
+            or observed.get("binding") not in {"exact", "mismatch", "unverified"}
+            or observed.get("phase") not in _DIAGNOSTIC_PHASES):
+        return {**unknown, "phase": "qga-protocol"}
+    phase, binding = observed["phase"], observed["binding"]
+    if phase == "remote-binding-mismatch" and binding != "mismatch":
+        return {**unknown, "phase": "qga-protocol"}
+    if phase != "remote-binding-mismatch" and binding != "exact" and phase != "qga-protocol":
+        return {**unknown, "phase": "qga-protocol"}
+    return {"state": "unknown", "correlationId": corr, "binding": binding, "phase": phase,
+            "replayAllowed": False, "nativeActionAllowed": False}
 
 
 def status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:

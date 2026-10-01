@@ -1603,7 +1603,12 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         self.assertEqual(a["failureSignature"]["fingerprint"], b["failureSignature"]["fingerprint"])
         self.assertIn("test_cleanup_requires_absent_scanner", a["failureSignature"]["causalRegression"])
         self.assertFalse(a["admissionGap"]["nativeActionAllowed"])
-        self.assertIsNone(a["admissionGap"]["readOnlyAction"])
+        self.assertEqual({"tool": "vm_workflow", "action": "linux-rpm-workspace-cleanup-status",
+                          "inputs": {"cleanupCorrelationId": first}},
+                         a["admissionGap"]["readOnlyAction"])
+        self.assertEqual({"tool": "vm_workflow", "action": "linux-rpm-workspace-cleanup-status",
+                          "inputs": {"cleanupCorrelationId": second}},
+                         b["admissionGap"]["readOnlyAction"])
 
     def test_admission_gap_uses_only_adapter_correlation_for_safe_status(self):
         from agent_tools import native_response_diagnostics
@@ -2244,6 +2249,65 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertFalse(result["productAction"])
             status.assert_called_once_with(mcp_server.REPO_ROOT, {"correlationId": request["correlationId"]})
+        with patch.object(windows_msi_base_prepare, "reconcile", return_value={
+                "state": "unknown", "failurePhase": "bootstrap",
+                "failureType": "task_trigger_outcome_ambiguous",
+                "code": "task_trigger_outcome_ambiguous", "replayAllowed": False}) as reconcile:
+            result = mcp_server._vm_workflow_impl("windows-msi-base-reconcile", {"correlationId": request["correlationId"]})
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["productAction"])
+            self.assertEqual(result["evidenceClass"], "causal-reconciliation")
+            self.assertFalse(result["replayAllowed"])
+            reconcile.assert_called_once_with(mcp_server.REPO_ROOT, {"correlationId": request["correlationId"]})
+        with patch.object(windows_msi_base_prepare, "diagnose", return_value={
+                "state": "unknown", "correlationId": request["correlationId"], "binding": "exact",
+                "checkpoint": "qga-protocol", "replayAllowed": False,
+                "nativeActionAllowed": False}) as diagnose:
+            result = mcp_server._vm_workflow_impl("windows-msi-base-diagnostic", {
+                "correlationId": request["correlationId"]})
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["productAction"])
+            self.assertEqual(result["evidenceClass"], "causal-diagnostic")
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertFalse(result["replayAllowed"])
+            diagnose.assert_called_once_with(mcp_server.REPO_ROOT, {"correlationId": request["correlationId"]})
+        exact_unknown = "2ace6a48-ba60-4705-9200-4ff857f2aba6"
+        with patch.object(windows_msi_base_prepare, "close_unknown", return_value={
+                "state": "unknown", "correlationId": exact_unknown, "replayAllowed": False}) as close:
+            result = mcp_server._vm_workflow_impl("windows-msi-base-unknown-close", {"correlationId": exact_unknown})
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["productAction"])
+            self.assertEqual(result["evidenceClass"], "causal-cleanup")
+            close.assert_called_once_with(mcp_server.REPO_ROOT, {"correlationId": exact_unknown})
+        with patch.object(windows_msi_base_prepare, "close_unknown", return_value={
+                "state": "closed", "correlationId": exact_unknown, "outcome": "unknown-cleaned",
+                "replayAllowed": False}):
+            result = mcp_server._vm_workflow_impl("windows-msi-base-unknown-close", {"correlationId": exact_unknown})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["evidenceClass"], "causal-cleanup")
+        self.assertFalse(result["productAction"])
+        with patch.object(windows_msi_base_prepare, "close_unknown_status", return_value={
+                "state": "unknown", "correlationId": exact_unknown, "phase": "diagnostic",
+                "reason": "qga-protocol", "replayAllowed": False}) as status:
+            result = mcp_server._vm_workflow_impl("windows-msi-base-unknown-close-status", {"correlationId": exact_unknown})
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["productAction"])
+            self.assertEqual(result["evidenceClass"], "causal-status")
+            status.assert_called_once_with(mcp_server.REPO_ROOT, {"correlationId": exact_unknown})
+        with patch.object(windows_msi_base_prepare, "close_unknown_status", return_value={
+                "state": "closed", "correlationId": exact_unknown, "outcome": "unknown-cleaned",
+                "replayAllowed": False}):
+            result = mcp_server._vm_workflow_impl("windows-msi-base-unknown-close-status",
+                                                  {"correlationId": exact_unknown})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["evidenceClass"], "causal-status")
+        self.assertFalse(result["productAction"])
+        self.assertEqual(result["outcome"], "unknown-cleaned")
+        with patch.object(windows_msi_base_prepare, "close_unknown_status", return_value={
+                "state": "closed", "correlationId": exact_unknown, "replayAllowed": False}):
+            result = mcp_server._vm_workflow_impl("windows-msi-base-unknown-close-status",
+                                                  {"correlationId": exact_unknown})
+        self.assertFalse(result["ok"])
 
     def test_windows_owner_observe_routes_are_read_only_and_do_not_promote_unknown(self):
         from agent_tools import windows_msi_owner_observe

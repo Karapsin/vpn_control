@@ -3,6 +3,7 @@ package com.kardinal.vpncontrol.desktop
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.awt.ComposeWindow
 import com.sun.jna.platform.win32.User32
+import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinUser
 import com.kardinal.vpncontrol.model.RuntimeStatusMessages
 import com.kardinal.vpncontrol.shared.ui.VpnControlTheme
@@ -62,6 +63,50 @@ class DesktopNativeVisualCaptureTest {
     @Test
     fun windowsForeignSystemPropertiesDialogRejectsFrameBeforeAndAfterCapture() {
         var captures = 0
+        var recoveredDismissals = 0
+        var recoveredCensuses = 0
+        val recovered = captureWindowsNativeFrame(
+            "windows-tray-disconnected",
+            {
+                recoveredCensuses++
+                if (recoveredCensuses <= 2) listOf("System Properties") else listOf("VPN Control")
+            },
+            {
+                recoveredDismissals++
+            },
+            {
+                captures++
+                "recovered frame"
+            },
+            pauseBeforeRetry = {},
+        )
+        check(recovered == "recovered frame" && recoveredDismissals == 4 && captures == 1) {
+            "Hosted residue must remain absent for two consecutive censuses before publishing a recovered frame"
+        }
+
+        var persistentDismissals = 0
+        var persistentCensuses = 0
+        val persistent = runCatching {
+            captureWindowsNativeFrame(
+                "windows-tray-disconnected",
+                {
+                    persistentCensuses++
+                    listOf("System Properties")
+                },
+                { persistentDismissals++ },
+                {
+                    captures++
+                    "frame"
+                },
+                pauseBeforeRetry = {},
+            )
+        }.exceptionOrNull()
+        check(persistent is IllegalStateException && persistent.message.orEmpty().contains("System Properties"))
+        check(persistentDismissals == 20 && persistentCensuses == 20) {
+            "Persistent residue must exhaust the bounded close-and-census retry loop"
+        }
+        check(captures == 1) { "Persistent foreign dialog must prevent screenshot publication" }
+
         val before = runCatching {
             captureWindowsNativeFrame("windows-tray-disconnected", { listOf("System Properties") }) {
                 captures++
@@ -69,20 +114,20 @@ class DesktopNativeVisualCaptureTest {
             }
         }.exceptionOrNull()
         check(before is IllegalStateException && before.message.orEmpty().contains("System Properties"))
-        check(captures == 0) { "Foreign pre-frame dialog must prevent screenshot publication" }
+        check(captures == 1) { "Foreign pre-frame dialog must prevent screenshot publication" }
 
         var census = 0
         val after = runCatching {
             captureWindowsNativeFrame("windows-tray-connected", {
                 census++
-                if (census == 1) listOf("VPN Control") else listOf("VPN Control", "System Properties")
+                if (census <= 3) listOf("VPN Control") else listOf("VPN Control", "System Properties")
             }) {
                 captures++
                 "frame"
             }
         }.exceptionOrNull()
         check(after is IllegalStateException && after.message.orEmpty().contains("System Properties"))
-        check(captures == 1) { "Post-frame dialog must reject the captured screenshot" }
+        check(captures == 2) { "Post-frame dialog must reject the captured screenshot" }
 
         val suffixedBefore = runCatching {
             captureWindowsNativeFrame("windows-tray-disconnected", { listOf("SYSTEM PROPERTIES - Virtual Memory") }) {
@@ -91,25 +136,26 @@ class DesktopNativeVisualCaptureTest {
             }
         }.exceptionOrNull()
         check(suffixedBefore is IllegalStateException)
-        check(captures == 1) { "Suffixed pre-frame dialog must prevent screenshot publication" }
+        check(captures == 2) { "Suffixed pre-frame dialog must prevent screenshot publication" }
 
+        census = 0
         val suffixedAfter = runCatching {
             captureWindowsNativeFrame("windows-tray-connected", {
                 census++
-                if (census == 3) listOf("VPN Control") else listOf("System Properties: Paging File")
+                if (census <= 3) listOf("VPN Control") else listOf("System Properties: Paging File")
             }) {
                 captures++
                 "frame"
             }
         }.exceptionOrNull()
         check(suffixedAfter is IllegalStateException)
-        check(captures == 2) { "Suffixed post-frame dialog must reject the captured screenshot" }
+        check(captures == 3) { "Suffixed post-frame dialog must reject the captured screenshot" }
 
         val clean = captureWindowsNativeFrame("windows-tray-disconnected", { listOf("VPN Control") }) {
             captures++
             "clean frame"
         }
-        check(clean == "clean frame" && captures == 3)
+        check(clean == "clean frame" && captures == 4)
     }
 
     @Test
@@ -556,15 +602,64 @@ class DesktopNativeVisualCaptureTest {
         return titles
     }
 
+    private fun dismissHostedWindowsSystemPropertiesDialog() {
+        if (System.getenv("VPN_CONTROL_VISUAL_PROVIDER") != "hosted") return
+        val foreign = mutableListOf<WinDef.HWND>()
+        check(User32.INSTANCE.EnumWindows(WinUser.WNDENUMPROC { handle, _ ->
+            if (User32.INSTANCE.IsWindowVisible(handle)) {
+                val length = User32.INSTANCE.GetWindowTextLength(handle)
+                if (length > 0) {
+                    val buffer = CharArray(length + 1)
+                    val copied = User32.INSTANCE.GetWindowText(handle, buffer, buffer.size)
+                    if (copied > 0 && String(buffer, 0, copied).startsWith("System Properties", ignoreCase = true)) {
+                        foreign += handle
+                    }
+                }
+            }
+            true
+        }, null)) { "Windows top-level visual window census failed" }
+        foreign.forEach { handle ->
+            User32.INSTANCE.PostMessage(handle, WinUser.WM_CLOSE, WinDef.WPARAM(0), WinDef.LPARAM(0))
+        }
+        if (foreign.isNotEmpty()) Thread.sleep(250)
+    }
+
     private fun <T> captureWindowsNativeFrame(
         sceneId: String,
         windowTitles: () -> List<String>,
         capture: () -> T,
+    ): T = captureWindowsNativeFrame(
+        sceneId,
+        windowTitles,
+        ::dismissHostedWindowsSystemPropertiesDialog,
+        capture,
+    )
+
+    private fun <T> captureWindowsNativeFrame(
+        sceneId: String,
+        windowTitles: () -> List<String>,
+        dismissForeignDialog: () -> Unit,
+        capture: () -> T,
+        pauseBeforeRetry: () -> Unit = { Thread.sleep(250) },
     ): T {
         fun rejectForeignDialog(phase: String) {
             check(windowTitles().none { it.startsWith("System Properties", ignoreCase = true) }) {
                 "$sceneId: foreign System Properties dialog visible $phase native screenshot"
             }
+        }
+        var clearCensuses = 0
+        for (attempt in 0 until 20) {
+            dismissForeignDialog()
+            if (windowTitles().none { it.startsWith("System Properties", ignoreCase = true) }) {
+                clearCensuses++
+                if (clearCensuses >= 2) break
+            } else {
+                clearCensuses = 0
+            }
+            pauseBeforeRetry()
+        }
+        check(clearCensuses >= 2) {
+            "$sceneId: foreign System Properties dialog remained before native screenshot"
         }
         rejectForeignDialog("before")
         val frame = capture()

@@ -1860,9 +1860,9 @@ _VM_NATIVE_ADAPTERS = (
     "native_response_diagnostics", "native_build_timing",
     "native_failure_evidence", "macos_installer_recovery", "native_rpm_public_install_adapter",
     "native_rpm_public_install_ssh", "android_admission_readback", "windows_msi_public_scenario", "windows_vm_swtpm_repair",
-    "linux_update_fixture_workflow", "linux_rpm_fixture_server_lifecycle", "linux_rpm_workspace_recovery", "linux_vm_readonly_inventory", "arch_ai_loop_observe", "arch_qemu_holder_census", "windows_vm_baseline_inventory", "windows_vm_secureboot_inventory", "windows_vm_virt_firmware_admission", "windows_vm_virt_firmware_install", "windows_vm_secureboot_clone", "windows_vm_secureboot_fresh", "windows_vm_driver_fetch", "windows_vm_fresh_setup", "windows_vm_optical_boot", "windows_vm_optical_boot_attempt2", "windows_vm_optical_boot_attempt3", "windows_vm_optical_post_collect", "windows_vm_optical_current_screen", "windows_update_fixture_workflow", "windows_update_fixture_server", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare",
-    "windows_msi_owner_observe", "windows_msi_target_prepare",
-    "windows_update_fixture_stage", "windows_fixture_credentials",
+    "linux_update_fixture_workflow", "linux_rpm_fixture_server_lifecycle", "linux_rpm_workspace_recovery", "linux_vm_readonly_inventory", "arch_ai_loop_observe", "arch_qemu_holder_census", "windows_vm_baseline_inventory", "windows_vm_secureboot_inventory", "windows_vm_virt_firmware_admission", "windows_vm_virt_firmware_install", "windows_vm_secureboot_clone", "windows_vm_secureboot_fresh", "windows_vm_driver_fetch", "windows_vm_fresh_setup", "windows_vm_optical_boot", "windows_vm_optical_boot_attempt2", "windows_vm_optical_boot_attempt3", "windows_vm_optical_post_collect", "windows_vm_optical_current_screen", "windows_update_fixture_workflow", "windows_update_fixture_server", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare", "windows_msi_transfer_endpoint", "windows_msi_http_transfer", "windows_msiexec_service_diagnostic",
+    "windows_msi_owner_observe", "windows_msi_owner_census", "windows_msi_owner_diagnostic", "windows_msi_owner_liveness", "windows_msi_stale_lock_recovery", "windows_msi_stale_lock_reconcile", "windows_msi_owner_relaunch", "windows_msi_owner_public_status", "windows_msi_owner_public_status_retry", "windows_msi_owner_public_status_third", "windows_msi_owner_relaunch_quit", "windows_msi_owner_relaunch_quit_v2", "windows_msi_owner_relaunch_quit_v3", "windows_msi_owner_relaunch_quit_v4", "windows_msi_owner_quit_phase_diagnostic", "windows_msi_target_prepare",
+    "windows_update_fixture_stage", "windows_update_fixture_stage_recovery", "windows_update_fixture_http_stage", "windows_update_fixture_guest_create_abort", "windows_update_fixture_download_abort", "windows_update_fixture_download_abort_current", "windows_large_artifact_transfer", "windows_cp117_campaign_rebase", "windows_cp117_e66_successor", "windows_cp117_guest_abort_successor", "windows_cp117_download_abort_successor", "windows_cp117_download_abort_current_successor", "windows_cp117_campaign_status", "windows_fixture_phase_status", "windows_fixture_credentials", "windows_fixture_python_download_preflight", "windows_fixture_python_host_source", "windows_fixture_python_acquire_transfer", "windows_fixture_python_guest_install", "windows_fixture_package_mode_repair", "windows_fixture_server_abort_successor", "windows_fixture_server_resume", "windows_fixture_post_resource_diagnostic", "windows_fixture_acl_preflight",
     "windows_fixture_owner_network", "windows_fixture_network_probe",
     "windows_vm_setup_language_next",
     "windows_vm_setup_keyboard_next",
@@ -2248,7 +2248,1094 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "evidenceClass": "native-preflight", "productAction": False}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
-        if action.startswith("windows-fixture-stage-") or action.startswith("windows-fixture-credentials-") or action.startswith("windows-fixture-server-") or action.startswith("windows-fixture-owner-network-") or action.startswith("windows-fixture-network-probe-"):
+        if action == "windows-fixture-python-inventory-diagnostic":
+            server = _agent_module("windows_update_fixture_server")
+            required = {"host", "leaseId", "stageCorrelationId", "serverCorrelationId",
+                        "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}
+            if not isinstance(inputs, dict) or set(inputs) != required:
+                return _error("vm_workflow", "Windows Python inventory diagnostic requires exact campaign and artifact fields.")
+            try:
+                server._request(inputs)
+            except (ValueError, TypeError, AttributeError) as error:
+                return _error("vm_workflow", str(error))
+            identifiers = {name: inputs[name] for name in ("leaseId", "stageCorrelationId", "serverCorrelationId")}
+            try:
+                result = server.python_inventory_diagnostic(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", **identifiers, "serverReady": False}
+            candidate_fields = {"location", "pythonExeSha256", "pythonVersion", "signer"}
+            valid_candidate = lambda candidate: (isinstance(candidate, dict) and set(candidate) == candidate_fields
+                                                  and candidate.get("location") in {"owner-local", "program-files"}
+                                                  and isinstance(candidate.get("pythonExeSha256"), str)
+                                                  and bool(server._HASH.fullmatch(candidate["pythonExeSha256"]))
+                                                  and isinstance(candidate.get("pythonVersion"), str)
+                                                  and len(candidate["pythonVersion"]) <= 64
+                                                  and bool(re.fullmatch(r"3\.1[1-4](?:\.[0-9]+)?(?:[ .].*)?", candidate["pythonVersion"]))
+                                                  and candidate.get("signer") == "python-software-foundation")
+            valid = (isinstance(result, dict)
+                     and set(result) == {"state", "leaseId", "stageCorrelationId", "serverCorrelationId",
+                                         "candidateCount", "candidates", "serverReady"}
+                     and result.get("state") == "observed"
+                     and all(result.get(name) == value for name, value in identifiers.items())
+                     and type(result.get("candidateCount")) is int and 0 <= result["candidateCount"] <= 16
+                     and isinstance(result.get("candidates"), list)
+                     and result["candidateCount"] == len(result["candidates"])
+                     and all(valid_candidate(candidate) for candidate in result["candidates"])
+                     and result.get("serverReady") is False)
+            if not valid:
+                result = {"state": "unknown", **identifiers, "serverReady": False}
+            return {"tool": "vm_workflow", **result, "ok": valid,
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False, "replayAllowed": False}
+        if action == "windows-fixture-python-download-preflight":
+            preflight = _agent_module("windows_fixture_python_download_preflight")
+            server = _agent_module("windows_update_fixture_server")
+            required = {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}
+            if not isinstance(inputs, dict) or set(inputs) != required:
+                return _error("vm_workflow", "Windows Python download preflight requires exact campaign and artifact fields.")
+            try:
+                server._request(inputs)
+            except (ValueError, TypeError, AttributeError) as error:
+                return _error("vm_workflow", str(error))
+            ids = {name: inputs[name] for name in ("leaseId", "stageCorrelationId", "serverCorrelationId")}
+            unknown_endpoint = {"classification": "unknown", "phase": "remote-transport-unknown", "tlsSha256": "unknown", "statusCode": "unknown", "contentLength": "unknown"}
+            try:
+                result = preflight.preflight(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", **ids, "candidateCount": 0, "serverReady": False, "installerSha256": preflight._SHA256, **unknown_endpoint}
+            valid = (isinstance(result, dict) and set(result) == {"state", "leaseId", "stageCorrelationId", "serverCorrelationId", "candidateCount", "serverReady", "installerSha256", "classification", "phase", "tlsSha256", "statusCode", "contentLength"}
+                     and result.get("state") == "observed" and all(result.get(name) == value for name, value in ids.items())
+                     and result.get("candidateCount") == 0 and result.get("serverReady") is False and result.get("installerSha256") == preflight._SHA256
+                     and result.get("classification") in {"reachable", "unreachable", "unknown"}
+                     and result.get("phase") in preflight._PHASES
+                     and (result.get("tlsSha256") == "unknown" or (isinstance(result.get("tlsSha256"), str) and preflight._HASH.fullmatch(result["tlsSha256"])))
+                     and (result.get("statusCode") == "unknown" or (type(result.get("statusCode")) is int and 100 <= result["statusCode"] <= 599))
+                     and (result.get("contentLength") == "unknown" or (type(result.get("contentLength")) is int and 0 <= result["contentLength"] <= 1_073_741_824)))
+            if not valid:
+                result = {"state": "unknown", **ids, "candidateCount": 0, "serverReady": False, "installerSha256": preflight._SHA256, **unknown_endpoint}
+            return {"tool": "vm_workflow", **result, "ok": valid, "evidenceClass": "causal-diagnostic", "productAction": False, "nativeActionAllowed": False, "replayAllowed": False}
+        if action == "windows-fixture-python-host-source-observe":
+            source = _agent_module("windows_fixture_python_host_source")
+            server = _agent_module("windows_update_fixture_server")
+            required = {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}
+            if not isinstance(inputs, dict) or set(inputs) != required:
+                return _error("vm_workflow", "Python source observation requires exact campaign and artifact fields.")
+            try:
+                request = server._request(inputs)
+                server._admit_campaign(REPO_ROOT, request, require_credentials=True)
+                result = source.observe(REPO_ROOT, {"host": "archlinux", "timeoutSeconds": 30})
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            valid = (isinstance(result, dict) and set(result) == {"state", *flags}
+                     and result.get("state") in {"present", "absent-or-mismatch", "unknown"}
+                     and all(result.get(name) is value for name, value in flags.items()))
+            if not valid:
+                result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] != "unknown", "evidenceClass": "causal-diagnostic", "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-fixture-python-acquire-start", "windows-fixture-python-acquire-status",
+                      "windows-fixture-python-acquire-collect", "windows-fixture-python-acquire-reconcile",
+                      "windows-fixture-python-install-start", "windows-fixture-python-install-status",
+                      "windows-fixture-python-install-collect"}:
+            acquire = _agent_module("windows_fixture_python_acquire_transfer")
+            install = _agent_module("windows_fixture_python_guest_install")
+            starting = action.endswith("-start")
+            module = install if "-install-" in action else acquire
+            if starting:
+                try:
+                    request = module._request(inputs)
+                except (ValueError, TypeError, KeyError, AttributeError) as error:
+                    return _error("vm_workflow", str(error))
+                correlation = request["correlationId"]
+            else:
+                if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"}
+                        or not acquire._canonical(inputs.get("correlationId"))):
+                    return _error("vm_workflow", "Exact CP117 Python correlation is required.")
+                correlation = inputs["correlationId"]
+            method = (module.start if starting else module.reconcile if action.endswith("-reconcile")
+                      else module.collect if action.endswith("-collect") else module.status)
+            try:
+                result = method(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": correlation, "replayAllowed": False}
+            if (isinstance(result, dict) and result.get("nativeActionAllowed") is False
+                    and result.get("productAction") is False):
+                result = {key: value for key, value in result.items()
+                          if key not in {"nativeActionAllowed", "productAction"}}
+            states = ({"submitted", "unknown"} if starting else
+                      {"observed", "unknown"} if action.endswith("-reconcile") else
+                      {"succeeded", "failed", "running", "blocked", "unknown", "intent-absent"} if module is install else
+                      {"downloaded", "failed", "running", "blocked", "unknown", "intent-absent"})
+            optional = ({"task", "leaf", "installer", "result"} if module is acquire else
+                        {"intent", "private", "task", "installer", "result", "registry", "python"})
+            allowed_values = {"task": {"absent", "ready", "running", "queued", "disabled", "mismatch"},
+                              "leaf": {"absent", "verified"}, "installer": {"absent", "verified"},
+                              "result": {"absent", "running", "succeeded", "failed", "unknown"},
+                              "intent": {"absent", "verified"}, "private": {"absent", "verified"},
+                              "registry": {"absent", "verified"}, "python": {"absent", "verified"}}
+            valid = (isinstance(result, dict) and set(result) >= {"state", "correlationId", "replayAllowed"}
+                     and set(result) <= {"state", "correlationId", "replayAllowed"} | optional
+                     and result.get("state") in states and result.get("correlationId") == correlation
+                     and result.get("replayAllowed") is False
+                     and all(result.get(key) in allowed_values[key] for key in (set(result) & optional)))
+            if not valid:
+                result = {"state": "unknown", "correlationId": correlation, "replayAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] not in {"unknown", "intent-absent", "blocked", "failed"},
+                    "evidenceClass": "causal-diagnostic" if not starting else "native-fixture",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action == "windows-fixture-python-acquire-failure-detail":
+            acquire = _agent_module("windows_fixture_python_acquire_transfer")
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"}
+                    or not acquire._canonical(inputs.get("correlationId"))):
+                return _error("vm_workflow", "Exact CP117 Python failure correlation is required.")
+            correlation = inputs["correlationId"]
+            try:
+                result = acquire.failure_detail(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": correlation, "replayAllowed": False}
+            valid = (isinstance(result, dict)
+                     and set(result) == {"state", "correlationId", "replayAllowed", "resultCode", "partial", "signer", "parseErrors", "phase"}
+                     and result.get("state") == "observed" and result.get("correlationId") == correlation
+                     and result.get("replayAllowed") is False and type(result.get("resultCode")) is int
+                     and -2147483648 <= result["resultCode"] <= 4294967295
+                     and result.get("partial") in {"absent", "incomplete", "digest-mismatch", "digest-verified", "unknown"}
+                     and result.get("signer") in {"valid", "invalid", "not-checked"}
+                     and type(result.get("parseErrors")) is int and 0 <= result["parseErrors"] <= 64
+                     and result.get("phase") in {"unknown", "identity", "leaf", "network", "headers", "body", "write", "hash", "signer", "move"})
+            if not valid:
+                result = {"state": "unknown", "correlationId": correlation, "replayAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": valid, "evidenceClass": "causal-diagnostic",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action == "windows-fixture-python-install-diagnostic":
+            install = _agent_module("windows_fixture_python_guest_install")
+            acquire = _agent_module("windows_fixture_python_acquire_transfer")
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"}
+                    or not acquire._canonical(inputs.get("correlationId"))):
+                return _error("vm_workflow", "Exact CP117 Python install correlation is required.")
+            correlation = inputs["correlationId"]
+            try:
+                result = install.diagnose(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": correlation, "replayAllowed": False}
+            valid = (isinstance(result, dict) and set(result) == {"state", "correlationId", "replayAllowed", "phase", "reason"}
+                     and result.get("state") == "observed" and result.get("correlationId") == correlation
+                     and result.get("replayAllowed") is False
+                     and result.get("phase") in {"profile", "appdata", "local", "vpncontrol", "leaf", "installer", "digest", "complete"}
+                     and result.get("reason") in {"none", "missing-or-unreadable", "reparse", "type", "acl-unreadable", "foreign-owner", "acl-foreign-write", "acl-creator-owner-template", "acl-foreign-read", "acl-deny", "digest-mismatch"}
+                     and (result["phase"] == "complete") == (result["reason"] == "none"))
+            if not valid:
+                result = {"state": "unknown", "correlationId": correlation, "replayAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": valid, "evidenceClass": "causal-diagnostic",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-fixture-package-mode-repair-start", "windows-fixture-package-mode-repair-status",
+                      "windows-fixture-package-mode-repair-collect"}:
+            repair = _agent_module("windows_fixture_package_mode_repair")
+            starting = action.endswith("-start")
+            fields = {"serverCorrelationId", "repairCorrelationId"} if starting else {"repairCorrelationId"}
+            if (not isinstance(inputs, dict) or set(inputs) != fields
+                    or not all(repair._canonical(inputs.get(field)) for field in fields)):
+                return _error("vm_workflow", "Exact CP117 package-mode repair correlations are required.")
+            correlation = inputs["repairCorrelationId"]
+            try:
+                operation = repair.start if starting else repair.collect if action.endswith("-collect") else repair.status
+                result = operation(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "repairCorrelationId": correlation,
+                          "replayAllowed": False, "nativeActionAllowed": False}
+            valid = (isinstance(result, dict)
+                     and set(result) == {"state", "repairCorrelationId", "replayAllowed", "nativeActionAllowed"}
+                     and result.get("state") == "repaired" and result.get("repairCorrelationId") == correlation
+                     and result.get("replayAllowed") is False and result.get("nativeActionAllowed") is False)
+            if not valid:
+                result = {"state": "unknown", "repairCorrelationId": correlation,
+                          "replayAllowed": False, "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": valid, "evidenceClass": "native-fixture",
+                    "productAction": False}
+        if action == "windows-fixture-package-mode-repair-diagnostic":
+            repair = _agent_module("windows_fixture_package_mode_repair")
+            if (not isinstance(inputs, dict) or set(inputs) != {"repairCorrelationId"}
+                    or not repair._canonical(inputs.get("repairCorrelationId"))):
+                return _error("vm_workflow", "Exact CP117 package-mode repair correlation is required.")
+            correlation = inputs["repairCorrelationId"]
+            try:
+                result = repair.diagnose(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "repairCorrelationId": correlation, "replayAllowed": False}
+            valid = (isinstance(result, dict)
+                     and set(result) == {"state", "repairCorrelationId", "phase", "replayAllowed"}
+                     and result.get("state") == "diagnosed" and result.get("repairCorrelationId") == correlation
+                     and result.get("replayAllowed") is False
+                     and result.get("phase") in {"intent-absent", "binding", "remote", "attribute-set", "file-fact",
+                                                  "syntax-invalid",
+                                                  "guest-launch", "guest-wait", "guest-exit", "guest-truncated",
+                                                  "guest-output", "guest-parse"})
+            if not valid:
+                result = {"state": "unknown", "repairCorrelationId": correlation, "replayAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": valid, "evidenceClass": "causal-diagnostic",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action == "windows-fixture-server-static-diagnostic":
+            server = _agent_module("windows_update_fixture_server")
+            if (not isinstance(inputs, dict) or set(inputs) != {"serverCorrelationId"}
+                    or not server._canonical(inputs.get("serverCorrelationId"))):
+                return _error("vm_workflow", "Exact CP117 server diagnostic correlation is required.")
+            correlation = inputs["serverCorrelationId"]
+            try:
+                result = server.diagnose_static(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "serverCorrelationId": correlation, "replayAllowed": False}
+            valid = (isinstance(result, dict) and result.get("serverCorrelationId") == correlation
+                     and result.get("replayAllowed") is False
+                     and ((set(result) == {"state", "serverCorrelationId", "import", "certificate", "resources", "resourceGate", "replayAllowed"}
+                           and result.get("state") == "observed"
+                           and result.get("import") in {"ok", "failed", "skipped"}
+                           and result.get("certificate") in {"ok", "failed", "skipped"}
+                           and result.get("resources") in {"ok", "failed", "skipped"}
+                           and result.get("resourceGate") in {"skipped", "receipt", "receipt-contract", "builds",
+                                                               "manifest", "package-asset", "package-mode", "other", "complete"}
+                           and (result["resources"] == "ok") == (result["resourceGate"] == "complete")
+                           and (result["resources"] == "skipped") == (result["resourceGate"] == "skipped"))
+                          or (set(result) == {"state", "serverCorrelationId", "phase", "replayAllowed"}
+                              and result.get("state") == "diagnosed"
+                              and result.get("phase") in {"descriptor", "stage", "remote", "binding",
+                                                           "guest-launch", "guest-wait", "guest-exit",
+                                                           "guest-output-truncated",
+                                                           "guest-output-bytes", "guest-parse"})))
+            if not valid:
+                result = {"state": "unknown", "serverCorrelationId": correlation, "replayAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": valid, "evidenceClass": "causal-diagnostic",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action == "windows-fixture-server-diagnostic":
+            server = _agent_module("windows_update_fixture_server")
+            if (not isinstance(inputs, dict) or set(inputs) != {"serverCorrelationId"}
+                    or not server._canonical(inputs.get("serverCorrelationId"))):
+                return _error("vm_workflow", "Exact CP117 server diagnostic correlation is required.")
+            correlation = inputs["serverCorrelationId"]
+            try:
+                result = server.diagnose_status(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "serverCorrelationId": correlation, "replayAllowed": False}
+            valid = (isinstance(result, dict) and set(result) == {"state", "serverCorrelationId", "task", "lastResult", "ready", "stateContent", "stageAcl", "stateAcl", "replayAllowed"}
+                     and result.get("state") == "observed" and result.get("serverCorrelationId") == correlation
+                     and result.get("replayAllowed") is False
+                     and result.get("task") in {"absent", "running", "ready", "queued", "disabled", "mismatch"}
+                     and result.get("ready") in {"absent", "present"}
+                     and result.get("stateContent") in {"empty", "probe-events", "ready-present", "other", "unknown"}
+                     and result.get("stageAcl") in {"expected", "mismatch", "unknown"}
+                     and result.get("stateAcl") in {"expected", "mismatch", "unknown"}
+                     and (result.get("lastResult") == "unknown" or
+                          (type(result.get("lastResult")) is int and -2147483648 <= result["lastResult"] <= 4294967295)))
+            if not valid:
+                result = {"state": "unknown", "serverCorrelationId": correlation, "replayAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": valid, "evidenceClass": "causal-diagnostic",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action == "windows-fixture-server-abort-diagnostic":
+            server = _agent_module("windows_update_fixture_server")
+            if (not isinstance(inputs, dict) or set(inputs) != {"cleanupCorrelationId"}
+                    or not server._canonical(inputs.get("cleanupCorrelationId"))):
+                return _error("vm_workflow", "Exact CP117 server abort diagnostic correlation is required.")
+            correlation = inputs["cleanupCorrelationId"]
+            try:
+                result = server.diagnose_abort(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "cleanupCorrelationId": correlation, "replayAllowed": False}
+            valid = (isinstance(result, dict) and result.get("cleanupCorrelationId") == correlation
+                     and result.get("replayAllowed") is False
+                     and ((set(result) == {"state", "cleanupCorrelationId", "phase", "replayAllowed"}
+                           and result.get("state") == "diagnosed"
+                           and result.get("phase") in {"intent", "descriptor", "remote", "binding", "journal", "guest-task"})
+                          or (set(result) == {"state", "cleanupCorrelationId", "task", "result", "stdout", "stderr", "replayAllowed"}
+                              and result.get("state") == "observed"
+                              and result.get("task") in {"running", "terminal"}
+                              and result.get("result") in {"unknown", "zero", "nonzero"}
+                              and result.get("stdout") in {"unknown", "absent", "false", "true", "invalid"}
+                              and result.get("stderr") in {"unknown", "absent", "false", "true", "invalid"})))
+            if not valid:
+                result = {"state": "unknown", "cleanupCorrelationId": correlation, "replayAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": valid, "evidenceClass": "causal-diagnostic",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action == "windows-fixture-stage-diagnostic":
+            stage = _agent_module("windows_update_fixture_stage")
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"}
+                    or not isinstance(inputs["correlationId"], str)
+                    or not stage._UUID.fullmatch(inputs["correlationId"])):
+                return _error("vm_workflow", "Exact fixture stage diagnostic correlation is required.")
+            try:
+                result = stage.diagnose(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "correlationId": inputs["correlationId"],
+                          "binding": "unverified", "phase": "qga-protocol",
+                          "replayAllowed": False, "nativeActionAllowed": False}
+            if (not isinstance(result, dict) or set(result) != {"state", "correlationId", "binding",
+                                                            "phase", "replayAllowed", "nativeActionAllowed"}
+                    or result.get("state") != "unknown"
+                    or result.get("correlationId") != inputs["correlationId"]
+                    or result.get("binding") not in {"exact", "mismatch", "unverified"}
+                    or result.get("phase") not in (stage._DIAGNOSTIC_PHASES |
+                                                      {"local-intent", "local-artifact", "descriptor"})
+                    or result.get("binding") != (
+                        "unverified" if result.get("phase") in {"local-intent", "local-artifact", "qga-protocol"}
+                        else "mismatch" if result.get("phase") in {"descriptor", "remote-binding-mismatch"}
+                        else "exact")
+                    or result.get("replayAllowed") is not False
+                    or result.get("nativeActionAllowed") is not False):
+                result = {"state": "unknown", "correlationId": inputs["correlationId"],
+                          "binding": "unverified", "phase": "qga-protocol",
+                          "replayAllowed": False, "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": result["phase"] != "qga-protocol",
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-fixture-stage-recover-7f27":
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 stage recovery host is required.")
+            recovery = _agent_module("windows_update_fixture_stage_recovery")
+            try:
+                result = recovery.recover(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "correlationId": recovery._CORRELATION,
+                          "replayAllowed": False}
+            recovered = (isinstance(result, dict)
+                         and set(result) == {"state", "correlationId", "cleanupReceiptSha256", "replayAllowed"}
+                         and result.get("state") == "recovered"
+                         and result.get("correlationId") == recovery._CORRELATION
+                         and isinstance(result.get("cleanupReceiptSha256"), str)
+                         and recovery._HASH.fullmatch(result["cleanupReceiptSha256"])
+                         and result.get("replayAllowed") is False)
+            unknown = result == {"state": "unknown", "correlationId": recovery._CORRELATION,
+                                 "replayAllowed": False}
+            if not (recovered or unknown):
+                result = {"state": "unknown", "correlationId": recovery._CORRELATION,
+                          "replayAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": recovered,
+                    "evidenceClass": "native-recovery", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-fixture-stage-recover-7f27-diagnostic":
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 stage recovery diagnostic host is required.")
+            recovery = _agent_module("windows_update_fixture_stage_recovery")
+            try:
+                result = recovery.diagnose(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "diagnosed", "correlationId": recovery._CORRELATION,
+                          "phase": "remote-stage", "recoveryAllowed": False,
+                          "nativeActionAllowed": False}
+            allowed_phases = {"local-intent", "local-artifact", "local-descriptor", "campaign",
+                              "remote-stage", "host-submitter", "qga-create-task", "guest-stage", "idle",
+                              "closure", "recovered", "remote-absent", "remote-empty",
+                              "remote-binding-only"}
+            recoverable_phases = {"closure", "recovered", "remote-absent", "remote-empty",
+                                  "remote-binding-only"}
+            campaign_details = {"record-missing", "record-unsafe", "identity-mismatch",
+                                "active-role-required", "closed-required", "remote-confirm",
+                                "active-role", "closed", "local-admission", "predecessor-evidence",
+                                "resume-state"}
+            if (not isinstance(result, dict)
+                    or set(result) != ({"state", "correlationId", "phase", "recoveryAllowed",
+                                        "nativeActionAllowed"} |
+                                       ({"campaignDetail"} if result.get("phase") == "campaign" else set()))
+                    or result.get("state") != "diagnosed"
+                    or result.get("correlationId") != recovery._CORRELATION
+                    or result.get("phase") not in allowed_phases
+                    or (result.get("campaignDetail") not in campaign_details
+                        if result.get("phase") == "campaign" else "campaignDetail" in result)
+                    or result.get("recoveryAllowed") is not (result.get("phase") in recoverable_phases)
+                    or result.get("nativeActionAllowed") is not False):
+                result = {"state": "diagnosed", "correlationId": recovery._CORRELATION,
+                          "phase": "remote-stage", "recoveryAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": True,
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-cp117-campaign-rebase":
+            rebase = _agent_module("windows_cp117_campaign_rebase")
+            try:
+                request = rebase._request(inputs)
+                result = rebase.start(REPO_ROOT, request)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error("vm_workflow", "Exact CP117 campaign rebase request is required.")
+            valid_active = (isinstance(result, dict)
+                            and set(result) == {"state", "leaseId", "previousLeaseId",
+                                                "baseTerminalReceiptSha256", "replayAllowed"}
+                            and result.get("state") == "active"
+                            and result.get("leaseId") == request["leaseId"]
+                            and result.get("previousLeaseId") == request["previousLeaseId"]
+                            and isinstance(result.get("baseTerminalReceiptSha256"), str)
+                            and rebase._ARTIFACT.fullmatch("sha256-" + result["baseTerminalReceiptSha256"])
+                            and result.get("replayAllowed") is False)
+            valid_unknown = result == {"state": "unknown", "leaseId": request["leaseId"],
+                                      "replayAllowed": False}
+            if not (valid_active or valid_unknown):
+                result = {"state": "unknown", "leaseId": request["leaseId"],
+                          "replayAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": valid_active,
+                    "evidenceClass": "native-campaign", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action in {"windows-cp117-e66-successor-start",
+                      "windows-cp117-e66-successor-status",
+                      "windows-cp117-e66-successor-reconcile",
+                      "windows-cp117-e66-successor-resume-begin"}:
+            successor = _agent_module("windows_cp117_e66_successor")
+            try:
+                request = successor._request(inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error("vm_workflow", "Exact retired-e66 successor request is required.")
+            operation = {
+                "windows-cp117-e66-successor-start": successor.start,
+                "windows-cp117-e66-successor-status": successor.status,
+                "windows-cp117-e66-successor-reconcile": successor.reconcile,
+                "windows-cp117-e66-successor-resume-begin": successor.resume_begin,
+            }[action]
+            try:
+                result = operation(REPO_ROOT, request)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False}
+            active = {"state": "active", "leaseId": request["newLeaseId"], **flags}
+            partial = (isinstance(result, dict) and action.endswith("-status")
+                       and result in (
+                           {"state": "closing", "leaseId": request["newLeaseId"],
+                            "nextAction": "inspect-close-progress", **flags},
+                           {"state": "opening", "leaseId": request["newLeaseId"],
+                            "nextAction": "inspect-open-progress", **flags}))
+            valid = result == active or partial
+            if not valid:
+                result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result,
+                    "ok": valid and result["state"] == "active",
+                    "evidenceClass": "causal-diagnostic" if action.endswith("-status") else "native-campaign",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-cp117-guest-abort-successor-start",
+                      "windows-cp117-guest-abort-successor-status",
+                      "windows-cp117-guest-abort-successor-reconcile",
+                      "windows-cp117-guest-abort-successor-resume-begin"}:
+            successor = _agent_module("windows_cp117_guest_abort_successor")
+            try:
+                request = successor._request(inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error("vm_workflow", "Exact retired guest-create successor request is required.")
+            operation = {
+                "windows-cp117-guest-abort-successor-start": successor.start,
+                "windows-cp117-guest-abort-successor-status": successor.status,
+                "windows-cp117-guest-abort-successor-reconcile": successor.reconcile,
+                "windows-cp117-guest-abort-successor-resume-begin": successor.resume_begin,
+            }[action]
+            try:
+                result = operation(REPO_ROOT, request)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False}
+            active = {"state": "active", "leaseId": request["newLeaseId"], **flags}
+            partial = (isinstance(result, dict) and action.endswith("-status")
+                       and result in (
+                           {"state": "closing", "leaseId": request["newLeaseId"],
+                            "nextAction": "inspect-close-progress", **flags},
+                           {"state": "opening", "leaseId": request["newLeaseId"],
+                            "nextAction": "inspect-open-progress", **flags}))
+            valid = result == active or partial
+            if not valid:
+                result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result,
+                    "ok": valid and result["state"] == "active",
+                    "evidenceClass": "causal-diagnostic" if action.endswith("-status") else "native-campaign",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-cp117-download-abort-successor-start",
+                      "windows-cp117-download-abort-successor-status",
+                      "windows-cp117-download-abort-successor-reconcile",
+                      "windows-cp117-download-abort-successor-resume-close",
+                      "windows-cp117-download-abort-successor-resume-begin"}:
+            successor = _agent_module("windows_cp117_download_abort_successor")
+            try:
+                request = successor._request(inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error("vm_workflow", "Exact retired download successor request is required.")
+            operation = {
+                "windows-cp117-download-abort-successor-start": successor.start,
+                "windows-cp117-download-abort-successor-status": successor.status,
+                "windows-cp117-download-abort-successor-reconcile": successor.reconcile,
+                "windows-cp117-download-abort-successor-resume-close": successor.resume_close,
+                "windows-cp117-download-abort-successor-resume-begin": successor.resume_begin,
+            }[action]
+            try:
+                result = operation(REPO_ROOT, request)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False}
+            active = {"state": "active", "leaseId": request["newLeaseId"], **flags}
+            closed = {"state": "closed", "leaseId": request["newLeaseId"], **flags}
+            partial = (isinstance(result, dict) and action.endswith("-status")
+                       and result in (
+                           {"state": "closing", "leaseId": request["newLeaseId"],
+                            "nextAction": "inspect-close-progress", **flags},
+                           {"state": "closing", "leaseId": request["newLeaseId"],
+                            "nextAction": "resume-close", **flags},
+                           {"state": "opening", "leaseId": request["newLeaseId"],
+                            "nextAction": "inspect-open-progress", **flags}))
+            valid = result == active or (action.endswith("-resume-close") and result == closed) or partial
+            if not valid:
+                result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result,
+                    "ok": valid and result["state"] in {"active", "closed"},
+                    "evidenceClass": "causal-diagnostic" if action.endswith("-status") else "native-campaign",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-cp117-download-abort-current-successor-start",
+                      "windows-cp117-download-abort-current-successor-status",
+                      "windows-cp117-download-abort-current-successor-reconcile",
+                      "windows-cp117-download-abort-current-successor-resume-close",
+                      "windows-cp117-download-abort-current-successor-resume-begin"}:
+            successor = _agent_module("windows_cp117_download_abort_current_successor")
+            try:
+                request = successor._request(inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error("vm_workflow", "Exact current retired download successor request is required.")
+            operation = {
+                "windows-cp117-download-abort-current-successor-start": successor.start,
+                "windows-cp117-download-abort-current-successor-status": successor.status,
+                "windows-cp117-download-abort-current-successor-reconcile": successor.reconcile,
+                "windows-cp117-download-abort-current-successor-resume-close": successor.resume_close,
+                "windows-cp117-download-abort-current-successor-resume-begin": successor.resume_begin,
+            }[action]
+            try:
+                result = operation(REPO_ROOT, request)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False}
+            active = {"state": "active", "leaseId": request["newLeaseId"], **flags}
+            closed = {"state": "closed", "leaseId": request["newLeaseId"], **flags}
+            partial = (isinstance(result, dict) and action.endswith("-status")
+                       and result in (
+                           {"state": "closing", "leaseId": request["newLeaseId"],
+                            "nextAction": "inspect-close-progress", **flags},
+                           {"state": "closing", "leaseId": request["newLeaseId"],
+                            "nextAction": "resume-close", **flags},
+                           {"state": "opening", "leaseId": request["newLeaseId"],
+                            "nextAction": "inspect-open-progress", **flags}))
+            valid = result == active or (action.endswith("-resume-close") and result == closed) or partial
+            if not valid:
+                result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result,
+                    "ok": valid and result["state"] in {"active", "closed"},
+                    "evidenceClass": "causal-diagnostic" if action.endswith("-status") else "native-campaign",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-update-fixture-guest-create-abort-status",
+                      "windows-update-fixture-guest-create-abort"}:
+            guest_create_abort = _agent_module("windows_update_fixture_guest_create_abort")
+            try:
+                guest_create_abort._request(inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error("vm_workflow", "Exact guest-create abort correlation is required.")
+            operation = (guest_create_abort.status if action.endswith("-status")
+                         else guest_create_abort.abort)
+            try:
+                result = operation(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": guest_create_abort._CORRELATION,
+                          "replayAllowed": False, "nativeActionAllowed": False,
+                          "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False,
+                     "productAction": False}
+            correlation = guest_create_abort._CORRELATION
+            status_phases = {"binding", "shared-phase", "guest-create", "host-stage", "listener",
+                             "campaign-identity", "campaign-server", "pending-finish", "campaign-remote",
+                             "campaign-role", "retired", "ready", "ready-pending", "ready-cleaned",
+                             "cleanup-marker", "retired-binding-invalid", "retired-shared-core-invalid",
+                             "retired-receipt-invalid", "retired-campaign-invalid", "retired-marker-invalid",
+                             "retired-guest-invalid", "retired-guest-leaf-present",
+                             "retired-guest-interpreter-present", "retired-guest-wrapper-unknown",
+                             "retired-guest-script-invalid", "unknown"}
+            valid_status = (isinstance(result, dict)
+                            and set(result) == {"state", "correlationId", "phase", "abortAllowed", *flags}
+                            and result.get("state") == "diagnosed"
+                            and result.get("correlationId") == correlation
+                            and result.get("phase") in status_phases
+                            and type(result.get("abortAllowed")) is bool
+                            and result.get("abortAllowed") is (result.get("phase") in {
+                                "ready", "ready-pending", "ready-cleaned"})
+                            and all(result.get(name) is value for name, value in flags.items()))
+            valid_abort = (isinstance(result, dict)
+                           and ((set(result) == {"state", "correlationId", "cleanupReceiptSha256", *flags}
+                                 and result.get("state") == "retired"
+                                 and isinstance(result.get("cleanupReceiptSha256"), str)
+                                 and re.fullmatch(r"[0-9a-f]{64}", result["cleanupReceiptSha256"]))
+                                or (set(result) == {"state", "correlationId", *flags}
+                                    and result.get("state") == "unknown"))
+                           and result.get("correlationId") == correlation
+                           and all(result.get(name) is value for name, value in flags.items()))
+            valid = valid_status if action.endswith("-status") else valid_abort
+            if not valid:
+                result = ({"state": "diagnosed", "correlationId": correlation, "phase": "unknown",
+                           "abortAllowed": False, **flags} if action.endswith("-status") else
+                          {"state": "unknown", "correlationId": correlation, **flags})
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] in {"diagnosed", "retired"},
+                    "evidenceClass": "causal-diagnostic" if action.endswith("-status") else "native-campaign",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-update-fixture-download-abort-status",
+                      "windows-update-fixture-download-abort"}:
+            download_abort = _agent_module("windows_update_fixture_download_abort")
+            try:
+                download_abort._request(inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error("vm_workflow", "Exact download abort correlation is required.")
+            operation = (download_abort.status if action.endswith("-status") else download_abort.abort)
+            try:
+                result = operation(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": download_abort._CORRELATION,
+                          "replayAllowed": False, "nativeActionAllowed": False,
+                          "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False,
+                     "productAction": False}
+            correlation = download_abort._CORRELATION
+            status_phases = {"binding", "shared-phase", "listener-absent", "listener-listening",
+                             "listener-served", "listener-stopped", "listener-unknown", "guest-task-present",
+                             "guest-empty", "guest-bootstrap-present", "guest-runtime-or-installer-present",
+                             "guest-unknown", "campaign", "retired-binding-invalid", "retired-marker",
+                             "pending-finish", "pending-finish-marker", "ready",
+                             "ready-pending", "ready-cleaned", "retired", "unknown"}
+            valid_status = (isinstance(result, dict)
+                            and set(result) == {"state", "correlationId", "phase", "abortAllowed", *flags}
+                            and result.get("state") == "diagnosed"
+                            and result.get("correlationId") == correlation
+                            and result.get("phase") in status_phases
+                            and type(result.get("abortAllowed")) is bool
+                            and result.get("abortAllowed") is (result.get("phase") in {
+                                "ready", "ready-pending", "ready-cleaned"})
+                            and all(result.get(name) is value for name, value in flags.items()))
+            valid_abort = (isinstance(result, dict)
+                           and ((set(result) == {"state", "correlationId", "cleanupReceiptSha256", *flags}
+                                 and result.get("state") == "retired"
+                                 and isinstance(result.get("cleanupReceiptSha256"), str)
+                                 and re.fullmatch(r"[0-9a-f]{64}", result["cleanupReceiptSha256"]))
+                                or (set(result) == {"state", "correlationId", *flags}
+                                    and result.get("state") == "unknown"))
+                           and result.get("correlationId") == correlation
+                           and all(result.get(name) is value for name, value in flags.items()))
+            valid = valid_status if action.endswith("-status") else valid_abort
+            if not valid:
+                result = ({"state": "diagnosed", "correlationId": correlation, "phase": "unknown",
+                           "abortAllowed": False, **flags} if action.endswith("-status") else
+                          {"state": "unknown", "correlationId": correlation, **flags})
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] in {"diagnosed", "retired"},
+                    "evidenceClass": "causal-diagnostic" if action.endswith("-status") else "native-campaign",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-update-fixture-download-task-cleanup-status",
+                      "windows-update-fixture-download-task-cleanup"}:
+            download_abort = _agent_module("windows_update_fixture_download_abort")
+            try:
+                download_abort._request(inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error("vm_workflow", "Exact download task-cleanup correlation is required.")
+            operation = (download_abort.task_cleanup_status if action.endswith("-status")
+                         else download_abort.task_cleanup)
+            try:
+                result = operation(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": download_abort._CORRELATION,
+                          "replayAllowed": False, "nativeActionAllowed": False,
+                          "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False,
+                     "productAction": False}
+            correlation = download_abort._CORRELATION
+            diagnostic_phases = {"not-submitted", "diagnostic-script-oversize",
+                                 "qga-wrapper-timeout", "qga-wrapper-failed", "syntax-invalid",
+                                 "task-action-mismatch", "task-metadata-error", "task-absent",
+                                 "task-principal-mismatch", "task-action-count-mismatch",
+                                 "task-state-unsupported", "task-task-info-failed",
+                                 "task-action-hash-unknown", "task-running", "task-failed",
+                                 "download-absent", "download-hash-mismatch", "guest-file-read-error",
+                                 "download-complete", "unknown"}
+            status_phases = {"binding", "guest-not-safe", "endpoint", "task-absent-unbound",
+                             "ready", "cleaned", "unknown"} | {
+                                 "diagnostic-" + phase for phase in diagnostic_phases}
+            valid_status = (isinstance(result, dict)
+                            and set(result) == {"state", "correlationId", "phase", "cleanupAllowed", *flags}
+                            and result.get("state") == "diagnosed"
+                            and result.get("correlationId") == correlation
+                            and result.get("phase") in status_phases
+                            and type(result.get("cleanupAllowed")) is bool
+                            and result.get("cleanupAllowed") is (result.get("phase") == "ready")
+                            and all(result.get(name) is value for name, value in flags.items()))
+            valid_cleanup = (isinstance(result, dict)
+                             and set(result) == {"state", "correlationId", *flags}
+                             and result.get("state") in {"cleaned", "unknown"}
+                             and result.get("correlationId") == correlation
+                             and all(result.get(name) is value for name, value in flags.items()))
+            valid = valid_status if action.endswith("-status") else valid_cleanup
+            if not valid:
+                result = ({"state": "diagnosed", "correlationId": correlation, "phase": "unknown",
+                           "cleanupAllowed": False, **flags} if action.endswith("-status") else
+                          {"state": "unknown", "correlationId": correlation, **flags})
+            return {"tool": "vm_workflow", **result,
+                    "ok": valid and result["state"] in {"diagnosed", "cleaned"},
+                    "evidenceClass": "causal-diagnostic" if action.endswith("-status") else "causal-cleanup",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-update-fixture-download-abort-current-task-cleanup-status",
+                      "windows-update-fixture-download-abort-current-task-cleanup",
+                      "windows-update-fixture-download-abort-current-status",
+                      "windows-update-fixture-download-abort-current"}:
+            current_abort = _agent_module("windows_update_fixture_download_abort_current")
+            try:
+                current_abort._request(inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error("vm_workflow", "Exact current download abort correlation is required.")
+            operation = ({
+                "windows-update-fixture-download-abort-current-task-cleanup-status": current_abort.task_cleanup_status,
+                "windows-update-fixture-download-abort-current-task-cleanup": current_abort.task_cleanup,
+                "windows-update-fixture-download-abort-current-status": current_abort.status,
+                "windows-update-fixture-download-abort-current": current_abort.abort,
+            }[action])
+            try:
+                result = operation(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": current_abort._CORRELATION,
+                          "replayAllowed": False, "nativeActionAllowed": False,
+                          "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False,
+                     "productAction": False}
+            correlation = current_abort._CORRELATION
+            diagnostic_phases = {"not-submitted", "diagnostic-script-oversize",
+                                 "qga-wrapper-timeout", "qga-wrapper-failed", "syntax-invalid",
+                                 "task-action-mismatch", "task-metadata-error", "task-absent",
+                                 "task-principal-mismatch", "task-action-count-mismatch",
+                                 "task-state-unsupported", "task-task-info-failed",
+                                 "task-action-hash-unknown", "task-running", "task-failed",
+                                 "download-absent", "download-hash-mismatch", "guest-file-read-error",
+                                 "download-complete", "unknown"}
+            cleanup_phases = {"binding", "guest-not-safe", "endpoint", "task-absent-unbound",
+                              "ready", "cleaned", "unknown"} | {
+                                  "diagnostic-" + phase for phase in diagnostic_phases}
+            abort_phases = {"binding", "shared-phase", "listener-absent", "listener-listening",
+                            "listener-served", "listener-stopped", "listener-unknown", "guest-empty",
+                            "guest-task-present", "guest-bootstrap-present", "guest-runtime-or-installer-present",
+                            "guest-unknown", "campaign", "retired-binding-invalid", "retired-marker",
+                            "pending-finish", "pending-finish-marker", "ready", "ready-pending",
+                            "ready-cleaned", "retired", "unknown"}
+            is_cleanup_status = action.endswith("task-cleanup-status")
+            is_cleanup = action.endswith("task-cleanup")
+            is_abort_status = action.endswith("-status") and not is_cleanup_status
+            valid_status = (isinstance(result, dict)
+                            and set(result) == {"state", "correlationId", "phase", "cleanupAllowed", *flags}
+                            and result.get("state") == "diagnosed" and result.get("correlationId") == correlation
+                            and result.get("phase") in cleanup_phases
+                            and type(result.get("cleanupAllowed")) is bool
+                            and result.get("cleanupAllowed") is (result.get("phase") == "ready")
+                            and all(result.get(name) is value for name, value in flags.items()))
+            valid_abort_status = (isinstance(result, dict)
+                                  and set(result) == {"state", "correlationId", "phase", "abortAllowed", *flags}
+                                  and result.get("state") == "diagnosed" and result.get("correlationId") == correlation
+                                  and result.get("phase") in abort_phases
+                                  and type(result.get("abortAllowed")) is bool
+                                  and result.get("abortAllowed") is (result.get("phase") in {
+                                      "ready", "ready-pending", "ready-cleaned"})
+                                  and all(result.get(name) is value for name, value in flags.items()))
+            valid_cleanup = (isinstance(result, dict) and set(result) == {"state", "correlationId", *flags}
+                             and result.get("state") in {"cleaned", "unknown"}
+                             and result.get("correlationId") == correlation
+                             and all(result.get(name) is value for name, value in flags.items()))
+            valid_abort = (isinstance(result, dict)
+                           and ((set(result) == {"state", "correlationId", "cleanupReceiptSha256", *flags}
+                                 and result.get("state") == "retired"
+                                 and isinstance(result.get("cleanupReceiptSha256"), str)
+                                 and re.fullmatch(r"[0-9a-f]{64}", result["cleanupReceiptSha256"]))
+                                or (set(result) == {"state", "correlationId", *flags}
+                                    and result.get("state") == "unknown"))
+                           and result.get("correlationId") == correlation
+                           and all(result.get(name) is value for name, value in flags.items()))
+            valid = valid_status if is_cleanup_status else valid_cleanup if is_cleanup else valid_abort_status if is_abort_status else valid_abort
+            if not valid:
+                result = ({"state": "diagnosed", "correlationId": correlation, "phase": "unknown",
+                           "cleanupAllowed": False, **flags} if is_cleanup_status else
+                          {"state": "diagnosed", "correlationId": correlation, "phase": "unknown",
+                           "abortAllowed": False, **flags} if is_abort_status else
+                          {"state": "unknown", "correlationId": correlation, **flags})
+            return {"tool": "vm_workflow", **result,
+                    "ok": valid and result["state"] in {"diagnosed", "cleaned", "retired"},
+                    "evidenceClass": "causal-diagnostic" if is_cleanup_status or is_abort_status else
+                                     "causal-cleanup" if is_cleanup else "native-campaign",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action == "windows-cp117-campaign-status":
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 campaign status host is required.")
+            campaign_status = _agent_module("windows_cp117_campaign_status")
+            try:
+                result = campaign_status.status(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "nextAction": "inspect-prerequisites",
+                          "replayAllowed": False, "nativeActionAllowed": False}
+            minimal = {"state", "nextAction", "replayAllowed", "nativeActionAllowed"}
+            full = minimal | {"leaseId", "sourceSha", "fixtureReceiptArtifactId",
+                              "baseMsiArtifactId", "targetMsiArtifactId", "guestGeneration", "role"}
+            valid = (isinstance(result, dict) and
+                     ((set(result) == minimal and result.get("state") == "unknown"
+                       and result.get("nextAction") in {"inspect-prerequisites", "missing-prerequisite"})
+                      or (set(result) == full and result.get("state") in {"active", "closing", "closed"}
+                          and result.get("nextAction") in {"inspect-active-role", "inspect-active-campaign",
+                                                             "inspect-close-progress", "inspect-closed-campaign"}
+                          and isinstance(result.get("leaseId"), str)
+                          and _agent_module("windows_cp117_campaign_rebase")._UUID.fullmatch(result["leaseId"])
+                          and isinstance(result.get("sourceSha"), str)
+                          and _agent_module("windows_msi_base_prepare")._SHA.fullmatch(result["sourceSha"])
+                          and all(isinstance(result.get(key), str) and re.fullmatch(r"sha256-[0-9a-f]{64}", result[key])
+                                  for key in ("fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"))
+                          and isinstance(result.get("guestGeneration"), dict)
+                          and set(result["guestGeneration"]) == {"socketPath", "qemuPid", "startTicks"}
+                          and isinstance(result["guestGeneration"]["socketPath"], str)
+                          and type(result["guestGeneration"]["qemuPid"]) is int
+                          and type(result["guestGeneration"]["startTicks"]) is int
+                          and (result.get("role") is None or result.get("role") in {
+                              "base", "stage", "credentials", "credentials-cleanup", "server-start",
+                              "server-stop", "owner-network", "network-probe", "target", "public"})))
+                     and result.get("replayAllowed") is False
+                     and result.get("nativeActionAllowed") is False)
+            if not valid:
+                result = {"state": "unknown", "nextAction": "inspect-prerequisites",
+                          "replayAllowed": False, "nativeActionAllowed": False}
+            projected = dict(result)
+            projected["campaignNextAction"] = projected.pop("nextAction")
+            return {"tool": "vm_workflow", **projected, "ok": valid and result["state"] != "unknown",
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-cp117-campaign-diagnostic":
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 campaign diagnostic host is required.")
+            campaign_status = _agent_module("windows_cp117_campaign_status")
+            try:
+                result = campaign_status.diagnose(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "phase": "projection", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            if (not isinstance(result, dict)
+                    or set(result) != {"state", "phase", "replayAllowed", "nativeActionAllowed"}
+                    or result.get("state") != "unknown"
+                    or result.get("phase") not in campaign_status._PHASES
+                    or result.get("replayAllowed") is not False
+                    or result.get("nativeActionAllowed") is not False):
+                result = {"state": "unknown", "phase": "projection", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": True,
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-update-fixture-phase-status":
+            phases = _agent_module("windows_fixture_phase_status")
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"}
+                    or not isinstance(inputs["correlationId"], str)
+                    or not _agent_module("windows_update_fixture_http_stage")._canonical(inputs["correlationId"])):
+                return _error("vm_workflow", "Exact Windows fixture phase correlation is required.")
+            try:
+                result = phases.status(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False, "productAction": False}
+            base_fields = {"state", "correlationId", "phase", "nextFact", "source", "vm",
+                           "campaign", "replayAllowed", "nativeActionAllowed", "productAction"}
+            next_by_phase = {"intent-absent": "prepare-not-accepted",
+                             "source-receipt-mismatch": "inspect-source-receipts",
+                             "vm-binding-mismatch": "inspect-vm-binding",
+                             "campaign-unbound": "inspect-campaign-receipt",
+                             "transfer-unobserved": "observe-transfer-receipt",
+                             "guest-create-or-download-unobserved": "observe-guest-receipt",
+                             "extract-unobserved": "observe-extract-receipt",
+                             "collected": "collection-receipt-present",
+                             "observation-unknown": "observation-incomplete",
+                             "pre-effect-aborted": "retire-aborted-stage"}
+            observation = result.get("observation") if isinstance(result, dict) else None
+            valid_observation = (observation is None or
+                                 (isinstance(observation, dict) and set(observation) == {
+                                     "listener", "guest", "collect"}
+                                  and observation.get("listener") in {"absent", "listening", "served", "stopped", "unknown"}
+                                  and observation.get("guest") in {"absent", "created", "downloaded", "hash-mismatch", "unknown"}
+                                  and observation.get("collect") in {"absent", "collected"}))
+            valid = (isinstance(result, dict) and
+                     ((set(result) == (base_fields | ({"observation"} if observation is not None else set()))
+                       and result.get("state") == "observed"
+                       and result.get("correlationId") == inputs["correlationId"]
+                       and result.get("phase") in phases.PHASES
+                       and result.get("nextFact") == ("inspect-campaign-receipt"
+                           if result["phase"] == "pre-effect-aborted" and result.get("campaign") != "role-active"
+                           else next_by_phase[result["phase"]])
+                       and (result["phase"] != "pre-effect-aborted" or observation is None)
+                       and result.get("source") in {"absent", "unverified", "mismatch", "bound"}
+                       and result.get("vm") in {"unobserved", "mismatch", "bound"}
+                       and result.get("campaign") in {"unobserved", "unknown", "active", "role-active",
+                                                      "pending-role", "pending-finish", "closed"}
+                       and valid_observation
+                       and result.get("replayAllowed") is False
+                       and result.get("nativeActionAllowed") is False
+                       and result.get("productAction") is False)
+                      or result == {"state": "unknown", "replayAllowed": False,
+                                    "nativeActionAllowed": False, "productAction": False}))
+            if not valid:
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False, "productAction": False}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] == "observed",
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-update-fixture-http-stage-extract-diagnostic":
+            transfer = _agent_module("windows_update_fixture_http_stage")
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"}
+                    or inputs.get("correlationId") != "e848bed2-5bea-47bc-a85a-6cf17b1fcc6a"):
+                return _error("vm_workflow", "Exact stage-extract diagnostic correlation is required.")
+            try:
+                result = transfer.workflow(REPO_ROOT, "stage-extract-diagnostic", inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False, "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False,
+                     "productAction": False}
+            phases = {"local-binding-invalid", "not-placed", "remote-stage-absent",
+                      "remote-stage-partial", "remote-binding-mismatch", "remote-dispatch-malformed",
+                      "guest-stage-absent", "guest-stage-partial", "guest-stage-full", "receipt-pending",
+                      "receipt-absent", "receipt-present-unverified", "qga-protocol",
+                      "remote-layout-invalid", "guest-stage-probe-failed", "dispatch-status-unknown",
+                      "result-read-failed", "receipt-invalid"}
+            valid = (isinstance(result, dict)
+                     and set(result) == {"state", "correlationId", "binding", "phase", *flags}
+                     and result.get("state") == "diagnosed"
+                     and result.get("correlationId") == inputs["correlationId"]
+                     and result.get("binding") in {"exact", "mismatch", "unverified"}
+                     and result.get("phase") in phases
+                     and all(result.get(name) is value for name, value in flags.items()))
+            if not valid:
+                result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid,
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-fixture-credentials-diagnostic":
+            credentials = _agent_module("windows_fixture_credentials")
+            if (not isinstance(inputs, dict) or inputs != {
+                    "correlationId": "791b5235-9ca7-409c-96bc-c341047c7fb4"}):
+                return _error("vm_workflow", "Exact credentials diagnostic correlation is required.")
+            try:
+                result = credentials.diagnostic(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": inputs["correlationId"],
+                          "replayAllowed": False, "nativeActionAllowed": False,
+                          "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False,
+                     "productAction": False}
+            valid = (isinstance(result, dict)
+                     and ((set(result) == {"state", "correlationId", "binding", "phase", "nextReadOnly", *flags}
+                           and result.get("state") == "diagnosed" and result.get("correlationId") == inputs["correlationId"]
+                           and result.get("binding") == "exact"
+                           and result.get("phase") in {"pre-effect", "task-running", "ready-uncommitted", "terminal-failed", "partial",
+                                                       "host-group-absent", "host-journal-absent", "host-binding-mismatch",
+                                                       "host-layout-unsafe", "guest-observer-failed"}
+                           and result.get("nextReadOnly") in {"credentials-abort-status", "credential-diagnostic", "credentials-status"})
+                          or (set(result) == {"state", "correlationId", *flags}
+                              and result.get("state") == "unknown" and result.get("correlationId") == inputs["correlationId"]))
+                     and all(result.get(name) is value for name, value in flags.items()))
+            if not valid:
+                result = {"state": "unknown", "correlationId": inputs["correlationId"], **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] == "diagnosed",
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-fixture-credentials-failure-detail":
+            credentials = _agent_module("windows_fixture_credentials")
+            if (not isinstance(inputs, dict) or inputs != {
+                    "correlationId": "791b5235-9ca7-409c-96bc-c341047c7fb4"}):
+                return _error("vm_workflow", "Exact credentials failure-detail correlation is required.")
+            try:
+                result = credentials.failure_detail(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": inputs["correlationId"],
+                          "replayAllowed": False, "nativeActionAllowed": False,
+                          "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False,
+                     "productAction": False}
+            valid = (isinstance(result, dict)
+                     and ((set(result) == {"state", "correlationId", "binding", "taskLastResult",
+                                            "safeStage", "directory", "directoryAcl", "files", "provenance",
+                                            "provenanceAcl", "nextReadOnly", *flags}
+                           and result.get("state") == "detailed"
+                           and result.get("correlationId") == inputs["correlationId"]
+                           and result.get("binding") == "exact"
+                           and type(result.get("taskLastResult")) is int
+                           and 0 <= result["taskLastResult"] <= 4294967295
+                           and result.get("safeStage") in {"before-directory", "directory-unsafe", "directory-acl",
+                                                           "before-file-write", "file-write-or-integrity", "before-provenance",
+                                                           "provenance-unsafe", "provenance-acl", "after-provenance"}
+                           and result.get("directory") in {"absent", "present", "unsafe"}
+                           and result.get("directoryAcl") in {"absent", "verified", "mismatch", "unavailable"}
+                           and result.get("files") in {"all-absent", "all-exact", "mixed"}
+                           and result.get("provenance") in {"absent", "present", "unsafe"}
+                           and result.get("provenanceAcl") in {"absent", "verified", "mismatch", "unavailable"}
+                           and result.get("nextReadOnly") == "credentials-abort-status")
+                          or (set(result) == {"state", "correlationId", *flags}
+                              and result.get("state") == "unknown"
+                              and result.get("correlationId") == inputs["correlationId"]))
+                     and all(result.get(name) is value for name, value in flags.items()))
+            if not valid:
+                result = {"state": "unknown", "correlationId": inputs["correlationId"], **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] == "detailed",
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-fixture-credentials-provenance-acl-shape":
+            credentials = _agent_module("windows_fixture_credentials")
+            if (not isinstance(inputs, dict) or inputs != {
+                    "correlationId": "791b5235-9ca7-409c-96bc-c341047c7fb4"}):
+                return _error("vm_workflow", "Exact credentials provenance ACL correlation is required.")
+            try:
+                result = credentials.provenance_acl_shape(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": inputs["correlationId"],
+                          "replayAllowed": False, "nativeActionAllowed": False,
+                          "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False,
+                     "productAction": False}
+            valid = (isinstance(result, dict)
+                     and ((set(result) == {"state", "correlationId", "binding", "schemaVersion", "protected",
+                                            "aceCount", "principals", "rights", "origin", "inheritance",
+                                            "propagation", "nextReadOnly", *flags}
+                           and result.get("state") == "classified"
+                           and result.get("correlationId") == inputs["correlationId"]
+                           and result.get("binding") == "exact" and result.get("schemaVersion") == 1
+                           and result.get("protected") in {"protected", "unprotected"}
+                           and result.get("aceCount") in {"three", "other"}
+                           and result.get("principals") in {"exact", "duplicate", "unexpected", "missing",
+                                                            "unexpected-and-missing", "unavailable"}
+                           and result.get("rights") in {"all-allow-full-control", "contains-other"}
+                           and result.get("origin") in {"all-explicit", "inherited-present"}
+                           and result.get("inheritance") in {"file-only", "other"}
+                           and result.get("propagation") in {"none", "other"}
+                           and result.get("nextReadOnly") == "credentials-abort-status")
+                          or (set(result) == {"state", "correlationId", *flags}
+                              and result.get("state") == "unknown"
+                              and result.get("correlationId") == inputs["correlationId"]))
+                     and all(result.get(name) is value for name, value in flags.items()))
+            if not valid:
+                result = {"state": "unknown", "correlationId": inputs["correlationId"], **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] == "classified",
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-fixture-credentials-pre-effect-guard-probe":
+            credentials = _agent_module("windows_fixture_credentials")
+            if (not isinstance(inputs, dict) or inputs != {
+                    "correlationId": "6161b4ae-3634-4312-ac85-1bacd0001dfa"}):
+                return _error("vm_workflow", "Exact credentials pre-effect guard correlation is required.")
+            try:
+                result = credentials.pre_effect_guard_probe(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "correlationId": inputs["correlationId"],
+                          "replayAllowed": False, "nativeActionAllowed": False,
+                          "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False,
+                     "productAction": False}
+            valid = (isinstance(result, dict)
+                     and ((set(result) == {"state", "correlationId", "binding", "localPayload", "remoteRoleGuard", *flags}
+                           and result.get("state") == "observed" and result.get("correlationId") == inputs["correlationId"]
+                           and result.get("binding") == "exact" and result.get("localPayload") == "metadata-admitted"
+                           and result.get("remoteRoleGuard") in {"matched", "rejected"})
+                          or (set(result) == {"state", "correlationId", *flags}
+                              and result.get("state") == "unknown" and result.get("correlationId") == inputs["correlationId"]))
+                     and all(result.get(name) is value for name, value in flags.items()))
+            if not valid:
+                result = {"state": "unknown", "correlationId": inputs["correlationId"], **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] == "observed",
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action in {"windows-fixture-acl-preflight", "windows-fixture-acl-preflight-status"} or action.startswith("windows-fixture-stage-") or action.startswith("windows-fixture-credentials-") or action.startswith("windows-fixture-server-") or action.startswith("windows-fixture-owner-network-") or action.startswith("windows-fixture-network-probe-"):
             lifecycle = {
                 "windows-fixture-stage-start": ("windows_update_fixture_stage", "start", {"host", "correlationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"correlationId"}, {"submitted"}),
                 "windows-fixture-stage-status": ("windows_update_fixture_stage", "status", {"correlationId"}, {"correlationId"}, {"running", "staged-not-server-ready"}),
@@ -2257,6 +3344,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 "windows-fixture-credentials-status": ("windows_fixture_credentials", "status", {"correlationId"}, {"correlationId"}, {"ready"}),
                 "windows-fixture-credentials-collect": ("windows_fixture_credentials", "collect", {"correlationId"}, {"correlationId"}, {"ready"}),
                 "windows-fixture-server-start": ("windows_update_fixture_server", "start", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"leaseId", "stageCorrelationId", "serverCorrelationId"}, {"submitted"}),
+                "windows-fixture-server-acl-preflight": ("windows_update_fixture_server", "acl_preflight", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"leaseId", "stageCorrelationId", "serverCorrelationId"}, {"ready"}),
                 "windows-fixture-server-status": ("windows_update_fixture_server", "status", {"serverCorrelationId"}, {"serverCorrelationId"}, {"live"}),
                 "windows-fixture-server-collect": ("windows_update_fixture_server", "collect", {"serverCorrelationId"}, {"serverCorrelationId"}, {"live"}),
                 "windows-fixture-server-stop-start": ("windows_update_fixture_server", "stop_start", {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"submitted"}),
@@ -2268,6 +3356,14 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 "windows-fixture-server-abort-start": ("windows_update_fixture_server", "abort_start", {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"submitted"}),
                 "windows-fixture-server-abort-status": ("windows_update_fixture_server", "abort_status", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"running", "stopped"}),
                 "windows-fixture-server-abort-collect": ("windows_update_fixture_server", "abort_collect", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"stopped"}),
+                "windows-fixture-server-abort-successor-start": ("windows_fixture_server_abort_successor", "start", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"submitted"}),
+                "windows-fixture-server-abort-successor-status": ("windows_fixture_server_abort_successor", "status", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"running", "cleaned"}),
+                "windows-fixture-server-abort-successor-diagnostic": ("windows_fixture_server_abort_successor", "diagnose", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"observed", "diagnosed"}),
+                "windows-fixture-server-resume-no-dispatch-start": ("windows_fixture_server_resume", "start", {"serverCorrelationId"}, {"serverCorrelationId"}, {"submitted"}),
+                "windows-fixture-server-post-resource-diagnostic": ("windows_fixture_post_resource_diagnostic", "diagnose", {"serverCorrelationId"}, {"serverCorrelationId"}, {"diagnosed"}),
+                "windows-fixture-server-probe-events-acl-diagnostic": ("windows_fixture_post_resource_diagnostic", "diagnose_events_acl", {"serverCorrelationId"}, {"serverCorrelationId"}, {"observed"}),
+                "windows-fixture-acl-preflight": ("windows_fixture_acl_preflight", "preflight", {"stageCorrelationId"}, {"stageCorrelationId"}, {"ready"}),
+                "windows-fixture-acl-preflight-status": ("windows_fixture_acl_preflight", "status", {"stageCorrelationId"}, {"stageCorrelationId"}, {"observed"}),
                 "windows-fixture-credentials-abort-start": ("windows_fixture_credentials", "abort_start", {"correlationId"}, {"correlationId"}, {"submitted"}),
                 "windows-fixture-credentials-abort-status": ("windows_fixture_credentials", "abort_status", {"correlationId"}, {"correlationId"}, {"running", "aborted-cleaned"}),
                 "windows-fixture-credentials-abort-collect": ("windows_fixture_credentials", "abort_collect", {"correlationId"}, {"correlationId"}, {"aborted-cleaned"}),
@@ -2891,19 +3987,963 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "evidenceClass": "native-preflight", "productAction": False}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
-        if action in {"windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status"}:
+        if action == "windows-msi-http-transfer":
+            transfer = _agent_module("windows_msi_http_transfer")
+            if not isinstance(inputs, dict) or not isinstance(inputs.get("phase"), str):
+                return _error("vm_workflow", "CP117 transfer requires a fixed phase.")
+            phase = inputs["phase"]
+            payload = {key: value for key, value in inputs.items() if key != "phase"}
+            if phase == "ps5-preflight":
+                valid = payload == {"host": "archlinux"}
+            elif phase == "prepare":
+                try:
+                    transfer.base._request(payload)
+                    valid = True
+                except (ValueError, TypeError, KeyError):
+                    valid = False
+            else:
+                valid = (phase in transfer._PHASES and set(payload) == {"correlationId"}
+                         and isinstance(payload["correlationId"], str)
+                         and bool(transfer._UUID.fullmatch(payload["correlationId"])))
+            if not valid:
+                return _error("vm_workflow", "CP117 transfer phase inputs are invalid.")
+            try:
+                result = transfer.workflow(REPO_ROOT, phase, payload)
+            except (ValueError, OSError, KeyError, TypeError) as error:
+                return _error("vm_workflow", str(error))
+            allowed = {"state", "correlationId", "sha256", "length", "sourceSha",
+                       "baseMsiArtifactId", "terminalReceiptSha256", "checks",
+                       "replayAllowed", "nativeActionAllowed", "productAction"}
+            diagnostic_fields = {"task", "principal", "action", "sid", "leaf", "reason"}
+            detail_fields = {"principalUser", "principalLogon", "principalRunLevel",
+                             "leafAt", "leafFault", "leafOwner"}
+            listener_diagnostic_fields = set(transfer._LISTENER_DIAGNOSTIC_ENUMS)
+            if phase in {"guest-diagnostic", "guest-diagnostic-detail"}:
+                allowed |= diagnostic_fields
+            if phase == "guest-diagnostic-detail":
+                allowed |= detail_fields
+            if phase == "listener-diagnostic":
+                allowed |= listener_diagnostic_fields
+            if phase == "guest-owner-census":
+                allowed.add("paths")
+            states = {"unknown", "prepared", "passed", "failed", "staged", "absent",
+                      "partial", "hash-mismatch", "cleaned", "listening", "starting",
+                      "served", "stopped", "submitted", "running", "downloaded",
+                      "task-cleaned", "ready-for-base", "aborted", "aborted-cleaned",
+                      "file-cleaned", "file-absent", "marked", "staged-for-base",
+                      "present", "diagnosed", "census"}
+            census_valid = True
+            if phase == "guest-owner-census" and isinstance(result, dict) and result.get("state") == "census":
+                paths = result.get("paths")
+                census_valid = (isinstance(paths, dict) and set(paths) == transfer._CENSUS_NAMES
+                                and all(isinstance(entry, dict) and set(entry) == {"kind", "reparse", "owner"}
+                                        and entry["kind"] in transfer._CENSUS_KIND
+                                        and entry["reparse"] in transfer._CENSUS_REPARSE
+                                        and entry["owner"] in transfer._CENSUS_OWNER
+                                        for entry in paths.values()))
+            diagnostic_valid = (isinstance(result, dict) and
+                                (phase not in {"guest-diagnostic", "guest-diagnostic-detail"} or result.get("state") != "diagnosed" or
+                                (diagnostic_fields <= set(result)
+                                 and result.get("task") in transfer._DIAGNOSTIC_TASK
+                                 and result.get("principal") in transfer._DIAGNOSTIC_MATCH
+                                 and result.get("action") in transfer._DIAGNOSTIC_MATCH
+                                 and result.get("sid") in transfer._DIAGNOSTIC_MATCH
+                                 and result.get("leaf") in transfer._DIAGNOSTIC_LEAF
+                                 and result.get("reason") in transfer._DIAGNOSTIC_REASON
+                                 and (phase != "guest-diagnostic-detail" or
+                                      (detail_fields <= set(result)
+                                       and result.get("principalUser") in transfer._DIAGNOSTIC_USER
+                                       and result.get("principalLogon") in transfer._DIAGNOSTIC_MATCH
+                                       and result.get("principalRunLevel") in transfer._DIAGNOSTIC_MATCH
+                                       and result.get("leafAt") in transfer._DIAGNOSTIC_AT
+                                       and result.get("leafFault") in transfer._DIAGNOSTIC_FAULT
+                                       and result.get("leafOwner") in transfer._DIAGNOSTIC_OWNER)))))
+            listener_diagnostic_valid = (isinstance(result, dict) and
+                                         (phase != "listener-diagnostic" or result.get("state") != "diagnosed" or
+                                          (listener_diagnostic_fields <= set(result) and
+                                           all(result.get(key) in values for key, values in
+                                               transfer._LISTENER_DIAGNOSTIC_ENUMS.items()))))
+            if (not isinstance(result, dict) or set(result) - allowed
+                    or result.get("state") not in states
+                    or not diagnostic_valid
+                    or not listener_diagnostic_valid
+                    or not census_valid
+                    or result.get("replayAllowed") is not False
+                    or result.get("nativeActionAllowed") is not False
+                    or result.get("productAction") is not False):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False, "productAction": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] not in {"unknown", "failed"},
+                    "evidenceClass": "native-preflight" if phase == "ps5-preflight" else
+                                     "causal-diagnostic" if phase in {"guest-diagnostic", "guest-diagnostic-detail", "guest-owner-census", "listener-diagnostic"} else
+                                     "causal-status" if phase.endswith("status") or phase == "ready-for-base" else
+                                     "native-transfer",
+                    "productAction": False}
+        if action == "windows-update-fixture-http-transfer":
+            transfer = _agent_module("windows_update_fixture_http_stage")
+            if not isinstance(inputs, dict) or not isinstance(inputs.get("phase"), str):
+                return _error("vm_workflow", "Windows fixture transfer requires a fixed phase.")
+            phase = inputs["phase"]
+            payload = {key: value for key, value in inputs.items() if key != "phase"}
+            try:
+                if phase in {"prepare", "prepare-diagnostic", "bundle-diagnostic", "reserve-diagnostic",
+                             "prior-stage-confirmation"}:
+                    transfer._request(payload)
+                elif ((phase not in transfer._PHASES and phase not in {
+                       "stage-start-diagnostic", "host-staged-pre-effect-diagnostic",
+                       "host-stage-probe", "guest-create-diagnostic", "guest-download-diagnostic",
+                       "host-staged-pre-effect-close", "e66-pre-effect-recovery",
+                       "e66-retire-aborted-stage", "e66-retire-aborted-stage-status"})
+                      or set(payload) != {"correlationId"}
+                      or not transfer._canonical(payload["correlationId"])):
+                    raise ValueError("Invalid fixture transfer phase.")
+            except (ValueError, TypeError, KeyError):
+                return _error("vm_workflow", "Windows fixture transfer inputs are invalid.")
+            if (phase in {"e66-pre-effect-recovery", "e66-retire-aborted-stage",
+                          "e66-retire-aborted-stage-status"}
+                    and payload["correlationId"] != transfer._E66_CORRELATION):
+                return _error("vm_workflow", "Exact E66 recovery correlation is required.")
+            if (phase == "guest-download-diagnostic"
+                    and payload["correlationId"] != "e848bed2-5bea-47bc-a85a-6cf17b1fcc6a"):
+                return _error("vm_workflow", "Exact guest-download diagnostic correlation is required.")
+            try:
+                result = transfer.workflow(REPO_ROOT, phase, payload)
+            except (ValueError, OSError, KeyError, TypeError, AttributeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False, "productAction": False}
+            fixed = {"state", "correlationId", "replayAllowed"}
+            flags = {"nativeActionAllowed", "productAction"}
+            expected = {
+                "prepare": {"prepared": fixed | flags | {"bundleSha256", "bundleSize"}},
+                "prepare-diagnostic": {"diagnosed": fixed | flags | {"phase", "preEffect"}},
+                "bundle-diagnostic": {"diagnosed": fixed | flags | {"phase", "preEffect"}},
+                "reserve-diagnostic": {"diagnosed": fixed | flags | {"phase", "preEffect"}},
+                "prior-stage-confirmation": {"diagnosed": fixed | flags | {"phase", "preEffect"}},
+                "stage-start-diagnostic": {"diagnosed": fixed | flags | {"phase", "preEffect"}},
+                "host-stage-probe": {"diagnosed": fixed | flags | {"phase", "preEffect", "listenerStartAllowed"}},
+                "guest-create-diagnostic": {"diagnosed": fixed | flags | {"phase", "preEffect", "interpreter"}},
+                "guest-download-diagnostic": {"diagnosed": fixed | flags | {
+                    "phase", "preEffect", "listener", "listenerServed", "task", "taskResult", "download"}},
+                "host-staged-pre-effect-diagnostic": {"diagnosed": fixed | flags | {"phase", "preEffect"}},
+                "host-staged-pre-effect-close": {"aborted": fixed | flags},
+                "e66-pre-effect-recovery": {"aborted": fixed | flags},
+                "e66-retire-aborted-stage": {"retired": fixed | flags},
+                "e66-retire-aborted-stage-status": {
+                    name: fixed | flags for name in ("ready", "pending-finish", "retired")},
+                "status": {"prepared": fixed | flags | {"bundleSha256", "bundleSize"},
+                           "aborted": fixed | flags | {"bundleSha256", "bundleSize"}},
+                "stage-start": {"staged": fixed | {"sha256", "length"}},
+                "listener-start": {"listening": fixed | flags},
+                "listener-status": {name: fixed | flags for name in
+                                    ("absent", "listening", "served", "stopped")},
+                "guest-create": {"created": fixed},
+                "guest-download": {"submitted": fixed},
+                "stage-extract": {"staged": fixed},
+                "collect": {"staged-not-server-ready": fixed | {"sourceSha",
+                            "targetMsiSha256", "bundleSha256", "fileHashes", "serverReady"}},
+                "cleanup": {"cleaned": fixed | flags},
+            }
+            state = result.get("state") if isinstance(result, dict) else None
+            fields = expected.get(phase, {}).get(state)
+            if state == "unknown":
+                fields = fixed | flags
+            valid = (isinstance(result, dict) and fields is not None
+                     and set(result) == fields and result.get("replayAllowed") is False
+                     and result.get("nativeActionAllowed", False) is False
+                     and result.get("productAction", False) is False
+                     and result.get("correlationId") == payload["correlationId"])
+            if valid and phase == "status" and state == "aborted":
+                valid = payload["correlationId"] == transfer._E66_CORRELATION
+            if valid and "bundleSha256" in result:
+                valid = isinstance(result["bundleSha256"], str) and bool(re.fullmatch(r"[0-9a-f]{64}", result["bundleSha256"]))
+            if valid and "sha256" in result:
+                valid = isinstance(result["sha256"], str) and bool(re.fullmatch(r"[0-9a-f]{64}", result["sha256"]))
+            if valid and "sourceSha" in result:
+                valid = isinstance(result["sourceSha"], str) and bool(re.fullmatch(r"[0-9a-f]{40}", result["sourceSha"]))
+            if valid and "targetMsiSha256" in result:
+                valid = isinstance(result["targetMsiSha256"], str) and bool(re.fullmatch(r"[0-9a-f]{64}", result["targetMsiSha256"]))
+            for size_name in ("bundleSize", "length"):
+                if valid and size_name in result:
+                    valid = type(result[size_name]) is int and 0 < result[size_name] <= 1075838976
+            if valid and state == "staged-not-server-ready":
+                hashes = result["fileHashes"]
+                valid = (result["serverReady"] is False and isinstance(hashes, dict)
+                         and 0 < len(hashes) <= 32
+                         and all(isinstance(name, str) and 0 < len(name) <= 128
+                                 and re.fullmatch(r"[A-Za-z0-9_./-]+", name)
+                                 and all(part not in {"", ".", ".."} for part in name.split("/"))
+                                 and isinstance(digest, str)
+                                 and re.fullmatch(r"[0-9a-f]{64}", digest)
+                                 for name, digest in hashes.items()))
+            if valid and phase in {"prepare-diagnostic", "bundle-diagnostic", "reserve-diagnostic",
+                                   "prior-stage-confirmation", "stage-start-diagnostic",
+                                   "host-staged-pre-effect-diagnostic"}:
+                phases = ({"http-intent-present", "stage-intent-present", "shared-intent-present",
+                           "local-journal-unreadable", "source-unadmitted", "vm-unbound",
+                           "campaign-unbound", "ready-to-reserve"} if phase == "prepare-diagnostic"
+                          else {"bundle-ready", "bundle-invalid", "bundle-unbuildable"}
+                          if phase == "bundle-diagnostic" else
+                          {"http-journal-unsafe", "vm-unbound", "campaign-unbound",
+                           "stage-history-unsafe", "stage-intent-present",
+                           "prior-stage-needs-confirmation", "reserve-ready-local"}
+                          if phase == "reserve-diagnostic" else
+                          {"confirmed", "old-closed-missing", "remote-status-mismatch",
+                           "history-invalid", "unknown"}
+                          if phase == "prior-stage-confirmation" else
+                          {"artifact-invalid", "pair-fingerprint-invalid", "descriptor-invalid",
+                           "intent-core-binding-invalid",
+                           "campaign-not-claimed", "phase-ineligible", "remote-host-invalid",
+                           "remote-host-next"}
+                          if phase == "stage-start-diagnostic" else
+                          {"not-host-staged", "host-stage-absent", "host-stage-present", "unknown"})
+                valid = result["preEffect"] is True and result["phase"] in phases
+            if valid and phase == "host-stage-probe":
+                phases = {"host-stage-complete", "host-stage-partial", "host-stage-absent",
+                          "not-host-staged", "local-binding-invalid", "unknown"}
+                valid = (result["preEffect"] is True and result["phase"] in phases
+                         and type(result["listenerStartAllowed"]) is bool
+                         and result["listenerStartAllowed"] is (result["phase"] == "host-stage-complete"))
+            if valid and phase == "guest-create-diagnostic":
+                phases = {"not-guest-created", "diagnostic-script-oversize",
+                          "guest-create-may-have-completed", "unknown"} | {
+                    "guest-create-not-confirmed-" + name for name in
+                    ("syntax-invalid", "ancestor-type", "ancestor-reparse",
+                     "acl-construction-failed", "parent-absent", "parent-type", "parent-reparse",
+                     "leaf-absent", "leaf-type", "leaf-reparse")}
+                valid = (result["preEffect"] is True and result["phase"] in phases
+                         and result["interpreter"] in {"absent", "present", "unknown"})
+            if valid and phase == "guest-download-diagnostic":
+                valid = (result["preEffect"] is True
+                         and result["phase"] in {"not-submitted", "diagnostic-script-oversize",
+                                                   "qga-wrapper-timeout", "qga-wrapper-failed", "syntax-invalid",
+                                                   "task-action-mismatch", "task-metadata-error", "task-absent",
+                                                   "task-principal-mismatch", "task-action-count-mismatch",
+                                                   "task-state-unsupported", "task-task-info-failed",
+                                                   "task-action-hash-unknown",
+                                                   "task-running", "task-failed", "download-absent",
+                                                   "download-hash-mismatch", "guest-file-read-error",
+                                                   "download-complete", "unknown"}
+                         and result["listener"] in {"absent", "listening", "served", "stopped", "unknown"}
+                         and result["listenerServed"] in {"true", "false", "unknown"}
+                         and ((result["listener"] == "served" and result["listenerServed"] == "true")
+                              or (result["listener"] == "stopped" and result["listenerServed"] == "false")
+                              or (result["listener"] in {"absent", "listening", "unknown"}
+                                  and result["listenerServed"] == "unknown"))
+                         and result["task"] in {"absent", "running", "completed", "failed", "metadata-error",
+                                                "principal-mismatch", "action-count-mismatch", "state-unsupported",
+                                                "task-info-failed", "action-hash-unknown", "unknown"}
+                         and (result["taskResult"] == "unknown"
+                              or (type(result["taskResult"]) is int and 0 <= result["taskResult"] <= 4294967295
+                                  and result["task"] in {"completed", "failed"}))
+                         and result["download"] in {"absent", "complete", "hash-mismatch", "read-error", "unknown"})
+            if not valid:
+                result = {"state": "unknown", "correlationId": payload["correlationId"],
+                          "replayAllowed": False, "nativeActionAllowed": False,
+                          "productAction": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] != "unknown",
+                    "evidenceClass": "causal-diagnostic" if phase in {"prepare-diagnostic", "bundle-diagnostic", "reserve-diagnostic", "prior-stage-confirmation", "stage-start-diagnostic", "host-stage-probe", "guest-create-diagnostic", "guest-download-diagnostic", "host-staged-pre-effect-diagnostic"} else
+                    "causal-status" if phase in {"status", "listener-status", "collect"}
+                    else "native-transfer", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-msiexec-service-diagnostic":
+            if (not isinstance(inputs, dict) or set(inputs) != {"action", "host"}
+                    or inputs.get("action") not in {"preflight", "status"}
+                    or inputs.get("host") != "archlinux"):
+                return _error("vm_workflow", "Exact CP117 installer-service diagnostic inputs are required.")
+            observer = _agent_module("windows_msiexec_service_diagnostic")
+            try:
+                result = observer.workflow(REPO_ROOT, inputs["action"], {"host": "archlinux"})
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False, "productAction": False,
+                          "readinessAdmitted": False}
+            allowed = {"state", "correlationId", "sourceSha", "replayAllowed",
+                       "nativeActionAllowed", "productAction", "readinessAdmitted"}
+            valid = isinstance(result, dict) and result.get("state") in {"unknown", "passed", "observed"}
+            if inputs["action"] == "status" and isinstance(result, dict) and result.get("state") == "observed":
+                allowed |= observer._ENUMS.keys()
+                valid = valid and all(result.get(key) in values for key, values in observer._ENUMS.items())
+            if (not valid or set(result) - allowed
+                    or (result.get("state") in {"passed", "observed"} and
+                        (result.get("correlationId") != observer._CORRELATION or
+                         not isinstance(result.get("sourceSha"), str) or
+                         not observer._SOURCE.fullmatch(result["sourceSha"])))
+                    or result.get("replayAllowed") is not False
+                    or result.get("nativeActionAllowed") is not False
+                    or result.get("productAction") is not False
+                    or result.get("readinessAdmitted") is not False
+                    or (result.get("state") == "passed" and inputs["action"] != "preflight")
+                    or (result.get("state") == "observed" and inputs["action"] != "status")):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False, "productAction": False,
+                          "readinessAdmitted": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] in {"passed", "observed"},
+                    "evidenceClass": "native-preflight" if inputs["action"] == "preflight" else "causal-diagnostic",
+                    "productAction": False, "nativeActionAllowed": False,
+                    "readinessAdmitted": False}
+        if action in {"windows-msi-owner-census-preflight", "windows-msi-owner-census"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 owner census host is required.")
+            census = _agent_module("windows_msi_owner_census")
+            try:
+                result = (census.preflight(REPO_ROOT, inputs) if action.endswith("-preflight")
+                          else census.workflow(REPO_ROOT, inputs))
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            if action.endswith("-preflight"):
+                valid = (isinstance(result, dict) and set(result) == {"state", "checks"}
+                         and result.get("state") in {"passed", "failed", "unknown"}
+                         and result.get("checks") == (["ps5-parse", "gzip"] if result.get("state") != "unknown" else []))
+                if not valid:
+                    result = {"state": "unknown", "checks": []}
+            else:
+                fields = {"state", "sourceSha", "controllerId", "installedCliSha256",
+                          "parentPid", "parentStartedAtUtc", "childPid", "childStartedAtUtc",
+                          "runtimeRunning", "replayAllowed", "nativeActionAllowed"}
+                valid = (isinstance(result, dict) and
+                         ((set(result) == fields and result.get("state") == "observed"
+                           and isinstance(result.get("sourceSha"), str)
+                           and _agent_module("windows_msi_base_prepare")._SHA.fullmatch(result["sourceSha"])
+                           and isinstance(result.get("controllerId"), str)
+                           and census._UUID.fullmatch(result["controllerId"])
+                           and isinstance(result.get("installedCliSha256"), str)
+                           and _agent_module("windows_msi_base_prepare")._HASH.fullmatch(result["installedCliSha256"])
+                           and all(type(result.get(key)) is int and result[key] > 0 for key in ("parentPid", "childPid"))
+                           and result["parentPid"] != result["childPid"]
+                           and all(isinstance(result.get(key), str) and census._UTC.fullmatch(result[key])
+                                   for key in ("parentStartedAtUtc", "childStartedAtUtc"))
+                           and result["runtimeRunning"] is False
+                           and result["replayAllowed"] is False and result["nativeActionAllowed"] is False)
+                          or (result == {"state": "unknown", "replayAllowed": False,
+                                         "nativeActionAllowed": False})))
+                if not valid:
+                    result = {"state": "unknown", "replayAllowed": False,
+                              "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] in {"passed", "observed"},
+                    "evidenceClass": "native-preflight" if action.endswith("-preflight") else "causal-diagnostic",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action == "windows-msi-owner-diagnostic":
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 owner diagnostic host is required.")
+            diagnostic = _agent_module("windows_msi_owner_diagnostic")
+            try:
+                result = diagnostic.diagnose(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            if (not isinstance(result, dict) or
+                    not ((set(result) == ({"state", "phase", "sourceSha", "correlationId",
+                                           "replayAllowed", "nativeActionAllowed"} |
+                                          ({"detail"} if result.get("phase") in {"state-directory", "state-files",
+                                                                                  "endpoint-unavailable"} else set()))
+                          and result.get("state") == "diagnosed"
+                          and result.get("phase") in diagnostic._PHASES
+                          and (result.get("detail") in diagnostic._STATE_DIRECTORY_DETAILS
+                               if result.get("phase") == "state-directory" else
+                               result.get("detail") in diagnostic._STATE_FILE_DETAILS
+                               if result.get("phase") == "state-files" else
+                               result.get("detail") in diagnostic._ENDPOINT_UNAVAILABLE_DETAILS
+                               if result.get("phase") == "endpoint-unavailable" else "detail" not in result)
+                          and result.get("correlationId") == diagnostic._CORRELATION
+                          and isinstance(result.get("sourceSha"), str)
+                          and diagnostic._SOURCE.fullmatch(result["sourceSha"])
+                          and result.get("replayAllowed") is False
+                          and result.get("nativeActionAllowed") is False)
+                         or result == {"state": "unknown", "replayAllowed": False,
+                                       "nativeActionAllowed": False})):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] == "diagnosed",
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-msi-owner-liveness":
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 owner liveness host is required.")
+            liveness = _agent_module("windows_msi_owner_liveness")
+            try:
+                result = liveness.observe(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            fields = {"state", "sourceSha", "correlationId", "ownerProcesses",
+                      "installerProcesses", "consentProcesses", "runtimeProcesses",
+                      "stateLeaves", "runtimeOff", "replayAllowed", "nativeActionAllowed"}
+            valid = (isinstance(result, dict) and
+                     ((set(result) == fields and result.get("state") in {"absent", "blocked"}
+                       and isinstance(result.get("sourceSha"), str)
+                       and liveness._SOURCE.fullmatch(result["sourceSha"])
+                       and result.get("correlationId") == liveness._CORRELATION
+                       and all(result.get(key) in liveness._COUNTS for key in (
+                           "ownerProcesses", "installerProcesses", "consentProcesses", "runtimeProcesses"))
+                       and result.get("stateLeaves") in liveness._LEAVES
+                       and type(result.get("runtimeOff")) is bool
+                       and result["runtimeOff"] is (result["runtimeProcesses"] == "none")
+                       and (result["state"] != "absent" or
+                            (all(result[key] == "none" for key in (
+                                "ownerProcesses", "installerProcesses", "consentProcesses",
+                                "runtimeProcesses", "stateLeaves")) and result["runtimeOff"] is True))
+                       and result.get("replayAllowed") is False
+                       and result.get("nativeActionAllowed") is False)
+                      or result == {"state": "unknown", "replayAllowed": False,
+                                    "nativeActionAllowed": False}))
+            if not valid:
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] in {"absent", "blocked"},
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action == "windows-msi-stale-lock-recover":
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 stale-lock recovery host is required.")
+            recovery = _agent_module("windows_msi_stale_lock_recovery")
+            try:
+                result = recovery.recover(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            if result not in ({"state": "recovered", "replayAllowed": False,
+                               "nativeActionAllowed": False},
+                              {"state": "unknown", "replayAllowed": False,
+                               "nativeActionAllowed": False}):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] == "recovered",
+                    "evidenceClass": "native-recovery", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action in {"windows-msi-stale-lock-diagnose", "windows-msi-stale-lock-reconciliation-status"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 stale-lock diagnostic host is required.")
+            recovery = _agent_module("windows_msi_stale_lock_recovery")
+            try:
+                result = (recovery.diagnose(REPO_ROOT, inputs) if action.endswith("diagnose")
+                          else recovery.reconciliation_status(REPO_ROOT, inputs))
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            valid = (result == {"state": "unknown", "replayAllowed": False,
+                                "nativeActionAllowed": False}
+                     or (action.endswith("diagnose") and isinstance(result, dict)
+                         and set(result) == ({"state", "category", "replayAllowed", "nativeActionAllowed"}
+                                             | ({"win32Code"} if result.get("category") == "lock-open-other" else set()))
+                         and result.get("state") == "diagnosed"
+                         and result.get("category") in recovery._DIAGNOSTIC_CATEGORIES
+                         and (type(result.get("win32Code")) is int and 0 <= result["win32Code"] <= 65535
+                              if result.get("category") == "lock-open-other" else "win32Code" not in result)
+                         and result.get("replayAllowed") is False
+                         and result.get("nativeActionAllowed") is False)
+                     or (action.endswith("reconciliation-status") and result == {
+                         "state": "separate-one-shot-required", "replayAllowed": False,
+                         "nativeActionAllowed": False}))
+            if not valid:
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] != "unknown",
+                    "evidenceClass": "causal-diagnostic", "productAction": False,
+                    "nativeActionAllowed": False}
+        if action in {"windows-msi-owner-relaunch-launch", "windows-msi-owner-relaunch-status",
+                      "windows-msi-owner-relaunch-collect", "windows-msi-owner-relaunch-diagnose",
+                      "windows-msi-owner-relaunch-detail", "windows-msi-owner-relaunch-endpoint-access"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 owner relaunch host is required.")
+            relaunch = _agent_module("windows_msi_owner_relaunch")
+            phase = action.removeprefix("windows-msi-owner-relaunch-")
+            try:
+                result = relaunch.workflow(REPO_ROOT, phase, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            diagnostic_valid = (phase == "diagnose" and isinstance(result, dict)
+                and set(result) == {"state", "phase", "task", "owners", "endpoint",
+                                    "replayAllowed", "nativeActionAllowed"}
+                and result.get("state") == "diagnosed"
+                and result.get("phase") in relaunch._DIAGNOSTIC_PHASES
+                and result.get("task") in relaunch._TASK_STATES
+                and result.get("owners") in relaunch._OWNER_STATES
+                and result.get("endpoint") in relaunch._ENDPOINT_STATES
+                and result.get("replayAllowed") is False
+                and result.get("nativeActionAllowed") is False)
+            detail_fields = {"state", "baseOwners", "quotedStateServe", "unquotedStateServe",
+                             "otherSubcommand", "unrelated", "ownerIdentity", "endpoint",
+                             "schemaVersion", "controllerId", "port", "token",
+                             "replayAllowed", "nativeActionAllowed"}
+            detail_valid = (phase == "detail" and isinstance(result, dict)
+                and set(result) == detail_fields and result.get("state") == "detailed"
+                and all(result.get(key) in relaunch._DETAIL_COUNTS for key in
+                        ("baseOwners", "quotedStateServe", "unquotedStateServe",
+                         "otherSubcommand", "unrelated"))
+                and result.get("ownerIdentity") in relaunch._DETAIL_IDENTITY
+                and result.get("endpoint") in relaunch._DETAIL_LEAF
+                and all(result.get(key) in relaunch._DETAIL_FIELD for key in
+                        ("schemaVersion", "controllerId", "port", "token"))
+                and result.get("replayAllowed") is False
+                and result.get("nativeActionAllowed") is False)
+            endpoint_valid = (phase == "endpoint-access" and isinstance(result, dict)
+                and set(result) == {"state", "endpoint", "replayAllowed", "nativeActionAllowed"}
+                and result.get("state") == "endpoint-access"
+                and result.get("endpoint") in relaunch._ENDPOINT_ACCESS
+                and result.get("replayAllowed") is False
+                and result.get("nativeActionAllowed") is False)
+            valid = (result == {"state": "unknown", "replayAllowed": False,
+                                "nativeActionAllowed": False}
+                     or diagnostic_valid or detail_valid or endpoint_valid
+                     or (phase not in {"diagnose", "detail", "endpoint-access"} and isinstance(result, dict) and set(result) == {
+                         "state", "sourceSha", "correlationId", "installedCliSha256",
+                         "ownerPid", "sessionId", "runtimeRunning", "replayAllowed",
+                         "nativeActionAllowed"} and result.get("state") == "launched"
+                         and result.get("sourceSha") == relaunch._SOURCE
+                         and result.get("correlationId") == relaunch._CORRELATION
+                         and isinstance(result.get("installedCliSha256"), str)
+                         and re.fullmatch(r"[0-9a-f]{64}", result["installedCliSha256"])
+                         and type(result.get("ownerPid")) is int and result["ownerPid"] > 0
+                         and result.get("sessionId") == 1
+                         and result.get("runtimeRunning") is False
+                         and result.get("replayAllowed") is False
+                         and result.get("nativeActionAllowed") is False))
+            if not valid:
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] in {"launched", "diagnosed", "detailed", "endpoint-access"},
+                    "evidenceClass": "native-owner-launch" if phase == "launch" else
+                                     "causal-diagnostic" if phase in {"diagnose", "detail", "endpoint-access"} else "causal-status",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-msi-owner-public-status-start", "windows-msi-owner-public-status-status",
+                      "windows-msi-owner-public-status-collect", "windows-msi-owner-public-status-diagnose"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 owner public status host is required.")
+            public = _agent_module("windows_msi_owner_public_status")
+            phase = action.removeprefix("windows-msi-owner-public-status-")
+            try:
+                result = public.workflow(REPO_ROOT, phase, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            valid = (result == {"state": "unknown", "replayAllowed": False,
+                                "nativeActionAllowed": False}
+                     or result == {"state": "pending", "replayAllowed": False,
+                                   "nativeActionAllowed": False}
+                     or result == {"state": "proved", "runtimeRunning": False,
+                                   "replayAllowed": False, "nativeActionAllowed": False}
+                     or (phase == "diagnose" and isinstance(result, dict)
+                         and set(result) == {"state", "phase", "task", "replayAllowed", "nativeActionAllowed"}
+                         and result.get("state") == "diagnosed"
+                         and result.get("phase") in {"system-identity", "ancestors", "acl", "cli", "endpoint", "task"}
+                         and result.get("task") in {"absent", "principal-mismatch", "action-mismatch",
+                                                    "pending", "proved", "failed", "unknown"}
+                         and result.get("replayAllowed") is False
+                         and result.get("nativeActionAllowed") is False))
+            if not valid:
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": result["state"] in {"proved", "diagnosed"},
+                    "evidenceClass": "native-public-status" if result["state"] == "proved" else
+                                     "causal-diagnostic" if result["state"] == "diagnosed" else "causal-status",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-msi-owner-public-status-retry-preflight", "windows-msi-owner-public-status-retry-start",
+                      "windows-msi-owner-public-status-retry-status", "windows-msi-owner-public-status-retry-collect",
+                      "windows-msi-owner-public-status-retry-diagnose",
+                      "windows-msi-owner-public-status-retry-observe"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 owner public retry host is required.")
+            retry = _agent_module("windows_msi_owner_public_status_retry")
+            phase = ("retry-diagnostic" if action == "windows-msi-owner-public-status-retry-observe"
+                     else action.removeprefix("windows-msi-owner-public-status-retry-"))
+            try:
+                result = retry.workflow(REPO_ROOT, phase, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = ({"state": "unknown", "gate": "unknown", "replayAllowed": False,
+                           "nativeActionAllowed": False} if phase == "preflight" else
+                          {"state": "unknown", "replayAllowed": False,
+                           "nativeActionAllowed": False})
+            valid = (result == {"state": "unknown", "replayAllowed": False,
+                                "nativeActionAllowed": False}
+                     if phase != "preflight" else result == {
+                         "state": "unknown", "gate": "unknown", "replayAllowed": False,
+                         "nativeActionAllowed": False})
+            if phase == "preflight":
+                valid = valid or (isinstance(result, dict)
+                    and set(result) == {"state", "gate", "replayAllowed", "nativeActionAllowed"}
+                    and result.get("state") in {"ready", "blocked"}
+                    and result.get("gate") in ({"ready"} if result.get("state") == "ready" else
+                                               {"system-identity", "scheduler", "account", "session", "task"})
+                    and result.get("replayAllowed") is False
+                    and result.get("nativeActionAllowed") is False)
+            elif phase == "retry-diagnostic":
+                valid = valid or (isinstance(result, dict)
+                    and result.get("replayAllowed") is False
+                    and result.get("nativeActionAllowed") is False
+                    and ((set(result) == {"state", "stage", "replayAllowed", "nativeActionAllowed"}
+                          and ((result.get("state") == "blocked" and result.get("stage") in {
+                              "retry-intent", "base-binding", "source-hash", "relaunch-intent", "generation"})
+                               or (result.get("state") == "unknown" and result.get("stage") == "task-observer")))
+                         or (set(result) == {"state", "stage", "phase", "task", "replayAllowed", "nativeActionAllowed"}
+                             and result.get("state") == "diagnosed" and result.get("stage") == "task-observer"
+                             and result.get("phase") in {"system-identity", "ancestors", "acl", "cli", "endpoint", "task"}
+                             and result.get("task") in {"absent", "principal-mismatch", "action-mismatch",
+                                                        "pending", "proved", "failed", "unknown"})))
+            elif phase == "diagnose":
+                valid = valid or (isinstance(result, dict)
+                    and set(result) == {"state", "phase", "task", "replayAllowed", "nativeActionAllowed"}
+                    and result.get("state") == "diagnosed"
+                    and result.get("phase") in {"system-identity", "ancestors", "acl", "cli", "endpoint", "task"}
+                    and result.get("task") in {"absent", "principal-mismatch", "action-mismatch",
+                                               "pending", "proved", "failed", "unknown"}
+                    and result.get("replayAllowed") is False
+                    and result.get("nativeActionAllowed") is False)
+            else:
+                valid = valid or result == {"state": "pending", "replayAllowed": False,
+                                            "nativeActionAllowed": False} or result == {
+                                                "state": "proved", "runtimeRunning": False,
+                                                "replayAllowed": False, "nativeActionAllowed": False}
+            if not valid:
+                result = ({"state": "unknown", "gate": "unknown", "replayAllowed": False,
+                           "nativeActionAllowed": False} if phase == "preflight" else
+                          {"state": "unknown", "replayAllowed": False,
+                           "nativeActionAllowed": False})
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] in {"ready", "proved", "diagnosed"},
+                    "evidenceClass": "native-preflight" if phase == "preflight" else
+                                     "native-public-status" if result["state"] == "proved" else
+                                     "causal-diagnostic" if phase in {"diagnose", "retry-diagnostic"} else "causal-status",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-msi-owner-public-status-third-start",
+                      "windows-msi-owner-public-status-third-status",
+                      "windows-msi-owner-public-status-third-collect",
+                      "windows-msi-owner-public-status-third-observe"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 third public status host is required.")
+            third = _agent_module("windows_msi_owner_public_status_third")
+            phase = ("third-diagnostic" if action.endswith("-observe") else
+                     action.removeprefix("windows-msi-owner-public-status-third-"))
+            try:
+                result = third.workflow(REPO_ROOT, phase, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            diagnostic_valid = (phase == "third-diagnostic" and isinstance(result, dict)
+                and result.get("replayAllowed") is False
+                and result.get("nativeActionAllowed") is False
+                and ((set(result) == {"state", "stage", "replayAllowed", "nativeActionAllowed"}
+                      and ((result.get("state") == "blocked" and result.get("stage") in {
+                          "third-intent", "base-binding", "source-hash", "relaunch-intent", "generation"})
+                           or (result.get("state") == "unknown" and result.get("stage") == "task-observer")))
+                     or (set(result) == {"state", "stage", "phase", "task", "replayAllowed", "nativeActionAllowed"}
+                         and result.get("state") == "diagnosed" and result.get("stage") == "task-observer"
+                         and result.get("phase") in {"system-identity", "ancestors", "acl", "cli", "endpoint", "task"}
+                         and result.get("task") in {"absent", "principal-mismatch", "action-mismatch",
+                                                    "pending", "proved", "failed", "unknown"})))
+            if (not diagnostic_valid if phase == "third-diagnostic" else result not in (
+                              {"state": "unknown", "replayAllowed": False,
+                               "nativeActionAllowed": False},
+                              {"state": "pending", "replayAllowed": False,
+                               "nativeActionAllowed": False},
+                              {"state": "proved", "runtimeRunning": False,
+                               "replayAllowed": False, "nativeActionAllowed": False})):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": result["state"] in {"proved", "diagnosed"},
+                    "evidenceClass": "native-public-status" if result["state"] == "proved" else
+                                     "causal-diagnostic" if phase == "third-diagnostic" else "causal-status",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-msi-owner-relaunch-quit-start", "windows-msi-owner-relaunch-quit-status",
+                      "windows-msi-owner-relaunch-quit-collect", "windows-msi-owner-relaunch-quit-diagnose"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 relaunch quit host is required.")
+            quit_adapter = _agent_module("windows_msi_owner_relaunch_quit")
+            phase = action.removeprefix("windows-msi-owner-relaunch-quit-")
+            try:
+                result = quit_adapter.workflow(REPO_ROOT, phase, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            diagnostic_valid = (phase == "diagnose" and isinstance(result, dict)
+                and set(result) == {"state", "phase", "task", "replayAllowed", "nativeActionAllowed"}
+                and result.get("state") == "diagnosed" and result.get("phase") in {"system", "tasks"}
+                and result.get("task") in {"absent", "present", "prior-present",
+                                           "owner-task-running", "ambiguous"}
+                and result.get("replayAllowed") is False and result.get("nativeActionAllowed") is False)
+            unknown_result = {"state": "unknown", "replayAllowed": False,
+                              "nativeActionAllowed": False}
+            normal_valid = result == unknown_result or result in (
+                ({"state": "submitted", "replayAllowed": False, "nativeActionAllowed": False},
+                 {"state": "pending", "replayAllowed": False, "nativeActionAllowed": False},
+                 {"state": "exited", "runtimeRunning": False, "ownerExited": True,
+                  "replayAllowed": False, "nativeActionAllowed": False})
+                if phase == "start" else (
+                    {"state": "pending", "replayAllowed": False, "nativeActionAllowed": False},
+                    {"state": "exited", "runtimeRunning": False, "ownerExited": True,
+                     "replayAllowed": False, "nativeActionAllowed": False})
+                if phase in {"status", "collect"} else ())
+            if not (diagnostic_valid if phase == "diagnose" else normal_valid):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] in {"submitted", "exited", "diagnosed"},
+                    "evidenceClass": "native-owner-quit" if result["state"] == "exited" else
+                                     "causal-diagnostic" if phase == "diagnose" else "causal-status",
+                    "productAction": phase == "start", "nativeActionAllowed": False}
+        if action in {"windows-msi-owner-relaunch-quit-v2-start", "windows-msi-owner-relaunch-quit-v2-status",
+                      "windows-msi-owner-relaunch-quit-v2-collect", "windows-msi-owner-relaunch-quit-v2-diagnose",
+                      "windows-msi-owner-relaunch-quit-v2-bootstrap-diagnostic"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 relaunch quit v2 host is required.")
+            quit_adapter = _agent_module("windows_msi_owner_relaunch_quit_v2")
+            phase = action.removeprefix("windows-msi-owner-relaunch-quit-v2-")
+            try:
+                result = quit_adapter.workflow(REPO_ROOT, phase, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            diagnostic_valid = (phase == "diagnose" and isinstance(result, dict)
+                and set(result) == {"state", "phase", "task", "replayAllowed", "nativeActionAllowed"}
+                and result.get("state") == "diagnosed" and result.get("phase") in {"system", "tasks"}
+                and result.get("task") in {"absent", "present", "ambiguous"}
+                and result.get("replayAllowed") is False and result.get("nativeActionAllowed") is False)
+            bootstrap_valid = (phase == "bootstrap-diagnostic" and isinstance(result, dict)
+                and set(result) == {"state", "gate", "replayAllowed", "nativeActionAllowed"}
+                and result.get("state") == "diagnosed"
+                and result.get("gate") in {"scheduler", "account-sid", "status-task-present",
+                                           "v1-task-present", "relaunch-task", "v1-process",
+                                           "v2-task-present", "ready"}
+                and result.get("replayAllowed") is False and result.get("nativeActionAllowed") is False)
+            unknown_result = {"state": "unknown", "replayAllowed": False,
+                              "nativeActionAllowed": False}
+            terminal_shapes = (
+                {"state": "pending", "replayAllowed": False, "nativeActionAllowed": False},
+                {"state": "exited", "runtimeRunning": False, "ownerExited": True,
+                 "replayAllowed": False, "nativeActionAllowed": False})
+            normal_valid = result == unknown_result or result in (
+                ({"state": "submitted", "replayAllowed": False,
+                  "nativeActionAllowed": False}, *terminal_shapes)
+                if phase == "start" else terminal_shapes if phase in {"status", "collect"} else ())
+            if not (diagnostic_valid if phase == "diagnose" else
+                    bootstrap_valid if phase == "bootstrap-diagnostic" else normal_valid):
+                result = unknown_result
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] in {"submitted", "exited", "diagnosed"},
+                    "evidenceClass": "native-owner-quit" if result["state"] == "exited" else
+                                     "causal-diagnostic" if phase in {"diagnose", "bootstrap-diagnostic"} else "causal-status",
+                    "productAction": phase == "start", "nativeActionAllowed": False}
+        if action in {"windows-msi-owner-relaunch-quit-v3-start", "windows-msi-owner-relaunch-quit-v3-status",
+                      "windows-msi-owner-relaunch-quit-v3-collect", "windows-msi-owner-relaunch-quit-v3-diagnose",
+                      "windows-msi-owner-relaunch-quit-v3-bootstrap-diagnostic",
+                      "windows-msi-owner-relaunch-quit-v3-task-result"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 relaunch quit v3 host is required.")
+            quit_adapter = _agent_module("windows_msi_owner_relaunch_quit_v3")
+            phase = action.removeprefix("windows-msi-owner-relaunch-quit-v3-")
+            try:
+                result = quit_adapter.workflow(REPO_ROOT, phase, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            diagnostic_valid = (phase == "diagnose" and isinstance(result, dict)
+                and set(result) == {"state", "phase", "task", "replayAllowed", "nativeActionAllowed"}
+                and result.get("state") == "diagnosed" and result.get("phase") in {"system", "tasks"}
+                and result.get("task") in {"absent", "present", "ambiguous"}
+                and result.get("replayAllowed") is False and result.get("nativeActionAllowed") is False)
+            bootstrap_valid = (phase == "bootstrap-diagnostic" and isinstance(result, dict)
+                and set(result) == {"state", "gate", "replayAllowed", "nativeActionAllowed"}
+                and result.get("state") == "diagnosed"
+                and result.get("gate") in {"scheduler", "account-sid", "status-task-present",
+                                           "prior-quit-task-present", "relaunch-task", "v1-process",
+                                           "v3-task-present", "ready"}
+                and result.get("replayAllowed") is False and result.get("nativeActionAllowed") is False)
+            task_result_valid = (phase == "task-result" and isinstance(result, dict)
+                and set(result) == {"state", "replayAllowed", "nativeActionAllowed"}
+                and result.get("state") in {"pending", "exited", "failed"}
+                and result.get("replayAllowed") is False and result.get("nativeActionAllowed") is False)
+            unknown_result = {"state": "unknown", "replayAllowed": False,
+                              "nativeActionAllowed": False}
+            terminal_shapes = (
+                {"state": "pending", "replayAllowed": False, "nativeActionAllowed": False},
+                {"state": "exited", "runtimeRunning": False, "ownerExited": True,
+                 "replayAllowed": False, "nativeActionAllowed": False})
+            normal_valid = result == unknown_result or result in (
+                ({"state": "submitted", "replayAllowed": False,
+                  "nativeActionAllowed": False}, *terminal_shapes)
+                if phase == "start" else terminal_shapes if phase in {"status", "collect"} else ())
+            if not (diagnostic_valid if phase == "diagnose" else
+                    bootstrap_valid if phase == "bootstrap-diagnostic" else
+                    task_result_valid if phase == "task-result" else normal_valid):
+                result = unknown_result
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] in {"submitted", "exited", "diagnosed"} and phase != "task-result",
+                    "evidenceClass": "causal-diagnostic" if phase in {"diagnose", "bootstrap-diagnostic", "task-result"} else
+                                     "native-owner-quit" if result["state"] == "exited" else "causal-status",
+                    "productAction": phase == "start", "nativeActionAllowed": False}
+        if action in {"windows-msi-owner-quit-phase-start", "windows-msi-owner-quit-phase-status",
+                      "windows-msi-owner-quit-phase-collect"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 owner quit phase host is required.")
+            diagnostic = _agent_module("windows_msi_owner_quit_phase_diagnostic")
+            phase = action.removeprefix("windows-msi-owner-quit-phase-")
+            try:
+                result = diagnostic.workflow(REPO_ROOT, phase, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            unknown_result = {"state": "unknown", "replayAllowed": False,
+                              "nativeActionAllowed": False}
+            finite_status = (isinstance(result, dict)
+                and set(result) == {"state", "phase", "replayAllowed", "nativeActionAllowed"}
+                and result.get("state") == "diagnosed"
+                and result.get("phase") in {"passed", "identity", "ancestors", "cli",
+                                           "owner-before", "endpoint", "public-status",
+                                           "public-result", "owner-after", "task-error"}
+                and result.get("replayAllowed") is False and result.get("nativeActionAllowed") is False)
+            normal_valid = result in (unknown_result,
+                {"state": "pending", "replayAllowed": False, "nativeActionAllowed": False})
+            if phase == "start":
+                normal_valid = normal_valid or result == {
+                    "state": "submitted", "replayAllowed": False, "nativeActionAllowed": False}
+            if not (finite_status or normal_valid):
+                result = unknown_result
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] in {"submitted", "diagnosed"},
+                    "evidenceClass": "causal-diagnostic" if result["state"] == "diagnosed" else "causal-status",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-msi-owner-relaunch-quit-v4-start", "windows-msi-owner-relaunch-quit-v4-status",
+                      "windows-msi-owner-relaunch-quit-v4-collect", "windows-msi-owner-relaunch-quit-v4-diagnose"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 relaunch quit v4 host is required.")
+            quit_adapter = _agent_module("windows_msi_owner_relaunch_quit_v4")
+            phase = action.removeprefix("windows-msi-owner-relaunch-quit-v4-")
+            try:
+                result = quit_adapter.workflow(REPO_ROOT, phase, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            diagnostic_valid = (phase == "diagnose" and isinstance(result, dict)
+                and set(result) == {"state", "phase", "task", "replayAllowed", "nativeActionAllowed"}
+                and result.get("state") == "diagnosed" and result.get("phase") in {"system", "tasks"}
+                and result.get("task") in {"absent", "present", "ambiguous"}
+                and result.get("replayAllowed") is False and result.get("nativeActionAllowed") is False)
+            unknown_result = {"state": "unknown", "replayAllowed": False,
+                              "nativeActionAllowed": False}
+            terminal_shapes = (
+                {"state": "pending", "replayAllowed": False, "nativeActionAllowed": False},
+                {"state": "exited", "runtimeRunning": False, "ownerExited": True,
+                 "replayAllowed": False, "nativeActionAllowed": False})
+            normal_valid = result == unknown_result or result in (
+                ({"state": "submitted", "replayAllowed": False,
+                  "nativeActionAllowed": False}, *terminal_shapes)
+                if phase == "start" else terminal_shapes if phase in {"status", "collect"} else ())
+            if not (diagnostic_valid if phase == "diagnose" else normal_valid):
+                result = unknown_result
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] in {"submitted", "exited", "diagnosed"},
+                    "evidenceClass": "native-owner-quit" if result["state"] == "exited" else
+                                     "causal-diagnostic" if phase == "diagnose" else "causal-status",
+                    "productAction": phase == "start", "nativeActionAllowed": False}
+        if action in {"windows-msi-stale-lock-reconcile", "windows-msi-stale-lock-reconcile-status",
+                      "windows-msi-stale-lock-reconcile-close"}:
+            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+                return _error("vm_workflow", "Exact CP117 stale-lock reconciliation host is required.")
+            reconcile = _agent_module("windows_msi_stale_lock_reconcile")
+            phase = action.removeprefix("windows-msi-stale-lock-reconcile")
+            try:
+                result = (reconcile.status(REPO_ROOT, inputs) if phase == "-status" else
+                          reconcile.close(REPO_ROOT, inputs) if phase == "-close" else
+                          reconcile.reconcile(REPO_ROOT, inputs))
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            valid = (result in ({"state": "unknown", "replayAllowed": False,
+                                "nativeActionAllowed": False},
+                               {"state": "terminal-proven", "replayAllowed": False,
+                                "nativeActionAllowed": False},
+                               {"state": "recovered", "replayAllowed": False,
+                                "nativeActionAllowed": False})
+                     and (result.get("state") == "unknown" or
+                          result["state"] == ("terminal-proven" if phase == "-status" else "recovered")))
+            if not valid:
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False}
+            return {"tool": "vm_workflow", **result,
+                    "ok": result["state"] != "unknown",
+                    "evidenceClass": "causal-status" if phase == "-status" else "native-recovery",
+                    "productAction": False, "nativeActionAllowed": False}
+        if action == "windows-msi-base-finish-observed":
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"}
+                    or not isinstance(inputs["correlationId"], str)
+                    or not _agent_module("windows_msi_base_prepare")._UUID.fullmatch(inputs["correlationId"])):
+                return _error("vm_workflow", "Exact CP117 base finish correlation is required.")
+            base = _agent_module("windows_msi_base_prepare")
+            correlation = inputs["correlationId"]
+            try:
+                result = base.finish_observed(REPO_ROOT, correlation)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "leaseId": correlation, "replayAllowed": False}
+            if (not isinstance(result, dict) or set(result) != {"state", "leaseId", "replayAllowed"}
+                    or result.get("state") not in {"active", "unknown"}
+                    or result.get("leaseId") != correlation or result.get("replayAllowed") is not False):
+                result = {"state": "unknown", "leaseId": correlation, "replayAllowed": False}
+            return {"tool": "vm_workflow", **result, "ok": result["state"] == "active",
+                    "evidenceClass": "causal-cleanup", "productAction": False}
+        if action in {"windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-start-from-transfer", "windows-msi-base-status", "windows-msi-base-reconcile", "windows-msi-base-terminal-reconcile", "windows-msi-base-diagnostic", "windows-msi-base-stage-diagnostic", "windows-msi-base-transfer-preflight", "windows-msi-base-transfer-network-admission", "windows-msi-base-transfer-endpoint-probe", "windows-msi-base-transfer-endpoint-status", "windows-msi-base-transfer-endpoint-reconcile", "windows-msi-base-unknown-close", "windows-msi-base-unknown-close-status"}:
             base = _agent_module("windows_msi_base_prepare")
             try:
                 method = {"windows-msi-base-preflight": base.powershell_preflight,
                           "windows-msi-base-readiness": base.readiness,
                           "windows-msi-base-start": base.start,
-                          "windows-msi-base-status": base.status}[action]
+                          "windows-msi-base-start-from-transfer": base.start_from_transfer,
+                          "windows-msi-base-status": base.status,
+                          "windows-msi-base-reconcile": base.reconcile,
+                          "windows-msi-base-terminal-reconcile": base.terminal_reconcile,
+                          "windows-msi-base-diagnostic": base.diagnose,
+                          "windows-msi-base-stage-diagnostic": base.stage_diagnose,
+                          "windows-msi-base-transfer-preflight": base.transfer_preflight,
+                          "windows-msi-base-transfer-network-admission": base.transfer_network_admission,
+                          "windows-msi-base-transfer-endpoint-probe": _agent_module("windows_msi_transfer_endpoint").endpoint_probe,
+                          "windows-msi-base-transfer-endpoint-status": _agent_module("windows_msi_transfer_endpoint").endpoint_probe_status,
+                          "windows-msi-base-transfer-endpoint-reconcile": _agent_module("windows_msi_transfer_endpoint").endpoint_probe_reconcile,
+                          "windows-msi-base-unknown-close": base.close_unknown,
+                          "windows-msi-base-unknown-close-status": base.close_unknown_status}[action]
                 result = method(REPO_ROOT, inputs)
+                if action == "windows-msi-base-terminal-reconcile":
+                    correlation = inputs.get("correlationId") if isinstance(inputs, dict) else None
+                    terminal_fields = {"state", "correlationId", "result", "stage", "exitCode",
+                                       "sourceSha", "baseArtifactId", "replayAllowed"}
+                    unknown_fields = {"state", "correlationId", "replayAllowed"}
+                    valid = (isinstance(result, dict) and result.get("correlationId") == correlation
+                             and result.get("replayAllowed") is False and
+                             ((set(result) == terminal_fields and result.get("state") == "terminal"
+                               and result.get("result") == "PASSED" and result.get("stage") == "READBACK"
+                               and type(result.get("exitCode")) is int and result["exitCode"] == 0
+                               and isinstance(result.get("sourceSha"), str) and base._SHA.fullmatch(result["sourceSha"])
+                               and isinstance(result.get("baseArtifactId"), str)
+                               and result["baseArtifactId"].startswith("sha256-")
+                               and base._HASH.fullmatch(result["baseArtifactId"][7:]))
+                              or (set(result) == unknown_fields and result.get("state") == "unknown")))
+                    if not valid:
+                        result = {"state": "unknown", "correlationId": correlation,
+                                  "replayAllowed": False}
                 return {"tool": "vm_workflow", **result,
                         "ok": result.get("state") in {"passed", "ready", "submitted", "running"} or
-                              (result.get("state") == "terminal" and result.get("result") == "PASSED"),
-                        "evidenceClass": "native-preflight" if action.endswith(("-preflight", "-readiness")) else "installed-package",
-                        "productAction": action.endswith("-start")}
+                              (action == "windows-msi-base-transfer-endpoint-probe" and result.get("state") == "reachable") or
+                              (action == "windows-msi-base-transfer-endpoint-status" and result.get("state") == "observed") or
+                              (action == "windows-msi-base-transfer-endpoint-reconcile" and result.get("state") == "stopped") or
+                              (result.get("state") == "terminal" and result.get("result") == "PASSED") or
+                              (action in {"windows-msi-base-unknown-close", "windows-msi-base-unknown-close-status"}
+                               and result.get("state") == "closed" and result.get("outcome") == "unknown-cleaned"),
+                        "evidenceClass": "native-preflight" if action.endswith(("-preflight", "-readiness", "-admission", "-probe")) else
+                                         "causal-status" if action.endswith("-endpoint-status") else
+                                         "causal-cleanup" if action.endswith("-endpoint-reconcile") else
+                                         "causal-diagnostic" if action.endswith("-diagnostic") else
+                                         "causal-status" if action.endswith("-unknown-close-status") else
+                                         "causal-cleanup" if action.endswith("-unknown-close") else
+                                         "causal-reconciliation" if action.endswith("-reconcile") else "installed-package",
+                        "productAction": action.endswith("-start") or action == "windows-msi-base-start-from-transfer"}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action == "windows-msi-base-pre-effect-status":
@@ -4244,8 +6284,14 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
         return enriched
     if enriched.get("ok") is not False and str(enriched.get("state", "")).lower() not in {"unknown", "submitting"}:
         return enriched
-    diagnostic = _agent_module("native_response_diagnostics").describe(tool, action, result)
+    recorder = _agent_module("native_failure_evidence")
+    details = recorder.bounded_failure_details(action, enriched) if tool == "vm_workflow" else {}
+    enriched.update(details)
+    diagnostic = _agent_module("native_response_diagnostics").describe(tool, action, enriched)
     enriched.update(diagnostic)
+    if details and isinstance(enriched.get("failureSignature"), dict):
+        enriched["failureSignature"]["causalRegression"] = details["regressionReference"]
+        enriched["failureSignature"]["regressionRequired"] = False
     if tool == "vm_workflow" and action in {"windows-vm-driver-fetch-start", "windows-vm-disk-probe-start",
                                             "windows-vm-fresh-start"}:
         followup = diagnostic.get("admissionGap", {}).get("readOnlyAction")
@@ -4256,7 +6302,6 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
                                       "reason": "one-shot native fixture outcome needs exact status",
                                       "action": followup, "replayAllowed": False,
                                       "requiresFreshEvidence": True}
-    recorder = _agent_module("native_failure_evidence")
     context: dict[str, Any] = {"tool": tool, "action": action}
     safe_token = lambda value: isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", value)
     environment = enriched.get("environment") or request.get("environment") or host
@@ -4276,6 +6321,7 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
     if not safe_token(category):
         category = "workflow_failure"
     receipt: dict[str, Any] = {"classification": "nativeUNKNOWN" if uncertain else "terminalFailure", "errorCategory": category}
+    receipt.update(details)
     if safe_token(state):
         receipt["after"] = {"state": state}
     paths = enriched.get("evidencePaths")
@@ -4433,7 +6479,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-guest-park-preflight", "linux-guest-park-start", "linux-guest-park-status", "linux-package-fixture-build-preflight", "linux-package-fixture-build-start", "linux-package-fixture-build-status", "linux-package-fixture-build-collect", "linux-package-fixture-build-pre-effect-status", "linux-package-fixture-build-pre-effect-close", "linux-package-fixture-build-terminal-ready-status", "linux-package-fixture-build-terminal-ready-close", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-vm-secureboot-inventory", "windows-vm-virt-firmware-admission", "windows-vm-secureboot-clone-preflight", "windows-vm-secureboot-fresh-preflight", "windows-vm-secureboot-fresh-start", "windows-vm-secureboot-fresh-status", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "windows-vm-optical-boot-preflight", "windows-vm-optical-boot-start", "windows-vm-optical-boot-status", "windows-vm-optical-close-preflight", "windows-vm-optical-close-start", "windows-vm-optical-close-status", "windows-vm-optical-attempt2-preflight", "windows-vm-optical-attempt2-start", "windows-vm-optical-attempt2-status", "windows-vm-optical-attempt2-phase-probe", "windows-vm-optical-attempt2-close-preflight", "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt2-close-status", "windows-vm-optical-attempt3-preflight", "windows-vm-optical-attempt3-start", "windows-vm-optical-attempt3-status", "windows-vm-optical-attempt3-frame-collect", "windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start", "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect", "windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start", "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect", "windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start", "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect", "windows-vm-setup-install-disk-proof", "windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start", "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect", "windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start", "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect", "windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start", "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "windows-fixture-stage-start", "windows-fixture-stage-status", "windows-fixture-stage-collect", "windows-fixture-credentials-start", "windows-fixture-credentials-status", "windows-fixture-credentials-collect", "windows-fixture-server-start", "windows-fixture-server-status", "windows-fixture-server-collect", "windows-fixture-server-stop-start", "windows-fixture-server-stop-status", "windows-fixture-server-stop-collect", "windows-fixture-credentials-cleanup-start", "windows-fixture-credentials-cleanup-status", "windows-fixture-credentials-cleanup-collect", "windows-fixture-server-abort-start", "windows-fixture-server-abort-status", "windows-fixture-server-abort-collect", "windows-fixture-credentials-abort-start", "windows-fixture-credentials-abort-status", "windows-fixture-credentials-abort-collect", "windows-fixture-owner-network-start", "windows-fixture-owner-network-status", "windows-fixture-owner-network-collect", "windows-fixture-network-probe-start", "windows-fixture-network-probe-status", "windows-fixture-network-probe-collect", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-package-install-unknown-proof", "android-package-install-unknown-release", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-document-retry-start", "android-document-retry-status", "android-document-retry-collect", "android-document-retry-recovery-start", "android-document-retry-recovery-status", "android-document-retry-recovery-collect", "android-document-retry-recovery-finalize", "android-document-retry-unknown-diagnose", "android-document-retry-unknown-close", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-endpoint-admission-start", "android-endpoint-admission-status", "android-endpoint-admission-cleanup", "android-installer-dispatch-start", "android-installer-dispatch-status", "android-installer-dispatch-collect", "android-installer-callback-handoff-ready", "android-installer-callback-continue", "android-installer-callback-status-handoff-ready", "android-installer-callback-status-continue", "android-installer-abort-prelaunch", "android-installer-reconcile", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-machine-server-stop-start", "macos-machine-server-stop-status", "macos-machine-server-stop-collect", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
+    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-guest-park-preflight", "linux-guest-park-start", "linux-guest-park-status", "linux-package-fixture-build-preflight", "linux-package-fixture-build-start", "linux-package-fixture-build-status", "linux-package-fixture-build-collect", "linux-package-fixture-build-pre-effect-status", "linux-package-fixture-build-pre-effect-close", "linux-package-fixture-build-terminal-ready-status", "linux-package-fixture-build-terminal-ready-close", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-vm-secureboot-inventory", "windows-vm-virt-firmware-admission", "windows-vm-secureboot-clone-preflight", "windows-vm-secureboot-fresh-preflight", "windows-vm-secureboot-fresh-start", "windows-vm-secureboot-fresh-status", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "windows-vm-optical-boot-preflight", "windows-vm-optical-boot-start", "windows-vm-optical-boot-status", "windows-vm-optical-close-preflight", "windows-vm-optical-close-start", "windows-vm-optical-close-status", "windows-vm-optical-attempt2-preflight", "windows-vm-optical-attempt2-start", "windows-vm-optical-attempt2-status", "windows-vm-optical-attempt2-phase-probe", "windows-vm-optical-attempt2-close-preflight", "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt2-close-status", "windows-vm-optical-attempt3-preflight", "windows-vm-optical-attempt3-start", "windows-vm-optical-attempt3-status", "windows-vm-optical-attempt3-frame-collect", "windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start", "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect", "windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start", "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect", "windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start", "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect", "windows-vm-setup-install-disk-proof", "windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start", "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect", "windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start", "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect", "windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start", "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "windows-fixture-stage-start", "windows-fixture-stage-status", "windows-fixture-stage-collect", "windows-fixture-credentials-start", "windows-fixture-credentials-status", "windows-fixture-credentials-collect", "windows-fixture-server-start", "windows-fixture-server-acl-preflight", "windows-fixture-server-status", "windows-fixture-server-collect", "windows-fixture-server-stop-start", "windows-fixture-server-stop-status", "windows-fixture-server-stop-collect", "windows-fixture-credentials-cleanup-start", "windows-fixture-credentials-cleanup-status", "windows-fixture-credentials-cleanup-collect", "windows-fixture-server-abort-start", "windows-fixture-server-abort-status", "windows-fixture-server-abort-collect", "windows-fixture-server-abort-successor-start", "windows-fixture-server-abort-successor-status", "windows-fixture-server-abort-successor-diagnostic", "windows-fixture-server-resume-no-dispatch-start", "windows-fixture-server-post-resource-diagnostic", "windows-fixture-server-probe-events-acl-diagnostic", "windows-fixture-acl-preflight", "windows-fixture-acl-preflight-status", "windows-fixture-credentials-abort-start", "windows-fixture-credentials-abort-status", "windows-fixture-credentials-abort-collect", "windows-fixture-owner-network-start", "windows-fixture-owner-network-status", "windows-fixture-owner-network-collect", "windows-fixture-network-probe-start", "windows-fixture-network-probe-status", "windows-fixture-network-probe-collect", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-package-install-unknown-proof", "android-package-install-unknown-release", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-document-retry-start", "android-document-retry-status", "android-document-retry-collect", "android-document-retry-recovery-start", "android-document-retry-recovery-status", "android-document-retry-recovery-collect", "android-document-retry-recovery-finalize", "android-document-retry-unknown-diagnose", "android-document-retry-unknown-close", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-endpoint-admission-start", "android-endpoint-admission-status", "android-endpoint-admission-cleanup", "android-installer-dispatch-start", "android-installer-dispatch-status", "android-installer-dispatch-collect", "android-installer-callback-handoff-ready", "android-installer-callback-continue", "android-installer-callback-status-handoff-ready", "android-installer-callback-status-continue", "android-installer-abort-prelaunch", "android-installer-reconcile", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-machine-server-stop-start", "macos-machine-server-stop-status", "macos-machine-server-stop-collect", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
     vm_parser._actions[-1].choices = (*vm_parser._actions[-1].choices,
                                       "windows-vm-virt-firmware-install-preflight",
                                       "windows-vm-virt-firmware-install-start",
@@ -4442,7 +6488,133 @@ def main(argv: Sequence[str] | None = None) -> int:
                                       "windows-vm-swtpm-repair-start",
                                       "windows-vm-swtpm-repair-status",
                                       "windows-vm-swtpm-owner-observe",
-                                      "arch-ai-loop-observe")
+                                      "arch-ai-loop-observe",
+                                      "windows-msi-base-reconcile",
+                                      "windows-fixture-python-inventory-diagnostic",
+                                      "windows-fixture-python-download-preflight",
+                                      "windows-fixture-python-host-source-observe",
+                                      "windows-fixture-python-acquire-start",
+                                      "windows-fixture-python-acquire-status",
+                                      "windows-fixture-python-acquire-collect",
+                                      "windows-fixture-python-acquire-reconcile",
+                                      "windows-fixture-python-acquire-failure-detail",
+                                      "windows-fixture-python-install-start",
+                                      "windows-fixture-python-install-status",
+                                      "windows-fixture-python-install-collect",
+                                      "windows-fixture-python-install-diagnostic",
+                                      "windows-fixture-server-diagnostic",
+                                      "windows-fixture-server-static-diagnostic",
+                                      "windows-fixture-server-abort-diagnostic",
+                                      "windows-fixture-package-mode-repair-start",
+                                      "windows-fixture-package-mode-repair-status",
+                                      "windows-fixture-package-mode-repair-collect",
+                                      "windows-fixture-package-mode-repair-diagnostic",
+                                      "windows-msi-base-terminal-reconcile",
+                                      "windows-msi-base-finish-observed",
+                                      "windows-msi-base-diagnostic", "windows-msi-base-stage-diagnostic",
+                                      "windows-msi-base-transfer-preflight",
+                                      "windows-msi-base-transfer-network-admission",
+                                      "windows-msi-base-transfer-endpoint-probe",
+                                      "windows-msi-base-transfer-endpoint-status",
+                                      "windows-msi-base-transfer-endpoint-reconcile",
+                                      "windows-msi-http-transfer",
+                                      "windows-update-fixture-http-transfer",
+                                      "windows-msiexec-service-diagnostic",
+                                      "windows-msi-owner-census-preflight",
+                                      "windows-msi-owner-census",
+                                      "windows-msi-owner-diagnostic",
+                                      "windows-msi-owner-liveness",
+                                      "windows-msi-stale-lock-recover",
+                                      "windows-msi-stale-lock-diagnose",
+                                      "windows-msi-stale-lock-reconciliation-status",
+                                      "windows-msi-owner-relaunch-launch",
+                                      "windows-msi-owner-relaunch-status",
+                                      "windows-msi-owner-relaunch-collect",
+                                      "windows-msi-owner-relaunch-diagnose",
+                                      "windows-msi-owner-relaunch-detail",
+                                      "windows-msi-owner-relaunch-endpoint-access",
+                                      "windows-msi-owner-public-status-start",
+                                      "windows-msi-owner-public-status-status",
+                                      "windows-msi-owner-public-status-collect",
+                                      "windows-msi-owner-public-status-diagnose",
+                                      "windows-msi-owner-public-status-retry-preflight",
+                                      "windows-msi-owner-public-status-retry-start",
+                                      "windows-msi-owner-public-status-retry-status",
+                                      "windows-msi-owner-public-status-retry-collect",
+                                      "windows-msi-owner-public-status-retry-diagnose",
+                                      "windows-msi-owner-public-status-retry-observe",
+                                      "windows-msi-owner-public-status-third-start",
+                                      "windows-msi-owner-public-status-third-status",
+                                      "windows-msi-owner-public-status-third-collect",
+                                      "windows-msi-owner-public-status-third-observe",
+                                      "windows-msi-owner-relaunch-quit-start",
+                                      "windows-msi-owner-relaunch-quit-status",
+                                      "windows-msi-owner-relaunch-quit-collect",
+                                      "windows-msi-owner-relaunch-quit-diagnose",
+                                      "windows-msi-owner-relaunch-quit-v2-start",
+                                      "windows-msi-owner-relaunch-quit-v2-status",
+                                      "windows-msi-owner-relaunch-quit-v2-collect",
+                                      "windows-msi-owner-relaunch-quit-v2-diagnose",
+                                      "windows-msi-owner-relaunch-quit-v2-bootstrap-diagnostic",
+                                      "windows-msi-owner-relaunch-quit-v3-start",
+                                      "windows-msi-owner-relaunch-quit-v3-status",
+                                      "windows-msi-owner-relaunch-quit-v3-collect",
+                                      "windows-msi-owner-relaunch-quit-v3-diagnose",
+                                      "windows-msi-owner-relaunch-quit-v3-bootstrap-diagnostic",
+                                      "windows-msi-owner-relaunch-quit-v3-task-result",
+                                      "windows-msi-owner-quit-phase-start",
+                                      "windows-msi-owner-quit-phase-status",
+                                      "windows-msi-owner-quit-phase-collect",
+                                      "windows-msi-owner-relaunch-quit-v4-start",
+                                      "windows-msi-owner-relaunch-quit-v4-status",
+                                      "windows-msi-owner-relaunch-quit-v4-collect",
+                                      "windows-msi-owner-relaunch-quit-v4-diagnose",
+                                      "windows-msi-stale-lock-reconcile",
+                                      "windows-msi-stale-lock-reconcile-status",
+                                      "windows-msi-stale-lock-reconcile-close",
+                                      "windows-fixture-stage-diagnostic",
+                                      "windows-fixture-stage-recover-7f27",
+                                      "windows-fixture-stage-recover-7f27-diagnostic",
+                                      "windows-cp117-campaign-rebase",
+                                      "windows-cp117-e66-successor-start",
+                                      "windows-cp117-e66-successor-status",
+                                      "windows-cp117-e66-successor-reconcile",
+                                      "windows-cp117-e66-successor-resume-begin",
+                                      "windows-cp117-guest-abort-successor-start",
+                                      "windows-cp117-guest-abort-successor-status",
+                                      "windows-cp117-guest-abort-successor-reconcile",
+                                      "windows-cp117-guest-abort-successor-resume-begin",
+                                      "windows-cp117-download-abort-successor-start",
+                                      "windows-cp117-download-abort-successor-status",
+                                      "windows-cp117-download-abort-successor-reconcile",
+                                      "windows-cp117-download-abort-successor-resume-close",
+                                      "windows-cp117-download-abort-successor-resume-begin",
+                                      "windows-cp117-download-abort-current-successor-start",
+                                      "windows-cp117-download-abort-current-successor-status",
+                                      "windows-cp117-download-abort-current-successor-reconcile",
+                                      "windows-cp117-download-abort-current-successor-resume-close",
+                                      "windows-cp117-download-abort-current-successor-resume-begin",
+                                      "windows-update-fixture-guest-create-abort-status",
+                                      "windows-update-fixture-guest-create-abort",
+                                      "windows-update-fixture-download-abort-status",
+                                      "windows-update-fixture-download-abort",
+                                      "windows-update-fixture-download-task-cleanup-status",
+                                      "windows-update-fixture-download-task-cleanup",
+                                      "windows-update-fixture-download-abort-current-task-cleanup-status",
+                                      "windows-update-fixture-download-abort-current-task-cleanup",
+                                      "windows-update-fixture-download-abort-current-status",
+                                      "windows-update-fixture-download-abort-current",
+                                      "windows-cp117-campaign-status",
+                                      "windows-cp117-campaign-diagnostic",
+                                      "windows-update-fixture-phase-status",
+                                      "windows-update-fixture-http-stage-extract-diagnostic",
+                                      "windows-fixture-credentials-diagnostic",
+                                      "windows-fixture-credentials-failure-detail",
+                                      "windows-fixture-credentials-provenance-acl-shape",
+                                      "windows-fixture-credentials-pre-effect-guard-probe",
+                                      "windows-msi-base-start-from-transfer",
+                                      "windows-msi-base-unknown-close",
+                                      "windows-msi-base-unknown-close-status")
     vm_parser.add_argument("--inputs-file", required=True)
     start = subparsers.add_parser("prepare-start")
     start.add_argument("task")

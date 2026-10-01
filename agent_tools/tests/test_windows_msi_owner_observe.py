@@ -184,11 +184,22 @@ class OwnerObserveTests(unittest.TestCase):
         self.assertIn("[IO.FileAttributes]::ReparsePoint", script)
         self.assertIn("$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value", script)
         self.assertIn("$acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])", script)
-        self.assertIn("$rule.IdentityReference.Value -cne", script)
+        self.assertIn("$endpointAllowedSids=@('" + INTENT["expectedSid"] + "','S-1-5-18','S-1-5-32-544')", script)
+        self.assertIn("$rule.IdentityReference.Value -notin $endpointAllowedSids", script)
+        self.assertIn("$rule.IdentityReference.Value -ceq '" + INTENT["expectedSid"] + "'", script)
         self.assertIn("$ownerRead", script)
         self.assertIn("$bytes.Length -gt 4096", script)
         self.assertLess(script.index("$acl.GetOwner"), script.index("$bytes=[IO.File]::ReadAllBytes"))
         self.assertLess(script.index("$bytes.Length -gt 4096"), script.index("ConvertFrom-Json -InputObject"))
+
+    def test_endpoint_allows_only_trusted_windows_maintenance_aces(self):
+        """RED→GREEN: SYSTEM/Admin are admitted while any other Allow ACE remains blocked."""
+        script = owner._task(CORR, REQUEST, INTENT["expectedSid"])
+        self.assertIn("$endpointAllowedSids=@('" + INTENT["expectedSid"] + "','S-1-5-18','S-1-5-32-544')", script)
+        self.assertIn("if($rule.IdentityReference.Value -notin $endpointAllowedSids){throw 'ENDPOINT_ACL'}", script)
+        owner_gate = script.split("if($rule.IdentityReference.Value -ceq '" + INTENT["expectedSid"] + "')", 1)[1]
+        self.assertIn("ReadData", owner_gate)
+        self.assertNotIn("$_.Exception.Message", script)
 
     def test_ps5_preflight_parses_each_fixed_component_within_qga_bound(self):
         for kind in ("task", "bootstrap", "cleanup"):

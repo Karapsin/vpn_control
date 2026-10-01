@@ -141,6 +141,57 @@ def verify_artifact(root: Path | str, artifact_id: str, location_id: str | None 
     return {"artifact": public, "location": _public_location(location), "verification": "verified", "observedSize": size, "observedSha256": digest}
 
 
+def verify_artifact_readonly(root: Path | str, artifact_id: str,
+                             location_id: str | None = None) -> dict[str, Any]:
+    """Verify registered local bytes without creating, cleaning, locking, or migrating.
+
+    This is for observers whose contract forbids even private registry
+    housekeeping.  Missing directories and schema-1 entries fail closed rather
+    than being repaired.  It does not create locks or clean temporary records,
+    and deliberately has no fallback to :func:`verify_artifact`.
+    """
+    if not isinstance(artifact_id, str) or not re.fullmatch(r"sha256-[0-9a-f]{64}", artifact_id):
+        raise NativeArtifactRegistryError("Artifact ID is invalid.")
+    root_path = Path(root)
+    if not root_path.is_absolute() or not _safe_directory(root_path):
+        raise NativeArtifactRegistryError("Registry root must be an existing absolute non-symlink directory.")
+    root_path = root_path.resolve(strict=True)
+    registry = root_path / INDEX_RELATIVE
+    _readonly_private_directory(root_path / ".rag_index")
+    _readonly_private_directory(registry)
+    record = _read_record_readonly(registry / (artifact_id + ".json"))
+    public = _public_record(record)
+    if location_id is not None and (not isinstance(location_id, str)
+                                    or not re.fullmatch(r"location-[0-9a-f]{64}", location_id)):
+        raise NativeArtifactRegistryError("Artifact location ID is invalid.")
+    locations = record["locations"]
+    if location_id is None:
+        locals_ = [item for item in locations if item["evidenceClass"] == _LOCAL_EVIDENCE]
+        if len(locals_) == 1:
+            location = locals_[0]
+        elif len(locations) == 1:
+            location = locations[0]
+        else:
+            raise NativeArtifactRegistryError("Artifact has no unique default local location.")
+    else:
+        location = next((item for item in locations if item["locationId"] == location_id), None)
+        if location is None:
+            raise NativeArtifactRegistryError("Artifact location ID is not registered.")
+    if location["evidenceClass"] != _LOCAL_EVIDENCE:
+        return {"artifact": public, "location": _public_location(location),
+                "verification": "unverified-remote", "message": "Remote evidence was not contacted."}
+    try:
+        size, digest = _stream_local_bytes(Path(location["localPath"]))
+    except NativeArtifactRegistryError as error:
+        return {"artifact": public, "location": _public_location(location),
+                "verification": "missing-or-unsafe", "message": str(error)}
+    if size != record["size"] or digest != record["sha256"]:
+        return {"artifact": public, "location": _public_location(location),
+                "verification": "mismatch", "observedSize": size, "observedSha256": digest}
+    return {"artifact": public, "location": _public_location(location), "verification": "verified",
+            "observedSize": size, "observedSha256": digest}
+
+
 def _normalize_registration(value: Mapping[str, Any], *, historical: bool = False) -> tuple[dict[str, Any], dict[str, Any]]:
     if not isinstance(value, Mapping):
         raise NativeArtifactRegistryError("Artifact record must be an object.")
@@ -239,6 +290,17 @@ def _prepare_registry(root: Path | str) -> Path:
     _ensure_private_directory(root_path / ".rag_index")
     _ensure_private_directory(index)
     return index
+
+
+def _readonly_private_directory(path: Path) -> None:
+    """Validate an already-private directory without changing its metadata."""
+    try:
+        info = path.lstat()
+    except OSError as error:
+        raise NativeArtifactRegistryError("Artifact index directory is unavailable for read-only verification.") from error
+    if (path.is_symlink() or not stat.S_ISDIR(info.st_mode) or not _owner_is_current(info)
+            or stat.S_IMODE(info.st_mode) != 0o700):
+        raise NativeArtifactRegistryError("Artifact index directory is unsafe for read-only verification.")
 
 
 def _require_posix_private_admission() -> None:
@@ -376,6 +438,42 @@ def _read_record(path: Path) -> dict[str, Any]:
         return migrated
     if parsed.get("schemaVersion") != 2:
         raise NativeArtifactRegistryError("Artifact index record is corrupt.")
+    allowed = {"schemaVersion", "artifactId", "platform", "artifactKind", "sha256", "size",
+               "sourceSha", "sourceFingerprint", "locations"}
+    if set(parsed) - allowed or not {"platform", "artifactKind", "sha256", "size", "locations"} <= set(parsed):
+        raise NativeArtifactRegistryError("Artifact index record is corrupt.")
+    identity = _identity(parsed)
+    locations = parsed.get("locations")
+    if not isinstance(locations, list) or not 1 <= len(locations) <= MAX_LOCATIONS:
+        raise NativeArtifactRegistryError("Artifact index record is corrupt.")
+    try:
+        rebuilt_locations = [_normalize_location(item) for item in locations]
+    except NativeArtifactRegistryError as error:
+        raise NativeArtifactRegistryError("Artifact index record is corrupt.") from error
+    if len({item["locationId"] for item in rebuilt_locations}) != len(rebuilt_locations):
+        raise NativeArtifactRegistryError("Artifact index record has duplicate locations.")
+    expected = "sha256-" + identity["sha256"]
+    if parsed["artifactId"] != expected or path.name != expected + ".json":
+        raise NativeArtifactRegistryError("Artifact index record identity is corrupt.")
+    return {"schemaVersion": 2, "artifactId": expected, **identity, "locations": rebuilt_locations}
+
+
+def _read_record_readonly(path: Path) -> dict[str, Any]:
+    """Parse only an already-current record; never migrate it in an observer."""
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            raw = source.read(MAX_RECORD_BYTES + 1)
+        if not stat.S_ISREG(info.st_mode) or len(raw) > MAX_RECORD_BYTES:
+            raise NativeArtifactRegistryError("Artifact index record is unsafe or oversized.")
+        parsed = json.loads(raw.decode("utf-8"))
+    except FileNotFoundError as error:
+        raise NativeArtifactRegistryError("Artifact ID is not registered.") from error
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise NativeArtifactRegistryError("Artifact index record is corrupt.") from error
+    if not isinstance(parsed, dict) or parsed.get("schemaVersion") != 2 or not isinstance(parsed.get("artifactId"), str):
+        raise NativeArtifactRegistryError("Artifact index record is not current for read-only verification.")
     allowed = {"schemaVersion", "artifactId", "platform", "artifactKind", "sha256", "size",
                "sourceSha", "sourceFingerprint", "locations"}
     if set(parsed) - allowed or not {"platform", "artifactKind", "sha256", "size", "locations"} <= set(parsed):

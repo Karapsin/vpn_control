@@ -229,11 +229,14 @@ try {
  $stage='ENDPOINT_ACL'
  $acl=Get-Acl -LiteralPath $endpointPath
  if($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -cne @SID@){throw 'ENDPOINT_OWNER'}
+ $endpointAllowedSids=@(@SID@,'S-1-5-18','S-1-5-32-544')
  $ownerRead=$false
  foreach($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])){
   if($rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and [int]$rule.FileSystemRights -ne 0){
-   if($rule.IdentityReference.Value -cne @SID@){throw 'ENDPOINT_ACL'}
-   if(($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::ReadData) -ne 0){$ownerRead=$true}
+   if($rule.IdentityReference.Value -notin $endpointAllowedSids){throw 'ENDPOINT_ACL'}
+   if($rule.IdentityReference.Value -ceq @SID@){
+    if(($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::ReadData) -ne 0){$ownerRead=$true}
+   }
   }
  }
  if(-not $ownerRead){throw 'ENDPOINT_READ'}

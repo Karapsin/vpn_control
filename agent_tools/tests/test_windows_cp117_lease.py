@@ -166,6 +166,28 @@ class Cp117CampaignLeaseTests(unittest.TestCase):
             self.assertTrue((root / ".rag_index/windows-cp117-campaign" /
                              (lease_id + ".closed.json")).exists())
 
+    def test_close_rejects_changed_terminal_record_before_remote_dispatch(self):
+        """A later role finish cannot close on an older retirement proof."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); remote = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            self.assertEqual("active", lease.begin(root, bound, remote)["state"])
+            local = root / ".rag_index/windows-cp117-campaign/active.json"
+            old_active = json.loads(local.read_text())
+            correlation = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "stage", correlation, remote)
+            lease.finish_role(root, lease_id, "stage", correlation, "e" * 64, "failed-cleaned", remote)
+            changed = json.loads(local.read_text())
+            self.assertNotEqual(old_active, changed)
+            proof = {"guestGeneration": {"socketPath": bound["socketPath"],
+                     "qemuPid": bound["qemuPid"], "startTicks": bound["startTicks"]},
+                     "serverStopped": True, "credentialsCleaned": True,
+                     "protectedJobsTerminalCleaned": True,
+                     "activeInstallerProcessesAbsent": True, "cleanupReceiptSha256": "f" * 64}
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.close(root, lease_id, proof, remote, expected_current=old_active)
+            self.assertEqual(changed, json.loads(local.read_text()))
+            self.assertEqual("active", lease.inspect(root, lease_id)["state"])
+
     def test_lost_remote_response_is_sticky_across_restart_and_never_replayed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); actual = remote_at(root); bound = identity(); calls = []
@@ -222,6 +244,41 @@ class Cp117CampaignLeaseTests(unittest.TestCase):
             self.assertEqual(lease.inspect(root, lease_id)["server"], "stopped")
             with self.assertRaises(lease.Cp117LeaseError):
                 lease.claim_role(root, lease_id, "server-stop", str(uuid.uuid4()), remote)
+
+    def test_unknown_cleaned_is_reserved_for_the_base_role_after_terminal_cleanup_proof(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); remote = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            lease.begin(root, bound, remote)
+            correlation = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "base", correlation, remote)
+            self.assertEqual(lease.finish_role(root, lease_id, "base", correlation,
+                                               "d" * 64, "unknown-cleaned", remote)["state"], "active")
+            self.assertEqual(lease.inspect(root, lease_id)["state"], "active")
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.finish_role(root, lease_id, "base", correlation, "e" * 64,
+                                  "unknown-cleaned", remote)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); remote = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            lease.begin(root, bound, remote)
+            correlation = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "stage", correlation, remote)
+            with self.assertRaises(lease.Cp117LeaseError):
+                lease.finish_role(root, lease_id, "stage", correlation, "f" * 64,
+                                  "unknown-cleaned", remote)
+
+    def test_remote_finish_rejects_unknown_cleaned_for_non_base_role(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); remote = remote_at(root); bound = identity(); lease_id = bound["leaseId"]
+            lease.begin(root, bound, remote)
+            correlation = str(uuid.uuid4())
+            lease.claim_role(root, lease_id, "stage", correlation, remote)
+            old = json.loads((root / "remote/windows-cp117/windows-cp117-campaign/active.json").read_text())
+            desired = dict(old, sequence=old["sequence"] + 1, state="active", role=None,
+                           correlationId=None, lastEvidenceSha256="f" * 64,
+                           lastOutcome="unknown-cleaned")
+            receipt = json.loads(remote("finish", {"action": "finish", "desired": desired,
+                                                    "priorSha256": lease._digest(old)}))
+            self.assertEqual(receipt, {"version": 1, "state": "unknown"})
 
     def test_owner_network_claim_requires_live_server_and_ready_credentials(self):
         with tempfile.TemporaryDirectory() as directory:

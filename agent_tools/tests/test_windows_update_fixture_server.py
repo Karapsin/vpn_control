@@ -12,6 +12,7 @@ import os
 import fcntl
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -76,6 +77,29 @@ def evidence():
 
 
 class FixtureServerAdmissionTest(unittest.TestCase):
+    def test_static_diagnostic_accepts_optional_absent_qga_truncation_flags(self):
+        """Exercise the remote parser with QGA's optional false flags omitted."""
+        prefix = server.base._QGA
+        self.assertTrue(server._REMOTE_STATIC_DIAG.startswith(prefix))
+        suffix = server._REMOTE_STATIC_DIAG[len(prefix):]
+        payload = base64.b64encode(json.dumps({"version": 1, "import": "ok",
+                                               "certificate": "ok", "resources": "ok"}).encode()).decode()
+        def run(status):
+            prelude = ("import base64,json,sys\n"
+                       "def live(*args):return True\n"
+                       "def decode(raw):return raw.decode()\n"
+                       "def call(sock,command,args):\n"
+                       " return {'pid':7} if command=='guest-exec' else " + repr(status) + "\n")
+            completed = subprocess.run([sys.executable, "-c", prelude + suffix,
+                                        "socket", "1", "1", "python", "stage", "cert",
+                                        base64.b64encode(b"print(1)").decode()],
+                                       capture_output=True, check=False)
+            self.assertEqual(0, completed.returncode, completed.stderr.decode())
+            return json.loads(completed.stdout)
+        status = {"exited": True, "exitcode": 0, "out-data": payload}
+        self.assertEqual("observed", run(status)["state"])
+        self.assertEqual("guest-output-truncated", run({**status, "err-truncated": True})["phase"])
+
     def test_start_requires_exact_request_without_private_urls_or_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:
             for extra in ({"certificatePath": "C:\\secret.pem"}, {"manifestUrl": "https://private.invalid"}):
@@ -121,6 +145,48 @@ class FixtureServerAdmissionTest(unittest.TestCase):
             remote.return_value = json.dumps({"state": "observed", "inventory": None}).encode()
             with self.assertRaises(server.WindowsUpdateFixtureServerError):
                 server.python_preflight(tmp, REQUEST)
+
+    def test_python_inventory_diagnostic_classifies_ambiguous_fixed_candidates_without_selecting_path(self):
+        owner_local = {"path": r"C:\Users\vpncp117\AppData\Local\Programs\Python\Python313\python.exe",
+                       "sha256": "7" * 64, "version": "3.13.15",
+                       "signer": "CN=Python Software Foundation"}
+        program_files = {"path": r"C:\Program Files\Python314\python.exe",
+                         "sha256": "8" * 64, "version": "3.14.0",
+                         "signer": "CN=Python Software Foundation"}
+        descriptor = (object(), object(), ("windows-cp117", *GUEST))
+        response = json.dumps({"state": "observed", "inventory":
+                               {"version": 1, "candidates": [owner_local, program_files]}}).encode()
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(server, "_admit_campaign") as admission, \
+             patch.object(server.base, "_descriptor", return_value=descriptor), \
+             patch.object(server.base, "_remote", return_value=response):
+            result = server.python_inventory_diagnostic(tmp, REQUEST)
+        self.assertEqual(result["state"], "observed")
+        self.assertEqual(result["candidateCount"], 2)
+        self.assertFalse(result["serverReady"])
+        self.assertNotIn("path", json.dumps(result).lower())
+        self.assertNotIn(owner_local["path"], json.dumps(result))
+        self.assertEqual(result["candidates"], [
+            {"location": "owner-local", "pythonExeSha256": "7" * 64,
+             "pythonVersion": "3.13.15", "signer": "python-software-foundation"},
+            {"location": "program-files", "pythonExeSha256": "8" * 64,
+             "pythonVersion": "3.14.0", "signer": "python-software-foundation"},
+        ])
+        admission.assert_called_once()
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(server, "_admit_campaign"), \
+             patch.object(server.base, "_descriptor", return_value=descriptor), \
+             patch.object(server.base, "_remote", return_value=response):
+            with self.assertRaisesRegex(server.WindowsUpdateFixtureServerError, "not unique"):
+                server.python_preflight(tmp, REQUEST)
+        unsafe = json.dumps({"state": "observed", "inventory":
+                             {"version": 1, "candidates": [{**owner_local, "path": r"C:\\Temp\\python.exe"}]}}).encode()
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(server, "_admit_campaign"), \
+             patch.object(server.base, "_descriptor", return_value=descriptor), \
+             patch.object(server.base, "_remote", return_value=unsafe):
+            with self.assertRaisesRegex(server.WindowsUpdateFixtureServerError, "identity is invalid"):
+                server.python_inventory_diagnostic(tmp, REQUEST)
 
     def test_existing_intent_is_unknown_and_never_replayed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -197,6 +263,7 @@ class FixtureServerAdmissionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
              patch.object(server, "_python_inventory", return_value=python), \
              patch.object(server, "_private_tls_descriptor", return_value=descriptor), \
+             patch.object(server, "acl_preflight", return_value={"state": "ready"}), \
              patch.object(server, "_admit_campaign", return_value=(PAIR, GUEST)), \
              patch.object(server.stage, "status", return_value={"fileHashes":
                           {"server/prepare_desktop_update_fixture.py": "8" * 64}}), \
@@ -557,8 +624,7 @@ class FixtureServerAdmissionTest(unittest.TestCase):
                 calls.append((operation, payload))
                 if operation == "guest-exec":
                     return {"pid": 456}
-                return {"exited": True, "exitcode": 0, "out-truncated": False,
-                        "err-truncated": False, "out-data": base64.b64encode(json.dumps(
+                return {"exited": True, "exitcode": 0, "out-data": base64.b64encode(json.dumps(
                             {"taskAbsent": True, "matchingProcessAbsent": True,
                              "listenerAbsent": True}).encode()).decode()}
             namespace["call"] = read_only_call
@@ -604,6 +670,67 @@ class FixtureServerAdmissionTest(unittest.TestCase):
             with self.assertRaisesRegex(server.WindowsUpdateFixtureServerError, "cannot be aborted"):
                 server.abort_start(tmp, cleanup)
             reserve.assert_not_called()
+
+    def test_cleanup_status_caches_reaped_qga_result_before_fresh_verify_loss(self):
+        """A lost verification response must not consume the only terminal child result."""
+        source = server._REMOTE_CLEANUP_STATUS
+        body = source[source.index("root,env,lease_id,role,role_corr,server_corr,"):]
+        terminal = {"taskAbsent": True, "matchingProcessAbsent": True, "listenerAbsent": True,
+                    "originalSid": GUEST[3], "sessionId": 1, "serverPid": 0,
+                    "serverProcessStartIdentity": "", "serverPort": 0}
+        absence = {key: True for key in ("taskAbsent", "matchingProcessAbsent", "listenerAbsent")}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            job = root / "windows-cp117" / "windows-update-fixture-server" / SERVER / ("cleanup-" + PROBE)
+            job.mkdir(parents=True, mode=0o700)
+            for directory in (root, job.parent.parent.parent, job.parent.parent, job.parent, job):
+                os.chmod(directory, 0o700)
+            script = b"cleanup"; verify = b"verify"
+            binding = {"leaseId": LEASE, "role": "server-start", "roleCorrelationId": SERVER,
+                       "serverCorrelationId": SERVER, "cleanupCorrelationId": PROBE,
+                       "socketPath": GUEST[0], "qemuPid": GUEST[1], "startTicks": GUEST[2],
+                       "commandSha256": hashlib.sha256(script).hexdigest(),
+                       "verifyCommandSha256": hashlib.sha256(verify).hexdigest(),
+                       "dispatchMode": "dispatched"}
+            for name, value in (("binding.json", binding), ("dispatch.json", {"pid": 7})):
+                path = job / name; path.write_text(json.dumps(value)); os.chmod(path, 0o600)
+            arguments = [str(root), "windows-cp117", LEASE, "server-start", SERVER, SERVER, PROBE,
+                         GUEST[0], str(GUEST[1]), str(GUEST[2]), SOURCE,
+                         REQUEST["fixtureReceiptArtifactId"], REQUEST["baseMsiArtifactId"],
+                         REQUEST["targetMsiArtifactId"], base64.b64encode(verify).decode(),
+                         hashlib.sha256(script).hexdigest(), hashlib.sha256(verify).hexdigest()]
+            calls = []
+            def first_call(_socket, operation, payload):
+                calls.append((operation, payload))
+                if operation == "guest-exec-status" and payload == {"pid": 7}:
+                    return {"exited": True, "exitcode": 0,
+                            "out-data": base64.b64encode(json.dumps(terminal).encode()).decode()}
+                raise ValueError("verify response lost")
+            namespace = {"os": os, "stat": stat, "json": json, "hashlib": hashlib,
+                         "base64": base64, "fcntl": fcntl, "uuid": uuid,
+                         "sys": type("Argv", (), {"argv": ["remote", *arguments]})(),
+                         "live": lambda *_: True, "require_campaign_role": lambda *_: None,
+                         "call": first_call, "decode": lambda raw: raw.decode()}
+            exec(compile(ast.parse(server._PRIVATE_REMOTE_JSON), "private-json", "exec"), namespace)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exec(compile(body, "cleanup-status", "exec"), namespace)
+            self.assertEqual("unknown", json.loads(output.getvalue())["state"])
+            self.assertEqual(terminal, json.loads((job / "terminal.json").read_text()))
+            def second_call(_socket, operation, payload):
+                calls.append((operation, payload))
+                if operation == "guest-exec": return {"pid": 8}
+                if payload == {"pid": 8}:
+                    return {"exited": True, "exitcode": 0,
+                            "out-data": base64.b64encode(json.dumps(absence).encode()).decode()}
+                raise AssertionError("QGA reaped child was queried again")
+            namespace["call"] = second_call
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exec(compile(body, "cleanup-status", "exec"), namespace)
+            self.assertEqual("observed", json.loads(output.getvalue())["state"])
+            self.assertEqual(1, sum(1 for operation, payload in calls
+                                    if operation == "guest-exec-status" and payload == {"pid": 7}))
 
     def test_cleanup_status_requires_terminal_and_fresh_absence_before_lease_finish(self):
         cleanup = {"leaseId": LEASE, "serverCorrelationId": SERVER,

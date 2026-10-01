@@ -36,6 +36,35 @@ class NativeArtifactRegistryTest(unittest.TestCase):
             self.assertEqual("mismatch", checked["verification"])
 
     @unittest.skipIf(os.name == "nt", "private registry writes require POSIX ownership admission")
+    def test_readonly_verify_rehashes_bytes_without_registry_housekeeping(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); artifact = root / "package"; artifact.write_bytes(b"current bytes")
+            registered = registry.register_artifact(root, self.local_record(artifact))
+            index = root / ".rag_index" / "native-artifacts"
+            before = {item.name: item.read_bytes() for item in index.iterdir()}
+            with mock.patch.object(registry, "_prepare_registry", side_effect=AssertionError("writer used")), \
+                 mock.patch.object(registry, "_locked", side_effect=AssertionError("lock creation used")), \
+                 mock.patch.object(registry, "_cleanup_temporary", side_effect=AssertionError("cleanup used")):
+                verified = registry.verify_artifact_readonly(root, registered["artifactId"])
+            after = {item.name: item.read_bytes() for item in index.iterdir()}
+            self.assertEqual("verified", verified["verification"])
+            self.assertEqual(before, after)
+
+    @unittest.skipIf(os.name == "nt", "private registry writes require POSIX ownership admission")
+    def test_readonly_verify_rejects_legacy_record_without_migrating_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); artifact = root / "legacy"; artifact.write_bytes(b"legacy bytes")
+            registered = registry.register_artifact(root, self.local_record(artifact))
+            entry = root / ".rag_index" / "native-artifacts" / (registered["artifactId"] + ".json")
+            legacy = {"schemaVersion": 1, **{key: value for key, value in registered.items() if key != "locations"},
+                      **self.local_record(artifact)}
+            entry.write_text(json.dumps(legacy, sort_keys=True), encoding="utf-8")
+            before = entry.read_bytes()
+            with self.assertRaisesRegex(registry.NativeArtifactRegistryError, "not current"):
+                registry.verify_artifact_readonly(root, registered["artifactId"])
+            self.assertEqual(before, entry.read_bytes())
+
+    @unittest.skipIf(os.name == "nt", "private registry writes require POSIX ownership admission")
     def test_register_rejects_stale_declared_bytes_before_creating_index(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); artifact = root / "package"; artifact.write_bytes(b"actual")

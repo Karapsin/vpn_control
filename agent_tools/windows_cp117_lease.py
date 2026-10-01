@@ -139,7 +139,7 @@ try:
    if action=='finish':
     server=('live' if old['role']=='server-start' and desired['lastOutcome']=='succeeded' else 'stopped' if old['role'] in ('server-start','server-stop') else old['server'])
     credentials=('ready' if old['role']=='credentials' and desired['lastOutcome']=='succeeded' else 'cleaned' if old['role']=='credentials-cleanup' and desired['lastOutcome']=='succeeded' else old['credentials'])
-    if not (old['state']=='role-active' and desired['state']=='active' and desired['role'] is None and desired['correlationId'] is None and desired['server']==server and desired['credentials']==credentials and desired['lastOutcome'] in ('succeeded','failed-cleaned') and (old['role'] not in ('server-stop','credentials-cleanup') or desired['lastOutcome']=='succeeded') and isinstance(desired['lastEvidenceSha256'],str) and len(desired['lastEvidenceSha256'])==64):raise ValueError()
+    if not (old['state']=='role-active' and desired['state']=='active' and desired['role'] is None and desired['correlationId'] is None and desired['server']==server and desired['credentials']==credentials and desired['lastOutcome'] in ('succeeded','failed-cleaned','unknown-cleaned') and (old['role'] not in ('server-stop','credentials-cleanup') or desired['lastOutcome']=='succeeded') and (old['role']=='base' or desired['lastOutcome']!='unknown-cleaned') and isinstance(desired['lastEvidenceSha256'],str) and len(desired['lastEvidenceSha256'])==64):raise ValueError()
    if action=='close' and not (old['state']=='active' and old['role'] is None and old['server']=='stopped' and old['credentials']!='ready' and desired['state']=='closed' and desired['role'] is None and desired['correlationId'] is None and desired['credentials']==old['credentials'] and isinstance(desired['lastEvidenceSha256'],str) and len(desired['lastEvidenceSha256'])==64):raise ValueError()
   if action=='close':
    if os.path.exists(closed):raise ValueError()
@@ -268,7 +268,7 @@ def _active(directory: Path) -> dict[str, Any] | None:
                                or (record["correlationId"] is not None and not _UUID.fullmatch(record["correlationId"]))
                                or record["server"] not in {"stopped", "starting", "live", "stopping", "unknown"}
                                or record["credentials"] not in {"absent", "ready", "cleaned"}
-                               or record["lastOutcome"] not in {None, "succeeded", "failed-cleaned"}
+                               or record["lastOutcome"] not in {None, "succeeded", "failed-cleaned", "unknown-cleaned"}
                                or (record["lastEvidenceSha256"] is not None and
                                    (not isinstance(record["lastEvidenceSha256"], str) or not _HASH.fullmatch(record["lastEvidenceSha256"])))):
         raise Cp117LeaseError("CP117 campaign active receipt is invalid.")
@@ -427,7 +427,11 @@ def claim_role(root: Path | str, lease_id: str, role: str, correlation_id: str, 
 def finish_role(root: Path | str, lease_id: str, role: str, correlation_id: str,
                 terminal_receipt_sha256: str, outcome: str, remote: _Remote) -> dict[str, Any]:
     """Internal only; route adapter must validate terminal state and cleanup."""
-    if role not in _ROLES or not isinstance(correlation_id, str) or not _UUID.fullmatch(correlation_id) or not isinstance(terminal_receipt_sha256, str) or not _HASH.fullmatch(terminal_receipt_sha256) or outcome not in {"succeeded", "failed-cleaned"} or (role in {"server-stop", "credentials-cleanup"} and outcome != "succeeded"):
+    if (role not in _ROLES or not isinstance(correlation_id, str) or not _UUID.fullmatch(correlation_id)
+            or not isinstance(terminal_receipt_sha256, str) or not _HASH.fullmatch(terminal_receipt_sha256)
+            or outcome not in {"succeeded", "failed-cleaned", "unknown-cleaned"}
+            or (role in {"server-stop", "credentials-cleanup"} and outcome != "succeeded")
+            or (outcome == "unknown-cleaned" and role != "base")):
         raise Cp117LeaseError("CP117 terminal role evidence is invalid.")
     directory, lock = _locked(Path(root).resolve(strict=True))
     try:
@@ -445,8 +449,15 @@ def finish_role(root: Path | str, lease_id: str, role: str, correlation_id: str,
     return _advance(root, lease_id, current, desired, "finish", remote)
 
 
-def close(root: Path | str, lease_id: str, cleanup: Mapping[str, Any], remote: _Remote) -> dict[str, Any]:
-    """Internal only; cleanup fields are claims until a fixed native adapter verifies them."""
+def close(root: Path | str, lease_id: str, cleanup: Mapping[str, Any], remote: _Remote,
+          *, expected_current: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Close a verified idle campaign, optionally requiring its exact admitted record.
+
+    The expected record is checked under the local lease lock, then `_advance`
+    compares the same record again under its own lock before remote dispatch.
+    A role transition between admission and close therefore cannot reuse an
+    earlier terminal proof.
+    """
     fields = {"guestGeneration", "serverStopped", "credentialsCleaned", "protectedJobsTerminalCleaned",
               "activeInstallerProcessesAbsent", "cleanupReceiptSha256"}
     if not isinstance(cleanup, Mapping) or set(cleanup) != fields or cleanup.get("serverStopped") is not True or cleanup.get("credentialsCleaned") is not True or cleanup.get("protectedJobsTerminalCleaned") is not True or cleanup.get("activeInstallerProcessesAbsent") is not True or not isinstance(cleanup.get("cleanupReceiptSha256"), str) or not _HASH.fullmatch(cleanup["cleanupReceiptSha256"]):
@@ -454,7 +465,13 @@ def close(root: Path | str, lease_id: str, cleanup: Mapping[str, Any], remote: _
     directory, lock = _locked(Path(root).resolve(strict=True))
     try:
         current = _active(directory)
-        if current is None or current["identity"]["leaseId"] != lease_id or current["state"] != "active" or current["role"] is not None or current["server"] != "stopped" or current["credentials"] == "ready" or cleanup["guestGeneration"] != {"socketPath": current["identity"]["socketPath"], "qemuPid": current["identity"]["qemuPid"], "startTicks": current["identity"]["startTicks"]}:
+        if (current is None or (expected_current is not None and
+                (not isinstance(expected_current, Mapping) or current != dict(expected_current)))
+                or current["identity"]["leaseId"] != lease_id or current["state"] != "active"
+                or current["role"] is not None or current["server"] != "stopped"
+                or current["credentials"] == "ready"
+                or cleanup["guestGeneration"] != {"socketPath": current["identity"]["socketPath"],
+                    "qemuPid": current["identity"]["qemuPid"], "startTicks": current["identity"]["startTicks"]}):
             raise Cp117LeaseError("CP117 campaign cleanup identity is not complete.")
         desired = dict(current, sequence=current["sequence"] + 1, state="closed",
                        lastEvidenceSha256=cleanup["cleanupReceiptSha256"])

@@ -71,6 +71,18 @@ current run to exit, then run a fresh pre-push tier.
 
 The MCP server has no root parameter: all operations are fixed to this checkout. Commit paths reject absolute paths, traversal, pathspec magic, globs, generated output, agent state, runtime state, and native runtime binaries. A commit path list must cover every current change, preventing accidental partial staging of unknown work.
 
+For the CP117 Windows update fixture, call
+`vm_workflow(action="windows-fixture-server-acl-preflight", inputs=<exact server-start request>)`
+before a fresh server start. It compares the staged fixture script hash with the
+frozen Git source and requires the Windows-safe probe-directory creation and
+exact ACL verifier. `blocked` or `unknown` prevents server reservation, lease
+claim, and task creation. The fixed
+`windows-fixture-server-probe-events-acl-diagnostic` observes the failed
+`316e6189-5be0-4ea0-bca1-a3905816d815` attempt without returning raw SIDs.
+The isolated `windows-fixture-acl-preflight` scratch exercise is scoped to QGA
+SYSTEM and cannot establish original-user acceptance; use the source-bound
+server gate for admission.
+
 ## Command-Line Fallback
 
 The same operations are available without MCP through `agent_tools/mcp_tool.sh`:
@@ -657,10 +669,253 @@ workspace or start a guest. Cleanup remains a separately reviewed action.
 **Windows interpreter preflight.** `windows-fixture-python-preflight` takes
 exact `host`, `leaseId`, `stageCorrelationId`, `serverCorrelationId`,
 `sourceSha`, `fixtureReceiptArtifactId`, `baseMsiArtifactId`, and
-`targetMsiArtifactId`. It performs bounded read-only CP117 QGA inspection of
-the fixed signed Python interpreter and reports only its hash/version. This
+`targetMsiArtifactId`. Run it after `windows-fixture-stage-collect` has proved
+the exact stage. It performs bounded read-only CP117 QGA inspection of the
+fixed signed Python interpreter and reports only its hash/version. This
 does not provision credentials, start a server, or admit an MSI update; those
 routes remain gated by their full lifecycle and original-owner network proof.
+
+**Windows read-only recovery views.** `windows-fixture-stage-diagnostic` takes
+only `{correlationId}` after an uncertain fixture stage. It binds the local
+intent, registered artifacts, campaign and VM generation before reporting a
+bounded phase. Every result keeps replay and native action disallowed; use the
+phase to select a separately reviewed cleanup or recovery action.
+The one-correlation `windows-fixture-stage-recover-7f27` accepts only
+`{"host":"archlinux"}`. It closes the diagnosed pre-dispatch stage only after
+confirming the original host submitter is gone, the guest create task and leaf
+are absent, the campaign and VM generation still match, and the base install is
+idle. It retains the original intent and an exact cleanup receipt. Ambiguous
+or partial cleanup remains unknown until its guarded reconciliation proves the
+same absence facts.
+`windows-cp117-campaign-rebase` opens one new source-bound campaign after that
+fixed recovery, using a new canonical lease ID and the exact prior lease,
+source SHA and registered fixture/base/target artifact IDs. It requires the
+closed old campaign, bound base terminal receipt, unchanged VM generation and
+fresh idle 2.1.19 install. A lost response is not replay permission.
+`windows-cp117-campaign-status` accepts only `{"host":"archlinux"}` and
+reports the verified current or closed campaign with a read-only next action.
+`windows-cp117-campaign-diagnostic` uses the same fixed input and returns only
+a bounded failed proof phase when campaign status is unknown.
+`windows-update-fixture-phase-status` accepts only `{correlationId}` and reads
+the durable HTTP fixture transfer and guest phase evidence. Its finite phase
+and next missing fact never authorize replay, extraction, or campaign changes.
+`windows-update-fixture-http-transfer` uses an exact `phase` plus the normal
+source-bound fixture-stage request for `prepare`; later phases accept only the
+frozen `correlationId`. It transfers the ZIP over a one-use host listener and
+uses the existing stage receipt for extraction and campaign completion. Each
+native phase reserves an intent before dispatch; a lost response is checked
+with read-only phase status rather than replayed.
+After an unknown host `stage-start`, its read-only `host-stage-probe` accepts
+only `{correlationId}` and hashes the exact remote bundle and binding. Only
+`host-stage-complete` permits the separately correlated listener start;
+partial, absent and uncertain host stages remain blocked without replay.
+After the current guest download submission, `guest-download-diagnostic`
+accepts only its fixed correlation. It reads the already scheduled task,
+downloaded file metadata, and one-use listener completion state, returning
+only finite task, file, and listener facts. It never submits a task, starts a
+listener, downloads bytes, extracts the bundle, or updates the app. Keep the
+correlation after an unknown result; this diagnostic is evidence for a later
+separately reviewed recovery action, never retry permission.
+The fresh-process fallback remains `mcp_tool.sh vm-workflow
+windows-update-fixture-http-transfer --inputs-file <private-json>` with
+`{"phase":"guest-download-diagnostic","correlationId":"e848bed2-5bea-47bc-a85a-6cf17b1fcc6a"}`.
+`windows-update-fixture-http-stage-extract-diagnostic` accepts only that
+current transfer correlation. It is a read-only observer of the uncertain
+guest extraction, returning only a bounded binding result and extraction
+phase, including finite remote-layout, guest-probe, dispatch-status,
+result-read, and receipt-invalid classifications. It never submits extraction, writes a guest file, changes a receipt, or
+retries the transfer.
+Its `e66-pre-effect-recovery` phase is a one-correlation repair for the recorded
+local source-open failure. It requires the ignored, owner-only Codex command
+transcript export, writes an immutable import receipt, and checks fresh remote
+absence before closing the consumed stage phase. It does not replay the stage.
+Its fixed `e66-retire-aborted-stage-status` and `e66-retire-aborted-stage`
+phases verify the aborted transfer and fresh host absence before retiring the
+held CP117 stage role as `failed-cleaned`. The status phase is read-only;
+the action preserves the original failed transfer and never resends bytes.
+`windows-cp117-e66-successor-start` takes the fixed retired e66 lease as
+`oldLeaseId`, one fresh canonical `newLeaseId`, `host=archlinux`, the exact
+source SHA and registered fixture/base/target artifact IDs. It verifies the
+immutable e66 retirement, fresh idle 2.1.19 installation and absent owner,
+then closes that idle campaign and begins the distinct successor. It never
+replays e66 or transfers fixture bytes. Its separate `-status` action is
+read-only; `-reconcile` reads back a durable pending campaign transition
+without repeating close or begin. A distinct `-resume-begin` action can reserve
+the new lease once if the old close is proven terminal while the new lease is
+conclusively absent; it writes a one-shot marker before reservation. Keep the supplied successor input after an
+unknown result and inspect status before any next action.
+`windows-update-fixture-guest-create-abort-status` accepts only the fixed
+guest-create correlation and reports whether the recorded, unserved download
+attempt can be retired. It is read-only. `windows-update-fixture-guest-create-abort`
+uses the same exact input to remove only that stopped, unserved host staging
+area and close its held stage role as failed-cleaned. It never retries guest
+creation, downloads, extraction, or the application update. An unknown result
+does not authorize a retry; inspect the status action first.
+`windows-cp117-guest-abort-successor-start` consumes only that terminal abort
+receipt and opens one new campaign with a fresh canonical lease ID, the same
+source SHA, and the registered fixture, base, and target artifact IDs. It first
+proves the old campaign is idle, the guest is still at 2.1.19 with no owner or
+runtime, and the remote cleanup marker is present. It never recreates the
+abandoned guest operation. Its `-status` action is read-only; `-reconcile`
+reads a durable partial close or open without repeating it; `-resume-begin`
+can reserve the new lease once only after the old close is terminal and the new
+lease is absent. Preserve the exact input after an unknown result and inspect
+status before a later reviewed action.
+`windows-fixture-credentials-diagnostic` accepts only its fixed CP117
+correlation and reports a bounded credentials phase and next read-only action.
+It includes finite host journal, binding, layout, and guest-observer outcomes,
+without exposing paths or credential material; it cannot create, clean up, or alter
+credentials, tasks, servers, or the application.
+`windows-fixture-credentials-failure-detail` accepts the current exact credentials
+correlation and reduces a fully bound terminal task failure to finite task-result,
+directory, ACL, file, provenance, and safe-stage values. It is read-only and never
+returns credential bytes, paths, or filenames.
+`windows-fixture-credentials-provenance-acl-shape` accepts that exact correlation
+only after a terminal provenance-ACL failure. It exposes seven finite ACL category
+labels and no paths, SIDs, filenames, or credential material.
+`windows-fixture-python-inventory-diagnostic` takes the exact eight CP117 server
+campaign fields and reports only finite signed-interpreter identities. It classifies
+an empty or ambiguous candidate set without selecting an interpreter or changing the
+existing unique-interpreter preflight rule.
+`windows-fixture-python-download-preflight` uses those same eight fields to observe
+the fixed Python endpoint from the admitted guest before any download. The separate
+`windows-fixture-python-host-source-observe` also requires the current campaign
+binding, then observes only a finite category for the fixed Arch source. Neither
+route transfers, installs, or exposes the source path or bytes.
+`windows-fixture-python-acquire-start` takes the exact nine CP117 campaign,
+artifact and fresh correlation fields. After a durable one-use intent, a limited
+original-user task downloads the fixed Python 3.13.15 AMD64 installer directly
+from python.org and verifies its exact length, SHA-256 and signer before placing
+it at the private fixed guest path. `windows-fixture-python-acquire-status`,
+`-collect` and `-reconcile` take only that correlation and never retry a submit.
+`windows-fixture-python-install-start` takes the same nine fields and requires
+the exact verified acquisition. It submits one limited original-user per-user
+installer task. `windows-fixture-python-install-status` and `-collect` take only
+the correlation and report finite task, registry and interpreter proof. An
+unknown submission is never replayed; a fresh correlation requires a separate
+exact cleanup and admission review.
+`windows-fixture-credentials-pre-effect-guard-probe` is a separate exact
+read-only check of the remote role guard and durable command metadata. It does
+not read or generate credential bytes, write a journal, dispatch QGA, or change
+credentials.
+`windows-update-fixture-download-abort-status` accepts only the fixed failed
+download correlation and reports whether its listener is stopped and unserved,
+the guest download tree remains empty, and no task, installer, or runtime is
+present. It is read-only. `windows-update-fixture-download-abort` uses the
+same exact input to retire only that unserved host stage and mark its stage
+role `failed-cleaned`. It never retries the scheduled download, deletes the
+guest evidence tree, extracts a bundle, or updates the application. An unknown
+result requires a fresh status read before any separately reviewed action.
+`windows-update-fixture-download-task-cleanup-status` accepts that same fixed
+correlation and reads whether the recorded download task is terminal, has the
+expected original-user action, and the empty guest evidence tree is safe. Its
+separate `windows-update-fixture-download-task-cleanup` action unregisters
+only that exact failed task after writing a durable cleanup receipt. It cannot
+start, repeat, or alter the download; an unknown result does not authorize a
+second cleanup submission.
+`windows-update-fixture-download-abort-current-...` is the separate action
+family for the current frozen download correlation. Its `task-cleanup-status`
+and `task-cleanup` actions first read, then unregister only the exact failed
+scheduled task. Its `status` and terminal action read, then retire only the
+stopped unserved host stage after the task cleanup receipt is durable. The
+family is bound to the current source, lease, and correlation; it cannot touch
+the completed historical download recovery or repeat a download.
+`windows-cp117-download-abort-successor-start` consumes only that terminal
+download-abort receipt. Given the fixed old lease, a fresh canonical new lease,
+the current source SHA, and the registered fixture/base/target artifacts, it
+closes the retired idle campaign and opens one distinct campaign. Its `-status`
+action is read-only; `-reconcile` reads durable partial close or open state;
+`-resume-close` can finish only a close already recorded in its durable intent,
+and `-resume-begin` can reserve the new lease once only after a terminal old
+close and proved absence of the new lease. It never recreates the download,
+serves bytes, or runs an installer.
+`windows-cp117-download-abort-current-successor-{start,status,reconcile,resume-begin}`
+is the isolated handoff for the current download retirement. It requires its
+fixed old lease, current source SHA, registered artifact IDs, and a fresh
+canonical new lease. Status is read-only; reconcile reads a durable partial
+close or open; resume-close finishes only a previously recorded close;
+resume-begin reserves the new lease only after terminal old-close proof and
+new-lease absence. It cannot touch historical successor
+state or repeat the failed download.
+Native unknown receipts for the fixed Windows stage, owner census, and stage
+diagnostic carry bounded phase/type and causal regression references in their
+failure fingerprint; the private raw receipt remains separate.
+`windows-msi-owner-census-preflight` and `windows-msi-owner-census` take only
+`{"host":"archlinux"}`. The former checks the fixed PowerShell probe; the
+latter reports a source-bound installed CLI and exact app owner process chain
+only when the disposable CP117 guest proves it. Neither route quits the app,
+stops a runtime, or admits an update.
+If the census is unknown, `windows-msi-owner-diagnostic` accepts the same fixed
+host input and reports only a bounded failed proof phase. It does not return
+raw guest output or authorize an owner action.
+`windows-msi-stale-lock-recover` accepts only `{"host":"archlinux"}`. It
+removes the fixed original-user stale lock once, after matching the base
+installation, VM generation, CLI hash, owner SID, runtime-off process census,
+and a durable pre-effect intent. An unresolved intent never authorizes replay.
+`windows-msi-stale-lock-diagnose` and
+`windows-msi-stale-lock-reconciliation-status` read the armed recovery only;
+they expose bounded proof failures and cannot delete or rearm the lock.
+`windows-msi-owner-relaunch-{launch,status,collect}` admits one fixed,
+original-user limited-session owner launch after proved stale-lock recovery
+and preserves unknown launch intent. `windows-msi-owner-public-status-{start,status,collect}`
+runs one fixed original-user limited scheduled task to validate the private
+controller endpoint and exact owner process pair, then invokes the installed
+public CLI `status`. It projects only a bounded runtime-off result; QGA never
+reads the private endpoint value. An unknown start is not replayable.
+`windows-msi-owner-public-status-diagnose` reports only a finite bootstrap
+phase and fixed task-state category for an already armed intent. It never
+resubmits the scheduled task or exposes controller credentials.
+`windows-msi-owner-public-status-retry-{preflight,start,status,collect}` is a
+second fixed one-shot with a distinct correlation after the original task is
+proved absent. Its read-only preflight checks the Scheduler, original-user
+account and Session 1. The retry stores a durable intent before submitting a
+limited original-user task and preserves the original unknown attempt.
+`windows-msi-owner-public-status-retry-diagnose` reads only the armed retry
+intent and the fixed scheduled task, projecting a finite bootstrap phase and
+task status without replay or private endpoint values.
+`windows-msi-owner-public-status-retry-observe` also accepts the fixed host;
+it reads the retry task after a lost response using the durable retry intent
+and VM generation, even if the current owner census has changed. It reports
+only a finite failed binding stage or task category.
+`windows-msi-owner-public-status-third-{start,status,collect}` is a separate
+fixed read-only one-shot. Start requires the first two task names to be absent,
+no active matching task process, and a fresh exact owner and runtime-off check.
+It writes a durable intent before submitting its own limited original-user
+task. Status and collect inspect that intent without replaying any submission.
+`windows-msi-owner-public-status-third-observe` reads the armed third task with
+the durable intent and exact VM generation, even if the live owner census has
+changed. It returns only finite task status or a binding blocker.
+`windows-msi-owner-relaunch-quit-{start,status,collect,diagnose}` is a fixed
+public CLI quit for the current relaunched CP117 owner. Start requires exact
+source, VM generation, owner pair, expected private-endpoint redaction and
+runtime-off proof. Its limited original-user task validates the endpoint,
+binds `quit` to that controller and verifies
+owner exit. A durable intent prevents replay after an unknown response. The
+other actions inspect only the fixed task and expose bounded results.
+`windows-msi-owner-relaunch-quit-v2-{start,status,collect,diagnose}` is a
+separate fixed one-shot for the long-running relaunch task. Its bootstrap
+verifies the relaunch task's exact action and principal, absence of the first
+quit and status tasks, and absence of a matching or ambiguous original-user
+encoded PowerShell task before registering its own limited-user public quit.
+It keeps its own durable intent and never resubmits an unknown attempt.
+`windows-msi-owner-relaunch-quit-v2-bootstrap-diagnostic` checks the fixed
+armed attempt's exact pre-registration gates read-only and returns one finite
+gate without submitting or replaying a task.
+`windows-msi-owner-relaunch-quit-v3-{start,status,collect,diagnose,bootstrap-diagnostic}`
+uses a separately correlated one-shot and a bounded, hash-verified compact
+outer PowerShell bootstrap. Its causal regression measures the final command
+below Windows' command-line limit. Prior unknown quit intents remain untouched.
+`windows-msi-owner-relaunch-quit-v3-task-result` reads only the armed v3 task,
+verifies its principal and exact action hash, and reports a finite
+pending/exited/failed result without replaying the public quit.
+`windows-msi-owner-quit-phase-{start,status,collect}` is a separate fixed
+original-user read-only diagnostic for a verified failed v3 quit. It checks
+the same identity, owner, endpoint and controller-bound public `status` gates
+and projects only the first finite failure phase from its task exit code.
+`windows-msi-owner-relaunch-quit-v4-{start,status,collect,diagnose}` is a
+new one-shot tied to the exact failed v3 task and its `owner-before` phase
+receipt. It accepts the two command forms proved for the relaunched owner,
+uses the bounded compact bootstrap, and preserves all earlier quit intents.
 
 `batch-plan` takes `batchId`, `recipe`, and recipe inputs. For
 `linux-scheduled-refresh`, use the preflight fields above without `scenarioId` or
@@ -1081,6 +1336,193 @@ the exact install is terminal, a detached current readback matches its target
 package and owner, and a fresh public inspection confirms runtime off and no
 operations. Unknown or changed state retains the lease; it never repeats an
 install.
+
+`windows-msi-base-reconcile` accepts only the exact existing base
+`correlationId`. It performs a fixed, bounded read of the already recorded
+intent, matching QGA generation, bootstrap result, and durable guest result.
+It classifies a generic bootstrap `triggered:false` record as
+`failurePhase: "bootstrap"` and
+`failureType: "task_trigger_outcome_ambiguous"`. The bootstrap may have
+registered or started the task before its broad catch, so this remains unknown;
+it never infers a no-effect failure or success from that record or a missing
+receipt. The route does not stage bytes, start or
+replay an installer, alter a guest, close a campaign, or clean up. Unknown
+results retain `replayAllowed: false` and require preserving the correlation.
+
+`windows-msi-base-diagnostic` accepts the same sole exact existing
+`correlationId`. It is a separate read-only observer for an unresolved base
+attempt. It returns only the correlation, a bounded binding state
+(`exact`, `mismatch`, or `unverified`), and one checkpoint:
+`local-intent`, `descriptor`, `remote-stage`, `remote-binding`,
+`remote-dispatch-absent`, `remote-dispatch-malformed`, `qga-protocol`, or
+`bootstrap-result-proof`. For an exactly bound absent dispatch record only, its
+fixed read-only QGA census also returns bounded task, correlation leaf/result,
+correlation-bearing PowerShell, product/version, and installer states. Those
+fields are observations, not proof that the bootstrap had no effect or that a
+closure is safe. It does not return guest output, paths, task data, credentials,
+or installer details. Its `guestProofFailure` is one of `none`,
+`qga-exec-rpc-or-protocol`, `qga-status-rpc-or-protocol`,
+`qga-status-exited-malformed`, `qga-status-terminal-fields-malformed`,
+`qga-status-running-timeout`, `qga-truncated`, `powershell-nonzero`,
+`powershell-empty-or-malformed-output`, or `projection`; every non-`none`
+code forces the proof fields to `unknown`. QGA's optional truncation fields are
+accepted only when absent or literal `false`; `true` or a non-boolean is rejected.
+For a `powershell-nonzero` census result, `guestProofFailurePhase` reports only
+one fixed phase: `task`, `leaf`, `process`, `product`, `installer`, or `output`.
+Other proof failures report `unavailable`, and a complete proof reports `none`.
+When the failure is `projection`, `guestProofProjectionReason` is only one of
+`missing-or-extra-fields`, `version-or-phase-invalid`,
+`nonzero-failure-envelope-invalid`, `success-enum-invalid`,
+`product-version-invalid`, or `internal-error`; it never exposes the rejected value. For only
+`missing-or-extra-fields`, `guestProofProjectionSchema` adds a fixed-order
+nine-bit `presenceMask` for `version`, `phase`, `task`, `leaf`, `result`,
+`correlationPowerShell`, `product`, `installedVersion`, and `installer`, plus
+an `extraFieldCount` capped at 9. It never includes field names beyond that
+published order or values. The projection reason is `none` for a complete proof
+and `unavailable` for every other proof failure.
+Every checkpoint preserves `state: "unknown"`,
+`replayAllowed: false`, and `nativeActionAllowed: false`; a missing stage or
+result proof does not establish that the accepted bootstrap had no effect. The fresh-process CLI fallback is
+`mcp_tool.sh vm-workflow windows-msi-base-diagnostic --inputs-file <private-json>`.
+
+`windows-msi-base-stage-diagnostic` accepts only the same existing
+`correlationId`. It validates the recorded source-bound base artifact locally,
+then performs a fixed read-only QGA query of that correlation's guest
+`base.msi`. It returns only `guestStage` (`absent`, `partial`, or `full`), the
+bounded observed byte count, and booleans for the registered size and SHA-256
+matches. The digest is calculated inside the guest; MSI bytes, raw hashes,
+paths, task output, and credentials never leave it. `full` only proves the
+staged file matches the immutable registered artifact; it does not prove a task
+or installer ran. Missing, malformed, truncated, changed-generation, or
+artifact evidence remains `unknown` with `replayAllowed: false` and
+`nativeActionAllowed: false`. The fresh-process CLI fallback is
+`mcp_tool.sh vm-workflow windows-msi-base-stage-diagnostic --inputs-file <private-json>`.
+
+`windows-msi-base-unknown-close` accepts only the two reviewed correlations
+`2ace6a48-ba60-4705-9200-4ff857f2aba6` and
+`45e4514a-c629-4f3b-99bc-aad599640d29`, each bound to source
+`19be9df22cbab8086c26e5ca907d9569a5a28a08` and its recorded command hash. It
+is recovery for those lost base submissions only. Before cleanup it requires two independent exact
+diagnostics with absent remote dispatch, a present correlation leaf, absent
+task/result/process/msiexec, the single `2.1.17` product, two fresh QGA
+censuses, and a normal idle readiness readback. It then fsyncs an immutable
+local close intent. The remote action is status-first and idempotently handles
+each leaf/stage partial state; it deletes only the exact correlation leaf and
+an exactly bound stage containing only `binding.json`. Two subsequent censuses
+must prove both are absent before the base role is recorded as
+`unknown-cleaned` and the CP117 campaign is closed. Lost, truncated, malformed,
+or changed evidence leaves the correlation unknown and non-replayable.
+
+`windows-msi-base-unknown-close-status` has the same reviewed fixed correlations
+and is read-only. It reports only a bounded phase/reason: local intent,
+descriptor, dual diagnostic, cleanup-status guard or parse, readiness, or
+lease. When a cleanup census is valid it includes only its bounded task, leaf,
+result, correlation-PowerShell, product/version, installer, remote-stage and
+mutation fields. It does not write the close marker, delete the guest leaf or
+stage, alter a campaign, expose raw guest output, or retry an installer.
+
+`windows-msi-base-transfer-preflight` accepts only one of those already
+recorded correlations. It validates the source-bound local MSI registry record,
+the exact CP117 generation, bounded QGA execution, and whether `C:` has room
+for two copies of that immutable MSI. It returns only QGA health and the
+`enough` or `insufficient` disk category. It creates no guest leaf, file, task,
+endpoint, server, credential, or installer action. A malformed or truncated
+reply remains `unknown` and non-replayable.
+
+`windows-msi-base-transfer-network-admission` accepts only the separately
+recorded partial-transfer correlation. It reads the exact CP117 QEMU
+generation, bounded metadata from that QEMU binary for every unbound device,
+and a bounded QGA PowerShell projection of the active guest adapter and IPv4
+default gateway. Only one QEMU user-mode NIC plus the exact SLIRP gateway
+(`10.0.2.2`) produces `eligible`, with a future host service bound to
+`127.0.0.1` and reached by the guest at that gateway. It neither binds a port
+nor creates a server, changes QEMU networking, connects from the guest, or
+touches the existing loopback fixture server. Any alternate or ambiguous NIC,
+gateway, QGA reply, or truncation stays `unknown` and non-replayable.
+
+`windows-msi-base-transfer-endpoint-probe` accepts only that same reviewed
+partial-transfer correlation. After a fresh network admission, it creates one
+short-lived Python HTTP listener on Arch `127.0.0.1` with a random port and
+one-time path/body nonce. A bounded QGA PowerShell request rechecks the QEMU
+user-network topology, disables the guest HTTP proxy for this request, and
+accepts only the exact nonce digest. The MCP result contains only
+`reachable`, `blocked`, or `unknown`; it never returns the endpoint, nonce,
+guest output, or MSI bytes. It always stops the listener and proves the port
+is no longer bound before returning. Lost replies, QGA truncation, spoofed
+proof, topology changes, and uncertain cleanup remain `unknown`, with no
+product action or replay authority. Use the fresh process fallback
+`mcp_tool.sh vm-workflow windows-msi-base-transfer-endpoint-probe --inputs-file <private-json>`.
+
+`windows-msi-base-transfer-endpoint-status` accepts only that same correlation
+after an uncertain endpoint cleanup. It reads the private persisted worker
+PID/generation, port, and nonce-digest record and returns only bounded worker
+(`running` or `stopped`), listener (`owned`, `absent`, or `unattributed`), and
+port (`bound` or `free`) facts, plus `startup` (`ready`, `missing`, or
+`unknown`) and `receipt` (`seen`, `not-seen`, or `unknown`) when its private `ready.json` and terminal
+worker receipt match the persisted identity. It never returns the port, URL,
+nonce, digest, or guest output. PID reuse, malformed records, changing CP117
+binding, and any unrecognized listener state remain `unknown`.
+
+`windows-msi-base-transfer-endpoint-reconcile` first runs that status check.
+It stops a listener only when the exact persisted worker generation owns the
+exact recorded bound port. It then performs a fresh status read; a lost stop
+response can complete only when that read proves the worker stopped and port
+free. An unattributed listener, PID reuse, or unknown observation never causes
+a kill. This action has no installer, MSI, guest product, or replay behavior.
+
+`windows-msi-http-transfer` is the fixed CP117 fallback for a verified base MSI
+after the QGA byte stream stopped early. Its `inputs` contain a fixed `phase`:
+`ps5-preflight` takes only `host: "archlinux"`; `prepare` takes the same exact
+source-bound request as `windows-msi-base-start`; later phases take only the
+private transfer `correlationId`. The workflow derives the registered MSI,
+current QEMU generation, owner SID, paths and one-use endpoint from verified
+state. Run the parser preflight, then prepare, stage-start/status,
+listener-start/status, guest-download/status, guest-task-cleanup/status,
+listener-stop and ready-for-base. Only a fully verified `ready-for-base` result
+admits `windows-msi-base-start-from-transfer` with the same base request and
+correlation. That base action independently checks the guest file owner,
+reparse points, size and SHA-256, then uses the existing lease and installer
+bootstrap without repeating QGA byte writes. Failed transfer states use the
+explicit guest-abort/abort-cleanup and status phases; successful base terminal
+readback uses guest-file-cleanup/terminal-cleanup and status phases. Unknown or
+running states never authorize replay or cleanup. The public result never
+exposes the one-use endpoint, token, port or guest task command.
+If `guest-status` stays `unknown`, use the read-only `guest-diagnostic` phase
+with the same correlation before any cleanup decision. It reports only bounded
+task state, principal/action/SID matches, guest leaf class, and a fixed reason
+enum; it never returns task arguments, paths, raw output, or credentials.
+For a principal or guest-leaf mismatch, `guest-diagnostic-detail` adds only
+finite subreason codes for the task account/logon/run level and the failing
+path component, fault kind and owner class. It remains read-only and does not
+authorize retry or cleanup.
+`guest-owner-census` reads the seven fixed CP117 transfer path components in
+one bounded QGA observation and returns only kind, reparse and owner classes
+for each. It exposes no path, ACL, SID, or raw guest output and cannot mutate
+the existing correlation.
+If `listener-status` is `unknown` after a guest download, use read-only
+`listener-diagnostic` with the same correlation. It reports finite binding,
+stage-file, intent, worker, receipt, and port-owner classes plus a bounded
+reason. It does not return a path, process ID, port, endpoint, or payload hash,
+and it never stops or cleans up the listener.
+
+`windows-msiexec-service-diagnostic` is a fixed CP117 read-only observation for
+the post-base-install Windows Installer process. Inputs are exactly
+`{"action":"preflight"|"status","host":"archlinux"}`. It binds the current
+guest and terminal base receipt before inspecting the one recorded process
+generation, `msiserver` service, and bounded transaction indicators. The result
+contains finite classes only and always sets `readinessAdmitted: false`; an idle
+candidate does not clear the separate `windows-msi-base-readiness` gate.
+
+When the QGA bootstrap process record expires after a successful base install,
+`windows-msi-base-preflight` with `profile: "terminal-reconcile"` parses the
+fixed PowerShell 5 proof, and `windows-msi-base-terminal-reconcile` with the
+exact correlation reads the durable result. It independently checks current
+guest/source binding, the fixed task identity and action, the staged MSI, and
+installed CLI/JAR/helper hashes. A terminal result is read-only; the base role
+still requires a separate idle-readiness check before it can be finished.
+`windows-msi-base-finish-observed` takes only that correlation and rereads both
+proofs before the one-use base campaign role transition. An unknown transition
+must be reconciled from its campaign receipt rather than replayed.
 
 `vm_workflow("rpm-proc-observe", inputs={"host":"fedora2328","environment":"fedora2328"})`
 is a fixed read-only process-visibility check for the disposable RPM guest. It

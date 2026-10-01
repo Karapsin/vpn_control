@@ -149,6 +149,100 @@ except Exception:out({'state':'unknown','correlationId':corr})
 '''
 
 
+# This is deliberately a separate observer from _REMOTE_STATUS.  Status is a
+# proof of a completed provision; this observer is for the response-loss case
+# and must still report a useful, non-secret fact when that proof cannot exist.
+_REMOTE_DIAGNOSTIC = base._QGA + r'''import time
+root,env,corr,lease_id,stage_corr,sock,pid,ticks,sid,source,fingerprint,receipt_id,base_id,target_id,provision_id,cert_hash,key_hash,trust_hash,leaf_hash,encoded=sys.argv[1:]
+def out(value):print(json.dumps(value,separators=(',',':'),sort_keys=True))
+try:
+ if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()
+ parent=os.path.join(root,env);group=os.path.join(parent,'windows-fixture-credentials');journal=os.path.join(group,corr)
+ def safe_directory(path):
+  info=os.lstat(path)
+  return stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode) and info.st_uid==os.geteuid() and stat.S_IMODE(info.st_mode)==0o700
+ try:
+  if not safe_directory(root) or not safe_directory(parent):out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'hostPhase':'layout-unsafe'}});raise SystemExit
+ except FileNotFoundError:out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'hostPhase':'layout-unsafe'}});raise SystemExit
+ try:
+  if not safe_directory(group):out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'hostPhase':'layout-unsafe'}});raise SystemExit
+ except FileNotFoundError:out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'hostPhase':'group-absent'}});raise SystemExit
+ try:
+  if not safe_directory(journal):out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'hostPhase':'layout-unsafe'}});raise SystemExit
+ except FileNotFoundError:out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'hostPhase':'journal-absent'}});raise SystemExit
+ path=os.path.join(journal,'binding.json')
+ try:
+  info=os.lstat(path)
+  if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>4096:out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'hostPhase':'layout-unsafe'}});raise SystemExit
+ except FileNotFoundError:out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'hostPhase':'binding-mismatch'}});raise SystemExit
+ expected={'binding':{'leaseId':lease_id,'stageCorrelationId':stage_corr,'sourceSha':source,'sourceFingerprint':fingerprint,'fixtureReceiptArtifactId':receipt_id,'baseMsiArtifactId':base_id,'targetMsiArtifactId':target_id,'socketPath':sock,'qemuPid':int(pid),'startTicks':int(ticks),'originalSid':sid,'sessionId':1,'limited':True},'provisionId':provision_id,'fileSha256':{'certificate':cert_hash,'privateKey':key_hash,'trustStore':trust_hash},'peerCertificateSha256':leaf_hash}
+ if json.load(open(path,encoding='utf-8'))!=expected:out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'hostPhase':'binding-mismatch'}});raise SystemExit
+ try:
+  task=call(sock,'guest-exec',{'path':'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe','arg':['-NoProfile','-NonInteractive','-EncodedCommand',encoded],'capture-output':True})
+  for i in range(40):
+   result=call(sock,'guest-exec-status',{'pid':task['pid']})
+   if result.get('exited') is True:break
+   time.sleep(.2)
+  else:raise ValueError()
+  if result.get('exitcode')!=0 or result.get('out-truncated') is not False or result.get('err-truncated') is not False:raise ValueError()
+  raw=base64.b64decode(result.get('out-data',''),validate=True)
+  if not 0<len(raw)<=8192:raise ValueError()
+  out({'state':'observed','correlationId':corr,'receipt':json.loads(decode(raw))})
+ except Exception:out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'hostPhase':'guest-observer-failed'}})
+except Exception:out({'state':'unknown','correlationId':corr})
+'''
+
+
+# This observer is intentionally narrower than _REMOTE_STATUS.  It can only
+# classify the provenance file's ACL after the ordinary diagnostic has already
+# proved an exact, terminal owner-task failure.  It never returns a path, SID,
+# ACE, file content, or command line.
+_REMOTE_PROVENANCE_ACL_SHAPE = base._QGA + r'''import time
+root,env,corr,lease_id,stage_corr,sock,pid,ticks,sid,source,fingerprint,receipt_id,base_id,target_id,encoded=sys.argv[1:]
+def out(value):print(json.dumps(value,separators=(',',':'),sort_keys=True))
+try:
+ if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()
+ group=os.path.join(root,env,'windows-fixture-credentials');journal=os.path.join(group,corr)
+ for path in (root,os.path.join(root,env),group,journal):
+  info=os.lstat(path)
+  if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
+ path=os.path.join(journal,'binding.json');info=os.lstat(path)
+ if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>4096:raise ValueError()
+ value=json.load(open(path,encoding='utf-8'))
+ expected={'binding':{'leaseId':lease_id,'stageCorrelationId':stage_corr,'sourceSha':source,'sourceFingerprint':fingerprint,'fixtureReceiptArtifactId':receipt_id,'baseMsiArtifactId':base_id,'targetMsiArtifactId':target_id,'socketPath':sock,'qemuPid':int(pid),'startTicks':int(ticks),'originalSid':sid,'sessionId':1,'limited':True}}
+ if value.get('binding')!=expected['binding']:raise ValueError()
+ if len(encoded)>30000:raise ValueError()
+ task=call(sock,'guest-exec',{'path':'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe','arg':['-NoProfile','-NonInteractive','-EncodedCommand',encoded],'capture-output':True})
+ for i in range(40):
+  result=call(sock,'guest-exec-status',{'pid':task['pid']})
+  if result.get('exited') is True:break
+  time.sleep(.2)
+ else:raise ValueError()
+ if result.get('exitcode')!=0 or result.get('out-truncated') is not False or result.get('err-truncated') is not False:raise ValueError()
+ raw=base64.b64decode(result.get('out-data',''),validate=True)
+ if not 0<len(raw)<=4096:raise ValueError()
+ out({'state':'observed','correlationId':corr,'receipt':json.loads(decode(raw))})
+except Exception:out({'state':'unknown','correlationId':corr})
+'''
+
+
+# This has the exact identity argv of _REMOTE_START but deliberately omits its
+# length-prefixed private payload and every guest operation.  It isolates the
+# shared remote lease guard from the first durable credential-journal write.
+_REMOTE_PRE_EFFECT_GUARD_PROBE = base._QGA + lease.remote_role_guard() + r'''
+root,env,corr,lease_id,stage_corr,sock,pid,ticks,sid,source,fingerprint,receipt_id,base_id,target_id=sys.argv[1:]
+def out(value):print(json.dumps(value,separators=(',',':'),sort_keys=True))
+try:
+ if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()
+ try:
+  require_campaign_role(root,env,lease_id,'credentials',corr,source,receipt_id,base_id,target_id,sock,pid,ticks)
+ except Exception:
+  out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'guard':'rejected'}});raise SystemExit
+ out({'state':'observed','correlationId':corr,'receipt':{'schemaVersion':1,'guard':'matched'}})
+except Exception:out({'state':'unknown','correlationId':corr})
+'''
+
+
 _REMOTE_CLEANUP_START = base._QGA + lease.remote_role_guard() + r'''import time
 root,env,corr,lease_id,stage_corr,provision_corr,sock,pid,ticks,sid,source,receipt_id,base_id,target_id,role,encoded=sys.argv[1:]
 def out(value):print(json.dumps(value,separators=(',',':'),sort_keys=True))
@@ -245,6 +339,116 @@ def _prior_intents_closed(root: Path, directory: Path, reader: Any) -> bool:
     return True
 
 
+def _abort_receipt_sha256(stage_correlation_id: str) -> str:
+    """Digest the only cleanup receipt accepted for an uncertain provision."""
+    receipt = {"schemaVersion": 1, "credentialDirectoryAbsent": True, "taskAbsent": True,
+               "stagePresent": True, "stageCorrelationId": stage_correlation_id}
+    return hashlib.sha256(json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _active_campaign(root: Path) -> Mapping[str, Any] | None:
+    try:
+        directory, lock = lease._locked(root)
+        try:
+            return lease._active(directory)
+        finally:
+            os.close(lock)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _active_matches_aborted_provision(active: Mapping[str, Any] | None, prior: Mapping[str, Any], *,
+                                      state: str, role: str | None, correlation_id: str | None) -> bool:
+    """Validate the retained terminal cleanup receipt against one provision."""
+    request = prior["request"]
+    identity = active.get("identity") if isinstance(active, Mapping) else None
+    identity_matches = isinstance(identity, Mapping) and all(
+        identity.get(name) == prior["binding"].get(name) for name in
+        ("leaseId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId",
+         "targetMsiArtifactId", "socketPath", "qemuPid", "startTicks"))
+    return bool(active and identity_matches and active["identity"]["leaseId"] == request["leaseId"]
+                and active["state"] == state and active["role"] == role
+                and active["correlationId"] == correlation_id and active["server"] == "stopped"
+                and active["credentials"] == "absent" and active["lastOutcome"] == "failed-cleaned"
+                and active["lastEvidenceSha256"] == _abort_receipt_sha256(request["stageCorrelationId"]))
+
+
+def _prior_provision_aborted_cleaned(root: Path, prior: Mapping[str, Any]) -> bool:
+    """Accept one preserved active lease only after its exact abort finished."""
+    request = prior["request"]
+    correlation_id = request["correlationId"]
+    try:
+        abort = _cleanup_intent(root, correlation_id, group=_ABORT_GROUP)
+        if (abort is None or abort["request"] != request or abort["binding"] != prior["binding"]
+                or abort["provisionCorrelationId"] != correlation_id):
+            return False
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return _active_matches_aborted_provision(_active_campaign(root), prior,
+                                             state="active", role=None, correlation_id=None)
+
+
+def _prior_provisions_retired(root: Path, directory: Path) -> bool:
+    """Retain every provision journal while rejecting unresolved work."""
+    for path in directory.iterdir():
+        if path.suffix != ".json":
+            continue
+        if not _canonical(path.stem):
+            return False
+        prior = _read_intent(root, path.stem)
+        if prior is None:
+            return False
+        try:
+            state = lease.inspect(root, prior["request"]["leaseId"]).get("state")
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+        if state != "closed" and not _prior_provision_aborted_cleaned(root, prior):
+            return False
+    return True
+
+
+def _prior_abort_history_retired(root: Path, directory: Path, record: Mapping[str, Any]) -> bool:
+    """Keep abort receipts while admitting the next held credentials abort only.
+
+    This applies solely to the abort journal.  A previous abort may be exact
+    and cleaned while the same stage lease remains active for the next
+    credentials role; ordinary credential cleanup still requires a closed
+    prior campaign.
+    """
+    request = record["request"]
+    correlation_id = request["correlationId"]
+    try:
+        current = _read_intent(root, correlation_id)
+        if (record["provisionCorrelationId"] != correlation_id or current is None
+                or current["request"] != request or current["binding"] != record["binding"]):
+            return False
+        active = _active_campaign(root)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    for path in directory.iterdir():
+        if path.suffix != ".json":
+            continue
+        if not _canonical(path.stem):
+            return False
+        prior = _cleanup_intent(root, path.stem, group=_ABORT_GROUP)
+        if prior is None:
+            return False
+        try:
+            if lease.inspect(root, prior["request"]["leaseId"]).get("state") == "closed":
+                continue
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+        provision = _read_intent(root, prior["provisionCorrelationId"])
+        if (provision is None or prior["provisionCorrelationId"] != prior["request"]["correlationId"]
+                or provision["request"] != prior["request"] or provision["binding"] != prior["binding"]
+                or prior["request"]["leaseId"] != request["leaseId"]
+                or prior["request"]["stageCorrelationId"] != request["stageCorrelationId"]
+                or not _active_matches_aborted_provision(active, provision, state="role-active",
+                                                         role="credentials", correlation_id=correlation_id)):
+            return False
+    return True
+
+
 def _read_intent(root: Path, correlation_id: str) -> dict[str, Any] | None:
     path = root / _GROUP / (correlation_id + ".json")
     try:
@@ -291,7 +495,7 @@ def _reserve(root: Path, record: Mapping[str, Any]) -> None:
                 or stat.S_IMODE(info.st_mode) != 0o600):
             raise WindowsFixtureCredentialsError("Credential journal lock is unsafe.")
         fcntl.flock(fd, fcntl.LOCK_EX)
-        if not _prior_intents_closed(root, directory, _read_intent):
+        if not _prior_provisions_retired(root, directory):
             raise WindowsFixtureCredentialsError("An existing credential intent needs readback or cleanup.")
         raw = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode()
         if len(raw) > 8192:
@@ -355,8 +559,10 @@ def _reserve_cleanup(root: Path, record: Mapping[str, Any], *, group: str = _CLE
                 or stat.S_IMODE(info.st_mode) != 0o600):
             raise WindowsFixtureCredentialsError("Credential cleanup lock is unsafe.")
         fcntl.flock(fd, fcntl.LOCK_EX)
-        if not _prior_intents_closed(root, directory,
-                                     lambda parent, corr: _cleanup_intent(parent, corr, group=group)):
+        prior_closed = _prior_intents_closed(
+            root, directory, lambda parent, corr: _cleanup_intent(parent, corr, group=group))
+        if not prior_closed and not (group == _ABORT_GROUP and
+                                     _prior_abort_history_retired(root, directory, record)):
             raise WindowsFixtureCredentialsError("An existing credential cleanup needs readback.")
         raw = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode()
         if len(raw) > 8192:
@@ -394,7 +600,7 @@ def _dispatch(root: Path, request: Mapping[str, str], binding: Mapping[str, Any]
         binding["originalSid"], binding["sourceSha"], binding["sourceFingerprint"],
         binding["fixtureReceiptArtifactId"], binding["baseMsiArtifactId"],
         binding["targetMsiArtifactId"])
-    return transport._run_ssh(config, "archlinux", argv, transport._remote_payload(payload), 120)
+    return transport._run_ssh(config, "archlinux", argv, transport._remote_payload(payload), 60)
 
 
 def _remote_observe(root: Path, request: Mapping[str, str], binding: Mapping[str, Any],
@@ -443,6 +649,410 @@ def _remote_observe(root: Path, request: Mapping[str, str], binding: Mapping[str
             or observed["certificateValidUntilUtc"] != record["certificateValidUntilUtc"]):
         raise WindowsFixtureCredentialsError("Credential generation changed.")
     return {"observation": observed, "provenanceSha256": response["provenanceSha256"]}
+
+
+def _guest_diagnostic_script(paths: Mapping[str, str], correlation_id: str,
+                             expected_hashes: Mapping[str, str], sid: str) -> str:
+    """Read only enough state to classify a lost credential dispatch.
+
+    No certificate, key, trust-store, provenance content, ACL entries, or
+    command line is emitted.  Hash comparisons and ACL verification happen in
+    the guest and only their finite results cross the boundary.
+    """
+    template = r'''$ErrorActionPreference='Stop'
+function Classify-Acl([string]$path,[bool]$directory){
+ try {
+  $acl=Get-Acl -LiteralPath $path;$rules=@($acl.Access);$want=@('S-1-5-18','S-1-5-32-544',@SID@)
+  if(-not $acl.AreAccessRulesProtected -or $rules.Count -ne 3){return 'mismatch'}
+  $seen=@()
+  foreach($rule in $rules){$actual=$rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+   if($want -cnotcontains $actual -or $seen -ccontains $actual -or $rule.AccessControlType.ToString() -cne 'Allow' -or
+    [int]$rule.FileSystemRights -ne 0x1F01FF -or $rule.IsInherited -or [int]$rule.PropagationFlags -ne 0 -or
+    [int]$rule.InheritanceFlags -ne $(if($directory){3}else{0})){return 'mismatch'};$seen+=@($actual)}
+  return 'verified'
+ }catch{return 'unavailable'}
+}
+try {
+ $root=@ROOT@;$taskName=@TASK@;$expected=@{certificate=@CERT_HASH@;privateKey=@KEY_HASH@;trustStore=@TRUST_HASH@}
+ @ANCESTORS@
+ $directory='absent';$directoryAcl='absent';$files=@{};$provenance='absent';$provenanceAcl='absent'
+ if([IO.File]::Exists($root)){$directory='unsafe'}elseif([IO.Directory]::Exists($root)){
+  $item=Get-Item -LiteralPath $root -Force
+  if(-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){$directory='unsafe'}else{
+   $directory='present';$directoryAcl=Classify-Acl $root $true
+   foreach($name in @('certificate','privateKey','trustStore')){
+    $path=Join-Path $root $(if($name -ceq 'certificate'){'server-cert.pem'}elseif($name -ceq 'privateKey'){'server-key.pem'}else{'fixture-trust.p12'})
+    if(-not [IO.File]::Exists($path) -and -not [IO.Directory]::Exists($path)){$files[$name]='absent'}else{
+     $file=Get-Item -LiteralPath $path -Force
+     if($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){$files[$name]='unsafe'}
+     elseif((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -eq $expected[$name]){$files[$name]='exact'}else{$files[$name]='mismatch'}
+    }
+   }
+   $proof=Join-Path $root 'provenance.json'
+   if([IO.File]::Exists($proof)){$proofItem=Get-Item -LiteralPath $proof -Force;if($proofItem.PSIsContainer -or ($proofItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $proofItem.Length -gt 12000){$provenance='unsafe'}else{$provenance='present';$provenanceAcl=Classify-Acl $proof $false}}
+   elseif([IO.Directory]::Exists($proof)){$provenance='unsafe'}
+  }
+ }
+ $scheduled=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+ if($null -eq $scheduled){$task=[pscustomobject]@{state='absent';lastResult=$null}}else{$info=Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction Stop;$rawResult=[int64]$info.LastTaskResult;$lastResult=if($rawResult -lt 0){$rawResult+4294967296}else{$rawResult};$task=[pscustomobject]@{state=$scheduled.State.ToString();lastResult=$lastResult}}
+ [pscustomobject]@{schemaVersion=1;directory=$directory;directoryAcl=$directoryAcl;files=$files;provenance=$provenance;provenanceAcl=$provenanceAcl;task=$task}|ConvertTo-Json -Compress
+}catch{exit 1}'''
+    values = {"ROOT": paths["directory"], "TASK": "VpnControlFixtureCredentials-" + correlation_id,
+              "SID": sid, "CERT_HASH": expected_hashes["certificate"],
+              "KEY_HASH": expected_hashes["privateKey"], "TRUST_HASH": expected_hashes["trustStore"]}
+    for name, value in values.items():
+        template = template.replace("@" + name + "@", _ps_literal(value))
+    return template.replace("@ANCESTORS@", _guest_fixed_ancestor_guard(_GUEST_ROOT))
+
+
+def _guest_provenance_acl_shape_script(paths: Mapping[str, str], correlation_id: str,
+                                       expected_hashes: Mapping[str, str], sid: str) -> str:
+    """Classify only the shape of a terminal failure's provenance ACL.
+
+    The script makes the normal terminal-failure preconditions local to the
+    guest, then returns finite category labels.  The labels deliberately omit
+    the provenance path, every SID, ACE order, and all credential bytes.
+    """
+    template = r'''$ErrorActionPreference='Stop'
+function Category([bool]$value,[string]$yes,[string]$no){if($value){return $yes};return $no}
+try {
+ $root=@ROOT@;$taskName=@TASK@;$expected=@{certificate=@CERT_HASH@;privateKey=@KEY_HASH@;trustStore=@TRUST_HASH@};$allowed=@('S-1-5-18','S-1-5-32-544',@SID@)
+ @ANCESTORS@
+ $item=Get-Item -LiteralPath $root -Force
+ if(-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'ROOT'}
+ foreach($name in @('certificate','privateKey','trustStore')){
+  $path=Join-Path $root $(if($name -ceq 'certificate'){'server-cert.pem'}elseif($name -ceq 'privateKey'){'server-key.pem'}else{'fixture-trust.p12'})
+  $file=Get-Item -LiteralPath $path -Force
+  if($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected[$name]){throw 'FILE'}
+ }
+ $task=Get-ScheduledTask -TaskName $taskName -ErrorAction Stop;$info=Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction Stop
+ $raw=[int64]$info.LastTaskResult;$result=if($raw -lt 0){$raw+4294967296}else{$raw}
+ if($task.State.ToString() -cne 'Ready' -or $result -eq 0){throw 'TASK'}
+ $proof=Join-Path $root 'provenance.json';$file=Get-Item -LiteralPath $proof -Force
+ if($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $file.Length -gt 12000){throw 'PROVENANCE'}
+ $acl=Get-Acl -LiteralPath $proof;$rules=@($acl.Access);$principals=@();$translate=$true
+ foreach($rule in $rules){try{$principals+=@($rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value)}catch{$translate=$false}}
+ $principalShape='unavailable'
+ if($translate){
+  $unique=@($principals|Select-Object -Unique);$unexpected=@($unique|Where-Object {$allowed -cnotcontains $_}).Count -gt 0;$missing=@($allowed|Where-Object {$unique -cnotcontains $_}).Count -gt 0;$duplicate=$unique.Count -ne $principals.Count
+  if($duplicate){$principalShape='duplicate'}elseif(-not $unexpected -and -not $missing -and $principals.Count -eq 3){$principalShape='exact'}elseif($unexpected -and $missing){$principalShape='unexpected-and-missing'}elseif($unexpected){$principalShape='unexpected'}else{$principalShape='missing'}
+ }
+ $rightsExact=@($rules|Where-Object {$_.AccessControlType.ToString() -cne 'Allow' -or [int]$_.FileSystemRights -ne 0x1F01FF}).Count -eq 0
+ $originExact=@($rules|Where-Object {$_.IsInherited}).Count -eq 0
+ $inheritanceExact=@($rules|Where-Object {[int]$_.InheritanceFlags -ne 0}).Count -eq 0
+ $propagationExact=@($rules|Where-Object {[int]$_.PropagationFlags -ne 0}).Count -eq 0
+ [pscustomobject]@{schemaVersion=1;protected=(Category $acl.AreAccessRulesProtected 'protected' 'unprotected');aceCount=$(if($rules.Count -eq 3){'three'}else{'other'});principals=$principalShape;rights=(Category $rightsExact 'all-allow-full-control' 'contains-other');origin=(Category $originExact 'all-explicit' 'inherited-present');inheritance=(Category $inheritanceExact 'file-only' 'other');propagation=(Category $propagationExact 'none' 'other')}|ConvertTo-Json -Compress
+}catch{exit 1}'''
+    values = {"ROOT": paths["directory"], "TASK": "VpnControlFixtureCredentials-" + correlation_id,
+              "SID": sid, "CERT_HASH": expected_hashes["certificate"],
+              "KEY_HASH": expected_hashes["privateKey"], "TRUST_HASH": expected_hashes["trustStore"]}
+    for name, value in values.items():
+        template = template.replace("@" + name + "@", _ps_literal(value))
+    return template.replace("@ANCESTORS@", _guest_fixed_ancestor_guard(_GUEST_ROOT))
+
+
+def _remote_diagnostic(root: Path, request: Mapping[str, str], binding: Mapping[str, Any],
+                       record: Mapping[str, Any]) -> dict[str, Any]:
+    config, target, _ = base._descriptor(root)
+    paths = _fixed_paths(request["stageCorrelationId"])
+    encoded = base64.b64encode(_guest_diagnostic_script(
+        paths, request["correlationId"], record["fileSha256"], binding["originalSid"]
+    ).encode("utf-16le")).decode("ascii")
+    if len(encoded) > 30000:
+        raise WindowsFixtureCredentialsError("Credential diagnostic is too large.")
+    hashes = record["fileSha256"]
+    command = transport._remote_command(_REMOTE_DIAGNOSTIC, str(target.fixture_transfer_root),
+        "windows-cp117", request["correlationId"], request["leaseId"], request["stageCorrelationId"],
+        binding["socketPath"], str(binding["qemuPid"]), str(binding["startTicks"]),
+        binding["originalSid"], binding["sourceSha"], binding["sourceFingerprint"],
+        binding["fixtureReceiptArtifactId"], binding["baseMsiArtifactId"], binding["targetMsiArtifactId"],
+        record["provisionId"], hashes["certificate"], hashes["privateKey"], hashes["trustStore"],
+        record["peerCertificateSha256"], encoded)
+    raw = transport._run_ssh(config, "archlinux", command, None, 30)
+    try:
+        response = json.loads(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        response = None
+    if (not isinstance(response, dict) or set(response) != {"state", "correlationId", "receipt"}
+            or response["state"] != "observed" or response["correlationId"] != request["correlationId"]):
+        raise WindowsFixtureCredentialsError("Credential diagnostic readback is unavailable.")
+    return response["receipt"]
+
+
+def _remote_provenance_acl_shape(root: Path, request: Mapping[str, str], binding: Mapping[str, Any],
+                                 record: Mapping[str, Any]) -> dict[str, str | int]:
+    config, target, _ = base._descriptor(root)
+    paths = _fixed_paths(request["stageCorrelationId"])
+    encoded = base64.b64encode(_guest_provenance_acl_shape_script(
+        paths, request["correlationId"], record["fileSha256"], binding["originalSid"]
+    ).encode("utf-16le")).decode("ascii")
+    if len(encoded) > 30000:
+        raise WindowsFixtureCredentialsError("Credential provenance ACL observer is too large.")
+    command = transport._remote_command(_REMOTE_PROVENANCE_ACL_SHAPE, str(target.fixture_transfer_root),
+        "windows-cp117", request["correlationId"], request["leaseId"], request["stageCorrelationId"],
+        binding["socketPath"], str(binding["qemuPid"]), str(binding["startTicks"]),
+        binding["originalSid"], binding["sourceSha"], binding["sourceFingerprint"],
+        binding["fixtureReceiptArtifactId"], binding["baseMsiArtifactId"], binding["targetMsiArtifactId"],
+        encoded)
+    raw = transport._run_ssh(config, "archlinux", command, None, 30)
+    try:
+        response = json.loads(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        response = None
+    if (not isinstance(response, dict) or set(response) != {"state", "correlationId", "receipt"}
+            or response["state"] != "observed" or response["correlationId"] != request["correlationId"]):
+        raise WindowsFixtureCredentialsError("Credential provenance ACL readback is unavailable.")
+    receipt = response["receipt"]
+    fields = {"schemaVersion", "protected", "aceCount", "principals", "rights", "origin",
+              "inheritance", "propagation"}
+    if (not isinstance(receipt, dict) or set(receipt) != fields or receipt.get("schemaVersion") != 1
+            or receipt.get("protected") not in {"protected", "unprotected"}
+            or receipt.get("aceCount") not in {"three", "other"}
+            or receipt.get("principals") not in {"exact", "duplicate", "unexpected", "missing",
+                                                  "unexpected-and-missing", "unavailable"}
+            or receipt.get("rights") not in {"all-allow-full-control", "contains-other"}
+            or receipt.get("origin") not in {"all-explicit", "inherited-present"}
+            or receipt.get("inheritance") not in {"file-only", "other"}
+            or receipt.get("propagation") not in {"none", "other"}):
+        raise WindowsFixtureCredentialsError("Credential provenance ACL receipt is invalid.")
+    return receipt
+
+
+def _diagnostic_phase(receipt: Any) -> tuple[str, str]:
+    """Map a bounded secret-free guest receipt to an admission-safe next read."""
+    if (isinstance(receipt, dict) and set(receipt) == {"schemaVersion", "hostPhase"}
+            and receipt.get("schemaVersion") == 1):
+        host_phase = receipt.get("hostPhase")
+        phases = {
+            "group-absent": ("host-group-absent", "credentials-abort-status"),
+            "journal-absent": ("host-journal-absent", "credentials-abort-status"),
+            "binding-mismatch": ("host-binding-mismatch", "credential-diagnostic"),
+            "layout-unsafe": ("host-layout-unsafe", "credential-diagnostic"),
+            "guest-observer-failed": ("guest-observer-failed", "credential-diagnostic"),
+        }
+        if host_phase in phases:
+            return phases[host_phase]
+        raise WindowsFixtureCredentialsError("Credential host diagnostic receipt is invalid.")
+    if (not isinstance(receipt, dict) or set(receipt) != {"schemaVersion", "directory", "directoryAcl", "files", "provenance", "provenanceAcl", "task"}
+            or receipt["schemaVersion"] != 1 or receipt["directory"] not in {"absent", "present", "unsafe"}
+            or receipt["directoryAcl"] not in {"absent", "verified", "mismatch", "unavailable"}
+            or not isinstance(receipt["files"], dict) or set(receipt["files"]) != {"certificate", "privateKey", "trustStore"}
+            or any(value not in {"absent", "exact", "mismatch", "unsafe"} for value in receipt["files"].values())
+            or receipt["provenance"] not in {"absent", "present", "unsafe"}
+            or receipt["provenanceAcl"] not in {"absent", "verified", "mismatch", "unavailable"}
+            or not isinstance(receipt["task"], dict) or set(receipt["task"]) != {"state", "lastResult"}
+            or not isinstance(receipt["task"]["state"], str) or receipt["task"]["state"] not in {"absent", "Ready", "Running", "Queued", "Disabled"}
+            or (receipt["task"]["state"] == "absent" and receipt["task"]["lastResult"] is not None)
+            or (receipt["task"]["state"] != "absent" and (type(receipt["task"]["lastResult"]) is not int or not 0 <= receipt["task"]["lastResult"] <= 4294967295))):
+        raise WindowsFixtureCredentialsError("Credential diagnostic receipt is invalid.")
+    task = receipt["task"]
+    if receipt["directory"] == "absent" and task["state"] == "absent":
+        return "pre-effect", "credentials-abort-status"
+    if task["state"] in {"Running", "Queued"}:
+        return "task-running", "credential-diagnostic"
+    complete = (receipt["directory"] == "present" and receipt["directoryAcl"] == "verified"
+                and set(receipt["files"].values()) == {"exact"} and receipt["provenance"] == "present"
+                and receipt["provenanceAcl"] == "verified" and task == {"state": "Ready", "lastResult": 0})
+    if complete:
+        return "ready-uncommitted", "credentials-status"
+    if task["state"] == "Ready" and task["lastResult"] != 0:
+        return "terminal-failed", "credentials-abort-status"
+    return "partial", "credentials-abort-status"
+
+
+def diagnostic(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Read-only response-loss classification; it never starts or cleans up anything."""
+    if not isinstance(value, Mapping) or set(value) != {"correlationId"} or not _canonical(value["correlationId"]):
+        raise WindowsFixtureCredentialsError("Credential diagnostic requires exact correlation.")
+    root = Path(root).resolve(strict=True); corr = value["correlationId"]
+    unknown = {"state": "unknown", "correlationId": corr, "replayAllowed": False,
+               "nativeActionAllowed": False, "productAction": False}
+    record = _read_intent(root, corr)
+    if record is None:
+        return unknown
+    request = record["request"]
+    try:
+        binding = _binding(root, request["leaseId"], request["stageCorrelationId"],
+                           provision_correlation_id=corr, require_credentials="absent")
+        if binding != record["binding"]:
+            return unknown
+        phase, next_read = _diagnostic_phase(_remote_diagnostic(root, request, binding, record))
+    except (ValueError, OSError, KeyError, TypeError):
+        return unknown
+    return {"state": "diagnosed", "correlationId": corr, "binding": "exact", "phase": phase,
+            "nextReadOnly": next_read, "replayAllowed": False, "nativeActionAllowed": False,
+            "productAction": False}
+
+
+def _terminal_failure_detail(receipt: Any) -> dict[str, Any]:
+    """Reduce a verified failed-task receipt to a finite, secret-free cause.
+
+    The observer already compares hashes and ACLs in the guest.  This function
+    intentionally returns neither file names nor values: knowing whether all
+    expected files were absent, mixed, or exact is enough to locate the failed
+    owner-task stage without disclosing credential material.
+    """
+    phase, _next_read = _diagnostic_phase(receipt)
+    if phase != "terminal-failed":
+        raise WindowsFixtureCredentialsError("Credential task has no terminal failure detail.")
+    # _diagnostic_phase has validated this exact public receipt schema.
+    assert isinstance(receipt, dict)
+    files = receipt["files"]
+    file_values = set(files.values())
+    file_state = ("all-absent" if file_values == {"absent"}
+                  else "all-exact" if file_values == {"exact"}
+                  else "mixed")
+    if receipt["directory"] == "absent":
+        safe_stage = "before-directory"
+    elif receipt["directory"] == "unsafe":
+        safe_stage = "directory-unsafe"
+    elif receipt["directoryAcl"] != "verified":
+        safe_stage = "directory-acl"
+    elif file_state == "all-absent":
+        safe_stage = "before-file-write"
+    elif file_state != "all-exact":
+        safe_stage = "file-write-or-integrity"
+    elif receipt["provenance"] == "absent":
+        safe_stage = "before-provenance"
+    elif receipt["provenance"] == "unsafe":
+        safe_stage = "provenance-unsafe"
+    elif receipt["provenanceAcl"] != "verified":
+        safe_stage = "provenance-acl"
+    else:
+        safe_stage = "after-provenance"
+    return {"taskLastResult": receipt["task"]["lastResult"],
+            "safeStage": safe_stage, "directory": receipt["directory"],
+            "directoryAcl": receipt["directoryAcl"], "files": file_state,
+            "provenance": receipt["provenance"], "provenanceAcl": receipt["provenanceAcl"]}
+
+
+def failure_detail(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Read-only detail for an exact credential owner-task failure.
+
+    It reuses the bounded diagnostic observer and never starts, retries, or
+    cleans up a provision.  Any response other than a fully bound terminal
+    task failure fails closed as ``unknown``.
+    """
+    if not isinstance(value, Mapping) or set(value) != {"correlationId"} or not _canonical(value["correlationId"]):
+        raise WindowsFixtureCredentialsError("Credential failure detail requires exact correlation.")
+    root = Path(root).resolve(strict=True); corr = value["correlationId"]
+    unknown = {"state": "unknown", "correlationId": corr, "replayAllowed": False,
+               "nativeActionAllowed": False, "productAction": False}
+    record = _read_intent(root, corr)
+    if record is None:
+        return unknown
+    request = record["request"]
+    try:
+        binding = _binding(root, request["leaseId"], request["stageCorrelationId"],
+                           provision_correlation_id=corr, require_credentials="absent")
+        if binding != record["binding"]:
+            return unknown
+        detail = _terminal_failure_detail(_remote_diagnostic(root, request, binding, record))
+    except (ValueError, OSError, KeyError, TypeError):
+        return unknown
+    return {"state": "detailed", "correlationId": corr, "binding": "exact", **detail,
+            "nextReadOnly": "credentials-abort-status", "replayAllowed": False,
+            "nativeActionAllowed": False, "productAction": False}
+
+
+def provenance_acl_shape(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Read-only, redacted classifier for a failed provenance ACL.
+
+    This cannot inspect a healthy or partial provision.  The ordinary bounded
+    diagnostic must first prove exact credential file hashes, a present
+    provenance file, a terminal failed owner task, and the provenance-ACL
+    stage.  The follow-up observes only ACL category labels under that exact
+    correlation/source/VM binding.
+    """
+    if not isinstance(value, Mapping) or set(value) != {"correlationId"} or not _canonical(value["correlationId"]):
+        raise WindowsFixtureCredentialsError("Credential provenance ACL shape requires exact correlation.")
+    root = Path(root).resolve(strict=True); corr = value["correlationId"]
+    unknown = {"state": "unknown", "correlationId": corr, "replayAllowed": False,
+               "nativeActionAllowed": False, "productAction": False}
+    record = _read_intent(root, corr)
+    if record is None:
+        return unknown
+    request = record["request"]
+    try:
+        binding = _binding(root, request["leaseId"], request["stageCorrelationId"],
+                           provision_correlation_id=corr, require_credentials="absent")
+        if binding != record["binding"]:
+            return unknown
+        detail = _terminal_failure_detail(_remote_diagnostic(root, request, binding, record))
+        if detail["safeStage"] != "provenance-acl":
+            return unknown
+        shape = _remote_provenance_acl_shape(root, request, binding, record)
+    except (ValueError, OSError, KeyError, TypeError):
+        return unknown
+    return {"state": "classified", "correlationId": corr, "binding": "exact", **shape,
+            "nextReadOnly": "credentials-abort-status", "replayAllowed": False,
+            "nativeActionAllowed": False, "productAction": False}
+
+
+def _local_payload_admission(record: Mapping[str, Any], binding: Mapping[str, Any]) -> str:
+    """Check the persisted non-secret payload metadata and generated commands.
+
+    The one-shot payload's bytes are intentionally gone after dispatch.  This
+    proves only that its durable metadata and both generated command envelopes
+    remain admissible; it neither regenerates nor reads credential material.
+    """
+    if record.get("binding") != binding or not _canonical(record.get("provisionId")):
+        raise WindowsFixtureCredentialsError("Credential payload metadata changed.")
+    paths = _fixed_paths(binding["stageCorrelationId"])
+    setup = _guest_setup_script(paths, binding["originalSid"])
+    finalize = _guest_finalize_script(binding, record, paths, record["provisionId"],
+                                      record["request"]["correlationId"])
+    if (len(base64.b64encode(setup.encode("utf-16le"))) > 30000
+            or len(base64.b64encode(finalize.encode("utf-16le"))) > 30000):
+        raise WindowsFixtureCredentialsError("Credential payload command is too large.")
+    return "metadata-admitted"
+
+
+def _remote_pre_effect_guard_probe(root: Path, request: Mapping[str, str],
+                                   binding: Mapping[str, Any]) -> str:
+    config, target, _ = base._descriptor(root)
+    command = transport._remote_command(_REMOTE_PRE_EFFECT_GUARD_PROBE,
+        str(target.fixture_transfer_root), "windows-cp117", request["correlationId"],
+        request["leaseId"], request["stageCorrelationId"], binding["socketPath"],
+        str(binding["qemuPid"]), str(binding["startTicks"]), binding["originalSid"],
+        binding["sourceSha"], binding["sourceFingerprint"], binding["fixtureReceiptArtifactId"],
+        binding["baseMsiArtifactId"], binding["targetMsiArtifactId"])
+    raw = transport._run_ssh(config, "archlinux", command, None, 30)
+    try:
+        response = json.loads(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        response = None
+    if (not isinstance(response, dict) or set(response) != {"state", "correlationId", "receipt"}
+            or response.get("state") != "observed" or response.get("correlationId") != request["correlationId"]
+            or response.get("receipt") not in ({"schemaVersion": 1, "guard": "matched"},
+                                                  {"schemaVersion": 1, "guard": "rejected"})):
+        raise WindowsFixtureCredentialsError("Credential remote role guard is unavailable.")
+    return response["receipt"]["guard"]
+
+
+def pre_effect_guard_probe(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Read-only isolation of the pre-write remote credentials guard."""
+    if not isinstance(value, Mapping) or set(value) != {"correlationId"} or not _canonical(value["correlationId"]):
+        raise WindowsFixtureCredentialsError("Credential guard probe requires exact correlation.")
+    root = Path(root).resolve(strict=True); corr = value["correlationId"]
+    unknown = {"state": "unknown", "correlationId": corr, "replayAllowed": False,
+               "nativeActionAllowed": False, "productAction": False}
+    record = _read_intent(root, corr)
+    if record is None:
+        return unknown
+    request = record["request"]
+    try:
+        binding = _binding(root, request["leaseId"], request["stageCorrelationId"],
+                           provision_correlation_id=corr, require_credentials="absent")
+        if binding != record["binding"]:
+            return unknown
+        payload = _local_payload_admission(record, binding)
+        guard = _remote_pre_effect_guard_probe(root, request, binding)
+    except (ValueError, OSError, KeyError, TypeError):
+        return unknown
+    return {"state": "observed", "correlationId": corr, "binding": "exact",
+            "localPayload": payload, "remoteRoleGuard": guard, "replayAllowed": False,
+            "nativeActionAllowed": False, "productAction": False}
 
 
 def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -527,8 +1137,18 @@ def _provision_record(root: Path, binding: Mapping[str, Any]) -> dict[str, Any]:
         raise WindowsFixtureCredentialsError("Fixture credential intent is unavailable.") from error
     if any(not _canonical(name) for name in names):
         raise WindowsFixtureCredentialsError("Fixture credential intent is ambiguous.")
-    matched = [record for name in names if (record := _read_intent(root, name)) is not None
-               and record["binding"] == binding]
+    matched = []
+    for name in names:
+        record = _read_intent(root, name)
+        if record is None or record["binding"] != binding:
+            continue
+        abort = _cleanup_intent(root, name, group=_ABORT_GROUP)
+        if abort is not None:
+            if (abort["request"] != record["request"] or abort["binding"] != record["binding"]
+                    or abort["provisionCorrelationId"] != name):
+                raise WindowsFixtureCredentialsError("Fixture credential abort history is ambiguous.")
+            continue
+        matched.append(record)
     if len(matched) != 1:
         raise WindowsFixtureCredentialsError("Fixture credential intent changed.")
     return matched[0]
@@ -869,10 +1489,22 @@ try {
  $leaf=[Security.Cryptography.X509Certificates.X509Certificate2]::new($der)
  $leafHash=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($der)).Replace('-','').ToLowerInvariant()
  if($leafHash -cne @LEAF_HASH@ -or $leaf.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::DnsName,$false) -cne 'github.com') {throw 'CERT'}
- $now=[DateTime]::UtcNow
- if($leaf.NotBefore.ToUniversalTime() -gt $now -or $leaf.NotAfter.ToUniversalTime() -le $now){throw 'CERT_TIME'}
- # The host verified the certificate-only PKCS12 and sent its digest in the
- # fixed campaign. This original-user task rehashes the same bytes above.
+$now=[DateTime]::UtcNow
+if($leaf.NotBefore.ToUniversalTime() -gt $now -or $leaf.NotAfter.ToUniversalTime() -le $now){throw 'CERT_TIME'}
+function Assert-PrivateFileAcl([string]$path){
+ $acl=Get-Acl -LiteralPath $path;$rules=@($acl.Access);$allowed=@('S-1-5-18','S-1-5-32-544',$sid)
+ if(-not $acl.AreAccessRulesProtected -or $rules.Count -ne 3){throw 'PROVENANCE_ACL'}
+ $seen=@()
+ foreach($rule in $rules){$actual=$rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+  if($allowed -cnotcontains $actual -or $seen -ccontains $actual -or $rule.AccessControlType.ToString() -cne 'Allow' -or
+   [int]$rule.FileSystemRights -ne 0x1F01FF -or $rule.IsInherited -or [int]$rule.InheritanceFlags -ne 0 -or
+   [int]$rule.PropagationFlags -ne 0){throw 'PROVENANCE_ACL'};$seen+=@($actual)}
+}
+$proof=Get-Item -LiteralPath $provenance -Force
+if($proof.PSIsContainer -or ($proof.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $proof.Length -ne 0){throw 'PROVENANCE'}
+Assert-PrivateFileAcl $provenance
+# The host verified the certificate-only PKCS12 and sent its digest in the
+# fixed campaign. This original-user task rehashes the same bytes above.
  $acls=@{}
  foreach($name in @('directory','certificate','privateKey','trustStore')){
   $a=Get-Acl -LiteralPath $paths[$name]
@@ -892,8 +1524,7 @@ try {
  $json=$receipt|ConvertTo-Json -Depth 9 -Compress
  if($json.Length -gt 12000){throw 'RECEIPT_SIZE'}
  [IO.File]::WriteAllText($provenance,$json,[Text.UTF8Encoding]::new($false))
- $fileAcl=Get-Acl -LiteralPath $paths.certificate
- Set-Acl -LiteralPath $provenance -AclObject $fileAcl
+ Assert-PrivateFileAcl $provenance
  exit 0
 }catch{exit 1}
 '''
@@ -929,19 +1560,34 @@ def _guest_finalize_script(binding: Mapping[str, Any], material: Mapping[str, An
 $root=@ROOT@;$sid=@SID@;$task=@TASK@
 @ANCESTORS@
 $paths=@(@CERT@,@KEY@,@TRUST@)
-if(-not [IO.Directory]::Exists($root) -or (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue)){throw 'EXISTING_TASK'}
-foreach($path in $paths){
+ $provenance=@PROVENANCE@
+if(-not [IO.Directory]::Exists($root) -or (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) -or [IO.File]::Exists($provenance) -or [IO.Directory]::Exists($provenance)){throw 'EXISTING_TASK'}
+function Set-PrivateFileAcl([string]$path){
  $file=Get-Item -LiteralPath $path -Force
  if($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'FILE'}
  $security=New-Object Security.AccessControl.FileSecurity
  $security.SetAccessRuleProtection($true,$false)
  foreach($allowedSid in @('S-1-5-18','S-1-5-32-544',$sid)){
   $rule=[Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($allowedSid),
-   [Security.AccessControl.FileSystemRights]::FullControl,[Security.AccessControl.AccessControlType]::Allow)
+  [Security.AccessControl.FileSystemRights]::FullControl,[Security.AccessControl.AccessControlType]::Allow)
   [void]$security.AddAccessRule($rule)
  }
  Set-Acl -LiteralPath $path -AclObject $security
+ $actualAcl=Get-Acl -LiteralPath $path;$actualRules=@($actualAcl.Access)
+ if(-not $actualAcl.AreAccessRulesProtected -or $actualRules.Count -ne 3){throw 'FILE_ACL'}
+ $seen=@()
+ foreach($actualRule in $actualRules){$actualSid=$actualRule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+  if(@('S-1-5-18','S-1-5-32-544',$sid) -cnotcontains $actualSid -or $seen -ccontains $actualSid -or
+   $actualRule.AccessControlType.ToString() -cne 'Allow' -or [int]$actualRule.FileSystemRights -ne 0x1F01FF -or
+   $actualRule.IsInherited -or [int]$actualRule.InheritanceFlags -ne 0 -or [int]$actualRule.PropagationFlags -ne 0){throw 'FILE_ACL'}
+  $seen+=@($actualSid)
+ }
 }
+foreach($path in $paths){
+ Set-PrivateFileAcl $path
+}
+[IO.File]::WriteAllBytes($provenance,[byte[]]@())
+Set-PrivateFileAcl $provenance
 $packed=[Convert]::FromBase64String(@BODY@)
 $inputStream=[IO.MemoryStream]::new([byte[]]$packed)
 $decompressor=[IO.Compression.GzipStream]::new($inputStream,[IO.Compression.CompressionMode]::Decompress)
@@ -957,6 +1603,7 @@ Start-ScheduledTask -TaskName $task
     for name, value in {"ROOT": paths["directory"], "SID": binding["originalSid"],
                         "TASK": task, "CERT": paths["certificate"],
                         "KEY": paths["privateKey"], "TRUST": paths["trustStore"],
+                        "PROVENANCE": paths["directory"] + r"\provenance.json",
                         "BODY": encoded}.items():
         script = script.replace("@" + name + "@", _ps_literal(value))
     script = script.replace("@ANCESTORS@", _guest_fixed_ancestor_guard(paths["directory"]))

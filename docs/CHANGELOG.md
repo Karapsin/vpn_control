@@ -3,6 +3,11 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Hardened Windows update fixture ACL admission and recovery diagnostics.
+- Preserved exact read-only admission guidance and test discovery.
+
 ## 2.2.2 - 2026-09-30
 
 - Allow guarded dev checkpoints with final exact-SHA CI verification.

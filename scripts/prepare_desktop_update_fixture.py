@@ -1160,7 +1160,9 @@ def probe_events_path(directory):
     """Keep probe evidence in a private fixture-owned directory."""
     events = Path(directory) / "probe-events"
     try:
-        events.mkdir(mode=0o700)
+        # Windows Python maps 0700 to an OWNER RIGHTS ACE. Inherit the already
+        # private state root, then establish and verify the exact user DACL.
+        events.mkdir(mode=0o777 if os.name == "nt" else 0o700)
     except FileExistsError:
         pass
     require(events.is_dir() and not events.is_symlink(), "Fixture probe event directory is unsafe")

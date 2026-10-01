@@ -27,6 +27,402 @@ root owns host Gradle, shared integration, metadata, commits, push and exact-SHA
 
 ## Current handoff review — 2026-09-28
 
+### Live Windows gate — 2026-10-01
+
+The Windows-first campaign remains the sole active native slice. Source HEAD is
+`19be9df22cbab8086c26e5ca907d9569a5a28a08`, product version 2.2.2, with
+no target update installer run yet. The CP117 guest still has the original-user
+2.1.19 app and runtime OFF. The frozen target MSI SHA-256 is
+`5ac252557106a2bae56583253a70ea037bb300827df6b5c36b2dc502e1e01234`.
+The active campaign lease is `e59a7483-4e38-4e7b-b8fa-0d8b2356916a`, stage
+`e848bed2-5bea-47bc-a85a-6cf17b1fcc6a`, and current server correlation
+`316e6189-5be0-4ea0-bca1-a3905816d815`. The server task is Ready with
+LastTaskResult 1, `ready.json` absent, and only `probe-events` in server state.
+Do not replay server start or resume. TLS certificate load, resource import,
+digest recheck and loopback bind pass in a separate read-only SYSTEM diagnostic.
+The `probe-events` DACL has three protected full-control ACEs for SYSTEM,
+Administrators and `OWNER RIGHTS` (`S-1-3-4`); it omits the configured
+original-user SID. Python 3.13 documents special Windows ACL handling for
+`mkdir(mode=0o700)`, which exactly matches the staged fixture code and native
+ACL. A portable regression failed on the old mode and passes after a local
+uncommitted source fix that uses inherited private-parent ACL creation on
+Windows, then retains exact ACL establishment and verification. The full
+fixture unit suite passes (75 tests). This product source change invalidates
+the frozen stage and package source receipts; no rebuilt package or update
+installer action has run. A source-bound static server preflight is being added
+before any future server role/task. Retire the failed server task only through
+fresh task/process proof and the reviewed one-shot cleanup path.
+An isolated QGA SYSTEM ACL exercise yielded unknown before bounded phase
+handling was added, then `guest-output-truncation` because omitted QGA flags
+were treated as true, and finally a blocked all-unknown exercise under SYSTEM.
+Its read-only scratch census reported zero between attempts. It never claimed
+a server role or touched the failed server state; it does not prove the
+limited original-user behavior and is not acceptance evidence.
+
+Windows native acceptance, Android, Linux, macOS, visual review, pre-push,
+coherent dev push and the final exact-SHA five-workflow CI gate remain open.
+The user requested sparse checkpoints, one CI check at final delivery, platform
+order Windows → Android → Linux → macOS, and no release. The detailed
+2026-09-30 entries below are historical attempts; they do not supersede this
+gate.
+
+### Windows-first continuation — 2026-09-30
+
+Current source is `19be9df22cbab8086c26e5ca907d9569a5a28a08` on `dev` at
+product version 2.2.2. Tool, route, regression and visual-support edits remain
+dirty. The user requested platform order Windows, Android, Linux, macOS, sparse
+checkpoint pushes, and one required exact-SHA CI check at final delivery. No
+release is authorized. Windows CP117 remains the sole active native owner;
+Android/Linux/macOS mutations remain paused.
+
+Latest Windows gate (2026-09-30): the corrected v4 current-owner public quit
+exited the exact CLI owner pair; fresh owner liveness found no owner, installer,
+consent or runtime process, with runtime OFF. Fresh target fixture correlation
+`1a92ea8f-dd8e-4a8f-b891-9804b902d366` returned unknown at prepare with no
+new local stage/HTTP intent. Its read-only prepare and bundle diagnostics passed;
+reserve reported prior-stage confirmation required. The read-only
+`prior-stage-confirmation` returned `history-invalid`. Local causal audit found
+the retired e66 stage intent still bound to the current active idle campaign
+lease `94238e9e-4296-4a70-9b0a-0762f82aaf07` while stage-history admission
+requires each earlier stage lease to differ from the current lease. The older
+7f stage has a closed c32 lease. Do not replay the unknown prepare. A narrowly
+scoped successor campaign must prove the exact e66 retirement and close the
+current campaign before staging under a new lease; do not bypass general stage
+history admission. No target MSI action has started.
+
+Follow-on (2026-09-30): reviewed successor tool, CAS close and causal tests
+closed e66 lease 94238 and opened fresh lease
+`68393b94-144c-405c-bc8d-bc61afa38d65`; read-only successor status was
+active and prior-stage confirmation for 1a92 became `confirmed`. Fresh fixture
+correlation `727a4097-e57c-46f6-ba42-5492cd4af4da` prepared the exact
+131,218,059-byte bundle with SHA-256
+`95a0f90171185110a636d678c4517f35954a3c1f9aa99a248137c210d9f28de4`.
+Its one `stage-start` returned unknown after 18 seconds. Shared phase status
+reported `transfer-unobserved`, stage-start diagnostic `phase-ineligible`, and
+host-staged pre-effect diagnostic `host-stage-present`. Do not repeat stage
+start or launch the listener until a read-only host-stage integrity probe proves
+complete exact bytes and binding. The probe is under code-only development;
+no guest-create, listener or target installer action has started.
+
+Subsequent fixed host probe proved the full 131,218,059-byte remote bundle,
+authority binding, mode and SHA, so the earlier stage-start response loss did
+not require a transfer replay. After reviewed listener admission changes, the
+one-use host listener started. The first QGA `guest-create` attempt returned
+unknown; read-only phase status twice observed the guest leaf absent and the
+listener transitioned from listening to stopped without serving bytes. The
+shared phase remains `guest-created` intent, with campaign stage role active.
+Do not replay guest-create or listener-start. A read-only guest-create cause
+diagnostic and a guarded closure path are needed before a fresh attempt. The
+target installer has still not run.
+
+The fixed read-only QGA diagnostic now reports
+`guest-create-not-confirmed-leaf-absent` with the matching PowerShell child
+absent. The generated guest directory script had followed a PowerShell
+`.Parent` object without reloading its provider attributes, causing a false
+ancestor-type rejection before the guest leaf was created. A causal regression
+and script fix are in place. The consumed guest-create, listener, and stage
+actions remain non-replayable; a fixed-correlation abort is under review to
+prove the unserved listener, remove only the terminal HTTP stage, and retire
+the campaign role. A distinct source-bound successor lease will then be
+required before any fresh update attempt. No target MSI has run.
+
+The reviewed fixed abort admitted fresh `guest-created` host bytes, the stopped
+unserved listener, absent guest leaf and absent matching child. Its sole native
+action returned `retired` with cleanup receipt SHA-256
+`c2a9fb2beff7a193b90894f4bab2a4d5e8627fff96dcd7f399b7e888eafa01de`.
+The first post-abort status could not admit the idle campaign through its
+pre-abort reader. A fixed retired-only reader now verifies the original
+artifact/source/VM binding, immutable local receipt, remote cleaned marker,
+and a fresh guest census. A real-signature regression caught a missing
+argument in that census builder. The corrected read-only MCP status reports
+`retired`. The abort is not replayable; the next stage needs a distinct
+source-bound campaign lease. No target MSI has run.
+
+One reviewed fixed successor action closed the retired lease 68393 and opened
+new lease `67cb7008-f9e4-436a-bfa8-683e79bbe21d`. Its exact read-only
+successor status reports active. The generic campaign status initially reported
+unknown because its binding compared the six-field persisted stage request
+against a five-field campaign projection that omits `host`. A causal test and
+exact request-shape fix are in place; fresh read-only MCP campaign status now
+reports active on the same lease, with remote cleanup and predecessor close
+proof intact. Preserve the one-shot successor intent; do not call successor
+start again. The next step is a fresh correlation for the target update
+package. No target MSI has run.
+
+Fresh correlation `af3360e5-a53b-4cd2-b91a-4c6abfd6b118` prepared the
+131,218,059-byte package with bundle SHA-256
+`91358792bbbf173f1e74e159529cc8bb119d53794404eebc6ff47ba805efc6c3`.
+Its single host transfer returned unknown, but a read-only exact host hash and
+binding probe proved complete bytes. The one-use listener started, and the
+corrected guest-create action returned `created`. The limited-user
+`guest-download` action returned `submitted`; subsequent listener status moved
+from listening to stopped (unserved), while phase status still observed only
+the created guest leaf and no download receipt. Do not resubmit guest-download
+or start extraction. A bounded read-only task/file diagnostic is under
+development to distinguish timeout, task failure, and partial download before
+selecting the next safe action. The server has a 120-second deadline; elapsed
+orchestration time is a suspected cause, not yet a proved cause. A reviewed
+read-only download diagnostic now proves the stopped host listener recorded
+`served:false`, the exact scheduled task is absent, and the expected guest
+bundle file is absent. The accepted download request is not replayable; a
+fixed-correlation retirement of this empty attempt must precede a distinct
+lease and fresh correlation. No installer has run.
+The one-use listener's fixed waiting window is now 600 seconds (previously
+120), with a regression that executes a successful single request and proves
+immediate terminal closure; this affects only future listeners. Whether the
+shorter window caused this attempt remains an inference, not a native proof.
+The download diagnostic initially misread the Task Scheduler root path and
+the account name, producing a false task-absent/principal-mismatch sequence.
+Causal regressions corrected both. Fresh native read-only evidence now proves
+the exact scheduled task is terminal `failed`, the expected bundle file is
+absent, and the listener stopped unserved. The abort tool therefore must first
+remove only this bound failed task, then prove it absent before host cleanup
+and stage-role retirement. That one-shot task cleanup remains under independent
+safety review; no cleanup or target installation has run.
+
+Follow-on (2026-09-30): the bound Task Scheduler result was `1` for the
+af3360 attempt; an earlier `task-absent` diagnostic was false and is superseded
+by the corrected task probe. The reviewed one-shot task deletion returned
+unknown, but its read-only status proved `cleaned`; no deletion was replayed.
+The reviewed host abort then returned `retired` with cleanup receipt SHA-256
+`792bc3a4c46c87f5474a5c46765b015c51ddb760af5c7174d3f59915a6aa7b47`.
+A campaign projection bug in that abort was fixed with causal tests and a
+lock-protected full lease read. One successor action closed lease 67cb7 and
+opened `9b4cf4c7-791a-4e51-93ac-0b8db4ac4409`, now read-only active and
+idle. The next correlation `07708dc7-6884-40a5-9a78-c75dbb391dbd`
+prepared the exact 131,218,059-byte package (SHA-256
+`aabec9e1d7b705ab04555e4eb74a3c25119c984bf9b590cb56d0d0f047f686d3`).
+Its host transfer returned unknown but the exact host hash probe proved
+complete bytes. Listener start, guest-create and guest-download submission
+returned success. The download task nevertheless ended `failed` with result
+`1` before the listener served bytes; no bundle or installer ran. A likely
+cause is the download PowerShell script's missing `System.Net.Http` assembly
+load, now fixed with a regression matching the established Windows transfer
+path. This cause is not yet proven by a successful native retry. Do not replay
+the consumed guest download. The 600-second listener must first stop unserved,
+then the exact failed task and stage must be retired before a fresh correlation.
+
+Further follow-on (2026-09-30): the 07708 listener stopped unserved and the
+bound failed task result was again `1`, with no download file. A fixed
+historical-script fingerprint recognized that exact pre-fix task after the
+`System.Net.Http` change. One task deletion again returned unknown but
+read-only status proved `cleaned`; the cause was a post-deletion PowerShell
+result-formatting syntax error, now covered and fixed. Host abort returned
+`retired` (receipt SHA-256
+`571701f7f9c0fffdc5d14e0cae2fe43b4be91cc14f93c866d645bb94100388ab`).
+One reviewed successor opened idle lease
+`e59a7483-4e38-4e7b-b8fa-0d8b2356916a`. Its recovery route includes a
+durable-intent `resume-close` path with a causal crash-window test. Fresh
+correlation `e848bed2-5bea-47bc-a85a-6cf17b1fcc6a` prepared an exact
+131,218,059-byte package (SHA-256
+`634aa7a97ef77399ace35bc82fb0dae31ae6e00560a7815b2868f2793d555870`),
+staged exact host bytes after an unknown transfer response, and downloaded in
+the guest with listener served, scheduled task result `0`, and complete hash.
+The first extraction response was unknown. Read-only diagnosis proved exact
+binding, dispatch, and a present receipt; its initial protocol error came
+from treating QGA's already-consumed process status as required. Receipt-first
+validation now checks the full file hashes, bundle hash, and three ACL
+receipts. Native `windows-fixture-stage-status` and HTTP `collect` both return
+`staged-not-server-ready` with the expected target MSI SHA-256
+`5ac252557106a2bae56583253a70ea037bb300827df6b5c36b2dc502e1e01234`.
+The installer has not run. Next is credential/server admission, then one
+public update and its real install/GUI/CLI evidence.
+
+Credential provision correlation `6161b4ae-3634-4312-ac85-1bacd0001dfa`
+returned `unknown` after a durable intent and held the `credentials` role.
+Read-only diagnosis proved the exact remote credential work group absent;
+the exact remote role guard still matched. A code audit established the
+pre-effect cause: credential dispatch requested a 120-second SSH timeout,
+while the shared SSH transport admits at most 60 seconds and returned no
+remote command. The accepted provision was not replayed. Its one guarded
+abort returned `submitted`; read-only abort status proved `aborted-cleaned`
+with cleanup receipt SHA-256
+`02377ac3321c1afae18c6a392c7546e5944be9f79f2a546f4f3ecd7b70084738`.
+The timeout regression and fix are in progress. A fresh correlation is needed
+for certificate provision after the fix; no server or installer has run.
+
+The 60-second timeout fix passed 24 focused tests and independent review.
+Fresh campaign status was active with no held role, and the exact e848 stage
+still returned `staged-not-server-ready` with matching target MSI hash. Fresh
+credential correlation `486932f6-6370-46b3-b42c-490183fa8364` was rejected
+before a local intent or VM effect: the provision journal currently requires
+every prior credential campaign to be closed, while the verified aborted
+attempt belongs to this active campaign and its staged MSI. Preserve the
+rejected request and old abort receipt. A narrowly scoped admission fix with
+a causal regression is in progress; use a new correlation afterward.
+
+The exact aborted-cleaned admission fix passed 41 focused credential/lease
+tests and independent review. Fresh provision correlation
+`791b5235-9ca7-409c-96bc-c341047c7fb4` returned `submitted` on the intact
+stage. Its first status was `unknown`; a separately reviewed current-correlation
+read-only diagnostic found exact binding and `terminal-failed` guest task.
+No provision replay or server/installer action occurred. Preserve the task and
+host receipts while a bounded, secret-free failure detail is developed; abort
+only after the cause is classified or no further safe readback is possible.
+
+The reviewed, read-only credential failure detail now proves Task Scheduler
+result `1`, exact certificate/key/trust-store hashes, a verified credential
+directory ACL, and a present provenance receipt whose ACL is `mismatch`.
+This is a real terminal guest task failure, not SSH response loss; no server
+or installer has run. The task is preserved while a more specific,
+secret-free ACL-shape diagnostic is prepared. Do not infer whether `Set-Acl`
+failed or a later check disagreed until that readback is available.
+
+The reviewed ACL-shape readback found exactly three expected principals with
+full-control rights, but the provenance file's ACL is unprotected and its
+rules remain inherited. This proves the required protected ACL was not
+established; it does not prove which attempted ACL write failed. The first
+guarded abort request for correlation `791b5235` was rejected pre-intent:
+the existing abort journal for `6161b4ae` is still on this active campaign,
+although its exact abort is verified cleaned. No second cleanup or installer
+effect occurred. A narrow abort-history admission fix is required before
+retiring the failed task; then repair protected provenance creation and use
+a fresh provision correlation.
+
+The abort-group-only history fix passed 48 focused tests and independent
+review. One `791b5235` abort submission and exact read-only status returned
+`aborted-cleaned`, receipt SHA-256
+`02377ac3321c1afae18c6a392c7546e5944be9f79f2a546f4f3ecd7b70084738`.
+The old and new abort records remain preserved; the credential task and
+temporary files are absent, the stage remains. The protected-provenance
+creation repair is code-only work in progress before any fresh provision.
+
+The provenance ACL repair passed 33 focused tests and independent review.
+Fresh stage and campaign readbacks verified the exact staged MSI and idle
+active lease (an initial campaign status transport unknown was transient;
+the repeated read-only status returned active). Fresh provision correlation
+`75ed6f9c-ebe6-4f70-ba1a-ab64b8507d16` returned `submitted`, then
+`ready` in native CP117. Its peer certificate SHA-256 is
+`18ef6ba14a327f487c6ce060b7851d1eb790c8be7a8ca56223608bf78e475d21`
+and trust-store SHA-256 is
+`a2dcd0980c1770def0ac12d58abd5ccd512abcc1d8848f8e92d8b3c124e27b24`.
+This proves the corrected protected-file and original-user provenance path
+in the guest. No server or installer has run; next is exact server admission.
+
+Server-start correlation `9f47d8f2-bfe1-4164-aa8b-2f617abaa482`
+rejected before a server intent or VM effect because the guest Python inventory
+did not contain exactly one signed fixed-location interpreter. A new reviewed
+read-only MCP inventory diagnostic, with 26 focused server/route tests, returned
+`candidateCount: 0` for that exact CP117 campaign and QEMU generation; the
+original error wording `not unique` had conflated zero with multiple. The
+strict server admission remains unchanged. The official Python 3.13.15 AMD64
+installer has SHA-256
+`edec09c4853aeae9ac36efb8c9f95b6b8e2fee65eee56d9767a8b7c69c574403`;
+CP95 historical evidence names a staged Arch copy but does not prove current
+availability or CP117 installation. The current campaign's read-only Arch
+source probe returned `absent-or-mismatch`; it does not authorize reuse of the
+historical copy. The first guest HEAD probe was unknown because its MCP helper
+passed a Mac workspace path to an Arch command. A causal regression now checks
+the configured Arch transfer root, and the corrected native CP117 HEAD returned
+HTTP 200 with normal TLS validation and exact expected length `29452944` for
+the fixed official URL. The full installer still needs a digest-verified guest
+download and a one-shot original-user install; these tools are being reviewed.
+No server or product installer has run.
+
+CP117 has installed base 2.1.19, original runtime OFF, and a running exact
+original-user CLI owner pair. The owner stale-lock one-shot failed unknown,
+then a separate reviewed reconciliation proved the lock recovered. The owner
+relaunch one-shot remained unknown, while bounded native detail proved the
+exact quoted/unquoted CLI serve pair and no installer, consent or sing-box
+runtime. QGA SYSTEM cannot read the owner-private activation endpoint, which
+is expected ACL behavior. The original limited-user public-status task and a
+separately correlated retry both retained unknown intents; read-only task
+diagnostics observed each task absent. The retry's generated Python remote had
+a causal quoting syntax error, now fixed and covered by a compile regression.
+Neither unknown status attempt has been reclassified or replayed. A further
+public-status probe, if admitted, is an independent read-only task and must
+retain both earlier unknowns.
+
+A third, separately correlated read-only public-status task
+`3a7b048d-aec4-4f07-845c-86677dd90f9` passed independent code review,
+compiled generated programs and strict owner/runtime/task admission. Its one
+start returned unknown after a durable intent; its normal status was also
+unknown. A separately reviewed no-replay observer bound the exact intent and
+VM generation and found the third task absent. All three unknown starts remain
+unknown and none was resubmitted. The existing Windows public owner-quit tool
+requires a successful status receipt for the same exact owner generation; the
+historical receipt cannot be used for the current relaunched owner. A fixed
+current-owner public quit adapter is under code-only development, gated on
+runtime OFF and exact relaunch evidence. No Windows owner exit has run.
+An independent emitted-program audit proved why the retry and third tasks
+were absent: their generated Python bootstrap decoded the account separator
+in `VPNMSIX64\vpncp117` as a vertical tab before task registration. A causal
+RED/GREEN regression now examines the parsed emitted bootstrap and the builder
+escapes that separator. The original task has no corresponding injected
+account and its unknown cause remains unclassified.
+
+The first fixed current-owner quit attempt
+`44ac1ea9-b18b-4203-9cef-9e38c5d45970` first blocked locally before
+intent because its admission expected a terminal relaunch receipt and a
+SYSTEM-readable private endpoint. Its corrected actual-state admission wrote
+one durable quit intent, but the native start returned unknown. Read-only
+diagnosis reported `owner-task-running`: the relaunch scheduled task runs the
+long-lived CLI server and is expected to remain Running, while this quit
+bootstrap is coded to reject that state before registering its own task. The original
+quit intent remains unknown and has not been replayed. A separate fixed
+correlation is required after proving the first quit task absent and covering
+the expected running relaunch task in a causal regression. Runtime remains OFF
+and no owner exit is proved.
+
+A second fixed quit correlation
+`d4edbb13-6a97-4a1e-8c28-3dd623f6f7f9` passed independent source and
+route review, including the expected long-running relaunch task and an
+encoded-command census for any still-running first-quit PowerShell. Its sole
+start also returned unknown after a durable intent; read-only task diagnosis
+found the second task absent. It has not been replayed. A finite read-only
+bootstrap gate diagnostic is being added to identify the failed pre-registration
+condition before any new native quit action.
+
+A no-VM emitted-command audit then measured the actual nested
+`powershell.exe -EncodedCommand` lengths: 37,642 characters for the first
+public-status start, 40,086/41,434 for its retry/third, 37,654 for the second
+quit start, and 37,050 for its bootstrap diagnostic. Each exceeds Windows'
+32,767-character process command-line limit, explaining why the fixed tasks
+were absent and why the second quit diagnostic fell through to unknown. The
+retry/third account separator also had the independently fixed vertical-tab
+defect; both causes remain documented. A bounded verified compression helper
+and a new separately correlated one-shot are code-only work in progress. All
+earlier unknown intents remain preserved; none has been replayed.
+
+The compact third quit correlation `38daf3a3-a661-495e-a001-b2b0bdaa9a66`
+passed independent review and its emitted guest command measured 19,127
+characters. Its one native start was `submitted` and the task is present.
+A read-only exact-task-result probe verified `failed`; subsequent liveness
+still showed the original owner pair and runtime OFF. No quit was replayed,
+and owner exit is not proved. A separately correlated original-user read-only
+phase diagnostic is being built to identify the failure before any further
+owner mutation.
+
+The fixed read-only original-user phase diagnostic
+`7c35c962-3fd3-42ce-914f-05f6e4a48a42` then ran once and returned
+`owner-before`. A source comparison found a deterministic mismatch: the quit
+task's owner check expected the state path quoted for both CLI processes,
+whereas the exact relaunched pair has one quoted and one unquoted state path.
+The third quit task body and its failed receipt remain immutable. A fourth,
+separately correlated quit helper is code-only work in progress with a causal
+command-form regression and fresh admission.
+
+The source-bound 2.1.19→2.2.2 MSI pair and 131,218,059-byte target fixture
+bundle remain registered. Fixture correlation
+`e66d02a7-a40c-41e0-8f8b-674624f98a54` failed locally after reserving
+`host-staged` because a buffered stream was passed where the remote helper
+expected a Path. The exact failed Codex command transcript was imported from
+the app into ignored owner-only evidence, reviewed against its input/source,
+and used once with fresh remote absence to durably close the consumed transfer
+as `aborted`. A separate fixed retirement finished only the held `stage` role
+as `failed-cleaned` under campaign lease
+`94238e9e-4296-4a70-9b0a-0762f82aaf07`. Read-only status now proves the
+transfer `aborted`, role `retired`, and campaign `active` with no role. The
+original e66 failed command and receipts remain preserved; no package bytes
+were staged in that attempt. A new admitted correlation is required for target
+fixture staging.
+
+The next Windows gates are a proven original-user public status or another
+source-bound owner proof, public owner exit while runtime remains OFF, a fresh
+target fixture stage, installed 2.2.2 update/recovery, and remaining Windows
+broker/lifecycle/visual cases. The final-source package and four-platform
+evidence gates remain open.
+
 ### Windows-first continuation — 2026-09-29
 
 The user set the native acceptance order to Windows, Android, Linux, then

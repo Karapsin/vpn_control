@@ -7,6 +7,7 @@ campaign lease role, and same-generation QGA process/listener observation.
 from __future__ import annotations
 
 import base64
+import ast
 import fcntl
 import hashlib
 import json
@@ -14,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import uuid
 from typing import Any, Mapping
 
@@ -37,6 +39,8 @@ _CLEANUP_GROUP = ".rag_index/windows-update-fixture-server-cleanup"
 _PYTHON_PATH = re.compile(
     r"C:\\(?:Program Files\\Python3[0-9]{2}\\|Users\\vpncp117\\AppData\\Local\\Programs\\Python\\Python3[0-9]{2}\\)python\.exe\Z",
     re.IGNORECASE)
+_FIXTURE_ENTRYPOINT = "scripts/prepare_desktop_update_fixture.py"
+_FIXTURE_SOURCE_LIMIT = 512 * 1024
 
 
 def _canonical(value: Any) -> bool:
@@ -97,7 +101,16 @@ def _closed_server_history(root: Path, current_lease_id: str, *, group: str = _G
         else:
             prior = _read_cleanup_intent(root, path.stem)
         prior_lease = prior.get("request", {}).get("leaseId") if prior else None
-        if not _canonical(prior_lease) or prior_lease == current_lease_id:
+        if not _canonical(prior_lease):
+            raise WindowsUpdateFixtureServerError("Server history is active or unknown.")
+        if prior_lease == current_lease_id:
+            # One failed CP117 server can be retried in the same campaign only
+            # after its fixed successor has a durable cleanup receipt and a
+            # fresh guest proof that task and process are both absent.
+            if group == _GROUP:
+                from . import windows_fixture_server_abort_successor as successor
+                if successor.allows_server_restart(root, path.stem, current_lease_id, prior):
+                    continue
             raise WindowsUpdateFixtureServerError("Server history is active or unknown.")
         campaign_directory, campaign_lock = lease._locked(root)
         try:
@@ -415,7 +428,40 @@ try:
    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>16384:raise ValueError()
    with open(binding_path,encoding='utf-8') as file:old=json.load(file)
    old_lease=old.get('leaseId')
-   if old.get('serverCorrelationId')!=name or old_lease==lease_id or not isinstance(old_lease,str) or str(uuid.UUID(old_lease))!=old_lease:raise ValueError()
+   if old.get('serverCorrelationId')!=name or not isinstance(old_lease,str) or str(uuid.UUID(old_lease))!=old_lease:raise ValueError()
+   if old_lease==lease_id:
+    # CP117's one historical retry is allowed only when this exact server was
+    # retired by its fixed successor.  Re-read the remote active campaign
+    # under its lock: the local claim alone cannot manufacture this history.
+    if name!='2c438d90-9a77-4acd-b4d7-ab354b85a04a':raise ValueError()
+    fields={'leaseId','stageCorrelationId','serverCorrelationId','socketPath','qemuPid','startTicks','originalSid','sourceSha','sourceFingerprint','fixtureReceiptArtifactId','baseMsiArtifactId','targetMsiArtifactId','commandSha256','dispatchProtocol'}
+    if set(old)!=fields or old.get('stageCorrelationId')==old.get('serverCorrelationId') or old.get('socketPath')!=sock or old.get('qemuPid')!=int(pid) or old.get('startTicks')!=int(ticks) or old.get('originalSid')!=sid or old.get('sourceSha')!=source or old.get('fixtureReceiptArtifactId')!=receipt_id or old.get('baseMsiArtifactId')!=base_id or old.get('targetMsiArtifactId')!=target_id or old.get('dispatchProtocol')!=2 or not all(isinstance(old.get(k),str) and re.fullmatch(r'[0-9a-f]{64}',old[k]) for k in ('sourceFingerprint','commandSha256')):raise ValueError()
+    successor=os.path.join(old_job,'successor-bbc75e43-e220-44e8-ab60-ddc3876ba5fb');info=os.lstat(successor)
+    if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
+    successor_binding=os.path.join(successor,'binding.json');info=os.lstat(successor_binding)
+    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>4096:raise ValueError()
+    with open(successor_binding,encoding='utf-8') as file:successor_record=json.load(file)
+    expected_successor={'serverCorrelationId':'2c438d90-9a77-4acd-b4d7-ab354b85a04a','priorCleanupCorrelationId':'710f7aaa-f92d-4fef-9f7c-57cf6e405624','successorCleanupCorrelationId':'bbc75e43-e220-44e8-ab60-ddc3876ba5fb','socketPath':sock,'qemuPid':int(pid),'startTicks':int(ticks),'originalSid':sid}
+    if successor_record!=expected_successor:raise ValueError()
+    terminal_path=os.path.join(successor,'terminal.json');info=os.lstat(terminal_path)
+    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>1024:raise ValueError()
+    with open(terminal_path,encoding='utf-8') as file:terminal=json.load(file)
+    if set(terminal)!={'exitcode'} or type(terminal.get('exitcode')) is not int or not 0<=terminal['exitcode']<=65535:raise ValueError()
+    evidence=hashlib.sha256(json.dumps({'request':{'successorCleanupCorrelationId':'bbc75e43-e220-44e8-ab60-ddc3876ba5fb'},'guest':[sock,int(pid),int(ticks),sid],'exitcode':terminal['exitcode']},sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    campaign=os.path.join(parent,'windows-cp117-campaign');info=os.lstat(campaign)
+    if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
+    campaign_lock=os.open(os.path.join(campaign,'.environment.lock'),os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))
+    try:
+     info=os.fstat(campaign_lock)
+     if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600:raise ValueError()
+     fcntl.flock(campaign_lock,fcntl.LOCK_SH)
+     active_path=os.path.join(campaign,'active.json');info=os.lstat(active_path)
+     if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>16384:raise ValueError()
+     with open(active_path,encoding='utf-8') as file:active=json.load(file)
+    finally:os.close(campaign_lock)
+    identity={'host':'archlinux','environment':env,'leaseId':lease_id,'operator':'windows-base','sourceSha':source,'fixtureReceiptArtifactId':receipt_id,'baseMsiArtifactId':base_id,'targetMsiArtifactId':target_id,'socketPath':sock,'qemuPid':int(pid),'startTicks':int(ticks)}
+    if set(active)!={'version','identity','sequence','state','role','correlationId','server','credentials','lastEvidenceSha256','lastOutcome'} or active.get('version')!=1 or type(active.get('sequence')) is not int or active['sequence']<=0 or active.get('identity')!=identity or active.get('state')!='role-active' or active.get('role')!='server-start' or active.get('correlationId')!=corr or active.get('server')!='starting' or active.get('credentials')!='ready' or active.get('lastOutcome')!='failed-cleaned' or active.get('lastEvidenceSha256')!=evidence:raise ValueError()
+    continue
    closed_path=os.path.join(parent,'windows-cp117-campaign',old_lease+'.closed.json')
    info=os.lstat(closed_path)
    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>16384:raise ValueError()
@@ -441,8 +487,13 @@ except Exception:out({'state':'unknown','serverCorrelationId':corr})
 '''
 
 
-def _python_inventory(root: Path, request: Mapping[str, str]) -> dict[str, str]:
-    """Fixed read-only QGA interpreter inspection; never discover via guest PATH."""
+def _python_candidates(root: Path, request: Mapping[str, str]) -> list[dict[str, str]]:
+    """Return only signed interpreters from the two fixed CP117 locations.
+
+    This remains a read-only QGA inspection.  In particular, the diagnostic
+    caller cannot turn a registry value or an arbitrary guest path into an
+    accepted interpreter identity.
+    """
     _admit_campaign(root, request)
     config, _target, (_env, socket, pid, ticks, sid) = base._descriptor(root)
     program = _PYTHON_PROBE.replace("@SID@", public._ps_literal(sid))
@@ -454,21 +505,52 @@ def _python_inventory(root: Path, request: Mapping[str, str]) -> dict[str, str]:
         raise WindowsUpdateFixtureServerError("CP117 Python interpreter inventory is unknown.")
     inventory = result["inventory"]
     candidates = inventory.get("candidates") if isinstance(inventory, dict) else None
+    # `_PYTHON_PROBE` admits at most eight registry children in each of two
+    # hives.  Preserve that finite bound here before exposing diagnostics.
     if (not isinstance(inventory, dict) or set(inventory) != {"version", "candidates"}
             or inventory["version"] != 1
-            or not isinstance(candidates, list) or len(candidates) != 1):
+            or not isinstance(candidates, list) or len(candidates) > 16):
+        raise WindowsUpdateFixtureServerError("CP117 Python interpreter inventory is invalid.")
+    validated: list[dict[str, str]] = []
+    paths: set[str] = set()
+    for candidate in candidates:
+        if (not isinstance(candidate, dict) or set(candidate) != {"path", "sha256", "version", "signer"}
+                or not isinstance(candidate["path"], str) or not _PYTHON_PATH.fullmatch(candidate["path"])
+                or not isinstance(candidate["sha256"], str) or not _HASH.fullmatch(candidate["sha256"])
+                or not isinstance(candidate["version"], str) or len(candidate["version"]) > 64
+                or not re.fullmatch(r"3\.1[1-4](?:\.[0-9]+)?(?:[ .].*)?", candidate["version"])
+                or not isinstance(candidate["signer"], str) or len(candidate["signer"]) > 256
+                or "Python Software Foundation" not in candidate["signer"]):
+            raise WindowsUpdateFixtureServerError("CP117 Python interpreter identity is invalid.")
+        canonical_path = candidate["path"].casefold()
+        if canonical_path in paths:
+            raise WindowsUpdateFixtureServerError("CP117 Python interpreter inventory is invalid.")
+        paths.add(canonical_path)
+        validated.append(dict(candidate))
+    return validated
+
+
+def _python_inventory(root: Path, request: Mapping[str, str]) -> dict[str, str]:
+    """Require exactly one signed fixed interpreter for a server launch."""
+    candidates = _python_candidates(root, request)
+    if len(candidates) != 1:
         raise WindowsUpdateFixtureServerError("CP117 Python interpreter is not unique.")
     candidate = candidates[0]
-    if (not isinstance(candidate, dict) or set(candidate) != {"path", "sha256", "version", "signer"}
-            or not isinstance(candidate["path"], str) or not _PYTHON_PATH.fullmatch(candidate["path"])
-            or not isinstance(candidate["sha256"], str) or not _HASH.fullmatch(candidate["sha256"])
-            or not isinstance(candidate["version"], str) or len(candidate["version"]) > 64
-            or not re.fullmatch(r"3\.1[1-4](?:\.[0-9]+)?(?:[ .].*)?", candidate["version"])
-            or not isinstance(candidate["signer"], str) or len(candidate["signer"]) > 256
-            or "Python Software Foundation" not in candidate["signer"]):
-        raise WindowsUpdateFixtureServerError("CP117 Python interpreter identity is invalid.")
     return {"path": candidate["path"], "sha256": candidate["sha256"],
             "version": candidate["version"]}
+
+
+def _python_candidate_identity(candidate: Mapping[str, str]) -> dict[str, str]:
+    """Expose a bounded identity without returning a guest filesystem path."""
+    path = candidate["path"].casefold()
+    if path.startswith(r"c:\program files\python"):
+        location = "program-files"
+    elif path.startswith("c:\\users\\vpncp117\\appdata\\local\\programs\\python\\"):
+        location = "owner-local"
+    else:  # `_python_candidates` already rejects this; retain the fail-closed guard.
+        raise WindowsUpdateFixtureServerError("CP117 Python interpreter identity is invalid.")
+    return {"location": location, "pythonExeSha256": candidate["sha256"],
+            "pythonVersion": candidate["version"], "signer": "python-software-foundation"}
 
 
 def python_preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -479,6 +561,25 @@ def python_preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str, An
     return {"state": "observed", "leaseId": request["leaseId"],
             "stageCorrelationId": request["stageCorrelationId"],
             "pythonExeSha256": inventory["sha256"], "pythonVersion": inventory["version"],
+            "serverReady": False}
+
+
+def python_inventory_diagnostic(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Classify the admitted signed interpreter set without selecting one.
+
+    This diagnostic is deliberately separate from `python_preflight`: it
+    reports an ambiguous inventory so an operator can investigate it, while
+    server admission continues to require exactly one candidate.
+    """
+    root = Path(root).resolve(strict=True)
+    request = _request(value)
+    candidates = _python_candidates(root, request)
+    identities = [_python_candidate_identity(candidate) for candidate in candidates]
+    identities.sort(key=lambda item: (item["location"], item["pythonExeSha256"]))
+    return {"state": "observed", "leaseId": request["leaseId"],
+            "stageCorrelationId": request["stageCorrelationId"],
+            "serverCorrelationId": request["serverCorrelationId"],
+            "candidateCount": len(identities), "candidates": identities,
             "serverReady": False}
 
 
@@ -516,6 +617,138 @@ def _admit_campaign(root: Path, request: Mapping[str, str], *,
     return pair, (socket, pid, ticks, sid)
 
 
+def _frozen_fixture_source(root: Path, source_sha: str) -> bytes | None:
+    """Return one bounded immutable entrypoint blob, never the worktree copy."""
+    try:
+        process = subprocess.Popen(
+            ["git", "show", source_sha + ":" + _FIXTURE_ENTRYPOINT],
+            cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        if process.stdout is None:
+            return None
+        source = process.stdout.read(_FIXTURE_SOURCE_LIMIT + 1)
+        if len(source) > _FIXTURE_SOURCE_LIMIT:
+            process.kill()
+            process.wait(timeout=5)
+            return None
+        returncode = process.wait(timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    finally:
+        if "process" in locals() and process.stdout is not None:
+            process.stdout.close()
+    if returncode != 0 or not isinstance(source, bytes) or not 0 < len(source) <= _FIXTURE_SOURCE_LIMIT:
+        return None
+    return source
+
+
+def _has_windows_safe_probe_events_mkdir(source: bytes) -> bool:
+    """Accept only the source branch covered for Windows ACL-safe probe events."""
+    try:
+        module = ast.parse(source.decode("utf-8"), filename=_FIXTURE_ENTRYPOINT)
+    except (UnicodeDecodeError, SyntaxError):
+        return False
+    functions = [node for node in module.body
+                 if isinstance(node, ast.FunctionDef) and node.name == "probe_events_path"]
+    if len(functions) != 1:
+        return False
+
+    def events_mkdir(node: ast.AST) -> ast.IfExp | None:
+        if not isinstance(node, ast.Call) or node.args or len(node.keywords) != 1:
+            return None
+        if (not isinstance(node.func, ast.Attribute) or node.func.attr != "mkdir"
+                or not isinstance(node.func.value, ast.Name) or node.func.value.id != "events"):
+            return None
+        keyword = node.keywords[0]
+        return keyword.value if keyword.arg == "mode" and isinstance(keyword.value, ast.IfExp) else None
+
+    function = functions[0]
+    mkdir_calls = [node for node in ast.walk(function) if events_mkdir(node) is not None]
+    if len(mkdir_calls) != 1:
+        return False
+    tries = [(index, node) for index, node in enumerate(function.body) if isinstance(node, ast.Try)]
+    if len(tries) != 1:
+        return False
+    try_index, protected = tries[0]
+    direct_mkdirs = [statement.value for statement in protected.body
+                     if isinstance(statement, ast.Expr) and events_mkdir(statement.value) is not None]
+    if (len(direct_mkdirs) != 1 or direct_mkdirs[0] is not mkdir_calls[0]
+            or len(protected.handlers) != 1 or protected.orelse or protected.finalbody):
+        return False
+    handler = protected.handlers[0]
+    if (not isinstance(handler.type, ast.Name) or handler.type.id != "FileExistsError"
+            or len(handler.body) != 1 or not isinstance(handler.body[0], ast.Pass)):
+        return False
+
+    def windows_acl_verifier(node: ast.AST) -> bool:
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            return False
+        if node.func.id != "require_windows_private_acl" or len(node.args) != 1:
+            return False
+        if not isinstance(node.args[0], ast.Name) or node.args[0].id != "events":
+            return False
+        keywords = {keyword.arg: keyword.value for keyword in node.keywords}
+        return (set(keywords) == {"private", "directory"}
+                and all(isinstance(keywords[key], ast.Constant) and keywords[key].value is True
+                        for key in keywords))
+
+    def windows_guard(node: ast.AST) -> bool:
+        return (isinstance(node, ast.If) and isinstance(node.test, ast.Compare)
+                and len(node.test.ops) == len(node.test.comparators) == 1
+                and isinstance(node.test.ops[0], ast.Eq) and isinstance(node.test.left, ast.Call)
+                and not node.test.left.args and not node.test.left.keywords
+                and isinstance(node.test.left.func, ast.Attribute) and node.test.left.func.attr == "system"
+                and isinstance(node.test.left.func.value, ast.Name) and node.test.left.func.value.id == "platform"
+                and isinstance(node.test.comparators[0], ast.Constant)
+                and node.test.comparators[0].value == "Windows")
+
+    if not any(windows_guard(node) and any(windows_acl_verifier(child) for child in ast.walk(node))
+                   for node in function.body[try_index + 1:]):
+        return False
+    branch = events_mkdir(mkdir_calls[0])
+    if branch is None:
+        return False
+    test = branch.test
+    is_windows = (
+        isinstance(test, ast.Compare) and len(test.ops) == len(test.comparators) == 1
+        and isinstance(test.ops[0], ast.Eq) and isinstance(test.left, ast.Attribute)
+        and isinstance(test.left.value, ast.Name) and test.left.value.id == "os"
+        and test.left.attr == "name"
+        and isinstance(test.comparators[0], ast.Constant) and test.comparators[0].value == "nt"
+    )
+    return (is_windows and isinstance(branch.body, ast.Constant) and branch.body.value == 0o777
+            and isinstance(branch.orelse, ast.Constant) and branch.orelse.value == 0o700)
+
+
+def acl_preflight(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Read-only source/stage ACL gate for one exact server-start request."""
+    root = Path(root).resolve(strict=True)
+    request = _request(value)
+    result = {"sourceSha": request["sourceSha"],
+              "stageCorrelationId": request["stageCorrelationId"], "serverReady": False,
+              "replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+    try:
+        staged = stage.status(root, {"correlationId": request["stageCorrelationId"]})
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {"state": "unknown", **result}
+    if not isinstance(staged, Mapping):
+        return {"state": "unknown", **result}
+    script_hash = staged.get("fileHashes", {}).get("server/prepare_desktop_update_fixture.py")
+    if (staged.get("state") != "staged-not-server-ready"
+            or staged.get("sourceSha") != request["sourceSha"]):
+        return {"state": "unknown", **result}
+    if not isinstance(script_hash, str) or not _HASH.fullmatch(script_hash):
+        return {"state": "unknown", **result}
+    source = _frozen_fixture_source(root, request["sourceSha"])
+    if source is None:
+        return {"state": "unknown", **result}
+    if hashlib.sha256(source).hexdigest() != script_hash:
+        return {"state": "blocked", **result}
+    if not _has_windows_safe_probe_events_mkdir(source):
+        return {"state": "blocked", **result}
+    return {"state": "ready", **result}
+
+
 def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     """One-shot limited-owner launch after credentials, stage, and lease admission."""
     root = Path(root).resolve(strict=True); request = _request(value)
@@ -528,6 +761,8 @@ def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
                 "cleanupRequired": True, "replayAllowed": False}
     python = _python_inventory(root, request)
     descriptor = _private_tls_descriptor(root, request)
+    if acl_preflight(root, request).get("state") != "ready":
+        raise WindowsUpdateFixtureServerError("Exact source ACL preflight is not ready.")
     pair, guest = _admit_campaign(root, request, require_credentials=True)
     staged = stage.status(root, {"correlationId": request["stageCorrelationId"]})
     script_hash = staged.get("fileHashes", {}).get("server/prepare_desktop_update_fixture.py")
@@ -913,6 +1148,171 @@ def collect(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     return status(root, value)
 
 
+_SERVER_DIAG_PS = r'''$ErrorActionPreference='Stop';$name=@TASK@;$sid=@SID@;$python=@PYTHON@;$readyPath=@READY@;$stage=@STAGE@;$state=@STATE@
+$out=@{version=1;task='absent';lastResult='unknown';ready='absent';stateContent='unknown';stageAcl='unknown';stateAcl='unknown'}
+function AclClass([string]$path,[string]$recipient,[bool]$private){try{$acl=Get-Acl -LiteralPath $path -ErrorAction Stop;$item=Get-Item -LiteralPath $path -Force -ErrorAction Stop;$rules=@($acl.Access);if(!$item.PSIsContainer -or !$acl.AreAccessRulesProtected -or $rules.Count -ne 3){return 'mismatch'};$expected=@{'S-1-5-18'=0x1F01FF;'S-1-5-32-544'=0x1F01FF};$expected[$recipient]=if($private){0x1F01FF}else{0x1200A9};foreach($rule in $rules){$owner=$rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value;if(!$expected.ContainsKey($owner) -or [int]$rule.FileSystemRights -ne $expected[$owner] -or $rule.AccessControlType.ToString() -cne 'Allow' -or $rule.IsInherited -or [int]$rule.InheritanceFlags -ne 3 -or [int]$rule.PropagationFlags -ne 0){return 'mismatch'};$expected.Remove($owner)};return $(if($expected.Count -eq 0){'expected'}else{'mismatch'})}catch{return 'unknown'}}
+$out.stageAcl=AclClass $stage $sid $false;$out.stateAcl=AclClass $state $sid $true
+try{$t=Get-ScheduledTask -TaskPath '\' -TaskName $name -ErrorAction Stop;$actions=@($t.Actions);$p=$t.Principal;$principalSid=if($p.UserId -match '^S-1-'){([Security.Principal.SecurityIdentifier]::new($p.UserId)).Value}else{([Security.Principal.NTAccount]::new($p.UserId)).Translate([Security.Principal.SecurityIdentifier]).Value};if($t.TaskPath -cne '\' -or $actions.Count -ne 1 -or $actions[0].Execute -cne $python -or $principalSid -cne $sid -or $p.LogonType.ToString() -cne 'Interactive' -or $p.RunLevel.ToString() -cne 'Limited'){$out.task='mismatch'}else{$out.task=$t.State.ToString().ToLowerInvariant();$info=Get-ScheduledTaskInfo -TaskPath '\' -TaskName $name -ErrorAction Stop;if($info.LastRunTime -ne [datetime]::MinValue){$out.lastResult=[int64]$info.LastTaskResult}}}catch{}
+try{$item=Get-Item -LiteralPath $readyPath -Force -ErrorAction Stop;if(!$item.PSIsContainer -and !($item.Attributes-band [IO.FileAttributes]::ReparsePoint)){$out.ready='present'}}catch{}
+try{$stateDir=Split-Path -Parent $readyPath;$names=@(Get-ChildItem -LiteralPath $stateDir -Force -ErrorAction Stop|ForEach-Object {$_.Name});$out.stateContent=if($names.Count -eq 0){'empty'}elseif($names.Count -eq 1 -and $names[0] -ceq 'probe-events'){'probe-events'}elseif($names -contains 'ready.json'){'ready-present'}else{'other'}}catch{}
+$out|ConvertTo-Json -Compress'''
+
+
+def diagnose_status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Read only finite guest task and ready-file facts for one server intent."""
+    if not isinstance(value, Mapping) or set(value) != {"serverCorrelationId"} or not _canonical(value.get("serverCorrelationId")):
+        raise WindowsUpdateFixtureServerError("Server diagnostic requires exact correlation.")
+    root = Path(root).resolve(strict=True); correlation = value["serverCorrelationId"]
+    intent = _read_intent(root, correlation)
+    if intent is None:
+        return {"state": "intent-absent", "serverCorrelationId": correlation, "replayAllowed": False}
+    try:
+        config, target, (env, socket, pid, ticks, sid) = base._descriptor(root)
+        if (env != "windows-cp117" or (socket, pid, ticks, sid) !=
+                (intent.get("socketPath"), intent.get("qemuPid"), intent.get("startTicks"), intent.get("originalSid"))):
+            raise WindowsUpdateFixtureServerError("Owned server generation changed.")
+        ready = (r"C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-fixture-"
+                 + intent["request"]["stageCorrelationId"] + r"\server-state\ready.json")
+        state_path = ready.removesuffix(r"\ready.json")
+        stage_path = state_path.removesuffix(r"\server-state") + r"\content"
+        script = (_SERVER_DIAG_PS.replace("@TASK@", public._ps_literal("VpnControlMcpFixtureServer-" + correlation))
+                  .replace("@SID@", public._ps_literal(sid))
+                  .replace("@PYTHON@", public._ps_literal(intent["pythonPath"]))
+                  .replace("@READY@", public._ps_literal(ready))
+                  .replace("@STAGE@", public._ps_literal(stage_path))
+                  .replace("@STATE@", public._ps_literal(state_path)))
+        encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+        raw = base._remote(config, _REMOTE_LIVE, (socket, str(pid), str(ticks), encoded), None, 30)
+        outer = json.loads(raw) if raw is not None else None
+        detail = outer.get("result") if isinstance(outer, dict) and outer.get("state") == "observed" else None
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        detail = None
+    if (not isinstance(detail, dict) or set(detail) != {"version", "task", "lastResult", "ready", "stateContent", "stageAcl", "stateAcl"}
+            or detail.get("version") != 1 or detail.get("task") not in {"absent", "running", "ready", "queued", "disabled", "mismatch"}
+            or detail.get("ready") not in {"absent", "present"}
+            or detail.get("stateContent") not in {"empty", "probe-events", "ready-present", "other", "unknown"}
+            or detail.get("stageAcl") not in {"expected", "mismatch", "unknown"}
+            or detail.get("stateAcl") not in {"expected", "mismatch", "unknown"}
+            or not (detail.get("lastResult") == "unknown" or
+                    (type(detail.get("lastResult")) is int and -2147483648 <= detail["lastResult"] <= 4294967295))):
+        return {"state": "unknown", "serverCorrelationId": correlation, "replayAllowed": False}
+    return {"state": "observed", "serverCorrelationId": correlation,
+            "task": detail["task"], "lastResult": detail["lastResult"],
+            "ready": detail["ready"], "stateContent": detail["stateContent"],
+            "stageAcl": detail["stageAcl"], "stateAcl": detail["stateAcl"],
+            "replayAllowed": False}
+
+
+_STATIC_DIAG_CODE = r'''import importlib.util,json,pathlib,sys
+stage=pathlib.Path(sys.argv[1]);certificate=pathlib.Path(sys.argv[2]);entry=stage/'server'/'prepare_desktop_update_fixture.py'
+out={'version':1,'import':'skipped','certificate':'skipped','resources':'skipped','resourceGate':'skipped'}
+try:
+ sys.path.insert(0,str(entry.parent));spec=importlib.util.spec_from_file_location('fixture_diagnostic',entry);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);out['import']='ok'
+except Exception:out['import']='failed'
+if out['import']=='ok':
+ try:module.require_fixture_certificate_current(certificate);out['certificate']='ok'
+ except Exception:out['certificate']='failed'
+ try:module.load_resources(stage);out['resources']='ok';out['resourceGate']='complete'
+ except Exception:
+  out['resources']='failed';out['resourceGate']='receipt'
+  try:
+   receipt=json.loads((stage/'fixture-receipt.json').read_bytes());out['resourceGate']='receipt-contract'
+   if receipt['testOnly'] is not True or receipt['productionTrustChanged'] is not False:raise ValueError()
+   base,target=receipt['builds'];out['resourceGate']='builds'
+   if not(base['sourceFingerprint']==target['sourceFingerprint']==receipt['sourceFingerprint'] and base['codeFingerprint']==target['codeFingerprint']):raise ValueError()
+   manifest=receipt['manifest'];out['resourceGate']='manifest'
+   if manifest['assets']!=target['assets'] or manifest['buildNumber']!=module.version_build(target['version']):raise ValueError()
+   for asset in manifest['assets']:
+    file=stage/'packages'/'target'/asset['fileName'];out['resourceGate']='package-asset'
+    if module.package_asset(file,asset['platform'],asset['architecture'],asset['displayVersion'])!=asset:raise ValueError()
+    out['resourceGate']='package-mode'
+    if file.stat().st_mode & 0o222:raise ValueError()
+   out['resourceGate']='other'
+  except Exception:pass
+print(json.dumps(out,separators=(',',':')))'''
+
+
+_REMOTE_STATIC_DIAG = base._QGA + r'''import time
+sock,pid,ticks,python,stage,cert,code=sys.argv[1:]
+def out(v):print(json.dumps(v,separators=(',',':'),sort_keys=True))
+phase='binding'
+try:
+ if not live(sock,pid,ticks):raise ValueError()
+ phase='guest-launch'
+ child=call(sock,'guest-exec',{'path':python,'arg':['-I','-B','-c',base64.b64decode(code,validate=True).decode(),stage,cert],'capture-output':True})['pid']
+ phase='guest-wait'
+ for _ in range(100):
+  result=call(sock,'guest-exec-status',{'pid':child})
+  if result.get('exited') is True:break
+  time.sleep(.2)
+ else:raise ValueError()
+ phase='guest-exit'
+ if result.get('exitcode')!=0:raise ValueError()
+ phase='guest-output-truncated'
+ if result.get('out-truncated',False) is not False or result.get('err-truncated',False) is not False:raise ValueError()
+ phase='guest-output-bytes'
+ raw=base64.b64decode(result.get('out-data',''),validate=True)
+ if not 0<len(raw)<=1024:raise ValueError()
+ phase='guest-parse'
+ out({'state':'observed','result':json.loads(decode(raw))})
+except Exception:out({'state':'diagnosed','phase':phase})'''
+
+
+def diagnose_static(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Run only staged fixture import/certificate/resource reads in the guest."""
+    if not isinstance(value, Mapping) or set(value) != {"serverCorrelationId"} or not _canonical(value.get("serverCorrelationId")):
+        raise WindowsUpdateFixtureServerError("Server static diagnostic requires exact correlation.")
+    root = Path(root).resolve(strict=True); correlation = value["serverCorrelationId"]
+    intent = _read_intent(root, correlation)
+    if intent is None:
+        return {"state": "intent-absent", "serverCorrelationId": correlation, "replayAllowed": False}
+    phase = "descriptor"
+    try:
+        config, _target, (env, socket, pid, ticks, sid) = base._descriptor(root)
+        if (env != "windows-cp117" or (socket, pid, ticks, sid) !=
+                (intent.get("socketPath"), intent.get("qemuPid"), intent.get("startTicks"), intent.get("originalSid"))):
+            raise WindowsUpdateFixtureServerError("Owned server generation changed.")
+        request = _request(intent["request"])
+        phase = "stage"
+        staged = stage.status(root, {"correlationId": request["stageCorrelationId"]})
+        if staged.get("state") != "staged-not-server-ready":
+            raise WindowsUpdateFixtureServerError("Exact server stage changed.")
+        content = (r"C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-fixture-"
+                   + request["stageCorrelationId"] + r"\content")
+        cert = (r"C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-credentials-"
+                + request["stageCorrelationId"] + r"\server-cert.pem")
+        phase = "remote"
+        raw = base._remote(config, _REMOTE_STATIC_DIAG,
+                           (socket, str(pid), str(ticks), intent["pythonPath"], content, cert,
+                            base64.b64encode(_STATIC_DIAG_CODE.encode()).decode()), None, 30)
+        outer = json.loads(raw) if raw is not None else None
+        if (isinstance(outer, dict) and set(outer) == {"state", "phase"}
+                and outer.get("state") == "diagnosed"
+                and outer.get("phase") in {"binding", "guest-launch", "guest-wait", "guest-exit",
+                                           "guest-output-truncated",
+                                           "guest-output-bytes", "guest-parse"}):
+            return {"state": "diagnosed", "serverCorrelationId": correlation,
+                    "phase": outer["phase"], "replayAllowed": False}
+        result = outer.get("result") if isinstance(outer, dict) and outer.get("state") == "observed" else None
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {"state": "diagnosed", "serverCorrelationId": correlation,
+                "phase": phase, "replayAllowed": False}
+    if (not isinstance(result, dict) or set(result) != {"version", "import", "certificate", "resources", "resourceGate"}
+            or result.get("version") != 1 or result.get("import") not in {"ok", "failed", "skipped"}
+            or result.get("certificate") not in {"ok", "failed", "skipped"}
+            or result.get("resources") not in {"ok", "failed", "skipped"}
+            or result.get("resourceGate") not in {"skipped", "receipt", "receipt-contract", "builds",
+                                                   "manifest", "package-asset", "package-mode", "other", "complete"}
+            or (result["resources"] == "ok") != (result["resourceGate"] == "complete")
+            or (result["resources"] == "skipped") != (result["resourceGate"] == "skipped")):
+        return {"state": "diagnosed", "serverCorrelationId": correlation,
+                "phase": phase, "replayAllowed": False}
+    return {"state": "observed", "serverCorrelationId": correlation,
+            "import": result["import"], "certificate": result["certificate"],
+            "resources": result["resources"], "resourceGate": result["resourceGate"],
+            "replayAllowed": False}
+
+
 def verified_live_receipt(root: Path | str, lease_id: str) -> dict[str, Any]:
     """Internal target/public join from one private intent and fresh QGA state."""
     if not _canonical(lease_id):
@@ -1154,7 +1554,7 @@ try:
    if result.get('exited') is True:break
    __import__('time').sleep(.2)
   else:raise ValueError()
-  if result.get('exitcode')!=0 or result.get('out-truncated') is not False or result.get('err-truncated') is not False:raise ValueError()
+  if result.get('exitcode')!=0 or result.get('out-truncated',False) is not False or result.get('err-truncated',False) is not False:raise ValueError()
   raw=base64.b64decode(result['out-data'],validate=True)
   if not 0<len(raw)<=8192 or json.loads(decode(raw))!={'taskAbsent':True,'matchingProcessAbsent':True,'listenerAbsent':True}:raise ValueError()
   save_private_json(os.path.join(cleanup,'terminal.json'),{'taskAbsent':True,'matchingProcessAbsent':True,'listenerAbsent':True,'originalSid':sid,'sessionId':1,'serverPid':0,'serverProcessStartIdentity':'','serverPort':0})
@@ -1164,7 +1564,7 @@ except Exception:out({'state':'unknown','cleanupCorrelationId':cleanup_corr})
 '''
 
 
-_REMOTE_CLEANUP_STATUS = base._QGA + lease.remote_role_guard() + r'''import fcntl,uuid
+_REMOTE_CLEANUP_STATUS = base._QGA + lease.remote_role_guard() + _PRIVATE_REMOTE_JSON + r'''import fcntl,uuid
 root,env,lease_id,role,role_corr,server_corr,cleanup_corr,sock,pid,ticks,source,receipt_id,base_id,target_id,verify_encoded,command_hash,verify_hash=sys.argv[1:]
 def out(value):print(json.dumps(value,separators=(',',':'),sort_keys=True))
 try:
@@ -1184,12 +1584,26 @@ try:
   dispatch_path=os.path.join(job,'dispatch.json');info=os.lstat(dispatch_path)
   if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>16384:raise ValueError()
   with open(dispatch_path,encoding='utf-8') as file:dispatch=json.load(file)
-  result=call(sock,'guest-exec-status',{'pid':dispatch['pid']})
-  if result.get('exited') is not True:out({'state':'running','cleanupCorrelationId':cleanup_corr});raise SystemExit(0)
-  if result.get('exitcode')!=0 or result.get('out-truncated') is not False or result.get('err-truncated') is not False:raise ValueError()
-  raw=base64.b64decode(result['out-data'],validate=True)
-  if not 0<len(raw)<=8192:raise ValueError()
-  terminal=json.loads(decode(raw))
+  status_lock=os.open(os.path.join(job,'.status.lock'),os.O_RDWR|os.O_CREAT|getattr(os,'O_NOFOLLOW',0),0o600)
+  try:
+   lock_info=os.fstat(status_lock)
+   if not stat.S_ISREG(lock_info.st_mode) or lock_info.st_uid!=os.geteuid() or stat.S_IMODE(lock_info.st_mode)!=0o600:raise ValueError()
+   fcntl.flock(status_lock,fcntl.LOCK_EX)
+   terminal_path=os.path.join(job,'terminal.json')
+   if os.path.exists(terminal_path):
+    info=os.lstat(terminal_path)
+    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>4096:raise ValueError()
+    with open(terminal_path,encoding='utf-8') as file:terminal=json.load(file)
+   else:
+    result=call(sock,'guest-exec-status',{'pid':dispatch['pid']})
+    if result.get('exited') is not True:out({'state':'running','cleanupCorrelationId':cleanup_corr});raise SystemExit(0)
+    if result.get('exitcode')!=0 or result.get('out-truncated',False) is not False or result.get('err-truncated',False) is not False:raise ValueError()
+    raw=base64.b64decode(result['out-data'],validate=True)
+    if not 0<len(raw)<=8192:raise ValueError()
+    terminal=json.loads(decode(raw))
+    if not isinstance(terminal,dict):raise ValueError()
+    save_private_json(terminal_path,terminal)
+  finally:os.close(status_lock)
  else:
   terminal_path=os.path.join(job,'terminal.json');info=os.lstat(terminal_path)
   if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>4096:raise ValueError()
@@ -1200,7 +1614,7 @@ try:
   if observed.get('exited') is True:break
   __import__('time').sleep(.2)
  else:raise ValueError()
- if observed.get('exitcode')!=0 or observed.get('out-truncated') is not False or observed.get('err-truncated') is not False:raise ValueError()
+ if observed.get('exitcode')!=0 or observed.get('out-truncated',False) is not False or observed.get('err-truncated',False) is not False:raise ValueError()
  fresh_raw=base64.b64decode(observed['out-data'],validate=True)
  if not 0<len(fresh_raw)<=8192:raise ValueError()
  fresh=json.loads(decode(fresh_raw))
@@ -1442,3 +1856,70 @@ def abort_status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
 
 def abort_collect(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     return abort_status(root, value)
+
+
+_REMOTE_CLEANUP_DIAGNOSTIC = base._QGA + r'''root,env,server_corr,cleanup_corr,sock,pid,ticks=sys.argv[1:]
+def out(v):print(json.dumps(v,separators=(',',':'),sort_keys=True))
+phase='binding'
+try:
+ if not live(sock,pid,ticks):raise ValueError()
+ phase='journal'
+ job=os.path.join(root,env,'windows-update-fixture-server',server_corr,'cleanup-'+cleanup_corr)
+ info=os.lstat(job)
+ if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError()
+ for name in ('binding.json','dispatch.json'):
+  path=os.path.join(job,name);info=os.lstat(path)
+  if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>16384:raise ValueError()
+ with open(os.path.join(job,'binding.json'),encoding='utf-8') as file:binding=json.load(file)
+ if binding.get('serverCorrelationId')!=server_corr or binding.get('cleanupCorrelationId')!=cleanup_corr or binding.get('socketPath')!=sock or binding.get('qemuPid')!=int(pid) or binding.get('startTicks')!=int(ticks) or binding.get('dispatchMode')!='dispatched':raise ValueError()
+ with open(os.path.join(job,'dispatch.json'),encoding='utf-8') as file:dispatch=json.load(file)
+ if set(dispatch)!={'pid'} or type(dispatch['pid']) is not int or dispatch['pid']<=0:raise ValueError()
+ phase='guest-task'
+ result=call(sock,'guest-exec-status',{'pid':dispatch['pid']})
+ if result.get('exited') is False:out({'state':'observed','task':'running','result':'unknown','stdout':'unknown','stderr':'unknown'});raise SystemExit(0)
+ if result.get('exited') is not True:raise ValueError()
+ code=result.get('exitcode')
+ status='zero' if type(code) is int and code==0 else 'nonzero' if type(code) is int else 'unknown'
+ def flag(name):
+  value=result.get(name,'absent')
+  return 'absent' if value=='absent' else 'false' if value is False else 'true' if value is True else 'invalid'
+ out({'state':'observed','task':'terminal','result':status,'stdout':flag('out-truncated'),'stderr':flag('err-truncated')})
+except SystemExit:raise
+except Exception:out({'state':'diagnosed','phase':phase})'''
+
+
+def diagnose_abort(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Read only the exact aborted server cleanup child and finite QGA flags."""
+    if (not isinstance(value, Mapping) or set(value) != {"cleanupCorrelationId"}
+            or not _canonical(value.get("cleanupCorrelationId"))):
+        raise WindowsUpdateFixtureServerError("Abort diagnostic requires exact correlation.")
+    root = Path(root).resolve(strict=True); correlation = value["cleanupCorrelationId"]
+    phase = "intent"
+    try:
+        intent = _read_cleanup_intent(root, correlation)
+        if intent is None or intent.get("mode") != "abort":
+            raise WindowsUpdateFixtureServerError("Exact abort intent is unavailable.")
+        request = _cleanup_request(intent["request"])
+        phase = "descriptor"
+        config, target, (env, socket, pid, ticks, sid) = base._descriptor(root)
+        if (env != "windows-cp117" or any(intent.get(key) != observed for key, observed in
+                (("socketPath", socket), ("qemuPid", pid), ("startTicks", ticks), ("originalSid", sid)))):
+            raise WindowsUpdateFixtureServerError("Abort guest generation changed.")
+        phase = "remote"
+        raw = base._remote(config, _REMOTE_CLEANUP_DIAGNOSTIC,
+                           (str(target.fixture_transfer_root), env, request["serverCorrelationId"],
+                            correlation, socket, str(pid), str(ticks)), None, 30)
+        result = json.loads(raw) if raw is not None else None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        result = None
+    if (isinstance(result, dict) and set(result) == {"state", "task", "result", "stdout", "stderr"}
+            and result.get("state") == "observed" and result.get("task") in {"running", "terminal"}
+            and result.get("result") in {"unknown", "zero", "nonzero"}
+            and result.get("stdout") in {"unknown", "absent", "false", "true", "invalid"}
+            and result.get("stderr") in {"unknown", "absent", "false", "true", "invalid"}):
+        return {**result, "cleanupCorrelationId": correlation, "replayAllowed": False}
+    if (isinstance(result, dict) and result.get("state") == "diagnosed"
+            and result.get("phase") in {"binding", "journal", "guest-task"}):
+        phase = result["phase"]
+    return {"state": "diagnosed", "cleanupCorrelationId": correlation,
+            "phase": phase, "replayAllowed": False}

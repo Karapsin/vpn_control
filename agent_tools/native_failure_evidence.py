@@ -26,8 +26,68 @@ _MAX_RECORD = 8192
 _MAX_OBSERVATIONS = 8
 
 
+# These descriptions are deliberately a closed table.  They turn only the
+# bounded state/phase projections already returned by the fixed CP117 readers
+# into safe fingerprint components; raw receipts and transport errors never
+# participate.  The references identify the existing deterministic regression
+# that protects each reader without exposing an evidence location.
+_WINDOWS_FAILURE_DETAILS: dict[str, tuple[str, str]] = {
+    "windows-fixture-stage-recover-7f27": (
+        "fixture_stage_recovery",
+        "agent_tools.tests.test_windows_update_fixture_stage_recovery.StageRecoveryTest",
+    ),
+    "windows-msi-owner-census": (
+        "owner_census",
+        "agent_tools.tests.test_windows_msi_owner_census.OwnerCensusTests",
+    ),
+    "windows-fixture-stage-diagnostic": (
+        "fixture_stage_diagnostic",
+        "agent_tools.tests.test_windows_update_fixture_stage.WindowsUpdateFixtureStageTest",
+    ),
+}
+_FIXTURE_STAGE_DIAGNOSTIC_TYPES = {
+    "remote-stage-absent": "remote_stage_absent",
+    "remote-stage-partial": "remote_stage_partial",
+    "remote-binding-mismatch": "remote_binding_mismatch",
+    "remote-dispatch-malformed": "remote_dispatch_malformed",
+    "guest-stage-absent": "guest_stage_absent",
+    "guest-stage-partial": "guest_stage_partial",
+    "guest-stage-full": "guest_stage_full",
+    "receipt-pending": "receipt_pending",
+    "receipt-absent": "receipt_absent",
+    "receipt-present-unverified": "receipt_present_unverified",
+    "qga-protocol": "qga_protocol",
+    "local-intent": "local_intent",
+    "local-artifact": "local_artifact",
+    "descriptor": "descriptor",
+}
+
+
 class NativeFailureEvidenceError(ValueError):
     """Failure evidence is malformed or cannot be privately persisted."""
+
+
+def bounded_failure_details(action: Any, result: Mapping[str, Any]) -> dict[str, str]:
+    """Return a finite public failure descriptor for selected CP117 readers.
+
+    This is intentionally a projection, not diagnosis.  It accepts only an
+    action in the fixed table and a reader's already bounded ``state`` and,
+    for the fixture-stage diagnostic, ``phase``.  Every unavailable,
+    malformed, successful, or newly introduced result falls back to the exact
+    generic ``outcome_unknown`` label.  The raw receipt and correlation remain
+    private in the normal evidence record.
+    """
+    if (not isinstance(action, str) or action not in _WINDOWS_FAILURE_DETAILS
+            or not isinstance(result, Mapping) or result.get("state") != "unknown"):
+        return {}
+    failure_phase, regression_reference = _WINDOWS_FAILURE_DETAILS[action]
+    failure_type = "outcome_unknown"
+    if action == "windows-fixture-stage-diagnostic" and isinstance(result, Mapping):
+        phase = result.get("phase")
+        if isinstance(phase, str):
+            failure_type = _FIXTURE_STAGE_DIAGNOSTIC_TYPES.get(phase, failure_type)
+    return {"failurePhase": failure_phase, "failureType": failure_type,
+            "regressionReference": regression_reference}
 
 
 def record_failure(root: Path | str, context: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str, Any]:
@@ -64,7 +124,8 @@ def _normalize(context: Mapping[str, Any], result: Mapping[str, Any]) -> dict[st
     if not isinstance(context, Mapping) or not isinstance(result, Mapping):
         raise NativeFailureEvidenceError("failure context and result must be objects")
     context_allowed = {"tool", "action", "sourceSha", "sourceFingerprint", "artifactIds", "environmentAlias", "operationCorrelation"}
-    result_allowed = {"classification", "errorCategory", "before", "after", "observations", "evidencePaths"}
+    result_allowed = {"classification", "errorCategory", "before", "after", "observations", "evidencePaths",
+                      "failurePhase", "failureType", "regressionReference"}
     if set(context) - context_allowed or set(result) - result_allowed:
         raise NativeFailureEvidenceError("failure evidence contains unsupported fields")
     if "tool" not in context or "action" not in context:
@@ -74,6 +135,16 @@ def _normalize(context: Mapping[str, Any], result: Mapping[str, Any]) -> dict[st
         raise NativeFailureEvidenceError("failure classification must be nativeUNKNOWN or terminalFailure")
     value: dict[str, Any] = {"tool": _token(context["tool"], "tool"), "action": _token(context["action"], "action"),
                              "classification": classification, "errorCategory": _token(result.get("errorCategory"), "error category")}
+    detail_fields = {"failurePhase", "failureType", "regressionReference"}
+    supplied_details = detail_fields & set(result)
+    if supplied_details:
+        if supplied_details != detail_fields:
+            raise NativeFailureEvidenceError("failure detail is incomplete")
+        expected = _allowed_failure_detail(context["action"], result["failurePhase"], result["failureType"],
+                                           result["regressionReference"])
+        if expected is None:
+            raise NativeFailureEvidenceError("failure detail is invalid")
+        value.update(expected)
     optional_tokens = {"environmentAlias": "environment alias", "operationCorrelation": "operation correlation"}
     for field, label in optional_tokens.items():
         if field in context:
@@ -105,6 +176,20 @@ def _normalize(context: Mapping[str, Any], result: Mapping[str, Any]) -> dict[st
     value["summaryCounts"] = {"before": int("before" in value), "after": int("after" in value),
                               "observations": len(value.get("observations", [])), "evidencePaths": len(value.get("evidencePaths", []))}
     return value
+
+
+def _allowed_failure_detail(action: Any, failure_phase: Any, failure_type: Any,
+                            regression_reference: Any) -> dict[str, str] | None:
+    """Validate a detail independently of untrusted receipt input."""
+    if not isinstance(action, str) or action not in _WINDOWS_FAILURE_DETAILS:
+        return None
+    phase, reference = _WINDOWS_FAILURE_DETAILS[action]
+    allowed_types = {"outcome_unknown"}
+    if action == "windows-fixture-stage-diagnostic":
+        allowed_types.update(_FIXTURE_STAGE_DIAGNOSTIC_TYPES.values())
+    if failure_phase != phase or failure_type not in allowed_types or regression_reference != reference:
+        return None
+    return {"failurePhase": phase, "failureType": failure_type, "regressionReference": reference}
 
 
 def _observation(raw: Any, label: str) -> dict[str, Any]:

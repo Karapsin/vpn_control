@@ -57,11 +57,23 @@ public static class VpnControlVisualClock {
 function Dismiss-HostedVisualResidue {
     if ($env:VPN_CONTROL_VISUAL_PROVIDER -ne "hosted") { return }
     # A recycled hosted image can surface Windows' paging-file warning before the
-    # fixture starts. It is unrelated to VPN Control and must not cover evidence.
-    Get-Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like "System Properties*" } |
-        ForEach-Object { $_.CloseMainWindow() | Out-Null }
-    Start-Sleep -Seconds 2
+    # fixture starts. Closing it is asynchronous, so do not begin capture until
+    # two consecutive censuses confirm that it is gone.
+    $deadline = (Get-Date).AddSeconds(10)
+    $clearCensuses = 0
+    do {
+        $foreign = @(Get-Process -ErrorAction SilentlyContinue |
+            Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like "System Properties*" })
+        if ($foreign.Count -eq 0) {
+            $clearCensuses++
+            if ($clearCensuses -ge 2) { return }
+        } else {
+            $clearCensuses = 0
+            $foreign | ForEach-Object { $_.CloseMainWindow() | Out-Null }
+        }
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $deadline)
+    throw "Foreign System Properties dialog remained before native visual capture"
 }
 
 function Assert-NoHostedVisualResidue {
@@ -108,11 +120,11 @@ if ($NativeScenes) {
     $env:VPN_CONTROL_VISUAL_NATIVE_SCENES = $NativeScenes
     $env:VPN_CONTROL_VISUAL_PACKAGE = $VisualPackage
     Hide-HostConsoleWindows
-    Dismiss-HostedVisualResidue
     $OriginalDate = Get-Date
     try {
         Set-Date -Date "2026-09-03T12:00:00" | Out-Null
         Notify-SystemClockChanged
+        Dismiss-HostedVisualResidue
         & (Join-Path $RepoRoot "gradlew.bat") :desktopApp:nativeVisualCapture
         if ($LASTEXITCODE -ne 0) { throw "Desktop native visual capture task failed" }
     } finally {

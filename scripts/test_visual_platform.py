@@ -1428,14 +1428,23 @@ class VisualPlatformTest(unittest.TestCase):
             / "desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopNativeVisualCaptureTest.kt"
         ).read_text(encoding="utf-8")
         native_capture = wrapper.index(':desktopApp:nativeVisualCapture')
+        clock_change = wrapper.index('Notify-SystemClockChanged', native_capture - 300)
+        pre_capture_dismissal = wrapper.index('Dismiss-HostedVisualResidue', clock_change)
         post_capture_guard = wrapper.index('Assert-NoHostedVisualResidue', native_capture)
         provenance = wrapper.index('"capture-local", "--platform"', native_capture)
+        self.assertLess(clock_change, pre_capture_dismissal)
+        self.assertLess(pre_capture_dismissal, native_capture)
         self.assertLess(native_capture, post_capture_guard)
         self.assertLess(post_capture_guard, provenance)
         assertion = wrapper.split('function Assert-NoHostedVisualResidue {', 1)[1].split('\n}', 1)[0]
         self.assertIn('-like "System Properties*"', assertion)
+        dismissal = wrapper.split('function Dismiss-HostedVisualResidue {', 1)[1].split('\n}', 1)[0]
+        self.assertIn('$clearCensuses -ge 2', dismissal)
+        self.assertIn('Start-Sleep -Milliseconds 250', dismissal)
         self.assertIn('captureWindowsNativeFrame(', native)
         self.assertIn('windowsVisualTopLevelTitles()', native)
+        self.assertIn('dismissHostedWindowsSystemPropertiesDialog()', native)
+        self.assertIn('PostMessage(handle, WinUser.WM_CLOSE', native)
 
     def test_hosted_macos_capture_disables_first_run_desktop_help(self) -> None:
         workflow = (visual_platform.ROOT / ".github/workflows/visual-regression.yml").read_text(

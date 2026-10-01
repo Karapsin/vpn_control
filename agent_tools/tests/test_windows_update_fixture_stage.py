@@ -10,7 +10,10 @@ from contextlib import redirect_stdout
 import fcntl
 import os
 from pathlib import Path
+import shutil
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 import uuid
@@ -54,6 +57,106 @@ def serve(directory):
 
 
 class WindowsUpdateFixtureStageTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "win32" and shutil.which("powershell.exe"),
+                         "Windows PowerShell filesystem attributes required")
+    def test_generated_stage_marks_verified_target_msi_read_only(self):
+        """Execute the generated extraction tail against real Windows file attributes."""
+        with tempfile.TemporaryDirectory() as temporary:
+            content = Path(temporary) / "content"
+            target = content / "packages" / "target" / "vpn-control-2.2.0.msi"
+            receipt = content / "fixture-receipt.json"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"signed-msi")
+            receipt.write_bytes(b"receipt")
+            hashes = {"packages/target/vpn-control-2.2.0.msi": hashlib.sha256(target.read_bytes()).hexdigest(),
+                      "fixture-receipt.json": hashlib.sha256(receipt.read_bytes()).hexdigest()}
+            script = stage._stage_script(CORR, SID, hashes, "2" * 64)
+            tail = script[script.index(" $files=@(Get-ChildItem"):script.index(" $aclReceipt=(&")]
+            prelude = ("$ErrorActionPreference='Stop';$content='" + str(content).replace("'", "''") +
+                       "';$expected=@{};" + "".join("$expected['" + name + "']='" + digest + "';"
+                                                for name, digest in hashes.items()))
+            completed = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+                                        prelude + tail], capture_output=True, text=True, check=False)
+            try:
+                self.assertEqual(0, completed.returncode, completed.stderr)
+                self.assertEqual(hashes["packages/target/vpn-control-2.2.0.msi"],
+                                 hashlib.sha256(target.read_bytes()).hexdigest())
+                self.assertEqual(0, target.stat().st_mode & 0o222)
+                self.assertNotEqual(0, receipt.stat().st_mode & 0o222)
+            finally:
+                target.chmod(0o666)
+
+    def _run_remote_status(self, receipt, call):
+        body = stage._REMOTE_STATUS[stage._REMOTE_STATUS.index("root,env,lease,corr,"):]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            environment = root / "windows-cp117"
+            leaf = environment / "windows-update-fixture-stage" / CORR
+            leaf.mkdir(parents=True, mode=0o700)
+            for directory in (root, environment, leaf.parent, leaf):
+                os.chmod(directory, 0o700)
+            binding = {"correlationId": CORR, "socketPath": "/qga", "pid": 42,
+                       "startTicks": 99, "leaseId": LEASE, "sourceSha": SOURCE,
+                       "sourceFingerprint": "a" * 64, "bundleSha256": "2" * 64,
+                       "expectedSid": SID,
+                       "fixtureReceiptArtifactId": REQUEST["fixtureReceiptArtifactId"],
+                       "baseMsiArtifactId": REQUEST["baseMsiArtifactId"],
+                       "targetMsiArtifactId": REQUEST["targetMsiArtifactId"]}
+            for name, value in (("binding.json", binding), ("dispatch.json", {"pid": 7})):
+                path = leaf / name
+                path.write_text(json.dumps(value)); os.chmod(path, 0o600)
+            output = io.StringIO()
+            args = [str(root), "windows-cp117", LEASE, CORR, "/qga", "42", "99", SID,
+                    SOURCE, "a" * 64, "2" * 64, REQUEST["fixtureReceiptArtifactId"],
+                    REQUEST["baseMsiArtifactId"], REQUEST["targetMsiArtifactId"]]
+            namespace = {"json": json, "os": os, "stat": stat,
+                         "sys": type("Args", (), {"argv": ["remote", *args]})(),
+                         "live": lambda *_: True, "call": call, "read": lambda *_: receipt,
+                         "decode": lambda raw: raw.decode("utf-8")}
+            with redirect_stdout(output):
+                try:
+                    exec(compile(ast.parse(body), "stage-status-remote", "exec"), namespace)
+                except SystemExit as exited:
+                    self.assertEqual(0, exited.code)
+        return json.loads(output.getvalue())
+
+    def _run_remote_diagnostic(self, names, call, read):
+        """Run the generated remote observer against a private fake host leaf."""
+        body = stage._REMOTE_DIAGNOSTIC[stage._REMOTE_DIAGNOSTIC.index("import time\n"):]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            environment = root / "windows-cp117"
+            group = environment / "windows-update-fixture-stage"
+            leaf = group / CORR
+            leaf.mkdir(parents=True, mode=0o700)
+            for directory in (root, environment, group, leaf):
+                os.chmod(directory, 0o700)
+            binding = {"correlationId": CORR, "socketPath": "/qga", "pid": 42,
+                       "startTicks": 99, "leaseId": LEASE, "sourceSha": SOURCE,
+                       "sourceFingerprint": "a" * 64, "bundleSha256": "2" * 64,
+                       "expectedSid": SID,
+                       "fixtureReceiptArtifactId": REQUEST["fixtureReceiptArtifactId"],
+                       "baseMsiArtifactId": REQUEST["baseMsiArtifactId"],
+                       "targetMsiArtifactId": REQUEST["targetMsiArtifactId"]}
+            (leaf / "binding.json").write_text(json.dumps(binding))
+            os.chmod(leaf / "binding.json", 0o600)
+            if "dispatch" in names:
+                (leaf / "dispatch.json").write_text('{"pid":7}')
+                os.chmod(leaf / "dispatch.json", 0o600)
+            output = io.StringIO()
+            args = [str(root), "windows-cp117", LEASE, CORR, "/qga", "42", "99", SID,
+                    SOURCE, "a" * 64, "2" * 64, "1", REQUEST["fixtureReceiptArtifactId"],
+                    REQUEST["baseMsiArtifactId"], REQUEST["targetMsiArtifactId"]]
+            namespace = {"os": os, "stat": stat, "json": json, "base64": base64,
+                         "time": __import__("time"), "sys": type("Args", (), {"argv": ["remote", *args]})(),
+                         "live": lambda *_: True, "call": call, "read": read,
+                         "decode": lambda raw: raw.decode("utf-8")}
+            with redirect_stdout(output):
+                with self.assertRaises(SystemExit) as exited:
+                    exec(compile(ast.parse(body), "stage-diagnostic-remote", "exec"), namespace)
+            self.assertEqual(0, exited.exception.code)
+        return json.loads(output.getvalue())
+
     def test_request_is_exact_and_canonical(self):
         self.assertEqual(REQUEST, stage._request(REQUEST))
         for bad in ({**REQUEST, "correlationId": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"},
@@ -166,7 +269,11 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
 
     def test_create_checks_all_ancestors_and_new_paths_for_reparse(self):
         script = stage._create_script(CORR, SID)
-        self.assertIn("$item=$item.Parent", script)
+        # DirectoryInfo.Parent does not preserve provider-added PSIsContainer;
+        # each ancestor must therefore be fetched again before its type check.
+        self.assertIn("$item=Get-Item -LiteralPath $current -Force -ErrorAction Stop", script)
+        self.assertIn("$parent=Split-Path -Parent $current", script)
+        self.assertNotIn("$item=$item.Parent", script)
         self.assertIn("ReparsePoint", script)
         self.assertLess(script.index("SafeAncestors (Split-Path -Parent $root)"),
                         script.index("[IO.Directory]::CreateDirectory($root"))
@@ -247,9 +354,14 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
                      "fileHashes": {}}
             path = directory / (OLD + ".json")
             path.write_text(json.dumps(prior)); os.chmod(path, 0o600)
-            closed = {"state": "closed", "identity": {"leaseId": OLD_LEASE}}
-            with patch.object(stage.base, "_descriptor", return_value=(object(), object(), None)), \
+            descriptor = ("windows-cp117", "/qga", 42, 99, SID)
+            expected = stage.base._campaign_identity({**prior["request"], "correlationId": OLD_LEASE}, descriptor)
+            closed = {"state": "closed", "identity": expected}
+            prior.update({"environment":descriptor[0],"socketPath":descriptor[1],"pid":descriptor[2],"startTicks":descriptor[3],"expectedSid":descriptor[4]})
+            path.write_text(json.dumps(prior))
+            with patch.object(stage.base, "_descriptor", return_value=(object(), object(), descriptor)), \
                  patch.object(stage.base, "_campaign_remote", return_value=lambda *_: None), \
+                 patch.object(stage.public, "_admit_pair", return_value={"sourceFingerprint":"a" * 64}), \
                  patch.object(stage.campaign_lease, "_closed", return_value=closed) as read_closed, \
                  patch.object(stage.campaign_lease, "_remote_confirm", return_value=False) as confirm:
                 with self.assertRaisesRegex(stage.WindowsUpdateFixtureStageError, "active or unknown"):
@@ -262,6 +374,48 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
                     stage._closed_stage_history(root, OLD_LEASE)
             self.assertLess(stage._REMOTE_START.index("closed_path="),
                             stage._REMOTE_START.index("stage=os.path.join(group,corr);os.mkdir"))
+
+    def test_rebased_successor_proves_old_closed_history_without_bypassing_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); directory = root / stage._GROUP
+            directory.mkdir(parents=True, mode=0o700)
+            prior = {"request": {**REQUEST, "correlationId": OLD}, "leaseId": OLD_LEASE,
+                     "sourceFingerprint": "a" * 64, "bundleSha256": "b" * 64, "fileHashes": {}}
+            (directory / (OLD + ".json")).write_text(json.dumps(prior)); os.chmod(directory / (OLD + ".json"), 0o600)
+            descriptor = ("windows-cp117", "/qga", 42, 99, SID)
+            expected = stage.base._campaign_identity({**prior["request"], "correlationId": OLD_LEASE}, descriptor)
+            closed = {"state": "closed", "identity": expected}
+            prior.update({"environment":descriptor[0],"socketPath":descriptor[1],"pid":descriptor[2],"startTicks":descriptor[3],"expectedSid":descriptor[4]})
+            (directory / (OLD + ".json")).write_text(json.dumps(prior))
+            successor = {"identity": {"leaseId": LEASE}}
+            config, target = object(), object()
+            with patch.object(stage.base, "_descriptor", return_value=(config, target, descriptor)), \
+                 patch.object(stage.base, "_campaign_remote", return_value=lambda *_: None), \
+                 patch.object(stage.public, "_admit_pair", return_value={"sourceFingerprint":"a" * 64}), \
+                 patch.object(stage.campaign_lease, "_closed", return_value=closed), \
+                 patch.object(stage.campaign_lease, "_remote_confirm", return_value=False), \
+                 patch.object(stage.campaign_lease, "_active", return_value=successor), \
+                 patch("agent_tools.windows_cp117_campaign_status._remote_closed_proof", return_value=True) as successor_proof:
+                self.assertEqual("confirmed", stage._closed_stage_history_detail(root, LEASE))
+                successor_proof.assert_called_once_with(config, target, closed, successor["identity"])
+                successor_proof.return_value = False
+                self.assertEqual("remote-status-mismatch", stage._closed_stage_history_detail(root, LEASE))
+
+    def test_prior_history_rejects_closed_identity_mismatching_stage_request_before_remote_proof(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); directory = root / stage._GROUP; directory.mkdir(parents=True, mode=0o700)
+            descriptor = ("windows-cp117", "/qga", 42, 99, SID)
+            prior = {"request": {**REQUEST, "correlationId": OLD}, "leaseId": OLD_LEASE,
+                     "sourceFingerprint": "a" * 64, "bundleSha256": "b" * 64, "fileHashes": {},
+                     "environment":descriptor[0],"socketPath":descriptor[1],"pid":descriptor[2],"startTicks":descriptor[3],"expectedSid":descriptor[4]}
+            (directory / (OLD + ".json")).write_text(json.dumps(prior)); os.chmod(directory / (OLD + ".json"), 0o600)
+            with patch.object(stage.base, "_descriptor", return_value=(object(), object(), descriptor)), \
+                 patch.object(stage.base, "_campaign_remote", return_value=lambda *_: None), \
+                 patch.object(stage.public, "_admit_pair", return_value={"sourceFingerprint":"a" * 64}), \
+                 patch.object(stage.campaign_lease, "_closed", return_value={"identity":{"leaseId":"wrong"}}), \
+                 patch.object(stage.campaign_lease, "_remote_confirm") as remote:
+                self.assertEqual("history-record-invalid", stage._closed_stage_history_detail(root, LEASE))
+                remote.assert_not_called()
 
     def test_bundle_write_failure_never_claims_stage_role(self):
         pair = {"sourceFingerprint": "a" * 64, "targetMsiSha256": "d" * 64}
@@ -450,6 +604,181 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
         self.assertEqual("staged-not-server-ready", result["state"])
         self.assertFalse(result["serverReady"])
         self.assertEqual(2, acl.call_count)
+
+    def test_remote_status_uses_valid_durable_receipt_before_consumed_qga_status(self):
+        receipt = {"version": 1, "correlationId": CORR, "code": "STAGED_NOT_SERVER_READY"}
+        result = self._run_remote_status(
+            json.dumps(receipt).encode(),
+            lambda *_: self.fail("durable receipt must not query consumed status"))
+        self.assertEqual({"state": "observed", "correlationId": CORR, "result": receipt}, result)
+
+    def test_remote_status_fails_closed_for_missing_or_invalid_receipt(self):
+        calls = []
+        missing = self._run_remote_status(
+            None,
+            lambda *_: calls.append("status") or {"exited": True, "exitcode": 0,
+                                                    "out-truncated": False, "err-truncated": False})
+        self.assertEqual({"state": "unknown", "correlationId": CORR}, missing)
+        self.assertEqual(["status"], calls)
+        invalid = self._run_remote_status(
+            b"{", lambda *_: self.fail("invalid receipt must not query QGA status"))
+        self.assertEqual({"state": "unknown", "correlationId": CORR}, invalid)
+
+    def test_status_rejects_partial_durable_receipt_before_completing_stage_lease(self):
+        intent = {"request": REQUEST, "leaseId": LEASE, "environment": "windows-cp117",
+                  "socketPath": "/qga", "pid": 42, "startTicks": 99, "expectedSid": SID,
+                  "sourceFingerprint": "a" * 64, "bundleSha256": "2" * 64,
+                  "fileHashes": HASHES}
+        descriptor = (object(), type("Host", (), {"fixture_transfer_root": Path("/fixture")})(),
+                      ("windows-cp117", "/qga", 42, 99, SID))
+        forged = {"state": "observed", "correlationId": CORR,
+                  "result": {"version": 1, "correlationId": CORR,
+                             "code": "STAGED_NOT_SERVER_READY", "bundleSha256": "2" * 64}}
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.object(stage, "_read_intent", return_value=intent), \
+             patch.object(stage.base, "_descriptor", return_value=descriptor), \
+             patch.object(stage.base, "_remote", return_value=json.dumps(forged).encode()), \
+             patch.object(stage, "_complete_stage_lease") as complete:
+            self.assertEqual({"state": "unknown", "correlationId": CORR, "replayAllowed": False},
+                             stage.status(temporary, {"correlationId": CORR}))
+        complete.assert_not_called()
+
+    def test_diagnostic_preserves_unknown_stage_and_identifies_remote_absence(self):
+        """A lost 131MB QGA stream must be diagnosable without replaying it."""
+        intent = {"request": REQUEST, "leaseId": LEASE, "environment": "windows-cp117",
+                  "socketPath": "/qga", "pid": 42, "startTicks": 99, "expectedSid": SID,
+                  "sourceFingerprint": "a" * 64, "bundleSha256": "2" * 64,
+                  "bundleSize": 131218059, "fileHashes": HASHES}
+        descriptor = (object(), type("Host", (), {"fixture_transfer_root": Path("/fixture")})(),
+                      ("windows-cp117", "/qga", 42, 99, SID))
+        remote = {"state": "diagnosed", "correlationId": CORR, "binding": "exact",
+                  "phase": "remote-stage-absent"}
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.object(stage, "_read_intent", return_value=intent), \
+             patch.object(stage.public, "_admit_pair", return_value={"sourceFingerprint": "a" * 64}), \
+             patch.object(stage.base, "_descriptor", return_value=descriptor), \
+             patch.object(stage.base, "_verified_claimed_campaign") as campaign, \
+             patch.object(stage.base, "_remote", return_value=json.dumps(remote).encode()) as submit:
+            result = stage.diagnose(temporary, {"correlationId": CORR})
+        self.assertEqual({"state": "unknown", "correlationId": CORR, "binding": "exact",
+                          "phase": "remote-stage-absent", "replayAllowed": False,
+                          "nativeActionAllowed": False}, result)
+        campaign.assert_called_once()
+        submit.assert_called_once()
+
+    def test_diagnostic_rejects_unbound_remote_receipt_projection(self):
+        intent = {"request": REQUEST, "leaseId": LEASE, "environment": "windows-cp117",
+                  "socketPath": "/qga", "pid": 42, "startTicks": 99, "expectedSid": SID,
+                  "sourceFingerprint": "a" * 64, "bundleSha256": "2" * 64,
+                  "bundleSize": 1, "fileHashes": HASHES}
+        descriptor = (object(), type("Host", (), {"fixture_transfer_root": Path("/fixture")})(),
+                      ("windows-cp117", "/qga", 42, 99, SID))
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.object(stage, "_read_intent", return_value=intent), \
+             patch.object(stage.public, "_admit_pair", return_value={"sourceFingerprint": "a" * 64}), \
+             patch.object(stage.base, "_descriptor", return_value=descriptor), \
+             patch.object(stage.base, "_verified_claimed_campaign"), \
+             patch.object(stage.base, "_remote", return_value=json.dumps({
+                 "state": "diagnosed", "correlationId": CORR, "binding": "exact",
+                 "phase": "receipt-complete", "receipt": "unbound"}).encode()):
+            result = stage.diagnose(temporary, {"correlationId": CORR})
+        self.assertEqual("qga-protocol", result["phase"])
+        self.assertFalse(result["replayAllowed"])
+
+    def test_remote_diagnostic_executes_missing_stage_group_as_absent(self):
+        """The remote probe must not turn a missing pre-transfer group into protocol loss."""
+        body = stage._REMOTE_DIAGNOSTIC[stage._REMOTE_DIAGNOSTIC.index("import time\n"):]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            environment = root / "windows-cp117"
+            environment.mkdir(mode=0o700)
+            os.chmod(root, 0o700)
+            output = io.StringIO()
+            args = [str(root), "windows-cp117", LEASE, CORR, "/qga", "42", "99", SID,
+                    SOURCE, "a" * 64, "2" * 64, "1", REQUEST["fixtureReceiptArtifactId"],
+                    REQUEST["baseMsiArtifactId"], REQUEST["targetMsiArtifactId"]]
+            namespace = {"os": os, "stat": stat, "json": json, "base64": base64,
+                         "time": __import__("time"), "sys": type("Args", (), {"argv": ["remote", *args]})(),
+                         "live": lambda *_: True,
+                         "call": lambda *_: self.fail("missing group must not call QGA"),
+                         "read": lambda *_: self.fail("missing group must not read guest files"),
+                         "decode": lambda raw: raw.decode("utf-8")}
+            with redirect_stdout(output):
+                with self.assertRaises(SystemExit) as exited:
+                    exec(compile(ast.parse(body), "stage-diagnostic-remote", "exec"), namespace)
+            self.assertEqual(0, exited.exception.code)
+        self.assertEqual({"state": "diagnosed", "correlationId": CORR, "binding": "exact",
+                          "phase": "remote-stage-absent"}, json.loads(output.getvalue()))
+
+    def test_remote_diagnostic_requires_explicit_nontruncated_guest_status(self):
+        self.assertGreaterEqual(stage._REMOTE_DIAGNOSTIC.count("item.get('out-truncated') is not False"), 1)
+        self.assertGreaterEqual(stage._REMOTE_DIAGNOSTIC.count("process.get('out-truncated') is not False"), 1)
+
+    def test_remote_diagnostic_has_finite_read_only_failure_subphases(self):
+        cases = (
+            ("guest-stage-probe-failed", set(), lambda *_: (_ for _ in ()).throw(OSError())),
+            ("dispatch-status-unknown", {"dispatch"}, lambda *_: {"exited": None}),
+            ("result-read-failed", {"dispatch"}, lambda *_: {"exited": True, "exitcode": 0,
+                                                            "out-truncated": False, "err-truncated": False}),
+            ("receipt-invalid", {"dispatch"}, lambda *_: {"exited": True, "exitcode": 0,
+                                                          "out-truncated": False, "err-truncated": False}),
+        )
+        for expected, names, call in cases:
+            with self.subTest(phase=expected):
+                if expected == "result-read-failed":
+                    read = lambda *_: (_ for _ in ()).throw(OSError())
+                elif expected == "dispatch-status-unknown":
+                    read = lambda *_: None
+                else:
+                    read = lambda *_: b"{"
+                result = self._run_remote_diagnostic(names, call, read)
+                self.assertEqual({"state": "diagnosed", "correlationId": CORR,
+                                  "binding": "exact", "phase": expected}, result)
+
+    def test_remote_diagnostic_uses_receipt_before_consumed_dispatch_status(self):
+        receipt = json.dumps({"correlationId": CORR, "code": "UNKNOWN"}).encode()
+        result = self._run_remote_diagnostic(
+            {"dispatch"}, lambda *_: self.fail("receipt must precede QGA status"), lambda *_: receipt)
+        self.assertEqual({"state": "diagnosed", "correlationId": CORR,
+                          "binding": "exact", "phase": "receipt-present-unverified"}, result)
+
+    def test_remote_diagnostic_classifies_invalid_host_layout_without_raw_detail(self):
+        body = stage._REMOTE_DIAGNOSTIC[stage._REMOTE_DIAGNOSTIC.index("import time\n"):]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            environment = root / "windows-cp117"
+            environment.mkdir(mode=0o700)
+            group = environment / "windows-update-fixture-stage"
+            group.write_text("not-a-directory")
+            os.chmod(root, 0o700); os.chmod(environment, 0o700); os.chmod(group, 0o600)
+            output = io.StringIO()
+            args = [str(root), "windows-cp117", LEASE, CORR, "/qga", "42", "99", SID,
+                    SOURCE, "a" * 64, "2" * 64, "1", REQUEST["fixtureReceiptArtifactId"],
+                    REQUEST["baseMsiArtifactId"], REQUEST["targetMsiArtifactId"]]
+            namespace = {"os": os, "stat": stat, "json": json, "base64": base64,
+                         "time": __import__("time"), "sys": type("Args", (), {"argv": ["remote", *args]})(),
+                         "live": lambda *_: True, "call": lambda *_: self.fail("no QGA"),
+                         "read": lambda *_: self.fail("no receipt read"),
+                         "decode": lambda raw: raw.decode("utf-8")}
+            with redirect_stdout(output):
+                with self.assertRaises(SystemExit):
+                    exec(compile(ast.parse(body), "stage-diagnostic-layout", "exec"), namespace)
+        self.assertEqual({"state": "diagnosed", "correlationId": CORR, "binding": "exact",
+                          "phase": "remote-layout-invalid"}, json.loads(output.getvalue()))
+
+    def test_remote_guest_stage_program_assigns_conditional_before_hashtable(self):
+        """PS5 rejects stage=if(...) inside a hashtable literal.
+
+        The lost extraction response exercised this read-only diagnostic path,
+        so keep the generated guest program parseable without rerunning the
+        extraction dispatch.
+        """
+        program = stage._REMOTE_DIAGNOSTIC
+        self.assertNotIn("stage=if($ok)", program)
+        self.assertIn("$state=if($ok){'full'}else{'partial'}", program)
+        self.assertIn("@{version=1;stage=$state}", program)
+        self.assertLess(program.index("$state=if($ok){'full'}else{'partial'}"),
+                        program.index("@{version=1;stage=$state}"))
 
     def test_private_server_state_acl_rejects_recipient_read_only(self):
         bad = {**STATE_ACL, "acl": [dict(item) for item in STATE_ACL["acl"]]}

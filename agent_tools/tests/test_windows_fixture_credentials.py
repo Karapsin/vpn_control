@@ -2,15 +2,23 @@
 from __future__ import annotations
 
 import copy
+import contextlib
+import base64
+import gzip
 from datetime import datetime, timezone
 import hashlib
+import io
 import json
+import os
+import re
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from agent_tools import windows_fixture_credentials as credentials
+from agent_tools import ssh_transport
 
 
 LEASE = "11111111-1111-4111-8111-111111111111"
@@ -47,6 +55,24 @@ def observation():
 
 
 class WindowsFixtureCredentialsTest(unittest.TestCase):
+    def test_server_join_selects_only_unaborted_provision_with_same_binding(self):
+        old_a = "6161b4ae-3634-4312-ac85-1bacd0001dfa"
+        old_b = "791b5235-9ca7-409c-96bc-c341047c7fb4"
+        current = "75ed6f9c-ebe6-4f70-ba1a-ab64b8507d16"
+        names = (old_a, old_b, current)
+        records = {name: {"request": {"host": "archlinux", "leaseId": LEASE,
+                                     "stageCorrelationId": STAGE, "correlationId": name},
+                          "binding": BINDING} for name in names}
+        aborts = {name: {"request": records[name]["request"], "binding": BINDING,
+                         "provisionCorrelationId": name} for name in names[:2]}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = credentials.Path(temporary)
+            group = root / credentials._GROUP; group.mkdir(parents=True)
+            for name in names: (group / (name + ".json")).write_text("{}")
+            with patch.object(credentials, "_read_intent", side_effect=lambda _root, name: records[name]), \
+                 patch.object(credentials, "_cleanup_intent", side_effect=lambda _root, name, **_kw: aborts.get(name)):
+                self.assertEqual(current, credentials._provision_record(root, BINDING)["request"]["correlationId"])
+
     def test_journal_is_exclusive_private_and_contains_no_key_material(self):
         request = {"host": "archlinux", "leaseId": LEASE,
                    "stageCorrelationId": STAGE, "correlationId": CORR}
@@ -89,6 +115,119 @@ class WindowsFixtureCredentialsTest(unittest.TestCase):
             self.assertEqual(credentials._read_intent(root, CORR), first)
             self.assertEqual(credentials._read_intent(root, new_corr), second)
 
+    def test_new_campaign_admits_only_exact_same_lease_aborted_cleaned_provision(self):
+        """A preserved stage lease may remain active after a verified abort."""
+        first = {"schemaVersion": 1, "request": {"host": "archlinux", "leaseId": LEASE,
+                    "stageCorrelationId": STAGE, "correlationId": CORR}, "binding": BINDING,
+                 "provisionId": PROVISION, "fileSha256": observation()["fileSha256"],
+                 "peerCertificateSha256": "4" * 64,
+                 "certificateValidFromUtc": 100, "certificateValidUntilUtc": 200}
+        new_corr = "66666666-6666-4666-8666-666666666666"
+        second = copy.deepcopy(first); second["request"]["correlationId"] = new_corr
+        abort = {"schemaVersion": 1, "request": first["request"], "binding": BINDING,
+                 "provisionCorrelationId": CORR}
+        identity = {"leaseId": LEASE, "host": "archlinux", "environment": "windows-cp117",
+                    "operator": "windows-base", "sourceSha": BINDING["sourceSha"],
+                    "fixtureReceiptArtifactId": BINDING["fixtureReceiptArtifactId"],
+                    "baseMsiArtifactId": BINDING["baseMsiArtifactId"],
+                    "targetMsiArtifactId": BINDING["targetMsiArtifactId"],
+                    "socketPath": BINDING["socketPath"], "qemuPid": BINDING["qemuPid"],
+                    "startTicks": BINDING["startTicks"]}
+        receipt = {"schemaVersion": 1, "credentialDirectoryAbsent": True, "taskAbsent": True,
+                   "stagePresent": True, "stageCorrelationId": STAGE}
+        evidence = hashlib.sha256(json.dumps(receipt, sort_keys=True,
+                                              separators=(",", ":")).encode()).hexdigest()
+
+        def install_campaign(root, *, outcome="failed-cleaned", digest=evidence, active_identity=identity):
+            directory, lock = credentials.lease._locked(root)
+            os.close(lock)
+            active = {"version": 1, "identity": active_identity, "sequence": 4, "state": "active",
+                      "role": None, "correlationId": None, "server": "stopped",
+                      "credentials": "absent", "lastEvidenceSha256": digest,
+                      "lastOutcome": outcome}
+            path = directory / "active.json"; path.write_text(json.dumps(active)); os.chmod(path, 0o600)
+
+        for label, outcome, digest, abort_record, active_identity, admitted in (
+                ("exact", "failed-cleaned", evidence, abort, identity, True),
+                ("wrong-outcome", "succeeded", evidence, abort, identity, False),
+                ("wrong-evidence", "failed-cleaned", "0" * 64, abort, identity, False),
+                ("missing-abort", "failed-cleaned", evidence, None, identity, False),
+                ("wrong-provision", "failed-cleaned", evidence,
+                 {**abort, "provisionCorrelationId": PROVISION}, identity, False),
+                ("wrong-generation", "failed-cleaned", evidence, abort,
+                 {**identity, "startTicks": 999}, False)):
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary:
+                root = credentials.Path(temporary)
+                credentials._reserve(root, first)
+                install_campaign(root, outcome=outcome, digest=digest, active_identity=active_identity)
+                if abort_record is not None:
+                    credentials._reserve_cleanup(root, abort_record, group=credentials._ABORT_GROUP)
+                if admitted:
+                    credentials._reserve(root, second)
+                    self.assertEqual(credentials._read_intent(root, new_corr), second)
+                else:
+                    with self.assertRaisesRegex(credentials.WindowsFixtureCredentialsError,
+                                                "readback or cleanup"):
+                        credentials._reserve(root, second)
+
+    def test_abort_history_admits_only_current_held_same_lease_provision(self):
+        """A prior completed abort cannot block aborting the next held attempt."""
+        old = {"schemaVersion": 1, "request": {"host": "archlinux", "leaseId": LEASE,
+               "stageCorrelationId": STAGE, "correlationId": CORR}, "binding": BINDING,
+               "provisionId": PROVISION, "fileSha256": observation()["fileSha256"],
+               "peerCertificateSha256": "4" * 64,
+               "certificateValidFromUtc": 100, "certificateValidUntilUtc": 200}
+        current_corr = "77777777-7777-4777-8777-777777777777"
+        current = copy.deepcopy(old); current["request"]["correlationId"] = current_corr
+        old_abort = {"schemaVersion": 1, "request": old["request"], "binding": BINDING,
+                     "provisionCorrelationId": CORR}
+        current_abort = {"schemaVersion": 1, "request": current["request"], "binding": BINDING,
+                         "provisionCorrelationId": current_corr}
+        identity = {"leaseId": LEASE, "host": "archlinux", "environment": "windows-cp117",
+                    "operator": "windows-base", "sourceSha": BINDING["sourceSha"],
+                    "fixtureReceiptArtifactId": BINDING["fixtureReceiptArtifactId"],
+                    "baseMsiArtifactId": BINDING["baseMsiArtifactId"],
+                    "targetMsiArtifactId": BINDING["targetMsiArtifactId"],
+                    "socketPath": BINDING["socketPath"], "qemuPid": BINDING["qemuPid"],
+                    "startTicks": BINDING["startTicks"]}
+        receipt = {"schemaVersion": 1, "credentialDirectoryAbsent": True, "taskAbsent": True,
+                   "stagePresent": True, "stageCorrelationId": STAGE}
+        evidence = hashlib.sha256(json.dumps(receipt, sort_keys=True,
+                                              separators=(",", ":")).encode()).hexdigest()
+
+        def write_active(root, *, state, role, correlation, digest=evidence, active_identity=identity):
+            directory, lock = credentials.lease._locked(root)
+            os.close(lock)
+            active = {"version": 1, "identity": active_identity, "sequence": 5, "state": state,
+                      "role": role, "correlationId": correlation, "server": "stopped",
+                      "credentials": "absent", "lastEvidenceSha256": digest,
+                      "lastOutcome": "failed-cleaned"}
+            path = directory / "active.json"; path.write_text(json.dumps(active)); os.chmod(path, 0o600)
+
+        for label, state, role, correlation, digest, active_identity, admitted in (
+                ("exact", "role-active", "credentials", current_corr, evidence, identity, True),
+                ("idle", "active", None, None, evidence, identity, False),
+                ("wrong-current", "role-active", "credentials", CORR, evidence, identity, False),
+                ("wrong-evidence", "role-active", "credentials", current_corr, "0" * 64, identity, False),
+                ("wrong-generation", "role-active", "credentials", current_corr, evidence,
+                 {**identity, "startTicks": 999}, False)):
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary:
+                root = credentials.Path(temporary)
+                credentials._reserve(root, old)
+                write_active(root, state="active", role=None, correlation=None)
+                credentials._reserve_cleanup(root, old_abort, group=credentials._ABORT_GROUP)
+                credentials._reserve(root, current)
+                write_active(root, state=state, role=role, correlation=correlation,
+                             digest=digest, active_identity=active_identity)
+                if admitted:
+                    credentials._reserve_cleanup(root, current_abort, group=credentials._ABORT_GROUP)
+                    self.assertEqual(credentials._cleanup_intent(root, current_corr,
+                                     group=credentials._ABORT_GROUP), current_abort)
+                else:
+                    with self.assertRaisesRegex(credentials.WindowsFixtureCredentialsError,
+                                                "cleanup needs readback"):
+                        credentials._reserve_cleanup(root, current_abort, group=credentials._ABORT_GROUP)
+
     def test_public_request_rejects_paths_and_secrets(self):
         request = {"host": "archlinux", "leaseId": LEASE,
                    "stageCorrelationId": STAGE, "correlationId": CORR}
@@ -107,6 +246,25 @@ class WindowsFixtureCredentialsTest(unittest.TestCase):
         for program in (credentials._REMOTE_START, credentials._REMOTE_STATUS,
                         credentials._REMOTE_CLEANUP_START, credentials._REMOTE_CLEANUP_STATUS):
             compile(program, "remote", "exec")
+
+    def test_system_precreates_and_verifies_provenance_acl_before_limited_owner_task(self):
+        """Regression for CP117 result 1 after a limited owner created inherited provenance."""
+        paths = credentials._fixed_paths(STAGE)
+        finalize = credentials._guest_finalize_script(BINDING, observation(), paths, PROVISION, CORR)
+        self.assertIn("[IO.File]::Exists($provenance) -or [IO.Directory]::Exists($provenance)", finalize)
+        self.assertIn("[IO.File]::WriteAllBytes($provenance,[byte[]]@())", finalize)
+        self.assertIn("Set-PrivateFileAcl $provenance", finalize)
+        self.assertIn("throw 'FILE_ACL'", finalize)
+        self.assertLess(finalize.index("[IO.File]::WriteAllBytes($provenance,[byte[]]@())"),
+                        finalize.index("Register-ScheduledTask -TaskName $task"))
+        packed = re.search(r"\$packed=\[Convert\]::FromBase64String\('([^']+)'\)", finalize)
+        self.assertIsNotNone(packed)
+        owner = gzip.decompress(base64.b64decode(packed.group(1))).decode("utf-16le")
+        self.assertIn("Assert-PrivateFileAcl $provenance", owner)
+        self.assertLess(owner.index("Assert-PrivateFileAcl $provenance"),
+                        owner.index("[IO.File]::WriteAllText($provenance,$json"))
+        self.assertNotIn("Set-Acl -LiteralPath $provenance", owner)
+        self.assertIn("'provenance.json'", credentials._guest_cleanup_script(paths, CORR))
 
     def test_every_guest_readback_and_removal_guards_intermediate_ancestors_first(self):
         paths = credentials._fixed_paths(STAGE)
@@ -324,3 +482,329 @@ class WindowsFixtureCredentialsTest(unittest.TestCase):
         for changed in ("AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", "../other", "", None):
             with self.assertRaises(credentials.WindowsFixtureCredentialsError):
                 credentials.verified_descriptor("/unused", LEASE, changed)
+
+    def test_response_loss_diagnostic_is_read_only_and_has_finite_public_result(self):
+        request = {"host": "archlinux", "leaseId": LEASE,
+                   "stageCorrelationId": STAGE, "correlationId": CORR}
+        record = {"schemaVersion": 1, "request": request, "binding": BINDING,
+                  "provisionId": PROVISION, "fileSha256": observation()["fileSha256"],
+                  "peerCertificateSha256": "4" * 64,
+                  "certificateValidFromUtc": 100, "certificateValidUntilUtc": 200}
+        receipt = {"schemaVersion": 1, "directory": "absent", "directoryAcl": "absent",
+                   "files": {"certificate": "absent", "privateKey": "absent", "trustStore": "absent"},
+                   "provenance": "absent", "provenanceAcl": "absent",
+                   "task": {"state": "absent", "lastResult": None}}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = credentials.Path(temporary); credentials._reserve(root, record)
+            with (patch.object(credentials, "_binding", return_value=BINDING) as binding,
+                  patch.object(credentials, "_remote_diagnostic", return_value=receipt) as remote,
+                  patch.object(credentials, "_dispatch", side_effect=AssertionError),
+                  patch.object(credentials, "_dispatch_cleanup", side_effect=AssertionError)):
+                result = credentials.diagnostic(root, {"correlationId": CORR})
+            self.assertEqual(result, {"state": "diagnosed", "correlationId": CORR,
+                                      "binding": "exact", "phase": "pre-effect",
+                                      "nextReadOnly": "credentials-abort-status", "replayAllowed": False,
+                                      "nativeActionAllowed": False, "productAction": False})
+            binding.assert_called_once(); remote.assert_called_once()
+
+    def test_response_loss_diagnostic_classifies_terminal_and_partial_receipts(self):
+        base_receipt = {"schemaVersion": 1, "directory": "present", "directoryAcl": "verified",
+                        "files": {"certificate": "exact", "privateKey": "exact", "trustStore": "exact"},
+                        "provenance": "present", "provenanceAcl": "verified",
+                        "task": {"state": "Ready", "lastResult": 0}}
+        self.assertEqual(credentials._diagnostic_phase(base_receipt),
+                         ("ready-uncommitted", "credentials-status"))
+        failed = copy.deepcopy(base_receipt); failed["task"]["lastResult"] = 1
+        self.assertEqual(credentials._diagnostic_phase(failed),
+                         ("terminal-failed", "credentials-abort-status"))
+        running = copy.deepcopy(base_receipt); running["task"] = {"state": "Running", "lastResult": 0}
+        self.assertEqual(credentials._diagnostic_phase(running),
+                         ("task-running", "credential-diagnostic"))
+        unsafe = copy.deepcopy(base_receipt); unsafe["files"]["privateKey"] = "unsafe"
+        self.assertEqual(credentials._diagnostic_phase(unsafe),
+                         ("partial", "credentials-abort-status"))
+
+    def test_terminal_failure_detail_classifies_owner_task_stage_without_file_identity(self):
+        failed = {"schemaVersion": 1, "directory": "present", "directoryAcl": "verified",
+                  "files": {"certificate": "absent", "privateKey": "absent", "trustStore": "absent"},
+                  "provenance": "absent", "provenanceAcl": "absent",
+                  "task": {"state": "Ready", "lastResult": 1}}
+        self.assertEqual(credentials._terminal_failure_detail(failed), {
+            "taskLastResult": 1, "safeStage": "before-file-write", "directory": "present",
+            "directoryAcl": "verified", "files": "all-absent", "provenance": "absent",
+            "provenanceAcl": "absent"})
+        self.assertNotIn("privateKey", credentials._terminal_failure_detail(failed))
+        for changed in (
+                {**failed, "task": {"state": "Ready", "lastResult": 0}},
+                {**failed, "task": {"state": "Running", "lastResult": 1}},
+                {**failed, "files": {"certificate": "exact", "privateKey": "exact", "trustStore": "exact",
+                                       "key": "secret"}}):
+            with self.subTest(changed=changed):
+                with self.assertRaises(credentials.WindowsFixtureCredentialsError):
+                    credentials._terminal_failure_detail(changed)
+
+    def test_failure_detail_reuses_diagnostic_and_refuses_nonterminal_or_unbound_receipts(self):
+        request = {"host": "archlinux", "leaseId": LEASE,
+                   "stageCorrelationId": STAGE, "correlationId": CORR}
+        record = {"schemaVersion": 1, "request": request, "binding": BINDING,
+                  "provisionId": PROVISION, "fileSha256": observation()["fileSha256"],
+                  "peerCertificateSha256": "4" * 64,
+                  "certificateValidFromUtc": 100, "certificateValidUntilUtc": 200}
+        failed = {"schemaVersion": 1, "directory": "present", "directoryAcl": "verified",
+                  "files": {"certificate": "exact", "privateKey": "exact", "trustStore": "exact"},
+                  "provenance": "absent", "provenanceAcl": "absent",
+                  "task": {"state": "Ready", "lastResult": 7}}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = credentials.Path(temporary); credentials._reserve(root, record)
+            with (patch.object(credentials, "_binding", return_value=BINDING),
+                  patch.object(credentials, "_remote_diagnostic", return_value=failed) as remote,
+                  patch.object(credentials, "_dispatch", side_effect=AssertionError),
+                  patch.object(credentials, "_dispatch_cleanup", side_effect=AssertionError)):
+                result = credentials.failure_detail(root, {"correlationId": CORR})
+            self.assertEqual(result, {"state": "detailed", "correlationId": CORR, "binding": "exact",
+                                      "taskLastResult": 7, "safeStage": "before-provenance",
+                                      "directory": "present", "directoryAcl": "verified", "files": "all-exact",
+                                      "provenance": "absent", "provenanceAcl": "absent",
+                                      "nextReadOnly": "credentials-abort-status", "replayAllowed": False,
+                                      "nativeActionAllowed": False, "productAction": False})
+            remote.assert_called_once()
+            with patch.object(credentials, "_binding", return_value=BINDING), \
+                 patch.object(credentials, "_remote_diagnostic", return_value={**failed, "task": {"state": "Ready", "lastResult": 0}}):
+                self.assertEqual(credentials.failure_detail(root, {"correlationId": CORR})["state"], "unknown")
+
+    def test_provenance_acl_shape_requires_exact_terminal_acl_failure_and_returns_only_categories(self):
+        request = {"host": "archlinux", "leaseId": LEASE,
+                   "stageCorrelationId": STAGE, "correlationId": CORR}
+        record = {"schemaVersion": 1, "request": request, "binding": BINDING,
+                  "provisionId": PROVISION, "fileSha256": observation()["fileSha256"],
+                  "peerCertificateSha256": "4" * 64,
+                  "certificateValidFromUtc": 100, "certificateValidUntilUtc": 200}
+        failed = {"schemaVersion": 1, "directory": "present", "directoryAcl": "verified",
+                  "files": {"certificate": "exact", "privateKey": "exact", "trustStore": "exact"},
+                  "provenance": "present", "provenanceAcl": "mismatch",
+                  "task": {"state": "Ready", "lastResult": 1}}
+        shape = {"schemaVersion": 1, "protected": "protected", "aceCount": "three",
+                 "principals": "exact", "rights": "all-allow-full-control",
+                 "origin": "all-explicit", "inheritance": "file-only", "propagation": "other"}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = credentials.Path(temporary); credentials._reserve(root, record)
+            with (patch.object(credentials, "_binding", return_value=BINDING),
+                  patch.object(credentials, "_remote_diagnostic", return_value=failed),
+                  patch.object(credentials, "_remote_provenance_acl_shape", return_value=shape) as observer,
+                  patch.object(credentials, "_dispatch", side_effect=AssertionError),
+                  patch.object(credentials, "_dispatch_cleanup", side_effect=AssertionError)):
+                result = credentials.provenance_acl_shape(root, {"correlationId": CORR})
+            observer.assert_called_once()
+        self.assertEqual(result, {"state": "classified", "correlationId": CORR, "binding": "exact",
+                                  **shape, "nextReadOnly": "credentials-abort-status",
+                                  "replayAllowed": False, "nativeActionAllowed": False,
+                                  "productAction": False})
+        self.assertNotIn("privateKey", result)
+        self.assertNotIn("path", result)
+        self.assertNotIn("sid", result)
+
+    def test_provenance_acl_shape_fails_closed_for_non_acl_terminal_failure_or_unbound_result(self):
+        request = {"host": "archlinux", "leaseId": LEASE,
+                   "stageCorrelationId": STAGE, "correlationId": CORR}
+        record = {"schemaVersion": 1, "request": request, "binding": BINDING,
+                  "provisionId": PROVISION, "fileSha256": observation()["fileSha256"],
+                  "peerCertificateSha256": "4" * 64,
+                  "certificateValidFromUtc": 100, "certificateValidUntilUtc": 200}
+        failed = {"schemaVersion": 1, "directory": "present", "directoryAcl": "verified",
+                  "files": {"certificate": "exact", "privateKey": "exact", "trustStore": "exact"},
+                  "provenance": "absent", "provenanceAcl": "absent",
+                  "task": {"state": "Ready", "lastResult": 1}}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = credentials.Path(temporary); credentials._reserve(root, record)
+            with (patch.object(credentials, "_binding", return_value=BINDING),
+                  patch.object(credentials, "_remote_diagnostic", return_value=failed),
+                  patch.object(credentials, "_remote_provenance_acl_shape", side_effect=AssertionError)):
+                result = credentials.provenance_acl_shape(root, {"correlationId": CORR})
+        self.assertEqual(result["state"], "unknown")
+
+    def test_remote_provenance_acl_shape_accepts_only_bounded_categories(self):
+        request = {"host": "archlinux", "leaseId": LEASE,
+                   "stageCorrelationId": STAGE, "correlationId": CORR}
+        record = {"schemaVersion": 1, "request": request, "binding": BINDING,
+                  "provisionId": PROVISION, "fileSha256": observation()["fileSha256"],
+                  "peerCertificateSha256": "4" * 64,
+                  "certificateValidFromUtc": 100, "certificateValidUntilUtc": 200}
+        shape = {"schemaVersion": 1, "protected": "unprotected", "aceCount": "other",
+                 "principals": "unexpected-and-missing", "rights": "contains-other",
+                 "origin": "inherited-present", "inheritance": "other", "propagation": "other"}
+        raw = json.dumps({"state": "observed", "correlationId": CORR, "receipt": shape}).encode()
+        with (patch.object(credentials.base, "_descriptor", return_value=(None,
+                    SimpleNamespace(fixture_transfer_root="/fixed"), None)),
+              patch.object(credentials.transport, "_remote_command", return_value=()),
+              patch.object(credentials.transport, "_run_ssh", return_value=raw) as ssh):
+            result = credentials._remote_provenance_acl_shape(credentials.Path("/"), request, BINDING, record)
+        self.assertEqual(result, shape)
+        self.assertIsNone(ssh.call_args.args[3])
+        for poisoned in ({**shape, "path": "C:\\secret"}, {**shape, "principals": "S-1-5-18"}):
+            raw = json.dumps({"state": "observed", "correlationId": CORR, "receipt": poisoned}).encode()
+            with (patch.object(credentials.base, "_descriptor", return_value=(None,
+                        SimpleNamespace(fixture_transfer_root="/fixed"), None)),
+                  patch.object(credentials.transport, "_remote_command", return_value=()),
+                  patch.object(credentials.transport, "_run_ssh", return_value=raw)):
+                with self.assertRaises(credentials.WindowsFixtureCredentialsError):
+                    credentials._remote_provenance_acl_shape(credentials.Path("/"), request, BINDING, record)
+
+    def test_generated_provenance_acl_shape_uses_powershell_subexpression_for_hashtable_if(self):
+        """Regression for the terminal cleanup script's invalid ``=(if ...)`` form."""
+        program = credentials._guest_provenance_acl_shape_script(
+            credentials._fixed_paths(STAGE), CORR, observation()["fileSha256"], SID)
+        self.assertIn("aceCount=$(if($rules.Count -eq 3){'three'}else{'other'})", program)
+        self.assertNotIn("aceCount=(if($rules.Count -eq 3)", program)
+
+    def test_response_loss_diagnostic_preserves_bounded_host_pre_effect_and_failure_facts(self):
+        expected = {
+            "group-absent": ("host-group-absent", "credentials-abort-status"),
+            "journal-absent": ("host-journal-absent", "credentials-abort-status"),
+            "binding-mismatch": ("host-binding-mismatch", "credential-diagnostic"),
+            "layout-unsafe": ("host-layout-unsafe", "credential-diagnostic"),
+            "guest-observer-failed": ("guest-observer-failed", "credential-diagnostic"),
+        }
+        for host_phase, result in expected.items():
+            with self.subTest(host_phase=host_phase):
+                self.assertEqual(credentials._diagnostic_phase(
+                    {"schemaVersion": 1, "hostPhase": host_phase}), result)
+        with self.assertRaises(credentials.WindowsFixtureCredentialsError):
+            credentials._diagnostic_phase({"schemaVersion": 1, "hostPhase": "private-key-present"})
+
+    def test_remote_diagnostic_accepts_only_the_bounded_missing_remote_journal_fact(self):
+        request = {"host": "archlinux", "leaseId": LEASE,
+                   "stageCorrelationId": STAGE, "correlationId": CORR}
+        record = {"schemaVersion": 1, "request": request, "binding": BINDING,
+                  "provisionId": PROVISION, "fileSha256": observation()["fileSha256"],
+                  "peerCertificateSha256": "4" * 64,
+                  "certificateValidFromUtc": 100, "certificateValidUntilUtc": 200}
+        raw = json.dumps({"state": "observed", "correlationId": CORR,
+                          "receipt": {"schemaVersion": 1, "hostPhase": "journal-absent"}}).encode()
+        with (patch.object(credentials.base, "_descriptor", return_value=(None,
+                    SimpleNamespace(fixture_transfer_root="/fixed"), None)),
+              patch.object(credentials.transport, "_remote_command", return_value=()),
+              patch.object(credentials.transport, "_run_ssh", return_value=raw) as ssh):
+            receipt = credentials._remote_diagnostic(credentials.Path("/"), request, BINDING, record)
+        self.assertEqual(receipt, {"schemaVersion": 1, "hostPhase": "journal-absent"})
+        self.assertIsNone(ssh.call_args.args[3])
+
+    def test_generated_remote_diagnostic_reports_absent_group_before_guest_access(self):
+        """Execute its real host branch, with only VM liveness stubbed."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = credentials.Path(temporary); parent = root / "windows-cp117"
+            parent.mkdir(mode=0o700); os.chmod(parent, 0o700)
+            arguments = [str(root), "windows-cp117", CORR, LEASE, STAGE, "unused.sock",
+                         "1", "1", SID, "a" * 40, "b" * 64,
+                         "sha256-" + "c" * 64, "sha256-" + "d" * 64, "sha256-" + "e" * 64,
+                         PROVISION, "1" * 64, "2" * 64, "3" * 64, "4" * 64, "unused"]
+            program = credentials._REMOTE_DIAGNOSTIC.replace(
+                "if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()",
+                "if env!='windows-cp117':raise ValueError()")
+            stream = io.StringIO()
+            with patch.object(sys, "argv", ["remote"] + arguments), contextlib.redirect_stdout(stream):
+                with self.assertRaises(SystemExit):
+                    exec(program, {"__name__": "__main__"})
+            self.assertEqual(json.loads(stream.getvalue()), {"state": "observed", "correlationId": CORR,
+                             "receipt": {"schemaVersion": 1, "hostPhase": "group-absent"}})
+
+    def test_pre_effect_guard_probe_is_read_only_and_binds_generated_nonsecret_payload_metadata(self):
+        request = {"host": "archlinux", "leaseId": LEASE,
+                   "stageCorrelationId": STAGE, "correlationId": CORR}
+        record = {"schemaVersion": 1, "request": request, "binding": BINDING,
+                  "provisionId": PROVISION, "fileSha256": observation()["fileSha256"],
+                  "peerCertificateSha256": "4" * 64,
+                  "certificateValidFromUtc": 100, "certificateValidUntilUtc": 200}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = credentials.Path(temporary); credentials._reserve(root, record)
+            with (patch.object(credentials, "_binding", return_value=BINDING),
+                  patch.object(credentials, "_remote_pre_effect_guard_probe", return_value="matched") as remote,
+                  patch.object(credentials, "_dispatch", side_effect=AssertionError),
+                  patch.object(credentials, "_dispatch_cleanup", side_effect=AssertionError)):
+                result = credentials.pre_effect_guard_probe(root, {"correlationId": CORR})
+        self.assertEqual(result, {"state": "observed", "correlationId": CORR, "binding": "exact",
+                                  "localPayload": "metadata-admitted", "remoteRoleGuard": "matched",
+                                  "replayAllowed": False, "nativeActionAllowed": False, "productAction": False})
+        remote.assert_called_once()
+
+    def test_generated_remote_pre_effect_guard_uses_actual_credentials_role_guard(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = credentials.Path(temporary); parent = root / "windows-cp117"
+            group = parent / "windows-cp117-campaign"
+            group.mkdir(parents=True, mode=0o700)
+            for directory in (root, parent, group):
+                os.chmod(directory, 0o700)
+            lock = group / ".environment.lock"; lock.write_text(""); os.chmod(lock, 0o600)
+            identity = {"host": "archlinux", "environment": "windows-cp117", "leaseId": LEASE,
+                        "operator": "windows-base", "sourceSha": "a" * 40,
+                        "fixtureReceiptArtifactId": "sha256-" + "c" * 64,
+                        "baseMsiArtifactId": "sha256-" + "d" * 64,
+                        "targetMsiArtifactId": "sha256-" + "e" * 64,
+                        "socketPath": "unused.sock", "qemuPid": 1, "startTicks": 1}
+            active = {"version": 1, "identity": identity, "sequence": 1, "state": "role-active",
+                      "role": "credentials", "correlationId": CORR, "server": "stopped",
+                      "credentials": "absent", "lastEvidenceSha256": None, "lastOutcome": None}
+            active_path = group / "active.json"; active_path.write_text(json.dumps(active)); os.chmod(active_path, 0o600)
+            arguments = [str(root), "windows-cp117", CORR, LEASE, STAGE, "unused.sock", "1", "1", SID,
+                         "a" * 40, "b" * 64, "sha256-" + "c" * 64, "sha256-" + "d" * 64,
+                         "sha256-" + "e" * 64]
+            program = credentials._REMOTE_PRE_EFFECT_GUARD_PROBE.replace(
+                "if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()",
+                "if env!='windows-cp117':raise ValueError()")
+            stream = io.StringIO()
+            with patch.object(sys, "argv", ["remote"] + arguments), contextlib.redirect_stdout(stream):
+                exec(program, {"__name__": "__main__"})
+            self.assertEqual(json.loads(stream.getvalue()), {"state": "observed", "correlationId": CORR,
+                             "receipt": {"schemaVersion": 1, "guard": "matched"}})
+
+    def test_credential_dispatch_uses_transport_admitted_timeout_and_framed_private_stdin(self):
+        """The former 120s timeout is rejected before any SSH transport effect."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = credentials.Path(temporary)
+            host = ssh_transport.SshHost(alias="archlinux", host="example.invalid", port=22,
+                user="tester", identity_file=root / "identity", known_hosts_file=root / "known_hosts")
+            config = ssh_transport.SshConfig(root=root, hosts={"archlinux": host})
+            with self.assertRaisesRegex(ssh_transport.SshConfigError, "1 and 60"):
+                ssh_transport.build_ssh_argv(config, "archlinux", 120)
+
+            request = {"host": "archlinux", "leaseId": LEASE,
+                       "stageCorrelationId": STAGE, "correlationId": CORR}
+            material = {"certificate": b"certificate-bytes", "privateKey": b"private-key-bytes",
+                        "trustStore": b"trust-store-bytes",
+                        "fileSha256": {"certificate": hashlib.sha256(b"certificate-bytes").hexdigest(),
+                                       "privateKey": hashlib.sha256(b"private-key-bytes").hexdigest(),
+                                       "trustStore": hashlib.sha256(b"trust-store-bytes").hexdigest()},
+                        "peerCertificateSha256": "4" * 64,
+                        "certificateValidFromUtc": 100, "certificateValidUntilUtc": 200}
+            captured = {}
+            def sent(received_config, received_host, command, payload, timeout):
+                captured.update(config=received_config, host=received_host, command=command,
+                                payload=payload, timeout=timeout)
+                return b'{"state":"submitted"}'
+            with (patch.object(credentials.base, "_descriptor", return_value=(config,
+                        SimpleNamespace(fixture_transfer_root="/fixed"), None)),
+                  patch.object(credentials.transport, "_run_ssh", side_effect=sent)):
+                result = credentials._dispatch(root, request, BINDING, material, PROVISION)
+            self.assertEqual(result, b'{"state":"submitted"}')
+            self.assertEqual(captured["timeout"], 60)
+            self.assertEqual(captured["host"], "archlinux")
+            self.assertNotIn(b"private-key-bytes", captured["payload"])
+            size = int.from_bytes(captured["payload"][:4], "big")
+            self.assertEqual(size, len(captured["payload"][4:]))
+            framed = json.loads(captured["payload"][4:])
+            self.assertEqual(base64.b64decode(framed["files"]["privateKey"]), b"private-key-bytes")
+            self.assertNotIn("private-key-bytes", repr(captured["command"]))
+
+    def test_response_loss_diagnostic_rejects_unbounded_or_secret_bearing_receipt(self):
+        invalid = {"schemaVersion": 1, "directory": "present", "directoryAcl": "verified",
+                   "files": {"certificate": "exact", "privateKey": "exact", "trustStore": "exact"},
+                   "provenance": "present", "provenanceAcl": "verified",
+                   "task": {"state": "Ready", "lastResult": 0, "key": "secret"}}
+        with self.assertRaises(credentials.WindowsFixtureCredentialsError):
+            credentials._diagnostic_phase(invalid)
+        program = credentials._guest_diagnostic_script(credentials._fixed_paths(STAGE), CORR,
+                                                       observation()["fileSha256"], SID)
+        self.assertIn("Get-FileHash", program)
+        self.assertNotIn("Get-Content", program)
+        self.assertNotIn("PRIVATE KEY", program)
+        compile(credentials._REMOTE_DIAGNOSTIC, "remote-diagnostic", "exec")
+        compile(credentials._REMOTE_PROVENANCE_ACL_SHAPE, "remote-provenance-acl-shape", "exec")

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import uuid
@@ -30,6 +31,25 @@ from test_fixture_environment import symlink_probe_available
 
 
 class DesktopUpdateFixtureTest(unittest.TestCase):
+    def test_windows_probe_events_inherits_private_parent_before_exact_acl(self):
+        """Windows Python 3.13 maps mode 0700 to an OWNER RIGHTS ACE."""
+        with tempfile.TemporaryDirectory() as temporary:
+            original_mkdir = Path.mkdir
+            modes = []
+
+            def capture_mkdir(path, mode=0o777, parents=False, exist_ok=False):
+                if path.name == "probe-events":
+                    modes.append(mode)
+                return original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+            with patch.object(prepare_desktop_update_fixture, "os", SimpleNamespace(name="nt")), \
+                    patch("prepare_desktop_update_fixture.platform.system", return_value="Windows"), \
+                    patch.object(Path, "mkdir", new=capture_mkdir):
+                events = prepare_desktop_update_fixture.probe_events_path(temporary)
+
+            self.assertTrue(events.is_dir())
+            self.assertEqual(modes, [0o777])
+
     @unittest.skipIf(os.name == "nt", "macOS private stop intent uses POSIX descriptor and owner APIs")
     def test_macos_graceful_stop_receipt_requires_exact_private_intent(self):
         """A bare SIGTERM or replaced intent cannot claim a zero-exit stop."""
