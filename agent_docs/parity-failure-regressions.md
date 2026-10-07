@@ -1,5 +1,30 @@
 # Parity Failure-to-Regression Ledger
 
+## Complete Windows script and HTTPS routine guards — 2026-10-07
+
+- Actual0ad8 diagnostic suffix replacement omitted the original outer finally.
+  Five component controls passed while the assembled PowerShell body failed with
+  MissingEndCurlyBrace and MissingCatchOrFinally. Exact1346 restoration parses
+  successfully. CompleteServerBodyParserTests retains both full public bodies,
+  parses them without execution, and runs in the native Windows package workflow.
+  Its standalone test module preserves the exact historical server-preflight
+  module. Appending the class there caused full-suite readback-source failures;
+  four focused context methods reproduced1failure/2errors before isolation.
+  The unchanged historical module plus separate parser regression passed the
+  complete public-update-flow/parser/HTTPS68-test check (9platform skips).
+  Before/after logs are retained in `.runtime/windows-parser-isolation-checkpoint/`.
+- Original direct TLS client timed out because the actual fixture producer
+  expects CONNECT before TLS. The fixed sourceee5b33e0 preserves certificate,
+  hostname, response bounds and the15-second total timer. Native585c proved the
+  engineering manifest read; routine tests preserve actual producer refusal,
+  non200 CONNECT, slow-trickle deadline and no caller policy overrides. The full
+  native Windows timer selector is wired into CI; it is not yet reported passed.
+- Corrected TaskAPI fullflow3224 stopped before admin/update on its live-server
+  guard. Readonly7455 showed failed process joins;10290/a1d668 then positively
+  proved current original8812 absence and port58852 kernel listener count0. This
+  is current disposition, not recovered historical cause. Prepare the entire next
+  flow before a new server starts; do not relax the product admission predicate.
+
 ## Procfs short reads and connection ownership — 2026-10-07
 
 Originalprovider012 performed one os.read on /proc/net/unix. A newline-complete

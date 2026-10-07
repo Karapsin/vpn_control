@@ -1,0 +1,24 @@
+{
+  "scope": "PUBLIC_SOURCE_ONLY; no native/job authority",
+  "canonicalSource": {
+    "sha256": "ee5b33e0a8605ac146a43dabc4658d1fc0d0c12dad7bf8f45150da8095d7c7d1",
+    "reviewedComponentManifest": "ddad7f5c8556c62a406c578c30732613af2d122b9fe11a8427f50b2d5db8aa33"
+  },
+  "files": {
+    "prior-direct-tls.cs": {
+      "sha256": "bda3e81054461b7b2f865d9de9638981181fc2ee799058f142defc8a2eaccdb6",
+      "bytes": 2500
+    },
+    "actual-fixture-producer.source": {
+      "sha256": "ec9e72e868b2ca674504907623909ab8b8e3525c5c14212772cb9786b820c2c0",
+      "bytes": 5022
+    },
+    "before-total-deadline.cs": {
+      "sha256": "3339630834fc13674df1e6ba833a792de3772995aa0b5cd7918ddc90befd0e19",
+      "bytes": 3128
+    }
+  },
+  "beforeTotalDeadline": "Inverse timer-only delta of canonical corrected CONNECT source; no physical historical inode claim",
+  "priorDirectTls": "Exact reviewed previous bda3 source; consumed native TLS_BOUND unchanged",
+  "actualProducer": "Exact six original public functions from scripts/prepare_desktop_update_fixture.py; no private data/assets"
+}

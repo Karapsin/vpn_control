@@ -33,7 +33,38 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-07,16:36 Moscow
+## Current acceptance status — 2026-10-07,18:43 Moscow
+
+Delivered baseline is `13e63f6a148309b6eb06423acffc9628a4e130d3`,
+product2.2.3. Root is integrating the reviewed CONNECT/HTTPS routine and the
+actual complete PowerShell parser regression into the next coherent checkpoint.
+The full plan remains incomplete; last queried matrix was0passed/2historical/20open.
+The single final exact-SHA five-workflow CI gate remains deferred by user request.
+No release is authorized. Historical observations below retain their original scope.
+
+| Slice | Exclusive owner | Current evidence | Next gate |
+| --- | --- | --- | --- |
+| Windows CP117 | windows_operator | Corrected fullflow3224 reached preflight but did not launch admin/update. Diagnostic7455 proved taskReady and process binding false. Readonly10290/a1d668, receiptf1a31501, then proved original8812 absent and authenticated58852 listener count0; full source/raw closing passed. Earlier585c HTTPS is engineering D32 evidence only. | Prepare a complete genuinely new server→preflight→update→verification→cleanup caller before starting its server; refresh source bindings after checkpoint. Preserve all old correlations. Current-source acceptance and MCP equivalent remain open. |
+| Android API35 | android_mount_owner | Distinct copy85060/SSH85595 completed COPY_COMPLETE:11,480,195B/d0b71ddd, checked original limit restoration and full custody passed. Public closeoutcc98df86; olda7b8 UNKNOWN preserved. Two-phase BASE publisher eca469/peer9172 passed4actual local controls. | Refresh bindings after checkpoint, then fresh905→BASE publication on a genuinely admitted route with461seconds before parent/110before publisher. No installer/copy/export/lease action is included. Installer backup FD-through-consumption repair remains separate. |
+| Arch route | windows_operator | Original210be keeper98693/session76016 terminal0; same canonical12206 positively ENDED18:42:36, source136pre/post closing passed. No live borrower/native caller; root source hold released. | Source-ready admission only; Android ready operation may justify next route once its checkpoint bindings are refreshed. Windows needs its complete caller ready first. |
+| MCP integration | android_bundle_worker source; root integration | Native copy is green, but original90092 prepared in-memory context was not persisted. Canonical resolver candidate refuses unavailable original authority before private reads/effects; no retroactive seal. | Add narrowly scoped create-only persistence for genuinely new exports, causal regression and usable canonical start/status; then matching native MCP rerun. Never replay or rewrite90092. |
+| Routine delivery | root; stage_review peer | Reviewed HTTPS helper emits native-proven sourceee5b33e0. Parser fixtures reproduce missing outer finally and verify exact restoration without executing the body. Native Windows selectors are added to its package workflow. | Focused checks, version_bump, fresh full prepush, explicit-path checkpoint todev. Intermediate CI review remains deferred. |
+| Linux/macOS/final matrix | existing source owners; root coordination | Prior engineering/historical evidence preserved. No new current-source completion is claimed. | Remaining platform native scenarios, final source-bound packages, visuals, MCP equivalents and exact-SHA CI. |
+
+The original90092 backup, old UNKNOWN copya7b8, all Windows failed/unknown jobs,
+private captures and historical package artifacts remain unchanged. Windows D32
+2.1.19→2.2.2 and Android source60bb package pair are engineering evidence; neither
+is promoted to final current-source acceptance. No host VPN interruption occurred.
+
+Fullprepush2734 completed with1failure/4errors after5932tests. The appended
+parser class changed the historical server-preflight module's source pin.
+Root reproduced the whole-context failure, restored that module exactly to
+SHA4b661246 and moved the unchanged regression into a separate module without
+repinning any historical source. Peer10c869f0 cleared the isolation; focused
+68tests passed with9platform skips. A fresh complete prepush is required before
+the checkpoint; no commit or native attempt is authorized by the failed receipt.
+
+## Historical acceptance snapshot — 2026-10-07,16:36 Moscow
 
 Delivered HEAD remains `c32025cd2a7ce57b1e08e83dbe791a81558e5c03`,
 product2.2.3. The full plan remains incomplete; the last queried native matrix

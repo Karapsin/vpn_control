@@ -1,0 +1,17 @@
+{
+  "scope": "PUBLIC_SOURCE_ONLY_NO_NATIVE",
+  "sources": {
+    "finally-loss": {
+      "origin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/windows-ebca-server-binding-diagnostic/query.body.ps1",
+      "sha256": "24001dcaed1e666438e18497abde4594b6f3121b28c339a569b11955da0d3a21",
+      "size": 29167
+    },
+    "finally-restored": {
+      "origin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/windows-ebca-server-binding-disposal-successor/query.body.ps1",
+      "sha256": "dc4ea223703ea8b16faa07d1b6d231d45b30d078f09e4e1e4954241a3be9efa6",
+      "size": 29241
+    }
+  },
+  "repair": "Exact unchanged original outer finally closure only",
+  "historicalHold": "9dbb8773c537009e05e76c8c8f2d90e33f4cb3950ba11d23cc20e7e51aefb861"
+}

@@ -1,0 +1,195 @@
+$ErrorActionPreference='Stop'
+if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -cne 'S-1-5-18'){throw 'PUBLIC_PREFLIGHT_ROLE'}
+$reader=[Console]::In.ReadToEnd();[byte[]]$inputRaw=[Text.Encoding]::UTF8.GetBytes($reader)
+if($inputRaw.Length -ne 31601 -or [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($inputRaw)).Replace('-','').ToLowerInvariant() -cne 'f4b4c96ba3fd3df68f955eb8095f83f88970adc01a73062289c72aa320995edf'){throw 'PUBLIC_PREFLIGHT_FRAME'}
+$public=ConvertFrom-Json -InputObject $reader
+if(($public.PSObject.Properties.Name|Sort-Object)-join '|' -cne 'correlationId|image|task|version' -or $public.version -isnot [int] -or $public.version -ne 1 -or $public.correlationId -cne '6815bdda-18db-42e7-8d48-99a7a8af39aa' -or $public.task -isnot [string] -or $public.task.Length -gt 16384){throw 'PUBLIC_PREFLIGHT_INPUT'}
+$packed=[Convert]::FromBase64String($public.task);$memory=[IO.MemoryStream]::new($packed,$false);$gzip=[IO.Compression.GZipStream]::new($memory,[IO.Compression.CompressionMode]::Decompress);$output=[IO.MemoryStream]::new()
+try{[byte[]]$buffer=[byte[]]::new(4096);while(($n=$gzip.Read($buffer,0,$buffer.Length)) -gt 0){if($output.Length+$n -gt 47933){throw 'PUBLIC_PREFLIGHT_EXPANSION'};$output.Write($buffer,0,$n)};[byte[]]$raw=$output.ToArray();if($raw.Length -ne 47933 -or $memory.Position -ne $memory.Length -or [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($raw)).Replace('-','').ToLowerInvariant() -cne '37ec43937ba78adfc19f5b0952223a17b518bdbe6909b745cabfcda43092c9ad'){throw 'PUBLIC_PREFLIGHT_TASK'}}finally{$gzip.Dispose();$memory.Dispose();$output.Dispose()}
+$source=[Text.UTF8Encoding]::new($false,$true).GetString($raw);$tokens=$null;$errors=$null;$ast=[Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors);if($errors.Count -ne 0){throw 'PUBLIC_PREFLIGHT_PARSE'}
+$assemblies=[regex]::Matches($source,"Add-Type -TypeDefinition @'\n(.*?)\n'@(?: -ReferencedAssemblies @\('System','System.Core'\))?",[Text.RegularExpressions.RegexOptions]::Singleline)
+$expected=@('a389a031692154e721bed295f6445a609d08b89470f47d3c83e0b6e60ecc45c6','31466cd57424d57ea331a565c4f9132869f4c99810f82aa41562ae1d3cbeb9f0','7a1ac0d2ad9e39d8f9a42ab2db6565d40294fd090ebe0a2dcd7ec20165dcaa9b','3416d324fa812f00541a4429d1e58c25641fbfb981f0018dd945a8fa67499c5a');if($assemblies.Count -ne 4){throw 'PUBLIC_PREFLIGHT_ASSEMBLIES'}
+for($i=0;$i -lt 4;$i++){$cs=$assemblies[$i].Groups[1].Value;$sha=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($cs))).Replace('-','').ToLowerInvariant();if($sha -cne $expected[$i]){throw 'PUBLIC_PREFLIGHT_ASSEMBLY_SOURCE'};$refs=@('System','System.Core');if($i -eq 3){$refs+=@('System.IO.Compression','System.IO.Compression.FileSystem')};Add-Type -TypeDefinition $cs -ReferencedAssemblies $refs}
+function Cp117TokenControlOld([string[]]$t){if($t.Length -ne 6 -or $t[0] -cne 'S-1-5-21-2404255130-2183793310-3766671872-1002' -or $t[1] -cne '0' -or $t[2] -cne '3' -or $t[3] -cne 'False' -or $t[4] -cne 'False' -or $t[5] -cne '1'){throw 'PUBLIC_CURRENT_ACTOR'}}
+function Cp117TokenControlNew([string[]]$t){if($t.Length -ne 6 -or $t[0] -cne 'S-1-5-21-2404255130-2183793310-3766671872-1002' -or $t[1] -cne '0' -or $t[2] -cnotin @('1','3') -or $t[3] -cne 'False' -or $t[4] -cne 'False' -or $t[5] -cne '1'){throw 'PUBLIC_CURRENT_ACTOR'}}
+function Cp117StopTokenOld([string[]]$t,[string]$sid){if($t[0] -cne $sid -or $t[1] -cne '0' -or $t[2] -cne '3' -or $t[3] -cne 'False' -or $t[4] -cne 'False' -or $t[5] -cne '1'){throw 'PUBLIC_CLEANUP_SERVER_TOKEN'}}
+function Cp117StopTokenNew([string[]]$t,[string]$sid){if($t[0] -cne $sid -or $t[1] -cne '0' -or $t[2] -cnotin @('1','3') -or $t[3] -cne 'False' -or $t[4] -cne 'False' -or $t[5] -cne '1'){throw 'PUBLIC_CLEANUP_SERVER_TOKEN'}}
+function Cp117RunTokenConsumerControls{
+ $count=0
+ foreach($type in @('1','3')){
+  [string[]]$t=@('S-1-5-21-2404255130-2183793310-3766671872-1002','0',$type,'False','False','1')
+  $oldRejected=$false;try{Cp117TokenControlOld $t}catch{if($_.Exception.Message -cne 'PUBLIC_CURRENT_ACTOR'){throw};$oldRejected=$true}
+  if($oldRejected -ne ($type -ceq '1')){throw 'PUBLIC_TOKEN_CONTROL_OLD'}
+  Cp117TokenControlNew $t;$count++
+  $stopOldRejected=$false;try{Cp117StopTokenOld $t 'S-1-5-21-2404255130-2183793310-3766671872-1002'}catch{if($_.Exception.Message -cne 'PUBLIC_CLEANUP_SERVER_TOKEN'){throw};$stopOldRejected=$true}
+  if($stopOldRejected -ne ($type -ceq '1')){throw 'PUBLIC_TOKEN_CONTROL_STOP_OLD'}
+  Cp117StopTokenNew $t 'S-1-5-21-2404255130-2183793310-3766671872-1002';$count++
+  foreach($row in @(@(0,'foreign'),@(1,'1'),@(2,'2'),@(2,'0'),@(2,$null),@(3,'True'),@(4,'True'),@(5,'2'))){
+   [string[]]$bad=$t.Clone();$bad[[int]$row[0]]=$row[1];$refused=$false
+   try{Cp117TokenControlNew $bad}catch{if($_.Exception.Message -cne 'PUBLIC_CURRENT_ACTOR'){throw};$refused=$true}
+   if(-not $refused){throw 'PUBLIC_TOKEN_CONTROL_FOREIGN'};$count++
+   $stopRefused=$false;try{Cp117StopTokenNew $bad 'S-1-5-21-2404255130-2183793310-3766671872-1002'}catch{if($_.Exception.Message -cne 'PUBLIC_CLEANUP_SERVER_TOKEN'){throw};$stopRefused=$true}
+   if(-not $stopRefused){throw 'PUBLIC_TOKEN_CONTROL_STOP_FOREIGN'};$count++
+  }
+  $child=[pscustomobject]@{Id=1234};$birth='123';$phase='control';$command='status';$childFile=$null
+  $cp117LaunchingIdentity=[pscustomobject]@{User=[pscustomobject]@{Value='S-1-5-21-2404255130-2183793310-3766671872-1002'}};$cp117LaunchingSession=1
+  function JsonHeld($file,$value){return $value}
+  $oldRecord=(& { JsonHeld $childFile @{pid=$child.Id;birth=$birth;phase=$phase;command=$command;actor='S-1-5-21-2404255130-2183793310-3766671872-1002';sessionId=1;limited=$true} })
+  if($oldRecord.limited -ne $true -or $oldRecord.ContainsKey('childTokenObserved')){throw 'PUBLIC_TOKEN_CONTROL_CHILD_OLD'}
+  $record=(& { JsonHeld $childFile @{pid=$child.Id;birth=$birth;phase=$phase;command=$command;securityScope='launching-task';launchingPrincipalSid=$cp117LaunchingIdentity.User.Value;launchingSessionId=$cp117LaunchingSession;launchingTaskRunLevel='Limited';childTokenObserved=$false;tokenLimited=$null} })
+  if($record.securityScope -cne 'launching-task' -or $record.launchingPrincipalSid -cne 'S-1-5-21-2404255130-2183793310-3766671872-1002' -or $record.launchingSessionId -ne 1 -or $record.launchingTaskRunLevel -cne 'Limited' -or $record.childTokenObserved -isnot [bool] -or $record.childTokenObserved -ne $false -or $null -ne $record.tokenLimited -or $record.ContainsKey('limited') -or $record.ContainsKey('elevationType') -or $record.ContainsKey('actor')){throw 'PUBLIC_TOKEN_CONTROL_CHILD'};$count++
+  [string[]]$cp117ServerToken=$t;$expectedSid='S-1-5-21-2404255130-2183793310-3766671872-1002';$task=[pscustomobject]@{Principal=[pscustomobject]@{RunLevel='Limited'}}
+  if($cp117ServerToken.Length -ne 6 -or $cp117ServerToken[0] -cne $expectedSid -or $cp117ServerToken[1] -cne '0' -or $cp117ServerToken[2] -cnotin @('1','3') -or $cp117ServerToken[3] -cne 'False' -or $cp117ServerToken[4] -cne 'False' -or $cp117ServerToken[5] -cne '1'){throw 'PUBLIC_SERVER_TOKEN'}
+  $oldServer=@{limited=$true}
+  $projection=@{elevationType=[int]$cp117ServerToken[2];limited=($cp117ServerToken[2] -ceq '3');elevated=($cp117ServerToken[1] -ceq '1');adminMember=($cp117ServerToken[3] -ceq 'True');adminEnabled=($cp117ServerToken[4] -ceq 'True');taskRunLevel=$task.Principal.RunLevel.ToString();}
+  if($type -ceq '1' -and $oldServer.limited -eq $projection.limited){throw 'PUBLIC_TOKEN_CONTROL_SERVER_OLD'}
+  if($projection.elevationType -ne [int]$type -or $projection.limited -ne ($type -ceq '3') -or $projection.elevated -ne $false -or $projection.adminMember -ne $false -or $projection.adminEnabled -ne $false -or $projection.taskRunLevel -cne 'Limited'){throw 'PUBLIC_TOKEN_CONTROL_SERVER'};$count++
+ }
+ if($count -ne 40){throw 'PUBLIC_TOKEN_CONTROL_COUNT'}
+}
+Cp117RunTokenConsumerControls
+$functions=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'OwnProcess'},$true));if($functions.Count -ne 1){throw 'PUBLIC_PREFLIGHT_OWNER_FUNCTION'}
+. ([ScriptBlock]::Create($functions[0].Extent.Text))
+$actor=OwnProcess 3804 '134356192583360055' @('C:\Windows\explorer.exe')
+if((Get-FileHash -LiteralPath 'C:\Users\vpncp117\AppData\Local\vpn-control\vpn-control-cli.exe' -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'ca95b4e671c3effe05eb8f888a4260dedb6ff22363fe347383290240801dd2b1'){throw 'PUBLIC_PREFLIGHT_BASE'}
+if(@(Get-CimInstance Win32_Process -ErrorAction Stop|Where-Object {$_.Name -match '^(vpn-control|vpn-control-cli|sing-box|consent)\.exe$'}).Count -ne 0){throw 'PUBLIC_PREFLIGHT_BUSY'}
+$cp117StageHandles=[Collections.Generic.List[Microsoft.Win32.SafeHandles.SafeFileHandle]]::new()
+try{
+function Require-TlsPrivateAcl([object]$a,[bool]$directory){
+ if(-not $a.protected -or @($a.aces).Count -ne 3){throw 'TLS_FIRST_START_ACL'};$seen=@{}
+ foreach($r in $a.aces){if(@('S-1-5-18','S-1-5-32-544','S-1-5-21-2404255130-2183793310-3766671872-1002') -cnotcontains $r.sid -or $seen.ContainsKey($r.sid) -or $r.type -cne 'Allow' -or $r.inherited -or $r.rights -ne 2032127 -or $r.inheritance -ne $(if($directory){3}else{0}) -or $r.propagation -ne 0){throw 'TLS_FIRST_START_ACL'};$seen[$r.sid]=$true}
+}
+
+# Current credentials are additional admitted facts. Historical TLS/staging
+# beforeimages remain authenticated independently; none are relabelled current.
+$cp117CurrentTlsRoot='C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-credentials-43218d4e-7fc9-4659-8f15-9071fab63818'
+$cp117CurrentTlsHashes=@{'server-cert.pem'='b57a96743757dec7227a23d944945b9aea99e0d1a475e03f02656a479478f4bf';'server-key.pem'='c27810aba0b9f7b5f0fec40a18975e5bf2d34a5aa47ddaa6383aca38bc44d7c7';'fixture-trust.p12'='fc2d937dbc99fbdab7b71bc5922baff28a51ccb9c49d3cdeebf7357f95487c60';'provenance.json'='3e6aff107ac351030095644a0b24d6e370c5bec4d83c5997cd8ecfd1098d3654'}
+$cp117CurrentTlsPins=@{};$cp117CurrentTlsStreams=[Collections.Generic.List[IO.FileStream]]::new()
+try{
+ foreach($leaf in $cp117CurrentTlsHashes.Keys){
+  $path=Join-Path $cp117CurrentTlsRoot $leaf;$held=[IO.FileStream]::new($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);$cp117CurrentTlsStreams.Add($held)
+  $pin=[Cp117InstalledFile]::Read($path);if($pin[0] -cne $cp117CurrentTlsHashes[$leaf]){throw 'FULLFLOW_CURRENT_TLS_HASH'}
+  $pinMethod=[Cp117InstalledFile].GetMethod('Pin',[Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::NonPublic)
+  if([string]$pinMethod.Invoke($null,[object[]]@($held)) -cne $pin[1]){throw 'FULLFLOW_CURRENT_TLS_HELD'}
+  $acl=Get-Acl -LiteralPath $path -ErrorAction Stop
+  $aces=@(foreach($a in $acl.Access){@{sid=$a.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value;rights=[int]$a.FileSystemRights;type=$a.AccessControlType.ToString();inherited=$a.IsInherited;inheritance=[int]$a.InheritanceFlags;propagation=[int]$a.PropagationFlags}})
+  Require-TlsPrivateAcl @{protected=$acl.AreAccessRulesProtected;aces=$aces} $false
+  $cp117CurrentTlsPins[$leaf]=@{sha256=$pin[0];identity=$pin[1];sddl=[string]$acl.Sddl}
+ }
+ $cert=[Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $cp117CurrentTlsRoot 'server-cert.pem'))
+ try{if($cert.NotBefore.ToUniversalTime() -gt [DateTime]::UtcNow -or $cert.NotAfter.ToUniversalTime() -lt [DateTime]::UtcNow.AddSeconds(960)){throw 'FULLFLOW_CURRENT_TLS_DURATION'}}finally{$cert.Dispose()}
+ foreach($leaf in $cp117CurrentTlsHashes.Keys){$path=Join-Path $cp117CurrentTlsRoot $leaf;$last=[Cp117InstalledFile]::Read($path);if($last[0] -cne $cp117CurrentTlsPins[$leaf].sha256 -or $last[1] -cne $cp117CurrentTlsPins[$leaf].identity -or [string](Get-Acl -LiteralPath $path -ErrorAction Stop).Sddl -cne $cp117CurrentTlsPins[$leaf].sddl){throw 'FULLFLOW_CURRENT_TLS_CLOSING'}}
+}finally{foreach($held in $cp117CurrentTlsStreams){$held.Dispose()}}
+
+$cp117NewState='C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-fixture-3dc91e69-6c33-4211-b931-5e765a70553f\server-state';$cp117NewTask='VpnControlMcpFixtureServer-ebca62a8-d1fc-4352-a423-e9fcfbd02cbd';$cp117NewArgs='-I -B "C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-fixture-3dc91e69-6c33-4211-b931-5e765a70553f\content\server\source_bound_server.py"';$cp117NewArgSha='38c6d48dd8bdeda977b3c1963f66453eac3b98bce3faf048ba0b3df33c207782'
+function RequireNewServerTask([object]$t){
+ if($null -eq $t -or $t.TaskName -cne $cp117NewTask -or $t.TaskPath -cne '\' -or @($t.Actions).Count -ne 1 -or $t.Actions[0].Execute -cne 'C:\Users\vpncp117\AppData\Local\Programs\Python\Python313\python.exe' -or $t.Actions[0].Arguments -cne $cp117NewArgs -or @($t.Triggers|Where-Object {$null -ne $_}).Count -ne 0 -or $t.Principal.LogonType.ToString() -cne 'Interactive' -or $t.Principal.RunLevel.ToString() -cne 'Limited'){throw 'NEW_SERVER_TASK_BINDING'}
+ $s=[Security.Principal.NTAccount]::new($t.Principal.UserId).Translate([Security.Principal.SecurityIdentifier]).Value
+ if($s -cne 'S-1-5-21-2404255130-2183793310-3766671872-1002'){throw 'NEW_SERVER_TASK_SID'}
+}
+Add-Type -ReferencedAssemblies @('System','System.Core') -TypeDefinition @'
+using System;using System.IO;using System.Runtime.InteropServices;
+public static class Cp117ReadyNativeIdentity {
+ [StructLayout(LayoutKind.Sequential)]public struct Info {public uint Attr;public uint CH,CL,AH,AL,WH,WL,Volume,SizeHigh,SizeLow,Links,IdHigh,IdLow;}
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(IntPtr h,out Info info);
+ public static long[] Observe(FileStream file){Info first,last;bool ok=GetFileInformationByHandle(file.SafeFileHandle.DangerousGetHandle(),out first);if(!ok)return new long[]{0,-1};bool closed=GetFileInformationByHandle(file.SafeFileHandle.DangerousGetHandle(),out last);if(!closed)return new long[]{0,-1};if(first.Volume!=last.Volume||first.IdHigh!=last.IdHigh||first.IdLow!=last.IdLow||first.Links!=last.Links||first.SizeHigh!=last.SizeHigh||first.SizeLow!=last.SizeLow||first.WH!=last.WH||first.WL!=last.WL||first.CH!=last.CH||first.CL!=last.CL||first.Attr!=last.Attr)throw new IOException("READY_NATIVE_IDENTITY_DRIFT");return new long[]{1,(long)first.Links};}
+}
+'@
+$cp117DispositionTaskRows=@(Get-ScheduledTask -TaskName $cp117NewTask -TaskPath '\' -ErrorAction Stop)
+if($cp117DispositionTaskRows.Count -gt 1){throw 'EBCA_TASK_ROWS'}
+$cp117DispositionTaskState='absent-observed';$cp117DispositionTaskLastResult=$null;$cp117DispositionTaskVerified=$false
+if($cp117DispositionTaskRows.Count -eq 1){
+ RequireNewServerTask $cp117DispositionTaskRows[0]
+ $cp117DispositionTaskState=$cp117DispositionTaskRows[0].State.ToString()
+ if($cp117DispositionTaskState -cnotin @('Disabled','Queued','Ready','Running')){throw 'EBCA_TASK_STATE'}
+ $cp117DispositionTaskInfo=Get-ScheduledTaskInfo -TaskPath '\' -TaskName $cp117NewTask -ErrorAction Stop
+ $cp117DispositionTaskLastResult=[long]$cp117DispositionTaskInfo.LastTaskResult
+ $cp117DispositionTaskVerified=$true
+}
+$cp117DispositionState='absent-observed';$cp117DispositionPort=$null;$cp117DispositionReadyState='absent-observed';$cp117DispositionNativeQuery=$null;$cp117DispositionLinks=$null;$cp117DispositionReadySha=$null
+$cp117DispositionProcessState='not-observed';$cp117DispositionPid=$null;$cp117DispositionBirth=$null;$cp117DispositionReadyBirthMatch=$null;$cp117DispositionOwnerMatch=$null;$cp117DispositionElevationType=$null
+$cp117DispositionProgrammeMatch=$null;$cp117DispositionManifest=$null;$cp117DispositionListeners=@()
+$cp117DispositionReadyPath=Join-Path $cp117NewState 'ready.json'
+$cp117DispositionProgrammePath=Join-Path (Split-Path -Parent $cp117NewState) 'content\server\source_bound_server.py'
+$cp117DispositionReadyHandle=$null;$cp117DispositionProcess=$null
+if(Test-Path -LiteralPath $cp117NewState){
+ $cp117DispositionState='present-observed'
+ $cp117DispositionStateHold=[Cp117RefreshWorkspace]::HoldDirectory($cp117NewState);[void]$cp117StageHandles.Add($cp117DispositionStateHold)
+ $cp117DispositionDirPin=[Cp117RefreshWorkspace].GetMethod('DirPin',[Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::NonPublic)
+ $cp117DispositionStatePin=[string]$cp117DispositionDirPin.Invoke($null,[object[]]@($cp117NewState))
+ $cp117DispositionStateAcl=Get-Acl -LiteralPath $cp117NewState -ErrorAction Stop;$cp117DispositionStateSddl=[string]$cp117DispositionStateAcl.Sddl
+ $cp117DispositionStateAces=@(foreach($a in $cp117DispositionStateAcl.Access){@{sid=$a.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value;rights=[int]$a.FileSystemRights;type=$a.AccessControlType.ToString();inherited=$a.IsInherited;inheritance=[int]$a.InheritanceFlags;propagation=[int]$a.PropagationFlags}})
+ Require-TlsPrivateAcl @{protected=$cp117DispositionStateAcl.AreAccessRulesProtected;aces=$cp117DispositionStateAces} $true
+ if(Test-Path -LiteralPath $cp117DispositionReadyPath){
+  for($cp117Ancestor=$cp117DispositionReadyPath;$null -ne $cp117Ancestor;$cp117Ancestor=[IO.Path]::GetDirectoryName($cp117Ancestor)){
+   if(([IO.File]::GetAttributes($cp117Ancestor) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'EBCA_READY_REPARSE'}
+   if([IO.Path]::GetPathRoot($cp117Ancestor) -ceq $cp117Ancestor){break}
+  }
+  $cp117DispositionReadyHandle=[IO.FileStream]::new($cp117DispositionReadyPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+  try{
+   if($cp117DispositionReadyHandle.Length -le 0 -or $cp117DispositionReadyHandle.Length -gt 16384){throw 'EBCA_READY_BOUND'}
+   $cp117DispositionNative=[Cp117ReadyNativeIdentity]::Observe($cp117DispositionReadyHandle)
+   if($cp117DispositionNative.Length -ne 2){throw 'EBCA_READY_NATIVE_SHAPE'}
+   $cp117DispositionNativeQuery=($cp117DispositionNative[0] -eq 1)
+   if(-not $cp117DispositionNativeQuery){$cp117DispositionReadyState='native-query-failed'}
+   else{
+    $cp117DispositionLinks=[long]$cp117DispositionNative[1]
+    if($cp117DispositionLinks -ne 1){$cp117DispositionReadyState='non-single-link'}
+    else{
+     $cp117DispositionReadyAcl=Get-Acl -LiteralPath $cp117DispositionReadyPath -ErrorAction Stop;$cp117DispositionReadySddl=[string]$cp117DispositionReadyAcl.Sddl
+     $cp117DispositionReadyAces=@(foreach($a in $cp117DispositionReadyAcl.Access){@{sid=$a.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value;rights=[int]$a.FileSystemRights;type=$a.AccessControlType.ToString();inherited=$a.IsInherited;inheritance=[int]$a.InheritanceFlags;propagation=[int]$a.PropagationFlags}})
+     Require-TlsPrivateAcl @{protected=$cp117DispositionReadyAcl.AreAccessRulesProtected;aces=$cp117DispositionReadyAces} $false
+     $cp117DispositionReadyPin=[Cp117InstalledFile]::Read($cp117DispositionReadyPath)
+     $cp117DispositionReadyPinMethod=[Cp117InstalledFile].GetMethod('Pin',[Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::NonPublic)
+     if([string]$cp117DispositionReadyPinMethod.Invoke($null,[object[]]@($cp117DispositionReadyHandle)) -cne $cp117DispositionReadyPin[1]){throw 'EBCA_READY_HELD_IDENTITY'}
+     $cp117DispositionReadyRaw=[IO.File]::ReadAllText($cp117DispositionReadyPath,[Text.UTF8Encoding]::new($false,$true))
+     $cp117DispositionReady=ConvertFrom-Json -InputObject $cp117DispositionReadyRaw
+     if(@($cp117DispositionReady.PSObject.Properties).Count -ne 9 -or ($cp117DispositionReady.serverPid -isnot [int] -and $cp117DispositionReady.serverPid -isnot [long]) -or $cp117DispositionReady.serverPid -le 0 -or $cp117DispositionReady.serverPid -gt 2147483647 -or ($cp117DispositionReady.port -isnot [int] -and $cp117DispositionReady.port -isnot [long]) -or ($cp117DispositionReady.port -lt 1 -or $cp117DispositionReady.port -gt 65535) -or $cp117DispositionReady.serverProcessStartIdentity -isnot [string] -or $cp117DispositionReady.serverProcessStartIdentity -cnotmatch '^windows:[1-9][0-9]{0,18}$' -or $cp117DispositionReady.peerCertificateSha256 -cne '01b95668b4eb6d80f7142b6599c0fb93c773722e697e5631322cc87aa4fe8ab1' -or $cp117DispositionReady.fixtureReceiptSha256 -cne '31634170c6d0c358ee1aed84314170725b27b79895f76f5977133a5e466f94bb'){throw 'EBCA_READY_SCHEMA'}
+     foreach($cp117HashName in @('sourceFingerprint','manifestSha256')){if($cp117DispositionReady.$cp117HashName -isnot [string] -or $cp117DispositionReady.$cp117HashName -cnotmatch '^[0-9a-f]{64}$'){throw 'EBCA_READY_HASH'}}
+     if($cp117DispositionReady.serverInstanceId -isnot [string] -or $cp117DispositionReady.serverInstanceId -cnotmatch '^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$'){throw 'EBCA_READY_INSTANCE'}
+     $cp117DispositionPort=[int]$cp117DispositionReady.port;$cp117DispositionReadyState='strict-single-link';$cp117DispositionReadySha=$cp117DispositionReadyPin[0];$cp117DispositionPid=[int]$cp117DispositionReady.serverPid;$cp117DispositionManifest=$cp117DispositionReady.manifest
+     $cp117DispositionProgrammePin=[Cp117InstalledFile]::Read($cp117DispositionProgrammePath)
+     if($cp117DispositionProgrammePin[0] -cne '342de921e5e5e6b562d3f112f07d318aad4d230de0804b2a045527af0c9e8f6a'){throw 'EBCA_PROGRAMME_SOURCE'}
+     $cp117DispositionProgrammeMatch=$true
+     $cp117DispositionProcessRows=@(Get-CimInstance Win32_Process -Filter ('ProcessId='+$cp117DispositionPid) -ErrorAction Stop)
+     if($cp117DispositionProcessRows.Count -gt 1){throw 'EBCA_PROCESS_ROWS'}
+     if($cp117DispositionProcessRows.Count -eq 0){$cp117DispositionProcessState='absent-observed'}
+     elseif($cp117DispositionProcessRows[0].ExecutablePath -isnot [string] -or -not [string]::Equals($cp117DispositionProcessRows[0].ExecutablePath,'C:\Users\vpncp117\AppData\Local\Programs\Python\Python313\python.exe',[StringComparison]::OrdinalIgnoreCase) -or $cp117DispositionProcessRows[0].SessionId -ne 1 -or $cp117DispositionProcessRows[0].CommandLine -isnot [string] -or $cp117DispositionProcessRows[0].CommandLine -notlike ('*'+$cp117NewArgs)){$cp117DispositionProcessState='foreign-observed'}
+     else{
+      $cp117DispositionProcess=[Diagnostics.Process]::GetProcessById($cp117DispositionPid)
+      try{
+       $cp117DispositionBirth=$cp117DispositionProcess.StartTime.ToUniversalTime().ToFileTimeUtc().ToString()
+       $cp117DispositionReadyBirthMatch=($cp117DispositionReady.serverProcessStartIdentity -ceq ('windows:'+$cp117DispositionBirth))
+       $cp117DispositionToken=[Cp117OwnerToken]::Read($cp117DispositionPid,[long]$cp117DispositionBirth)
+       if($cp117DispositionToken.Length -ne 6){throw 'EBCA_TOKEN_SHAPE'}
+       $cp117DispositionOwnerMatch=($cp117DispositionToken[0] -ceq 'S-1-5-21-2404255130-2183793310-3766671872-1002' -and $cp117DispositionToken[1] -ceq '0' -and $cp117DispositionToken[2] -cin @('1','3') -and $cp117DispositionToken[3] -ceq 'False' -and $cp117DispositionToken[4] -ceq 'False' -and $cp117DispositionToken[5] -ceq '1')
+       if($cp117DispositionToken[2] -cnotin @('1','2','3')){throw 'EBCA_TOKEN_ENUM'}
+       $cp117DispositionElevationType=[int]$cp117DispositionToken[2]
+       if($cp117DispositionProcess.HasExited -or $cp117DispositionProcess.StartTime.ToUniversalTime().ToFileTimeUtc().ToString() -cne $cp117DispositionBirth){throw 'EBCA_PROCESS_CHANGED'}
+       if($cp117DispositionReadyBirthMatch -and $cp117DispositionOwnerMatch){$cp117DispositionProcessState='current-matching-ready'}else{$cp117DispositionProcessState='foreign-observed'}
+      }finally{$cp117DispositionProcess.Dispose();$cp117DispositionProcess=$null}
+     }
+     $cp117DispositionReadyAfter=[Cp117InstalledFile]::Read($cp117DispositionReadyPath)
+     if($cp117DispositionReadyAfter[0] -cne $cp117DispositionReadyPin[0] -or $cp117DispositionReadyAfter[1] -cne $cp117DispositionReadyPin[1] -or [string](Get-Acl -LiteralPath $cp117DispositionReadyPath -ErrorAction Stop).Sddl -cne $cp117DispositionReadySddl -or [string]$cp117DispositionReadyPinMethod.Invoke($null,[object[]]@($cp117DispositionReadyHandle)) -cne $cp117DispositionReadyPin[1]){throw 'EBCA_READY_CHANGED'}
+     $cp117DispositionProgrammeAfter=[Cp117InstalledFile]::Read($cp117DispositionProgrammePath);if($cp117DispositionProgrammeAfter[0] -cne $cp117DispositionProgrammePin[0] -or $cp117DispositionProgrammeAfter[1] -cne $cp117DispositionProgrammePin[1]){throw 'EBCA_PROGRAMME_CHANGED'}
+    }
+   }
+  }finally{$cp117DispositionReadyHandle.Dispose();$cp117DispositionReadyHandle=$null}
+ }
+ if([string]$cp117DispositionDirPin.Invoke($null,[object[]]@($cp117NewState)) -cne $cp117DispositionStatePin -or [string](Get-Acl -LiteralPath $cp117NewState -ErrorAction Stop).Sddl -cne $cp117DispositionStateSddl){throw 'EBCA_STATE_CHANGED'}
+}
+$cp117DispositionListeners=@();$cp117DispositionListenerObserved=$false;$cp117DispositionListenerCount=$null
+if($cp117DispositionReadyState -ceq 'strict-single-link' -and $cp117DispositionTaskVerified -and $cp117DispositionProcessState -ceq 'current-matching-ready'){$cp117DispositionListeners=@(Get-CimInstance -Namespace 'root/StandardCimv2' -ClassName MSFT_NetTCPConnection -Filter ('LocalPort='+$cp117DispositionPort+' AND State=2') -ErrorAction Stop);$cp117DispositionListenerObserved=$true;$cp117DispositionListenerCount=$cp117DispositionListeners.Count}
+if($cp117DispositionListeners.Count -gt 8){throw 'EBCA_LISTENER_BOUND'}
+$cp117DispositionListenerMatch=$false
+if($cp117DispositionProcessState -ceq 'current-matching-ready' -and $cp117DispositionListeners.Count -eq 1){$cp117DispositionListenerMatch=($cp117DispositionListeners[0].LocalAddress -ceq '127.0.0.1' -and [int]$cp117DispositionListeners[0].OwningProcess -eq $cp117DispositionPid)}
+$cp117DispositionTaskClosing=@(Get-CimInstance -Namespace 'root/Microsoft/Windows/TaskScheduler' -ClassName MSFT_ScheduledTask -Filter "TaskName='$cp117NewTask' AND TaskPath='\\'" -ErrorAction Stop)
+if($cp117DispositionTaskClosing.Count -ne $cp117DispositionTaskRows.Count){throw 'EBCA_TASK_CHANGED'}
+if($cp117DispositionTaskClosing.Count -eq 1){RequireNewServerTask $cp117DispositionTaskClosing[0];if($cp117DispositionTaskClosing[0].State.ToString() -cne $cp117DispositionTaskState){throw 'EBCA_TASK_STATE_CHANGED'}}
+$cp117AdminResult=@{version=1;state='original-ebca-readonly-observed';correlationId='abbc91c6-eb55-43fc-893e-2409fcbc3305';originalServerCorrelation='ebca62a8-d1fc-4352-a423-e9fcfbd02cbd';originalUnknownReceiptSha256='1410191a2fc6968ad62251f24f4cd239877b60ab55e8b82cf479b48a8dbd067c';taskState=$cp117DispositionTaskState;taskLastResult=$cp117DispositionTaskLastResult;taskIdentityVerified=$cp117DispositionTaskVerified;stateDirectory=$cp117DispositionState;readyState=$cp117DispositionReadyState;nativeFileQuerySucceeded=$cp117DispositionNativeQuery;nativeFileLinkCount=$cp117DispositionLinks;readySha256=$cp117DispositionReadySha;port=$cp117DispositionPort;processState=$cp117DispositionProcessState;pid=$cp117DispositionPid;currentBirth=$cp117DispositionBirth;readyBirthMatch=$cp117DispositionReadyBirthMatch;ordinaryOwnerMatch=$cp117DispositionOwnerMatch;elevationType=$cp117DispositionElevationType;programmeSourceMatch=$cp117DispositionProgrammeMatch;manifest=$cp117DispositionManifest;listenerObserved=$cp117DispositionListenerObserved;listenerCount=$cp117DispositionListenerCount;listenerMatchesReadyProcess=$cp117DispositionListenerMatch;httpsState='not-probed';livenessProven=$false;originalBirthObserved=$false;historicalCauseProven=$false;originalOutcome='UNKNOWN';serverAdmission=$false;taskAction=$false;serverAction=$false;adminAction=$false;installerAction=$false;runtimeAction=$false;replayAllowed=$false}
+
+$cp117DiagnosticChecks=@{taskRunning=(-not ($cp117AdminResult.taskState -cne 'Running'));taskIdentity=(-not ($cp117AdminResult.taskIdentityVerified -ne $true));readyStrict=(-not ($cp117AdminResult.readyState -cne 'strict-single-link'));readyHash=(-not ($cp117AdminResult.readySha256 -cne '944c58b23428dfdbd84b195defc44919dfd12aebac4c194ff02b24201a5b79cf'));pid=(-not ($cp117AdminResult.pid -ne 8812));birth=(-not ($cp117AdminResult.currentBirth -cne '134358447922672836'));port=(-not ($cp117AdminResult.port -ne 58852));processMatching=(-not ($cp117AdminResult.processState -cne 'current-matching-ready'));readyBirth=(-not ($cp117AdminResult.readyBirthMatch -ne $true));ordinaryOwner=(-not ($cp117AdminResult.ordinaryOwnerMatch -ne $true));programmeSource=(-not ($cp117AdminResult.programmeSourceMatch -ne $true));listenerObserved=(-not ($cp117AdminResult.listenerObserved -ne $true));listenerSingle=(-not ($cp117AdminResult.listenerCount -ne 1));listenerProcess=(-not ($cp117AdminResult.listenerMatchesReadyProcess -ne $true))}
+$cp117TaskStateFinite=$null
+if($cp117AdminResult.taskState -is [string] -and $cp117AdminResult.taskState -cin @('Unknown','Disabled','Queued','Ready','Running')){$cp117TaskStateFinite=$cp117AdminResult.taskState}
+$cp117AdminResult=@{version=1;state='server-binding-diagnostic';correlationId='21b9c47a-9d1b-4039-82f8-a481953fcbfb';checks=$cp117DiagnosticChecks;taskState=$cp117TaskStateFinite;taskAction=$false;serverAction=$false;adminAction=$false;installerAction=$false;runtimeAction=$false;appAdmission=$false;replayAllowed=$false;historicalCauseProven=$false}
+[Console]::Out.WriteLine(($cp117AdminResult|ConvertTo-Json -Compress -Depth 5))

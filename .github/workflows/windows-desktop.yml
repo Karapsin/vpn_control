@@ -22,6 +22,10 @@ on:
       - "agent_tools/tests/fixtures/**/*.source"
       - "agent_tools/tests/fixtures/historical_source.py"
       - ".github/workflows/windows-desktop.yml"
+      - "agent_tools/windows_ordinary_https.py"
+      - "agent_tools/tests/test_windows_ordinary_https.py"
+      - "agent_tools/tests/test_windows_complete_server_body_parser.py"
+      - "agent_tools/tests/fixtures/windows_ordinary_https/**"
       - "desktopApp/**"
       - "shared/**"
       - "gradle/**"
@@ -205,6 +209,8 @@ jobs:
           scripts.test_windows_fixture_stage_acl.WindowsFixtureCopiedPackageReadOnlyTests
           agent_tools.tests.test_windows_cp117_preprobe_identity.PreprobeIdentityOrderingTests
           agent_tools.tests.test_windows_cp117_server_preflight.ServerPreflightFlowTests.test_actual_full_body_powershell_parser
+          agent_tools.tests.test_windows_complete_server_body_parser.CompleteServerBodyParserTests
+          agent_tools.tests.test_windows_ordinary_https
           agent_tools.tests.test_windows_cp117_server_preflight.ServerInheritedFailureDiagnosticTests
           agent_tools.tests.test_windows_cp117_server_preflight.ServerFailureWireProjectionTests
           agent_tools.tests.test_windows_cp117_server_preflight.ServerInitialTruncationTests

@@ -9,6 +9,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Add routine regressions for enrolled server sources at dispatch and result publication.
 - Handle high-descriptor Android asset collection and validate selected channel correlation formats.
 - Archive large Android test results in bounded chunks while preserving evidence custody.
+- Preserve Windows fixture CONNECT/HTTPS deadlines and verify complete PowerShell cleanup scripts before native execution.
+- Keep new Windows parser checks separate from archived test source identities.
 
 ## 2.2.3 - 2026-10-07
 
