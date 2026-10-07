@@ -50,6 +50,15 @@ _REVIEWED_ENDED_PREDECESSOR_9A='9a7abc8ab6a5c4595d3f0dc0bb8bda33d5a6b1928bf37365
 _REVIEWED_ENDED_PREDECESSOR_9527='9527a0163d0b532055a12e34c00dbf68c6435b03843b3caa5d334c90f15be33f'
 _REVIEWED_ENDED_REMOTE_9527='f148a727ad94bfdd0d3fc083cd6379c2f6e65e617b50825d06787c04800b54a1'
 _REVIEWED_ENDED_REMOTE_9A='13799269eccc0d6a9e0bd86ea5816129d7c5c7fce5553d65349d55072e8f4791'
+# These exact source/program/handle tuples were independently reviewed and
+# positively ended before the EOF-reader successor. They authorize only a new
+# current handle after guarded terminal closure, never old READY adoption.
+_REVIEWED_ENDED_PREDECESSOR_012='012061ebf05def240bf79005ca58f1913fb29736a4201cae56154dcc034183fd'
+_REVIEWED_ENDED_REMOTE_012='e09d999c433654349c4e48d29947522e54f91ab69cc449050b59d9eba9684898'
+_REVIEWED_ENDED_DIAGNOSTICS_012=types.MappingProxyType({
+    'a10a21cfd20e4ddf9c32a1c74e393fa6':'f6efd83b9c2580876f7f8e38b7553346ce840c64ce9086ae8c50a23e3d6dea42',
+    'e48177f1ee694cb69abacd96ffe8f1b8':'37b6c10baf4b5608e62278768380d12ac415e76759c2a28871bc7730f3b44991',
+})
 _REMOTE_REASONS=frozenset(('actor', 'actor_uid', 'arch_identity', 'changed', 'closing', 'closing_master', 'config_dependencies', 'config_or_keys_changed', 'directory', 'directory_membership', 'duplicate', 'effective_home_changed', 'effective_home_foreign', 'effective_home_unknown', 'effective_key_not_literal', 'effective_key_unavailable', 'effective_key_unknown', 'effective_route_unknown', 'fd_cap', 'fd_changed', 'gateway_reboot', 'kernel_duplicate_inode', 'kernel_fields', 'kernel_header', 'kernel_row', 'launch_unknown', 'listener_owner', 'listener_present', 'master_check', 'process_cap', 'process_changed', 'process_disappeared_partial', 'publication_master_changed', 'publication_ready_changed', 'ready_changed', 'ready_private', 'ready_publication', 'remote_intent', 'remote_intent_changed', 'route_file_changed', 'route_file_unbounded', 'route_file_unsafe', 'route_parent_changed', 'route_parent_unsafe', 'route_unknown', 'saved_binding', 'secret', 'socket', 'stage_appeared', 'stage_parent', 'status_input', 'unclassified', 'unseen_unknown'))
 _EXCEPTION_CLASSES=frozenset(('ValueError','FileNotFoundError','PermissionError','OSError','KeyError','TimeoutExpired','SubprocessError','other'))
 _REMOTE_PHASES=frozenset(('prepare_stage','launch','remote_intent','master_snapshot','arch_identity','master_closing','publication'))
@@ -71,7 +80,17 @@ def pin(path):
  before=os.lstat(path)
  fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
  try:
-  body=os.read(fd,65537)
+  if path=='/proc/net/unix':
+   chunks=[];total=0;read_count=0;deadline=time.monotonic()+2
+   while True:
+    if time.monotonic()>deadline or read_count>=256:raise ValueError('changed')
+    chunk=os.read(fd,65537-total);read_count+=1
+    if not chunk:break
+    total+=len(chunk)
+    if total>65536:raise ValueError('changed')
+    chunks.append(chunk)
+   body=b''.join(chunks)
+  else:body=os.read(fd,65537)
   # Only this fixed procfs seq-file has volatile lookup timestamps. Its
   # descriptor/name inode, type, ownership, links and size remain strict.
   fields=7 if path=='/proc/net/unix' else 9
@@ -314,6 +333,20 @@ def _master_shape(value):
     return isinstance(value['gatewayBoot'],str) and re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',value['gatewayBoot']) is not None
 
 
+def _ended_012_intent(value,current,prior_id):
+    if type(value)is not dict:return False
+    remote=value.get('remoteSourceSha256')
+    if not isinstance(remote,str) or re.fullmatch('[0-9a-f]{64}',remote) is None:return False
+    if remote!=_REVIEWED_ENDED_REMOTE_012 and remote!=_REVIEWED_ENDED_DIAGNOSTICS_012.get(prior_id):return False
+    outer=value.get('outerReceiptSha256')
+    if not isinstance(outer,str) or re.fullmatch('[0-9a-f]{64}',outer) is None:return False
+    expected={**current,'correlationId':prior_id,'sourceSha256':_REVIEWED_ENDED_PREDECESSOR_012,
+              'remoteSourceSha256':remote,'outerReceiptSha256':outer}
+    # Canonical JSON equality keeps every nested scalar type strict too; bool
+    # or float substitutions must not compare equal to an integer pin field.
+    return json.dumps(value,sort_keys=True)==json.dumps(expected,sort_keys=True)
+
+
 def _operate(root,host,correlation_id,prepare,_private_capture=None):
     phase='input'
     try:
@@ -356,13 +389,19 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None):
                     if set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'} or ended['state']!='ended' or ended['correlationId']!=prior_id:return _public()
                     old_intent=stack.enter_context(private.Snapshot(channel_dir,name))
                     old_value=json.loads(old_intent.body,object_pairs_hook=transport._reject_duplicate_keys)
-                    if ended['intentSha256']!=old_intent.digest or old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527) or old_value.get('inventory')!=config_source.pin():return _public()
+                    if ended['intentSha256']!=old_intent.digest or old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012) or old_value.get('inventory')!=config_source.pin():return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9A and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9A):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9527 and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9527):return _public()
+                    if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_012:
+                        if not _ended_012_intent(old_value,intent,prior_id) or not isinstance(ended['gatewayBoot'],str) or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None:return _public()
                     if ended['receiptSha256'] is not None:
                         old_ready=stack.enter_context(private.Snapshot(channel_dir,prior_id+'.ready.json'))
                         old_result=json.loads(old_ready.body,object_pairs_hook=transport._reject_duplicate_keys)
                         if ended['receiptSha256']!=old_ready.digest or ended['gatewayBoot']!=old_result['result']['master']['gatewayBoot']:return _public()
+                        if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_012:
+                            if type(old_result)is not dict or set(old_result)!={'intent','result'} or json.dumps(old_result['intent'],sort_keys=True)!=json.dumps(old_intent.pin(),sort_keys=True):return _public()
+                            prior=old_result['result']
+                            if (type(prior)is not dict or set(prior)!={'state','correlationId','master','arch','controlPath'} or prior['state']!='ready' or prior['correlationId']!=prior_id or prior['controlPath']!='/tmp/vpn-channel-'+prior_id+'/m' or json.dumps(prior['arch'],sort_keys=True)!=json.dumps({'uid':EXPECTED_UID,'boot':EXPECTED_BOOT},sort_keys=True) or not _master_shape(prior['master'])):return _public()
                         old_ready.guard()
                     old_intent.guard();terminal.guard()
                 if not target.password:return _public(reason='credential_unavailable')

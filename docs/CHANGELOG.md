@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.3 - 2026-10-07
 
 - Hardened Windows update fixture ACL admission and recovery diagnostics.
 - Preserved exact read-only admission guidance and test discovery.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Retain complete check evidence, isolate native regression fixtures, and preserve authenticated source archives in hygiene checks.
 - Close reviewed native test custody gaps and preserve original update-flow evidence.
 - Harden native evidence and installer custody while separating current and historical acceptance sources.
+- Read complete Unix socket tables before admitting native SSH channels.
 
 ## 2.2.2 - 2026-09-30
 

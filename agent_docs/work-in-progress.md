@@ -33,7 +33,47 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-07,05:42 Moscow
+## Current acceptance status — 2026-10-07,08:06 Moscow
+
+Checkpoint60bb1a26405e818a52bc597700b28a205a65ea71 is pushed todev and matches
+origin/dev. The connection repair's tenth changelog bullet rolls local metadata
+to2.2.3; source60bb engineering packages retain their original fixture versions.
+Prepush86671 passed all15 tiers before that
+checkpoint. Final exact-SHA CI is deferred until final delivery as requested.
+No full platform acceptance group is closed; four-platform visuals remain open.
+
+Windows direct EOF diagnostic e48177f1ee694cb69abacd96ffe8f1b8 reached READY:
+the proc Unix table required3 reads for26,829bytes, actualEOF was observed, and
+the selected listener belonged to the closed master FD set. Original56305/56310
+completed with dualEOF714/0. Same frozen derivative status56686/56691 later
+proved ENDED; result3c7cc878 and rawmanifest1068e47f preserve that observation.
+This is direct connection evidence, not canonical MCP or guest acceptance.
+Source-only regression reproduces the original single-read listener rejection.
+The normal provider EOF repair and exact ended-predecessor transition passed
+59focused checks and independent review9457a3d3 (provider0be3a94c). Current
+keeper/preflight source successors need review before use; normal MCP equivalence
+and fresh prepush remain open.
+No authentication or network failure was established by these listener failures.
+
+Android source60bb engineering BASE2.2.2/16840(d5b4a331) and TARGET2.2.3/16860
+(4ad102b9) are freshly built, attested and registered. Both are45,027,012bytes,
+nondebuggable x86_64 with the same signer. Build receipts remain separately bound
+to source60bb; registry rows do not replace build evidence. Local TLS mint e580
+completed under campaign3674a57e; finite closeoute666c889 records private custody.
+Old1fee material remains incompatible and unused. Postbaseline asset recipe,
+current initializer and baseline raw-retention components passed source reviews
+7616653f,d67dd428 and4ed687ca. Installed old352 is still the last observed package,
+not the newbase: fresh owner/device/OFF, governed replacement, current CLI-stage,
+operator custody and complete native update/recovery/cleanup remain required.
+
+Root owns this ledger, metadata, integration checks and delivery. The connection
+worker owns only agent_tools/ssh_fresh_nested_channel.py and its routine test file;
+Windows_operator owns Arch/CP117 and ignored operational successors. Android_mount_owner
+owns API35 and the concrete baseline procedure; Android_bundle_worker's initializer
+packet is frozen. Linux/macOS native work remains queued. Current dirty work is
+the narrow connection repair and its documentation; no release is authorized.
+
+## Historical acceptance snapshot — 2026-10-07,05:42 Moscow
 
 Product remains2.2.2; dev/origin HEAD remainsd32f719a08db57e5d40ce2bf77e0d7c5b42de557.
 Fresh managed matrix observation confirms22groups:20open,2historical,0passed and

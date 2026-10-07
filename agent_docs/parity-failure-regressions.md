@@ -1,5 +1,25 @@
 # Parity Failure-to-Regression Ledger
 
+## Procfs short reads and connection ownership — 2026-10-07
+
+Originalprovider012 performed one os.read on /proc/net/unix. A newline-complete
+short first chunk was accepted as the whole table; the actual generated programme
+then rejected listener_owner although the later chunk contained the owned listener.
+Retained seqfile-final-red reproduces this before the bounded EOF repair. Routine
+test_actual_proc_unix_short_read_reaches_eof_before_owned_listener_join covers the
+causal case; overflow, read-count/time limits and named-generation exchange remain
+refusals. Other proc paths and the listener/FD/actor/socket/config predicates stay
+unchanged. The repair is undergoing source review and normal MCP equivalence.
+
+Direct native derivative37b6/e481 read26,829bytes in3 calls to EOF and reached READY
+with a closed owned-listener join. Its original result643303ae and rawmanifest
+c9532058 are retained privately; same-handle status later proved ENDED(result
+3c7cc878/rawmanifest1068e47f). Prior diagnosticf6/a10a measured zero matching rows
+and separately proved ENDED. These measurements do not recover lost historical
+tables, admit a canonical channel, or close a Windows product scenario. New-source
+handoff must accept only exact reviewed positively ended predecessors, preserving
+UNKNOWN, receipt/hash/inventory and foreign-source refusals.
+
 ## External fixture metadata and current readonly admission — 2026-10-07
 
 - Full prepush54444 retained one actual config_or_keys_changed setup error. Actual

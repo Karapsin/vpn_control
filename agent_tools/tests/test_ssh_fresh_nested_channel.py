@@ -156,6 +156,119 @@ class FreshChannelTests(unittest.TestCase):
         self.invoke(corr='c'*32);self.assertEqual('prepare',self.calls[-1][6])
         self.assertEqual(old_intent,intent.read_bytes());self.assertEqual(old_terminal,terminal.read_bytes())
 
+    def ended_012_fixture(self,corr='b'*32,remote_sha=None,with_ready=False):
+        # Exact canonical predecessor programme; only source identity and the
+        # optional reviewed diagnostic hash field are declared receipt seams.
+        # Diagnostic tuples were independently reviewed and positively ended
+        # natively; these TempFS receipts do not claim native provenance.
+        old_source='012061ebf05def240bf79005ca58f1913fb29736a4201cae56154dcc034183fd'
+        old_remote=channel._REMOTE.replace("""  if path=='/proc/net/unix':
+   chunks=[];total=0;read_count=0;deadline=time.monotonic()+2
+   while True:
+    if time.monotonic()>deadline or read_count>=256:raise ValueError('changed')
+    chunk=os.read(fd,65537-total);read_count+=1
+    if not chunk:break
+    total+=len(chunk)
+    if total>65536:raise ValueError('changed')
+    chunks.append(chunk)
+   body=b''.join(chunks)
+  else:body=os.read(fd,65537)""",'  body=os.read(fd,65537)')
+        self.assertEqual('e09d999c433654349c4e48d29947522e54f91ab69cc449050b59d9eba9684898',hashlib.sha256(old_remote.encode()).hexdigest())
+        self.corr=corr;ready=self.ready_fixture() if with_ready else None
+        with mock.patch.object(channel,'_source',return_value=old_source),mock.patch.object(channel,'_REMOTE',old_remote):
+            self.stdout=json.dumps(ready or {'state':'unknown','correlationId':corr}).encode();self.rc=0 if ready else 3
+            self.assertEqual('ready' if ready else 'unknown',self.invoke()['state'])
+            boot=ready['master']['gatewayBoot'] if ready else channel.EXPECTED_BOOT
+            self.stdout=json.dumps({'state':'ended','correlationId':corr,'prior':ready,'gatewayBoot':boot}).encode();self.rc=0
+            self.assertEqual('ended',self.invoke(False)['state'])
+        group=self.root/'.rag_index/ssh-fresh-nested-channel';intent=group/(corr+'.intent.json');terminal=group/(corr+'.terminal.json')
+        if remote_sha is not None:
+            value=json.loads(intent.read_bytes());value['remoteSourceSha256']=remote_sha;intent.write_text(json.dumps(value));intent.chmod(0o600)
+            ended=json.loads(terminal.read_bytes());ended['intentSha256']=hashlib.sha256(intent.read_bytes()).hexdigest();terminal.write_text(json.dumps(ended));terminal.chmod(0o600)
+        self.stdout=b'{}';self.rc=3
+        return group,intent,terminal
+
+    def test_actual_canonical_012_ended_can_start_one_new_current_handle(self):
+        group,intent,terminal=self.ended_012_fixture(with_ready=True)
+        before=(intent.read_bytes(),terminal.read_bytes());count=len(self.calls)
+        self.invoke(corr='c'*32)
+        self.assertEqual(count+1,len(self.calls));self.assertEqual('prepare',self.calls[-1][6])
+        self.assertEqual(before,(intent.read_bytes(),terminal.read_bytes()))
+
+    def test_reviewed_012_fixed_diagnostic_tuple_refuses_all_other_bindings(self):
+        corr='a10a21cfd20e4ddf9c32a1c74e393fa6';digest='f6efd83b9c2580876f7f8e38b7553346ce840c64ce9086ae8c50a23e3d6dea42'
+        group,intent,terminal=self.ended_012_fixture(corr,digest)
+        original_intent=intent.read_bytes();original_terminal=terminal.read_bytes();count=len(self.calls)
+        def restore():intent.write_bytes(original_intent);terminal.write_bytes(original_terminal)
+        for mode in ('remote','remote_none','remote_bool','version','version_bool','host','corr','boot','uid_bool','outer','extra','unknown','no_terminal','intent_hash','ready_hash','gateway_bool'):
+            restore();value=json.loads(original_intent);ended=json.loads(original_terminal)
+            if mode=='remote':value['remoteSourceSha256']='a'*64
+            elif mode=='remote_none':value['remoteSourceSha256']=None
+            elif mode=='remote_bool':value['remoteSourceSha256']=True
+            elif mode=='version':value['version']=2
+            elif mode=='version_bool':value['version']=True
+            elif mode=='host':value['host']='foreign'
+            elif mode=='corr':value['correlationId']='b'*32
+            elif mode=='boot':value['expectedBoot']='foreign'
+            elif mode=='uid_bool':value['expectedUid']=True
+            elif mode=='outer':value['outerReceiptSha256']='invalid'
+            elif mode=='extra':value['private']='inert sentinel'
+            elif mode=='unknown':ended['state']='unknown'
+            elif mode=='intent_hash':ended['intentSha256']='a'*64
+            elif mode=='ready_hash':ended['receiptSha256']='a'*64
+            elif mode=='gateway_bool':ended['gatewayBoot']=True
+            intent.write_text(json.dumps(value));intent.chmod(0o600)
+            if mode not in ('intent_hash',):ended['intentSha256']=hashlib.sha256(intent.read_bytes()).hexdigest()
+            terminal.write_text(json.dumps(ended));terminal.chmod(0o600)
+            if mode=='no_terminal':terminal.unlink()
+            with self.subTest(mode=mode):self.assertEqual('unknown',self.invoke(corr='c'*32)['state']);self.assertEqual(count,len(self.calls))
+        restore();self.invoke(corr='c'*32);self.assertEqual(count+1,len(self.calls))
+
+    def test_canonical_012_ready_binding_mutations_refuse_even_rehashed_receipt(self):
+        group,intent,terminal=self.ended_012_fixture(with_ready=True);ready=group/(self.corr+'.ready.json')
+        original=ready.read_bytes();ended_raw=terminal.read_bytes();count=len(self.calls)
+        for mode in ('intent_pin','corr','arch','control','pid_bool','gateway','extra'):
+            value=json.loads(original);ended=json.loads(ended_raw)
+            if mode=='intent_pin':value['intent']={}
+            elif mode=='corr':value['result']['correlationId']='a'*32
+            elif mode=='arch':value['result']['arch']['boot']='foreign'
+            elif mode=='control':value['result']['controlPath']='/tmp/foreign'
+            elif mode=='pid_bool':value['result']['master']['actor']['pid']=True
+            elif mode=='gateway':value['result']['master']['gatewayBoot']='00000000-0000-0000-0000-000000000000'
+            else:value['private']='inert sentinel'
+            ready.write_text(json.dumps(value));ready.chmod(0o600)
+            ended['receiptSha256']=hashlib.sha256(ready.read_bytes()).hexdigest();terminal.write_text(json.dumps(ended));terminal.chmod(0o600)
+            with self.subTest(mode=mode):self.assertEqual('unknown',self.invoke(corr='c'*32)['state']);self.assertEqual(count,len(self.calls))
+        ready.write_bytes(original);terminal.write_bytes(ended_raw);self.invoke(corr='c'*32);self.assertEqual(count+1,len(self.calls))
+
+    def test_canonical_012_ready_arch_uid_float_and_bool_refuse(self):
+        group,intent,terminal=self.ended_012_fixture(with_ready=True);ready=group/(self.corr+'.ready.json')
+        original=ready.read_bytes();ended_raw=terminal.read_bytes()
+        for uid in (1000.0,True):
+            value=json.loads(original);ended=json.loads(ended_raw);value['result']['arch']['uid']=uid
+            ready.write_text(json.dumps(value));ready.chmod(0o600)
+            ended['receiptSha256']=hashlib.sha256(ready.read_bytes()).hexdigest();terminal.write_text(json.dumps(ended));terminal.chmod(0o600)
+            count=len(self.calls)
+            with self.subTest(uid=uid):self.assertEqual('unknown',self.invoke(corr='c'*32)['state']);self.assertEqual(count,len(self.calls))
+            # Keep the two actual type controls independent even on the causal
+            # old-validator RED, which wrongly submitted a synthetic child.
+            created=group/('c'*32+'.intent.json')
+            if created.exists():created.unlink()
+        ready.write_bytes(original);terminal.write_bytes(ended_raw);count=len(self.calls)
+        self.invoke(corr='c'*32);self.assertEqual(count+1,len(self.calls))
+
+    def test_reviewed_012_eof_tuple_and_foreign_handle_refusal(self):
+        corr='e48177f1ee694cb69abacd96ffe8f1b8';digest='37b6c10baf4b5608e62278768380d12ac415e76759c2a28871bc7730f3b44991'
+        group,intent,terminal=self.ended_012_fixture(corr,digest);count=len(self.calls)
+        original=intent.read_bytes();ended_raw=terminal.read_bytes()
+        # Correct remote hash on a different handle is never general authority.
+        wrong='b'*32;value=json.loads(original);value['correlationId']=wrong
+        other=group/(wrong+'.intent.json');other.write_text(json.dumps(value));other.chmod(0o600)
+        ended=json.loads(ended_raw);ended['correlationId']=wrong;ended['intentSha256']=hashlib.sha256(other.read_bytes()).hexdigest()
+        other_terminal=group/(wrong+'.terminal.json');other_terminal.write_text(json.dumps(ended));other_terminal.chmod(0o600)
+        self.assertEqual('unknown',self.invoke(corr='c'*32)['state']);self.assertEqual(count,len(self.calls))
+        other.unlink();other_terminal.unlink();self.invoke(corr='c'*32);self.assertEqual(count+1,len(self.calls))
+
     def test_private_remote_diagnostic_never_projects_raw_or_extra_fields(self):
         capture={'state':'unknown','correlationId':self.corr,'failurePhase':'launch','launchCapture':{'private':'secret sentinel'}}
         self.stdout=json.dumps(capture).encode();self.rc=3
@@ -326,6 +439,66 @@ class FreshChannelTests(unittest.TestCase):
                          ssh=[sys.executable,'-I','-B',str(executable)],profile='fixture',_SOCKET_CAPTURE_BYTES=4096)
         namespace['_test_socket']=sock
         return namespace,table,header,row
+
+    def fragmented_unix_fixture(self):
+        namespace,table,header,row=self.remote_snapshot_fixture()
+        # Declared procfs syscall seam: genuine TempFS descriptor bytes arrive
+        # in multiple newline-complete chunks. No parser/owner guard is mocked.
+        prefix=header+b''.join(('0000: 00000002 00000000 00000000 0001 03 '+str(900000+i)+'\n').encode() for i in range(120))
+        table.write_bytes(prefix+row)
+        real_open=namespace['os'].open;real_read=namespace['os'].read;table_fds=set();reads=[]
+        def opening(path,*args,**kwargs):
+            fd=real_open(path,*args,**kwargs)
+            if path=='/proc/net/unix':table_fds.add(fd)
+            else:table_fds.discard(fd)
+            return fd
+        def reading(fd,count):
+            chunk=real_read(fd,min(count,len(prefix)) if fd in table_fds else count)
+            if fd in table_fds:reads.append(len(chunk))
+            return chunk
+        namespace['os'].open=opening;namespace['os'].read=reading
+        return namespace,table,prefix,row,reads
+
+    def test_actual_proc_unix_short_read_reaches_eof_before_owned_listener_join(self):
+        namespace,table,prefix,row,reads=self.fragmented_unix_fixture()
+        actual=namespace['snapshot']()
+        self.assertEqual(os.getpid(),actual['actor']['pid'])
+        self.assertEqual(row.split()[6].decode(),actual['listenerInode'])
+        self.assertEqual([len(prefix),len(row),0],reads)
+
+    def test_actual_proc_unix_late_foreign_listener_still_refuses(self):
+        namespace,table,prefix,row,reads=self.fragmented_unix_fixture()
+        fields=row.split(maxsplit=7);fields[6]=str(int(fields[6])+1).encode()
+        table.write_bytes(prefix+b' '.join(fields).rstrip()+b'\n')
+        with self.assertRaisesRegex(ValueError,'listener_owner'):namespace['snapshot']()
+        self.assertEqual(0,reads[-1]);self.assertEqual(3,len(reads))
+
+    def test_actual_proc_unix_reader_overflow_refuses(self):
+        namespace,table,header,row=self.remote_snapshot_fixture()
+        table.write_bytes(b'x'*65537)
+        with self.assertRaisesRegex(ValueError,'changed'):namespace['pin']('/proc/net/unix')
+
+    def test_actual_proc_unix_reader_call_and_time_caps_refuse_without_eof(self):
+        namespace,table,header,row=self.remote_snapshot_fixture()
+        table.write_bytes(b'x'*1000);real_read=namespace['os'].read;calls=[]
+        def reading(fd,count):calls.append(True);return real_read(fd,min(count,1))
+        namespace['os'].read=reading
+        with self.assertRaisesRegex(ValueError,'changed'):namespace['pin']('/proc/net/unix')
+        self.assertEqual(256,len(calls))
+        namespace['os'].read=real_read
+        import types
+        clock=iter((0,3));namespace['time']=types.SimpleNamespace(monotonic=lambda:next(clock))
+        with self.assertRaisesRegex(ValueError,'changed'):namespace['pin']('/proc/net/unix')
+
+    def test_actual_proc_unix_eof_reader_named_generation_exchange_refuses(self):
+        namespace,table,header,row=self.remote_snapshot_fixture()
+        real_read=namespace['os'].read;calls=[]
+        def exchange(fd,count):
+            body=real_read(fd,count);calls.append(True)
+            if len(calls)==1:table.write_bytes(header+row+b'\n')
+            return body
+        namespace['os'].read=exchange
+        with self.assertRaisesRegex(ValueError,'changed'):namespace['pin']('/proc/net/unix')
 
     def test_actual_host_ancestor_churn_before_route_pin_uses_one_fixture_environment(self):
         real_run=subprocess.run;changed=[]
@@ -527,7 +700,7 @@ class ProcUnixPinTests(unittest.TestCase):
     def emitted(self,facade):
         tree=ast.parse(channel._REMOTE)
         functions=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('gen','pin')]
-        scope={'os':facade};exec(compile(ast.Module(body=functions,type_ignores=[]),'actual-emitted-pin','exec'),scope)
+        scope={'os':facade,'time':__import__('time')};exec(compile(ast.Module(body=functions,type_ignores=[]),'actual-emitted-pin','exec'),scope)
         return scope['pin']
     def trial(self,path,arm,change='timestamps'):
         # Explicit proc-path mapping seam; every FD/read/stat/mutation is real
@@ -547,14 +720,14 @@ class ProcUnixPinTests(unittest.TestCase):
                 return os.lstat(leaf)
             def read(fd,n):
                 calls.append('read');value=os.read(fd,n)
-                if arm=='descriptor':drift()
+                if value and arm=='descriptor':drift()
                 return value
             def fstat(fd):calls.append('fstat');return os.fstat(fd)
             facade.lstat=lstat;facade.open=lambda p,flags:os.open(leaf,flags)
             facade.read=read;facade.fstat=fstat
             body,generation=self.emitted(facade)(path)
             self.assertEqual(b'bounded actual kernel table fixture\n',body)
-            self.assertEqual(9,len(generation));self.assertEqual(['lstat','read','fstat','lstat'],calls)
+            self.assertEqual(9,len(generation));self.assertEqual(['lstat','read']+(['read'] if path=='/proc/net/unix' else [])+['fstat','lstat'],calls)
     def test_exact_proc_unix_timestamp_drift_descriptor_and_name(self):
         for arm in ('descriptor','name'):
             with self.subTest(arm=arm):self.trial('/proc/net/unix',arm)
