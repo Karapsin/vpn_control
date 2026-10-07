@@ -1,0 +1,74 @@
+"""Original once collector for fixed root-local backup input copy.
+
+Source-only until an independently admitted fresh route/device/operator packet.
+Actual native programme/credentials/capsules stay exclusively operator-private.
+"""
+import json,os,re,types
+from pathlib import Path
+from agent_tools import android_installer_direct_transport as direct
+ROOT='/home/kardinal/.vpn-control-mcp-fixtures'
+def require(v,code):
+ if not v:raise ValueError(code)
+def creation_matches(snapshot,creation):
+ return type(creation)is dict and set(creation)=={'sha256','generation'} and type(creation['sha256'])is str and re.fullmatch('[0-9a-f]{64}',creation['sha256'])is not None and type(creation['generation'])is list and len(creation['generation'])==9 and all(type(x)is int for x in creation['generation']) and creation['sha256']==snapshot['sha256'] and creation['generation']==snapshot['generation']
+
+def project(raw,state,expected_original,stage_correlation,host_boot):
+ value=state['readonly'].assets.decode(raw)
+ require(type(value)is dict and set(value)=={'schema','kind','correlationId','request','original','staged','hostBootId','installerLeaseGranted','guestMutationPerformed','acceptanceComplete','replayAllowed'} and type(value['schema'])is int and value['schema']==1 and value['kind']=='android-baseline-opening-stage' and value['correlationId']==state['correlationId'] and state['readonly'].assets.canonical(value['request'])==state['readonly'].assets.canonical(state['request']) and state['readonly'].assets.canonical(value['original'])==state['readonly'].assets.canonical(expected_original) and value['hostBootId']==host_boot and all(value[k]is False for k in ('installerLeaseGranted','guestMutationPerformed','acceptanceComplete','replayAllowed')),'opening_copy_receipt_changed')
+ stage=value['staged'];require(type(stage)is dict and set(stage)=={'schema','kind','correlationId','path','sha256','size','generation','directory','originalPath','originalSha256','replayAllowed'} and type(stage['schema'])is int and stage['schema']==1 and stage['kind']=='android-baseline-opening-input' and stage['correlationId']==stage_correlation and stage['path']==ROOT+'/android-baseline-opening-'+stage_correlation+'/opening-routing.json' and stage['sha256']==stage['originalSha256']==expected_original['sha256'] and stage['originalPath']==expected_original['path'] and type(stage['size'])is int and stage['size']==expected_original['size'] and stage['replayAllowed']is False,'opening_copy_stage_changed')
+ g=stage['generation'];parent=stage['directory']
+ require(type(g)is list and len(g)==9 and all(type(x)is int for x in g) and g[2]==0o100600 and g[3:7]==[1000,1000,1,stage['size']] and type(parent)is list and len(parent)==5 and all(type(x)is int for x in parent) and parent[2:]==[0o40700,1000,1000],'opening_copy_stage_identity_changed')
+ return stage
+
+def collect(readonly,state,capture,argv,protected_credential,expected_original,stage_correlation,host_boot,source_closing,extra_held=()):
+ """One actual collector; marker/source custody at the final original Popen.
+
+ No returned argv execution elsewhere, no retry, no new child after UNKNOWN.
+ Publication failures retain the original child object locally for observation.
+ """
+ held=[];original_process=None
+ with readonly._readonly_population(state)as original_population:
+  source_closing();readonly.source_closing(state)
+  base,_=readonly.collector(state['root'])
+  body=readonly.assets.canonical({'schema':1,'correlationId':state['correlationId'],'programmeSha256':readonly.assets.sha(state['source']),'stageCorrelationId':stage_correlation,'replayAllowed':False})
+  marker=capture.create('copy-submission-intent.json',body)
+  path=Path(capture.path)/'copy-submission-intent.json'
+  actual,now=direct.snapshot(path,private=True)
+  require(actual==body and creation_matches(now,marker),'opening_copy_once_changed')
+  held.append(direct._dispatch_hold(path,now,body))
+  original_popen=base['collect'].__globals__['subprocess'].Popen
+  def popen(*args,**kwargs):
+   nonlocal original_process
+   require(original_process is None,'opening_copy_second_child_forbidden')
+   source_closing();readonly.source_closing(state)
+   direct._dispatch_guard([*extra_held,*original_population,*held])
+   original_process=original_popen(*args,**kwargs)
+   return original_process
+  facade=types.SimpleNamespace(**vars(base['collect'].__globals__['subprocess']));facade.Popen=popen
+  base['collect'].__globals__['subprocess']=facade
+  def publish(name,body):
+   original=capture.create(name,body)
+   path=Path(capture.path)/name
+   actual,pin=direct.snapshot(path,limit=max(1,len(body)+1),private=True)
+   require(actual==body and creation_matches(pin,original),'opening_copy_publication_changed')
+   held.append(direct._dispatch_hold(path,pin,body))
+  submitted=dict(state,argv=argv,capture=capture)
+  try:
+   raw=base['collect'](submitted,protected_credential)
+   decoded=base['parse_terminal'](raw,submitted)
+   publish('copy-result.raw',decoded)
+   source_closing();readonly.source_closing(state)
+   direct._dispatch_guard([*extra_held,*original_population,*held])
+   stage=project(decoded,dict(state,readonly=readonly),expected_original,stage_correlation,host_boot)
+   publish('copy-source-closing.json',readonly.assets.canonical({'schema':1,'correlationId':state['correlationId'],'sourceClosingVerified':True,'transportTerminalAuthenticated':True,'programmeSha256':readonly.assets.sha(state['source']),'rawSha256':readonly.assets.sha(decoded),'replayAllowed':False}))
+   source_closing();readonly.source_closing(state);direct._dispatch_guard([*extra_held,*original_population,*held])
+   return {'state':'complete','stage':stage,'originalProcess':original_process,'replayAllowed':False}
+  except (OSError,ValueError,RuntimeError,TimeoutError) as error:
+   # The original collector error remains private; no query, retry or new child.
+   try:
+    diagnostic=exception_diagnostic.retain(error,capture,'copy-collect',source_closing,types.SimpleNamespace(creation_matches=creation_matches),extra_held=[*extra_held,*original_population,*held])
+   except Exception:
+    diagnostic={'schema':1,'state':'UNKNOWN','failureReason':'exception_retention_failed','originalExceptionRetained':False,'nativeActionAllowed':False,'replayAllowed':False}
+   return {'state':'unknown','reason':'opening_copy_original_collection_unknown','originalProcess':original_process,'diagnostic':diagnostic,'replayAllowed':False}
+  finally:
+   for _,_,chain,fd in reversed(held):os.close(fd);direct.bundle._close(chain)

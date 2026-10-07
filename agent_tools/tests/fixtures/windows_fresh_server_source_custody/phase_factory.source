@@ -1,0 +1,610 @@
+import hashlib,re,json
+TARGET_PATH = r"\updates\vpn-control-2.2.2.msi"
+TARGET_SIZE = 131101044
+TARGET_SHA = "f8a8741bcfd22c04be50836aa22da77009105ab1b63df4d9b7648397779a8dfc"
+
+def catalogue(snapshot):
+ if type(snapshot)is not str or len(snapshot.encode())>65536:raise ValueError('public-workspace-bound')
+ rows={}
+ for line in snapshot.splitlines():
+  size,separator,row=line.partition(':')
+  if not separator or not size.isdecimal()or int(size)!=len(row.encode('utf-16le'))//2:raise ValueError('public-workspace-framing')
+  fields=row.split('|',3)
+  if len(fields)!=4 or fields[0]not in ('D','F')or fields[1]in rows:raise ValueError('public-workspace-row')
+  path=fields[1]
+  if path and(not path.startswith('\\')or '/'in path or '..'in path.split('\\')):raise ValueError('public-workspace-path')
+  rows[path]=(fields[0],fields[2],fields[3])
+ if ''not in rows or rows[''][0]!='D' or r'\workspace.json'not in rows:raise ValueError('public-workspace-original')
+ return rows
+
+def conservation(before,after,phase,owner_pids,install_binding=None):
+ if phase not in ('owner','download','install','cleanup')or type(owner_pids)is not tuple or not 1<=len(owner_pids)<=2 or any(type(p)is not int or not 1<=p<=2147483647 for p in owner_pids)or len(set(owner_pids))!=len(owner_pids):raise ValueError('public-workspace-phase')
+ old=catalogue(before);new=catalogue(after)
+ generated={r'\activation.port',r'\vpn-control.lock'}
+ if phase in ('download','install','cleanup'):generated|={TARGET_PATH,TARGET_PATH+'.part'}
+ if phase in ('install','cleanup'):
+  if type(install_binding)is not tuple or len(install_binding)!=2 or any(type(p)is not str or not re.fullmatch(r'[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',p)for p in install_binding):raise ValueError('public-install-journal-binding')
+  key='{"controllerId":"'+install_binding[0]+'","operationId":"'+install_binding[1]+'"}'
+  generated.add(r'\.install-correlation-'+hashlib.sha256(key.encode()).hexdigest()+'.json')
+ # Existing unrelated files are never excluded by size, extension or directory.
+ for path,row in old.items():
+  if path in generated:continue
+  if path not in new:raise ValueError('public-workspace-deleted')
+  other=new[path]
+  if row[0]=='D':
+   a=row[1].split(':');b=other[1].split(':')
+   if len(a)!=8 or len(b)!=8 or row[0]!=other[0]or a[:6]!=b[:6]or row[2]!=other[2]:raise ValueError('public-workspace-directory-drift')
+  elif row!=other:raise ValueError('public-workspace-original-drift')
+ if set(new)-set(old)-generated:raise ValueError('public-workspace-foreign-delta')
+ if phase in ('download','install','cleanup'):
+  if TARGET_PATH not in new or TARGET_PATH+'.part' in new:raise ValueError('public-target-terminal')
+  target=new[TARGET_PATH];native=target[1].split(':');body=target[2].split('|',1)
+  if target[0]!='F' or len(native)!=11 or any(not re.fullmatch(r'0|[1-9][0-9]*',p)for p in native)or int(native[8])*4294967296+int(native[9])!=TARGET_SIZE or native[10]!='1' or len(body)!=2 or body[0]!=TARGET_SHA.upper():raise ValueError('public-target-identity')
+ return {'phase':phase,'originalRows':len(old),'generatedRows':sorted(set(new)&generated),'conserved':True}
+
+def public_workspace_cs(source):
+ marker=' public static string Snapshot(string root)'
+ if source.count(marker)!=1:raise ValueError('public-workspace-source')
+ original=source[source.index(marker):source.rfind('\n}')]
+ new=original.replace('Snapshot(string root)','PublicSnapshot(string root,string phase,int ownerPid)')
+ opening='{var items='
+ if new.count(opening)!=1:raise ValueError('public-workspace-open')
+ new=new.replace(opening,'{if(root!=@"C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\cp166\\state"||(phase!="owner"&&phase!="download"&&phase!="install"&&phase!="cleanup")||ownerPid<=0)throw new IOException("PUBLIC_WORKSPACE_SCOPE");long target=0;var items=')
+ call='Budget(p.Substring(root.Length),n,ref normal,ref retained,seen);'
+ if new.count(call)!=1:raise ValueError('public-workspace-budget-source')
+ budget=r""" static void PublicBudget(string relative,long n,string phase,ref long normal,ref long retained,ref long target,HashSet<string> seen){
+  bool isTarget=relative==@"\updates\vpn-control-2.2.2.msi",isPartial=relative==@"\updates\vpn-control-2.2.2.msi.part";
+  if(isTarget||isPartial){if(phase=="owner"||n<0||n>131101044||isTarget&&n!=131101044)throw new IOException("PUBLIC_TARGET_SIZE");target+=n;if(target>131101044)throw new IOException("PUBLIC_TARGET_BUDGET");}
+  else Budget(relative,n,ref normal,ref retained,seen);
+ }
+"""
+ replacement=r"""string relative=p.Substring(root.Length);bool isTarget=relative==@"\updates\vpn-control-2.2.2.msi";PublicBudget(relative,n,phase,ref normal,ref retained,ref target,seen);"""
+ new=new.replace(call,replacement)
+ row='items.Add("F|"+p.Substring(root.Length)+"|"+FileRow(p,n));'
+ if new.count(row)!=1:raise ValueError('public-workspace-file-source')
+ new=new.replace(row,'string captured=(relative==@"\\activation.port"||relative==@"\\vpn-control.lock")?ActiveRow(p,n):FileRow(p,n);if(isTarget&&captured.Split(\'|\')[1]!= "F8A8741BCFD22C04BE50836AA22DA77009105AB1B63DF4D9B7648397779A8DFC")throw new IOException("PUBLIC_TARGET_HASH");'+row.replace('FileRow(p,n)','captured'))
+ start=source.index(' static string FileRow(');end=source.index('\n static void Budget(',start)
+ active=source[start:end].replace('FileRow(','ActiveRow(',1).replace('FileShare.Read)','FileShare.ReadWrite)')
+ return source[:source.rfind('\n}')]+ '\n'+active+'\n'+budget+'\n'+new+'\n}'
+
+def complete_task_argument(source):
+ import base64,gzip
+ if type(source)is not str or not 0<len(source.encode())<=65536:raise ValueError('public-task-source-bound')
+ data=source.encode();compressed=gzip.compress(data,mtime=0);packed=base64.b64encode(compressed).decode()
+ if len(packed)>16384:raise ValueError('public-task-packed-bound')
+ # The complete source invocation uses the natively proved f050 quoting class:
+ # ASCII-only known template, a closed base64 payload, and no double quote.
+ bootstrap="$ErrorActionPreference='Stop';$i=[IO.MemoryStream]::new([Convert]::FromBase64String('"+packed+"'));$z=[IO.Compression.GZipStream]::new($i,[IO.Compression.CompressionMode]::Decompress);$o=[IO.MemoryStream]::new();try{$b=New-Object byte[] 4096;while(($n=$z.Read($b,0,$b.Length)) -gt 0){$o.Write($b,0,$n);if($o.Length -gt 65536){throw 'REFRESH_SOURCE_BOUND'}};$v=$o.ToArray();if($v.Length -ne "+str(len(data))+" -or [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($v)).Replace('-','').ToLowerInvariant() -cne '"+hashlib.sha256(data).hexdigest()+"'){throw 'REFRESH_SOURCE_HASH'};& ([ScriptBlock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($v)))}finally{$z.Dispose();$i.Dispose();$o.Dispose()}"
+ if any(ord(c)<32 or ord(c)>126 or c=='"'for c in bootstrap):raise ValueError('public-task-quoting')
+ argument='-NoProfile -NonInteractive -Command "'+bootstrap+'"'
+ executable=r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+ if len('"'+executable+'" '+argument)>=30000:raise ValueError('public-task-command-bound')
+ return {'argument':argument,'argumentSha256':hashlib.sha256(argument.encode()).hexdigest(),'taskSha256':hashlib.sha256(data).hexdigest(),'taskBytes':len(data),'packedBytes':len(compressed),'fullCommandChars':len('"'+executable+'" '+argument)}
+
+
+def compact_public_phase(source):
+ import base64,gzip
+ if type(source)is not str or not 0<len(source.encode())<=32768:raise ValueError('public-phase-source-bound')
+ data=source.encode();packed=base64.b64encode(gzip.compress(data,mtime=0)).decode();sha=hashlib.sha256(data).hexdigest()
+ return "$cp117BlockInput=[IO.MemoryStream]::new([Convert]::FromBase64String('"+packed+"'));$cp117BlockZip=[IO.Compression.GZipStream]::new($cp117BlockInput,[IO.Compression.CompressionMode]::Decompress);$cp117BlockOut=[IO.MemoryStream]::new();try{[byte[]]$chunk=New-Object byte[] 4096;while(($n=$cp117BlockZip.Read($chunk,0,$chunk.Length)) -gt 0){if($cp117BlockOut.Length+$n -gt "+str(len(data))+"){throw 'PUBLIC_PHASE_BOUND'};$cp117BlockOut.Write($chunk,0,$n)};[byte[]]$body=$cp117BlockOut.ToArray();if($body.Length -ne "+str(len(data))+" -or [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($body)).Replace('-','').ToLowerInvariant() -cne '"+sha+"'){throw 'PUBLIC_PHASE_HASH'};. ([ScriptBlock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($body)))}finally{$cp117BlockZip.Dispose();$cp117BlockInput.Dispose();$cp117BlockOut.Dispose()}"
+
+def complete_parent_argument(source):
+ # Exact existing tls_program parent limits: 65536 decoded source and the
+ # complete native command below30000. The ordinary task16384 limit is separate.
+ import base64,gzip
+ if type(source)is not str or not 0<len(source.encode())<=65536:raise ValueError('public-parent-source-bound')
+ data=source.encode();packed=base64.b64encode(gzip.compress(data,mtime=0)).decode()
+ bootstrap="$ErrorActionPreference='Stop';$i=[IO.MemoryStream]::new([Convert]::FromBase64String('"+packed+"'));$z=[IO.Compression.GZipStream]::new($i,[IO.Compression.CompressionMode]::Decompress);$o=[IO.MemoryStream]::new();try{$b=New-Object byte[] 4096;while(($n=$z.Read($b,0,$b.Length)) -gt 0){$o.Write($b,0,$n);if($o.Length -gt 65536){throw 'PACKAGE_SOURCE_BOUND'}};$v=$o.ToArray();if($v.Length -ne "+str(len(data))+" -or [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($v)).Replace('-','').ToLowerInvariant() -cne '"+hashlib.sha256(data).hexdigest()+"'){throw 'PACKAGE_SOURCE_HASH'};& ([ScriptBlock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($v)))}finally{$z.Dispose();$i.Dispose();$o.Dispose()}"
+ if any(ord(c)<32 or ord(c)>126 or c=='"'for c in bootstrap):raise ValueError('public-parent-quoting')
+ argument='-NoProfile -NonInteractive -Command "'+bootstrap+'"';executable=r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+ if len('"'+executable+'" '+argument)>=30000:raise ValueError('public-parent-command-bound')
+ return {'argument':argument,'argumentSha256':hashlib.sha256(argument.encode()).hexdigest(),'sourceSha256':hashlib.sha256(data).hexdigest(),'sourceBytes':len(data),'packedBase64Bytes':len(packed),'fullCommandChars':len('"'+executable+'" '+argument)}
+
+def public_phase_carrier(original,body,correlation,nonce,validator_source,input_bytes=b'',terminal_parser_source=''):
+ import ast,base64,uuid
+ if type(original)is not str or type(body)is not str or type(validator_source)is not str:raise ValueError('public-carrier-input')
+ for value in (correlation,nonce):
+  if type(value)is not str or str(uuid.UUID(value))!=value:raise ValueError('public-carrier-uuid')
+ if type(input_bytes)is not bytes or len(input_bytes)>32768:raise ValueError('public-carrier-frame-bound')
+ tree=ast.parse(original)
+ constants={}
+ for node in tree.body:
+  if isinstance(node,ast.Assign)and len(node.targets)==1 and isinstance(node.targets[0],ast.Name)and node.targets[0].id in ('D','NONCE','BODY_SHA','ENCODED'):
+   if node.targets[0].id in constants:raise ValueError('public-carrier-duplicate')
+   constants[node.targets[0].id]=node
+ if set(constants)!={'D','NONCE','BODY_SHA','ENCODED'}:raise ValueError('public-carrier-constants')
+ sha=hashlib.sha256(body.encode('utf-16le')).hexdigest()
+ full="[Console]::Out.WriteLine(('CP117-READ "+nonce+" "+sha+" '+$PID))\n"+body
+ invocation=complete_parent_argument(full)['argument']
+ prefix='-NoProfile -NonInteractive -Command "'
+ if not invocation.startswith(prefix)or not invocation.endswith('"'):raise ValueError('public-carrier-command')
+ replacement={'D':correlation,'NONCE':nonce,'BODY_SHA':sha,'ENCODED':invocation[len(prefix):-1]}
+ raw=original.encode();offsets=[0]
+ for line in raw.splitlines(keepends=True):offsets.append(offsets[-1]+len(line))
+ # Multiple authenticated assignments share one production line. Replace
+ # exact AST byte spans, preserving every other assignment and guard byte.
+ for node in sorted(constants.values(),key=lambda n:(n.lineno,n.col_offset),reverse=True):
+  start=offsets[node.lineno-1]+node.col_offset;end=offsets[node.end_lineno-1]+node.end_col_offset
+  name=node.targets[0].id;raw=raw[:start]+(name+'='+repr(replacement[name])).encode()+raw[end:]
+ source=raw.decode();tree=ast.parse(source)
+ old=next(node for node in tree.body if isinstance(node,ast.FunctionDef)and node.name=='validate')
+ vtree=ast.parse(validator_source)
+ if any(not isinstance(node,(ast.FunctionDef,ast.Assign,ast.Import,ast.ImportFrom))for node in vtree.body)or not any(isinstance(node,ast.FunctionDef)and node.name=='validate'for node in vtree.body):raise ValueError('public-carrier-validator')
+ lines=source.splitlines(keepends=True);lines[old.lineno-1:old.end_lineno]=[validator_source+'\n'];source=''.join(lines)
+ callsite="'-EncodedCommand',ENCODED"
+ if source.count(callsite)!=1:raise ValueError('public-carrier-consumer')
+ source=source.replace(callsite,"'-Command',ENCODED")
+ if input_bytes:
+  # The exact public source frame is consumed BEFORE guest submission. The
+  # following line remains the original guest PID acknowledgement unchanged.
+  anchor=" guards();child=call(LEAF+'/qga.sock','guest-exec',"
+  if source.count(anchor)!=1:raise ValueError('public-carrier-ingress')
+  reader="\n def public_input_frame():\n  n="+str(len(input_bytes))+"\n  parts=[];left=n\n  while left:\n   item=sys.stdin.buffer.read(left)\n   need(bool(item),'public-input-eof');parts.append(item);left-=len(item)\n  raw=b''.join(parts)\n  need(hashlib.sha256(raw).hexdigest()=="+repr(hashlib.sha256(input_bytes).hexdigest())+",'public-input-hash')\n  raw.decode('utf-8','strict')\n  return base64.b64encode(raw).decode('ascii')\n PUBLIC_INPUT=public_input_frame()\n"
+  source=source.replace(anchor,reader+anchor)
+  payload="'capture-output':True})"
+  if source.count(payload)!=1:raise ValueError('public-carrier-input-consumer')
+  source=source.replace(payload,"'capture-output':True,'input-data':PUBLIC_INPUT})")
+ if terminal_parser_source:
+  ptree=ast.parse(terminal_parser_source)
+  if len(ptree.body)!=2 or any(not isinstance(n,ast.FunctionDef)for n in ptree.body)or [n.name for n in ptree.body]!=['_public_unique','parse_terminal']:raise ValueError('public-carrier-parser-shape')
+  tree=ast.parse(source);parsers=[n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='parse_terminal']
+  if len(parsers)!=1:raise ValueError('public-carrier-parser-slot')
+  oldparser=parsers[0];lines=source.splitlines(keepends=True)
+  lines[oldparser.lineno-1:oldparser.end_lineno]=[terminal_parser_source+'\n'];source=''.join(lines)
+ if len(source.encode())>131072:raise ValueError('public-carrier-source-bound')
+ compile(source,'<string>','exec')
+ return source,sha,invocation
+
+def admit_public_phase(value,events,status,source,correlation,nonce,sha,qemu,capture,private=False):
+ import ast,os,base64
+ from typing import Any
+ def equal(a,b):return json.dumps(a,sort_keys=True,separators=(',',':'))==json.dumps(b,sort_keys=True,separators=(',',':'))
+ if type(private)is not bool or type(status)is not dict or type(status.get('returncode'))is not int or status['returncode']!=0 or any(status.get(k)is not True for k in ('pipesClosed','sourceFrameWritten','ackWritten'))or type(status.get('birth'))is not str or not status['birth']:raise ValueError('public-phase-transport')
+ if type(value)is not dict or set(value)!={'state','facts','qemu','guestChildPid','appAdmission','installerAction'}or value['state']!='observed'or value['appAdmission']is not False or value['installerAction']is not False or not equal(value['qemu'],qemu):raise ValueError('public-phase-response')
+ if type(events)is not list or not 2<=len(events)<=82:raise ValueError('public-phase-events')
+ submitted=[];terminal=[];child=None
+ for index,item in enumerate(events):
+  if type(item)is not dict or set(item)!={'event','pin'}:raise ValueError('public-phase-event')
+  name=correlation+'-event-%d.json'%index;capture.verify(name,item['pin'])
+  fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=capture.fd)
+  try:
+   pieces=[];remaining=262145
+   while remaining:
+    part=os.read(fd,min(4096,remaining))
+    if not part:break
+    pieces.append(part);remaining-=len(part)
+   raw=b''.join(pieces)
+  finally:os.close(fd)
+  capture.verify(name,item['pin'])
+  if len(raw)>262144 or not equal(json.loads(raw),item['event']):raise ValueError('public-phase-event-pin')
+  e=item['event'];base={'diagnosticId','nonce','sourceSha256','qemu','kind'}
+  if type(e)is not dict or any(e.get(k)!=v for k,v in {'diagnosticId':correlation,'nonce':nonce,'sourceSha256':sha}.items())or not equal(e.get('qemu'),qemu):raise ValueError('public-phase-source')
+  kind=e.get('kind');expected={'submitted':{'pid'},'poll':{'pid','poll','exited'},'terminal':{'pid','poll','publicResult'if private else'payload'}}
+  if type(kind)is not str or kind not in expected or set(e)!=base|expected[kind]:raise ValueError('public-phase-event-schema')
+  if type(e['pid'])is not int or not 1<=e['pid']<=2147483647:raise ValueError('public-phase-pid')
+  if kind=='submitted':
+   if index!=0 or child is not None:raise ValueError('public-phase-one-child')
+   child=e['pid'];submitted.append(e)
+  elif child is None or e['pid']!=child:raise ValueError('public-phase-same-child')
+  if kind in ('poll','terminal')and(type(e['poll'])is not int or not 1<=e['poll']<=80):raise ValueError('public-phase-poll')
+  if kind=='poll'and e['exited']is not None and type(e['exited'])is not bool:raise ValueError('public-phase-exited')
+  if kind=='terminal':
+   if index!=len(events)-1:raise ValueError('public-phase-terminal-order')
+   terminal.append(e)
+ if len(submitted)!=1 or len(terminal)!=1 or type(value['guestChildPid'])is not int or value['guestChildPid']!=child:raise ValueError('public-phase-completion')
+ # This is the existing source-bound validator closure, never the transport
+ # or task code. The caller must hold/authenticate source before this boundary.
+ tree=ast.parse(source);starts=[n for n in tree.body if isinstance(n,ast.Import)and[x.name for x in n.names]==['re','types']];ends=[n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='parse_terminal']
+ if len(starts)!=1 or len(ends)!=1:raise ValueError('public-phase-validator-slot')
+ nodes=[n for n in tree.body if starts[0].lineno<=n.lineno<=ends[0].lineno]
+ if any(isinstance(n,ast.ClassDef)or isinstance(n,ast.ImportFrom)and not(n.module=='typing'and n.level==0 and len(n.names)==1 and n.names[0].name=='Mapping'and n.names[0].asname is None)for n in nodes):raise ValueError('public-phase-validator-closure')
+ ns={'base64':base64,'json':json,'Any':Any,'hashlib':hashlib};exec(compile(ast.Module(body=nodes,type_ignores=[]),'<source-bound-public-phase-validator>','exec'),ns)
+ ns['validate'](value['facts'])
+ if private:
+  native=terminal[0]['publicResult'];ns['validate'](native)
+ else:
+  payload=terminal[0]['payload']
+  if type(payload)is not dict:raise ValueError('public-phase-terminal-payload')
+  native=ns['parse_terminal'](payload,nonce,sha,child)
+ if native is None or not equal(native,value['facts']):raise ValueError('public-phase-native-binding')
+ return native
+
+def private_admin_parser_source():
+ return """def _public_unique(pairs):
+ value={}
+ for key,item in pairs:
+  if key in value:raise ValueError('private-admin-duplicate')
+  value[key]=item
+ return value
+
+def parse_terminal(value,nonce,sha,pid):
+ if type(value)is not dict or value.get('exited')is not True:return None
+ if type(value.get('exitcode'))is not int or value['exitcode']!=0 or value.get('out-truncated')or value.get('err-truncated'):raise ValueError('private-admin-exit')
+ raw=base64.b64decode(value.get('out-data',''),validate=True)
+ err=base64.b64decode(value.get('err-data',''),validate=True)
+ if len(raw)>4096 or err:raise ValueError('private-admin-raw-bound')
+ header,separator,payload=raw.partition(b'\\n')
+ if not separator or header.rstrip(b'\\r')!=('CP117-READ %s %s %d'%(nonce,sha,pid)).encode():raise ValueError('private-admin-header')
+ return validate(json.loads(payload.decode('utf-8','strict'),object_pairs_hook=_public_unique,parse_constant=lambda v:(_ for _ in ()).throw(ValueError('private-admin-json'))))
+"""
+
+def private_admin_callbacks(correlation,nonce,sha,qemu,account):
+ import copy
+ if any(type(x)is not str for x in (correlation,nonce,sha,account))or not re.fullmatch(r'uacfix-[0-9a-f]{12}',account)or type(qemu)is not dict:raise ValueError('private-admin-declaration')
+ expected=copy.deepcopy(qemu)
+ def same(a,b):return json.dumps(a,sort_keys=True,separators=(',',':'))==json.dumps(b,sort_keys=True,separators=(',',':'))
+ def public_result(v):
+  keys={'version','state','correlationId','account','sid','administrator'}
+  if type(v)is not dict or set(v)!=keys or type(v['version'])is not int or v['version']!=1 or v['state']!='created'or v['correlationId']!=correlation or v['account']!=account or v['administrator']is not True:raise ValueError('private-admin-result')
+  if type(v['sid'])is not str or len(v['sid'])>184 or not re.fullmatch(r'S-1-5-21-(?:[0-9]{1,10}-){3}[0-9]{1,10}',v['sid'])or any(int(n)>4294967295 for n in v['sid'].split('-')[4:]):raise ValueError('private-admin-sid')
+  return copy.deepcopy(v)
+ def event(v):
+  base={'diagnosticId','nonce','sourceSha256','qemu','kind'}
+  if type(v)is not dict or not base<=set(v)or v['diagnosticId']!=correlation or v['nonce']!=nonce or v['sourceSha256']!=sha or not same(v['qemu'],expected):raise ValueError('private-admin-event-binding')
+  kind=v['kind'];extra={'submitted':{'pid'},'poll':{'pid','poll','exited'},'terminal':{'pid','poll','publicResult'},'exception':{'phase'}}
+  if type(kind)is not str or kind not in extra or set(v)!=base|extra[kind]:raise ValueError('private-admin-event-schema')
+  if kind!='exception'and(type(v['pid'])is not int or not 1<=v['pid']<=2147483647):raise ValueError('private-admin-pid')
+  if kind in ('poll','terminal')and(type(v['poll'])is not int or not 1<=v['poll']<=80):raise ValueError('private-admin-poll')
+  if kind=='poll'and v['exited']is not None and type(v['exited'])is not bool:raise ValueError('private-admin-exited')
+  if kind=='exception'and v['phase']!='private-admin-unknown':raise ValueError('private-admin-exception')
+  result=copy.deepcopy(v)
+  if kind=='terminal':result['publicResult']=public_result(v['publicResult'])
+  return result
+ def response(v):
+  if type(v)is not dict:raise ValueError('private-admin-response')
+  if set(v)=={'state','phase','appAdmission','installerAction','replayAllowed'}and v['state']=='unknown'and v['phase']=='private-admin-unknown'and all(v[k]is False for k in ('appAdmission','installerAction','replayAllowed')):return copy.deepcopy(v)
+  if set(v)!={'state','facts','qemu','guestChildPid','appAdmission','installerAction'}or v['state']!='observed'or v['appAdmission']is not False or v['installerAction']is not False or not same(v['qemu'],expected)or type(v['guestChildPid'])is not int or not 1<=v['guestChildPid']<=2147483647:raise ValueError('private-admin-response')
+  return {'state':'observed','facts':public_result(v['facts']),'qemu':copy.deepcopy(expected),'guestChildPid':v['guestChildPid'],'appAdmission':False,'installerAction':False}
+ return public_result,event,response
+
+def private_admin_phase_carrier(original,body,correlation,nonce,validator_source):
+ # Secret-dependent material never enters public source, argv or a digest.
+ # The exact 2048-byte private frame is held in memory; trailing padding is
+ # deliberately passed to the fixed PowerShell JSON line reader unchanged.
+ source,sha,invocation=public_phase_carrier(original,body,correlation,nonce,validator_source,terminal_parser_source=private_admin_parser_source())
+ anchor=" guards();child=call(LEAF+'/qga.sock','guest-exec',"
+ if source.count(anchor)!=1:raise ValueError('private-admin-ingress')
+ reader="\n def private_admin_frame():\n  left=2048;parts=[]\n  while left:\n   part=sys.stdin.buffer.read(left)\n   need(bool(part),'private-admin-input-eof');parts.append(part);left-=len(part)\n  raw=b''.join(parts)\n  need(raw[-1:]==b'\\n','private-admin-input-shape')\n  return base64.b64encode(raw).decode('ascii')\n PRIVATE_ADMIN_INPUT=private_admin_frame()\n"
+ source=source.replace(anchor,reader+anchor,1)
+ payload="'capture-output':True})"
+ if source.count(payload)!=1:raise ValueError('private-admin-consumer')
+ source=source.replace(payload,"'capture-output':True,'input-data':PRIVATE_ADMIN_INPUT})",1)
+ old="   event({'kind':'terminal','pid':pid,'poll':poll+1,'payload':value})  # Retained before parsing.\n   answer=parse_terminal(value,NONCE,BODY_SHA,pid)"
+ new="   answer=parse_terminal(value,NONCE,BODY_SHA,pid)\n   need(answer is not None,'private-admin-terminal')\n   event({'kind':'terminal','pid':pid,'poll':poll+1,'publicResult':answer})"
+ if source.count(old)!=1:raise ValueError('private-admin-terminal-slot')
+ source=source.replace(old,new,1)
+ old=" event({'kind':'exception','phase':str(e)if isinstance(e,ValueError)else type(e).__name__})\n result({'state':'unknown','phase':str(e)if isinstance(e,ValueError)else type(e).__name__,'appAdmission':False,'installerAction':False,'replayAllowed':False})"
+ new=" event({'kind':'exception','phase':'private-admin-unknown'})\n result({'state':'unknown','phase':'private-admin-unknown','appAdmission':False,'installerAction':False,'replayAllowed':False})"
+ if source.count(old)!=1:raise ValueError('private-admin-exception-slot')
+ source=source.replace(old,new,1)
+ if len(source.encode())>131072:raise ValueError('private-admin-source-bound')
+ compile(source,'<string>','exec')
+ return source,sha,invocation
+
+def compressed_public_parser_source():
+ return """def _public_unique(pairs):
+ value={}
+ for key,item in pairs:
+  if key in value:raise ValueError('public-json-duplicate')
+  value[key]=item
+ return value
+
+def parse_terminal(value,nonce,sha,pid):
+ import zlib
+ if type(value)is not dict or value.get('exited')is not True:return None
+ if value.get('out-truncated')or value.get('err-truncated'):raise ValueError('public-terminal-truncated')
+ if type(value.get('exitcode'))is not int or value['exitcode']!=0:raise ValueError('public-terminal-exit')
+ raw=base64.b64decode(value.get('out-data',''),validate=True);err=base64.b64decode(value.get('err-data',''),validate=True)
+ if len(raw)>32768 or err:raise ValueError('public-terminal-output')
+ header,sep,payload=raw.partition(b'\\n')
+ if not sep or header.rstrip(b'\\r')!=('CP117-READ %s %s %d'%(nonce,sha,pid)).encode():raise ValueError('public-terminal-header')
+ lines=payload.splitlines()
+ if len(lines)!=1 or not lines[0].startswith(b'CP117PUBLIC1 '):raise ValueError('public-terminal-projection')
+ encoded=lines[0][13:]
+ if len(encoded)>16000:raise ValueError('public-terminal-packed')
+ data=base64.b64decode(encoded,validate=True)
+ if len(data)>12000:raise ValueError('public-terminal-compressed')
+ decoder=zlib.decompressobj(31);body=decoder.decompress(data,131073)
+ if len(body)>131072 or decoder.unconsumed_tail or not decoder.eof or decoder.unused_data:raise ValueError('public-terminal-decompression')
+ parsed=json.loads(body.decode('utf-8','strict'),object_pairs_hook=_public_unique,parse_constant=lambda x:(_ for _ in ()).throw(ValueError('public-json-constant')))
+ return validate({'outcome':'complete','facts':parsed})
+"""
+
+def public_collection_names(phase):
+ if phase=='authorization':return ['task.ps1','target-image.input.json','owner.json','authorization.pending.json','install.request.json','failure.private']
+ if phase=='terminal':return ['task.ps1','target-image.input.json','owner.json','owner.exit.json','owner.stdout.private','owner.stderr.private','result.json','failure.private','before.workspace.private','download.workspace.private','installed.workspace.private','after.workspace.private','post-owner.json','download.request.json','download.terminal.json','install.request.json','authorization.pending.json','install.recovered.json','install.journal.json','install.protected.json','installed-image.json']
+ raise ValueError('public-collection-phase')
+
+def validate_public_collection(value,phase,submission,correlation,task_sha,image_sha):
+ import base64
+ sid='S-1-5-21-2404255130-2183793310-3766671872-1002'
+ keys={'version','correlationId','phase','firstTask','task','rootIdentity','rootSddl','records','readerRole','installerAction','taskAction','runtimeAction','cleanupAction','replayAllowed','completed'}
+ if type(value)is not dict or set(value)!=keys or type(value['version'])is not int or value['version']!=1 or value['correlationId']!=correlation or value['phase']!=phase or value['readerRole']!='SYSTEM':raise ValueError('public-collection-schema')
+ for key in ('installerAction','taskAction','runtimeAction','cleanupAction','replayAllowed','completed'):
+  if value[key]is not False:raise ValueError('public-collection-effects')
+ if type(submission)is not dict or submission.get('outcome')!='submitted' or submission.get('installerCompleted')is not False or submission.get('replayAllowed')is not False:raise ValueError('public-submission-component')
+ def identity(v,count):
+  if type(v)is not str or re.fullmatch(r'[0-9]+(?::[0-9]+){'+str(count-1)+r'}',v)is None:raise ValueError('public-collection-identity')
+  fields=[int(x)for x in v.split(':')]
+  if any(x>0xffffffff for x in fields):raise ValueError('public-collection-identity-bound')
+  return fields
+ root=identity(value['rootIdentity'],8);expected=identity(submission['rootIdentity'],8)
+ if root[:6]!=expected[:6]or type(value['rootSddl'])is not str or value['rootSddl']!=submission['rootSddl']:raise ValueError('public-collection-root')
+ tkeys={'name','state','lastResult','lastRunTicks','actionSha256','sid','logonType','runLevel'}
+ for task in (value['firstTask'],value['task']):
+  if type(task)is not dict or set(task)!=tkeys or task['name']!=submission['taskName']or task['actionSha256']!=submission['actionSha256']or task['sid']!=sid or task['logonType']!='Interactive'or task['runLevel']!='Limited':raise ValueError('public-collection-task')
+  if task['state']not in ('Ready','Running','Queued','Disabled')or type(task['lastResult'])is not int or not -2147483648<=task['lastResult']<=4294967295 or type(task['lastRunTicks'])is not str or re.fullmatch('[0-9]{1,19}',task['lastRunTicks'])is None:raise ValueError('public-collection-task-state')
+ rows=value['records'];names=public_collection_names(phase)
+ if type(rows)is not list or len(rows)!=len(names):raise ValueError('public-collection-catalogue')
+ total=0
+ for row,name in zip(rows,names):
+  if type(row)is not dict or row.get('name')!=name:raise ValueError('public-collection-row')
+  if row.get('state')=='unavailable':
+   if set(row)!={'name','state','absenceProven'}or row['absenceProven']is not False:raise ValueError('public-collection-unavailable')
+   continue
+  if set(row)!={'name','state','size','sha256','identity','sddl','owner','bytes','sourceOnly'}or row['state']!='observed' or type(row['size'])is not int or not 0<=row['size']<=65536 or type(row['sha256'])is not str or re.fullmatch('[0-9a-f]{64}',row['sha256'])is None or type(row['sddl'])is not str or not 0<len(row['sddl'])<=4096:raise ValueError('public-collection-file')
+  fields=identity(row['identity'],11)
+  if fields[5]*4294967296+fields[6]!=row['size']or fields[10]!=1 or fields[7]&0x400:raise ValueError('public-collection-file-pin')
+  source=name in ('task.ps1','target-image.input.json')
+  if type(row['sourceOnly'])is not bool or row['sourceOnly']is not source or row['owner']not in (('S-1-5-18','S-1-5-32-544')if source else (sid,)):raise ValueError('public-collection-file-owner')
+  total+=row['size']
+  if total>131072:raise ValueError('public-collection-total')
+  if source:
+   if row['bytes']is not None or row['sha256']!=(task_sha if name=='task.ps1'else image_sha)or row['identity']!=submission['taskFileIdentity'if name=='task.ps1'else 'imageFileIdentity']:raise ValueError('public-collection-source')
+  else:
+   if type(row['bytes'])is not str or len(row['bytes'])>87384:raise ValueError('public-collection-data')
+   raw=base64.b64decode(row['bytes'],validate=True)
+   if len(raw)!=row['size']or hashlib.sha256(raw).hexdigest()!=row['sha256']:raise ValueError('public-collection-data-pin')
+ return value
+
+def private_collector_source(original):
+ if type(original)is not str or hashlib.sha256(original.rstrip('\n').encode()).hexdigest()!='083566a58d4cf2791f5a90988e81b98c3bed3eb009fcca2e49c3b4b868c0a89e':raise ValueError('private-collector-source')
+ source=original.rstrip('\n')
+ old="def guest_collect(argv,capture,guard,source_frame,diagnostic,nonce,sha,qemu,private_frame=b'',private_markers=()):"
+ new="def private_guest_collect(argv,capture,guard,source_frame,diagnostic,nonce,sha,qemu,public_event,public_response,private_frame=b'',private_markers=()):"
+ if source.count(old)!=1:raise ValueError('private-collector-signature')
+ source=source.replace(old,new,1)
+ anchor=' def persist(name,raw):\n'
+ if source.count(anchor)!=1:raise ValueError('private-collector-persist')
+ # No private stream is durable, irrespective of whether an echo detector
+ # recognizes it. Keep the original metadata/held-FD checks and process drain.
+ source=source.replace(anchor,anchor+"  if name.endswith('.bin'):raw=b''\n",1)
+ oldblock="       capture.create(diagnostic+'-event-raw-%d.private'%len(events),bytes(line));os.fsync(capture.fd)\n       event=json.loads(line[14:])"
+ newblock="       event=public_event(json.loads(line[14:]))\n       public_line=b'CP117-OBSERVE '+json.dumps(event,sort_keys=True,separators=(',',':')).encode()\n       if any(marker in public_line for marker in private_markers):raise ValueError('TLS_PRIVATE_EVENT_CAPTURE')\n       capture.create(diagnostic+'-event-raw-%d.private'%len(events),public_line);os.fsync(capture.fd)"
+ if source.count(oldblock)!=1:raise ValueError('private-collector-event-slot')
+ source=source.replace(oldblock,newblock,1)
+ anchor="   if type(value)is not dict:raise ValueError('guest-response-type')\n   return value,events,status"
+ if source.count(anchor)!=1:raise ValueError('private-collector-response-slot')
+ source=source.replace(anchor,"   value=public_response(value)\n"+anchor,1)
+ compile(source,'<source-bound-private-collector>','exec')
+ return source+'\n'
+
+def validate_public_target_context(value):
+ sid='S-1-5-21-2404255130-2183793310-3766671872-1002'
+ target='{2D8D2946-3492-3C19-A837-87C54F9311A9}';old='{CFCB6A78-7F8F-31FD-8B20-C1977A677578}'
+ keys={'version','role','contexts','versionInfo','expectedSid','installerAction','taskAction','runtimeAction'}
+ if type(value)is not dict or set(value)!=keys or type(value['version'])is not int or value['version']!=1 or value['role']!='SYSTEM'or value['expectedSid']!=sid:raise ValueError('public-target-context-schema')
+ for key in ('installerAction','taskAction','runtimeAction'):
+  if value[key]is not False:raise ValueError('public-target-context-effects')
+ rows=value['contexts']
+ if type(rows)is not list or len(rows)!=6:raise ValueError('public-target-context-catalogue')
+ for index,row in enumerate(rows):
+  context=(1,2,4)[index%3];product=target if index<3 else old;present=index==1
+  expected=[str(index),product,str(context),'0'if present else'259',str(context)if present else'0',product if present else None,sid if present else None,'259']
+  if type(row)is not list or len(row)!=8 or any(type(x)is not str and x is not None for x in row)or row!=expected:raise ValueError('public-target-context-observation')
+ if type(value['versionInfo'])is not list or value['versionInfo']!=['0','2.2.2']or any(type(x)is not str for x in value['versionInfo']):raise ValueError('public-target-context-version')
+ return value
+
+def target_image_guard(image,input_path=None):
+ if type(image)is not dict or image.get('targetMsiSha256')!=TARGET_SHA or image.get('targetMsiBytes')!=TARGET_SIZE or image.get('fileCount')!=209 or image.get('property',{}).get('ProductVersion')!='2.2.2' or image.get('property',{}).get('ProductCode')!='{2D8D2946-3492-3C19-A837-87C54F9311A9}':raise ValueError('public-target-image-source')
+ rows=image.get('files');seen=set();lines=[]
+ if type(rows)is not list or len(rows)!=209:raise ValueError('public-target-image-count')
+ for row in sorted(rows,key=lambda r:r['path']):
+  name=row.get('path');size=row.get('sizeBytes');sha=row.get('sha256')
+  if type(name)is not str or not name.startswith('vpn-control/')or not re.fullmatch(r'[a-zA-Z0-9_./+-]+',name)or any(x in ('','..','.')for x in name.split('/'))or name in seen or type(size)is not int or not 0<size<67108864 or type(sha)is not str or not re.fullmatch('[a-f0-9]{64}',sha)or row.get('authoredInstalledPath')!='{LocalAppDataFolder}/'+name:raise ValueError('public-target-image-row')
+  seen.add(name);lines.append("@('"+name.replace('/','\\')+"',[long]"+str(size)+",'"+sha+"')")
+ prefix=r"""$cp117ImageExpected=@(
+"""+',\n'.join(lines)+r"""
+)
+"""
+ if input_path is not None:
+  if type(input_path)is not str or not re.fullmatch(r'C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-public-update-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\\target-image.input.json',input_path):raise ValueError('public-image-input-path')
+  public=json.dumps([[r['path'].replace('/','\\'),r['sizeBytes'],r['sha256']]for r in sorted(rows,key=lambda r:r['path'])],separators=(',',':')).encode()
+  if not 0<len(public)<=32768:raise ValueError('public-image-input-bound')
+  digest=hashlib.sha256(public).hexdigest()
+  prefix="$cp117ImageInputPath='"+input_path+"';$cp117ImageInputHold=[IO.FileStream]::new($cp117ImageInputPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);try{$cp117ImageInputFirst=[Cp117InstalledFile]::Read($cp117ImageInputPath);if($cp117ImageInputHold.Length -ne "+str(len(public))+" -or $cp117ImageInputFirst[0] -cne '"+digest+"'){throw 'PUBLIC_IMAGE_INPUT'};$cp117ImageExpected=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($cp117ImageInputPath));if(@($cp117ImageExpected).Count -ne 209){throw 'PUBLIC_IMAGE_INPUT_COUNT'}\n"
+ suffix="\n$cp117ImageInputLast=[Cp117InstalledFile]::Read($cp117ImageInputPath);if($cp117ImageInputFirst[0] -cne $cp117ImageInputLast[0] -or $cp117ImageInputFirst[1] -cne $cp117ImageInputLast[1]){throw 'PUBLIC_IMAGE_INPUT_CLOSING'}\n}finally{$cp117ImageInputHold.Dispose()}\n" if input_path is not None else ''
+ return prefix+r"""
+$cp117ImageHolds=[Collections.Generic.List[IO.FileStream]]::new();$cp117ImageRows=[Collections.Generic.List[object]]::new();$cp117ImageDirectories=[Collections.Generic.List[Microsoft.Win32.SafeHandles.SafeFileHandle]]::new();$cp117ImageDirectoryNames=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+try{
+ foreach($expected in $cp117ImageExpected){
+  $path=Join-Path 'C:\Users\vpncp117\AppData\Local' ([string]$expected[0]);for($dir=[IO.Path]::GetDirectoryName($path);$null -ne $dir;$dir=[IO.Path]::GetDirectoryName($dir)){if($cp117ImageDirectoryNames.Add($dir)){$cp117ImageDirectories.Add([Cp117RefreshWorkspace]::HoldDirectory($dir))}};$held=[IO.FileStream]::new($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);$cp117ImageHolds.Add($held)
+  if($held.Length -ne [long]$expected[1]){throw 'PUBLIC_INSTALLED_SIZE'}
+  $first=[Cp117InstalledFile]::Read($path);$sddl=[IO.File]::GetAccessControl($path).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
+  if($first.Count -ne 2 -or $first[0] -cne [string]$expected[2]){throw 'PUBLIC_INSTALLED_HASH'}
+  $cp117ImageRows.Add(@{path=[string]$expected[0];size=[long]$expected[1];sha256=$first[0];identity=$first[1];sddl=$sddl})
+ }
+ # Every participating stream excludes DELETE/write while the complete image,
+ # ACL observations and all durable rows are checked. No earlier row is adopted.
+ for($i=0;$i -lt $cp117ImageRows.Count;$i++){
+  $row=$cp117ImageRows[$i];$path=Join-Path 'C:\Users\vpncp117\AppData\Local' $row.path;$last=[Cp117InstalledFile]::Read($path)
+  if($row.sha256 -cne $last[0] -or $row.identity -cne $last[1] -or $row.sddl -cne [IO.File]::GetAccessControl($path).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)){throw 'PUBLIC_INSTALLED_DRIFT'}
+  WriteRecord ('image-'+$i+'.json') $row
+ }
+ $cp117ExpectedPaths=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal);foreach($row in $cp117ImageRows){$null=$cp117ExpectedPaths.Add((Join-Path 'C:\Users\vpncp117\AppData\Local' $row.path))}
+ $cp117FoundPaths=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal);$cp117PendingDirectories=[Collections.Generic.Queue[string]]::new();$cp117PendingDirectories.Enqueue('C:\Users\vpncp117\AppData\Local\vpn-control');$cp117EntryCount=0
+ while($cp117PendingDirectories.Count -ne 0){$dir=$cp117PendingDirectories.Dequeue();foreach($entry in [IO.Directory]::GetFileSystemEntries($dir)){
+  if(++$cp117EntryCount -gt 4096){throw 'PUBLIC_INSTALLED_CATALOGUE_BOUND'};$attr=[IO.File]::GetAttributes($entry)
+  if(($attr -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'PUBLIC_INSTALLED_REPARSE'}
+  if(($attr -band [IO.FileAttributes]::Directory) -ne 0){if(-not $cp117ImageDirectoryNames.Contains($entry)){throw 'PUBLIC_INSTALLED_FOREIGN_DIRECTORY'};$cp117PendingDirectories.Enqueue($entry)}else{if(-not $cp117ExpectedPaths.Contains($entry) -or -not $cp117FoundPaths.Add($entry)){throw 'PUBLIC_INSTALLED_FOREIGN_FILE'}}
+ }}
+ if($cp117FoundPaths.Count -ne 209){throw 'PUBLIC_INSTALLED_CATALOGUE'}
+ $api=[Cp117InstalledFile].GetMethod('Pin',[Reflection.BindingFlags]'Static,NonPublic')
+ for($i=0;$i -lt $cp117ImageRows.Count;$i++){
+  $row=$cp117ImageRows[$i];$path=Join-Path 'C:\Users\vpncp117\AppData\Local' $row.path
+  $named=[IO.FileStream]::new($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+  try{foreach($handle in @($cp117ImageHolds[$i],$named)){
+   $id=[string]$api.Invoke($null,[object[]]@([IO.FileStream]$handle))
+   if($row.identity -cne $id -or ([IO.File]::GetAttributes($path) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'PUBLIC_INSTALLED_CLOSING'}
+  }}finally{$named.Dispose()}
+ }
+ WriteRecord 'installed-image.json' @{version=1;fileCount=209;targetMsiSha256='F8A8741BCFD22C04BE50836AA22DA77009105AB1B63DF4D9B7648397779A8DFC';targetVersion='2.2.2';allExpectedFilesMatched=$true}
+}finally{foreach($held in $cp117ImageHolds){$held.Dispose()};foreach($held in $cp117ImageDirectories){$held.Dispose()}}
+"""+suffix
+
+def post_consent_binding(value):
+    keys={'version','correlationId','jobId','ownerPid','ownerBirth','adminSid','consentApproved','helperPath','helperSha256'}
+    if type(value)is not dict or set(value)!=keys or type(value['version'])is not int or value['version']!=1 or value['consentApproved']is not True:raise ValueError('public-post-consent-binding')
+    for key in ('correlationId','jobId'):
+        if type(value[key])is not str or not re.fullmatch(r'[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',value[key]):raise ValueError('public-post-consent-id')
+    if type(value['ownerPid'])is not int or not 1<=value['ownerPid']<=2147483647 or type(value['ownerBirth'])is not str or not re.fullmatch(r'[1-9][0-9]{0,18}',value['ownerBirth']) or int(value['ownerBirth'])>9223372036854775807:raise ValueError('public-post-consent-owner')
+    if type(value['adminSid'])is not str or not re.fullmatch(r'S-1-5-21-(?:[0-9]{1,10}-){3}[0-9]{1,10}',value['adminSid']) or any(int(x)>4294967295 for x in value['adminSid'].split('-')[4:]) or value['adminSid']=='S-1-5-21-2404255130-2183793310-3766671872-1002':raise ValueError('public-post-consent-admin')
+    if value['helperPath']!=r'C:\Users\vpncp117\AppData\Local\vpn-control\vpn-control-install-helper.exe' or value['helperSha256']!='ea6043aff284850be3a7cb9ff28f179743fc0a4e1a2c7f58107b09f619e38921':raise ValueError('public-post-consent-helper')
+    return dict(value)
+
+def coordinator_argv_cs():
+    return r"""using System;using System.Runtime.InteropServices;
+public static class Cp117PublicCoordinatorArgv {
+ [DllImport("shell32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern IntPtr CommandLineToArgvW(string s,out int n);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern IntPtr LocalFree(IntPtr p);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetProcessTimes(IntPtr p,out long c,out long e,out long k,out long u);
+ public static long Birth(IntPtr p){long c,e,k,u;if(p==IntPtr.Zero||!GetProcessTimes(p,out c,out e,out k,out u)||c<=0)throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());return c;}
+ public static string[] Read(string s){if(s==null||s.Length==0||s.Length>32766||s.IndexOf('\0')>=0||s.IndexOf('\r')>=0||s.IndexOf('\n')>=0)throw new ArgumentException("COORDINATOR_COMMAND_BOUND");int n;IntPtr p=CommandLineToArgvW(s,out n);if(p==IntPtr.Zero)throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());try{if(n!=5)throw new ArgumentException("COORDINATOR_ARG_COUNT");var a=new string[n];for(int i=0;i<n;i++)a[i]=Marshal.PtrToStringUni(Marshal.ReadIntPtr(p,i*IntPtr.Size));return a;}finally{LocalFree(p);}}
+}"""
+
+def post_consent_script(value):
+    value=post_consent_binding(value)
+    literal=json.dumps(value,separators=(',',':'))
+    if "'" in literal:raise ValueError('public-post-consent-literal')
+    return "Add-Type -TypeDefinition @'\n"+coordinator_argv_cs()+"\n'@ -ReferencedAssemblies @('System','System.Core')\n$cp117PostBinding=ConvertFrom-Json -InputObject '"+literal+"'\n"+r"""
+# This body is selected only after explicit source-bound visual consent approval.
+# It queries one fixed helper name; absence/races are UNKNOWN, never success.
+$cp117PostResult=$null;$cp117PostFile=$null;$process=$null;$cp117PostParents=[Collections.Generic.List[Microsoft.Win32.SafeHandles.SafeFileHandle]]::new();$cp117PostDirectoryRows=[Collections.Generic.List[object]]::new();$cp117PostDirMethod=[Cp117RefreshWorkspace].GetMethod('DirPin',[Reflection.BindingFlags]'Static,NonPublic')
+try{
+ foreach($dir in @('C:\','C:\Users','C:\Users\vpncp117','C:\Users\vpncp117\AppData','C:\Users\vpncp117\AppData\Local','C:\Users\vpncp117\AppData\Local\vpn-control')){$cp117PostParents.Add([Cp117RefreshWorkspace]::HoldDirectory($dir));$pin=[string]$cp117PostDirMethod.Invoke($null,[object[]]@([string]$dir));$cp117PostDirectoryRows.Add(@{path=$dir;identity=(($pin.Split(':')[0..5])-join ':');sddl=[IO.Directory]::GetAccessControl($dir).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)})}
+ $cp117PostFile=[IO.FileStream]::new($cp117PostBinding.helperPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);$first=[Cp117InstalledFile]::Read($cp117PostBinding.helperPath);$sddl=[IO.File]::GetAccessControl($cp117PostBinding.helperPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
+ if($first[0] -cne $cp117PostBinding.helperSha256){throw 'PUBLIC_POST_HELPER_SOURCE'}
+ $candidates=@(Get-CimInstance Win32_Process -Filter "Name='vpn-control-install-helper.exe'" -ErrorAction Stop)
+ if($candidates.Count -lt 1 -or $candidates.Count -gt 2){throw 'PUBLIC_POST_COORDINATOR_COUNT'}
+ $coordinators=[Collections.Generic.List[object]]::new();$users=[Collections.Generic.List[object]]::new()
+ foreach($candidate in $candidates){
+  if($candidate.ExecutablePath -cne $cp117PostBinding.helperPath -or $candidate.SessionId -ne 1){throw 'PUBLIC_POST_FOREIGN_HELPER'}
+  $candidateArgv=[Cp117PublicCoordinatorArgv]::Read([string]$candidate.CommandLine)
+  if($candidateArgv[0] -cne $cp117PostBinding.helperPath -or $candidateArgv[2] -cne $cp117PostBinding.jobId -or $candidateArgv[3] -cne ([string]$cp117PostBinding.ownerPid) -or $candidateArgv[4] -cne $cp117PostBinding.ownerBirth){throw 'PUBLIC_POST_FOREIGN_JOB'}
+  if($candidateArgv[1] -ceq 'install-coordinator'){$coordinators.Add($candidate)}elseif($candidateArgv[1] -ceq 'install-user'){
+   $userProcess=Get-Process -Id $candidate.ProcessId -ErrorAction Stop
+   try{$userBirth=[Cp117PublicCoordinatorArgv]::Birth([IntPtr]$userProcess.Handle);$userToken=[Cp117OwnerToken]::Read([int]$candidate.ProcessId,[long]$userBirth)
+    if($userProcess.HasExited -or ($userToken -join '|') -cne 'S-1-5-21-2404255130-2183793310-3766671872-1002|0|3|False|False|1'){throw 'PUBLIC_POST_USER_TOKEN'}
+    $users.Add(@{pid=[int]$candidate.ProcessId;birth=[string]$userBirth;sid=$userToken[0];sessionId=1;elevated=$false})
+   }finally{$userProcess.Dispose()}
+  }else{throw 'PUBLIC_POST_FOREIGN_ROLE'}
+ }
+ if($coordinators.Count -ne 1 -or $users.Count -gt 1){throw 'PUBLIC_POST_COORDINATOR_ROLES'};$native=$coordinators[0]
+ if($native.ProcessId -le 0 -or $native.ProcessId -gt 2147483647 -or $native.ExecutablePath -cne $cp117PostBinding.helperPath -or $native.SessionId -ne 1){throw 'PUBLIC_POST_COORDINATOR_PATH'}
+ $process=Get-Process -Id $native.ProcessId -ErrorAction Stop;$handle=$process.Handle;$birth=[Cp117PublicCoordinatorArgv]::Birth([IntPtr]$handle);$token=[Cp117OwnerToken]::Read([int]$native.ProcessId,[long]$birth)
+ if($process.HasExited -or $token.Length -ne 6 -or $token[0] -cne $cp117PostBinding.adminSid -or $token[1] -cne '1' -or $token[2] -cne '2' -or $token[3] -cne 'True' -or $token[4] -cne 'True' -or $token[5] -cne '1'){throw 'PUBLIC_POST_COORDINATOR_TOKEN'}
+ $argv=[Cp117PublicCoordinatorArgv]::Read([string]$native.CommandLine)
+ if($argv[0] -cne $cp117PostBinding.helperPath -or $argv[1] -cne 'install-coordinator' -or $argv[2] -cne $cp117PostBinding.jobId -or $argv[3] -cne ([string]$cp117PostBinding.ownerPid) -or $argv[4] -cne $cp117PostBinding.ownerBirth){throw 'PUBLIC_POST_COORDINATOR_ARGUMENTS'}
+ $expected='"install-coordinator" "'+$cp117PostBinding.jobId+'" "'+$cp117PostBinding.ownerPid+'" "'+$cp117PostBinding.ownerBirth+'"';$argsSha=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($expected))).Replace('-','').ToLowerInvariant()
+ $lastNative=Get-CimInstance Win32_Process -Filter ('ProcessId='+$native.ProcessId) -ErrorAction Stop;$lastToken=[Cp117OwnerToken]::Read([int]$native.ProcessId,[long]$birth);$last=[Cp117InstalledFile]::Read($cp117PostBinding.helperPath)
+ if($process.HasExited -or $lastNative.ExecutablePath -cne $native.ExecutablePath -or $lastNative.CommandLine -cne $native.CommandLine -or $lastNative.SessionId -ne 1 -or ($lastToken -join '|') -cne ($token -join '|') -or $last[0] -cne $first[0] -or $last[1] -cne $first[1] -or $sddl -cne [IO.File]::GetAccessControl($cp117PostBinding.helperPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)){throw 'PUBLIC_POST_COORDINATOR_DRIFT'}
+ foreach($row in $cp117PostDirectoryRows){$pin=[string]$cp117PostDirMethod.Invoke($null,[object[]]@([string]$row.path));if((($pin.Split(':')[0..5])-join ':') -cne $row.identity -or $row.sddl -cne [IO.Directory]::GetAccessControl($row.path).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All) -or ([IO.File]::GetAttributes($row.path) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'PUBLIC_POST_PARENT_DRIFT'}}
+ if($process.HasExited -or [Cp117PublicCoordinatorArgv]::Birth([IntPtr]$handle) -ne $birth){throw 'PUBLIC_POST_PROCESS_CLOSING'}
+ $cp117PostResult=@{version=1;state='observed';correlationId=$cp117PostBinding.correlationId;jobId=$cp117PostBinding.jobId;pid=[int]$native.ProcessId;birth=[string]$birth;sid=$token[0];sessionId=1;elevated=$true;administratorsEnabled=$true;helperPath=$cp117PostBinding.helperPath;helperSha256=$first[0];helperIdentity=$first[1];helperSddl=$sddl;argumentsSha256=$argsSha;originalUserHelpers=@($users.ToArray());ownerPid=[int]$cp117PostBinding.ownerPid;ownerBirth=$cp117PostBinding.ownerBirth;installerAction=$false;taskAction=$false;replayAllowed=$false}
+}finally{if($null -ne $cp117PostFile){$cp117PostFile.Dispose()};foreach($held in $cp117PostParents){$held.Dispose()};if($null -ne $process){$process.Dispose()}}
+"""
+
+def public_collection_phase(original_source,prefix,fragment,suffix,submission,pins,phase,correlation,nonce):
+    if phase not in ('authorization','terminal')or type(submission)is not dict or type(pins)is not tuple or len(pins)!=3:raise ValueError('public-collection-phase')
+    expected_corr,task_sha,image_sha=pins
+    task_name='VpnControlPublicUpdate-'+expected_corr
+    fields={'outcome','taskName','actionSha256','taskSha256','imageSha256','rootIdentity','rootSddl','taskFileIdentity','imageFileIdentity','role','taskActor','taskRunLevel','installerCompleted','replayAllowed'}
+    if set(submission)!=fields or expected_corr!='6815bdda-18db-42e7-8d48-99a7a8af39aa' or submission['taskName']!=task_name or submission['taskSha256']!=task_sha or submission['imageSha256']!=image_sha or submission['outcome']!='submitted' or submission['role']!='SYSTEM' or submission['taskActor']!='S-1-5-21-2404255130-2183793310-3766671872-1002' or submission['taskRunLevel']!='Limited' or submission['installerCompleted']is not False or submission['replayAllowed']is not False:raise ValueError('public-collection-original')
+    action_sha=submission['actionSha256']
+    if any(type(v)is not str or not re.fullmatch(r'[0-9a-f]{64}',v)for v in (task_sha,image_sha,action_sha)):raise ValueError('public-collection-source')
+    if type(submission.get('rootIdentity'))is not str or not re.fullmatch(r'[0-9]+(?::[0-9]+){7}',submission['rootIdentity']) or type(submission.get('rootSddl'))is not str or len(submission['rootSddl'])>2048 or "'"in submission['rootSddl']:raise ValueError('public-collection-root')
+    root=r'C:\Users\vpncp117\AppData\Local\VpnControl\mcp-public-update-'+expected_corr
+    values={'@ROOT@':"'"+root+"'",'@TASK_NAME@':"'"+task_name+"'",'@PHASE@':phase,'@ROOT_ID@':submission['rootIdentity'],'@ROOT_SDDL@':submission['rootSddl'],'@ARGUMENT_SHA@':action_sha,'@CORRELATION@':expected_corr}
+    for key,value in values.items():
+        if key not in fragment:raise ValueError('public-collection-placeholder')
+        fragment=fragment.replace(key,value)
+    if re.search(r'@[A-Z_]+@',fragment):raise ValueError('public-collection-placeholder')
+    # The exact three template bytes are authenticated by the whole driver holder.
+    body=prefix+fragment+suffix
+    import ast
+    tree=ast.parse(PUBLIC_FACTORY_SOURCE_FOR_VALIDATOR)
+    validator='\n'.join(ast.get_source_segment(PUBLIC_FACTORY_SOURCE_FOR_VALIDATOR,n)for n in tree.body if isinstance(n,ast.FunctionDef)and n.name in ('public_collection_names','validate_public_collection'))+'\n'
+    validator+='PUBLIC_SUBMISSION='+repr(submission)+'\nPUBLIC_PINS='+repr(pins)+'\nPUBLIC_PHASE='+repr(phase)+'\n'
+    validator+="def validate(value):\n if type(value)is not dict or set(value)!={'outcome','facts'}or value['outcome']!='complete':raise ValueError('public-record-wrapper')\n validate_public_collection(value['facts'],PUBLIC_PHASE,PUBLIC_SUBMISSION,*PUBLIC_PINS)\n return value\n"
+    return public_phase_carrier(original_source,body,correlation,nonce,validator,terminal_parser_source=compressed_public_parser_source())
+
+
+from pathlib import Path
+"""Fixed complete-flow phase executor; source-only draft, no automatic entry point.
+The caller supplies the original authenticated current-guest context obtained by
+unchanged recovery/source/outer guards. Native dispatch requires whole-flow review.
+"""
+import ast,hashlib,json,os
+from pathlib import Path
+
+PUBLIC_PHASE_IDS={'preflight': ('dc5a2db4-e0f1-45c2-8dd1-639858536e2c', '720eaecf-5305-48eb-a38e-e7765744ce52'), 'admin-create': ('4b99ce29-e252-42cb-b031-60d023f01ee2', '3cc2cc73-4452-4962-868f-832714274134'), 'public-start': ('6815bdda-18db-42e7-8d48-99a7a8af39aa', '90c25455-07b1-4663-b10a-d21aaee3a9c7'), 'authorization-read': ('1b7dc827-7bdf-4747-8bdb-268c1b41f136', '5995e94e-0c1a-449c-a9d8-dccbd0f39812'), 'consent-observe': ('146d250c-0c60-4baf-9fa9-f81648c0f18d', 'ce23e6c7-9422-45e6-8a2a-2cfa49ddc527'), 'post-consent': ('8f0395d2-bdbe-4a5f-81ba-4a2c9b3c901d', '743a03cb-cf80-4f4d-b2cb-f18e44dc3b42'), 'terminal-read': ('abf3ea17-8d7e-43c9-99a1-929db6afbc42', '9bef201d-21b3-4dc7-b0e5-bdd6563852b1'), 'target-context': ('10bda3ba-007b-4f6f-ae91-fbeaf02f3926', '3e1a2e94-c72b-4fdb-b5f2-5ef8627e8d84'), 'admin-cleanup': ('7ed5150d-f1b6-416e-8ea3-9ac4b8bce5dc', 'c19c77e8-7e57-4fa2-a4cc-e20b63a16e16'), 'server-stop': ('520232e2-28ed-47cc-98fb-5d61e8c1df85', '3c1df1b4-b38b-43b1-b3b8-d22a1bbd00be'), 'authorization-read:1': ('870623d3-ac90-5bd0-a08e-e5068e6dc623', 'b26df366-a7fc-5268-9b07-a6c769c0637b'), 'authorization-read:2': ('001ffe91-d402-51ce-b8d9-5347bcef845c', '7ab6fd7e-239a-5789-8467-6c946f4ce472'), 'authorization-read:3': ('2c72de1d-e65d-5fb9-867b-055b2df0b086', 'd8e03533-56df-566d-bcf8-197c3faa87ab'), 'authorization-read:4': ('d3b2b0c1-008a-5295-b571-7fb8a86e5888', 'e83bdec1-ba1b-532c-9740-def46d935886'), 'authorization-read:5': ('966ad90e-8e3c-5d72-8295-fc43751c769d', '333d32be-4358-5edb-9ae4-00f219181fb9'), 'authorization-read:6': ('d5df4b2d-3154-563e-a49b-acffe303d3a5', 'e63358a7-d50e-55f3-8500-493b69d6106b'), 'authorization-read:7': ('809a1566-bc89-524e-acdf-e8c53ff6adf8', '7e457148-72bb-534c-a34a-95002a5bd73c'), 'authorization-read:8': ('06bc1911-5c51-50a3-bdfd-bff90b2430b1', 'ce453b09-4baf-55ba-98d0-ab3a91e15b17'), 'authorization-read:9': ('7425af69-d50a-55fe-933c-8c5f3785c84c', '3bf87878-87a3-5cae-b7ef-c69e06454258'), 'authorization-read:10': ('b7ba9a31-41eb-5a02-a5a2-596520278cfd', 'a3741cb9-2a2e-549a-85dd-4a2dd9fa744e'), 'authorization-read:11': ('7b73f051-2167-5c4f-be7d-cb87457e3ea2', 'a59a7863-6bb4-5cf0-b25f-80c78d1c4a7a'), 'terminal-read:1': ('7f93760e-c6df-5f44-86b2-ff514d7f28c5', '3af73b71-8030-529f-a48f-92ed9d459c24'), 'terminal-read:2': ('c31d4d04-b1e7-58c6-aec2-3f2cac05b071', '60baae75-d386-5de4-b5f7-6c94b438cd9f'), 'terminal-read:3': ('503b6815-624e-5aeb-bc5b-3d9ef4472a39', 'f2c98d6b-410e-581c-8b6e-926072b8dce2'), 'terminal-read:4': ('1874b81f-ebf1-55bf-a66b-9aaba2c1bf7a', 'a03a7c00-bc4b-5a60-95ad-a2a2429c4ae1'), 'terminal-read:5': ('70da03d3-e72e-5af4-a07c-b5e67d272b98', '5660e69b-5264-57e2-b6ed-21f70a64350d'), 'terminal-read:6': ('82fd146b-f57a-578f-a2b6-796fd0f92a1c', 'bed3d773-82e6-5ba1-8873-2114fc5edf10'), 'terminal-read:7': ('074a9003-8937-56ba-8a3b-9c98ac882d08', 'b1972ca6-c96b-5513-8fb5-d10111f57a46'), 'terminal-read:8': ('5da0e321-8f64-5806-9ddf-83451aac6c6d', '514b6423-d53f-5d1b-ac49-2a079abdc2ba'), 'terminal-read:9': ('bd8f2685-0ea9-5878-a8d3-a44e79f02173', 'ae0b3b37-8ae3-5b00-b353-24bb596a1b04'), 'terminal-read:10': ('158a9147-60f3-5ed7-8157-f3b4feee60da', 'd51163fd-8b05-50a4-be3d-3a535de82c2d'), 'terminal-read:11': ('d0b742cf-85b5-5dbe-b5f2-edda7d7abbdb', '23fa200d-8a15-5ca0-b2de-f6b8e3806d33'), 'consent-observe:1': ('1c38edb7-ae4d-56d2-9648-52a4d5cdd2a1', '0f149be1-55a6-5a12-8144-db301a769865'), 'consent-observe:2': ('5c4815cd-4a82-54ed-b4d2-d398c56cb951', '9ce66915-4947-5909-8831-0dc7ad0b52d4')}
+
+def run_fixed_phase(context,phase,source,sha,*,public_input=b'',private_frame=b'',markers=(),callbacks=None):
+    """Exactly one original route/child per fixed phase; failure is consumed UNKNOWN.
+    All opened capture files contain public source/evidence only. In private mode
+    original streams remain in the reviewed private collector's memory and every
+    event/response is declassified before any AuthorityCapture call.
+    """
+    if phase not in PUBLIC_PHASE_IDS or phase in context['consumed']:raise ValueError('public-phase-consumed')
+    correlation,nonce=PUBLIC_PHASE_IDS[phase]
+    if type(source)is not str or type(sha)is not str or len(source.encode('utf-8'))>131072 or len(sha)!=64:raise ValueError('public-phase-source')
+    compile(source,'<string>','exec')
+    constants={}
+    for node in ast.parse(source).body:
+        if isinstance(node,ast.Assign):
+            for target in node.targets:
+                if isinstance(target,ast.Name)and target.id in ('D','NONCE','BODY_SHA'):
+                    if target.id in constants:raise ValueError('public-phase-source-duplicate')
+                    constants[target.id]=ast.literal_eval(node.value)
+    if constants!={'D':correlation,'NONCE':nonce,'BODY_SHA':sha}:raise ValueError('public-phase-source-binding')
+    if private_frame:
+        if phase != 'admin-create'or type(private_frame)is not bytes or len(private_frame)!=2048 or not markers or callbacks is None:raise ValueError('public-private-phase')
+    elif callbacks is not None or markers:raise ValueError('public-private-phase')
+    if type(public_input)is not bytes or len(public_input)>32768 or private_frame and public_input:raise ValueError('public-phase-input')
+    context['verify']()
+    command,source_frame=context['stdin_command'](source)
+    argv=context['ssh_argv'](command)
+    if max(len(x.encode('utf-8'))for x in argv)>4096:raise ValueError('public-phase-argv')
+    root=context['root'];leaf='windows-public-complete-'+correlation
+    path=root/'.runtime/parity-evidence'/leaf
+    if path.exists():raise ValueError('public-phase-evidence-consumed')
+    path.mkdir(mode=0o700)
+    cap=context['capture_class'](root,leaf)
+    context['consumed'].add(phase)
+    events=[];status=None;value=None
+    try:
+        cap.create('remote.py',source.encode('utf-8'));cap.create('source-frame.private',source_frame)
+        cap.create('attempt.json',json.dumps({'state':'consumed','phase':phase,'correlationId':correlation,'nonce':nonce,'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),'replayAllowed':False},sort_keys=True).encode());os.fsync(cap.fd)
+        context['verify']()
+        if private_frame:
+            event,response=callbacks
+            value,events,status=context['private_collect'](argv,cap,context['verify'],source_frame,correlation,nonce,sha,context['qemu'],public_event=event,public_response=response,private_frame=private_frame,private_markers=markers)
+        else:
+            value,events,status=context['guest_collect'](argv,cap,context['verify'],source_frame,correlation,nonce,sha,context['qemu'],public_input,())
+        context['verify']()
+        facts=context['factory']['admit_public_phase'](value,events,status,source,correlation,nonce,sha,context['qemu'],cap,private=bool(private_frame))
+        pin=cap.create('result.json',json.dumps({'state':'observed','phase':phase,'facts':facts,'events':events,'localStatus':status,'replayAllowed':False},sort_keys=True).encode());os.fsync(cap.fd)
+        context['verify']()
+        return {'state':'observed','phase':phase,'facts':facts,'receipt':pin,'evidenceLeaf':leaf,'replayAllowed':False}
+    except Exception as exc:
+        # Private failures never stringify exceptions or relay their raw payload.
+        # The collector already retained original PID/birth/partial public evidence.
+        identity=getattr(exc,'localObservation',None)
+        if private_frame:identity=None
+        unknown={'state':'unknown','phase':phase,'exceptionType':type(exc).__name__,'localObservation':identity,'replayAllowed':False}
+        try:
+            pin=cap.create('unknown.json',json.dumps(unknown,sort_keys=True).encode());os.fsync(cap.fd)
+        except Exception:pin=None
+        return dict(unknown,evidenceLeaf=leaf,receipt=pin)
+    finally:
+        cap.close()

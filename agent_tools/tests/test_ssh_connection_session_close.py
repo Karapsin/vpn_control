@@ -21,17 +21,6 @@ from agent_tools.tests.test_ssh_connection_session import SessionTests
 
 @unittest.skipUnless(os.name == 'posix', 'POSIX only')
 class CloseTests(SessionTests):
-    def setUp(self):
-        super().setUp()
-        # This inert namespace uses the current checked-out helpers as its explicit
-        # external ancestors; production keeps its frozen historical hashes.
-        patches = [
-            mock.patch.object(close, '_ORIGINAL_SOURCE', session._sha(Path(session.__file__).read_bytes())),
-            mock.patch.object(close, '_TRANSPORT_SOURCE', session._sha(Path(session.transport.__file__).read_bytes())),
-            mock.patch.object(close, '_INVENTORY_SOURCE', session._sha(Path(inventory.__file__).read_bytes())),
-        ]
-        for patcher in patches: patcher.start(); self.addCleanup(patcher.stop)
-
     def spawn(self, argv, diagnostic, guard=None):
         # Represent the real immutable launch record omitted by the general
         # session fixture's inert spawn implementation.
@@ -73,6 +62,29 @@ class CloseTests(SessionTests):
         with self.control(ready, script):
             self.assertEqual('exit_sent', close.close(self.root, 'archlinux', ready['receiptSha256'])['state'])
         return ready, close._paths(self.root, 'archlinux', ready['receiptSha256'])
+
+    def test_actual_current_source_pin_closes_only_original_outer_master(self):
+        # Production pins are deliberately not replaced by the fixture.
+        ready, paths = self.successful_close('')
+        self.assertEqual(close._TRANSPORT_SOURCE,
+                         session._sha(Path(session.transport.__file__).read_bytes()))
+        with self.absence():
+            self.assertEqual('closed', close.status(self.root, 'archlinux',
+                                                   ready['receiptSha256'])['state'])
+        self.assertEqual(1, len(self.controls))
+        self.assertEqual(self.controls[0][-3:], ['-O', 'exit', 'gateway.invalid'])
+        self.assertTrue(paths[3].exists())
+
+    def test_unauthorized_transport_bytes_refuse_before_close_intent_or_child(self):
+        ready = self.ready()
+        dependency = self.root / 'transport-source.py'
+        dependency.write_bytes(Path(session.transport.__file__).read_bytes() + b'\n')
+        dependency.chmod(0o600)
+        with mock.patch.object(session.transport, '__file__', str(dependency)), \
+                mock.patch.object(close.subprocess, 'Popen', side_effect=AssertionError('no child')):
+            self.assertEqual('unknown', close.close(self.root, 'archlinux',
+                                                    ready['receiptSha256'])['state'])
+        self.assertFalse(close._paths(self.root, 'archlinux', ready['receiptSha256'])[3].exists())
 
     def test_intent_precedes_single_exit_and_status_requires_positive_absence(self):
         ready, paths = self.successful_close('')

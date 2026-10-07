@@ -5,6 +5,7 @@ route. This module does not issue/adopt a lease or execute the installer. The
 operator retains raw transport and both EOFs before projecting custody.
 """
 from __future__ import annotations
+import re
 import hashlib,json,os,stat,uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -92,6 +93,17 @@ def json_pairs(pairs):
 def decode(raw):return json.loads(raw,object_pairs_hook=json_pairs)
 def corr(value):
     require(type(value)is str and str(uuid.UUID(value))==value,'asset_correlation_invalid');return value
+def channel_correlation_id(value):
+    """Convert validated canonical asset UUID36 to channel lowercase32hex."""
+    return uuid.UUID(corr(value)).hex
+
+def selected_channel_matches(admitted,selected,receipt_sha256):
+    """Strict format bridge only; does not admit or query a selected route."""
+    compact=channel_correlation_id(admitted)
+    require(type(receipt_sha256)is str and re.fullmatch('[0-9a-f]{64}',receipt_sha256)is not None,'asset_channel_receipt_invalid')
+    require(type(selected)is dict and type(selected.get('correlationId'))is str and re.fullmatch('[0-9a-f]{32}',selected['correlationId'])is not None and type(selected.get('receiptSha256'))is str and re.fullmatch('[0-9a-f]{64}',selected['receiptSha256'])is not None,'asset_channel_metadata_invalid')
+    return selected['correlationId']==compact and selected['receiptSha256']==receipt_sha256
+
 def generation(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
 def parent(s):return generation(s)[:5]
 

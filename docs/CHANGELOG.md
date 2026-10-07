@@ -3,6 +3,13 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Keep receipt-bound SSH close compatible with the reviewed transport and test production source pins.
+- Add routine regressions for enrolled server sources at dispatch and result publication.
+- Handle high-descriptor Android asset collection and validate selected channel correlation formats.
+- Archive large Android test results in bounded chunks while preserving evidence custody.
+
 ## 2.2.3 - 2026-10-07
 
 - Hardened Windows update fixture ACL admission and recovery diagnostics.

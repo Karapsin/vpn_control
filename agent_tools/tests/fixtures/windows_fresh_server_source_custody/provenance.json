@@ -1,0 +1,18 @@
+{
+  "sourceOnly": true,
+  "publicInputsOrigin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-current-eof-schema-successor/public-host-main.py",
+  "publicInputsOriginSha256": "347a2ebc5bcb7e89d7d121191efe10f8e0735000101f1b53863fd646cf88255b",
+  "publicInputsNodes": [
+    "generation",
+    "unique",
+    "strict_json",
+    "PublicInputs"
+  ],
+  "phaseFactoryOrigin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/agent_tools/tests/test_windows_cp117_public_update_flow.py",
+  "phaseFactoryOriginSha256": "973934cbe37b043eb78b39538d0d733fb0f43f4af52aa60ca6380de4753aa6d7",
+  "executorOrigin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-fresh-sibling-server-admission/direct_server_executor.py",
+  "executorSha256": "75c65c803b5b6429a67a73dffe31aec96e2a44e37c542d36e48a32bcbd2bc9fe",
+  "helperOrigin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-fresh-sibling-server-admission/start_server.py",
+  "helperOriginSha256": "aef0d837f91d2426adf5eb47e8f5561de3069d8cc41e6cf0384690f338c281c1",
+  "helperFunctionByteEqual": true
+}

@@ -1,0 +1,57 @@
+"""One existing direct TLS collector lane; no generic phase guards changed."""
+import ast,hashlib,json,os,re
+def run_direct_server(context,source,sha,frame,markers):
+    """Exactly one original route/child per fixed phase; failure is consumed UNKNOWN.
+    The existing private collector retains original streams in protected custody.
+    Its sensitive-marker screening and the authenticated carrier validator admit
+    only the finite TLS projection to the public phase consumer.
+    """
+    phase='fresh-direct-sibling-server'
+    correlation='50213a23-d04c-4d4a-9f58-e4df48a504bb';nonce='b0c027ab-fa12-4a0f-be6b-9e4976ffe076'
+    if phase in context['consumed']:raise ValueError('public-phase-consumed')
+    if type(source)is not str or type(sha)is not str or len(source.encode())>131072 or re.fullmatch('[0-9a-f]{64}',sha)is None:raise ValueError('tls-phase-source')
+    constants={}
+    for node in ast.parse(source).body:
+        if isinstance(node,ast.Assign):
+            for target in node.targets:
+                if isinstance(target,ast.Name)and target.id in ('D','NONCE','BODY_SHA'):
+                    if target.id in constants:raise ValueError('tls-phase-source-duplicate')
+                    constants[target.id]=ast.literal_eval(node.value)
+    if constants!={'D':correlation,'NONCE':nonce,'BODY_SHA':sha}:raise ValueError('tls-phase-source-binding')
+    if type(frame)is not bytes or not 4<len(frame)<=32772 or int.from_bytes(frame[:4],'big')!=len(frame)-4 or type(markers)is not tuple or not markers or any(type(x)is not bytes or not x for x in markers):raise ValueError('tls-phase-private-frame')
+    compile(source,'<authenticated-direct-tls>','exec')
+    context['verify']()
+    command,source_frame=context['stdin_command'](source)
+    argv=context['ssh_argv'](command)
+    if max(len(x.encode('utf-8'))for x in argv)>4096:raise ValueError('public-phase-argv')
+    root=context['root'];leaf='windows-public-complete-'+correlation
+    path=root/'.runtime/parity-evidence'/leaf
+    if path.exists():raise ValueError('public-phase-evidence-consumed')
+    path.mkdir(mode=0o700)
+    cap=context['capture_class'](root,leaf)
+    context['consumed'].add(phase)
+    events=[];status=None;value=None
+    try:
+        cap.create('remote.py',source.encode('utf-8'));cap.create('source-frame.private',source_frame)
+        cap.create('attempt.json',json.dumps({'state':'consumed','phase':phase,'correlationId':correlation,'nonce':nonce,'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),'replayAllowed':False},sort_keys=True).encode());os.fsync(cap.fd)
+        context['verify']()
+        value,events,status=context['guest_collect'](argv,cap,context['verify'],source_frame,correlation,nonce,sha,context['qemu'],private_frame=frame,private_markers=markers)
+        context['verify']()
+        facts=context['factory']['admit_public_phase'](value,events,status,source,correlation,nonce,sha,context['qemu'],cap,private=False)
+        pin=cap.create('result.json',json.dumps({'state':'observed','phase':phase,'facts':facts,'events':events,'localStatus':status,'replayAllowed':False},sort_keys=True).encode());os.fsync(cap.fd)
+        context['verify']()
+        return {'state':'observed','phase':phase,'facts':facts,'receipt':pin,'evidenceLeaf':leaf,'replayAllowed':False}
+    except Exception as exc:
+        # Private failures never stringify exceptions or relay their raw payload.
+        # Original collector custody is separate from this finite UNKNOWN reply.
+        identity=None  # Untrusted collector attributes never cross the public boundary.
+        category=type(exc).__name__
+        if category not in ('ValueError','TypeError','OSError','TimeoutError','RuntimeError'):category='Exception'
+
+        unknown={'state':'unknown','phase':phase,'exceptionType':category,'localObservation':identity,'replayAllowed':False}
+        try:
+            pin=cap.create('unknown.json',json.dumps(unknown,sort_keys=True).encode());os.fsync(cap.fd)
+        except Exception:pin=None
+        return dict(unknown,evidenceLeaf=leaf,receipt=pin)
+    finally:
+        cap.close()

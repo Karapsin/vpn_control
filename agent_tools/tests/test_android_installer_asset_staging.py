@@ -298,4 +298,27 @@ class CompletePreparationTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError,'asset_source_changed'):staging.transport_request(root,prepared)
             finally:fixture_case.doCleanups()
 
-if __name__=='__main__':unittest.main()
+
+
+
+# Pure strict asset/channel format bridge; no selected getter or effect.
+from agent_tools import ssh_fresh_nested_channel as channel
+BRIDGE_CORR='51f97cb3-b7bc-4073-ab1f-900466d0782e';BRIDGE_RECEIPT='a'*64
+class Bridge(unittest.TestCase):
+ def test_actual_old_comparison_red_new_canonical_positive(self):
+  staging.corr(BRIDGE_CORR);compact=uuid.UUID(BRIDGE_CORR).hex;channel._corr(compact)
+  selected={'correlationId':compact,'receiptSha256':BRIDGE_RECEIPT}
+  self.assertFalse(selected['correlationId']==BRIDGE_CORR)
+  self.assertTrue(staging.selected_channel_matches(BRIDGE_CORR,selected,BRIDGE_RECEIPT))
+ def test_foreign_identity_receipt_false(self):
+  self.assertFalse(staging.selected_channel_matches(BRIDGE_CORR,{'correlationId':'0'*32,'receiptSha256':BRIDGE_RECEIPT},BRIDGE_RECEIPT))
+  self.assertFalse(staging.selected_channel_matches(BRIDGE_CORR,{'correlationId':uuid.UUID(BRIDGE_CORR).hex,'receiptSha256':'b'*64},BRIDGE_RECEIPT))
+ def test_strict_separate_slot_formats(self):
+  for value in [uuid.UUID(BRIDGE_CORR).hex,BRIDGE_CORR.upper(),True,None,'invalid']:
+   with self.subTest(admitted=value),self.assertRaises((ValueError,TypeError,AttributeError)):staging.channel_correlation_id(value)
+  for value in [BRIDGE_CORR,uuid.UUID(BRIDGE_CORR).hex.upper(),'0'*31,'z'*32,True]:
+   with self.subTest(selected=value),self.assertRaises(ValueError):staging.selected_channel_matches(BRIDGE_CORR,{'correlationId':value,'receiptSha256':BRIDGE_RECEIPT},BRIDGE_RECEIPT)
+  for value in [True,'a'*63,'A'*64]:
+   with self.subTest(receipt=value),self.assertRaises(ValueError):staging.selected_channel_matches(BRIDGE_CORR,{'correlationId':uuid.UUID(BRIDGE_CORR).hex,'receiptSha256':BRIDGE_RECEIPT},value)
+
+if __name__=='__main__':unittest.main(verbosity=2)

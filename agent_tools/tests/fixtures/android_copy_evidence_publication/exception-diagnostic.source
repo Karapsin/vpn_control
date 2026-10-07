@@ -1,0 +1,79 @@
+"""Private original exception retention; finite source-only route diagnostics.
+
+No query is initiated here except one supplied existing admission_transport call.
+No locals, arguments, traceback text or private paths enter the public DTO.
+"""
+import hashlib,json,os,types
+from pathlib import Path
+from agent_tools import android_installer_direct_transport as direct
+from agent_tools import ssh_transport as transport,ssh_channel_selection as selection,ssh_connection_session as session,ssh_fresh_nested_channel as channel
+STAGES=frozenset({'parent-state-prepare','parent-route-builder','copy-state-prepare','copy-constructor','copy-route-builder','copy-collect'})
+MAX_CHAIN=8;MAX_FRAMES=64;MAX_BYTES=524288
+TYPES={transport.SshConfigError:'SshConfigError',selection.SelectionUnknown:'SelectionUnknown',session.SessionUnknown:'SessionUnknown',channel.ChannelUnknown:'ChannelUnknown',ValueError:'ValueError',OSError:'OSError',TimeoutError:'TimeoutError'}
+def kind(error):return TYPES.get(type(error),'Exception')
+def chain(error):
+ result=[];seen=set()
+ while error is not None and id(error)not in seen and len(result)<MAX_CHAIN:
+  seen.add(id(error));result.append(error);error=error.__cause__ if error.__cause__ is not None else error.__context__
+ return result,error is None
+
+def project(error,stage,public_functions=()):
+ if stage not in STAGES:raise ValueError('builder_diagnostic_stage_unknown')
+ allowed={f.__code__:Path(f.__code__.co_filename).name for m in (transport,selection,session,channel)for f in vars(m).values()if type(f)is types.FunctionType and f.__globals__ is vars(m)}
+ for function in public_functions:
+  if type(function)is not types.FunctionType:raise ValueError('builder_diagnostic_function_unknown')
+  basename=Path(function.__code__.co_filename).name
+  if basename=='readonly-caller-population.py' and function.__name__=='admission_transport':allowed[function.__code__]=basename
+ errors,complete=chain(error);frames=[];count=0
+ for item in errors:
+  tb=item.__traceback__
+  while tb is not None and count<MAX_FRAMES:
+   count+=1;code=tb.tb_frame.f_code
+   if code in allowed:frames.append({'source':allowed[code],'function':code.co_name,'line':tb.tb_lineno})
+   tb=tb.tb_next
+  if tb is not None:complete=False
+ value={'schema':1,'state':'unknown','failureStage':stage,'exceptionClass':kind(error),'contextClasses':[kind(x)for x in errors[1:]],'sourceFrames':frames,'chainComplete':complete,'sourceFrameAvailable':bool(frames),'nativeActionAllowed':False,'replayAllowed':False}
+ phases=[x.phase for x in errors if type(x)is session.SessionUnknown and type(x.phase)is str and x.phase in session._PHASES]
+ if phases:value['sessionPhase']=phases[-1]
+ for item in errors:
+  if type(item)is channel.ChannelUnknown:
+   try:status=channel.validated_unknown(item.result)
+   except (OSError,ValueError,TypeError,KeyError):continue
+   value['statusClassification']={key:status[key]for key in ('state','failurePhase','failureReason','exceptionClass','errno')if key in status}
+ return value
+
+def retain(error,capture,stage,custody,runtime,public_functions=(),extra_held=()):
+ """Actual create2pin/fullsnapshot custody; original object stays private."""
+ errors,complete=chain(error);rows=[];count=0
+ for item in errors:
+  frames=[];tb=item.__traceback__
+  while tb is not None and count<MAX_FRAMES:
+   count+=1;code=tb.tb_frame.f_code;frames.append({'filename':code.co_filename,'function':code.co_name,'line':tb.tb_lineno});tb=tb.tb_next
+  if tb is not None:complete=False
+  rows.append({'module':type(item).__module__,'type':type(item).__qualname__,'message':str(item),'argsRepr':repr(item.args),'suppressedContext':item.__suppress_context__,'frames':frames})
+ body=json.dumps({'schema':1,'stage':stage,'chainComplete':complete,'chain':rows},sort_keys=True,separators=(',',':')).encode()
+ if len(body)>MAX_BYTES:raise ValueError('builder_exception_private_limit')
+ custody();pin=capture.create('builder-'+stage+'-exception.private',body)
+ path=Path(capture.path)/('builder-'+stage+'-exception.private');raw,full=direct.snapshot(path,limit=MAX_BYTES,private=True)
+ if raw!=body or not runtime.creation_matches(full,pin):raise ValueError('builder_exception_publication_changed')
+ held=direct._dispatch_hold(path,full,body)
+ try:
+  value=project(error,stage,public_functions);value['originalExceptionRetained']=True
+  custody();direct._dispatch_guard([*extra_held,held])
+  public=json.dumps(value,sort_keys=True,separators=(',',':')).encode();name='builder-'+stage+'-finite.json';p=capture.create(name,public);raw,full=direct.snapshot(Path(capture.path)/name,limit=MAX_BYTES,private=True)
+  if raw!=public or not runtime.creation_matches(full,p):raise ValueError('builder_finite_publication_changed')
+  public_held=direct._dispatch_hold(Path(capture.path)/name,full,public)
+  try:custody();direct._dispatch_guard([*extra_held,held,public_held])
+  finally:os.close(public_held[3]);direct.bundle._close(public_held[2])
+  return value
+ finally:os.close(held[3]);direct.bundle._close(held[2])
+
+def invoke(readonly,state,capture,custody,runtime,stage,extra_held=()):
+ """Call the ORIGINAL builder once; never execute returned argv or retry."""
+ custody()
+ try:
+  argv=readonly.admission_transport(state)
+  custody();return {'state':'prepared','argv':argv,'nativeActionAllowed':False,'replayAllowed':False}
+ except Exception as error:
+  finite=retain(error,capture,stage,custody,runtime,(readonly.admission_transport,),extra_held)
+  return {'state':'unknown','finite':finite,'originalException':error,'nativeActionAllowed':False,'replayAllowed':False}

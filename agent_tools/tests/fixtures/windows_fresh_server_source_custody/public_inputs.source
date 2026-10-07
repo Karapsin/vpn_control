@@ -1,0 +1,82 @@
+import os,hashlib,json,stat,sys
+from pathlib import Path
+
+def generation(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+
+def unique(pairs):
+ d={}
+ for k,v in pairs:
+  if k in d:raise ValueError('public-input-duplicate')
+  d[k]=v
+ return d
+
+def strict_json(raw):return json.loads(raw.decode('utf-8','strict'),object_pairs_hook=unique,parse_constant=lambda _:(_ for _ in ()).throw(ValueError('public-input-constant')))
+
+class PublicInputs:
+ def __init__(self,root,manifest,expected_sha):
+  self.root=root;self.fds={};self.parents={};self.bytes={};self.pins={};self.modules={}
+  try:
+   fd=os.open(manifest,os.O_RDONLY|os.O_NOFOLLOW);self.fds[str(manifest)]=fd
+   m=os.fstat(fd);raw=os.read(fd,2097153)
+   if not stat.S_ISREG(m.st_mode)or m.st_uid!=os.geteuid()or stat.S_IMODE(m.st_mode)!=0o600 or m.st_nlink!=1 or len(raw)>2097152 or hashlib.sha256(raw).hexdigest()!=expected_sha:raise ValueError('public-manifest-binding')
+   self.pins[str(manifest)]={'generation':generation(m),'sha256':expected_sha};self.bytes[str(manifest)]=raw
+   value=strict_json(raw)
+   if type(value)is not dict or set(value)!={'version','scope','inputs'}or type(value['version'])is not int or value['version']!=1 or value['scope']!='complete-direct-public-update-source' or type(value['inputs'])is not dict or not value['inputs']:raise ValueError('public-manifest-schema')
+   for name,pin in value['inputs'].items():
+    path=Path(name)
+    if not path.is_absolute()or root not in path.parents or type(pin)is not dict or set(pin)!={'generation','sha256'}or type(pin['generation'])is not list or len(pin['generation'])!=9 or any(type(x)is not int for x in pin['generation'])or type(pin['sha256'])is not str or len(pin['sha256'])!=64:raise ValueError('public-manifest-input')
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);self.fds[name]=fd;self.pins[name]=pin
+    if generation(os.fstat(fd))!=pin['generation']or not stat.S_ISREG(os.fstat(fd).st_mode):raise ValueError('public-source-open')
+   # Hash/read ALL bodies before pure whole-population identity closure. No
+   # executable code is loaded until this whole population has passed.
+   for name,fd in self.fds.items():
+    p=str(Path(name).parent)
+    if p not in self.parents:
+     pf=os.open(p,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);self.parents[p]=(pf,generation(os.fstat(pf))[:5])
+    os.lseek(fd,0,os.SEEK_SET);h=hashlib.sha256();parts=[];retain=name.endswith(('.py','.ps1','.json','.cs'))and self.pins[name]['generation'][6]<=2097152
+    while True:
+     part=os.read(fd,65536)
+     if not part:break
+     h.update(part)
+     if retain:parts.append(part)
+    if h.hexdigest()!=self.pins[name]['sha256']:raise ValueError('public-source-hash')
+    if retain:self.bytes[name]=b''.join(parts)
+   self.close_generation()
+  except BaseException:self.close();raise
+ def close_generation(self):
+  for name,fd in self.fds.items():
+   if generation(os.fstat(fd))!=self.pins[name]['generation']or generation(Path(name).lstat())!=self.pins[name]['generation']:raise ValueError('public-source-closing')
+  for name,(fd,pin)in self.parents.items():
+   if generation(os.fstat(fd))[:5]!=pin or generation(Path(name).lstat())[:5]!=pin:raise ValueError('public-parent-closing')
+  for name,fd in self.fds.items():
+   if generation(os.fstat(fd))!=self.pins[name]['generation']or generation(Path(name).lstat())!=self.pins[name]['generation']:raise ValueError('public-terminal-source-closing')
+ def verify(self):
+  # Participating FDs stay open. No later named code is adopted.
+  for name,fd in self.fds.items():
+   os.lseek(fd,0,os.SEEK_SET);h=hashlib.sha256()
+   while True:
+    part=os.read(fd,65536)
+    if not part:break
+    h.update(part)
+   if h.hexdigest()!=self.pins[name]['sha256']:raise ValueError('public-source-drift')
+  self.close_generation()
+ def body(self,path):
+  if str(path)not in self.bytes:raise ValueError('public-retained-body')
+  return self.bytes[str(path)]
+ def namespace(self,path,name):
+  self.close_generation()
+  if name in sys.modules:raise ValueError('public-module-name-used')
+  module=ModuleType(name);module.__file__=str(path);self.modules[name]=module;sys.modules[name]=module
+  try:
+   exec(compile(self.body(path),str(path),'exec'),module.__dict__);self.close_generation();return module.__dict__
+  except BaseException:
+   if sys.modules.get(name)is module:sys.modules.pop(name)
+   self.modules.pop(name,None);raise
+ def close(self):
+  if hasattr(self,'finder')and self.finder in sys.meta_path:sys.meta_path.remove(self.finder)
+  for fd in self.fds.values():os.close(fd)
+  for fd,_ in self.parents.values():os.close(fd)
+  self.fds={};self.parents={}
+  for name,module in self.modules.items():
+   if sys.modules.get(name)is module:sys.modules.pop(name)
+  self.modules={}

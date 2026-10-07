@@ -33,7 +33,374 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-07,08:06 Moscow
+## Current acceptance status — 2026-10-07,16:36 Moscow
+
+Delivered HEAD remains `c32025cd2a7ce57b1e08e83dbe791a81558e5c03`,
+product2.2.3. The full plan remains incomplete; the last queried native matrix
+was0passed/2historical/20open. Current dirty changes invalidate the delivered
+prepush receipt. Final native/visual acceptance, delivery and the single final
+exact-SHA five-workflow gate remain required. No release is authorized.
+
+| Slice | Exclusive owner | Current evidence | Next gate |
+| --- | --- | --- | --- |
+| Windows CP117 and Arch route | windows_operator | Original-server observation4122/QGA5424 completed OBSERVED, receipt6d78507f: task Running, ordinary process8812/birth134358447922672836, ready hash944c58b2/link1, authenticated port58852 and exactly one matching listener. Canonical custody helper is actually enrolled by this caller. | Corrected CONNECT packet5634/peera4ed native17906/17996/QGA7796 OBSERVED receipt585c: validated HTTP200 and deep exact D32 update manifest. Carry authenticated ready-derived port through downstream public update/install, then failure/recovery/cleanup and MCP equivalents; no new server start is needed. |
+| Android API35 | android_mount_owner | Readonly query2006/SSH2031 returned0 with both EOFs. Full raw retained in bounded chunks. Offline strict projection closed source/raw custody: material stable, both censuses complete, exact1f501 directory absent in both passes, matching actors/descendants/unresolved counts0. | Chunk publication successor b931/peer4146 passed21 controls; local-only57551 ended0 with25chunks/full reconstruction and56newfiles closed. Prepare distinct new-copy caller with retained census prerequisite plus fresh genuine immediate admission; original copya7b8 remains UNKNOWN and is not replayed. |
+| Transport | windows_operator | c484 keeper93877 ended; same canonical5817 positively proved ENDED. Fresh6cd616bf ensure9958/status10045 admitted keeper10061/session98410; it ended at duration. Same canonical24579 positively ENDED16:19:22, complete485/0bytes/source136 closed. No new route; tuples2b1444ff and2a57b74e consumed. | Observe original keeper; future phase needs complete source/peer and fresh remaining budget. No duplicate submission or new route based on timeout. |
+| Linux prerequisite | linux_source_preparation source; windows_operator native | Source60bb discovery is retained; tool availability is not approval. | Genuine14-role JDK/runtime provenance and approval before paired build/CLI stage. |
+| Regression integration | root, with source-only peers | Close/custody32 routine tests passed; current native consumes canonical custody. Android high-FD selector and strict UUID36/compact32/receipt bridge now integrated in four exact reviewed canonical owner/test files; actual routine37 tests passed36 with1existingLinuxskip. | Integrate minimal causal regressions and retained-result publication fix; complete native flows before MCP integration/equivalent reruns. |
+| Delivery | root | Existing dirty source/test/changelog buckets preserved; no new product-source edits. | Finish complete supported native scenarios and visuals, final content checks/prepush, coherent dev delivery and exact-SHA CI. |
+
+Windows observation receipt:
+`6d78507fbd09b011d3dbcef97c1d21a4412848f84a743b67b3b3d5b97e292cc5`.
+The older77110 FILE_IDENTITY and subsequent98359 EBCA_READY_SCHEMA outcomes
+remain UNKNOWN. Actual producer binds loopback port0 and publishes the assigned
+port; requiring51447 was a concrete consumer mismatch. Ready-derived strict port
+validation passed actual producer/socket controls before successful observation.
+Original FILE_IDENTITY cause remains unproved. HTTPS packet is source-only:
+body65000<=65536, public stdin3437<=32768; original inline66640 cap refusal is
+preserved. No caps, TLS name checks or certificate pins are weakened.
+
+Android query5fff6359-61dd-4a97-98f5-fda100d04441 retained localstdout17,171,601B
+in33chunks and decoded remote stdout12,878,210B in25chunks; remote result0,
+failureNone. The outer UNKNOWN came from local single-object publication hitting
+the unchanged1MiB AuthorityCapture limit. Existing strict offline projection
+succeeded, evidence24aa7cf1/summaryad96328f; no new native query was needed.
+Earlier querycab16a89 retained a concrete ValueError from select() on a pipe FD
+above FD_SETSIZE. Reviewed selector successor e5b53192 passed20 local controls
+and subsequently collected the native result. Neither cause is assigned to older
+unknown copya7b8. The readonly census raw contains process observations, not a
+new routing export. Original backup90092 and all original histories are preserved.
+
+Latest Windows HTTPS attempt: original10077 and collector10136 ended;
+QGA2288 positively exited0, complete852B output SHA
+`576bf94bae51cab44a20cbece195e72f731323c558f66dfd803ffa34c2ad726f`.
+Authenticated typed BLOCKED contains IOException/HTTPS_TLS_BOUND, the5s TLS
+authentication wait. The strict consumer refuses this new code rather than
+promoting it to success. Actual producer serve_connection requires plaintext
+CONNECT github.com:443 and returns200 Connection Established before wrapping
+TLS; the current probe starts TLS immediately. This source mismatch is consistent
+with the observation, but original server-side causal evidence is not established.
+Preserve tuple2b1444ff/1e837dd and all original unknown histories. Add closed failure
+projection and actual producer/client causal regression before correction.
+
+Android chunk-publication whole review41460568 covers21 controls and unchanged
+source closure. Local-only retained-data publication is authorized, not another
+query. Existing copy code admits a distinct fresh leaf through mkdir/O_EXCL and
+new identity; it does not require recreating the original terminal. The next
+caller must bind retained complete current census/source/material observations,
+preserve historical authority flags false, and pass fresh immediate genuine
+owner/revision/OFF/deviceboot/resources/source/route/budget guards. No actual new
+copy or install has been authorized. Routine candidate0d2b32b9/peerb5d passed8 focused causal tests. Root found
+its historical RED test needs an actual frozen-literal collector after merging
+into the fixed canonical module; a merged-suite successor is being prepared.
+No tracked Android integration yet.
+
+Local Android publication57551 completed0; decoded raw reconstruction matches
+`7e7eb985662294843f142c3fd2757016c708652d285dd6c8e53744ae7983dbf4`.
+Archive manifest91bf309e, unchanged strict summaryad96328f, closing17ac7d6c;
+25chunks/12,878,210B and56newprivatefiles closed with originals. No native
+collector/Popen/query/export was run. Original invocations remain UNKNOWN.
+CONNECT causal componentddad7f5c reproduces the actual producer/old-client
+TLS_BOUND at5023ms, then corrected CONNECT/TLS/manifest at48ms and non200 refusal.
+The15s timer and strict production policies remain. These are local synthetic-cert
+controls, not Windows native success; updated whole caller/review/rerun are pending.
+
+Windows corrected CONNECT observation17906/session4821 and collector17996
+completed OBSERVED. QGA7796 exited0, full2350B output SHA
+`c72b08e1fb547ab7a6b47df058485cf73d66c8e4717b1b7778cf00ca42af42bd`.
+Thirty events/68captures closed. Receipt
+`585c8531da4d9698055848cde7d2c584ce602e4d84cf8f17e21f276f01ece044`;
+public finite closeoutbd1ae6ee independently hashed by root. HTTPS validated200,
+ready and HTTPS manifests exactly match the engineering D32 target2.2.2 manifest.
+Current server8812/birth/ready944c/port58852/ordinarytoken/task/singlelistener
+checks and genuine990+51/outer136 closing passed. This proves scoped native
+HTTPS evidence only; update/install/fullacceptance flags remain false. Preserve
+original direct-TLS timeout; no old receipt is relabeled. Downstream port/phase
+source audit precedes new effects. Full update needs960s; do not dispatch it on
+an insufficient remaining keeper budget.
+
+Final portable Android successor3a4b/peer5425 preserves all priorcases and genuine
+historical RED after canonical fix. Root caught the9b473 unconditional POSIX
+resource import before integration; optional-resource/POSIX capability guards and
+actual absent-module import/discovery controls now pass. Root integrated the exact
+four reviewed owner/test files after both native operators confirmed quiescence
+and Windows inventory exclusions. Canonical37tests passed36 with1existingLinux
+privilege skip in8.887s. Production collection hash8b461c2c/staginge388df92;
+tests04df5d94/bfeca9f5. Changelog now4/10Unreleased, version2.2.3 unchanged.
+Prior Android operational freezes are historical for these two production paths;
+next distinct-copy source/905/CodeType derivation must explicitly refresh and pass
+whole source/causal review before any effect. No new copy/install has started.
+
+Canonical Android result-publication helper5abb2dfa and routine test752151fb
+plus publicff179/41a4fixtures/provenance978e2cde are integrated after quiescence.
+Delivery freeze7823e2df was independently cleared by peers38ac1977/42c32b36;
+actual tracked9tests PASS0skip. Helper uses unchanged512KiB archive/caps, exact
+original create pins/fullknownbytes snapshots and joined source/result final
+closing. The complete new-copy caller must explicitly consume the helper and
+hold its source through final publication; effect/native-equivalence gates remain
+open. No new copy, BASE publication or installation has occurred.
+
+Fresh readonly host observations16:29 Moscow: physical24GiB, normal pressure1,
+headroom5,853,134,848B, workspace free1,934,503,936B; named disposable Tart guest
+vpn-control-boot-control53 is stopped,4GiB/2CPU/60GBdisk. These do not admit a VM
+start or installer. Ordinary build directories total about6GiB, runtime about59GB;
+source-only reference/cleanup audit is pending, with historical/private evidence
+and registered artifacts preserved. macOS next direct denial caller/source/artifact
+and fresh native owner/resource gates remain missing. No Mac guest was started.
+
+Windows6cd616 same canonical24579 positively ENDED16:19:22, full485/0bytes
+SHAee388f14/source136 closing. No new route is active. Fullflow source drafts
+regenerate task/action/gzip and carry currentEBCA/TLS43218; preflight must measure
+actual readyId/serverInstanceId into the later strict cleanup binding, never guess
+historical IDs. Exact source/causal whole review is still pending; no oldphase replay.
+Root is preparing the fresh complete prepush tier for the19-path tooling checkpoint;
+no further tracked edits during validation. Exact-SHA CI remains deferred to final.
+
+WIP is excluded from the active Windows operational inventories and Android
+public readiness manifest. Root owns this ledger; native owners retain all
+private inputs/captures and cleanup ownership. Historical details below are
+superseded for current status, and conserved as evidence.
+
+## Historical acceptance status — 2026-10-07,14:33 Moscow
+
+Clean delivered checkpoint `c32025cd2a7ce57b1e08e83dbe791a81558e5c03`
+matches `origin/dev`; product metadata is2.2.3. Its final prepush passed all15
+tiers. The five-workflow exact-SHA CI gate remains deferred to final delivery.
+The current matrix has0passed,2historical and20open groups. No release is authorized.
+
+| Slice | Exclusive owner and environment | Verified progress | Next acceptance gate |
+| --- | --- | --- | --- |
+| Windows | windows_operator; Arch transport and CP117 | Native TLS911f original54853/54911/QGA7896 OBSERVED, receiptf8d7d6d: ordinary validation task result0, notAdministrator true, fresh24h certificate. Fresh server407b passed independent source review; original77110/QGA6384 ended UNKNOWN with retained terminal guest output and collector evidence. | Diagnose retained FILE_IDENTITY at original-fixture-readonly and non-JSON output prefix with causal controls before a new admitted phase; update/installer acceptance remains pending. |
+| Android | android_mount_owner; API35 | Reviewed diagnostic72f and upfront-stdin correction admitted parent85e408/SSH62091. Copya7b8/SSH63063 ended UNKNOWN with no exit/chunk/remote terminal evidence. Collection-retention components9630/72fa passed13 independent controls. | Integrate complete read-only reconciliation of originalstage1f501 before any further copy decision. No replay, BASE publication or installation authorized by component review. |
+| Android sourceRoot | android_bundle_worker; new ignored source-root-adapter only | Explicit ancestral sourceRoot primitive reviewed for paired builder. | Prove its actual installer integration without changing default current-source admission. |
+| Linux build prerequisite | linux_source_preparation source; windows_operator native Arch | Builder successor e2f9 independently cleared10 controls; original62187/371ca2f4 discovery OBSERVED with UID1000/boot before and after. Seven PATH roles and five JDK-derived roles available; jpackage missing from PATH, runtime locator unknown. | Genuine14-role JDK/runtime provenance and approval, then resource-admitted source60bb paired build and CLI stage. Availability is not approval. |
+| SSH close compatibility | acceptance_review author; stage_review peer; root integration | Two tracked tool/test paths repair the approved transport pin; actual constructor RED then26 tests PASS and peer ece9 CLEAR. | Current run preserves outer master; wait for natural nested keeper expiry and verify ENDED. Native close equivalence remains pending. |
+| Independent review | acceptance_review, stage_review, android_bundle_worker; public source/synthetic inputs only | Discovery builder, TLS projection and Android prospective diagnostic/retention components reviewed. HTTPS slow-trickle control reproduced24.2s then stopped at15.0s with the proposed deadline. | Review complete server and original-copy reconciliation callers; component controls do not establish native acceptance. |
+| Delivery and ledger | root; tracked integration, metadata and Git | Two coherent checkpoints delivered since October1; no product-source edits since then. | Integrate proven flows, final native/visual evidence, prepush and exact-SHA CI. |
+
+Latest native continuation: fresh51f97/c74b was admitted through ensure76743,
+gate76819, status76820 and gate76839. Original keeper76840/session88527
+started at1791371114.142773 with1800s budget; query0019 observed READY,
+remaining1506.56s. Later query0109 at14:32:30 was READY with163.767s
+conservative remaining, insufficient for a new400s readonly phase. Keep the
+original handle until natural termination, then verify the same canonical state;
+no new ensure while source packets remain unfinished. These are observations,
+not durable permission for later effects.
+The single reviewed server407b/aef0 call77110/session79411 ended UNKNOWN,
+receipt1410191a2fc6968ad62251f24f4cd239877b60ab55e8b82cf479b48a8dbd067c.
+QGA6384 positively ended exit0; collector retained92 files and both EOFs.
+Guest output823B had a non-JSON prefix followed by blocked stage-failure,
+original-fixture-readonly, IOException and FILE_IDENTITY. Mapping the authenticated body places FILE_IDENTITY at ready-file Read line337
+(runtime338), after Register/Start and Test-Path readiness; the broad retained
+stage label does not imply a staging failure. The guard currently conflates failed
+GetFileInformationByHandle with Links!=1; original cause remains unproved.
+Later exact retained parser replay authenticates the CP117-READ frame and
+reproduces fresh-server-schema on its typed BLOCKED payload. The original carrier
+already framed the acknowledgment correctly; the whole-JSON RED control is a
+counterexample, not proof of an original framing defect. A closed typed-failure
+consumer is needed; no prefix stripping is warranted. No failure proves absence
+of task/server effects; no replay or cleanup is authorized. Exact original server
+disposition must precede another start.
+Independent source peer4ac014b2 closed77 pins and passed5 controls for407b,
+including actual argv-time drift refusing before the collector. Historical576
+HOLD/causal RED is preserved. Routine gap reportad6ac83f identifies three
+pending regression integrations; isolated source-custody candidate2ad39e10
+passed6 controls in isolation; the exact reviewed helper/test and four public fixtures are now new tracked files, with6 routine-module tests PASS. Existing admitted source bodies remain unchanged; future server callers must explicitly enroll/import the canonical helper.
+Android whole original-copy reconciliation7a62 is frozen with147 public pairs
+and peer d14b474c CLEAR after22 tests; original private records closed11 artifacts
+while six completion records remain absent, preserving a7b8 UNKNOWN; no new
+copy or installation was submitted. The authorized reconciliation invocation85021
+ended terminal1 LOCAL_REFUSAL before capture initialization with no published
+query handle; its generic catcher suppressed the original cause. A contained
+pre-capture diagnostic repair and local-only hard-fenced constructor diagnosis
+are authorized; no new guest query is authorized by this failure. Windows typed
+BLOCKED consumer453a is under source review; original server disposition remains
+pending. The routine close/custody combined check passed32 tests in1.844s,
+0skips. Root WIP edits are explicitly excluded
+from all active990/77/136 operational inventories by the native owner.
+
+Previous transport: fresh62f keeper54638/session66497 terminated with UNKNOWN,
+not a proved duration expiry. The single same-canonical status69590 then
+positively proved ENDED, with136-source closure and complete485/0-byte output.
+Its stdout SHA is
+`9b761775930ec0d95570c3d49678f5256964ec39eaaa004509ec42ccf9a301f8`.
+No new ensure occurred at this handoff. Preserve the keeper's original UNKNOWN
+and all copy effect uncertainty; positive later absence does not identify their
+historical causes.
+
+Earlier transport: original keeper41071/session67033 ended naturally at its
+duration limit after118 queries; its last observation was READY. The single
+same-canonical0033 status53358 subsequently proved ENDED with complete485/0-byte
+stdout/stderr and source closure. Its stdout SHA is
+`8d2f1408f74149d63d1ede6358f68952f4e5649105e178de089dec323157de2d`.
+No fresh ensure or native credential/discovery dispatch had occurred at this
+handoff. Do not infer termination from a deadline or start a route just to wait
+for source preparation.
+
+TLS source freeze911f and peerbdf121c0 cover safe source controls only. The earlier
+98409 executor leaked an arbitrary exception.localObservation sentinel; the
+successor projects strict finite facts and exercises genuine AuthorityCapture
+two-field receipts and the actual admission consumer with synthetic guest facts.
+The emitted parent preserves three C# heredocs; earlier four-helper wording was
+incorrect. Source-only reviewers did not read the protected historical captures
+opened by the operator-only whole-context check. Native credentials, API/role,
+certificate lifetime and complete context still require operator validation.
+
+Android's original41513 parent completed with genuine905 admission and retained
+private raw closure; copy preparation then returned SshConfigError with no code.
+The sourceRoot helper did not change coordinator root or cwd. The old catcher
+did not retain the exception frame/context, so the original cause remains UNKNOWN.
+Successor9013 retains full exceptions privately and publishes only finite
+allowlisted diagnostic facts. It authorizes no query until independently cleared
+and fresh native guards pass. Preserve the earlier consumed copy9e419 identity.
+
+Successor72f contained private-retention failure and passed independent10
+controls. Local57218/6bbc then ended before transport construction because its
+plain-pipe invocation supplied no stdin; authenticated original exception was
+JSONDecodeError at the driver's input line. Two actual-pipe controls verified
+the corrected upfront finite JSON delivery. New parent85e408 subsequently
+completed, but copya7b8 had a different collection failure: handle/intent/programme
+survive, exit/manifests/raw chunks and remote terminal do not. Its local -9 is
+not proof of a350-second cutoff or remote worker absence. Prospective runtime
+retention components preserve OSError/finally-drain/exit-publication failures;
+they cannot reconstruct the original missing context or permit replay.
+
+Original keeper29566 stopped UNKNOWN on `master_closing/fd_changed`; same d02
+status39929 subsequently proved ENDED. New ensure40191 returned READY, but its
+more-than180-second observation/handoff gap exceeded the60-second idle lifetime;
+same status41636 proved ENDED before keeper or census dispatch. This is a measured
+orchestration delay, not evidence of failed authentication. The next authorized
+attempt sequences the existing ensure, typed CLI gates, status and keeper locally,
+without retrying any consumed native phase. This sequence subsequently admitted
+keeper42570 within1.125seconds of ensure completion. Census16c82/42952 completed
+OBSERVED with receipt00f75e75: exact disposable account and public task absent,
+fixture task state3/Ready and saved ready file present. No action was performed
+and no historical cause was established. Original lifecycle observation47912
+then completed OBSERVED with receiptb6390e5f: PID7640 absent, zero port51447
+listeners, task Ready/state3, lastResult267014 and old ready file conserved.
+HTTPS was not probed without a live matching listener. A new ordinary server
+instance requires a distinct task/ready namespace; preserve the old one.
+
+Immediate sequencing also has2local causal controls: the original180-second
+handoff exceeds the simulated60-second idle boundary and blocks keeper start;
+zero-gap ordering succeeds, and a failed ensure gate blocks dependent calls.
+These ignored controls still need routine integration with the proven flow.
+
+Source-only audit968ec54c rejects d32-to60bb Linux CLI reuse under existing
+policy despite unchanged product source/version:176changed build/fixture/tool
+paths are outside eligibility, and the initializer requires exact60bb stage and
+RPM artifact source. Continue the source60bb build; do not relabel old artifacts.
+
+Composition e5dd is not native-ready: reviewd8f9 reproduces a late admitted
+runtime mutation after engineering leaves close but before composed parents
+close. Join those populations through the existing guard. No actual approved
+local14Linux-tool image set exists; the prototype's local image constructor and
+RPM subprocess cannot be used on Mac as native authority. Keep source admission
+local and tool/RPM inspection on authenticated Arch, with independent native
+JDK/runtime approval before build admission. Preserve prior synthetic results
+without converting them into native tool facts. Successor b765/ca6c removes
+the local Linux image requirement and refuses local RPM execution. Its13local
+controls and independent reviewbd01 pass; fixed remote observations remain
+unapproved and effects refuse without a separately reviewed native approval.
+
+Fresh server packet4e551/test-successor review5456 admitted original66110
+at10:39:16 under6a00/ef90 keeper with104.63seconds remaining. Actual guest
+QGA7576 was submitted;80retained status polls still said exited=false before
+the enclosing collector ended UNKNOWN. Preserve consumedc861 and new78d796
+task/state namespace, original172files and old server evidence. Same-original
+QGA7576 status/terminal collection is authorized; no replay or restart. Fixture
+HTTPS and full public update are still unproved. The ended keeper requires
+same-canonical status before any genuinely new connection admission.
+
+Same-original terminal collection subsequently observed QGA7576 exited=true,
+exitcode0, stdout823bytes, stderr0, not truncated. Finite closeouta9260a7e
+preserves blocked NEW_SERVER_READY_UNKNOWN and the original consumer's schema
+UNKNOWN separately. Two earlier status-glue attempts stopped before any capture
+or SSH because caller mkdir was omitted before AuthorityCapture; the real-class
+ordering fix enabled terminal collection; its causal-control evidence still needs
+routine integration. New routec5c72b32,
+receipt08d58308 and keeper69306 support observation only under fresh guards.
+
+The fresh78d programme changes STATE while leaving STAGE at old content, violating
+the serve gate requiring directory.parent/server-state/ready.json. Existing
+WindowsServerSiblingStateRecipeTests actual split-parent RED/fresh-sibling GREEN
+passes. This source incompatibility is not yet native cause proof: only exact
+original task/state/failure-file readback may establish that. Preserve old and78d
+namespaces; no restart, cleanup, or full update has been performed.
+
+Exact new readonly observation82001 subsequently found the78d task Ready,
+lastResult1, no ready file and zero listeners. Its sealed failure file has
+SHAdadf32514d2948c90ac26e3e5ebfe596a3f007ae8561e1b18056c51624a38df9;
+finite fields serve/ValueError did not establish cause. Original new exact-file
+observation89285/QGA5024 then terminated exit0 with that exact file privately
+retained. The strict private projector reports certificate-expired; the host
+final admission remains UNKNOWN and needs retained-output reconciliation without
+replay. This recorded certificate failure precedes the separately proven sibling
+recipe defect. No app update or child absence is inferred. Route2062/keeper88786
+was freshly admitted after same-c5 status positively proved ENDED.
+
+Android copy operator0f567 was held by independent review4ddaa: overwriting its
+retained copy-result.raw during closing publication still returned complete.
+Actual causal RED is preserved. Successor41a581 holds the exact newly published
+raw and closing receipts through the joined final guard. Independent review6a042
+passed8collector and2whole-operation controls; all173public inputs closed.
+One new exact original90092-to-UID1000 compatibility copy is authorized only
+after fresh source/device/owner OFF/private custody/resource/route admission.
+No repeat export, lease or installation is authorized by that copy decision.
+These are source/local controls, not a completed native copy or update receipt.
+
+Original89285 projection successor bb696 was independently cleared by123793
+using the real AuthorityCapture consumer; its original UNKNOWN is conserved.
+Exact-PID packet5eec was held on unproved PowerShell integer representation.
+Successor52c4 accepts only exact non-Boolean Int32/Int64 within the positive PID
+range and requires2524 before the fixed query. Actual portable PowerShell old
+Int64 RED/new GREEN and strict negatives passed; peer0e9b cleared source/local.
+Original97104/session82138 then completed OBSERVED with receiptb699697b:
+current PID2524 absent, originalBirthProven=false and all action flags false.
+This is current exact-PID absence, not historical birth identity or update success.
+
+The existing owned-master close tool refused its newer transport source because
+its fixed pin still named91943. The approved successor changes only that literal
+toadbf; test fixtures no longer override production source pins. Actual current
+constructor RED became26PASS; foreign transport bytes refuse before intent or
+child. Peer ece9 verified unchanged outer-gateway launch/exit argv and all source
+closure. Author manifest1d39489d records14inputs/12parents. Only the close module
+and its test are changed; transport/provider/session bodies are unchanged. This
+small agent-tool bucket and the root-owned ledger are intentional dirty work.
+The initial conditional native close authorization was withdrawn before any
+close dispatch: this API targets outer session146bf, while2062/d213 is nested.
+Closing outer146 would also require retirement/new preparation and new outer
+provenance. Preserve it for this run; observe natural nested expiry and the same
+canonical status before fresh admission. Native close equivalence is pending.
+Android original92969/session74503 remains locally held ready, unused00daf502,
+with no SSH/copy effect; new admission must have at least1250seconds remaining.
+
+Original2062 canonical status2373 positively proved ENDED at11:54:07. One
+immediate fresh sequence3283/3427/3432/3517/keeper3521 admitted c594/4c7e and
+handed finite facts directly to held Android92969. No outer close was sent.
+Same92969 then submitted fresh native parent00daf/SSH4649: genuine905 admission
+completed0 with owner00029/rev0 and fresh guards. New copy9e419/stage7fa982 was
+prepared but refused opening_copy_once_changed before any copy Popen/SSH.
+Preserve its sticky marker; no retry, routing export, lease or installation.
+
+Actual AuthorityCapture.create returns only sha256/generation; the synthetic
+fixture had returned a full path/parents/generation/hash snapshot. Equality of
+those whole DTOs caused the refusal. The same mismatch affects once creation
+and raw/closing publication. Source audit575563 confirms the minimum strict
+receipt comparison while independent full FD/snapshot/parent population guards
+remain mandatory. Operator owns the ignored successor and real-class causal
+regression; bundle worker owns independent source/synthetic review. Original
+parent evidence is genuine, while copy remains unsubmitted. The inherited1250
+copy budget is unchanged pending an explicitly reviewed operation-specific
+proposal; no source test or timeout assumption is promoted to native proof.
+
+Routing backup90092 completed with dual EOF and semantic equality before the
+keeper failure. Preserve those original bytes and receipts; do not repeat the
+exports without a measured owner/revision/boot/routing change. Android baseline
+and upload remain unsubmitted. Windows full update, all remaining platform
+scenarios and four-platform visual acceptance remain incomplete.
+
+## Historical acceptance snapshot — 2026-10-07,08:06 Moscow
 
 Checkpoint60bb1a26405e818a52bc597700b28a205a65ea71 is pushed todev and matches
 origin/dev. The connection repair's tenth changelog bullet rolls local metadata

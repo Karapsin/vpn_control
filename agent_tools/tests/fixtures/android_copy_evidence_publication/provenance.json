@@ -1,0 +1,21 @@
+{
+  "origins": [
+    {
+      "source": ".runtime/android-next-asset-transfer-proposal/baseline-replacement/modern-ingress/collection-exception-successor/copy-runtime-exception.source",
+      "fixture": "contained-copy.source",
+      "sha256": "ff179a63057d829830a5d3129ccdd9fba2d5eb3db375a3658e90c4109a8657e7",
+      "scope": "public source only; no generated native programme or actual capture"
+    },
+    {
+      "source": ".runtime/android-next-asset-transfer-proposal/baseline-replacement/modern-ingress/builder-exception-successor/diagnostic.py",
+      "fixture": "exception-diagnostic.source",
+      "sha256": "41a4f4df1eccdafed1fde20736614fc6698897b18daa77dbcd072a8d6830bc8c",
+      "scope": "public source only; no generated native programme or actual capture"
+    }
+  ],
+  "reviewManifest": ".runtime/android-next-asset-transfer-proposal/baseline-replacement/modern-ingress/chunk-publication-successor/freeze-dc323efa-2b99-422d-980b-470965c7eb7c/manifest.json",
+  "reviewManifestSha256": "b931e4641c4d00107619b646abff3c75eb3e41429dc46893a4b0fb231fa8c419",
+  "canonicalFixtureDirectory": "agent_tools/tests/fixtures/android_copy_evidence_publication",
+  "actualNativePayloadIncluded": false,
+  "syntheticSeams": "Only declared prepared protocol/device DTOs. Own child/FDs/capture/parser and original source are real; no private inputs."
+}

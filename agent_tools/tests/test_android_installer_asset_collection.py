@@ -180,4 +180,80 @@ class IntentBoundary(unittest.TestCase):
   self.assertTrue((case.leaf/'handle.json').is_file());self.assertTrue((case.leaf/'stdout-manifest.json').is_file())
   self.assertFalse((case.leaf/'asset-custody-projection.json').exists())
 
+
+
+
+# Routine readiness regressions: immutable original collector control reconstructed
+# from its authenticated source, independent of current production collector().
+import ast,base64,hashlib,math,select,stat,time
+try:
+ import resource
+except ImportError:
+ resource=None
+def historical_collector():
+    if hashlib.sha256(operator.COLLECTOR_SOURCE.encode()).hexdigest()!=operator.COLLECTOR_SOURCE_SHA256:
+        raise ValueError('asset_operator_collector_source_changed')
+    tree=ast.parse(operator.COLLECTOR_SOURCE)
+    namespace=dict(ast=ast,base64=base64,hashlib=hashlib,json=json,math=math,os=os,select=select,stat=stat,subprocess=subprocess,time=time,Path=Path)
+    exec(compile(tree,'<authenticated-historical-asset-collector>','exec',dont_inherit=True),namespace)
+    namespace['_original_collect_source']=ast.get_source_segment(operator.COLLECTOR_SOURCE,next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='collect'))
+    return namespace
+
+class Readiness(unittest.TestCase):
+ def high(self):
+  if os.name!='posix' or resource is None or not hasattr(os,'O_NOFOLLOW') or not os.path.exists(os.devnull):
+   self.skipTest('POSIX high-FD resource/descriptor capability unavailable')
+  if resource.getrlimit(resource.RLIMIT_NOFILE)[0]<1200:self.skipTest('owned FD>=1100 capability unavailable')
+  fds=[]
+  try:
+   while not fds or fds[-1]<1100:fds.append(os.open(os.devnull,os.O_RDONLY))
+  except BaseException:
+   for fd in fds:os.close(fd)
+   raise
+  self.addCleanup(lambda:[os.close(fd)for fd in reversed(fds)])
+ def case(self):
+  c=OperatorLocal();c.setUp();self.addCleanup(c.doCleanups);return c
+ def test_historical_actual_high_fd_collector_red(self):
+  self.high();c=self.case()
+  children=[];original=subprocess.Popen
+  def popen(*args,**kwargs):
+   child=original(*args,**kwargs);children.append(child);return child
+  try:
+   with mock.patch.object(operator,'collector',historical_collector),mock.patch.object(subprocess,'Popen',popen),self.assertRaisesRegex(ValueError,'filedescriptor out of range in select'):c.execute()
+  finally:
+   for child in children:
+    for stream in [child.stdin,child.stdout,child.stderr]:
+     if stream is not None:stream.close()
+  self.assertTrue((c.leaf/'handle.json').is_file());self.assertFalse((c.leaf/'exit.json').exists())
+ def test_fixed_actual_high_fd_receiver_dual_eof_and_once(self):
+  self.high();c=self.case()
+  value=c.execute();self.assertEqual(value['state'],'complete')
+  self.assertEqual(operator.assets.decode((c.leaf/'exit.json').read_bytes()),{'failure':None,'returncode':0})
+  self.assertEqual(operator.assets.decode((c.leaf/'stderr-manifest.json').read_bytes())['bytes'],0)
+  with mock.patch.object(subprocess,'Popen',side_effect=AssertionError('once must forbid child')):
+   with self.assertRaisesRegex(ValueError,'asset_operator_collection_consumed'):c.execute()
+ def test_high_fd_stderr_nonzero_retained_before_refusal(self):
+  self.high();c=self.case()
+  body="import sys;sys.stdin.buffer.read();sys.stdout.write('PUBLIC_OUT');sys.stderr.write('PUBLIC_ERR');sys.exit(7)"
+  with self.assertRaisesRegex(ValueError,'baseline_transport_unknown_raw_retained'):c.execute(body)
+  for name in ['stdout','stderr']:self.assertEqual(operator.assets.decode((c.leaf/(name+'-manifest.json')).read_bytes())['bytes'],10)
+  self.assertEqual(operator.assets.decode((c.leaf/'exit.json').read_bytes())['returncode'],7)
+ def test_selector_closes_on_invalid_and_success(self):
+  self.high();r,w=os.pipe();self.addCleanup(os.close,r);self.addCleanup(os.close,w);os.write(w,b'X');instances=[];original=operator.selectors.DefaultSelector
+  def factory():
+   x=original();instances.append(x);return x
+  with mock.patch.object(operator.selectors,'DefaultSelector',factory):
+   self.assertEqual(operator._select_ready([r],[w],[],0),([r],[w],[]))
+   bad=os.open(os.devnull,os.O_RDONLY);os.close(bad)
+   with self.assertRaises(OSError):operator._select_ready([bad],[],[],0)
+  self.assertTrue(all(x.get_map()is None for x in instances))
+  with self.assertRaisesRegex(ValueError,'exceptional_not_supported'):operator._select_ready([],[],[r],0)
+ def test_only_readiness_callees_change_budgets_and_caps_exact(self):
+  base=operator.collector();old=historical_collector()
+  self.assertEqual(operator.assets.sha(operator.COLLECTOR_SOURCE.encode()),operator.COLLECTOR_SOURCE_SHA256)
+  self.assertEqual(base['_historical_collect_source'],old['_original_collect_source'])
+  self.assertEqual(base['_original_collect_source'].replace('_select_ready(','select.select('),old['_original_collect_source'])
+  self.assertIn('time.monotonic()+1250',base['_original_collect_source'])
+  for name in ['REMOTE','ROOT_BOOT','STREAM_LIMIT','CHUNK']:self.assertEqual(base[name],old[name])
+
 if __name__=='__main__':unittest.main(verbosity=2)
