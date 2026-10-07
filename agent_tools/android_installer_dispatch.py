@@ -18,7 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 from agent_tools import (android_admission_readback, android_cli_stage, android_installer_target,
-                         android_observation, android_public_inspect, native_artifact_registry,
+                         android_observation, android_public_inspect, android_installer_tool_bundle, native_artifact_registry,
                          ssh_transfer, ssh_transport)
 
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\Z")
@@ -390,8 +390,35 @@ def safe_structure():
      set(os.listdir(job/'bundle'/'agent_tools'))!={'android_installer_target.py'} or
      set(os.listdir(job/'bundle'/'scripts'))!={'android_installer_lifecycle.py','android_no_update_tls_preflight.py','android_fixture_preflight.py','android_fixture_transport.py','android_fixture_trust.py','integration'} or
      set(os.listdir(job/'bundle'/'scripts'/'integration'))!={'android_update_fixture.py'}): unknown('bundle_inventory_changed')
+tool_stream_pins={}
+def tool_file_pin(path):
+ info=path.lstat()
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1:unknown('tool_bundle_generation_changed')
+ return [info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns,stat.S_IMODE(info.st_mode),info.st_uid,info.st_nlink]
+def verify_tool_bundle():
+ bundle=expected.get('toolBundle')
+ if bundle is None:return
+ if not isinstance(bundle,dict) or set(bundle)!={'toolBundleId','reviewedTreeSha256','manifest'} or not isinstance(bundle['toolBundleId'],str) or not re.fullmatch(r'sha256-[0-9a-f]{64}',bundle['toolBundleId']):unknown('tool_bundle_invalid')
+ manifest=bundle['manifest']
+ names=['agent_tools/android_installer_target.py','scripts/android_installer_lifecycle.py','scripts/android_no_update_tls_preflight.py','scripts/android_fixture_preflight.py','scripts/android_fixture_transport.py','scripts/android_fixture_trust.py','scripts/integration/android_update_fixture.py']
+ if not isinstance(manifest,dict) or set(manifest)!={'schema','kind','files'} or type(manifest['schema']) is not int or manifest['schema']!=1 or manifest['kind']!='android-installer-reviewed-tools' or not isinstance(manifest['files'],list) or len(manifest['files'])!=7:unknown('tool_bundle_invalid')
+ canonical=(json.dumps(manifest,sort_keys=True,separators=(',',':'))+'\n').encode()
+ if hashlib.sha256(canonical).hexdigest()!=bundle['reviewedTreeSha256']:unknown('tool_bundle_invalid')
+ entries={entry['name']:entry for entry in expected['files']}
+ for name,item in zip(names,manifest['files']):
+  if not isinstance(item,dict) or set(item)!={'path','size','sha256'} or item['path']!=name or type(item['size']) is not int or not 0<=item['size']<=8388608 or not isinstance(item['sha256'],str) or not re.fullmatch(r'[0-9a-f]{64}',item['sha256']):unknown('tool_bundle_invalid')
+  if entries.get('bundle/'+name)!={'name':'bundle/'+name,'size':item['size'],'sha256':item['sha256']}:unknown('tool_bundle_manifest_changed')
+  path=job/'bundle'/name;pin=tool_file_pin(path)
+  if hashlib.sha256(private(path,max(1,item['size']))).hexdigest()!=item['sha256']:unknown('tool_bundle_manifest_changed')
+  if tool_file_pin(path)!=pin or tool_stream_pins and tool_stream_pins.get(name)!=pin:unknown('tool_bundle_generation_changed')
+ pins={name:tool_file_pin(job/'bundle'/name) for name in names}
+ marker=job/'tool-bundle-owned.json'
+ owned={'schema':1,'toolBundleId':bundle['toolBundleId'],'reviewedTreeSha256':bundle['reviewedTreeSha256'],'files':pins}
+ if action=='start' and not marker.exists():put(marker,json.dumps(owned,sort_keys=True,separators=(',',':')).encode()+b'\n')
+ elif json.loads(private(marker,8192))!=owned:unknown('tool_bundle_generation_changed')
 def verify_manifest():
  safe_structure()
+ verify_tool_bundle()
  for entry in expected['files']:
   path=job/entry['name']; meta=path.lstat()
   if not stat.S_ISREG(meta.st_mode) or meta.st_size!=entry['size'] or hashlib.sha256(private(path,max(1,entry['size']))).hexdigest()!=entry['sha256']: unknown('staged_bytes_changed')
@@ -444,6 +471,8 @@ if action=='start':
     output.write(block); digest.update(block); remaining-=len(block)
    output.flush(); os.fsync(output.fileno())
   if digest.hexdigest()!=entry['sha256']: unknown('stream_hash_changed')
+  if expected.get('toolBundle') is not None and entry['name'].startswith('bundle/'):
+   tool_stream_pins[entry['name'].removeprefix('bundle/')]=tool_file_pin(path)
  if sys.stdin.buffer.read(1): unknown('stream_extra_bytes')
  verify_manifest()
  intent=json.loads(private(job/'output'/'intent.json',8192))
@@ -455,6 +484,7 @@ if action=='start':
   '--handoff-ready-file',str(job/'output'/'handoff-ready'),'--governed-callbacks','--expected-terminal',expected['terminal'],
   '--base-apk',str(job/'base.apk'),'--base-sha256',intent['pair']['baseSha256'],'--base-version',intent['pair']['baseVersion'],'--base-code',str(intent['pair']['baseCode']),
   '--target-apk',str(job/'target.apk'),'--target-sha256',intent['pair']['targetSha256'],'--target-version',intent['pair']['targetVersion'],'--target-code',str(intent['pair']['targetCode'])]
+ verify_tool_bundle()
  put(job/'launch-intent.json',json.dumps({'correlationId':correlation,'argvSha256':hashlib.sha256(json.dumps(command,separators=(',',':')).encode()).hexdigest()},sort_keys=True,separators=(',',':')).encode()+b'\n')
  if not pathlib.Path('/proc').is_dir(): unknown('proc_unavailable')
  launcher='import os,pathlib,sys,time\nrelease=pathlib.Path(sys.argv[1]); argv=sys.argv[2:]\nwhile not release.exists(): time.sleep(.02)\nos.execvp(argv[0],argv)\n'
@@ -618,6 +648,10 @@ def _remote(root: Path, intent: dict[str, Any], action: str,
                       "callback-handoff-ready", "callback-continue",
                       "callback-status-handoff-ready", "callback-status-continue"}:
         raise ValueError("Android installer remote action is not fixed")
+    if intent.get('toolBundleId') is not None:
+        tools=android_installer_tool_bundle.load(root,intent['toolBundleId'])
+        if intent['remote'].get('toolBundle')!={key:tools[key] for key in ('toolBundleId','reviewedTreeSha256','manifest')}:
+            raise ValueError('Installer tool bundle binding changed')
     config = ssh_transport.load_config(root)
     host = intent["host"]
     if (host not in config.hosts or ssh_transport.connection_host(config, host).password is not None or
@@ -654,7 +688,7 @@ def start(root: Path | str, host: str, device: str, correlation_id: str,
           backup_correlation_id: str, inspect_correlation_id: str,
           expected_owner: str, expected_revision: int, expected_backup_sha256: str,
           expected_terminal: str, cli_stage_correlation_id: str,
-          ca_artifact_id: str, leaf_artifact_id: str, key_artifact_id: str) -> dict[str, Any]:
+          ca_artifact_id: str, leaf_artifact_id: str, key_artifact_id: str, *, tool_bundle_id: str | None = None) -> dict[str, Any]:
     """Journal, lease, stage exact bytes, then release one fixed detached runner."""
     root = Path(root).resolve()
     if any(not isinstance(value, str) or not _UUID.fullmatch(value) for value in
@@ -680,17 +714,20 @@ def start(root: Path | str, host: str, device: str, correlation_id: str,
     backup_path = opening.get("result", {}).get("backup", {}).get("path")
     if not isinstance(backup_path, str):
         raise ValueError("Android installer remote backup path is unavailable")
+    # Fixture tooling is independently reviewed; product/APK/CLI/TLS retain
+    # their original source SHA. Reject tooling/TLS before consuming an intent.
+    ca = _fixture_bytes(root, ca_artifact_id, "fixture-ca", source_sha)
+    leaf = _fixture_bytes(root, leaf_artifact_id, "fixture-leaf", source_sha)
+    key = _fixture_bytes(root, key_artifact_id, "fixture-private-key", source_sha)
+    tools = android_installer_tool_bundle.load(root, tool_bundle_id) if tool_bundle_id is not None else None
+    files: list[tuple[str, bytes | Path]] = [("bundle/" + name,
+        tools['files'][name] if tools is not None else _source_bytes(root, source_sha, name)) for name in _BUNDLE]
     android_installer_target.create_intent(root, output, correlation_id, pair, host=host, device=device,
         backup_correlation_id=backup_correlation_id, inspect_correlation_id=inspect_correlation_id,
         expected_avd=profile["expectedAvd"], expected_api=profile["api"],
         expected_owner=expected_owner, expected_revision=expected_revision,
         backup_path=backup_path, backup_sha256=expected_backup_sha256,
         expected_terminal=expected_terminal)
-    ca = _fixture_bytes(root, ca_artifact_id, "fixture-ca", source_sha)
-    leaf = _fixture_bytes(root, leaf_artifact_id, "fixture-leaf", source_sha)
-    key = _fixture_bytes(root, key_artifact_id, "fixture-private-key", source_sha)
-    files: list[tuple[str, bytes | Path]] = [("bundle/" + name, _source_bytes(root, source_sha, name))
-                                             for name in _BUNDLE]
     files += [("output/intent.json", output / "intent.json"), ("ca.pem", ca),
               ("leaf.pem", leaf), ("key.pem", key),
               ("base.apk", Path(pair["basePath"])), ("target.apk", Path(pair["targetPath"]))]
@@ -701,6 +738,8 @@ def start(root: Path | str, host: str, device: str, correlation_id: str,
               "devicePort": 45600 + profile["api"], "terminal": expected_terminal,
               "targetArtifactId": target_artifact_id, "owner": expected_owner,
               "revision": expected_revision}
+    if tools is not None:
+        remote['toolBundle'] = {key: tools[key] for key in ('toolBundleId','reviewedTreeSha256','manifest')}
     intent = {"schema": 1, "host": host, "device": device, "correlationId": correlation_id,
               "sourceSha": source_sha, "fixtureRoot": str(fixture_root),
               "cliStageCorrelationId": cli_stage_correlation_id,
@@ -709,6 +748,10 @@ def start(root: Path | str, host: str, device: str, correlation_id: str,
               "inspectCorrelationId": inspect_correlation_id,
               "caArtifactId": ca_artifact_id, "leafArtifactId": leaf_artifact_id,
               "keyArtifactId": key_artifact_id, "remote": remote}
+    if tools is not None:
+        intent['toolBundleId'] = tool_bundle_id
+        if android_installer_tool_bundle.load(root, tool_bundle_id) != tools:
+            raise ValueError('Installer tool bundle changed before dispatch')
     android_installer_target._write_private(output / "dispatch.json", intent)
     _claim_local(root, host, device, correlation_id)
     value = _remote(root, intent, "start", output / "payload.bin")

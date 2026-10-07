@@ -304,7 +304,10 @@ class WindowsVmVirtFirmwareInstallTest(unittest.TestCase):
         self.assertNotIn("SUDO_ASKPASS", run.call_args.kwargs)
 
     def test_installer_pins_local_and_nested_ssh_binaries_while_secret_stays_stdin(self) -> None:
-        config = ssh.SshConfig(root=Path("."), hosts={
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        config = ssh.SshConfig(root=root, hosts={
             "gateway": ssh.SshHost("gateway", "gateway.example", 22, "owner", Path("/private/id"), Path("/private/known")),
             "archlinux": ssh.SshHost("archlinux", "unused", 22, "unused", Path("/unused/id"),
                 ssh.PurePosixPath("/private/nested-known"), transport="nested", gateway="gateway",
@@ -317,7 +320,7 @@ class WindowsVmVirtFirmwareInstallTest(unittest.TestCase):
         with mock.patch.object(installer.ssh_transport, "load_config", return_value=config), \
                 mock.patch.object(installer.subprocess, "run",
                                   return_value=SimpleNamespace(returncode=0, stdout=json.dumps(response).encode())) as run:
-            installer._remote(".", CORR, "start", 60, credential=SECRET)
+            installer._remote(root, CORR, "start", 60, credential=SECRET)
         argv = run.call_args.args[0]
         self.assertEqual(argv[0], "/usr/bin/ssh")
         self.assertEqual(shlex.split(argv[-1])[0], "/usr/bin/ssh")

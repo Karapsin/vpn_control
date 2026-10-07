@@ -6,15 +6,17 @@ This module never includes passwords in command arguments, exceptions, or probe 
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 import json
+import importlib
 import os
 from pathlib import Path, PurePosixPath
 import re
 import shlex
 import stat
 import subprocess
+import sys
 import tempfile
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -39,6 +41,7 @@ class ProbeStatus(str, Enum):
     CONFIG_ERROR = "config_error"
     TIMEOUT = "timeout"
     AUTHENTICATION_FAILED = "authentication_failed"
+    NESTED_MASTER_ABSENT = "nested_master_absent"
     HOST_KEY_FAILED = "host_key_failed"
     CONNECTION_FAILED = "connection_failed"
     SSH_FAILED = "ssh_failed"
@@ -98,14 +101,18 @@ class ProbeResult:
     host: str
     status: ProbeStatus
     output: str = ""
+    recovery_host: str | None = None
 
     @property
     def ok(self) -> bool:
         return self.status is ProbeStatus.OK
 
-    def as_dict(self) -> dict[str, str | bool]:
+    def as_dict(self) -> dict[str, Any]:
         """Return a server-safe representation without connection credentials."""
-        return {"host": self.host, "status": self.status.value, "ok": self.ok, "output": self.output}
+        result = {"host": self.host, "status": self.status.value, "ok": self.ok, "output": self.output}
+        if self.status is ProbeStatus.NESTED_MASTER_ABSENT and self.recovery_host:
+            result["recoveryHost"] = self.recovery_host
+        return result
 
 
 def _reject_duplicate_keys(pairs: Iterable[tuple[str, Any]]) -> dict[str, Any]:
@@ -389,6 +396,39 @@ def inventory(root: Path | str) -> tuple[str, ...]:
     return tuple(sorted(load_config(root).hosts))
 
 
+def _session_module():
+    # The documented launcher imports this file as a top-level module.
+    # Resolve the session's relative imports from this trusted source tree,
+    # without depending on CWD or permanently changing Python's search path.
+    if __package__:
+        ssh_connection_session = importlib.import_module(f'{__package__}.ssh_connection_session')
+    else:
+        source_parent = str(Path(__file__).resolve().parent.parent)
+        sys.path.insert(0, source_parent)
+        try:
+            ssh_connection_session = importlib.import_module('agent_tools.ssh_connection_session')
+        finally:
+            sys.path.remove(source_parent)
+    session_source = getattr(ssh_connection_session, '__file__', None)
+    if not isinstance(session_source, str) or Path(session_source).resolve() != Path(__file__).resolve().with_name('ssh_connection_session.py'):
+        raise SshConfigError('Configured outer SSH session implementation is unavailable.')
+    return ssh_connection_session
+
+
+def _selection_module():
+    if __package__:
+        module=importlib.import_module(f'{__package__}.ssh_channel_selection')
+    else:
+        parent=str(Path(__file__).resolve().parent.parent)
+        sys.path.insert(0,parent)
+        try:module=importlib.import_module('agent_tools.ssh_channel_selection')
+        finally:sys.path.remove(parent)
+    source=getattr(module,'__file__',None)
+    if not isinstance(source,str) or Path(source).resolve()!=Path(__file__).resolve().with_name('ssh_channel_selection.py'):
+        raise SshConfigError('Selected SSH channel implementation is unavailable.')
+    return module
+
+
 def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
                    command: Sequence[str] = ("true",), ssh_binary: str = "ssh",
                    nested_ssh_binary: str = "ssh") -> list[str]:
@@ -402,6 +442,25 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
     ssh_binary = _string(ssh_binary, "ssh executable")
     nested_ssh_binary = _string(nested_ssh_binary, "nested ssh executable")
     route = _route_hosts(config.hosts, host)
+    if host=='archlinux' and os.path.lexists(config.root/'.rag_index'/'ssh-channel-selection'):
+        selection=_selection_module()
+        session=_session_module()
+        try:
+            metadata=selection.selected_route_options(config.root,host,config)
+            if metadata is None or len(route)!=2:raise SshConfigError('Selected SSH channel is unavailable.')
+            selected_config=session.transport.load_config(config.root)
+            if asdict(selected_config)!=asdict(config):raise SshConfigError('Selected SSH configuration changed.')
+            outer=connection_host(selected_config,host)
+            prefix,endpoint=session._outer_prefix(selected_config,outer)
+            # Fixed admitted route; no canonical socket/fresh handshake fallback.
+            nested=route[0]
+            inner=[nested_ssh_binary]
+            if nested.remote_config_file is not None:inner.extend(('-F',str(nested.remote_config_file)))
+            inner.extend(metadata['innerOptions'])
+            inner.extend(('-T','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no',nested.remote_host_alias,shlex.join(command)))
+            return [ssh_binary,*prefix[1:],*metadata['outerOptions'],'-T',endpoint,shlex.join(inner)]
+        except (selection.SelectionUnknown,session.SessionUnknown,selection.transport.SshConfigError):
+            raise SshConfigError('Explicitly selected SSH channel is unavailable; observe or renew it explicitly.') from None
     # Compose from the destination outward. Each layer quotes one complete argv
     # for the shell used by that layer's OpenSSH remote command, retaining every
     # configured intermediate hop instead of replacing the previous last token.
@@ -425,6 +484,23 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
         "-o", f"ConnectTimeout={timeout_seconds}", "-o", "NumberOfPasswordPrompts=1",
         "-o", f"BatchMode={'no' if target.password is not None else 'yes'}",
     ]
+    # A configured, fenced outer master replaces repeated gateway handshakes.
+    # Lazy import keeps direct routes and hosts without session inventory
+    # portable. Existing unknown sessions fail closed rather than reconnecting.
+    if len(route) > 1 and os.path.lexists(config.root / '.rag_index' / 'ssh-connection-session'):
+        ssh_connection_session = _session_module()
+        try:
+            selected_config = config
+            if not __package__:
+                # Dataclass types from top-level and package imports differ.
+                # Compare their complete field values before using the package
+                # instance; never discard a caller's changed configuration.
+                selected_config = ssh_connection_session.transport.load_config(config.root)
+                if asdict(config) != asdict(selected_config):
+                    raise SshConfigError('Configured outer SSH session configuration changed.')
+            argv.extend(ssh_connection_session.selected_options(selected_config, host))
+        except (ssh_connection_session.SessionUnknown, ssh_connection_session.transport.SshConfigError):
+            raise SshConfigError('Configured outer SSH session is unavailable; inspect its existing receipt.') from None
     argv.extend([target.host, shlex.join(command)])
     return argv
 
@@ -443,10 +519,12 @@ def _status_for_output(output: str) -> ProbeStatus:
     lowered = output.lower()
     if "host key verification failed" in lowered or "remote host identification has changed" in lowered or "host key" in lowered and "verification" in lowered:
         return ProbeStatus.HOST_KEY_FAILED
-    if "permission denied" in lowered or "authentication failed" in lowered:
-        return ProbeStatus.AUTHENTICATION_FAILED
+    # A combined stale-route/network failure and auth marker does not locate
+    # an authenticated handshake. Preserve the measured transport stage first.
     if any(token in lowered for token in ("connection refused", "no route to host", "could not resolve hostname", "connection timed out", "network is unreachable")):
         return ProbeStatus.CONNECTION_FAILED
+    if "permission denied" in lowered or "authentication failed" in lowered:
+        return ProbeStatus.AUTHENTICATION_FAILED
     return ProbeStatus.SSH_FAILED
 
 
@@ -466,6 +544,37 @@ def _askpass_environment(password: str, directory: Path) -> tuple[Path, dict[str
         "VPN_CONTROL_SSH_PASSWORD_FILE": str(password_file),
     })
     return helper, environment
+
+
+def _probe_cached_socket(config: SshConfig, target: SshHost, timeout_seconds: int) -> str:
+    """Probe-only strict binary evidence; never changes legacy recovery guards.
+
+    A password-prompting gateway has no admitted binary channel here. It stays
+    unknown; the explicit fresh read-only provider handles that separate route.
+    """
+    try:
+        try:
+            from . import ssh_connection_recovery as recovery
+        except ImportError:
+            from agent_tools import ssh_connection_recovery as recovery
+        if not target.gateway or not target.remote_control_path or not target.remote_host_alias:
+            return 'unknown'
+        gateway=connection_host(config,target.gateway)
+        if gateway.password is not None:return 'unknown'
+        command=['ssh']
+        if target.remote_config_file is not None:command+=['-F',str(target.remote_config_file)]
+        command+=['-S',str(target.remote_control_path),'-O','check',target.remote_host_alias]
+        argv=build_ssh_argv(config,target.gateway,timeout_seconds,command=tuple(command))
+        captured=recovery._bounded_socket_query(argv,timeout_seconds)
+        if not captured['complete'] or captured['stdout']:return 'unknown'
+        stderr=captured['stderr']
+        if captured['returnCode']==0 and re.fullmatch(rb'Master running \(pid=[1-9][0-9]*\)\r?\n',stderr):return 'ready'
+        if captured['returnCode']==255 and stderr in (
+                ('Control socket connect('+str(target.remote_control_path)+'): No such file or directory\n').encode(),
+                ('Control socket connect('+str(target.remote_control_path)+'): No such file or directory\r\n').encode()):return 'absent'
+    except (OSError,ValueError,TypeError,KeyError,SshConfigError):
+        pass
+    return 'unknown'
 
 
 def probe(root: Path | str, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS, ssh_binary: str = "ssh") -> ProbeResult:
@@ -496,4 +605,24 @@ def probe(root: Path | str, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SE
     if completed.returncode == 0:
         return ProbeResult(host=host, status=ProbeStatus.OK, output="SSH connectivity verified.")
     status = _status_for_output(output)
+    if status is ProbeStatus.AUTHENTICATION_FAILED:
+        # An expired master makes BatchMode fall back to an encrypted key. Check
+        # exact configured sockets read-only before blaming the credentials.
+        # Stop at the first uncertain hop; no authentication retry or recovery.
+        try:
+            from . import ssh_connection_recovery as recovery
+        except ImportError:  # Standalone module loading used by transport tests.
+            from agent_tools import ssh_connection_recovery as recovery
+        for nested in reversed(_route_hosts(config.hosts, host)[:-1]):
+            if nested.remote_control_path is None:
+                continue
+            master = _probe_cached_socket(config, nested, min(timeout_seconds, 5))
+            if master == "absent":
+                return ProbeResult(host, ProbeStatus.NESTED_MASTER_ABSENT,
+                                   "Configured nested SSH master is absent; verify recovery before adopting a replacement.",
+                                   nested.alias)
+            if master != "ready":
+                return ProbeResult(host, ProbeStatus.SSH_FAILED,
+                                   "Configured nested SSH route is uncertain; verify a fresh read-only connection without replaying existing jobs.",
+                                   nested.alias)
     return ProbeResult(host=host, status=status, output=f"SSH probe failed: {status.value}.")

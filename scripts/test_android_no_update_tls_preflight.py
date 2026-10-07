@@ -3,6 +3,7 @@ import importlib.util
 import json
 import os
 import shutil
+import shlex
 import sys
 import subprocess
 import tempfile
@@ -27,6 +28,7 @@ class FakeAdb:
             'global_http_proxy_pac': 'null',
             'global_http_proxy_exclusion_list': 'null',
         }
+        self.proxy_presence = {'http_proxy': False, **{key: False for key in self.proxy_settings}}
         self.proxy_failure = proxy_failure
         self.remove_failures = remove_failures
         self.rooted = False
@@ -44,6 +46,7 @@ class FakeAdb:
     def set_global_proxy(self, value):
         if self.proxy_failure: raise OSError('proxy')
         self.proxy = value
+        self.proxy_presence['http_proxy'] = True
     def reverse_inventory(self): return dict(self.reverse_map)
     def shell_id(self): return 'uid=2000'
     def run(self, *args):
@@ -56,6 +59,18 @@ class FakeAdb:
         self.calls.append(('exec-out', *args))
         return b'base'
     def shell(self, *args):
+        if len(args) == 1 and args[0].startswith(("settings put global ", "settings delete global ")):
+            args = tuple(shlex.split(args[0]))
+        if args[:3] == ("settings", "put", "global"):
+            if args[3] == "http_proxy": self.set_global_proxy(args[4])
+            else: self.proxy_settings[args[3]] = args[4]
+            self.proxy_presence[args[3]] = True
+        if args[:3] == ("settings", "delete", "global"):
+            if args[3] == "http_proxy": self.proxy = "null"
+            else: self.proxy_settings[args[3]] = "null"
+            self.proxy_presence[args[3]] = False
+        if args == ("settings", "list", "global"):
+            return "\n".join(key + "=" + value for key, value in {"http_proxy": self.proxy, **self.proxy_settings}.items() if self.proxy_presence[key] or value != "null")
         self.calls.append(('shell', *args))
         if args[:3] == ('settings', 'get', 'global'):
             key = args[3]
@@ -73,6 +88,13 @@ class FakeAdb:
 
 
 class PreflightScriptTest(unittest.TestCase):
+    def admit_proxy_evidence(self, args, baseline, owned):
+        args.proxy_source_authority = preflight.proxy_source_authority(args)
+        args.proxy_baseline_pin = preflight.private_proxy_record(
+            args.receipt.with_name(args.receipt.name + '.proxy-baseline.json'), {'baseline': baseline, 'authority': args.proxy_source_authority})
+        args.proxy_owned_pin = preflight.private_proxy_record(
+            args.receipt.with_name(args.receipt.name + '.proxy-owned.json'), {'owned': owned, 'authority': args.proxy_source_authority})
+
     def test_interactive_stdin_is_required_before_interactive_fixture_work(self):
         class ClosedInput:
             def isatty(self): return False
@@ -524,6 +546,319 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertEqual({}, fake.reverse_map)
             self.assertEqual('null', fake.proxy)
 
+    def test_native_companion_proxy_residue_is_restored_after_action_failure(self):
+        class StableZygoteAdb(FakeAdb):
+            def set_global_proxy(self, value):
+                super().set_global_proxy(value)
+                if value.startswith("127.0.0.1:"):
+                    self.proxy_settings["global_http_proxy_host"] = "127.0.0.1"
+                    self.proxy_settings["global_http_proxy_port"] = value.split(":")[1]
+            def shell(self, *args):
+                if args[:2] == ('pidof', 'zygote64'):
+                    self.calls.append(('shell', *args)); return '177'
+                return super().shell(*args)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
+            base.write_bytes(b'base'); cert.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root/'cli.py', certificate=cert, leaf_certificate=leaf,
+                fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=receipt,
+                expected_avd='avd', expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            fake = StableZygoteAdb(); fake.proxy_settings['global_http_proxy_exclusion_list'] = ''; original = dict(fake.proxy_settings); calls = []
+            def failed_action(_args, _adb, _receipt):
+                calls.append('action')
+                raise RuntimeError('ACTION_FAILED')
+            with patch.object(preflight, 'Adb', return_value=fake), \
+                 patch.object(preflight, 'verify_public_baseline', return_value={}), \
+                 patch.object(preflight, 'require_device_time_within_certificates'), \
+                 patch.object(preflight, 'secure_private_fixture_files'), \
+                 patch.object(preflight, 'device_mode', return_value=0o755), \
+                 patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
+                 patch.object(preflight, 'require_android_certificate_store_layout'), \
+                 patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'require_android_ca_store_entry'), \
+                 patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
+                with self.assertRaisesRegex(RuntimeError, 'ACTION_FAILED'):
+                    preflight.run_fixture_lifecycle(args, failed_action, target_install=True)
+            saved = json.loads(receipt.read_text())
+            self.assertEqual(['action'], calls)
+            self.assertTrue(saved['targetInstall'])
+            self.assertEqual('/system/etc/security/cacerts', saved['target'])
+            self.assertEqual('null', saved['expectedProxy'])
+            self.assertEqual('RuntimeError', saved['failure']['type'])
+            self.assertEqual([], saved['cleanupFailures'])
+            self.assertIn(('shell', 'cp', '-a', '/system/etc/security/cacerts/.', '/data/local/tmp/vpn-control-test/'), fake.calls)
+            self.assertIn(('shell', 'nsenter', '-t', '177', '-m', '--', 'mount', '--bind',
+                           '/data/local/tmp/vpn-control-test', '/system/etc/security/cacerts'), fake.calls)
+            self.assertFalse(fake.rooted)
+            self.assertEqual({}, fake.reverse_map)
+            self.assertEqual('null', fake.proxy)
+            self.assertEqual(original, fake.proxy_settings)
+
+
+    def test_lost_setup_reply_still_restores_measured_owned_five_fields(self):
+        class StableZygoteAdb(FakeAdb):
+            def set_global_proxy(self, value):
+                super().set_global_proxy(value)
+                if value.startswith("127.0.0.1:"):
+                    self.proxy_settings["global_http_proxy_host"] = "127.0.0.1"
+                    self.proxy_settings["global_http_proxy_port"] = value.split(":")[1]
+                    raise OSError("lost setup response")
+            def shell(self, *args):
+                if args[:2] == ('pidof', 'zygote64'):
+                    self.calls.append(('shell', *args)); return '177'
+                return super().shell(*args)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
+            base.write_bytes(b'base'); cert.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root/'cli.py', certificate=cert, leaf_certificate=leaf,
+                fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=receipt,
+                expected_avd='avd', expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            fake = StableZygoteAdb(); fake.proxy_settings['global_http_proxy_exclusion_list'] = ''; original = dict(fake.proxy_settings); calls = []
+            def failed_action(_args, _adb, _receipt):
+                calls.append('action')
+                raise RuntimeError('ACTION_FAILED')
+            with patch.object(preflight, 'Adb', return_value=fake), \
+                 patch.object(preflight, 'verify_public_baseline', return_value={}), \
+                 patch.object(preflight, 'require_device_time_within_certificates'), \
+                 patch.object(preflight, 'secure_private_fixture_files'), \
+                 patch.object(preflight, 'device_mode', return_value=0o755), \
+                 patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
+                 patch.object(preflight, 'require_android_certificate_store_layout'), \
+                 patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'require_android_ca_store_entry'), \
+                 patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
+                with self.assertRaisesRegex(OSError, 'lost setup response'):
+                    preflight.run_fixture_lifecycle(args, failed_action, target_install=True)
+            saved = json.loads(receipt.read_text())
+            self.assertEqual([], calls)
+            self.assertTrue(saved['targetInstall'])
+            self.assertEqual('/system/etc/security/cacerts', saved['target'])
+            self.assertEqual('null', saved['expectedProxy'])
+            self.assertEqual('OSError', saved['failure']['type'])
+            self.assertEqual([], saved['cleanupFailures'])
+            self.assertIn(('shell', 'cp', '-a', '/system/etc/security/cacerts/.', '/data/local/tmp/vpn-control-test/'), fake.calls)
+            self.assertIn(('shell', 'nsenter', '-t', '177', '-m', '--', 'mount', '--bind',
+                           '/data/local/tmp/vpn-control-test', '/system/etc/security/cacerts'), fake.calls)
+            self.assertFalse(fake.rooted)
+            self.assertEqual({}, fake.reverse_map)
+            self.assertEqual('null', fake.proxy)
+            self.assertEqual(original, fake.proxy_settings)
+
+
+    def test_presence_only_drift_before_setup_refuses_reverse_and_proxy(self):
+        class StableZygoteAdb(FakeAdb):
+            def set_global_proxy(self, value):
+                super().set_global_proxy(value)
+                if value.startswith("127.0.0.1:"):
+                    self.proxy_settings["global_http_proxy_host"] = "127.0.0.1"
+                    self.proxy_settings["global_http_proxy_port"] = value.split(":")[1]
+                    raise OSError("lost setup response")
+            def shell(self, *args):
+                if args[:2] == ('pidof', 'zygote64'):
+                    self.calls.append(('shell', *args)); return '177'
+                return super().shell(*args)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
+            base.write_bytes(b'base'); cert.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root/'cli.py', certificate=cert, leaf_certificate=leaf,
+                fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=receipt,
+                expected_avd='avd', expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            fake = StableZygoteAdb(); fake.proxy_settings['global_http_proxy_exclusion_list'] = ''; original = dict(fake.proxy_settings); calls = []
+            def baseline(*_args):
+                fake.proxy_presence['global_http_proxy_host'] = True
+                return {}
+            def failed_action(_args, _adb, _receipt):
+                calls.append('action')
+                raise RuntimeError('ACTION_FAILED')
+            with patch.object(preflight, 'Adb', return_value=fake), \
+                 patch.object(preflight, 'verify_public_baseline', side_effect=baseline), \
+                 patch.object(preflight, 'require_device_time_within_certificates'), \
+                 patch.object(preflight, 'secure_private_fixture_files'), \
+                 patch.object(preflight, 'device_mode', return_value=0o755), \
+                 patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
+                 patch.object(preflight, 'require_android_certificate_store_layout'), \
+                 patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'require_android_ca_store_entry'), \
+                 patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
+                with self.assertRaisesRegex(RuntimeError, 'baseline changed before setup'):
+                    preflight.run_fixture_lifecycle(args, failed_action, target_install=True)
+            saved = json.loads(receipt.read_text())
+            self.assertEqual([], calls)
+            self.assertTrue(saved['targetInstall'])
+            self.assertEqual('/system/etc/security/cacerts', saved['target'])
+            self.assertEqual('null', saved['expectedProxy'])
+            self.assertEqual('RuntimeError', saved['failure']['type'])
+            self.assertEqual([], saved['cleanupFailures'])
+            self.assertIn(('shell', 'cp', '-a', '/system/etc/security/cacerts/.', '/data/local/tmp/vpn-control-test/'), fake.calls)
+            self.assertIn(('shell', 'nsenter', '-t', '177', '-m', '--', 'mount', '--bind',
+                           '/data/local/tmp/vpn-control-test', '/system/etc/security/cacerts'), fake.calls)
+            self.assertFalse(fake.rooted)
+            self.assertEqual({}, fake.reverse_map)
+            self.assertEqual('null', fake.proxy)
+            self.assertEqual(original, fake.proxy_settings)
+            self.assertTrue(fake.proxy_presence['global_http_proxy_host'])
+            self.assertFalse(receipt.with_name(receipt.name + '.proxy-owned.json').exists())
+
+
+    def test_same_byte_baseline_exchange_before_setup_refuses_effects(self):
+        class StableZygoteAdb(FakeAdb):
+            def set_global_proxy(self, value):
+                super().set_global_proxy(value)
+                if value.startswith("127.0.0.1:"):
+                    self.proxy_settings["global_http_proxy_host"] = "127.0.0.1"
+                    self.proxy_settings["global_http_proxy_port"] = value.split(":")[1]
+                    raise OSError("lost setup response")
+            def shell(self, *args):
+                if args[:2] == ('pidof', 'zygote64'):
+                    self.calls.append(('shell', *args)); return '177'
+                return super().shell(*args)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
+            base.write_bytes(b'base'); cert.write_text('ca'); leaf.write_text('leaf')
+            args = SimpleNamespace(
+                adb='adb', serial='serial', cli=root/'cli.py', certificate=cert, leaf_certificate=leaf,
+                fixture_parent=root, server_log=root/'server.log', probe_output=root/'probe.txt',
+                device_port=45390, host_port=61000, staging='/data/local/tmp/vpn-control-test', receipt=receipt,
+                expected_avd='avd', expected_api='29', expected_version='2.2.19', expected_code='17180',
+                base_apk=base, base_sha256=hashlib.sha256(b'base').hexdigest(),
+            )
+            fake = StableZygoteAdb(); fake.proxy_settings['global_http_proxy_exclusion_list'] = ''; original = dict(fake.proxy_settings); calls = []
+            real_write = preflight.private_proxy_record
+            def exchange(path, value):
+                pin = real_write(path, value)
+                if path.name.endswith('.proxy-baseline.json'):
+                    changed = path.with_suffix('.replacement'); changed.write_bytes(path.read_bytes()); changed.chmod(0o600); changed.replace(path)
+                return pin
+            def failed_action(_args, _adb, _receipt):
+                calls.append('action')
+                raise RuntimeError('ACTION_FAILED')
+            with patch.object(preflight, 'Adb', return_value=fake), \
+                 patch.object(preflight, 'verify_public_baseline', return_value={}), \
+                 patch.object(preflight, 'private_proxy_record', side_effect=exchange), \
+                 patch.object(preflight, 'require_device_time_within_certificates'), \
+                 patch.object(preflight, 'secure_private_fixture_files'), \
+                 patch.object(preflight, 'device_mode', return_value=0o755), \
+                 patch.object(preflight, 'device_label', return_value='u:object_r:system_security_cacerts_file:s0'), \
+                 patch.object(preflight, 'require_android_certificate_store_layout'), \
+                 patch.object(preflight, 'android_ca_store_filename', return_value='hash.0'), \
+                 patch.object(preflight, 'require_android_ca_store_entry'), \
+                 patch.object(preflight, 'relabel_staged_ca_store', return_value=['/data/local/tmp/vpn-control-test/hash.0']):
+                with self.assertRaisesRegex(RuntimeError, 'generation changed'):
+                    preflight.run_fixture_lifecycle(args, failed_action, target_install=True)
+            saved = json.loads(receipt.read_text())
+            self.assertEqual([], calls)
+            self.assertTrue(saved['targetInstall'])
+            self.assertEqual('/system/etc/security/cacerts', saved['target'])
+            self.assertEqual('null', saved['expectedProxy'])
+            self.assertEqual('RuntimeError', saved['failure']['type'])
+            self.assertEqual([], saved['cleanupFailures'])
+            self.assertFalse(fake.rooted)
+            self.assertNotIn(('root',), fake.calls)
+            self.assertEqual({}, fake.reverse_map)
+            self.assertEqual('null', fake.proxy)
+            self.assertEqual(original, fake.proxy_settings)
+            self.assertFalse(receipt.with_name(receipt.name + '.proxy-owned.json').exists())
+
+
+    def test_five_field_cleanup_refuses_drift_replay_and_bad_postread(self):
+        for failure in ("foreign", "replay", "readback", "fence-drift", "fence-exchange", "presence-drift", "presence-during-write", "owned-exchange", "authority-drift"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temp:
+                args = SimpleNamespace(serial="serial", device_port=45390, host_port=61000,
+                    proxy_baseline_presence={key: False for key in ("http_proxy", "global_http_proxy_host", "global_http_proxy_port", "global_http_proxy_pac", "global_http_proxy_exclusion_list")}, base_sha256="a" * 64, receipt=Path(temp) / "receipt.json")
+                class ProxyAdb(FakeAdb):
+                    def shell(self, *argv):
+                        result = super().shell(*argv)
+                        if failure == "presence-during-write" and len(argv) == 1 and argv[0].startswith("settings delete global http_proxy"):
+                            self.proxy_presence["global_http_proxy_pac"] = True
+                        if failure == "readback" and len(argv) == 1 and argv[0].startswith("settings delete global global_http_proxy_host"):
+                            self.proxy_settings["global_http_proxy_host"] = "127.0.0.1"
+                        return result
+                adb = ProxyAdb(); baseline = preflight.fixture_proxy_snapshot(adb)
+                adb.reverse(45390, 61000); adb.proxy = "127.0.0.1:45390"
+                adb.proxy_settings.update(global_http_proxy_host="127.0.0.1", global_http_proxy_port="45390")
+                owned = preflight.fixture_proxy_snapshot(adb)
+                args.proxy_owned_presence = preflight.fixture_proxy_presence(adb, owned)
+                self.admit_proxy_evidence(args, baseline, owned)
+                fence = args.receipt.with_name(args.receipt.name + ".proxy-restore-intent.json")
+                if failure == "foreign": adb.proxy_settings["global_http_proxy_pac"] = "foreign"
+                if failure == "replay": preflight.private_proxy_record(fence, {"consumed": True})
+                real_write = preflight.private_proxy_record
+                def write(path, value):
+                    pin = real_write(path, value)
+                    if failure == "fence-drift": adb.proxy_settings["global_http_proxy_pac"] = "foreign"
+                    if failure == "presence-drift": adb.proxy_presence["global_http_proxy_pac"] = True
+                    if failure == "owned-exchange":
+                        owned_path = args.receipt.with_name(args.receipt.name + '.proxy-owned.json')
+                        replacement = owned_path.with_suffix('.replacement'); replacement.write_bytes(owned_path.read_bytes()); replacement.chmod(0o600); replacement.replace(owned_path)
+                    if failure == "authority-drift": args.serial = "foreign"
+                    if failure == "fence-exchange":
+                        replacement = path.with_suffix(".exchange")
+                        replacement.write_bytes(path.read_bytes()); replacement.chmod(0o600); replacement.replace(path)
+                    return pin
+                before = dict(adb.proxy_settings)
+                with patch.object(preflight, "private_proxy_record", side_effect=write), self.assertRaises((RuntimeError, FileExistsError)):
+                    preflight.restore_owned_proxy_transport(adb, args, baseline, owned, {})
+                self.assertEqual({45390: 61000}, adb.reverse_map)
+                writes = [call for call in adb.calls if len(call) > 2 and call[1:4] == ("settings", "put", "global")]
+                if failure not in ("readback", "presence-during-write", "owned-exchange", "authority-drift"): self.assertEqual([], writes)
+                if failure == "presence-during-write":
+                    self.assertEqual("127.0.0.1", adb.proxy_settings["global_http_proxy_host"])
+                    self.assertTrue(adb.proxy_presence["global_http_proxy_pac"])
+                if failure == "foreign": self.assertEqual(before, adb.proxy_settings)
+
+    def test_owned_presence_exchange_between_capture_reads_is_not_adopted(self):
+        adb = FakeAdb(); baseline = preflight.fixture_proxy_snapshot(adb)
+        baseline_presence = preflight.fixture_proxy_presence(adb, baseline)
+        adb.reverse(45390, 61000); adb.set_global_proxy('127.0.0.1:45390')
+        original_presence = preflight.fixture_proxy_presence
+        reads = []
+        def presence(client, values):
+            reads.append(1)
+            if len(reads) == 2: client.proxy_presence['global_http_proxy_pac'] = True
+            return original_presence(client, values)
+        with patch.object(preflight, 'fixture_proxy_presence', side_effect=presence), self.assertRaisesRegex(RuntimeError, 'snapshot changed between reads'):
+            preflight.capture_fixture_proxy(adb, baseline, baseline_presence, 45390, 61000)
+        self.assertEqual({45390: 61000}, adb.reverse_map)
+        self.assertTrue(adb.proxy_presence['global_http_proxy_pac'])
+
+    def test_exact_empty_proxy_restore_survives_real_adb_shell_flattening(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); adb = FakeAdb(); baseline = preflight.fixture_proxy_snapshot(adb)
+            baseline["global_http_proxy_exclusion_list"] = ""
+            adb.proxy_settings["global_http_proxy_exclusion_list"] = ""
+            adb.reverse(45390, 61000); adb.proxy = "127.0.0.1:45390"
+            owned = preflight.fixture_proxy_snapshot(adb)
+            args = SimpleNamespace(serial="serial", device_port=45390, host_port=61000,
+                proxy_baseline_presence={key: key == "global_http_proxy_exclusion_list" for key in baseline}, base_sha256="a" * 64, receipt=root / "receipt.json")
+            args.proxy_owned_presence = preflight.fixture_proxy_presence(adb, owned)
+            self.admit_proxy_evidence(args, baseline, owned)
+            commands = []
+            original = adb.shell
+            def shell(*argv):
+                if len(argv) == 1 and argv[0].startswith(("settings put global", "settings delete global")):
+                    commands.append(argv)
+                    # Real ADB joins shell arguments before /system/bin/sh parses.
+                    command = " ".join(argv)
+                    parsed = subprocess.check_output(["/bin/sh", "-c", "set -- " + command + "; printf '%s\\n' \"$#\" \"$5\""], text=True)
+                    expected = shlex.split(command)
+                    self.assertEqual(str(len(expected)) + "\n" + (expected[4] if len(expected) == 5 else "") + "\n", parsed)
+                return original(*argv)
+            with patch.object(adb, "shell", side_effect=shell):
+                preflight.restore_owned_proxy_transport(adb, args, baseline, owned, {})
+            self.assertEqual(5, len(commands)); self.assertEqual({}, adb.reverse_map)
+            self.assertEqual(baseline, preflight.fixture_proxy_snapshot(adb))
     def test_reverse_only_lifecycle_never_sets_proxy_and_removes_exact_route(self):
         class StableZygoteAdb(FakeAdb):
             def shell(self, *args):
@@ -673,7 +1008,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertEqual({}, fake.reverse_map)
             self.assertFalse(fake.rooted)
 
-    def test_main_recovers_route_after_setup_rollback_failure(self):
+    def test_main_preserves_route_when_single_fenced_cleanup_remove_fails(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
             base.write_bytes(b'base'); cert.write_text('ca'); leaf.write_text('leaf')
@@ -698,7 +1033,9 @@ class PreflightScriptTest(unittest.TestCase):
                     preflight.main()
             saved = json.loads(receipt.read_text())
             self.assertEqual('OSError', saved['failure']['type'])
-            self.assertEqual({}, fake.reverse_map)
+            self.assertEqual({45390: 61000}, fake.reverse_map)
+            self.assertIn({'step': 'partialReverse', 'type': 'OSError'}, saved['cleanupFailures'])
+            self.assertTrue(receipt.with_name(receipt.name + '.proxy-restore-intent.json').is_file())
             self.assertFalse(fake.rooted)
 
     def test_main_rejects_staged_certificate_label_before_bind(self):

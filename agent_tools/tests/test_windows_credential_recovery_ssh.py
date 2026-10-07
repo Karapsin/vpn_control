@@ -80,21 +80,88 @@ class WindowsCredentialRecoveryTests(unittest.TestCase):
         with mock.patch.object(backend.transport,'_run_ssh',return_value=None):
             backend.start(self.root,'arch',self.correlation)
         record=backend._intent(self.root,self.correlation)
-        original=backend.os.lstat
+        original=backend.private_inventory_lock.Snapshot.guard
         seen=[0]
-        def intervene(target):
-            if Path(target)==path:
+        def intervene(snapshot):
+            if snapshot.name == '.vm-hosts.local.json':
                 seen[0]+=1
                 if seen[0]==2:
                     x=json.loads(path.read_text()); x['unrelated']='intervening edit'
                     path.write_text(json.dumps(x))
-            return original(target)
-        with mock.patch.object(backend.os,'lstat',side_effect=intervene):
+            return original(snapshot)
+        with mock.patch.object(backend.private_inventory_lock.Snapshot,'guard',intervene):
             with self.assertRaisesRegex(backend.WindowsCredentialRecoveryError,'changed before publication'):
                 backend._publish_inventory(self.root,'arch',record)
         result=json.loads(path.read_text())
         self.assertEqual(result['unrelated'],'intervening edit')
         self.assertEqual(result['hosts']['arch']['windowsCredentialProbe']['credentialPath'],str(self.probe.credential_path))
+
+    def adoption_fixture(self):
+        from agent_tools.tests.test_ssh_recovery_adoption import inventory
+        from agent_tools import ssh_transport, ssh_connection_recovery
+        old = "/remote/original/m"; new = "/remote/original/r-aaaaaaaaaaaaaaa/m"
+        value = inventory(old)
+        value['hosts']['arch'] = dict(value['hosts']['gateway'])
+        value['hosts']['arch']['windowsCredentialProbe'] = {
+            'environment':self.probe.environment,'accountName':self.probe.account_name,
+            'expectedSid':self.probe.expected_sid,'qgaSocketPath':str(self.probe.qga_socket_path),
+            'qemuPid':self.probe.qemu_pid,'qemuStartTicks':self.probe.qemu_start_ticks,
+            'credentialPath':str(self.probe.credential_path)}
+        path = self.root / ssh_transport.CONFIG_FILENAME
+        path.write_text(json.dumps(value)); path.chmod(0o600)
+        target = ssh_transport.load_config(self.root).hosts['nested']
+        ssh_connection_recovery._create_intent(self.root, 'nested', target, 'a'*32, new)
+        ssh_connection_recovery._update_intent(self.root, 'nested', target, 'a'*32, 'ready', new)
+        with mock.patch.object(backend.transport, '_run_ssh', return_value=None):
+            backend.start(self.root, 'arch', self.correlation)
+        return path, old, new, backend._intent(self.root, self.correlation)
+
+    def test_credential_publisher_after_adoption_final_guard_cannot_lose_update(self):
+        from agent_tools import ssh_recovery_adoption as adoption, ssh_connection_recovery
+        path, old, new, record = self.adoption_fixture(); replace = os.replace; fired = []
+        def interleave(source, destination, *args, **kwargs):
+            if str(source).startswith('.ssh-adopt-') and not fired:
+                fired.append(True)
+                with self.assertRaises(backend.WindowsCredentialRecoveryError):
+                    backend._publish_inventory(self.root, 'arch', record)
+            return replace(source, destination, *args, **kwargs)
+        with mock.patch.object(backend.os, 'replace', side_effect=interleave), \
+                mock.patch.object(ssh_connection_recovery, '_socket_state', side_effect=('absent','ready')):
+            self.assertEqual('ready', adoption.adopt(self.root, 'nested')['state'])
+        self.assertEqual([True], fired)
+        value = json.loads(path.read_bytes())
+        self.assertEqual(new, value['hosts']['nested']['remoteControlPath'])
+        self.assertEqual(str(self.probe.credential_path), value['hosts']['arch']['windowsCredentialProbe']['credentialPath'])
+        # The blocked publisher later takes ownership and preserves the socket.
+        backend._publish_inventory(self.root, 'arch', record)
+        completed = json.loads(path.read_bytes())
+        self.assertEqual(new, completed['hosts']['nested']['remoteControlPath'])
+        self.assertEqual(str(backend.native_credentials.NativeCredentialStore(self.root).path / record['handle'] / 'secret'),
+            completed['hosts']['arch']['windowsCredentialProbe']['credentialPath'])
+
+    def test_adopter_during_credential_publisher_replace_cannot_lose_update(self):
+        from agent_tools import ssh_recovery_adoption as adoption, ssh_connection_recovery
+        path, old, new, record = self.adoption_fixture(); replace = os.replace; fired = []
+        def interleave(source, destination, *args, **kwargs):
+            if '.vm-hosts-credential-' in str(source) and not fired:
+                fired.append(True)
+                with mock.patch.object(ssh_connection_recovery, '_socket_state', side_effect=AssertionError('blocked before probe')):
+                    self.assertEqual('unknown', adoption.adopt(self.root, 'nested')['state'])
+            return replace(source, destination, *args, **kwargs)
+        with mock.patch.object(backend.os, 'replace', side_effect=interleave):
+            backend._publish_inventory(self.root, 'arch', record)
+        self.assertEqual([True], fired)
+        value = json.loads(path.read_bytes())
+        self.assertEqual(old, value['hosts']['nested']['remoteControlPath'])
+        self.assertEqual(str(backend.native_credentials.NativeCredentialStore(self.root).path / record['handle'] / 'secret'),
+            value['hosts']['arch']['windowsCredentialProbe']['credentialPath'])
+        # A later fresh adoption preserves the already-published credential.
+        with mock.patch.object(ssh_connection_recovery, '_socket_state', side_effect=('absent','ready')):
+            self.assertEqual('ready', adoption.adopt(self.root, 'nested')['state'])
+        completed = json.loads(path.read_bytes())
+        self.assertEqual(new, completed['hosts']['nested']['remoteControlPath'])
+        self.assertEqual(value['hosts']['arch']['windowsCredentialProbe']['credentialPath'],
+            completed['hosts']['arch']['windowsCredentialProbe']['credentialPath'])
 
     def test_terminal_reset_success_dispatches_one_fixed_probe_then_publishes(self):
         reset=b'{"state":"terminal","success":true,"category":"none","pid":7}'

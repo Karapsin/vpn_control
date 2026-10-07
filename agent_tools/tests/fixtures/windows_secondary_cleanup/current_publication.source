@@ -1,0 +1,76 @@
+value={'state':'UNKNOWN','correlationId':READ_CORRELATION,'originalCorrelationId':CORRELATION,'replayAllowed':False,'productAcceptance':False,'installerAction':False,'effects':[],'originalTerminalCustodyClosed':False}
+fd=None;originalFd=None;terminal_holders=[];parent_holders=[]
+try:
+ guest=fixed_guest('secondary');original=Path(PREPARED['template']).parent/('secondary-base-stage-'+CORRELATION)
+ for parent in (original.parent,original.parent.parent):
+  held_parent=os.open(parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);parent_holders.append((held_parent,parent,parent_identity(os.fstat(held_parent))))
+ originalFd=os.open(original,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ original_pin=generation(os.fstat(originalFd));need(original_pin==generation(original.lstat()),'cleanup-original-name');need(original_pin[2]&0o170000==0o040000 and original_pin[3]==0 and original_pin[2]&0o077==0,'cleanup-original-root')
+ original_records={name:read_record(original/name,16384)for name in ('custodian-intent.json','custodian-started.json','unknown.json')}
+ intent=json.loads(base64.b64decode(original_records['custodian-intent.json']['base64'],validate=True))
+ started=json.loads(base64.b64decode(original_records['custodian-started.json']['base64'],validate=True))
+ unknown=json.loads(base64.b64decode(original_records['unknown.json']['base64'],validate=True))
+ need(intent.get('scriptSha256')==ORIGINAL_SCRIPT_SHA and intent.get('submitted')is True and intent.get('replayAllowed')is False and started.get('pid')==6060,'cleanup-original-host-binding')
+ need(unknown.get('originalCustodianPid')==6060 and unknown.get('originalGuestFileHandle')is None and type(unknown.get('transferred'))is int and unknown['transferred']==0,'cleanup-original-host-transfer')
+ # The positive immutable original6060 exit1 observation is source-bound below;
+ # guest record contents do not provide cleanup authority.
+ need(ORIGINAL_TERMINAL_PROOF['originalTerminalExited']is True and type(ORIGINAL_TERMINAL_PROOF['originalTerminalExitCode'])is int and ORIGINAL_TERMINAL_PROOF['originalTerminalExitCode']==1,'cleanup-original-terminal')
+ custody=readonly_custody();root=Path(PREPARED['template']).parent/('secondary-base-cleanup-'+READ_CORRELATION);root.mkdir(mode=0o700)
+ fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);root_identity=generation(os.fstat(fd))[:6]
+ run={'rootFd':fd};SharedAccess=shared_frame_client(AccessClient)
+ client=SharedAccess(str(guest.root/'vm-r-a85c4b4f/qga.sock'),timeout_seconds=15,max_response_bytes=1048576).bind(run,guest,ROW)
+ terminals=[]
+ def close_guard():
+  for held_parent,parent,pin in parent_holders:need(parent_identity(os.fstat(held_parent))==pin==parent_identity(parent.lstat()),'cleanup-parent-closing')
+  need(generation(os.fstat(originalFd))==original_pin==generation(original.lstat()),'cleanup-original-root-closing')
+  for held,path,pin in terminal_holders:need(file_hash(held,1048576)==pin and generation(path.lstat())==pin['generation'],'cleanup-terminal-closing')
+  for name,pin in original_records.items():need(read_record(original/name,16384)==pin,'cleanup-original-record-closing')
+  current_custody=readonly_custody()
+  need(cleanup_custody_identity(current_custody)==cleanup_custody_identity(custody),'cleanup-current-custody')
+  need(generation(os.fstat(fd))[:6]==root_identity and generation(root.lstat())[:6]==root_identity,'cleanup-owned-journal-closing')
+ def publish(role,record):
+  need(role=='cleanup-effect-intent','cleanup-fixed-intent-role')
+  close_guard();prepare.record_at(fd,'cleanup-effect-intent.json',record);close_guard()
+ def observe(effect):
+  need(type(effect)is bool,'cleanup-fixed-phase')
+  role='cleanup'if effect else'preflight';close_guard()
+  ps='$performDelete='+('$true'if effect else'$false')+';\n'+CLEANUP_SCRIPT
+  args={'path':r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe','arg':['-NoLogo','-NoProfile','-NonInteractive','-Command',ps],'capture-output':True}
+  prepare.record_at(fd,role+'-intent.json',{'sourceSha256':hashlib.sha256(ps.encode()).hexdigest(),'originalCorrelationId':CORRELATION,'replayAllowed':False})
+  started=client._exchange('guest-exec',args);pid=started.get('pid');need(type(pid)is int and 0<pid<=2147483647,'cleanup-original-guest-pid')
+  prepare.record_at(fd,role+'-started.json',started)
+  status=None;deadline=time.monotonic()+120
+  while time.monotonic()<deadline:
+   status=client.guest_exec_status(pid)
+   if status.get('exited')is True:break
+   time.sleep(.25)
+  need(status is not None and status.get('exited')is True,'cleanup-original-deadline')
+  prepare.record_at(fd,role+'-terminal.json',status);terminal_path=root/(role+'-terminal.json');held=os.open(terminal_path,os.O_RDONLY|os.O_NOFOLLOW)
+  terminal_pin=file_hash(held,1048576);terminal_holders.append((held,terminal_path,terminal_pin))
+  terminals.append({'role':role,'pid':pid,'record':{'path':str(root/(role+'-terminal.json')),'generation':terminal_pin['generation'],'sha256':terminal_pin['sha256']},'exitcode':status.get('exitcode')})
+  close_guard();need(status.get('out-truncated')is not True and status.get('err-truncated')is not True,'cleanup-original-truncated')
+  out=base64.b64decode(status.get('out-data',''),validate=True);err=base64.b64decode(status.get('err-data',''),validate=True)
+  need(len(out)<=32768 and len(err)<=16384,'cleanup-original-output-bound')
+  if status.get('exitcode')!=0:
+   value.update({'guestErrorBytes':len(err),'guestErrorSha256':hashlib.sha256(err).hexdigest(),'guestErrorPrefixBase64':base64.b64encode(err[:4096]).decode()})
+  parsed=json.loads(out)
+  need(type(parsed)is dict and parsed.get('pid')==pid and type(parsed.get('birthTicks'))is int and parsed['birthTicks']>0,'cleanup-original-terminal-identity')
+  if parsed.get('state')=='UNKNOWN':return parsed
+  need(status.get('exitcode')==0,'cleanup-original-nonzero')
+  return parsed
+ result=cleanup_decision_run(CLEANUP_BINDING,hashlib.sha256(CLEANUP_SCRIPT.encode()).hexdigest(),ORIGINAL_TERMINAL_PROOF,publish,observe,close_guard)
+ value.update(result);value['originalTerminals']=terminals;close_guard()
+except BaseException as error:
+ demote_closed_observation(value,error)
+finally:
+ try:
+  if fd is not None:
+   publish_cleanup_observation(value,lambda name,record:prepare.record_at(fd,name,record),close_guard,bool(terminal_holders))
+ except BaseException as error:
+  demote_closed_observation(value,error);value['originalTerminalCustodyClosed']=False
+ finally:
+  for held,path,pin in terminal_holders:os.close(held)
+  if originalFd is not None:os.close(originalFd)
+  for held_parent,parent,pin in parent_holders:os.close(held_parent)
+  if fd is not None:os.close(fd)
+ print(json.dumps(value,sort_keys=True))

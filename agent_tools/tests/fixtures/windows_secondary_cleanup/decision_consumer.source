@@ -1,0 +1,44 @@
+"""Fixed 4ac1 cleanup decision driver; source-only until independently bound.
+
+Adapters are actual existing bound read_record/record_at/QGA original handles,
+not new native APIs. Runtime caller must bind these from authenticated bytes.
+"""
+import hashlib,json,re
+ORIGINAL='4ac1cdea-5a25-4ad6-8a66-41f1c8a92e8b'
+MEMBERS=['custodian-ready.json','custodian-unknown.json','vpn-control-2.1.19.msi']
+def require(ok,reason):
+ if not ok:raise ValueError(reason)
+def admit(value,binding):
+ require(type(value)is dict and value.get('state')=='ORIGINAL_BASE_PARTIAL_CLEANUP_ADMITTED','cleanup-preflight-state')
+ require(value.get('originalCorrelationId')==ORIGINAL and value.get('rootNativeId')==binding['rootNativeId'],'cleanup-preflight-identity')
+ require(type(value.get('memberNames'))is list and sorted(value['memberNames'])==MEMBERS,'cleanup-preflight-members')
+ for name in ('originalCustodianAbsent','allMemberIdentityHashAclClosing'):require(value.get(name)is True,'cleanup-preflight-'+name)
+ for name in ('cleanupPerformed','installerAction','productAcceptance','replayAllowed'):require(value.get(name)is False,'cleanup-preflight-'+name)
+ require(type(value.get('pid'))is int and 0<value['pid']<=2147483647 and type(value.get('birthTicks'))is int and value['birthTicks']>0,'cleanup-preflight-native-process')
+ require(value.get('deleteEffects')==[],'cleanup-preflight-effects')
+def cleanup_decision_run(binding,script_sha,original_proof,publish,observe,close):
+ """One preflight and at most one action; closing failures never replay."""
+ require(original_proof.get('originalTerminalExited')is True and type(original_proof.get('originalTerminalExitCode'))is int and original_proof['originalTerminalExitCode']==1,'cleanup-original-terminal')
+ require(type(original_proof.get('originalCustodianPid'))is int and original_proof['originalCustodianPid']==6060 and original_proof.get('originalCustodianBirthTicks')==639268668935834031,'cleanup-original-owner')
+ require(original_proof.get('originalGuestFileHandle')is None and type(original_proof.get('transferred'))is int and original_proof['transferred']==0,'cleanup-original-transfer')
+ require(type(script_sha)is str and re.fullmatch('[0-9a-f]{64}',script_sha)is not None,'cleanup-script-digest')
+ result={'state':'UNKNOWN','replayAllowed':False,'productAcceptance':False,'installerAction':False,'effects':[]}
+ try:
+  close();preflight=observe(False);admit(preflight,binding);close()
+  # Existing create-only host publication must retain both full record bytes
+  # and source/root/record generations. No authorization from BA guest files.
+  intent={'originalCorrelationId':ORIGINAL,'originalCustodianPid':6060,'originalCustodianBirthTicks':639268668935834031,'scriptSha256':script_sha,'bindingSha256':hashlib.sha256(json.dumps(binding,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'rootNativeId':binding['rootNativeId'],'preflightPid':preflight['pid'],'preflightBirthTicks':preflight['birthTicks'],'replayAllowed':False}
+  publish('cleanup-effect-intent',intent);close()
+  terminal=observe(True);result['originalCleanupTerminal']=terminal
+  require(type(terminal)is dict,'cleanup-terminal-type')
+  result['effects']=terminal.get('effects',[])
+  close()
+  require(terminal.get('state')=='ORIGINAL_BASE_PARTIAL_CLEANUP_OBSERVED' and terminal.get('originalCorrelationId')==ORIGINAL and terminal.get('rootAbsent')is True,'cleanup-terminal-result')
+  for key in ('replayAllowed','productAcceptance','installerAction'):require(terminal.get(key)is False,'cleanup-terminal-'+key)
+  require(type(result['effects'])is list and [x.get('name')for x in result['effects']]==MEMBERS+['original-root'] and all(x.get('markedOriginalHandle')is True for x in result['effects']),'cleanup-terminal-effects')
+  expected_ids=[m['nativeId']for m in binding['members']]+[binding['rootNativeId']]
+  require([x.get('nativeId')for x in result['effects']]==expected_ids,'cleanup-terminal-native-ids')
+  result['state']='ORIGINAL_BASE_PARTIAL_CLEANUP_OBSERVED'
+ except BaseException as error:
+  result['state']='UNKNOWN';result['errorType']=type(error).__name__;result['errorDetail']=str(error)[:256]
+ return result

@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import shlex
 import stat
 import subprocess
 import sys
@@ -291,6 +292,177 @@ def establish_owned_transport(adb: Adb, device_port: int, host_port: int, previo
         raise
 
 
+
+def private_proxy_record(path: Path, value: dict) -> dict:
+    """Create a durable private fence; an existing fence is never replayed."""
+    payload = (json.dumps(value, sort_keys=True) + "\n").encode()
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        parent_info = os.fstat(parent)
+        if not stat.S_ISDIR(parent_info.st_mode) or parent_info.st_uid != os.getuid() or stat.S_IMODE(parent_info.st_mode) & 0o077:
+            raise RuntimeError("Fixture proxy evidence parent must be private")
+        fd = os.open(path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+            info = os.fstat(stream.fileno())
+            named = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+            if (info.st_dev, info.st_ino, info.st_nlink) != (named.st_dev, named.st_ino, 1):
+                raise RuntimeError("Fixture proxy evidence generation changed")
+        os.fsync(parent)
+        named_parent = path.parent.stat(follow_symlinks=False)
+        if (named_parent.st_dev, named_parent.st_ino) != (parent_info.st_dev, parent_info.st_ino):
+            raise RuntimeError("Fixture proxy evidence parent changed")
+        return {"parent": (parent_info.st_dev, parent_info.st_ino),
+                "generation": proxy_file_generation(info), "sha256": hashlib.sha256(payload).hexdigest()}
+    finally:
+        os.close(parent)
+
+
+
+def proxy_file_generation(info):
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+            info.st_mode, info.st_uid, info.st_nlink)
+
+
+def guard_proxy_record(path: Path, pin: dict) -> None:
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(parent)
+        if (info.st_dev, info.st_ino) != pin["parent"]:
+            raise RuntimeError("Fixture proxy fence parent changed")
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
+        with os.fdopen(fd, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            raw = stream.read(1048577)
+            named = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+            if (proxy_file_generation(before) != pin["generation"] or proxy_file_generation(named) != pin["generation"]
+                    or proxy_file_generation(os.fstat(stream.fileno())) != pin["generation"]
+                    or hashlib.sha256(raw).hexdigest() != pin["sha256"]):
+                raise RuntimeError("Fixture proxy fence generation changed")
+        named_parent = path.parent.stat(follow_symlinks=False)
+        if (named_parent.st_dev, named_parent.st_ino) != pin["parent"]:
+            raise RuntimeError("Fixture proxy fence named parent changed")
+    finally:
+        os.close(parent)
+
+
+def proxy_source_authority(args) -> dict:
+    values = {name: getattr(args, name, None) for name in ("serial", "device_port", "host_port", "base_sha256",
+        "expected_avd", "expected_api", "expected_version", "expected_code", "adb", "cli", "target", "staging", "intent")}
+    return json.loads(json.dumps(values, sort_keys=True, default=str))
+
+
+def guard_proxy_evidence(args) -> None:
+    if proxy_source_authority(args) != args.proxy_source_authority:
+        raise RuntimeError("Fixture proxy source authority changed")
+    guard_proxy_record(args.receipt.with_name(args.receipt.name + ".proxy-baseline.json"), args.proxy_baseline_pin)
+    if args.proxy_owned_pin is not None:
+        guard_proxy_record(args.receipt.with_name(args.receipt.name + ".proxy-owned.json"), args.proxy_owned_pin)
+
+def fixture_proxy_snapshot(adb: Adb) -> dict:
+    values = read_effective_proxy(lambda field: adb.shell("settings", "get", "global", field))
+    if any(not isinstance(value, str) for value in values.values()):
+        raise RuntimeError("Fixture proxy snapshots require exact text")
+    return values
+
+
+
+def fixture_proxy_presence(adb: Adb, expected: dict) -> dict:
+    # `get` renders an absent row as "null". Retain presence separately so
+    # restoring an absent host never creates a literal network host "null".
+    rows = {}
+    for line in adb.shell("settings", "list", "global").splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key in expected:
+            if key in rows:
+                raise RuntimeError("Duplicate fixture proxy setting row")
+            rows[key] = value
+    if any(rows.get(key, "null") != value for key, value in expected.items()):
+        raise RuntimeError("Fixture proxy settings presence/readback changed")
+    return {key: key in rows for key in expected}
+
+def capture_fixture_proxy(adb: Adb, baseline: dict, baseline_presence: dict, device_port: int, host_port: int) -> tuple[dict, dict]:
+    """Capture only the bounded settings derivation of this owned route."""
+    if adb.shell_id() != "uid=2000" or adb.reverse_mapping(device_port) != host_port:
+        raise RuntimeError("Fixture proxy route ownership changed")
+    current = fixture_proxy_snapshot(adb)
+    presence = fixture_proxy_presence(adb, current)
+    if any(presence[key] != baseline_presence[key] for key in ("global_http_proxy_pac", "global_http_proxy_exclusion_list")):
+        raise RuntimeError("Fixture proxy companion presence changed")
+    if fixture_proxy_snapshot(adb) != current or fixture_proxy_presence(adb, current) != presence:
+        raise RuntimeError("Fixture owned proxy snapshot changed between reads")
+    if current == baseline:
+        if presence != baseline_presence:
+            raise RuntimeError("Fixture proxy baseline presence changed")
+        return current, presence
+    if (current["http_proxy"] != f"127.0.0.1:{device_port}"
+            or current["global_http_proxy_host"] not in (baseline["global_http_proxy_host"], "127.0.0.1")
+            or current["global_http_proxy_port"] not in (baseline["global_http_proxy_port"], str(device_port))
+            or any(current[key] != baseline[key] for key in ("global_http_proxy_pac", "global_http_proxy_exclusion_list"))):
+        raise RuntimeError("Fixture proxy derivation changed")
+    return current, presence
+
+
+def restore_owned_proxy_transport(adb: Adb, args, baseline: dict, owned: dict | None, receipt: dict) -> None:
+    if adb.shell_id() != "uid=2000" or adb.reverse_mapping(args.device_port) != args.host_port:
+        raise RuntimeError("Fixture proxy cleanup route ownership changed")
+    guard_proxy_evidence(args)
+    current = fixture_proxy_snapshot(adb)
+    if current != baseline and (owned is None or current != owned):
+        raise RuntimeError("Fixture proxy cleanup settings ownership changed")
+    presence = args.proxy_baseline_presence
+    if set(presence) != set(baseline) or any(type(value) is not bool for value in presence.values()):
+        raise RuntimeError("Fixture proxy presence baseline missing")
+    current_presence = fixture_proxy_presence(adb, current)
+    expected_presence = presence if current == baseline else args.proxy_owned_presence
+    if current_presence != expected_presence:
+        raise RuntimeError("Fixture proxy cleanup row ownership changed")
+    binding = {"serial": args.serial, "devicePort": args.device_port, "hostPort": args.host_port,
+               "baseSha256": args.base_sha256, "baseline": baseline, "owned": owned,
+               "before": current, "sourceAuthority": args.proxy_source_authority, "baselinePresence": presence, "currentPresence": current_presence, "installerIntent": getattr(args, "intent", None)}
+    fence = args.receipt.with_name(args.receipt.name + ".proxy-restore-intent.json")
+    fence_pin = private_proxy_record(fence, binding)
+    guard_proxy_record(fence, fence_pin)
+    guard_proxy_evidence(args)
+    if adb.reverse_mapping(args.device_port) != args.host_port or fixture_proxy_snapshot(adb) != current or fixture_proxy_presence(adb, current) != current_presence:
+        raise RuntimeError("Fixture proxy changed after restoration fence")
+    if current != baseline:
+        # ADB flattens shell arguments. Quote the complete command so an exact
+        # empty-string baseline survives the device shell unchanged.
+        progress = current
+        progress_presence = current_presence
+        for field, value in baseline.items():
+            guard_proxy_record(fence, fence_pin)
+            guard_proxy_evidence(args)
+            if adb.shell_id() != "uid=2000" or adb.reverse_mapping(args.device_port) != args.host_port:
+                raise RuntimeError("Fixture proxy route changed during restoration")
+            if fixture_proxy_snapshot(adb) != progress or fixture_proxy_presence(adb, progress) != progress_presence:
+                raise RuntimeError("Fixture proxy changed during restoration")
+            command = ("settings", "put", "global", field, value) if presence[field] else ("settings", "delete", "global", field)
+            adb.shell(shlex.join(command))
+            updated = fixture_proxy_snapshot(adb)
+            if updated[field] != value or any(updated[key] not in (progress[key], baseline[key]) for key in baseline if key != field):
+                raise RuntimeError("Fixture proxy write had unexpected settings effects")
+            updated_presence = fixture_proxy_presence(adb, updated)
+            expected_updated_presence = {**progress_presence, field: presence[field]}
+            if updated_presence != expected_updated_presence:
+                raise RuntimeError("Fixture proxy write had unexpected row presence effects")
+            progress = updated
+            progress_presence = updated_presence
+    guard_proxy_evidence(args)
+    after = fixture_proxy_snapshot(adb)
+    receipt["effectiveProxyRestored"] = after
+    if after != baseline or fixture_proxy_presence(adb, after) != presence:
+        raise RuntimeError("Fixture effective proxy restoration did not match baseline")
+    if adb.reverse_mapping(args.device_port) != args.host_port:
+        raise RuntimeError("Fixture reverse route changed after proxy restoration")
+    guard_proxy_record(fence, fence_pin)
+    guard_proxy_evidence(args)
+    adb.remove_reverse(args.device_port)
+    guard_proxy_evidence(args)
+
 def verify_public_baseline(adb: Adb, cli: Path, serial: str, expected_avd: str, expected_api: str,
                            expected_version: str, expected_code: str, expected_sha256: str,
                            cli_environment=None) -> dict:
@@ -362,11 +534,19 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
             or effective_proxy["http_proxy"] != previous_proxy):
         raise RuntimeError("Public no-update preflight requires an unowned public transport baseline")
     receipt["effectiveProxyBaseline"] = effective_proxy
+    args.proxy_baseline_presence = fixture_proxy_presence(adb, effective_proxy)
+    receipt["effectiveProxyBaselinePresence"] = args.proxy_baseline_presence
     receipt["baseline"] = verify_public_baseline(
         adb, args.cli, args.serial, args.expected_avd, args.expected_api,
         args.expected_version, args.expected_code, args.base_sha256, cli_environment,
     )
     receipt["frozenBaseSha256"] = frozen_hash
+    if transport_mode == "http-proxy":
+        args.proxy_source_authority = proxy_source_authority(args)
+        args.proxy_owned_pin = None
+        args.proxy_baseline_pin = private_proxy_record(args.receipt.with_name(args.receipt.name + ".proxy-baseline.json"),
+            {"serial": args.serial, "devicePort": args.device_port, "hostPort": args.host_port,
+             "baseSha256": frozen_hash, "sourceAuthority": args.proxy_source_authority, "baseline": effective_proxy, "baselinePresence": args.proxy_baseline_presence, "publicBaseline": receipt["baseline"], "installerIntent": getattr(args, "intent", None)})
     secure_private_fixture_files([args.certificate])
     private_mode = stat.S_IMODE(args.fixture_parent.stat().st_mode)
     target_mode, target_label = device_mode(adb, args.target), device_label(adb, args.target)
@@ -379,10 +559,13 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
     transport = False
     reverse_created = False
     proxy_attempted = False
+    owned_proxy = None
     primary_failure = False
     rooted = False
     staging_created = False
     try:
+        if transport_mode == "http-proxy":
+            guard_proxy_evidence(args)
         adb.run("root")
         rooted = True
         adb.wait_for_device()
@@ -416,13 +599,22 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
         if adb.shell_id() != "uid=2000":
             raise RuntimeError("Fixture setup did not restore public adbd")
         if transport_mode == "http-proxy":
+            guard_proxy_evidence(args)
+            if fixture_proxy_snapshot(adb) != effective_proxy or fixture_proxy_presence(adb, effective_proxy) != args.proxy_baseline_presence or adb.reverse_mapping(args.device_port) is not None:
+                raise RuntimeError("Fixture proxy baseline changed before setup")
+            adb.reverse(args.device_port, args.host_port)
+            reverse_created = True
             proxy_attempted = True
             try:
-                establish_owned_transport(adb, args.device_port, args.host_port, previous_proxy)
-            except Exception as error:
-                reverse_created = bool(getattr(error, "fixture_reverse_owned", False))
-                raise
-            reverse_created = True
+                adb.set_global_proxy(f"127.0.0.1:{args.device_port}")
+            finally:
+                owned_proxy, args.proxy_owned_presence = capture_fixture_proxy(adb, effective_proxy, args.proxy_baseline_presence, args.device_port, args.host_port)
+                receipt["effectiveProxyOwned"] = owned_proxy
+                receipt["effectiveProxyOwnedPresence"] = args.proxy_owned_presence
+                args.proxy_owned_pin = private_proxy_record(args.receipt.with_name(args.receipt.name + ".proxy-owned.json"),
+                    {"serial": args.serial, "devicePort": args.device_port, "hostPort": args.host_port,
+                     "baseSha256": frozen_hash, "sourceAuthority": args.proxy_source_authority, "baseline": effective_proxy, "baselinePresence": args.proxy_baseline_presence, "owned": owned_proxy, "ownedPresence": args.proxy_owned_presence, "installerIntent": getattr(args, "intent", None)})
+            guard_proxy_evidence(args)
             transport = True
         else:
             if adb.reverse_mapping(args.device_port) is not None:
@@ -444,21 +636,14 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
             except Exception as error:
                 receipt["cleanupFailures"].append({"step": name, "type": type(error).__name__})
 
-        if transport:
-            cleanup_attempt(
-                "transport", lambda: cleanup_fixture_transport(
-                    adb, args.device_port, args.host_port, previous_proxy
-                ),
-            )
+        if reverse_created and transport_mode == "http-proxy":
+            cleanup_attempt("transport" if transport else "partialReverse",
+                lambda: restore_owned_proxy_transport(adb, args, effective_proxy, owned_proxy, receipt))
         elif reverse_created:
             def remove_partial_reverse():
                 if adb.reverse_mapping(args.device_port) != args.host_port:
                     raise RuntimeError("Partial fixture reverse ownership changed")
-                fixture_proxy = f"127.0.0.1:{args.device_port}"
-                current_proxy = adb.global_proxy()
-                if proxy_attempted and current_proxy == fixture_proxy:
-                    adb.set_global_proxy(previous_proxy)
-                elif current_proxy != previous_proxy:
+                if fixture_proxy_snapshot(adb) != effective_proxy:
                     raise RuntimeError("Partial fixture proxy ownership changed")
                 adb.remove_reverse(args.device_port)
             cleanup_attempt("partialReverse", remove_partial_reverse)

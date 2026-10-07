@@ -797,5 +797,137 @@ class StrictInstallerAdmissionTest(unittest.TestCase):
                     driver.validate_intent(args)
 
 
+
+class InstallerEarlyReplyEvidenceTest(unittest.TestCase):
+    def test_check_and_download_reply_survives_result_or_owner_guard_before_probe(self):
+        import base64,stat
+        for phase in ('check','download'):
+            for attack in ('unexpected-result','owner'):
+                with self.subTest(phase=phase,attack=attack),tempfile.TemporaryDirectory() as raw:
+                    output=Path(raw);output.chmod(0o700)
+                    intent={'correlationId':'3a328d13-28a6-442b-bcc0-266ca20368f5','pair':{'sourceSha':'a'*40,'targetArtifactId':'sha256-'+'b'*64},'backupSha256':'c'*64,'expectedOwner':'controller','expectedRevision':4}
+                    args=SimpleNamespace(cli=Path('cli'),serial='serial',output=output,intent=intent,probe_output=output/'probe.json')
+                    bad=record('INTERACTION_REQUIRED' if attack=='unexpected-result' else 'OK',True,controller='foreign' if attack=='owner' else 'controller')
+                    bad['stdout']='exact private CLI reply';bad['stderr']='private diagnostic'
+                    replies=([record('OK',True)] if phase=='download' else [])+[bad]
+                    receipt={}
+                    with patch.object(driver,'invoke',side_effect=replies):
+                        with self.assertRaises(RuntimeError):driver.action(args,Adb(),receipt)
+                    path=output/('cli-'+phase+'-reply.json')
+                    self.assertTrue(path.exists(),'early public CLI reply was discarded before validation')
+                    envelope=json.loads(path.read_bytes());captured=json.loads(base64.b64decode(envelope['record']['base64']))
+                    self.assertEqual(bad,captured);self.assertEqual(intent['correlationId'],envelope['binding']['correlationId'])
+                    self.assertEqual('a'*40,envelope['binding']['sourceSha']);self.assertEqual(phase,envelope['phase'])
+                    self.assertEqual(0o600,stat.S_IMODE(path.stat().st_mode));self.assertFalse((output/'probe.json').exists())
+                    failed=json.loads((output/'cli-failure.json').read_bytes())
+                    self.assertEqual(phase,failed['phase']);self.assertEqual(bad['response']['code'],failed['code'])
+                    self.assertEqual('terminal-result' if attack=='unexpected-result' else 'owner-revision',failed['guard'])
+                    self.assertEqual(failed,receipt['installerActionFailure'])
+
+    def test_all_four_replies_are_private_create_only_and_oversized_data_is_explicitly_bounded(self):
+        import base64,io,stat
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as raw:
+            output=Path(raw);output.chmod(0o700)
+            intent={'correlationId':'3a328d13-28a6-442b-bcc0-266ca20368f5','pair':{'sourceSha':'a'*40,'targetArtifactId':'sha256-'+'b'*64},'expectedOwner':'controller','expectedRevision':4}
+            args=SimpleNamespace(output=output,intent=intent)
+            stream=io.StringIO()
+            for phase in ('check','download','noninteractive','interactive'):
+                value=record('OK',True);value['stdout']='private config '+('x'*100000 if phase=='interactive' else 'exact bytes')
+                with redirect_stdout(stream):driver.retain_cli_reply(args,phase,value)
+                path=output/('cli-'+phase+'-reply.json');before=path.read_bytes()
+                envelope=json.loads(before);captured=base64.b64decode(envelope['record']['base64'])
+                canonical=json.dumps(value,sort_keys=True,separators=(',',':')).encode()
+                self.assertEqual(hashlib.sha256(canonical).hexdigest(),envelope['record']['sha256'])
+                self.assertEqual(len(canonical),envelope['record']['size'])
+                self.assertEqual(canonical[:driver._REPLY_LIMIT],captured)
+                self.assertEqual(len(canonical)>driver._REPLY_LIMIT,envelope['record']['truncated'])
+                self.assertLess(len(before),46000);self.assertEqual(0o600,stat.S_IMODE(path.stat().st_mode))
+                with self.assertRaises(FileExistsError):driver.retain_cli_reply(args,phase,value)
+                self.assertEqual(before,path.read_bytes())
+            self.assertEqual('',stream.getvalue())
+
+    def test_noninteractive_and_interactive_guard_failures_retain_immediate_reply(self):
+        for phase in ('noninteractive','interactive'):
+            with self.subTest(phase=phase),tempfile.TemporaryDirectory() as raw:
+                output=Path(raw);output.chmod(0o700)
+                args=SimpleNamespace(cli=Path('cli'),serial='serial',output=output,
+                    intent={'correlationId':'3a328d13-28a6-442b-bcc0-266ca20368f5','pair':{'sourceSha':'a'*40,'targetArtifactId':'sha256-'+'b'*64},'backupSha256':'c'*64,'expectedOwner':'controller','expectedRevision':4},probe_output=output/'probe.json')
+                replies=[record('OK',True),record('OK',True)]
+                if phase=='interactive':replies.append(record('INTERACTION_REQUIRED',True))
+                replies.append(record('OK',True) if phase=='noninteractive' else record('ACCEPTED',False,controller='foreign'))
+                with patch.object(driver,'invoke',side_effect=replies):
+                    with self.assertRaises(RuntimeError):driver.action(args,Adb(),{})
+                self.assertTrue((output/('cli-'+phase+'-reply.json')).exists())
+                self.assertEqual(phase,json.loads((output/'cli-failure.json').read_bytes())['phase'])
+                self.assertFalse((output/'probe.json').exists())
+
+    def test_invoke_retains_exact_stdout_whitespace_and_nonjson_invocation_failure(self):
+        import base64
+        with tempfile.TemporaryDirectory() as raw:
+            output=Path(raw);output.chmod(0o700)
+            args=SimpleNamespace(cli=Path('cli'),serial='serial',output=output,
+                intent={'correlationId':'3a328d13-28a6-442b-bcc0-266ca20368f5','pair':{'sourceSha':'a'*40,'targetArtifactId':'sha256-'+'b'*64},'expectedOwner':'controller','expectedRevision':4})
+            stdout='  '+json.dumps(record('OK',True)['response'])+'\n'
+            with patch.object(driver.subprocess,'run',return_value=SimpleNamespace(returncode=0,stdout=stdout,stderr='')):
+                value=driver.invoke_retained(args,{},'check','updates','check')
+            self.assertEqual(stdout,value['stdout'])
+            rawreply=json.loads((output/'cli-check-reply.json').read_bytes())
+            self.assertEqual(stdout,json.loads(base64.b64decode(rawreply['record']['base64']))['stdout'])
+            with patch.object(driver.subprocess,'run',return_value=SimpleNamespace(returncode=1,stdout='private nonjson',stderr='private error')):
+                with self.assertRaises(driver.InvocationFailure):driver.invoke_retained(args,{},'download','updates','download')
+            failed=json.loads((output/'cli-failure.json').read_bytes());self.assertEqual('download',failed['phase']);self.assertEqual('UNRECOGNIZED',failed['code']);self.assertEqual('invocation',failed['guard'])
+
+    def test_reply_writer_rejects_unsafe_parent_and_unbound_identity_before_publication(self):
+        for attack in ('mode','symlink','correlation','source'):
+            with self.subTest(attack=attack),tempfile.TemporaryDirectory() as raw:
+                root=Path(raw);output=root/'output';output.mkdir(mode=0o700)
+                intent={'correlationId':'3a328d13-28a6-442b-bcc0-266ca20368f5','pair':{'sourceSha':'a'*40,'targetArtifactId':'sha256-'+'b'*64}}
+                if attack=='mode':output.chmod(0o755)
+                elif attack=='symlink':output.rename(root/'original');output.symlink_to(root/'original',target_is_directory=True)
+                elif attack=='correlation':intent['correlationId']='foreign'
+                else:intent['pair']['sourceSha']='foreign'
+                with self.assertRaises(ValueError):driver.retain_cli_reply(SimpleNamespace(output=output,intent=intent),'check',record('OK',True))
+                self.assertFalse((output/'cli-check-reply.json').exists())
+
+    def test_rejected_cli_records_remain_private_in_exceptions_and_formatted_stderr(self):
+        import traceback,base64
+        secret='PRIVATE_CLI_PAYLOAD_8927'
+        bad=record('INTERACTION_REQUIRED',True,data={'private':secret});bad['stdout']=secret;bad['stderr']=secret
+        with self.assertRaises(RuntimeError) as caught:driver.final(bad,'OK')
+        self.assertNotIn(secret,str(caught.exception))
+        with tempfile.TemporaryDirectory() as raw:
+            output=Path(raw);output.chmod(0o700)
+            args=SimpleNamespace(cli=Path('cli'),serial='serial',output=output,
+                intent={'correlationId':'3a328d13-28a6-442b-bcc0-266ca20368f5','pair':{'sourceSha':'a'*40,'targetArtifactId':'sha256-'+'b'*64},'backupSha256':'c'*64,'expectedOwner':'controller','expectedRevision':4},probe_output=output/'probe.json')
+            accepted=record('ACCEPTED',False,data={'private':secret});accepted['stdout']=secret;accepted['stderr']=secret
+            with patch.object(driver,'invoke',side_effect=[record('OK',True),record('OK',True),record('INTERACTION_REQUIRED',True),accepted]):
+                try:driver.action(args,Adb(),{})
+                except RuntimeError as error:
+                    self.assertNotIn(secret,str(error));self.assertNotIn(secret,''.join(traceback.format_exception(error)))
+                else:self.fail('invalid accepted reply was admitted')
+            envelope=json.loads((output/'cli-interactive-reply.json').read_bytes())
+            self.assertIn(secret,base64.b64decode(envelope['record']['base64']).decode())
+
+    def test_uncaught_terminal_guard_stderr_and_other_record_guards_never_dump_payload(self):
+        import subprocess,traceback
+        secret='PRIVATE_REPLY_STDERR_3109'
+        bad=record('INTERACTION_REQUIRED',True,data={'private':secret});bad['stdout']=secret;bad['stderr']=secret
+        process=subprocess.run([sys.executable,'-I','-B','-c',
+            'import sys,json;sys.path.insert(0,sys.argv[1]);import android_installer_lifecycle as driver;driver.final(json.load(sys.stdin),"OK")',
+            str(Path(driver.__file__).resolve().parent)],input=json.dumps(bad),capture_output=True,text=True,timeout=10)
+        self.assertNotEqual(0,process.returncode);self.assertNotIn(secret,process.stdout);self.assertNotIn(secret,process.stderr)
+        identity_bad=record('OK',True,'operation',{'installPhase':'installed','installed':True,'availableVersion':secret})
+        identity_bad['stdout']=secret;identity_bad['stderr']=secret
+        calls=[lambda:driver.correlated_terminal(bad,'operation','installed'),
+               lambda:driver.handoff_identity(bad,'operation','version','hash'),
+               lambda:driver.terminal_identity(identity_bad,'operation','installed','version','hash')]
+        for call in calls:
+            with self.subTest(call=call):
+                try:call()
+                except RuntimeError as error:
+                    self.assertNotIn(secret,str(error));self.assertNotIn(secret,''.join(traceback.format_exception(error)))
+                else:self.fail('invalid response admitted')
+
 if __name__ == "__main__":
     unittest.main()

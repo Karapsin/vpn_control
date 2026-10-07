@@ -201,6 +201,91 @@ class AndroidNativeFixtureLifecycleTest(unittest.TestCase):
             self.assertLess(publication_order.index(CAMPAIGN + ".json"),
                             publication_order.index("device-archlinux-api35.lease"))
 
+    def test_clean_linked_source_admits_dirty_coordinator_without_source_path_in_intent(self):
+        configured = SimpleNamespace(android_devices={"api35": {}}, fixture_transfer_root=Path("/private/fixtures"))
+        config = SimpleNamespace(hosts={"archlinux": configured})
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+            root = Path(raw); root.chmod(0o700)
+            clean_source = root / "clean-source"; clean_source.mkdir()
+            plan = {"sourceSha": SOURCE, "baseArtifactId": fixture.BASE_ARTIFACT_ID,
+                    "deviceMutationAllowed": False}
+            plan_path = root / "plan.json"
+            fixture.write_private_plan(plan_path, plan)
+            seen = []
+
+            def submit(_root, _host, _action, _device, campaign, *_args):
+                intent = lifecycle._read_plan(lifecycle._directory(root) / (campaign + ".json"))
+                self.assertNotIn("sourceRoot", intent)
+                self.assertNotIn(str(clean_source), json.dumps(intent, sort_keys=True))
+                seen.append(campaign)
+                return {"state": "running", "campaignId": campaign,
+                        "endpoint": {"hostHttpsPort": 30001, "hostSocksPort": 30002}}
+
+            with mock.patch.object(lifecycle.ssh_transport, "load_config", return_value=config), \
+                    mock.patch.object(lifecycle.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
+                    mock.patch.object(fixture, "_source_root", return_value=clean_source) as bind, \
+                    mock.patch.object(fixture, "prepare_requirements", return_value=plan) as prepare, \
+                    mock.patch.object(fixture, "_head", side_effect=lambda path: SOURCE if path == clean_source else "dirty"), \
+                    mock.patch.object(fixture, "_clean", side_effect=lambda path: path == clean_source), \
+                    mock.patch.object(fixture, "_stable_tls_bytes", side_effect=[(b"cert", (1,2,3,4)), (b"key", (1,3,3,4))]), \
+                    mock.patch.object(lifecycle, "_remote", side_effect=submit):
+                observed = lifecycle.start(root, "archlinux", "api35", CAMPAIGN, plan_path,
+                                           root / "cert", root / "key", source_root=clean_source)
+            self.assertTrue(observed["ok"])
+            self.assertEqual([CAMPAIGN], seen)
+            bind.assert_called_once_with(root.resolve(), clean_source)
+            prepare.assert_called_once_with(root.resolve(), SOURCE, fixture.BASE_ARTIFACT_ID,
+                                            source_root=clean_source)
+
+    def test_invalid_source_root_rejects_before_fixture_lease_or_remote_dispatch(self):
+        configured = SimpleNamespace(android_devices={"api35": {}}, fixture_transfer_root=Path("/private/fixtures"))
+        config = SimpleNamespace(hosts={"archlinux": configured})
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+            root = Path(raw); root.chmod(0o700)
+            plan = {"sourceSha": SOURCE, "baseArtifactId": fixture.BASE_ARTIFACT_ID,
+                    "deviceMutationAllowed": False}
+            plan_path = root / "plan.json"
+            fixture.write_private_plan(plan_path, plan)
+            for source_error in (ValueError("foreign"), ValueError("dirty"), ValueError("symlink")):
+                with self.subTest(source_error=str(source_error)), \
+                        mock.patch.object(lifecycle.ssh_transport, "load_config", return_value=config), \
+                        mock.patch.object(lifecycle.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
+                        mock.patch.object(fixture, "_source_root", side_effect=source_error), \
+                        mock.patch.object(lifecycle, "_remote") as remote:
+                    with self.assertRaises(ValueError):
+                        lifecycle.start(root, "archlinux", "api35", CAMPAIGN, plan_path,
+                                        root / "cert", root / "key", source_root=root / "source")
+                    remote.assert_not_called()
+                    self.assertFalse((root / ".rag_index" / "android-native-fixture-campaigns" /
+                                      (CAMPAIGN + ".json")).exists())
+
+    def test_changed_clean_source_sha_or_status_rejects_before_lease_write_or_dispatch(self):
+        configured = SimpleNamespace(android_devices={"api35": {}}, fixture_transfer_root=Path("/private/fixtures"))
+        config = SimpleNamespace(hosts={"archlinux": configured})
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+            root = Path(raw); root.chmod(0o700)
+            clean_source = root / "clean-source"; clean_source.mkdir()
+            plan = {"sourceSha": SOURCE, "baseArtifactId": fixture.BASE_ARTIFACT_ID,
+                    "deviceMutationAllowed": False}
+            plan_path = root / "plan.json"
+            fixture.write_private_plan(plan_path, plan)
+            for head, clean in (("b" * 40, True), (SOURCE, False)):
+                with self.subTest(head=head, clean=clean), \
+                        mock.patch.object(lifecycle.ssh_transport, "load_config", return_value=config), \
+                        mock.patch.object(lifecycle.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
+                        mock.patch.object(fixture, "_source_root", return_value=clean_source), \
+                        mock.patch.object(fixture, "prepare_requirements", return_value=plan), \
+                        mock.patch.object(fixture, "_head", return_value=head), \
+                        mock.patch.object(fixture, "_clean", return_value=clean), \
+                        mock.patch.object(fixture, "_stable_tls_bytes", side_effect=[(b"cert", (1,2,3,4)), (b"key", (1,3,3,4))]), \
+                        mock.patch.object(lifecycle, "_remote") as remote:
+                    with self.assertRaisesRegex(ValueError, "source changed"):
+                        lifecycle.start(root, "archlinux", "api35", CAMPAIGN, plan_path,
+                                        root / "cert", root / "key", source_root=clean_source)
+                    remote.assert_not_called()
+                    self.assertFalse((root / ".rag_index" / "android-native-fixture-campaigns" /
+                                      (CAMPAIGN + ".json")).exists())
+
     def test_unknown_status_preserves_correlation_and_lease(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
             root = Path(raw); root.chmod(0o700)

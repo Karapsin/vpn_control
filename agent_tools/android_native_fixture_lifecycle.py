@@ -269,7 +269,8 @@ def _remote(root: Path, host: str, action: str, device: str, campaign_id: str,
 
 
 def start(root: Path | str, host: str, device: str, campaign_id: str, plan_path: Path | str,
-          certificate: Path | str, private_key: Path | str) -> dict[str, Any]:
+          certificate: Path | str, private_key: Path | str, *,
+          source_root: Path | str | None = None) -> dict[str, Any]:
     """Journal before one remote host-only submission; never replay an unknown."""
     root = Path(root).resolve()
     if (not isinstance(campaign_id, str) or not _UUID.fullmatch(campaign_id) or
@@ -283,14 +284,17 @@ def start(root: Path | str, host: str, device: str, campaign_id: str, plan_path:
         raise ValueError("Android fixture requires private key SSH")
     plan = _read_plan(Path(plan_path))
     source_sha = plan.get("sourceSha")
-    if plan != android_native_fixture.prepare_requirements(root, source_sha, plan.get("baseArtifactId")):
+    source_checkout = android_native_fixture._source_root(root, source_root)
+    if plan != android_native_fixture.prepare_requirements(root, source_sha, plan.get("baseArtifactId"),
+                                                            source_root=source_checkout):
         raise ValueError("Android fixture plan no longer matches exact source")
-    source = (Path(__file__).with_name("android_native_fixture.py")).read_bytes()
+    fixture_bytes = (Path(__file__).with_name("android_native_fixture.py")).read_bytes()
     cert, _ = android_native_fixture._stable_tls_bytes(Path(certificate), private=False)
     key, _ = android_native_fixture._stable_tls_bytes(Path(private_key), private=True)
-    if android_native_fixture._head(root) != source_sha or not android_native_fixture._clean(root):
+    if (android_native_fixture._head(source_checkout) != source_sha or
+            not android_native_fixture._clean(source_checkout)):
         raise ValueError("Android fixture source changed during preparation")
-    source_hash = hashlib.sha256(source).hexdigest()
+    source_hash = hashlib.sha256(fixture_bytes).hexdigest()
     cert_hash = hashlib.sha256(cert).hexdigest()
     key_hash = hashlib.sha256(key).hexdigest()
     directory = _directory(root)
@@ -301,7 +305,7 @@ def start(root: Path | str, host: str, device: str, campaign_id: str, plan_path:
     android_native_fixture.write_private_plan(directory / (campaign_id + ".json"), intent)
     with _device_lock(directory, host, device):
         android_native_fixture.write_private_plan(lease, {"host": host, "device": device, "campaignId": campaign_id})
-    payload = json.dumps({"source": base64.b64encode(source).decode(), "certificate": base64.b64encode(cert).decode(),
+    payload = json.dumps({"source": base64.b64encode(fixture_bytes).decode(), "certificate": base64.b64encode(cert).decode(),
                           "privateKey": base64.b64encode(key).decode()}, separators=(",", ":")).encode()
     result = _remote(root, host, "start", device, campaign_id, source_hash, cert_hash, key_hash, payload)
     return {"ok": result.get("state") == "running", "state": result.get("state"), "campaignId": campaign_id,

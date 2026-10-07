@@ -128,6 +128,10 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   Aim for about 500 words; include additional essential constraints when needed.
   Avoid a full conversation fork for a task that needs only this brief. Reuse a
   worker when its existing context matches the next assignment.
+- When a reviewer or worker has completed its turn, reactivate it with
+  `followup_task` for another assignment. `send_message` only delivers a mailbox
+  message and does not start an idle agent. Check `list_agents` before waiting
+  for a new review verdict; a queued request alone is not a running review.
 - Keep routine handoffs near 200 words: completed behavior, changed paths, command
   and result counts/skips, source/artifact identity, evidence paths, unresolved cases,
   and cleanup. Send intermediate messages for decisions, completion or actionable
@@ -166,6 +170,11 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   `windows_native_fixture.trusted_powershell_file_arguments`; its execution-policy
   option applies only to that process. Never change the guest-wide policy merely
   to run a fixture.
+- Execute generated-carrier regressions with the assembled native namespace
+  and imports. Do not inject missing standard-library globals into test harnesses.
+  Declare any OS portability seam explicitly; keep real generated function code
+  and source guards active. Function hashes alone do not prove that new wrapper
+  code has its runtime bindings.
 - Before launching a generated native runner, syntax-check the complete script
   and validate its final deployed helper paths, interpreter, package attributes,
   and fixture tools. Reuse `native_fixture_run.sh` for durable child exit/PID
@@ -240,6 +249,25 @@ product fix and native scenario. Use named SSH profiles from the private ignored
 `.vm-hosts.local.json`; never copy credentials into tool arguments, tracked code,
 logs, or evidence. Unknown remote outcomes remain unknown until observed, and must
 not trigger an automatic retry of installation or runtime mutations.
+
+Apply `TEST-002` to every platform's native acceptance: first prove each complete
+scenario directly through SSH, CLI, ADB or native tools, including its applicable
+success, failure, recovery and cleanup cases. Integrate that procedure into MCP
+only after native success, then repeat the same cases through MCP with matching
+source/artifacts. Repeated MCP failures return to direct diagnosis. Keep direct
+and MCP evidence separate; a passing local collector or read-only diagnostic
+does not close the product scenario. MCP remains the repository startup and
+delivery entry point. Ownership, protected data, causal regressions, durable
+original handles and unknown-outcome guards apply in both native phases.
+
+Apply `TEST-003` to schedule independent native scenarios in parallel. Give every
+worker exact file ownership and each guest/emulator one operator. Use separate
+verified guests or explicitly isolated state for interfering cases; serialize
+installer, machine-wide VPN, reboot and recovery work within the same guest.
+The sole operator may batch independent read-only observations. Check resource
+capacity and retain each original handle and cleanup owner. Do not clone a live
+unverified baseline, share mutable acceptance state, drop cases or restart an
+unknown operation to increase concurrency.
 
 The MCP server is agent-only infrastructure. Its environment and index remain ignored in `.agent_venv/` and `.rag_index/`; the application build must not depend on either directory.
 

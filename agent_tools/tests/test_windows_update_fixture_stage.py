@@ -86,8 +86,8 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
             finally:
                 target.chmod(0o666)
 
-    def _run_remote_status(self, receipt, call):
-        body = stage._REMOTE_STATUS[stage._REMOTE_STATUS.index("root,env,lease,corr,"):]
+    def _run_remote_status(self, receipt, call, dispatch=None):
+        body = stage._REMOTE_STATUS[stage._REMOTE_STATUS.index("import time,uuid\n"):]
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             environment = root / "windows-cp117"
@@ -102,16 +102,29 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
                        "fixtureReceiptArtifactId": REQUEST["fixtureReceiptArtifactId"],
                        "baseMsiArtifactId": REQUEST["baseMsiArtifactId"],
                        "targetMsiArtifactId": REQUEST["targetMsiArtifactId"]}
-            for name, value in (("binding.json", binding), ("dispatch.json", {"pid": 7})):
+            for name, value in (("binding.json", binding), ("dispatch.json", dispatch or {"pid": 7})):
                 path = leaf / name
                 path.write_text(json.dumps(value)); os.chmod(path, 0o600)
             output = io.StringIO()
             args = [str(root), "windows-cp117", LEASE, CORR, "/qga", "42", "99", SID,
                     SOURCE, "a" * 64, "2" * 64, REQUEST["fixtureReceiptArtifactId"],
                     REQUEST["baseMsiArtifactId"], REQUEST["targetMsiArtifactId"]]
-            namespace = {"json": json, "os": os, "stat": stat,
+            def qga(_sock, method, params):
+                if method == "guest-exec":
+                    return {"pid": 8}
+                if method == "guest-exec-status" and params == {"pid": 8}:
+                    if isinstance(receipt, Exception):
+                        raise receipt
+                    if isinstance(receipt, dict):
+                        return receipt
+                    raw = b"" if receipt is None else receipt
+                    return {"exited": True, "exitcode": 3 if receipt is None else 0,
+                            "out-truncated": False, "err-truncated": False,
+                            "out-data": base64.b64encode(raw).decode()}
+                return call(method, params)
+            namespace = {"json": json, "os": os, "stat": stat, "base64": base64,
                          "sys": type("Args", (), {"argv": ["remote", *args]})(),
-                         "live": lambda *_: True, "call": call, "read": lambda *_: receipt,
+                         "live": lambda *_: True, "call": qga,
                          "decode": lambda raw: raw.decode("utf-8")}
             with redirect_stdout(output):
                 try:
@@ -120,9 +133,9 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
                     self.assertEqual(0, exited.code)
         return json.loads(output.getvalue())
 
-    def _run_remote_diagnostic(self, names, call, read):
+    def _run_remote_diagnostic(self, names, call, receipt):
         """Run the generated remote observer against a private fake host leaf."""
-        body = stage._REMOTE_DIAGNOSTIC[stage._REMOTE_DIAGNOSTIC.index("import time\n"):]
+        body = stage._REMOTE_DIAGNOSTIC[stage._REMOTE_DIAGNOSTIC.index("import time,uuid\n"):]
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             environment = root / "windows-cp117"
@@ -147,9 +160,20 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
             args = [str(root), "windows-cp117", LEASE, CORR, "/qga", "42", "99", SID,
                     SOURCE, "a" * 64, "2" * 64, "1", REQUEST["fixtureReceiptArtifactId"],
                     REQUEST["baseMsiArtifactId"], REQUEST["targetMsiArtifactId"]]
+            def qga(_sock, method, params):
+                if method == "guest-exec":
+                    return {"pid": 8}
+                if method == "guest-exec-status" and params == {"pid": 8}:
+                    if isinstance(receipt, Exception):
+                        raise receipt
+                    raw = b"" if receipt is None else receipt
+                    return {"exited": True, "exitcode": 3 if receipt is None else 0,
+                            "out-truncated": False, "err-truncated": False,
+                            "out-data": base64.b64encode(raw).decode()}
+                return call(method, params)
             namespace = {"os": os, "stat": stat, "json": json, "base64": base64,
                          "time": __import__("time"), "sys": type("Args", (), {"argv": ["remote", *args]})(),
-                         "live": lambda *_: True, "call": call, "read": read,
+                         "live": lambda *_: True, "call": qga,
                          "decode": lambda raw: raw.decode("utf-8")}
             with redirect_stdout(output):
                 with self.assertRaises(SystemExit) as exited:
@@ -599,11 +623,32 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
              patch.object(stage.base, "_descriptor", return_value=descriptor), \
              patch.object(stage.base, "_remote", return_value=json.dumps(observed).encode()), \
              patch.object(stage, "_complete_stage_lease", return_value=True), \
+             patch.object(stage, "_live_stage_verified", return_value=True) as live, \
              patch.object(stage, "validate_stage_acl_receipt") as acl:
             result = stage.status(temporary, {"correlationId": CORR})
         self.assertEqual("staged-not-server-ready", result["state"])
         self.assertFalse(result["serverReady"])
         self.assertEqual(2, acl.call_count)
+        live.assert_called_once()
+
+    def test_red_saved_stage_receipt_with_missing_live_content_never_claims_physical_stage(self):
+        intent = {"request": REQUEST, "leaseId": LEASE, "environment": "windows-cp117", "socketPath": "/qga",
+                  "pid": 42, "startTicks": 99, "expectedSid": SID, "sourceFingerprint": "a" * 64,
+                  "bundleSha256": "2" * 64, "fileHashes": HASHES}
+        descriptor = (object(), type("Host", (), {"fixture_transfer_root": Path("/fixture")})(),
+                      ("windows-cp117", "/qga", 42, 99, SID))
+        observed = {"state": "observed", "correlationId": CORR, "result":
+                    {"version": 1, "correlationId": CORR, "code": "STAGED_NOT_SERVER_READY",
+                     "bundleSha256": "2" * 64, "files": HASHES, "acl": {}, "rootAcl": {}, "stateAcl": STATE_ACL}}
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.object(stage, "_read_intent", return_value=intent), \
+             patch.object(stage.base, "_descriptor", return_value=descriptor), \
+             patch.object(stage.base, "_remote", return_value=json.dumps(observed).encode()), \
+             patch.object(stage, "validate_stage_acl_receipt"), \
+             patch.object(stage, "_live_stage_verified", return_value=False), \
+             patch.object(stage, "_complete_stage_lease") as complete:
+            self.assertEqual("unknown", stage.status(temporary, {"correlationId": CORR})["state"])
+        complete.assert_not_called()
 
     def test_remote_status_uses_valid_durable_receipt_before_consumed_qga_status(self):
         receipt = {"version": 1, "correlationId": CORR, "code": "STAGED_NOT_SERVER_READY"}
@@ -623,6 +668,20 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
         invalid = self._run_remote_status(
             b"{", lambda *_: self.fail("invalid receipt must not query QGA status"))
         self.assertEqual({"state": "unknown", "correlationId": CORR}, invalid)
+
+    def test_remote_status_does_not_complete_when_exclusive_receipt_read_fails(self):
+        result = self._run_remote_status(
+            {"exited": True, "exitcode": 1, "out-truncated": False,
+             "err-truncated": False, "out-data": ""},
+            lambda *_: self.fail("failed receipt reader must not consume dispatch status"))
+        self.assertEqual({"state": "unknown", "correlationId": CORR}, result)
+
+    def test_remote_status_refuses_extra_dispatch_fields_before_receipt_read(self):
+        result = self._run_remote_status(
+            b'{"correlationId":"' + CORR.encode() + b'"}',
+            lambda *_: self.fail("malformed dispatch must not read the receipt"),
+            dispatch={"pid": 7, "unbound": True})
+        self.assertEqual({"state": "unknown", "correlationId": CORR}, result)
 
     def test_status_rejects_partial_durable_receipt_before_completing_stage_lease(self):
         intent = {"request": REQUEST, "leaseId": LEASE, "environment": "windows-cp117",
@@ -726,19 +785,19 @@ class WindowsUpdateFixtureStageTest(unittest.TestCase):
         for expected, names, call in cases:
             with self.subTest(phase=expected):
                 if expected == "result-read-failed":
-                    read = lambda *_: (_ for _ in ()).throw(OSError())
+                    receipt = OSError()
                 elif expected == "dispatch-status-unknown":
-                    read = lambda *_: None
+                    receipt = None
                 else:
-                    read = lambda *_: b"{"
-                result = self._run_remote_diagnostic(names, call, read)
+                    receipt = b"{"
+                result = self._run_remote_diagnostic(names, call, receipt)
                 self.assertEqual({"state": "diagnosed", "correlationId": CORR,
                                   "binding": "exact", "phase": expected}, result)
 
     def test_remote_diagnostic_uses_receipt_before_consumed_dispatch_status(self):
         receipt = json.dumps({"correlationId": CORR, "code": "UNKNOWN"}).encode()
         result = self._run_remote_diagnostic(
-            {"dispatch"}, lambda *_: self.fail("receipt must precede QGA status"), lambda *_: receipt)
+            {"dispatch"}, lambda *_: self.fail("receipt must precede QGA status"), receipt)
         self.assertEqual({"state": "diagnosed", "correlationId": CORR,
                           "binding": "exact", "phase": "receipt-present-unverified"}, result)
 

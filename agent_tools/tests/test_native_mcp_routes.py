@@ -2,6 +2,7 @@
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,74 @@ from agent_tools import mcp_server
 
 
 class NativeRoutesTest(unittest.TestCase):
+    def test_baseline_metadata_route_rejects_overrides_before_reader(self):
+        from agent_tools import native_vm_baseline_inventory as inventory
+        with patch.object(inventory, "configured_source_metadata") as read, \
+             patch.object(mcp_server, "_native_response") as native:
+            for request in ({"root": "/private"}, {"provider": "tart"},
+                            {"command": "untrusted"}, None):
+                self.assertFalse(mcp_server.vm_workflow("baseline-source-inventory", request)["ok"])
+            read.assert_not_called()
+            native.assert_not_called()
+
+    def test_baseline_metadata_route_suppresses_private_errors_without_evidence_write(self):
+        from agent_tools import native_vm_baseline_inventory as inventory
+        with patch.object(inventory, "configured_source_metadata", side_effect=ValueError("private sentinel")) as read, \
+             patch.object(mcp_server, "_native_response") as native:
+            result = mcp_server.vm_workflow("baseline-source-inventory", {})
+            self.assertFalse(result["ok"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertFalse(result["readinessVerified"])
+            self.assertNotIn("private sentinel", json.dumps(result))
+            read.assert_called_once_with(mcp_server.REPO_ROOT)
+            native.assert_not_called()
+
+    def test_baseline_metadata_route_only_projects_known_finite_reason(self):
+        from agent_tools import native_vm_baseline_inventory as inventory
+        for reason in ("baselines_not_configured", "invalid_inventory",
+                       "invalid_source_configuration", "metadata_unavailable", "private sentinel"):
+            error = inventory.BaselineInventoryError(reason=reason)
+            with self.subTest(reason=reason), \
+                 patch.object(inventory, "configured_source_metadata", side_effect=error), \
+                 patch.object(mcp_server, "_native_response") as native:
+                result = mcp_server.vm_workflow("baseline-source-inventory", {})
+                self.assertEqual("metadata_unavailable" if reason == "private sentinel" else reason,
+                                 result["reason"])
+                self.assertNotIn("private sentinel", json.dumps(result))
+                native.assert_not_called()
+
+    @unittest.skipUnless(os.name == "posix" and hasattr(os, "O_NOFOLLOW"),
+                         "Configured private inventory requires POSIX nofollow")
+    def test_baseline_metadata_actual_private_fixture_and_fresh_cli(self):
+        import subprocess
+        import sys
+        from agent_tools.tests.test_native_vm_baseline_inventory import BaselineInventoryTests
+        fixture = BaselineInventoryTests()
+        fixture.setUp()
+        try:
+            with patch.object(mcp_server, "REPO_ROOT", fixture.root), \
+                 patch.object(mcp_server, "_native_response") as native:
+                result = mcp_server.vm_workflow("baseline-source-inventory", {})
+                self.assertTrue(result["ok"])
+                self.assertFalse(result["nativeActionAllowed"])
+                self.assertEqual([{"sourceId": "source-one", "provider": "qemu",
+                                   "generation": "generation-one"}], result["sources"])
+                native.assert_not_called()
+            # Use the real parser in script import mode; only the trusted checkout
+            # constant points at the synthetic private inventory.
+            inputs = fixture.root / "inputs.json"
+            inputs.write_text("{}")
+            code = "import sys;from pathlib import Path;sys.path.insert(0,'agent_tools');import mcp_server;mcp_server.REPO_ROOT=Path(sys.argv[1]);mcp_server.main(['vm-workflow','baseline-source-inventory','--inputs-file',sys.argv[2]])"
+            child = subprocess.run([sys.executable, "-c", code, str(fixture.root), str(inputs)],
+                                   cwd=mcp_server.REPO_ROOT, capture_output=True, text=True, timeout=30)
+            self.assertEqual(0, child.returncode, child.stderr)
+            self.assertEqual(result, json.loads(child.stdout))
+            self.assertNotIn("credential-sentinel", child.stdout)
+            self.assertNotIn("private-provider-sentinel", child.stdout)
+            self.assertFalse((fixture.root / ".rag_index").exists())
+        finally:
+            fixture.doCleanups()
+
     def test_windows_probe_routes_only_configured_identity_and_deadline(self):
         from agent_tools import windows_credential_probe_ssh as probe
         request = {"host": "owned", "correlationId": "00000000-0000-0000-0000-000000000001", "timeoutSeconds": 20}
@@ -224,3 +293,127 @@ class NativeRoutesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SourceReviewClosureRoutesTest(unittest.TestCase):
+    def test_source_closure_forwards_explicit_authority_without_native_recording(self):
+        from agent_tools import native_review_source_closure as closure
+        request = {"manifestPath": "/review.json", "manifestSha256": "a" * 64,
+                   "packetManifestPath": "/packet.json", "packetManifestSha256": "b" * 64}
+        receipt = {"scope": "SOURCE_ONLY", "nativeActionAllowed": False,
+                   "productAcceptance": False}
+        with patch.object(closure, "close_review_sources", return_value=receipt) as close, \
+             patch.object(mcp_server, "_native_response") as native:
+            result = mcp_server.vm_workflow("source-review-close", request)
+        self.assertTrue(result["ok"])
+        self.assertEqual("SOURCE_ONLY", result["scope"])
+        self.assertFalse(result["nativeActionAllowed"])
+        self.assertFalse(result["productAcceptance"])
+        close.assert_called_once_with("/review.json", "a" * 64,
+            packet_manifest_path="/packet.json", packet_manifest_sha256="b" * 64,
+            proof_path=None, proof_sha256=None)
+        native.assert_not_called()
+
+    def test_source_closure_refusals_do_not_write_native_failure_evidence(self):
+        from agent_tools import native_review_source_closure as closure
+        request = {"manifestPath": "/review.json", "manifestSha256": "a" * 64}
+        for invalid in ({}, {**request, "command": "untrusted"}, None):
+            with self.subTest(invalid=invalid), \
+                 patch.object(closure, "close_review_sources") as close, \
+                 patch.object(mcp_server, "_native_response") as native:
+                self.assertFalse(mcp_server.vm_workflow("source-review-close", invalid)["ok"])
+                close.assert_not_called()
+                native.assert_not_called()
+        for error in (ValueError("private sentinel"), OSError("private sentinel"), TypeError("private sentinel")):
+            with self.subTest(error=type(error)), \
+                 patch.object(closure, "close_review_sources", side_effect=error), \
+                 patch.object(mcp_server, "_native_response") as native:
+                result = mcp_server.vm_workflow("source-review-close", request)
+                self.assertFalse(result["ok"])
+                self.assertNotIn("private sentinel", json.dumps(result))
+                native.assert_not_called()
+
+
+    @unittest.skipUnless(os.name == "posix" and hasattr(os, "O_NOFOLLOW"),
+                         "Strict source closure requires POSIX nofollow support")
+    def test_source_closure_real_temp_files_and_cli_remain_readonly(self):
+        import hashlib
+        from agent_tools import native_review_source_closure as closure
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            source = root / "source.py"
+            source.write_bytes(b"bounded review source")
+            manifest = root / "manifest.json"
+            manifest.write_text(json.dumps({"inputs": {str(source): {
+                "generation": list(closure.generation(source.stat())),
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}}}))
+            request = {"manifestPath": str(manifest), "manifestSha256":
+                       hashlib.sha256(manifest.read_bytes()).hexdigest()}
+            request_path = root / "request.json"
+            request_path.write_text(json.dumps(request))
+            before = {p.name: (p.read_bytes(), closure.generation(p.stat())) for p in root.iterdir()}
+            output = io.StringIO()
+            with patch.object(mcp_server, "_native_response") as native, contextlib.redirect_stdout(output):
+                status = mcp_server.main(["vm-workflow", "source-review-close",
+                                          "--inputs-file", str(request_path)])
+            self.assertEqual(0, status)
+            result = json.loads(output.getvalue())
+            self.assertTrue(result["ok"])
+            self.assertEqual("SOURCE_ONLY", result["scope"])
+            self.assertEqual(1, result["sourceCount"])
+            self.assertFalse(result["nativeActionAllowed"])
+            self.assertFalse(result["productAcceptance"])
+            native.assert_not_called()
+            after = {p.name: (p.read_bytes(), closure.generation(p.stat())) for p in root.iterdir()}
+            self.assertEqual(before, after)
+
+
+class SecondAbortFailureProjectionTests(unittest.TestCase):
+    correlation = "691bd32a-4ea6-42a6-a3a2-e28b8d3498ec"
+    routes = (
+        ("windows-fixture-server-second-abort-successor-start", "successorCorrelationId", "start"),
+        ("windows-fixture-server-second-abort-successor-status", "successorCorrelationId", "status"),
+        ("windows-fixture-server-second-abort-successor-diagnostic", "successorCorrelationId", "diagnose"),
+        ("windows-fixture-server-second-abort-recovery-diagnose", "recoveryCorrelationId", "resume_diagnose"),
+        ("windows-fixture-server-second-abort-recovery-start", "recoveryCorrelationId", "resume_start"),
+        ("windows-fixture-server-second-abort-recovery-status", "recoveryCorrelationId", "resume_status"),
+    )
+
+    def test_actual_public_response_refuses_private_adapter_exception_text(self):
+        from types import SimpleNamespace
+        sentinel = "SYNTHETIC_CREDENTIAL_TOKEN /synthetic/private/path SYNTHETIC_RAW_BODY"
+        for action, field, method in self.routes:
+            for error_class in (ValueError, OSError, KeyError, TypeError):
+                with self.subTest(action=action, error=error_class.__name__):
+                    calls = []
+                    def refuse(*args):
+                        calls.append(args)
+                        raise error_class(sentinel)
+                    adapter = SimpleNamespace(**{method: refuse})
+                    # Only the native adapter and diagnostic storage are inert.
+                    # The public route and response enrichment execute unchanged.
+                    modules = {
+                        "windows_fixture_server_second_abort_successor": adapter,
+                        "native_next_action": SimpleNamespace(next_action=lambda *args: {"kind": "inspect-evidence"}),
+                        "native_failure_evidence": SimpleNamespace(bounded_failure_details=lambda *args: {},
+                            record_failure=lambda *args: {"state": "synthetic-retention"}),
+                        "native_response_diagnostics": SimpleNamespace(describe=lambda *args: {}),
+                    }
+                    with patch.object(mcp_server, "_agent_module", side_effect=modules.__getitem__):
+                        result = mcp_server.vm_workflow(action, {field: self.correlation})
+                    self.assertEqual(calls, [(mcp_server.REPO_ROOT, {field: self.correlation})])
+                    self.assertNotIn(sentinel, json.dumps(result))
+                    self.assertEqual("unknown", result["state"])
+                    self.assertEqual("windows-fixture-lifecycle-unavailable", result["reason"])
+                    self.assertEqual(self.correlation, result[field])
+                    self.assertIs(result["ok"], False)
+                    for key in ("replayAllowed", "nativeActionAllowed", "productAction"):
+                        self.assertIs(result[key], False)
+
+    def test_invalid_correlation_refuses_before_adapter(self):
+        for action, field, _method in self.routes:
+            for request in ({field: "../foreign"}, {field: True}, {field: self.correlation, "path": "/private"}):
+                with self.subTest(action=action, request=request), patch.object(mcp_server, "_agent_module") as load:
+                    result = mcp_server._vm_workflow_impl(action, request)
+                    self.assertIs(result["ok"], False)
+                    load.assert_not_called()

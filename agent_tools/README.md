@@ -51,10 +51,102 @@ current run to exit, then run a fresh pre-push tier.
 
 `prepare_start` deliberately blocks when a fetch fails, branches diverge, a dirty branch other than `dev` would need switching, or a dirty behind-`dev` worktree would need pulling. Resolve the reported condition explicitly and rerun it.
 
+## Native Acceptance Execution
+
+Follow TEST-002 and TEST-003 in `agent_docs/contracts.md` on Windows, Android,
+Linux and macOS. Prove each complete native scenario directly with SSH, CLI, ADB
+or native tools, including applicable failure, recovery and cleanup cases. After
+it passes, integrate the procedure into MCP and rerun those same cases against
+matching source/artifacts. Repeated MCP failures return to direct diagnosis.
+Local collector tests and successful diagnostics do not close product scenarios.
+
+Parallelize independently owned scenarios within verified resource capacity.
+Each guest/emulator has one operator; each file has one writer. Use separate
+verified guests or isolated state for interfering operations. Installer,
+machine-wide VPN, reboot and recovery work sharing a guest serialize; the sole
+operator may batch independent read-only observations. Retain original handles,
+raw evidence and cleanup ownership, and preserve unknown outcomes without replay.
+MCP remains the repository startup and delivery entry point.
+
 ## MCP Tools
+
+`ssh_workflow(action="connection-channel-prepare", host="archlinux", identity={"correlationId":"<canonical UUID>"})` creates one isolated configured two-hop connection channel. `connection-channel-status` accepts the same identity and only observes it. `connection-channel-ensure` accepts the identity plus an optional exact `receiptSha256`; it explicitly renews only after positive channel end. These connection-only actions accept no command, path, transfer or device fields. They preserve unknown correlations, return finite phases, hide private route options and never replay application jobs. Current selection publication integration and native equivalence remain pending. A channel UNKNOWN never authorizes another launch: preserve its correlation and observe or diagnose that same channel. Snapshot refusal is not an authentication failure. Use the fresh `mcp_tool.sh ssh-workflow <action> --host archlinux --identity-file <local JSON>` fallback while the running server has cached predecessor code.
+
+`vm_workflow(action="android-api35-remaining-proxy-status", inputs={})` performs
+only a fresh read of the fixed completed API35 cleanup0670. It verifies the
+original terminal bytes and current stopped owner, settings and Binder state.
+Its finite public result grants no installer, replay or product acceptance
+authority. Any input field is rejected; full transport evidence stays private.
+
+`vm_workflow(action="android-coldboot-product-api29-observe", inputs={})`
+reads the explicitly admitted original API29 emulator generation, installed APK,
+full staged CLI manifest, current controller, operations and routing. It requires
+stable stopped runtime and preserves old unknown operations. Detailed envelopes
+remain in owner-only observation receipts; public output reports bounded fields
+and the receipt digest. `productAdmitted` covers these current getters only;
+`acceptanceComplete` remains false. It cannot launch, install, reboot, replay or
+stop a guest runtime. Source or owner drift yields a diagnostic-only result.
+
+`vm_workflow(action="android-api35-large-routing-observe", inputs={})`
+performs two fixed read-only routing reads against the admitted API35 generation.
+Each read allows300 seconds publicly,330 seconds for collection and32MiB of
+output; the whole transport allows1200 seconds. All routing data must match,
+excluding only generated `exported_at`. Owner/revision, stopped runtime,
+operations, APK and full CLI-stage generations must remain stable. Private
+chunk receipts retain full replies and partial failures. Public success proves
+`currentRoutingVerified` only; product and acceptance completion remain false.
+
+The fixed Linux packaging actions `linux-package-tmux-availability`, `-resource-prepare`,
+`-preflight`, `-start`, `-status` and `-collect` use a dedicated source-bound tmux worker and
+immutable result spool. See [ssh-tmux-sessions.md](../agent_docs/ssh-tmux-sessions.md)
+for input schemas, one-submit fences and verified collection. A generic command,
+interactive attach or public session release is not exposed. Original86 direct
+build/collection and equivalent MCP collection are proven; new-job resource
+admission and deliberate disconnect acceptance remain separate gates.
+
+
+`vm_workflow(action="android-obsolete-consent-denial-collect",
+inputs={"denialId": "<denial UUID>"})` verifies and collects one completed,
+negative-only obsolete dialog cleanup. It accepts no commands or paths, does
+not repeat the Cancel action, and releases only its own proved local claims.
+The finite proof retains the original unknown outcome and requires UI absence,
+absent VPN permission and stopped runtime. Raw evidence remains private. The
+direct native flow is proved before this MCP route is retested.
+
+`vm_workflow(action="android-endpoint-mount-diagnostic-collect", inputs={"correlationId": "<endpoint UUID>", "diagnosticCorrelationId": "<diagnostic UUID>"})`
+collects one fixed retained mount diagnostic using8KiB chunks through the
+unchanged16KiB transport limit. Original intent, mount plan, stage, failure and
+diagnostic generations remain pinned throughout. It preserves private partial
+copies without overwriting. The finite result exposes only verified SHA256 and
+byte count; it grants no mount, cleanup, installer or replay action. Direct native
+collection has succeeded; fresh native MCP collection remains a verification gate.
+
+`vm_workflow(action="android-consent-grant-prompt-collect", inputs={"correlationId": "<original UUID>", "observationId": "<diagnostic UUID>"})`
+collects only the four fixed private prompt diagnostic artifacts through8KiB
+chunks and the unchanged16KiB transport limit. It pins original record and
+artifact generations before/after each chunk, writes create-only local600 files,
+and preserves partial copies on unknown outcomes. Its finite MCP result exposes
+completion and artifact count, never raw UI, operation payloads or private paths.
+It cannot capture a new prompt, tap, replay ON, release claims or overwrite a
+previous collection. Native MCP collection verification remains an acceptance
+gate; the direct collector's success is recorded separately.
 
 | Tool | Purpose |
 | --- | --- |
+| `ssh_workflow(action="connection-master-status", host="archlinux")` | Check the configured nested socket through the currently verified outer session, retaining bounded binary output. `socketState` distinguishes ready, absent, refused and unknown; refused leaves `nestedState` unknown and does not imply authentication failure. Finite `failurePhase` identifies an unproved boundary. No launch, replay, configuration change or native acceptance authority is granted. |
+| `ssh_workflow(action="gateway-tmux-status-diagnostic", host="archlinux", identity={"correlationId":"…"})` | Read the exact existing gateway status with a finite failure phase. Original source and authority guards remain mandatory; unknown state grants no recovery. Raw errors and control paths stay private. |
+| `ssh_workflow(action="connection-session-prepare", host="archlinux")` | Prepare or observe one private, source/config-bound outer gateway master for a configured nested route. A consumed unknown intent cannot launch another master. Existing native commands reuse the admitted socket with network fallback disabled. |
+| `ssh_workflow(action="connection-session-status", host="archlinux", identity={"receiptSha256":"…"})` | Revalidate the exact existing master receipt without launching or sending a guest command. Use the digest returned by preparation; arbitrary identity fields are rejected. |
+| `ssh_workflow(action="connection-session-close", host="archlinux", identity={"receiptSha256":"…"})` | Send one graceful control exit to the exact owned outer master. A durable intent fences the effect; unknown outcomes cannot replay. No guest command, signal, or VPN action is exposed. |
+| `ssh_workflow(action="connection-session-close-status", host="archlinux", identity={"receiptSha256":"…"})` | Observe the original close history and require positive process and socket absence before reporting closed. Retirement remains a separate action. |
+| `ssh_workflow(action="tmux-disconnect-probe", host="archlinux", identity={"hop":"gateway", "correlationId":"<new UUID>"})` | Run one fixed20-second inert job in a private tmux server, disconnect only its original local SSH client, and observe the same job from fresh clients. Hop is gateway or archlinux. No commands/paths/credentials, master control, package work, product acceptance or automatic replay. Unknown correlations remain consumed. |
+| `ssh_workflow(action="gateway-tmux-reconciliation-status", host="archlinux")` | Read only the fixed original d606 publication and separate adoption records. No inputs, writes or remote queries; finite historical state only. Use the configured probe separately for current connectivity. |
+| `ssh_workflow(action="gateway-tmux-availability", host="archlinux")` | Read tmux availability on the configured gateway. Availability does not grant launch or product acceptance authority. |
+| `ssh_workflow(action="gateway-tmux-prepare" | "gateway-tmux-release" | "gateway-tmux-status", host="archlinux", identity={"correlationId":"…"})` | Prepare one dedicated foreground nested master, release its original anchored gate once, or observe it. Require a canonical UUID. Source/config/profile/process/socket authority is retained; unknown outcomes cannot replay. No command, credential or path overrides are exposed. Canonical recovery publication and inventory adoption remain separate coordinator steps. |
+| `ssh_workflow(action="connection-session-retire", host="archlinux", identity={"receiptSha256":"…"})` | Archive the exact previously completed outer session only after positive process and socket absence. Preserve its full history; consumed retirement is status-only. Live, ambiguous and unknown startup sessions cannot retire. No signals or guest commands are sent. |
+| `ssh_workflow(action="connection-session-retirement-status", host="archlinux", identity={"receiptSha256":"…"})` | Read the exact archived retirement receipt without probing a reused PID or modifying a new session. |
+| `ssh_workflow(action="connection-nested-orphan-archive-status", host="archlinux", identity={"observationId":"0fb841fc-2f24-4eca-ae2b-6cc16f772f28","observationSha256":"522ffc5f5f1a9cb6160ffe5b1989c86837b5662ba6fed3fa869b4d9dd1f27069"})` | Read the immutable owned orphan archive receipt. This historical result does not revalidate current remote state. The corresponding archive action uses the same fixed proof and preserves the consumed one-shot fence; no signals or replay. |
+| `ssh_workflow(action="android-availability", host="archlinux", device="api29")` | Classify configured ADB visibility, including a positively missing or offline device. `api35` is also supported. Optional identity `{"expectedBootId":"…"}` compares an explicitly known host boot. Availability never grants product or lifecycle admission. |
 | `ssh_workflow(action="inventory", host=None, timeout_seconds=15)` | List private host aliases or run a bounded authenticated connectivity probe. |
 | `ssh_workflow(action="forward-open" | "forward-status" | "forward-close", host="archlinux", identity=None)` | Open, observe, or close the one fixed CP117 loopback VNC forward. |
 | `vm_workflow(action, inputs)` | Verify fixture bytes/preflight, maintain native artifact evidence, create fixed scenario bundles, or manage non-authorizing environment reservations. |
@@ -126,7 +218,28 @@ python3 -m unittest discover -s agent_tools/tests -t .
 
 The complete local pre-push tier is documented in `agent_docs/test-matrix.md` and is also encoded by `run_checks(level="prepush")`.
 
+On supported POSIX hosts, each completed managed check retains exact stdout and
+stderr under ignored `.rag_index/check-runs/<runId>/` before displaying bounded
+excerpts. `completionOutput` reports byte counts, SHA256, receipt identity and
+finite unittest failure identities; it does not expose raw bodies. Capsules are
+private, create-once files with descriptor and named-generation custody. Retention
+failure blocks check success even when the child exits0. Unsupported platforms
+refuse private retention; there is no weak ACL fallback. Timeout/incomplete-child
+results remain outside this completed-output guarantee. Focused capsules identify
+the runner source; prepush capsules identify the complete repository fingerprint,
+which is rechecked before the validation receipt is written.
+
+
 ## Private Native Hosts And VM Workflows
+
+The staged Windows fixture-retirement routes and Android consent-grant,
+permission-reset and runtime-acceptance routes use explicit public response
+schemas in `native_parity_response_projection.py`. Correlations, fixed receipt
+bindings, nested proof fields, state/boolean consistency and non-replay flags
+must match. Malformed helper output or exceptions return a finite unknown
+response without private fields or exception text. A valid tool response still
+proves only its stated evidence scope; it does not promote an inert or historical
+receipt into current native acceptance.
 
 Store machine-specific connection details in `.vm-hosts.local.json` at the checkout
 root. This file is ignored and rejected by managed staging. On POSIX it must be an
@@ -469,6 +582,19 @@ host, download an artifact, start a VM, submit a native scenario, or turn a
 historical record into a current observation. A successful response is evidence
 only in the scope stated by that action.
 
+`vm_workflow("source-review-close", inputs={"manifestPath": absolute_path,
+"manifestSha256": full_sha256})` authenticates explicit local review inputs.
+Supported manifests use source/archive rows in `files`, relative pinned `files`,
+absolute pinned `pins`/`inputs`, or a direct map of absolute paths to pins.
+Mixed schemas are rejected. Archive-only reviews require an explicit
+`packetManifestPath` and `packetManifestSha256`, or an authenticated listed
+`proofPath` and `proofSha256` carrying current `sourcePins`. Do not combine those
+options. The helper retains file and ancestor descriptors, verifies full hashes
+and generations, and closes every identity after all reads. Actual credential and
+private-binding files are excluded. It writes no evidence and returns
+`SOURCE_ONLY` with native permission and product acceptance both false. A source
+closure receipt does not grant native execution.
+
 `vm_workflow("artifact-register", inputs=record)` stores immutable, content-derived
 artifact evidence under the checkout's private agent state. A local record must
 name one existing regular file with its exact `sha256` and `size`, and use
@@ -616,6 +742,27 @@ adapter; new scenarios require an explicit adapter and native evidence.
 All actions below use `vm_workflow(action, inputs)`. Private journals remain under
 `.rag_index`; source packages and evidence retain their original source identity.
 A successful tooling operation does not mean the product acceptance gate passed.
+
+**Fixed CP117 old-stage retirement.** `windows-cp117-staged-fixture-retire-`
+actions `preflight`, `parser`, `diagnose`, `guard-diagnostic`, `start`, and `status`
+take exactly `{}` and bind the historical e848 stage and e59 campaign. The parser
+examines the exact generated observer and deletion scripts without invoking them;
+the guard diagnostic executes only their read-only checks and returns a fixed
+rejection code. Preflight requires the cleaned server/credential receipts, idle
+installed base, exact protected ACLs, manifest hashes, known failed-server tree,
+privileged creator ownership, and no reparses. Start reserves once, rechecks those
+guards immediately before deleting the guest stage, removes only its bound host
+payload and local ZIP, retains historical journals, and closes the old campaign.
+`windows-cp117-staged-fixture-retire-tree` observes actual fixed guest tree
+presence and exclusive result-file access. `...-locks` uses read-only Windows
+Restart Manager to classify the fixed result.json holders and HRESULT; it never
+stops a process or service. Its exact LocalSystem qemu-ga claim requires a sole
+holder with matching process and service identity. Historical stage receipts do
+not establish that the live immutable stage remains present.
+
+Private step receipts distinguish completed guest removal, host submission/removal,
+and campaign close. An unknown result never permits replaying start; use status
+and the read-only diagnostics to identify the unresolved step.
 
 **Artifact sets.** `artifact-set-freeze` takes `sourceSha` (current clean product
 HEAD), `packages` (registered `{artifactId, locationId}` entries), `runtimePaths`
@@ -938,6 +1085,11 @@ is preserved for recovery rather than stopped to make a batch appear complete.
 
 **Versioned VM baselines.** Optional `nativeBaselines` in private mode-0600
 `.vm-hosts.local.json` contains `{schemaVersion: 1, sources: {<id>: <entry>}}`.
+Source IDs and `generation` are public configuration labels. Never put
+credentials, account secrets, tokens, or private paths in either label. A
+metadata projection may expose these two labels and provider kind; all other
+inventory fields stay private. Listing labels is not proof of VM readiness.
+
 Each entry contains `provider` (`tart` or `qemu`), `sourceRoot`, `sourcePath`,
 `generation`, `providerName`, `preparationReceiptPath`, `accessReceiptPath`,
 `dependencyReceiptPath`, and `installerJobReceiptPath`. No credentials or absolute
@@ -949,6 +1101,17 @@ state. The preparation receipt also binds hashes of those proofs. The adapter
 validates evidence bytes and reobserves provider stopped state; arbitrary JSON
 claiming readiness is not a substitute for a verified preparation run. See
 `native_vm_baseline_config.py` for the strict versioned proof schemas.
+
+`baseline-source-inventory` takes exactly `{}`. It returns only the public
+source ID, provider kind and generation labels with scope
+`CONFIGURATION_METADATA_ONLY`, `nativeActionAllowed=false` and
+`readinessVerified=false`. The trusted provider reads private configuration;
+reviewers do not open the inventory. Missing, empty or malformed baseline
+sections report `baselines_not_configured`; invalid inventory, unsafe source
+configuration and other unavailable metadata have separate finite reasons.
+Private errors and paths are suppressed. This read writes no native failure
+receipt. Use the fresh-process MCP CLI fallback if the live server predates the
+new action; do not restart retained native operations to reload its inventory.
 
 `baseline-preflight` takes `{provider, sourceId}`; `baseline-capture` adds
 `baseline` and `generation`. `baseline-verify` takes `{manifest}`;
@@ -978,6 +1141,20 @@ correction bound to the original receipt bytes; `matrix-status` reports the
 retracted ID and excludes that claim while leaving its original file auditable.
 Record a corrected observation separately with the original source/artifact
 identity. Do not edit or delete the original receipt.
+
+`matrix-equivalence-record` accepts exactly `receiptId`, `artifactSetId`,
+`targetSourceSHA`, and a nonempty `reviewerAttestation` (at most 240 characters).
+It creates an immutable link only for a complete passed full-native receipt and
+a clean committed target with verified eligible docs/tests/noncritical-tool
+changes. Product, build, runtime, fixture, MCP and matrix changes require new
+evidence. Original source and artifact identities remain intact. The response
+contains `linkId`, `receiptId`, `originalSourceSHA`, `targetSourceSHA` and
+`requiredCurrentChecks`; `currentChecksCompleted` and `nativeActionPerformed`
+remain false. Exact-SHA CI and any changed-tool checks must still run. An unknown
+response grants no replay: inspect `matrix-status` for the checked-out target to
+recover an existing link before deciding on further work. Use the fresh-process
+`mcp_tool.sh vm-workflow matrix-equivalence-record --inputs-file <private-file>`
+route when the running MCP implementation is stale.
 
 **Read-only acceptance and prebuild views.** `acceptance-status` accepts
 `{}` or `{sourceSha: "<current full SHA>", correlations: [{platform,
@@ -1201,8 +1378,23 @@ The one-off `windows-msi-base-pre-effect-close` also takes only
 `{host: "archlinux"}`; it requires repeated absence and idle proofs before
 closing that exact failed campaign while retaining its original intent.
 
+`android-fixture-tls-mint` takes exactly `{campaignId, sourceSha,
+baseArtifactId, targetArtifactId}`, with optional absolute `sourceRoot` for a
+clean linked worktree. It rechecks actual source and registered APK bytes,
+versions and signer before creating a private disposable CA and endpoint leaf.
+The create-only campaign retains source, plan, all five certificate-material
+file pins and the original nested directory identity. Output contains validated
+metadata and evidence locations; it never contains private key bytes or grants
+guest trust, network, installer or release authority. A consumed campaign is
+not replayed. Use the fresh-process `mcp_tool.sh vm-workflow
+android-fixture-tls-mint --inputs-file <private-request.json>` if the running
+MCP server predates this adapter.
+
 `android-native-fixture-start` takes exactly `{host, device, campaignId,
-planPath, certificatePath, privateKeyPath}`. The aliases are configured,
+planPath, certificatePath, privateKeyPath}`, with optional absolute `sourceRoot`
+for a clean linked worktree of the same Git repository. Source validation uses
+that checkout; host configuration, journals, leases, artifacts and fixture bytes
+remain owned by the coordinator root. The aliases are configured,
 the campaign is a canonical UUID, and the three file paths are absolute local
 paths checked by the reviewed adapter. Only a host HTTPS/SOCKS endpoint is
 started; the receipt explicitly leaves device mutation and installer target
@@ -1213,12 +1405,25 @@ or private key bytes are accepted or returned by these routes.
 `android-endpoint-admission-start` takes exactly `{host, device,
 correlationId, campaignId, sourceSha, targetArtifactId, caArtifactId,
 backupCorrelationId, expectedOwner, expectedRevision,
-expectedBackupSha256}`. It binds the configured disposable emulator, running
+expectedBackupSha256}`, with the same optional clean linked `sourceRoot` for
+planning and target validation only. Both start routes require a NUL-free source
+path of at most4096 characters; status, stop, collect and cleanup reject it.
+It binds the configured disposable emulator, running
 host fixture, exact package and CA artifacts, and fresh guarded OFF/backup
 readback before its one-shot CA mount and two fixed ADB reverses. It neither
 installs the package nor admits an installer target. `status/cleanup` take
 only `{correlationId}`; uncertain outcomes require exact status and never
 authorize replay. Cleanup removes only the bound temporary endpoint effects.
+
+`android-runtime-acceptance-start` takes exactly `{correlationId,
+endpointCorrelationId, cliStageCorrelationId}`. The fixed API29 adapter binds
+a ready endpoint, source-matched published CLI and an empty stopped baseline.
+It preserves settings/source/routing, performs guarded public ON/Find Best/OFF,
+and requires fixture SOCKS plus HTTPS traffic observations. This proves selected
+proxy outbound traffic, not TUN ingress. Status/collect take only `correlationId`;
+unknown attempts retain their child claim. Endpoint cleanup blocks active or
+uncertain children and requires the exact terminal closing owner/revision and
+fresh stopped restoration proof. No arbitrary command, path or host is accepted.
 
 `android-installer-dispatch-start` takes exact configured `host`/`device`, a
 new `correlationId`, `sourceSha`, base and target package artifact IDs,
@@ -1237,7 +1442,13 @@ closure routes release only the exact lease after their respective fresh
 prelaunch or terminal proofs. No route accepts an arbitrary guest command.
 
 `linux-package-fixture-build-preflight/start` take exactly `{sourceSha,
-baseVersion, targetVersion, correlationId}`. Preflight verifies a clean
+baseVersion, targetVersion, correlationId}`, with optional absolute `sourceRoot`
+for a clean worktree of the same Git repository. It applies only to source
+validation: exact HEAD/origin/dev, clean tracked and untracked inventory, and
+target version must match. Direct symlink roots are rejected. The coordinator
+root still owns private host configuration, journals, the existing Arch claim,
+artifact registration and collection. `sourceRoot` is not part of the immutable
+build request and is rejected by status/collect. Preflight verifies a clean
 exact `origin/dev` source and the fixed Arch build host. Start writes a
 one-shot source-bound intent and host claim before dispatching the fixed
 builder. `linux-package-fixture-build-status/collect` take only
@@ -1505,6 +1716,22 @@ stage-file, intent, worker, receipt, and port-owner classes plus a bounded
 reason. It does not return a path, process ID, port, endpoint, or payload hash,
 and it never stops or cleans up the listener.
 
+The recovered CP117 generation currently uses the fixed internal
+`windows_cp117_base_source_refresh` direct procedure while the complete native
+flow is being established under TEST-002. Its source-refresh baseline is setup
+for a source-matched update test. General public update admission still requires
+a newer version and matching source; an older installed JAR/helper lineage does
+not grant equal-version public update authority. Host upload checks the actual
+file-size limit before its attempt and immediately before writing, and retains
+raw streams, exit status and EOF before parsing. Listener and ordinary-user task
+submission are separate one-shot stages. Submission does not prove downloaded
+bytes, installer metadata, cleanup or installed-package acceptance. The next
+read-only stage must verify the held guest MSI and exact task/principal before
+selecting a baseline setup command. Preserve each consumed correlation and
+original unknown; do not change older fixed VM descriptors to make a public
+route accept this recovered generation. Integrate and retest the complete proven
+flow through MCP after direct native success and applicable recovery cases.
+
 `windows-msiexec-service-diagnostic` is a fixed CP117 read-only observation for
 the post-base-install Windows Installer process. Inputs are exactly
 `{"action":"preflight"|"status","host":"archlinux"}`. It binds the current
@@ -1666,6 +1893,15 @@ result. Existing sockets are never removed or replaced. Recovery intents are key
 any VM, installer, VPN or product process. A ready recovery receipt identifies the
 socket for the coordinator to adopt in its private host inventory after verification.
 
+Use `ssh_workflow("connection-adopt", host=...)` (or the equivalent CLI action)
+to perform that adoption. It verifies the immutable ready recovery intent and
+socket, pins the private inventory and route, and holds the shared inventory
+writer lock. A durable create-only fence precedes replacement; unknown attempts
+cannot replay. Only `remoteControlPath` changes. Both inventory publishers use
+the same lock; arbitrary external writers are outside its cooperative guarantee.
+After a ready result, run the fixed connectivity probe. Adoption never starts a
+new master or changes a VM, installer, VPN or product process.
+
 ### Read-only Android observation
 
 A private host entry may include `androidDevices`, mapping a device alias to
@@ -1708,6 +1944,83 @@ Job and transfer observation currently require key/agent profiles on a POSIX
 coordinator. Password-backed connectivity probes remain separate from these actions.
 
 ### Fixed continuation acceptance adapters
+
+`android-recovered-endpoint-stage-collect` takes exactly `correlationId`,
+`historicalCorrelationId`, `recoveryCorrelationId` and `stageCorrelationId`,
+as four distinct canonical UUIDs. It revalidates the separate stage cleanup's
+immutable terminal, stopped public baseline and normal API29 ADB principal.
+Its component reconciliation result preserves the original unknown outcome;
+it grants no installer or runtime admission and accepts no paths or commands.
+
+`windows-cp117-cp95-task-retire-tail-close-pre-effect` takes `{}` and closes
+only verified pre-effect old tail `60c5d5da-1d80-492b-90b5-7a4a9ad48b34`.
+Separate fixed `windows-cp117-cp95-task-retire-successor-start` and
+`windows-cp117-cp95-task-retire-successor-status` take `{}` and bind fresh child
+`7cc61627-2881-4cc3-887d-a5bf545ed2ca` to original retirement
+`9a5d3d6a-5f43-4a3f-9e4e-f90b9cc86e86`. Start requires the exact closure marker,
+absence of an old child reservation, current guest generation and owned task
+proof, then creates its separate intent before its single scoped task action.
+Unknown results retain the child intent; observe status rather than resubmitting.
+Only `retired/complete` proves linked child and parent retirement.
+
+`android-endpoint-cleanup-readmission` and `android-endpoint-cleanup-readmitted`
+accept exactly distinct `correlationId` and `readmissionCorrelationId` UUIDs.
+The first retains cleanup-only replacement-owner proof for an exact failed API29
+mount attempt; it never modifies the original intent. A shell receipt explicitly
+leaves mount and namespace observations unverified. Cleanup guards temporary root,
+then verifies the current namespace, stage, CA, package, owner, revision, full
+rules, stopped runtime and final operations before removing only the owned stage
+and unrooting. Unknown cleanup retains its lease and evidence.
+`android-endpoint-cleanup-readmission-status` observes the original request;
+`android-endpoint-cleanup-mount-diagnostic` observes a retained admitted receipt.
+Both use the same two UUIDs, return finite observations, and authorize no cleanup.
+`android-endpoint-cleanup-readmitted-status` observes a completed cleanup using
+those same immutable original/request/readmission records. It verifies current
+public state and full routing twice, absent local/remote leases and children,
+and exact stage/CA absence in the unchanged namespace. Fixed verified `su 0,0`
+reads establish namespace evidence after unrooting; public requests remain
+UID2000. The observer performs no writes, root/unroot, mount, removal or claim
+release. Its outer3130-second bound derives from the serial subprocess ceilings.
+The ordinary original-owner status route remains unchanged. A terminal
+observation grants no installer or runtime admission.
+The mount diagnostic does not invent an opening mount baseline. On command failure,
+its optional `commandDiagnostic` contains only finite `phase`, `outcome` and
+`stderrClass` values; it never returns command text, paths or raw stderr.
+
+`android-consent-grant-acceptance-start` accepts exactly `host`, `device`,
+`correlationId`, `artifactId`, `cliStageCorrelationId`,
+`openingReadbackCorrelationId`, `expectedBackupSha256`, `expectedOwner`, and
+`expectedRevision`, with fixed Arch/API35 profiles. It saves source/settings
+before checking an empty stopped VPN baseline, then requests and observes visible
+consent through the public app boundary. Status, collect, diagnose, and reconcile
+accept only the original `correlationId`. Read-only `reconcile-status` and
+`reconcile-diagnose` use that same correlation to inspect claim/lock state and
+current guard failures; neither closes claims nor proves consent. Diagnosis reports current finite facts,
+not historical reconstruction. Reconciliation closes only verified owned claims
+of a terminal pre-ON baseline rejection; it preserves the original unknown
+outcome and explicitly reports no observed grant. An actual grant and successful
+traffic require their separate native proofs.
+
+Fixed no-input `windows-cp117-cp95-task-retire-*` observations and recovery actions
+retain original retirement `9a5d3d6a-5f43-4a3f-9e4e-f90b9cc86e86`.
+`diagnose` and `finish-diagnose` are read-only. `finish` can create only a missing
+completion marker after complete archive, absence and idle proofs; it never
+unregisters tasks. The separately journaled `tail-start` successor
+`60c5d5da-1d80-492b-90b5-7a4a9ad48b34` can retire only the exact fifth archived
+task after proving the first four absent. `tail-status` verifies both linked
+journals; `tail-diagnose` reads bounded child-journal state. All remain specific to
+this preserved fixture history. Unknown results never authorize replay.
+
+`android-vpn-permission-reset-start` accepts exactly `correlationId`, `artifactId`,
+`cliStageCorrelationId`, `openingReadbackCorrelationId`, `expectedBackupSha256`,
+`expectedOwner`, and `expectedRevision`. The fixed disposable API29 scenario
+sets only the identified package's `ACTIVATE_VPN` mode to `ignore` after fresh
+source, package, stopped owner and full backup admission. It requires no active
+endpoint lease. Status and collect accept only the original `correlationId`;
+unknown results retain the lease. Collection verifies permission absence,
+stopped runtime, unchanged rules and the complete staged CLI hashes before
+closing the exact lease. This prepares a fresh visible consent test; it does
+not grant permission or prove runtime traffic.
 
 `vm_workflow("android-cli-stage-start", inputs={host, correlationId, artifactId})`
 publishes one verified, current-source Linux x86_64 RPM's complete desktop CLI
@@ -1774,3 +2087,68 @@ generation-bound server signal; its start state remains unknown and cannot
 be replayed. `macos-machine-server-stop-status/collect` take only
 `{correlationId}`. Only fresh status `complete` proves current server absence;
 collect labels its receipt historical with `currentState: unverified`.
+
+### Fixed CP117 retirement recovery
+
+`windows-cp117-guest-agent-recovery-successor-{preflight,parser,start,status}`
+is the fixed successor to the preserved8dbe unknown service attempt. It admits
+only an unchanged old service generation, absent old journal/task, repeated
+exact QGA lock evidence, idle product state and the fixed separately correlated
+SYSTEM journal/task. Start consumes a create-only intent once; status must prove
+its exact protected terminal, task action and fresh restarted service. These
+actions take `{}`. They cannot replay the original attempt or stop the product.
+
+`windows-cp117-retirement-recovery-{preflight,parser,start,status,finish}` takes
+`{}` and removes only the fixed result-only e848 remnant after fresh protected
+service recovery and remaining-tree admission. It parses the exact prospective
+PowerShell before dispatch, journals the action before deletion, confirms root
+absence before writing the guest terminal, and gates host cleanup and lease
+closure on that terminal. An after-delete state without a terminal remains
+observation-only. Historical attempts and receipts are retained.
+
+### Fixed c32 historical baseline admission
+
+`windows-cp117-c32-archive-diagnose` and `windows-cp117-c32-archive-preflight`
+take exactly `{leaseId: "<new canonical UUID>"}`. The diagnostic reads local
+historical terminal/cleanup bindings. Preflight additionally checks the old
+closed campaign remotely, original-source transfer cleanup, fixed host staging
+metadata, and fresh guest task/file/process observations. It preserves original
+source and artifact identities after HEAD changes; ordinary mutation admission
+still requires current source. Outputs expose finite phases and guard codes only.
+
+A completed task and result directory may remain historical evidence. Their
+presence alone cannot admit another installation: the verifier must bind the
+exact original task action/principal, successful terminal payload and absence of
+correlated work. `windows-cp117-c32-host-archive-self-test` takes exactly `{}`
+and runs two inert temporary Linux filesystem cases on configured Arch: exclusive
+rename and destination-race rejection. Its component result proves no VM behavior.
+
+`windows-cp117-c32-host-archive-start` and `-status` also take exactly `{}`.
+Start verifies fixed historical admission and fresh retained-terminal evidence,
+persists an exclusive private intent, normalizes the two metadata files to0600,
+and atomically moves their exact directory into host history without overwriting
+a destination. Guest task/results remain preserved. Start is one-shot; an unknown
+response permits status only. Status checks original source/artifacts/generation
+and exact archived metadata read-only. Subsequent admission requires fresh archive
+proof whenever the local archive journal exists. Unknown observations never
+authorize replay.
+
+The source campaign `reservation-diagnose` also performs read-only historical
+admission checks. Its finite `blockers` identify c32, pre-effect, transfer-recovery
+or unknown-closure categories and phases. It preserves all original records and
+does not create a new base intent or permit an installer replay.
+
+Source campaign `diagnose` binds an existing source-specific intent and returns
+the finite pre-dispatch gate (`legacy-job`, `legacy-idle`, `legacy-tasks`, or
+`legacy-history`) without writing the legacy attestation or claiming a lease.
+At `legacy-tasks`, a verified read-only census may add bounded counts for the
+fixed historical names and all other MCP tasks. Counts do not prove task action,
+principal, terminal state or installation admission. Preserve an uncertain intent
+and never replay start based on this diagnostic.
+
+`windows-cp117-historical-base-archives` takes exactly `{}` and reads the fixed
+45e transfer-recovery and2ace unknown-closure history. It verifies the original
+terminal closure hashes separately from fresh current-version absence, under
+shared locks with active-campaign exclusion. It preserves original source and
+records, returns finite phases, and cannot replay work or perform product actions.
+Installation reservation consumes this proof only when both profiles are archived.

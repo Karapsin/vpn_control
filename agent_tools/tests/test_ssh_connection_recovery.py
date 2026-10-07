@@ -34,6 +34,41 @@ class SshConnectionRecoveryTest(unittest.TestCase):
                                   remote_control_path=transport.PurePosixPath("/remote/configured.sock"), password="nested-passphrase-value")
         return transport.SshConfig(Path.cwd(), {"gateway": gateway, "archlinux": nested})
 
+    def materialize_inventory(self, directory, config):
+        # Recovery successor admission now keeps the real private file open.
+        # These mocked transport fixtures must include the corresponding file.
+        hosts = {}
+        for alias, host in config.hosts.items():
+            value = {"host":host.host,"port":host.port,"user":host.user,
+                     "identityFile":str(host.identity_file),"knownHostsFile":str(host.known_hosts_file)}
+            for field, attribute in (("transport","transport"),("gateway","gateway"),
+                    ("remoteHostAlias","remote_host_alias"),("remoteControlPath","remote_control_path"),
+                    ("remoteConfigFile","remote_config_file"),("password","password")):
+                item = getattr(host, attribute)
+                if item is not None: value[field] = str(item)
+            hosts[alias] = value
+        path = Path(directory) / transport.CONFIG_FILENAME
+        path.write_text(json.dumps({"schemaVersion":1,"hosts":hosts})); path.chmod(0o600)
+
+    @unittest.skipUnless(os.name == 'posix', 'real harmless child parser proof')
+    def test_readonly_configured_master_diagnostic_real_child_states(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); self.materialize_inventory(root,self.config())
+            for expected,text,code in (('ready','Master running (pid=123)',0),
+                  ('unknown','Control socket connect(/remote/configured.sock): Connection refused',255),
+                  ('absent','Control socket connect(/remote/configured.sock): No such file or directory',255)):
+                child=root/('check-'+expected)
+                child.write_text('#!/bin/sh\nprintf "%s\\n" '+repr(text)+' >&2\nexit '+str(code)+'\n');child.chmod(0o700)
+                calls=[]
+                def run(config,target,command,timeout,**kw):
+                    self.assertEqual(('ssh','-S','/remote/configured.sock','-O','check','archlinux'),command)
+                    self.assertFalse(kw);calls.append(command)
+                    return subprocess.run([str(child)],capture_output=True,text=True,timeout=timeout,check=False)
+                with mock.patch.object(recovery,'_gateway_run',side_effect=run),mock.patch.object(recovery,'recover',side_effect=AssertionError('mutation')):
+                    result=recovery.configured_master_status(root,'archlinux',3)
+                self.assertEqual(result,{'nestedState':expected,'replayAllowed':False,'launchAllowed':False,'nativeActionAllowed':False})
+                self.assertEqual(1,len(calls))
+
     def test_adopted_ready_master_can_recover_after_expiry_without_replacing_history(self):
         config = self.config()
         old = config.hosts["archlinux"]
@@ -49,6 +84,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
             with mock.patch.object(recovery.ssh_transport, "load_config", return_value=config), \
                     mock.patch.object(recovery, "_socket_state", return_value="absent"), \
                     mock.patch.object(recovery, "_gateway_run", side_effect=response) as run:
+                self.materialize_inventory(directory, recovery.ssh_transport.load_config(directory))
                 result = recovery.recover(directory, "archlinux")
             self.assertEqual({"ok": True, "state": "recovery_master_ready"}, result)
             self.assertEqual(history, json.loads(legacy.read_text()))
@@ -89,6 +125,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
                 with mock.patch.object(recovery.ssh_transport, "load_config", return_value=config), \
                         mock.patch.object(recovery, "_socket_state", return_value="absent"), \
                         mock.patch.object(recovery, "_gateway_run") as run:
+                    self.materialize_inventory(directory, recovery.ssh_transport.load_config(directory))
                     result = recovery.recover(directory, "archlinux")
                 self.assertEqual({"ok": False, "state": "recovery_unavailable"}, result)
                 run.assert_not_called()
@@ -99,6 +136,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(recovery.ssh_transport, "load_config", return_value=self.config()), \
                 mock.patch.object(recovery, "_socket_state", return_value="ready") as check, \
                 mock.patch.object(recovery, "_gateway_run") as run:
+            self.materialize_inventory(directory, recovery.ssh_transport.load_config(directory))
             result = recovery.recover(directory, "archlinux")
         self.assertEqual({"ok": True, "state": "configured_master_ready"}, result)
         check.assert_called_once()
@@ -108,6 +146,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(recovery.ssh_transport, "load_config", return_value=self.config()), \
                 mock.patch.object(recovery, "_socket_state", return_value="unknown"), \
                 mock.patch.object(recovery, "_gateway_run") as run:
+            self.materialize_inventory(directory, recovery.ssh_transport.load_config(directory))
             result = recovery.recover(directory, "archlinux")
         self.assertEqual({"ok": False, "state": "configured_master_unknown"}, result)
         run.assert_not_called()
@@ -131,6 +170,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
                 mock.patch.object(recovery, "_socket_state", side_effect=("absent", "unknown")), \
                 mock.patch.object(recovery, "_gateway_run") as run:
             recovery._create_intent(Path(directory), "archlinux", self.config().hosts["archlinux"], "correlation", "/remote/new.sock")
+            self.materialize_inventory(directory, recovery.ssh_transport.load_config(directory))
             result = recovery.recover(directory, "archlinux")
         self.assertEqual({"ok": False, "state": "recovery_intent_pending"}, result)
         run.assert_not_called()
@@ -142,6 +182,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
             with mock.patch.object(recovery.ssh_transport, "load_config", return_value=self.config()), \
                     mock.patch.object(recovery, "_socket_state", side_effect=("absent", "ready")), \
                     mock.patch.object(recovery, "_gateway_run") as run:
+                self.materialize_inventory(directory, recovery.ssh_transport.load_config(directory))
                 result = recovery.recover(directory, "archlinux")
             intent = recovery._read_intent(Path(directory), "archlinux", target)
         self.assertEqual({"ok": True, "state": "recovery_master_ready"}, result)
@@ -160,6 +201,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
                 control_path = command[-1]
                 return mock.Mock(returncode=0, stdout=json.dumps({"state": "ready", "control_path": control_path}), stderr="")
             run.side_effect = response
+            self.materialize_inventory(directory, recovery.ssh_transport.load_config(directory))
             result = recovery.recover(directory, "archlinux")
             intent = recovery._read_intent(Path(directory), "archlinux", self.config().hosts["archlinux"])
         self.assertEqual({"ok": True, "state": "recovery_master_ready"}, result)
@@ -174,6 +216,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(recovery.ssh_transport, "load_config", return_value=self.config()), \
                 mock.patch.object(recovery, "_socket_state", return_value="absent"), \
                 mock.patch.object(recovery, "_gateway_run", return_value=None):
+            self.materialize_inventory(directory, recovery.ssh_transport.load_config(directory))
             result = recovery.recover(directory, "archlinux")
             intent = recovery._read_intent(Path(directory), "archlinux", self.config().hosts["archlinux"])
         self.assertEqual({"ok": False, "state": "recovery_intent_pending"}, result)
@@ -201,6 +244,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
                 mock.patch.object(recovery, "_gateway_run") as run:
             run.side_effect = lambda *args, **kwargs: mock.Mock(
                 stdout=json.dumps({"state": "ready", "control_path": args[2][-1]}))
+            self.materialize_inventory(directory, recovery.ssh_transport.load_config(directory))
             result = recovery.recover(directory, "archlinux")
             intent = recovery._read_intent(Path(directory), "archlinux", target)
         self.assertEqual({"ok": True, "state": "recovery_master_ready"}, result)
@@ -226,6 +270,7 @@ class SshConnectionRecoveryTest(unittest.TestCase):
                     mock.patch.object(recovery, "_gateway_run") as run:
                 run.side_effect = lambda *args, **kwargs: mock.Mock(
                     stdout=json.dumps({"state": "ready", "control_path": args[2][-1]}))
+                self.materialize_inventory(directory, recovery.ssh_transport.load_config(directory))
                 first = recovery.recover(directory, "archlinux")
                 second = recovery.recover(directory, "archlinux")
             current_intent = recovery._read_intent(Path(directory), "archlinux", adopted)
@@ -316,6 +361,123 @@ class SshConnectionRecoveryTest(unittest.TestCase):
             self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
             self.assertEqual({"state": "ready", "control_path": control_path}, json.loads(completed.stdout))
             self.assertEqual(3, len(evidence.read_text(encoding="utf-8").splitlines()))
+
+
+
+
+@unittest.skipUnless(os.name=='posix','real binary pipes and managed private session fixtures')
+class FencedConfiguredSocketTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests import test_ssh_connection_session as fixture
+        self.fixture=fixture.SessionTests(methodName='runTest');self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
+        self.root=self.fixture.root;self.ready=self.fixture.ready();self.raw={};self.calls=[]
+        self.stdout=b'';self.stderr=b'Master running (pid=123)\n';self.code=0
+        self.real_popen=subprocess.Popen
+        self.child=self.root/'read-child.py';self.child.write_text('import sys,json;v=json.loads(sys.argv[1]);sys.stdout.buffer.write(bytes.fromhex(v[0]));sys.stderr.buffer.write(bytes.fromhex(v[1]));sys.exit(v[2])')
+    def child_consumer(self,argv,**kw):
+        self.assertEqual(['-F','/dev/null'],argv[1:3]);self.assertIn('ProxyCommand=false',argv)
+        self.assertIn('ControlMaster=no',argv);self.assertIn('ControlPersist=no',argv)
+        self.calls.append(argv)
+        return self.real_popen([sys.executable,'-I','-B',str(self.child),json.dumps([self.stdout.hex(),self.stderr.hex(),self.code])],**kw)
+    def invoke(self,timeout=10):
+        self.raw.clear()
+        with mock.patch.object(recovery.subprocess,'Popen',side_effect=self.child_consumer):
+            return recovery.configured_master_fenced_status(self.root,'archlinux',timeout,_private_capture=self.raw.update)
+    def test_dynamic_current_receipt_real_guard_and_binary_child(self):
+        self.assertEqual('ready',self.invoke()['nestedState']);self.assertTrue(self.raw['complete'])
+        self.assertEqual(self.ready['receiptSha256'],self.raw['outerReceiptSha256'])
+        self.assertEqual(1,len(self.fixture.spawns),'observer never prepares newmaster')
+        self.assertEqual(1,len(self.calls))
+    def test_foreign_ready_receipt_refused_by_actual_managed_guard(self):
+        from agent_tools import ssh_connection_session as session
+        with self.assertRaises(session.SessionUnknown):
+            session.reuse_only_options(self.root,'archlinux','0'*64)
+        self.assertEqual('ready',self.invoke()['nestedState'])
+
+    def test_ready_or_master_drift_never_submits_or_claims_ready(self):
+        from agent_tools import ssh_connection_session as session
+        self.fixture.master_patch.stop()
+        with mock.patch.object(session,'_master',side_effect=session.SessionUnknown('master')),mock.patch.object(recovery.subprocess,'Popen',side_effect=AssertionError('query')):
+            self.assertEqual('unknown',recovery.configured_master_fenced_status(self.root,'archlinux')['nestedState'])
+        self.fixture.master_patch.start()
+        real_verify=session.verify_reuse;count=0
+        def changed(*args):
+            nonlocal count
+            count+=1
+            if count==2:
+                path=self.fixture.journal()/'ready.json';data=path.read_bytes();path.write_bytes(data);path.chmod(0o600)
+            return real_verify(*args)
+        with mock.patch.object(session,'verify_reuse',side_effect=changed):
+            self.assertEqual('unknown',self.invoke()['nestedState'])
+
+
+    def test_exact_refusal_is_finite_cause_without_absence_authority(self):
+        from agent_tools import ssh_transport
+        path=str(ssh_transport.load_config(self.root).hosts['archlinux'].remote_control_path)
+        self.stdout=b'';self.stderr=('Control socket connect('+path+'): Connection refused\n').encode();self.code=255
+        result=self.invoke()
+        self.assertEqual('refused',result['socketState']);self.assertEqual('unknown',result['nestedState'])
+        self.assertFalse(result['nativeActionAllowed']);self.assertNotIn(path,json.dumps(result))
+        for raw,code,stdout in ((self.stderr+b'extra',255,b''),(self.stderr,0,b''),(self.stderr,255,b'x'),
+                                (self.stderr.replace(path.encode(),b'/foreign'),255,b'')):
+            self.stderr=raw;self.code=code;self.stdout=stdout
+            self.assertEqual('unknown',self.invoke()['socketState'])
+
+    def test_invalid_stdout_offsets_and_stderr_bytes_are_preserved_and_refused(self):
+        for raw in (b'\xff',b'x\xff',b'\xffx',b'x'*1023+b'\xff',b'x'*1024+b'\xff',b'x'*4095+b'\xff',b'x'*4096+b'\xff'):
+            self.stdout=raw
+            with self.subTest(offset=len(raw)-1):
+                self.assertEqual('unknown',self.invoke()['nestedState'])
+                self.assertEqual(raw[:recovery._SOCKET_CAPTURE_BYTES+1],self.raw['stdout'])
+        self.stdout=b'';good=b'Master running (pid=123)\n'
+        for raw in (b'\xff'+good,good[:7]+b'\xff'+good[7:],good+b'\xff',good[:-1]):
+            self.stderr=raw
+            self.assertEqual('unknown',self.invoke()['nestedState']);self.assertEqual(raw,self.raw['stderr'])
+
+    def test_absence_is_exact_and_wrong_returncode_or_stdout_unknown(self):
+        self.stderr=b'Control socket connect(/private/inert-master): No such file or directory\n';self.code=255
+        self.assertEqual('absent',self.invoke()['nestedState'])
+        self.stderr=b'Control socket connect(/foreign): No such file or directory\n'
+        self.assertEqual('unknown',self.invoke()['nestedState'])
+        self.stderr=b'Master running (pid=123)\n';self.code=255
+        self.assertEqual('unknown',self.invoke()['nestedState'])
+        self.code=0;self.stdout=b'foreign'
+        self.assertEqual('unknown',self.invoke()['nestedState'])
+
+    def test_byte_overflow_counts_and_hash_scope_remain_unknown(self):
+        self.stdout=b'x'*(recovery._SOCKET_CAPTURE_BYTES+5)
+        self.assertEqual('unknown',self.invoke()['nestedState'])
+        self.assertTrue(self.raw['overflow']);self.assertEqual('retained-prefix',self.raw['hashScope']['stdout'])
+        self.assertEqual(recovery._SOCKET_CAPTURE_BYTES+1,self.raw['capturedBytes']['stdout'])
+        self.assertEqual(recovery._SOCKET_CAPTURE_BYTES+5,self.raw['counts']['stdout'])
+
+    def test_real_no_eof_or_nonterminal_child_times_out(self):
+        self.child.write_text('import sys,subprocess;sys.stderr.buffer.write(b"Master running (pid=123)\\n");sys.stderr.flush();subprocess.Popen([sys.executable,"-c","import time;time.sleep(1.3)"]);sys.exit(0)')
+        self.assertEqual('unknown',self.invoke(timeout=1)['nestedState']);self.assertTrue(self.raw['timeout']);self.assertFalse(all(self.raw['eof'].values()))
+        self.child.write_text('import sys,time;sys.stderr.buffer.write(b"Master running (pid=123)\\n");sys.stderr.flush();time.sleep(1.3)')
+        self.assertEqual('unknown',self.invoke(timeout=1)['nestedState']);self.assertTrue(self.raw['timeout']);self.assertFalse(self.raw['complete'])
+
+    def test_actual_collect_pipe_read_fault_is_unknown(self):
+        original=os.read
+        def fault(fd,size):
+            if sys._getframe(1).f_code is recovery._bounded_socket_query.__code__:raise OSError('inert read fault')
+            return original(fd,size)
+        with mock.patch.object(recovery.os,'read',new=fault):
+            self.assertEqual('unknown',self.invoke()['nestedState'])
+        self.assertTrue(self.raw['readError']);self.assertFalse(self.raw['complete'])
+
+    def test_capture_retention_failure_refuses_ready(self):
+        def fail_capture(capture):raise OSError('private-sensitive-sentinel')
+        with mock.patch.object(recovery.subprocess,'Popen',side_effect=self.child_consumer):
+            value=recovery.configured_master_fenced_status(self.root,'archlinux',_private_capture=fail_capture)
+        self.assertEqual('unknown',value['nestedState']);self.assertEqual('capture_retention',value['failurePhase']);self.assertNotIn('sentinel',json.dumps(value))
+
+    def test_bad_parameters_and_missing_ready_fence_never_query(self):
+        with mock.patch.object(recovery,'_bounded_socket_query',side_effect=AssertionError('query')):
+            for host,timeout in (('foreign',10),('archlinux',True),('archlinux',0),('archlinux',61)):
+                self.assertEqual('unknown',recovery.configured_master_fenced_status(self.root,host,timeout)['nestedState'])
+            (self.fixture.journal()/'ready.json').unlink()
+            self.assertEqual('unknown',recovery.configured_master_fenced_status(self.root,'archlinux')['nestedState'])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,83 @@
+value = {'state': 'UNKNOWN', 'phase': 'secondary-current-readonly-admission', 'correlationId': CORR, 'taskStarted': False, 'cliStarted': False, 'actorAdmitted': False, 'runtimeOffProven': False, 'installerStarted': False, 'productAcceptance': False, 'replayAllowed': False}
+fd = None
+terminalfd = None
+terminalpin = None
+journal = None
+journalpin = None
+terminalpath = None
+
+def close_admission():
+    after = readonly_custody()
+    need(cleanup_custody_identity(after) == cleanup_custody_identity(before), 'admission-custody-closing')
+    if terminalfd is not None:
+        need(file_hash(terminalfd, 1048576) == terminalpin, 'admission-terminal-bytes')
+    if terminalfd is not None:
+        need(generation(os.fstat(terminalfd)) == terminalpin['generation'] and generation(terminalpath.lstat()) == terminalpin['generation'], 'admission-terminal-population')
+    if fd is not None:
+        need(parent_identity(os.fstat(fd)) == journalpin and parent_identity(journal.lstat()) == journalpin, 'admission-journal-population')
+try:
+    before = readonly_custody()
+    journal = Path(PREPARED['template']).parent / ('secondary-current-admission-' + CORR)
+    need(not os.path.lexists(journal), 'admission-journal-once')
+    journal.mkdir(mode=448)
+    fd = os.open(journal, os.O_DIRECTORY | os.O_NOFOLLOW)
+    journalpin = parent_identity(os.fstat(fd))
+    need(parent_identity(journal.lstat()) == journalpin and stat.S_IMODE(journalpin[2]) == 448 and (journalpin[3:] == [0, 0]), 'admission-journal-private')
+    guest = fixed_guest('secondary')
+    client = shared_frame_client(AccessClient)(str(guest.root / 'vm-r-a85c4b4f/qga.sock'), timeout_seconds=15, max_response_bytes=1048576).bind({'rootFd': fd}, guest, ROW)
+    prepare.record_at(fd, 'admission-intent.json', {'correlationId': CORR, 'scriptSha256': ADMISSION_SCRIPT_SHA, 'installerStarted': False, 'publicCliStarted': False, 'replayAllowed': False})
+    need(cleanup_custody_identity(readonly_custody()) == cleanup_custody_identity(before), 'admission-predispatch-custody')
+    original = client._exchange('guest-exec', {'path': 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe', 'arg': ADMISSION_ARGUMENTS, 'capture-output': True})
+    need(type(original) is dict and set(original) == {'pid'} and (type(original['pid']) is int) and (original['pid'] > 0), 'admission-original-pid')
+    prepare.record_at(fd, 'admission-started.json', original)
+    value['originalGuestPid'] = original['pid']
+    deadline = time.monotonic() + 90
+    while True:
+        terminal = client.guest_exec_status(original['pid'])
+        need(type(terminal) is dict, 'admission-status-type')
+        if terminal.get('exited') is True:
+            break
+        need(terminal.get('exited') is False and time.monotonic() < deadline, 'admission-original-deadline')
+        time.sleep(0.2)
+    prepare.record_at(fd, 'admission-terminal.json', terminal)
+    terminalpath = journal / 'admission-terminal.json'
+    terminalfd = os.open('admission-terminal.json', os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
+    terminalpin = file_hash(terminalfd, 1048576)
+    need(generation(terminalpath.lstat()) == terminalpin['generation'], 'admission-terminal-name')
+    raw = base64.b64decode(terminal.get('out-data', ''), validate=True)
+    err = base64.b64decode(terminal.get('err-data', ''), validate=True)
+    value.update({'originalGuestExitCode': terminal.get('exitcode'), 'stdoutLength': len(raw), 'stdoutSha256': hashlib.sha256(raw).hexdigest(), 'guestStderrLength': len(err), 'guestStderrSha256': hashlib.sha256(err).hexdigest(), 'guestStderrPrefixBase64': base64.b64encode(err[:4096]).decode(), 'originalTerminal': {'path': str(terminalpath), 'pin': terminalpin, 'pinObservedBeforeClosing': True}, 'journalPath': str(journal)})
+    need(0 < len(raw) <= 32768, 'admission-output-bound')
+    lines = [json.loads(line) for line in raw.decode('utf-8-sig').splitlines() if line.startswith('{')]
+    need(len(lines) >= 1, 'admission-original-identity')
+    identity = lines[0]
+    need(type(identity) is dict and identity.get('state') == 'ORIGINAL_ACTOR_CENSUS_STARTED' and (type(identity.get('pid')) is int) and (identity.get('pid') == original['pid']) and (type(identity.get('birthTicks')) is int) and (identity['birthTicks'] > 0) and (identity.get('correlationId') == CORR) and (identity.get('bodySha256') == ADMISSION_BODY_SHA) and (identity.get('sourceValidated') is False) and (identity.get('sid') == 'S-1-5-18'), 'admission-original-binding')
+    need(type(terminal.get('exitcode')) is int and terminal.get('exitcode') == 0 and ('out-truncated' not in terminal or terminal['out-truncated'] is False) and ('err-truncated' not in terminal or terminal['err-truncated'] is False) and (len(lines) == 4), 'admission-original-terminal')
+    actor, cases, processes = lines[1:]
+    need(all((type(row) is dict and row.get('correlationId') == CORR for row in (actor, cases, processes))), 'admission-projection-binding')
+    validate_nt_account_regression(cases['regression'])
+    need((actor.get('win32UserName') is None or type(actor.get('win32UserName')) is str) and type(actor.get('bootUtc')) is str and (type(actor.get('explorers')) is list) and (len(actor['explorers']) <= 64), 'admission-actor-schema')
+    need(processes.get('processCensusComplete') is True and type(processes.get('processCount')) is int and (0 < processes['processCount'] <= 8192) and (type(processes.get('effectOwners')) is list) and (len(processes['effectOwners']) <= 64), 'admission-process-schema')
+    for row in processes['effectOwners']:
+        need(type(row) is dict and set(row) == {'pid', 'name', 'sessionId', 'birthUtc', 'executablePath'} and (type(row['pid']) is int) and (row['pid'] > 0) and (type(row['sessionId']) is int) and (row['sessionId'] >= 0) and (type(row['name']) is str) and (len(row['name']) <= 128) and (row['birthUtc'] is None or type(row['birthUtc']) is str) and (row['executablePath'] is None or (type(row['executablePath']) is str and len(row['executablePath']) <= 4096)), 'admission-process-row')
+    for row in (actor, processes):
+        need(row.get('runtimeOffProven') is False and row.get('installerStarted') is False and (row.get('productAcceptance') is False) and (row.get('replayAllowed') is False), 'admission-no-authority-flags')
+    close_admission()
+    value.update({'state': 'CURRENT_READONLY_ADMISSION_OBSERVED', 'inspection': {'originalNativeIdentity': identity, 'actorCensus': actor, 'accountRegression': cases, 'processCensus': processes}, 'nativeCustodyObserved': True})
+except BaseException as error:
+    value['state'] = 'UNKNOWN'
+    value['errorType'] = type(error).__name__
+    if isinstance(error, ValueError) and re.fullmatch('[a-z-]{1,80}', str(error)):
+        value['reason'] = str(error)
+finally:
+    try:
+        if fd is not None:
+            publish_cleanup_observation(value, lambda name, body: prepare.record_at(fd, name, body), close_admission, terminalfd is not None)
+    finally:
+        if terminalfd is not None:
+            os.close(terminalfd)
+        if fd is not None:
+            os.close(fd)
+    raw = json.dumps(value, sort_keys=True).encode()
+    need(len(raw) <= 48000, 'admission-result-bound')
+    print(raw.decode(), flush=True)

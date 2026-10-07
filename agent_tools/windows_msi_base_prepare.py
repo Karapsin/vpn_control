@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime
-import fcntl
 import gzip
 import hashlib
 import json
@@ -202,10 +201,12 @@ def _pre_effect_closed(root: Path) -> bool:
             or not isinstance(marker_value.get("cleanupReceiptSha256"), str)
             or not _HASH.fullmatch(marker_value["cleanupReceiptSha256"])):
         return False
-    directory, lock = campaign_lease._locked(root)
-    try:
-        closed = campaign_lease._closed(directory, _PRE_EFFECT_REJECTED_CORRELATION)
-    finally: os.close(lock)
+    # This is a read-only archive predicate. Reuse a validated campaign SH
+    # scope when closure admission already holds it; taking EX on another fd
+    # here would deadlock against our own SH. Writers still require EX.
+    from . import windows_cp117_historical_base_archives as historical_archives
+    with historical_archives._history_lock(root):
+        closed = campaign_lease._closed(root / campaign_lease._DIR, _PRE_EFFECT_REJECTED_CORRELATION)
     expected_identity = _campaign_identity(_PRE_EFFECT_REJECTED_REQUEST,
         (intent["environment"], intent["socketPath"], intent["pid"],
          intent["startTicks"], intent["expectedSid"]))
@@ -269,14 +270,51 @@ def _archived_base_record_names(root: Path, config: Any | None = None, target: A
         names.update({_PRE_EFFECT_REJECTED_CORRELATION + ".json",
                       _PRE_EFFECT_REJECTED_CORRELATION + ".pre-effect-closed.json"})
     if config is not None and target is not None and descriptor is not None:
+        from . import windows_cp117_source_pre_effect_close as source_closure
+        source_correlation = source_closure._CORRELATION
+        if _intent_path(root, source_correlation).exists():
+            source_archive = source_closure.archive_proof(root, descriptor)
+            archive_fields = {"state", "phase", "correlationId", "replayAllowed", "nativeActionAllowed", "productAction",
+                              "markerSha256", "intentSha256", "pairSha256", "commandSha256", "closureReceiptSha256"}
+            if (isinstance(source_archive, dict) and set(source_archive) == archive_fields
+                    and source_archive.get("state") == "archived" and source_archive.get("phase") == "verified"
+                    and source_archive.get("correlationId") == source_correlation
+                    and all(source_archive.get(key) is False for key in ("replayAllowed", "nativeActionAllowed", "productAction"))
+                    and all(isinstance(source_archive.get(key), str) and re.fullmatch(r"[0-9a-f]{64}", source_archive[key])
+                            for key in ("markerSha256", "intentSha256", "pairSha256", "commandSha256", "closureReceiptSha256"))):
+                names.update({source_correlation + ".json", source_correlation + source_closure._MARKER_SUFFIX})
+        historical_names: set[str] = set()
+        fixed = {"45e4514a-c629-4f3b-99bc-aad599640d29", "2ace6a48-ba60-4705-9200-4ff857f2aba6"}
+        if all(_intent_path(root, correlation).exists() for correlation in fixed):
+            from . import windows_cp117_historical_base_archives as historical_archives
+            observed = historical_archives.observe(root, {})
+            if (isinstance(observed, dict) and set(observed) == {"state", "phases", "replayAllowed", "nativeActionAllowed", "productAction"}
+                    and observed.get("state") == "ready"
+                    and observed.get("phases") == {"transfer-recovery": "archived", "unknown-closure": "archived"}
+                    and all(observed.get(key) is False for key in ("replayAllowed", "nativeActionAllowed", "productAction"))):
+                historical_names = fixed
         for correlation in _UNKNOWN_RECOVERY_PROFILES:
-            if _unknown_closure_archived(root, config, target, descriptor, correlation):
+            if correlation in historical_names or _unknown_closure_archived(root, config, target, descriptor, correlation):
                 names.update({correlation + ".json", correlation + ".unknown-close.json"})
+        # Retain this completed baseline record.  Its later failed fixture-stage
+        # closure needs its own historical terminal and fresh absence proof.
+        historical = "c32cb108-4d48-407e-9153-40774559ba50"
+        if _intent_path(root, historical).exists():
+            from . import windows_cp117_c32_archive_admission as archive
+            observed = archive.preflight(root, {"leaseId": "67eeeedb-a618-42d5-8e31-821650d16302"})
+            if (observed.get("state") == "ready" and observed.get("correlationId") == historical
+                    and all(observed.get(key) is False for key in
+                            ("replayAllowed", "nativeActionAllowed", "productAction"))):
+                names.add(historical + ".json")
     return names
 
 
 def _reserve(root: Path, record: dict[str, Any], *, config: Any | None = None,
              target: Any | None = None, descriptor: tuple[Any, ...] | None = None) -> None:
+    try:
+        import fcntl
+    except ModuleNotFoundError as exc:
+        raise WindowsMsiBasePrepareError('Base preparation requires POSIX locking.') from exc
     directory = root / _LOCAL
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = directory.lstat()
@@ -284,11 +322,32 @@ def _reserve(root: Path, record: dict[str, Any], *, config: Any | None = None,
         raise WindowsMsiBasePrepareError("Base preparation journal is unsafe.")
     lock_fd = os.open(directory / ".environment.lock", os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
     try:
+        lock_info = os.fstat(lock_fd)
+        def recheck_lock() -> None:
+            current = (directory / ".environment.lock").lstat()
+            parent = directory.lstat()
+            if (not stat.S_ISREG(lock_info.st_mode) or lock_info.st_uid != os.getuid()
+                    or stat.S_IMODE(lock_info.st_mode) != 0o600
+                    or not stat.S_ISREG(current.st_mode) or current.st_uid != os.getuid()
+                    or stat.S_IMODE(current.st_mode) != 0o600
+                    or (lock_info.st_dev, lock_info.st_ino) != (current.st_dev, current.st_ino)
+                    or (info.st_dev, info.st_ino) != (parent.st_dev, parent.st_ino)
+                    or not stat.S_ISDIR(parent.st_mode) or parent.st_uid != os.getuid()
+                    or stat.S_IMODE(parent.st_mode) != 0o700):
+                raise WindowsMsiBasePrepareError("Base preparation lock changed or is unsafe.")
+        recheck_lock()
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        recheck_lock()
         archived = _archived_base_record_names(root, config, target, descriptor)
         if any(item.suffix == ".json" and item.name not in archived
                 for item in directory.iterdir()):
             raise WindowsMsiBasePrepareError("CP117 has an active or unknown base preparation.")
+        # Static retirement publishes its intent under this same exclusive
+        # base-journal lock. Recheck after acquiring it, before consuming a new
+        # source correlation; a preflight receipt cannot cover that interval.
+        if not _static_task_retirement_admitted(root, descriptor):
+            raise WindowsMsiBasePrepareError("STATIC_RETIREMENT_UNVERIFIED")
+        recheck_lock()
         path = _intent_path(root, record["request"]["correlationId"])
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(fd, "wb") as stream:
@@ -1057,44 +1116,169 @@ def _campaign_identity(request: Mapping[str, Any], descriptor: tuple[Any, ...]) 
             "socketPath": socket, "qemuPid": pid, "startTicks": ticks}
 
 
+_FIXED_C32_TASK = "VpnControlMcpBase-c32cb108-4d48-407e-9153-40774559ba50"
+_FIXED_RECOVERY_TASK = "VpnControlCp117GuestAgentRecovery-c2c0e5c9-77aa-4bd2-91a1-fb7540aa9f58"
+
+
 def _legacy_task_script() -> str:
-    """Inert CP176 task/process inventory; no delete, stop, or replay."""
+    """Read every owned task namespace; counts never prove terminal bindings."""
     return r'''$ErrorActionPreference='Stop'
 try {
- $tasks=@(Get-ScheduledTask -TaskName 'VpnControlMcp*' -ErrorAction SilentlyContinue)
- $active=@(Get-CimInstance Win32_Process|Where-Object {$_.Name -match '^(msiexec|consent)\.exe$'})
- $legacy=@($tasks|Where-Object {$_.TaskName -ceq @TASK@})
- $other=@($tasks|Where-Object {$_.TaskName -cne @TASK@})
- $code=if($legacy.Count -eq 0 -and $other.Count -eq 0 -and $active.Count -eq 0){'CLEANED'}else{'BUSY_OR_UNKNOWN'}
- [Console]::Out.WriteLine(([pscustomobject]@{version=1;code=$code;
-  legacyTaskCount=$legacy.Count;otherTaskCount=$other.Count;activeInstallerCount=$active.Count}|ConvertTo-Json -Compress))
-}catch{[Console]::Out.WriteLine('{"version":1,"code":"UNKNOWN"}');exit 1}
-'''.replace("@TASK@", windows_msi_public_scenario._ps_literal("VpnControlMcpMsi-" + _LEGACY_CORRELATION))
+ $tokens=$null;$errors=$null
+ [Management.Automation.Language.Parser]::ParseInput($MyInvocation.MyCommand.Definition,[ref]$tokens,[ref]$errors)|Out-Null
+ if($errors.Count -ne 0){throw 'AST'}
+ $all=@(Get-ScheduledTask -ErrorAction Stop)
+ $tasks=@($all|Where-Object {$_.TaskName -match '^VpnControl(Mcp|Cp117)'})
+ if($tasks.Count -gt 64){throw 'BOUND'}
+ $active=@(Get-CimInstance Win32_Process -ErrorAction Stop|Where-Object {$_.Name -match '^(msiexec|consent)\.exe$'})
+ $legacy=@($tasks|Where-Object {$_.TaskName -ceq @LEGACY@ -and $_.TaskPath -ceq '\'})
+ $c32=@($tasks|Where-Object {$_.TaskName -ceq @C32@ -and $_.TaskPath -ceq '\'})
+ $recovery=@($tasks|Where-Object {$_.TaskName -ceq @RECOVERY@ -and $_.TaskPath -ceq '\'})
+ $other=@($tasks|Where-Object {$_.TaskName -cnotin @(@LEGACY@,@C32@,@RECOVERY@) -or $_.TaskPath -cne '\'})
+ [Console]::Out.WriteLine(([pscustomobject]@{version=2;legacyTaskCount=$legacy.Count;
+ c32TaskCount=$c32.Count;recoveryTaskCount=$recovery.Count;otherTaskCount=$other.Count;
+ activeInstallerCount=$active.Count}|ConvertTo-Json -Compress))
+}catch{[Console]::Out.WriteLine('{"version":2,"code":"UNKNOWN"}');exit 1}
+'''.replace("@LEGACY@", windows_msi_public_scenario._ps_literal("VpnControlMcpMsi-" + _LEGACY_CORRELATION)).replace(
+        "@C32@", windows_msi_public_scenario._ps_literal(_FIXED_C32_TASK)).replace(
+        "@RECOVERY@", windows_msi_public_scenario._ps_literal(_FIXED_RECOVERY_TASK))
 
 
-def _legacy_task_observation(root: Path, descriptor: tuple[Any, ...]) -> dict[str, Any]:
+def _fixed_c32_task_terminal(root: Path, descriptor: tuple[Any, ...], lease_id: str | None) -> bool:
+    """The archive adapter verifies exact action/principal, terminal and no work."""
+    from . import windows_cp117_c32_archive_admission as archive
+    if not isinstance(lease_id, str) or not _UUID.fullmatch(lease_id):
+        return False
+    proof = archive.preflight(root, {"leaseId": lease_id})
+    return (proof.get("state") == "ready"
+            and proof.get("correlationId") == _FIXED_C32_TASK.removeprefix("VpnControlMcpBase-")
+            and _descriptor(root)[2] == descriptor)
+
+
+def _fixed_recovery_task_status_script() -> str:
+    """Reject automatic execution settings before the protected terminal read."""
+    from . import windows_cp117_guest_agent_recovery_successor as recovery
+    prefix = r'''$ErrorActionPreference='Stop'
+$tokens=$null;$errors=$null
+[Management.Automation.Language.Parser]::ParseInput($MyInvocation.MyCommand.Definition,[ref]$tokens,[ref]$errors)|Out-Null
+if($errors.Count -ne 0){throw 'AST'}
+$task=Get-ScheduledTask -TaskName @TASK@ -TaskPath '\' -ErrorAction Stop
+$triggers=@($task.Triggers|Where-Object {$null -ne $_})
+[xml]$taskXml=Export-ScheduledTask -TaskName @TASK@ -TaskPath '\' -ErrorAction Stop
+$ns=[Xml.XmlNamespaceManager]::new($taskXml.NameTable);$ns.AddNamespace('t','http://schemas.microsoft.com/windows/2004/02/mit/task')
+$xmlTriggers=@($taskXml.SelectNodes('/t:Task/t:Triggers/*',$ns))
+$xmlRestart=@($taskXml.SelectNodes('/t:Task/t:Settings/t:RestartOnFailure',$ns))
+if($triggers.Count -ne 0 -or $xmlTriggers.Count -ne 0 -or $xmlRestart.Count -ne 0 -or $task.Settings.RestartCount -ne 0){throw 'RECOVERY_AUTOSTART'}
+'''.replace("@TASK@", windows_msi_public_scenario._ps_literal(_FIXED_RECOVERY_TASK))
+    return prefix + recovery._status_script()
+
+
+def _fixed_recovery_task_terminal(root: Path, descriptor: tuple[Any, ...]) -> bool:
+    """Read existing local and fresh protected guest terminal; never promote it."""
+    from . import windows_cp117_guest_agent_recovery_successor as recovery
+    from . import windows_cp117_historical_base_archives as history
+    directory = root / recovery._DIR
+    for parent in (root / ".rag_index", directory):
+        if not parent.exists():
+            return False
+        info = parent.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or parent.is_symlink() or info.st_uid != os.getuid()
+                or (parent == directory and stat.S_IMODE(info.st_mode) != 0o700)):
+            return False
+    intent = history._read(directory / "intent.json")
+    terminal = history._read(directory / "terminal.json")
+    action = history._read(directory / "action.json")
+    if (not isinstance(intent, dict) or set(intent) != {"recoveryCorrelationId", "service", "guestGeneration"}
+            or intent.get("recoveryCorrelationId") != recovery._RECOVERY
+            or recovery.original._identity(intent.get("service", {})) is None):
+        return False
+    digest = recovery._digest(intent)
+    expected_action = recovery._action(intent["service"], digest)
+    if (terminal != {"intentSha256": digest, "outcome": "restarted"}
+            or action != {"intentSha256": digest, "actionSha256": expected_action}
+            or intent.get("guestGeneration") != {"socketPath": descriptor[1],
+                 "qemuPid": descriptor[2], "startTicks": descriptor[3]}):
+        return False
+    config, _target, current = _descriptor(root)
+    if current != descriptor:
+        return False
+    observed = recovery.original._run_ps(config, descriptor, _fixed_recovery_task_status_script())
+    fields = {"binding", "terminalBinding", "outcome", "taskSystem", "taskState", "actionSha256",
+              "service", "recoveryCorrelationId", "childPid", "childStartTicks"}
+    return (isinstance(observed, dict) and set(observed) == fields
+            and observed["binding"] == digest and observed["terminalBinding"] == digest
+            and observed["actionSha256"] == expected_action and observed["outcome"] == "restarted"
+            and observed["taskSystem"] is True and observed["taskState"] == "Ready"
+            and observed["recoveryCorrelationId"] == recovery._RECOVERY
+            and type(observed["childPid"]) is int and observed["childPid"] > 0
+            and type(observed["childStartTicks"]) is int and observed["childStartTicks"] > 0
+            and recovery.original._restarted_identity(intent["service"], observed["service"])
+            and _descriptor(root)[2] == descriptor)
+
+
+def _static_task_retirement_admitted(root: Path, descriptor: tuple[Any, ...]) -> bool:
+    """A consumed static-task intent excludes new work until fresh closure proof.
+
+    The remote shared lock may outlive SSH observation. Its local durable intent
+    therefore remains an exclusion independently of a transport deadline.
+    """
+    from . import windows_cp117_static_tasks_retire as retirement
+    directory = root / retirement._DIR
+    try:
+        if os.path.lexists(directory):
+            info = directory.lstat()
+            if (not stat.S_ISDIR(info.st_mode) or directory.is_symlink()
+                    or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700):
+                return False
+        if not os.path.lexists(directory / "intent.json"):
+            return True
+        proof = retirement.status(root, {})
+        return (isinstance(proof, Mapping)
+                and all(proof.get(flag) is False for flag in
+                        ("replayAllowed", "nativeActionAllowed", "productAction"))
+                and proof == {"state": "retired", "phase": "complete",
+                          "retirementCorrelationId": retirement._RETIREMENT,
+                          "replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+                and _descriptor(root)[2] == descriptor)
+    except (OSError, ValueError, TypeError, KeyError):
+        return False
+
+
+def _legacy_task_observation(root: Path, descriptor: tuple[Any, ...],
+                             lease_id: str | None = None) -> dict[str, Any]:
     env, socket, pid, ticks, _sid = descriptor
     if env != "windows-cp117":
         return {"state": "unknown"}
     config, _target, current = _descriptor(root)
     if current != descriptor:
         return {"state": "unknown"}
+    if not _static_task_retirement_admitted(root, descriptor):
+        return {"state": "blocked", "code": "STATIC_RETIREMENT_UNVERIFIED"}
     encoded = base64.b64encode(_legacy_task_script().encode("utf-16le")).decode()
     if len(encoded) >= 30000:
         return {"state": "unknown"}
     raw = _remote(config, _READINESS, (socket, str(pid), str(ticks), encoded), None, 30)
-    try: value = json.loads(raw) if raw is not None else None
-    except (TypeError, ValueError): return {"state": "unknown"}
+    try:
+        value = json.loads(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return {"state": "unknown"}
     item = value.get("inventory") if isinstance(value, dict) and value.get("state") == "observed" else None
-    if (not isinstance(item, dict) or set(item) != {"version", "code", "legacyTaskCount",
-            "otherTaskCount", "activeInstallerCount"} or item["version"] != 1
-            or item["code"] not in {"CLEANED", "BUSY_OR_UNKNOWN"}
-            or any(type(item[key]) is not int or item[key] < 0 for key in
-                   ("legacyTaskCount", "otherTaskCount", "activeInstallerCount"))):
+    counts = {"legacyTaskCount", "otherTaskCount", "activeInstallerCount", "c32TaskCount", "recoveryTaskCount"}
+    if (not isinstance(item, dict) or set(item) != counts | {"version"}
+            or type(item["version"]) is not int or item["version"] != 2
+            or any(type(item[key]) is not int or not 0 <= item[key] <= 1000 for key in counts)
+            or item["c32TaskCount"] > 1 or item["recoveryTaskCount"] > 1):
         return {"state": "unknown"}
     clean = all(item[key] == 0 for key in ("legacyTaskCount", "otherTaskCount", "activeInstallerCount"))
-    if (item["code"] == "CLEANED") != clean:
-        return {"state": "unknown"}
+    try:
+        if clean and item["c32TaskCount"]:
+            clean = _fixed_c32_task_terminal(root, descriptor, lease_id)
+        if clean and item["recoveryTaskCount"]:
+            clean = _fixed_recovery_task_terminal(root, descriptor)
+        if clean:
+            clean = _descriptor(root)[2] == descriptor
+    except (OSError, ValueError, TypeError, KeyError):
+        clean = False
     return {"state": "cleaned" if clean else "blocked", **item}
 
 
@@ -1149,12 +1333,12 @@ def _legacy_history_observation(root: Path, descriptor: tuple[Any, ...]) -> dict
 
 
 def _require_reconciled_legacy(root: Path, descriptor: tuple[Any, ...],
-                               expected_version: str) -> None:
+                               expected_version: str, lease_id: str | None = None) -> None:
     """Read the exact old protected job and idle guest before a new campaign.
 
-    This is intentionally still an admission block. The old scheduled task and
-    other prior route journals need a fixed cleanup observer before the terminal
-    CP176 receipt can authorize a new native operation.
+    The failed legacy task must be absent. Only the two fixed historical tasks
+    may remain after their exact current terminal bindings are verified. Prior
+    route journals still require their separate historical cleanup proof.
     """
     env, _socket, _pid, _ticks, _sid = descriptor
     if env != "windows-cp117":
@@ -1170,7 +1354,7 @@ def _require_reconciled_legacy(root: Path, descriptor: tuple[Any, ...],
     inventory = readiness(root, {"host": "archlinux", "expectedCurrentVersion": expected_version})
     if inventory.get("state") != "ready" or inventory.get("activeCount") != 0:
         raise WindowsMsiBasePrepareError("CP117_LEGACY_RECONCILIATION_UNAVAILABLE")
-    tasks = _legacy_task_observation(root, descriptor)
+    tasks = _legacy_task_observation(root, descriptor, lease_id)
     if tasks.get("state") != "cleaned":
         raise WindowsMsiBasePrepareError("CP117_LEGACY_CLEANUP_UNVERIFIED")
     history = _legacy_history_observation(root, descriptor)
@@ -1190,14 +1374,85 @@ def _require_reconciled_legacy(root: Path, descriptor: tuple[Any, ...],
 def _require_base_route_free(root: Path, config: Any | None = None, target: Any | None = None,
                              descriptor: tuple[Any, ...] | None = None) -> None:
     directory = root / _LOCAL
-    if directory.exists():
-        info = directory.lstat()
-        if (not stat.S_ISDIR(info.st_mode) or directory.is_symlink()
-                or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700
-                or any(item.suffix == ".json" and item.name not in _archived_base_record_names(
-                    root, config, target, descriptor)
-                    for item in directory.iterdir())):
+    if not os.path.lexists(directory):
+        return
+    def fp(info):
+        return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+                info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    parents = (directory.parent, directory)
+    parent_pins = []
+    for path in parents:
+        info = path.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o700):
+            raise WindowsMsiBasePrepareError("Base route ancestry is unsafe.")
+        # The shared .rag_index parent can receive unrelated platform entries.
+        # Its inode/type/permissions/owner bind ancestry; base inventory below
+        # retains full generations for the owned directory and every record.
+        parent_pins.append(fp(info)[:5] if path == directory.parent else fp(info))
+    source = Path(__file__)
+    def source_pin():
+        fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or info.st_nlink != 1 or info.st_size > 1048576):
+                raise WindowsMsiBasePrepareError("Base route source is unsafe.")
+            data = os.read(fd, 1048577)
+            if len(data) != info.st_size:
+                raise WindowsMsiBasePrepareError("Base route source read is incomplete.")
+            if fp(os.fstat(fd)) != fp(info) or fp(source.lstat()) != fp(info):
+                raise WindowsMsiBasePrepareError("Base route source changed.")
+            return fp(info), hashlib.sha256(data).hexdigest()
+        finally: os.close(fd)
+    source_before = source_pin()
+    held = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        def ancestry():
+            current_parents = (fp(directory.parent.lstat())[:5], fp(directory.lstat()))
+            if (current_parents != tuple(parent_pins)
+                    or fp(os.fstat(held)) != parent_pins[-1]):
+                raise WindowsMsiBasePrepareError("Base route ancestry changed.")
+        def inventory():
+            ancestry()
+            names = sorted(os.listdir(held))
+            if len(names) > 128 or '.environment.lock' not in names:
+                raise WindowsMsiBasePrepareError("Base route inventory is unsafe.")
+            result = {}
+            for name in names:
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=held)
+                try:
+                    info = os.fstat(fd)
+                    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                            or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1
+                            or info.st_size > 1048576):
+                        raise WindowsMsiBasePrepareError("Base route record is unsafe.")
+                    data = os.read(fd, 1048577)
+                    if len(data) != info.st_size:
+                        raise WindowsMsiBasePrepareError("Base route record read is incomplete.")
+                    named = os.stat(name, dir_fd=held, follow_symlinks=False)
+                    if fp(os.fstat(fd)) != fp(info) or fp(named) != fp(info):
+                        raise WindowsMsiBasePrepareError("Base route record changed.")
+                    result[name] = (fp(info), hashlib.sha256(data).hexdigest())
+                finally: os.close(fd)
+            if source_pin() != source_before:
+                raise WindowsMsiBasePrepareError("Base route source changed.")
+            ancestry()
+            if sorted(os.listdir(held)) != names:
+                raise WindowsMsiBasePrepareError("Base route inventory changed.")
+            if any(fp(os.stat(name, dir_fd=held, follow_symlinks=False)) != value[0]
+                   for name, value in result.items()):
+                raise WindowsMsiBasePrepareError("Base route record changed after observation.")
+            ancestry()
+            return result
+        before = inventory()
+        # Fresh census is used only for this guarded inventory, never cached
+        # across calls. Every archive's original evidence predicates still run.
+        archived = _archived_base_record_names(root, config, target, descriptor)
+        after = inventory()
+        if (before != after or any(Path(name).suffix == '.json' and name not in archived for name in before)):
             raise WindowsMsiBasePrepareError("CP117 base route has active or unknown history.")
+    finally: os.close(held)
 
 
 def _open_base_campaign(root: Path, request: Mapping[str, Any], config: Any,
@@ -1211,7 +1466,7 @@ def _open_base_campaign(root: Path, request: Mapping[str, Any], config: Any,
                     ("pid", descriptor[2]), ("startTicks", descriptor[3]),
                     ("expectedSid", descriptor[4])))):
         raise WindowsMsiBasePrepareError("CP117 base intent is absent or changed.")
-    _require_reconciled_legacy(root, descriptor, request["expectedCurrentVersion"])
+    _require_reconciled_legacy(root, descriptor, request["expectedCurrentVersion"], request["correlationId"])
     identity = _campaign_identity(request, descriptor)
     remote = _campaign_remote(config, target)
     opened = campaign_lease.begin(root, identity, remote)
@@ -1339,7 +1594,7 @@ def _start(root: Path | str, value: Mapping[str, Any], *, preverified: bool) -> 
     command_hash = hashlib.sha256(command.encode("utf-16le")).hexdigest()
     record = {"request": request, "pair": pair, "environment": env, "socketPath": sock,
               "pid": pid, "startTicks": ticks, "expectedSid": sid, "commandSha256": command_hash}
-    _require_reconciled_legacy(root, (env, sock, pid, ticks, sid), request["expectedCurrentVersion"])
+    _require_reconciled_legacy(root, (env, sock, pid, ticks, sid), request["expectedCurrentVersion"], correlation)
     _require_base_route_free(root, config, target, (env, sock, pid, ticks, sid))
     stage_args = (str(target.fixture_transfer_root), env, correlation, correlation, sock,
                   str(pid), str(ticks), sid, str(size), encoded, command_hash,

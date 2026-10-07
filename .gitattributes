@@ -4,3 +4,7 @@ visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
 /desktopApp/native/windows/import-policy.json text eol=lf
 /desktopApp/native/windows/InstallHelper/loader.manifest text eol=lf
 /desktopApp/native/windows/VpnBroker/loader.manifest text eol=lf
+
+# Historical source fixtures retain the exact bytes named by their provenance.
+/agent_tools/tests/fixtures/**/*.source -text
+/agent_tools/tests/fixtures/android_component_legacy/provenance.json text eol=lf

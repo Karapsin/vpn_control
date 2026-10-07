@@ -1,0 +1,545 @@
+import ast,base64,gzip,hashlib,json,os,selectors,subprocess,time,platform,stat,types,io
+from contextlib import contextmanager
+from pathlib import Path
+from agent_tools import windows_cp117_base_source_refresh as worker
+from agent_tools.windows_diagnostic_authority_capture import AuthorityCapture
+installed=worker.installed;flow=worker.flow;transfer=worker.transfer;_functions=worker._functions
+PAIR_EXPECTED=worker.PAIR_EXPECTED;INSTALLED_CORR=worker.INSTALLED_CORR
+HTTP_SHA=worker.HTTP_SHA;LISTENER_SHA=worker.LISTENER_SHA;DOWNLOAD_PS_SHA=worker.DOWNLOAD_PS_SHA;DOWNLOAD_REMOTE_SHA=worker.DOWNLOAD_REMOTE_SHA
+HELPER_SHA='8708e75d47885830702fe5553661f5dd3a1f4f758000f1e8f9368d75aa79bcfa'
+TEST_SHA='c1afe5234d4b4720d66549772980fa2c5391b8fce88cbc1bae1f7676c441fdbf'
+HOST_STAGE_CORRELATION='6425b65b-3a0d-4bf4-9ee9-74c628799adb'
+BUNDLE_SIZE=131218245
+BUNDLE_SHA='6ecfeb3eaa90bc2b40643024fdc012f5328480f57bd01321b4ea290fd5942c14'
+BASE_SIZE=BUNDLE_SIZE;BASE_HASH=BUNDLE_SHA
+OLD_HASHES={'cliSha256':PAIR_EXPECTED['baseCliSha256'],'jarSha256':PAIR_EXPECTED['baseAppJarSha256'],'helperSha256':PAIR_EXPECTED['baseHelperSha256'],'runtimeSha256':PAIR_EXPECTED['baseRuntimeSha256']}
+DOWNLOAD_CORRELATION='add035da-53b7-4b5b-8131-38d838a7d840'
+DOWNLOAD_NONCE='e9427e8e-a909-4dfa-b6cb-57b5b22642d6'
+ROUTE_PATH='/06b2fe04b87441818d52367f3c81086aa746f245d2f04c2082cc73e7b1a2e1a0'
+def _process_generation(pid: int) -> str | None:
+    """Return a platform-native process generation marker, never PID alone."""
+    if platform.system() == "Darwin":
+        # libproc's start timeval distinguishes a reused PID even when ``ps``
+        # renders both processes in the same second.
+        import ctypes
+
+        class ProcBsdInfo(ctypes.Structure):
+            _fields_ = [("flags", ctypes.c_uint32), ("status", ctypes.c_uint32),
+                       ("xstatus", ctypes.c_uint32), ("pid", ctypes.c_uint32),
+                       ("ppid", ctypes.c_uint32), ("uid", ctypes.c_uint32), ("gid", ctypes.c_uint32),
+                       ("ruid", ctypes.c_uint32), ("rgid", ctypes.c_uint32), ("svuid", ctypes.c_uint32),
+                       ("svgid", ctypes.c_uint32), ("reserved", ctypes.c_uint32),
+                       ("comm", ctypes.c_char * 16), ("name", ctypes.c_char * 32),
+                       ("nfiles", ctypes.c_uint32), ("pgid", ctypes.c_uint32), ("pjobc", ctypes.c_uint32),
+                       ("tdev", ctypes.c_uint32), ("tpgid", ctypes.c_uint32), ("nice", ctypes.c_int32),
+                       ("startSeconds", ctypes.c_uint64), ("startMicroseconds", ctypes.c_uint64)]
+        try:
+            info = ProcBsdInfo()
+            received = ctypes.CDLL("/usr/lib/libproc.dylib").proc_pidinfo(
+                pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info))
+            if received != ctypes.sizeof(info) or info.pid != pid or not info.startSeconds:
+                return None
+            return f"darwin:{info.startSeconds}:{info.startMicroseconds}"
+        except (OSError, AttributeError):
+            return None
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").rsplit(") ", 1)[1].split()
+        return f"linux:{fields[19]}"
+    except (FileNotFoundError, IndexError, OSError):
+        return None
+
+def _stdin_shortcut_command(program):
+ import gzip,hashlib,shlex
+ if type(program)is not str:raise ValueError('shortcut-source-type')
+ public=program.encode('utf-8')
+ if not 0<len(public)<=131072:raise ValueError('shortcut-source-bound')
+ packed=gzip.compress(public,mtime=0)
+ if not 0<len(packed)<=65536:raise ValueError('shortcut-packed-bound')
+ bootstrap="import sys,zlib,hashlib\ndef _sc_read(n):\n b=bytearray()\n while len(b)<n:\n  v=sys.stdin.buffer.read(min(4096,n-len(b)))\n  if not v:raise ValueError('SHORTCUT_SOURCE_EOF')\n  b.extend(v)\n return bytes(b)\n_sc_header=_sc_read(13)\nif _sc_header[:9]!=b'CP117SRC1' or int.from_bytes(_sc_header[9:],'big')!="+str(len(packed))+":raise ValueError('SHORTCUT_SOURCE_HEADER')\n_sc_p=_sc_read("+str(len(packed))+");_sc_d=zlib.decompressobj(31);_sc_b=_sc_d.decompress(_sc_p,"+str(len(public)+1)+")\nif len(_sc_b)!="+str(len(public))+" or not _sc_d.eof or _sc_d.unused_data or _sc_d.unconsumed_tail or hashlib.sha256(_sc_b).hexdigest()!="+repr(hashlib.sha256(public).hexdigest())+":raise ValueError('SHORTCUT_ENVELOPE')\nexec(compile(_sc_b.decode('utf-8','strict'),'<string>','exec'))"
+ command=('python3','-c','exec('+repr(bootstrap)+')')
+ if max(len(x.encode())for x in command)>4096 or len(' '.join(shlex.quote(x)for x in command).encode())>4096:raise ValueError('shortcut-bootstrap-bound')
+ return command,b'CP117SRC1'+len(packed).to_bytes(4,'big')+packed
+
+@contextmanager
+def _held_bundle(path):
+    path=Path(path).absolute();parents=[]
+    for parent in path.parents:
+        info=parent.lstat()
+        if not stat.S_ISDIR(info.st_mode):raise ValueError('msi-ancestry')
+        parents.append((parent,(info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid)))
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    stream=os.fdopen(fd,'rb')
+    try:
+        generation=lambda v:[v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns]
+        first=os.fstat(fd);pin=generation(first)
+        if not stat.S_ISREG(first.st_mode)or first.st_uid!=os.getuid()or first.st_nlink!=1 or first.st_size!=BUNDLE_SIZE or stat.S_IMODE(first.st_mode)!=0o600:raise ValueError('msi-record')
+        digest=hashlib.sha256()
+        for block in iter(lambda:stream.read(1048576),b''):digest.update(block)
+        if digest.hexdigest()!=BUNDLE_SHA:raise ValueError('msi-hash')
+        def verify():
+            if generation(os.fstat(fd))!=pin or generation(path.lstat())!=pin:raise ValueError('msi-generation')
+            for parent,identity in parents:
+                now=parent.lstat()
+                if(now.st_dev,now.st_ino,now.st_mode,now.st_uid,now.st_gid)!=identity:raise ValueError('msi-ancestry')
+            if generation(os.fstat(fd))!=pin or generation(path.lstat())!=pin:raise ValueError('msi-generation')
+        verify();stream.seek(0);yield stream,{'sha256':BUNDLE_SHA,'generation':pin},verify;verify()
+    finally:stream.close()
+
+def download_body(port):
+ if type(port)is not int or port!=54935:raise ValueError('fixture-stage-port')
+ templates,_=stage_templates();sid=installed.precise.owner.SID;stageRoot=r'C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-fixture-'+STAGE_CORRELATION
+ creation=templates['_create_script'](STAGE_CORRELATION,sid);extraction=templates['_stage_script'](STAGE_CORRELATION,sid,MEMBERS,BUNDLE_SHA)
+ plain=installed.body(PAIR_EXPECTED);marker="[Console]::Out.WriteLine((@{version=1;correlationId='"+INSTALLED_CORR+"';outcome='complete'";at=plain.index(marker)
+ checks="if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -cne 'S-1-5-18'){throw 'FIXTURE_SYSTEM_ROLE'};if($cp117ReadinessProof.code -cne 'READY'){throw 'PACKAGE_DRIFT'}\n"
+ for name,value in OLD_HASHES.items():checks+="if($cp117Package."+name+" -cne '"+value+"'){throw 'PACKAGE_DRIFT'}\n"
+ task=worker.TASK_CENSUS_PS.replace('@TASK@','VpnControlMcpTransfer-'+HOST_STAGE_CORRELATION).replace('@SID@',sid).replace('@ARGS@',SUBMITTED_ACTION_SHA)
+ checks+=task+"if($cp117Task.state -cne 'Ready' -or $cp117Task.lastTaskResult -ne 0){throw 'TRANSFER_PENDING'}\n"
+ catalog='\n'.join("$cp117MemberHashes["+installed.public._ps_literal(k)+"]="+installed.public._ps_literal(v)+";$cp117MemberSizes["+installed.public._ps_literal(k)+"]="+str(MEMBER_SIZES[k])for k,v in sorted(MEMBERS.items()))
+ copying=r'''Add-Type -TypeDefinition @'
+@HOLD_CS@
+'@ -ReferencedAssemblies @('System','System.Core')
+$cp117DirectoryPinMethod=[Cp117RefreshWorkspace].GetMethod('DirPin',[Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::NonPublic);if($null -eq $cp117DirectoryPinMethod){throw 'STAGE_DIRECTORY_PIN_METHOD'}
+$cp117StageParentHandle=$null;$cp117StageRootHandle=$null
+$cp117Original='C:\Users\vpncp117\AppData\Local\VpnControl\mcp-base-6425b65b-3a0d-4bf4-9ee9-74c628799adb\base.msi'
+$cp117HeldZip=[IO.FileStream]::new($cp117Original,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+try{
+ $cp117SourceFirst=[Cp117InstalledFile]::Read($cp117Original)
+ if($cp117SourceFirst[0] -cne '@HASH@' -or $cp117SourceFirst[1] -cne '@IDENTITY@' -or $cp117HeldZip.Length -ne 131218245){throw 'SOURCE_ZIP_DRIFT'}
+ $cp117SourceOwner=(Get-Acl -LiteralPath $cp117Original -ErrorAction Stop).GetOwner([Security.Principal.SecurityIdentifier]).Value;if($cp117SourceOwner -cne '@SID@'){throw 'SOURCE_ZIP_OWNER'}
+ $cp117MemberHashes=@{};$cp117MemberSizes=@{}
+ @CATALOG@
+ $cp117RequiredDiskBytes=[long]131218245+@EXPANDED@+2097152;$cp117Drive=[IO.DriveInfo]::new('C:\');if(-not $cp117Drive.IsReady -or $cp117Drive.AvailableFreeSpace -lt $cp117RequiredDiskBytes){throw 'FIXTURE_DISK_BUDGET'}
+ Add-Type -AssemblyName System.IO.Compression
+ $cp117Archive=[IO.Compression.ZipArchive]::new($cp117HeldZip,[IO.Compression.ZipArchiveMode]::Read,$true)
+ try{
+  if($cp117Archive.Entries.Count -ne 5){throw 'ZIP_CATALOG_COUNT'};$cp117Seen=@{}
+  foreach($cp117Entry in $cp117Archive.Entries){$cp117Name=$cp117Entry.FullName;if(-not $cp117MemberHashes.ContainsKey($cp117Name) -or $cp117Seen.ContainsKey($cp117Name) -or $cp117Entry.Length -ne $cp117MemberSizes[$cp117Name]){throw 'ZIP_CATALOG_ENTRY'};$cp117Seen[$cp117Name]=$true;$cp117Stream=$cp117Entry.Open();$cp117Digest=[Security.Cryptography.SHA256]::Create();try{$cp117MemberHash=[BitConverter]::ToString($cp117Digest.ComputeHash($cp117Stream)).Replace('-','').ToLowerInvariant();if($cp117MemberHash -cne $cp117MemberHashes[$cp117Name]){throw 'ZIP_MEMBER_HASH'}}finally{$cp117Digest.Dispose();$cp117Stream.Dispose()}}
+ }finally{$cp117Archive.Dispose()}
+ $cp117StageParentHandle=[Cp117RefreshWorkspace]::HoldDirectory('C:\Users\vpncp117\AppData\Local\VpnControl')
+ & {
+ @CREATE@
+ }
+ $cp117StageRootHandle=[Cp117RefreshWorkspace]::HoldDirectory('@ROOT@')
+ $cp117StageIdentityFirst=[string]$cp117DirectoryPinMethod.Invoke($null,[object[]]@('@ROOT@'))
+ $cp117Incoming='@ROOT@\download\bundle.zip';$cp117HeldZip.Position=0;$cp117Destination=[IO.FileStream]::new($cp117Incoming,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+ try{$cp117HeldZip.CopyTo($cp117Destination);$cp117Destination.Flush($true)}finally{$cp117Destination.Dispose()}
+ $cp117Copy=[Cp117InstalledFile]::Read($cp117Incoming);if($cp117Copy[0] -cne '@HASH@'){throw 'COPIED_ZIP_HASH'}
+ & {
+ @EXTRACT@
+ }
+ $cp117StageResultPath='@ROOT@\result.json';$cp117StageResultFirst=[Cp117InstalledFile]::Read($cp117StageResultPath);$cp117StageResultItem=Get-Item -LiteralPath $cp117StageResultPath -Force;if($cp117StageResultItem.Length -gt 16384){throw 'STAGE_RESULT_BOUND'}
+ $cp117StageResult=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($cp117StageResultPath,[Text.Encoding]::UTF8))
+ $cp117StageResultLast=[Cp117InstalledFile]::Read($cp117StageResultPath);if($cp117StageResultFirst[0] -cne $cp117StageResultLast[0] -or $cp117StageResultFirst[1] -cne $cp117StageResultLast[1]){throw 'STAGE_RESULT_DRIFT'}
+ $cp117SourceLast=[Cp117InstalledFile]::Read($cp117Original);if($cp117SourceFirst[0] -cne $cp117SourceLast[0] -or $cp117SourceFirst[1] -cne $cp117SourceLast[1]){throw 'ORIGINAL_ZIP_DRIFT'}
+ $cp117TaskAfter=ReadCp117Task;foreach($cp117Key in @('state','ownerMatches','logonType','runLevel','actionSha256','lastRunTicks','lastTaskResult')){if($cp117Task[$cp117Key] -cne $cp117TaskAfter[$cp117Key]){throw 'TRANSFER_TASK_DRIFT'}}
+ $cp117StageIdentityLast=[string]$cp117DirectoryPinMethod.Invoke($null,[object[]]@('@ROOT@'));$cp117RootBefore=$cp117StageIdentityFirst.Split(':');$cp117RootAfter=$cp117StageIdentityLast.Split(':');if($cp117RootBefore.Count -ne 8 -or $cp117RootAfter.Count -ne 8){throw 'STAGE_ROOT_IDENTITY'};foreach($cp117Index in @(0,1,2,3,4,5)){if($cp117RootBefore[$cp117Index] -cne $cp117RootAfter[$cp117Index]){throw 'STAGE_ROOT_EXCHANGED'}}
+ $cp117Download=@{stageRootIdentityBefore=$cp117StageIdentityFirst;stageRootIdentityAfter=$cp117StageIdentityLast;state='staged';role='SYSTEM';originalZipSha256=$cp117SourceFirst[0];originalZipIdentity=$cp117SourceFirst[1];originalPreserved=$true;stage=$cp117StageResult;stageResultSha256=$cp117StageResultFirst[0];stageResultIdentity=$cp117StageResultFirst[1];downloadDirectoryAbsent=(-not (Test-Path -LiteralPath '@ROOT@\download'));fixtureAction=$true;installerAction=$false;serverAction=$false;runtimeAction=$false}
+}finally{if($null -ne $cp117StageRootHandle){$cp117StageRootHandle.Dispose()};if($null -ne $cp117StageParentHandle){$cp117StageParentHandle.Dispose()};$cp117HeldZip.Dispose()}
+'''
+ for a,b in (('@EXPANDED@',str(sum(MEMBER_SIZES.values()))),('@HOLD_CS@',worker.WORKSPACE_CS),('@HASH@',BUNDLE_SHA),('@IDENTITY@',ORIGINAL_ZIP_ID),('@SID@',sid),('@CATALOG@',catalog),('@CREATE@',creation),('@EXTRACT@',extraction),('@ROOT@',stageRoot)):copying=copying.replace(a,b)
+ plain=plain[:at]+checks+copying+plain[at:];plain=plain.replace('package=$cp117Package};details','package=$cp117Package;download=$cp117Download};details').replace(INSTALLED_CORR,DOWNLOAD_CORRELATION)
+ return plain,SUBMITTED_ACTION_SHA
+
+def validate_download(value):
+ if type(value)is not dict or value.get('correlationId')!=DOWNLOAD_CORRELATION:raise ValueError('stage-correlation')
+ base=dict(value,correlationId=INSTALLED_CORR)
+ if value.get('outcome')=='complete':
+  facts=value.get('facts')
+  if type(facts)is not dict or set(facts)!={'owner','readiness','package','download'}:raise ValueError('stage-facts')
+  mark=facts['download']
+  keys={'stageRootIdentityBefore','stageRootIdentityAfter','state','role','originalZipSha256','originalZipIdentity','originalPreserved','stage','stageResultSha256','stageResultIdentity','downloadDirectoryAbsent','fixtureAction','installerAction','serverAction','runtimeAction'}
+  if type(mark)is not dict or set(mark)!=keys or mark['state']!='staged' or mark['role']!='SYSTEM' or mark['originalZipSha256']!='6ecfeb3eaa90bc2b40643024fdc012f5328480f57bd01321b4ea290fd5942c14' or mark['originalZipIdentity']!='3996455293:1179648:99901:2185510986:31282442:0:131218245:32:2176616659:31282442:1' or any(mark[k]is not True for k in ('originalPreserved','downloadDirectoryAbsent','fixtureAction')) or any(mark[k]is not False for k in ('installerAction','serverAction','runtimeAction')):raise ValueError('stage-mark')
+  import re
+  if type(mark['stageResultSha256'])is not str or re.fullmatch(r'[0-9a-f]{64}',mark['stageResultSha256'])is None or type(mark['stageResultIdentity'])is not str or re.fullmatch(r'[0-9]+(?::[0-9]+){10}',mark['stageResultIdentity'])is None:raise ValueError('stage-result-identity')
+  roots=[]
+  for k in ('stageRootIdentityBefore','stageRootIdentityAfter'):
+   if type(mark[k])is not str or re.fullmatch(r'[0-9]+(?::[0-9]+){7}',mark[k])is None or len(mark[k])>256:raise ValueError('stage-native-root')
+   roots.append(mark[k].split(':'))
+  if roots[0][:6]!=roots[1][:6] or int(roots[0][3])&1024 or not int(roots[0][3])&16:raise ValueError('stage-native-root-drift')
+  stage=mark['stage'];expected={'fixture-receipt.json': '31634170c6d0c358ee1aed84314170725b27b79895f76f5977133a5e466f94bb', 'packages/target/vpn-control-2.2.2.msi': 'f8a8741bcfd22c04be50836aa22da77009105ab1b63df4d9b7648397779a8dfc', 'server/fixture_environment.py': '0a36302028c3dc2605887a73abcd2850afcbaec302e28f2087a303926681b323', 'server/macos_packaging_jdk_preflight.py': '3e4aa0524cb916c343ce377cb6ca5ab00674d0f6e6981f82ae514f80136cbca5', 'server/prepare_desktop_update_fixture.py': 'ba8af2d4d7cc25d90201be448fde4fad2dce98bb875331343ee189f8386c70d5'}
+  root=r'C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-fixture-'+DOWNLOAD_CORRELATION;sid='S-1-5-21-2404255130-2183793310-3766671872-1002'
+  if type(stage)is not dict or set(stage)!={'version','correlationId','code','bundleSha256','files','acl','rootAcl','stateAcl'} or type(stage['version'])is not int or stage['version']!=1 or stage['correlationId']!=DOWNLOAD_CORRELATION or stage['code']!='STAGED_NOT_SERVER_READY' or stage['bundleSha256']!=mark['originalZipSha256'] or type(stage['files'])is not dict or stage['files']!=expected:raise ValueError('stage-receipt')
+  for key,path,private in (('acl',root+'\\content',False),('rootAcl',root,False),('stateAcl',root+'\\server-state',True)):
+   acl=stage[key]
+   if type(acl)is not dict or set(acl)!={'stage','protected','acl'} or acl['stage']!=path or acl['protected']is not True or type(acl['acl'])is not list or len(acl['acl'])!=3:raise ValueError('stage-acl')
+   seen=set()
+   for row in acl['acl']:
+    if type(row)is not dict or set(row)!={'sid','rights','type','inherited','inheritance','propagation'} or row['sid']not in ('S-1-5-18','S-1-5-32-544',sid) or row['sid']in seen or row['type']!='Allow' or row['inherited']is not False or any(type(row[k])is not int for k in ('rights','inheritance','propagation')) or row['inheritance']!=3 or row['propagation']!=0:raise ValueError('stage-ace')
+    rights=0x1F01FF if row['sid']!=sid or private else 0x1200A9
+    if row['rights']!=rights:raise ValueError('stage-rights')
+    seen.add(row['sid'])
+  base['facts']={k:facts[k]for k in('owner','readiness','package')}
+  if facts['readiness']['code']!='READY' or any(facts['package'][k]!=v for k,v in OLD_HASHES.items()):raise ValueError('stage-package')
+ installed.validate(base);return value
+
+def download_program(record,port):
+    r=installed.precise.owner.guest.recovery;pin,raw=r.authority._read_bound_file(Path(__file__),retain_bytes=True)
+    source,oldsha=installed.program(record,PAIR_EXPECTED);plain,tasksha=download_body(port);sha=hashlib.sha256(plain.encode('utf-16le')).hexdigest()
+    full="[Console]::Out.WriteLine(('CP117-READ "+DOWNLOAD_NONCE+" "+sha+" '+$PID))\n"+plain;data=full.encode();packed=base64.b64encode(gzip.compress(data,mtime=0)).decode()
+    bootstrap="$ErrorActionPreference='Stop';$i=[IO.MemoryStream]::new([Convert]::FromBase64String('"+packed+"'));$z=[IO.Compression.GZipStream]::new($i,[IO.Compression.CompressionMode]::Decompress);$o=[IO.MemoryStream]::new();try{$b=New-Object byte[] 4096;while(($n=$z.Read($b,0,$b.Length)) -gt 0){$o.Write($b,0,$n);if($o.Length -gt 65536){throw 'PACKAGE_SOURCE_BOUND'}};$v=$o.ToArray();if($v.Length -ne "+str(len(data))+" -or [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($v)).Replace('-','').ToLowerInvariant() -cne '"+hashlib.sha256(data).hexdigest()+"'){throw 'PACKAGE_SOURCE_HASH'};& ([ScriptBlock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($v)))}finally{$z.Dispose();$i.Dispose();$o.Dispose()}"
+    call="& ([ScriptBlock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($v)))"
+    if bootstrap.count(call)!=1:raise ValueError('direct-download-parser-closure')
+    bootstrap=bootstrap.replace(call,"$cp117Source=[Text.UTF8Encoding]::new($false,$true).GetString($v);$cp117Tokens=$null;$cp117ParseErrors=$null;[void][Management.Automation.Language.Parser]::ParseInput($cp117Source,[ref]$cp117Tokens,[ref]$cp117ParseErrors);if($cp117ParseErrors.Count -ne 0){throw 'DOWNLOAD_BODY_PARSE'};& ([ScriptBlock]::Create($cp117Source))")
+    encoded=bootstrap
+    if not bootstrap.isascii() or any(ord(c)<32 for c in bootstrap) or '"' in bootstrap or '\\' in bootstrap:raise ValueError('stage-command-shape')
+    invocation='\"powershell.exe\" -NoProfile -NonInteractive -Command \"'+bootstrap+'\"'
+    if len(invocation)>=30000:raise ValueError('stage-complete-command-cap')
+    if len(data)>65536 or len(encoded)>=30000:raise ValueError('refresh-download-command-cap')
+    tree=ast.parse(source);oldencoded=next(n.value.value for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='ENCODED'for t in n.targets))
+    for before,after in((repr(oldencoded),repr(encoded)),('D='+repr(INSTALLED_CORR),'D='+repr(DOWNLOAD_CORRELATION)),('NONCE='+repr(installed.NONCE),'NONCE='+repr(DOWNLOAD_NONCE)),('BODY_SHA='+repr(oldsha),'BODY_SHA='+repr(sha))):
+        if source.count(before)!=1:raise ValueError('refresh-download-carrier-factory')
+        source=source.replace(before,after)
+    tree=ast.parse(source);definition=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='validate');old=ast.get_source_segment(source,definition)
+    wrapper='INSTALLED_CORR='+repr(INSTALLED_CORR)+'\nOLD_HASHES='+repr(OLD_HASHES)+'\nTASK_ARGUMENTS_SHA='+repr(tasksha)+'\n_download_installed_ns=dict(globals(),CORRELATION=INSTALLED_CORR)\nexec('+repr(old)+',_download_installed_ns)\ninstalled=types.SimpleNamespace(validate=_download_installed_ns["validate"])\nDOWNLOAD_CORRELATION='+repr(DOWNLOAD_CORRELATION)+'\n'+_functions(raw,('validate_download',))+'\nvalidate=validate_download\n'
+    source=source.replace(old,wrapper)
+    if r.authority._read_bound_file(Path(__file__))!=pin:raise ValueError('refresh-download-parser-drift')
+    callsite="'-EncodedCommand',ENCODED"
+    if source.count(callsite)!=1:raise ValueError('stage-command-consumer')
+    source=source.replace(callsite,"'-Command',ENCODED")
+    compile(source,'fixed-current-download','exec');return source,sha,tasksha
+
+def listener_program(record):
+ bound=installed.precise.owner.guest.recovery.authority._read_bound_file
+ before=bound(Path(transfer.__file__))
+ if before['sha256']!=HTTP_SHA or hashlib.sha256(transfer._REMOTE_LISTEN_STATUS.encode()).hexdigest()!=worker.LISTENER_STATUS_SHA:raise ValueError('readback-listener-template')
+ source=worker.listener_status_program(record)
+ new=list(worker.stage_program(record)[1]);old=list(new)
+ new[2]=HOST_STAGE_CORRELATION;new[4]='sha256-'+BUNDLE_SHA;new[9]=BUNDLE_SHA;new[10]=str(BUNDLE_SIZE)
+ if source.count(repr(old))!=1:raise ValueError('readback-listener-arguments')
+ source=source.replace(repr(old),repr(new))
+ if bound(Path(transfer.__file__))!=before:raise ValueError('readback-listener-drift')
+ compile(source,'fixed-original-listener-status','exec');return source
+
+def admit_listener(value):
+ if type(value)is not dict:raise ValueError('readback-listener-schema')
+ if set(value)=={'state'} and value['state']in('stopped','starting','failed'):return value
+ if set(value)!={'state','port','pathSha256'} or value['state']not in('served','stopped','listening') or type(value['port'])is not int or value['port']!=54935 or value['pathSha256']!=hashlib.sha256(ROUTE_PATH.encode()).hexdigest():raise ValueError('readback-listener-binding')
+ return value
+
+ROUTE_INPUT=json.dumps({'path':ROUTE_PATH},sort_keys=True).encode()
+def listener_collect(argv,stream,capture,guard,source_frame):
+ # Preopened own evidence survives named ancestry refusal; never authorizes action.
+ guard();slots={};process=None;birth=None;chunks={'stdout':bytearray(),'stderr':bytearray()};closed=set();source_written=False;primary=None;selector=None;deadline=time.monotonic()+60
+ def persist(name,raw):
+  fd,identity=slots[name];info=os.fstat(fd)
+  if (info.st_dev,info.st_ino,info.st_uid,info.st_nlink)!=(identity[0],identity[1],os.getuid(),1) or not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o600:raise ValueError('host-stage-evidence-held-drift')
+  os.lseek(fd,0,0);os.ftruncate(fd,0);view=memoryview(raw)
+  while view:
+   count=os.write(fd,view)
+   if count<=0:raise ValueError('host-stage-evidence-write')
+   view=view[count:]
+  os.fsync(fd)
+ def retain():
+  identity={'pid':None if process is None else process.pid,'birth':birth,'uid':os.getuid()}
+  status={**identity,'state':'unknown' if process is None or primary is not None else 'observed','returncode':None if process is None else process.poll(),'pipesClosed':closed=={'stdout','stderr'},'sourceFrameWritten':source_written}
+  for name in chunks:persist(name+'.bin',bytes(chunks[name]))
+  persist('local-child.json',json.dumps(identity,sort_keys=True).encode());persist('exit.json',json.dumps(status,sort_keys=True).encode());os.fsync(capture.fd)
+  return status
+ try:
+  for name in ('stdout.bin','stderr.bin','local-child.json','exit.json'):
+   capture.create(name,b'' if name.endswith('.bin') else b'{"state":"unknown","pid":null,"birth":null}')
+   fd=os.open(name,os.O_RDWR|os.O_NOFOLLOW,dir_fd=capture.fd);info=os.fstat(fd)
+   slots[name]=(fd,(info.st_dev,info.st_ino))
+  retain();guard()
+  process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+  try:
+   birth=_process_generation(process.pid)
+   if hasattr(capture,'_check'):capture._check()
+   retain();selector=selectors.DefaultSelector()
+   for name in chunks:
+    pipe=getattr(process,name);os.set_blocking(pipe.fileno(),False);selector.register(pipe,selectors.EVENT_READ,name)
+   outbound=bytearray(source_frame);remaining=len(ROUTE_INPUT)
+   os.set_blocking(process.stdin.fileno(),False);selector.register(process.stdin,selectors.EVENT_WRITE,'stdin')
+   while selector.get_map():
+    if time.monotonic()>=deadline:raise ValueError('host-stage-deadline')
+    for key,_ in selector.select(.25):
+     if key.data=='stdin':
+      if not outbound and remaining:
+       block=stream.read(min(4096,remaining))
+       if not block:raise ValueError('host-stage-input-eof')
+       if type(block)is not bytes or len(block)>min(4096,remaining):raise ValueError('host-stage-input-shape')
+       outbound.extend(block);remaining-=len(block)
+      if not outbound:
+       if stream.read(1):raise ValueError('host-stage-input-trailing')
+       selector.unregister(process.stdin);process.stdin.close();continue
+      try:written=os.write(process.stdin.fileno(),outbound[:4096])
+      except BlockingIOError:continue
+      if written<=0:raise ValueError('host-stage-input-write')
+      source_written=True;del outbound[:written];continue
+     block=os.read(key.fileobj.fileno(),4096)
+     if not block:selector.unregister(key.fileobj);closed.add(key.data);continue
+     room=262144-len(chunks[key.data]);chunks[key.data].extend(block[:room])
+     if len(block)>room:raise ValueError('host-stage-output-cap')
+   code=process.wait(timeout=max(.001,deadline-time.monotonic()));retain()
+   if birth is None:raise ValueError('host-stage-birth-unknown')
+   if code!=0:raise ValueError('host-stage-transport-exit')
+   guard();value=json.loads(chunks['stdout'])
+   admit_listener(value)
+   return value
+  except Exception as error:
+   primary=error
+   if not process.stdin.closed:process.stdin.close()
+   if selector is not None:selector.close();selector=None
+   # Same held pipes only; bounded prefixes, drain excess, no signal or adoption.
+   for name in chunks:os.set_blocking(getattr(process,name).fileno(),False)
+   while time.monotonic()<deadline and (closed!={'stdout','stderr'} or process.poll() is None):
+    progress=False
+    for name in chunks:
+     if name in closed:continue
+     try:block=os.read(getattr(process,name).fileno(),4096)
+     except BlockingIOError:continue
+     if not block:closed.add(name);continue
+     progress=True;chunks[name].extend(block[:max(0,262144-len(chunks[name]))])
+    if not progress:time.sleep(.01)
+   try:error.localObservation=retain()
+   except Exception as retention_error:error.localObservation={'pid':process.pid,'birth':birth,'returncode':process.poll(),'retentionFailure':type(retention_error).__name__}
+   raise
+ finally:
+  if selector is not None:selector.close()
+  if process is not None:
+   for pipe in (process.stdin,process.stdout,process.stderr):
+    if not pipe.closed:pipe.close()
+  for fd,_ in slots.values():os.close(fd)
+def guest_collect(argv,capture,guard,source_frame,diagnostic,nonce,sha,qemu):
+ # Preopened own evidence survives named ancestry refusal; never authorizes action.
+ guard();events=[];child=None;pending=bytearray();slots={};process=None;birth=None;chunks={'stdout':bytearray(),'stderr':bytearray()};closed=set();source_written=False;ack_written=False;primary=None;selector=None;deadline=time.monotonic()+60
+ def persist(name,raw):
+  fd,identity=slots[name];info=os.fstat(fd)
+  if (info.st_dev,info.st_ino,info.st_uid,info.st_nlink)!=(identity[0],identity[1],os.getuid(),1) or not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o600:raise ValueError('host-stage-evidence-held-drift')
+  os.lseek(fd,0,0);os.ftruncate(fd,0);view=memoryview(raw)
+  while view:
+   count=os.write(fd,view)
+   if count<=0:raise ValueError('host-stage-evidence-write')
+   view=view[count:]
+  os.fsync(fd)
+ def retain():
+  identity={'pid':None if process is None else process.pid,'birth':birth,'uid':os.getuid()}
+  status={**identity,'state':'unknown' if process is None or primary is not None else 'observed','returncode':None if process is None else process.poll(),'pipesClosed':closed=={'stdout','stderr'},'sourceFrameWritten':source_written,'ackWritten':ack_written}
+  for name in chunks:persist(name+'.bin',bytes(chunks[name]))
+  persist('local-child.json',json.dumps(identity,sort_keys=True).encode());persist('exit.json',json.dumps(status,sort_keys=True).encode());os.fsync(capture.fd)
+  return status
+ try:
+  for name in ('stdout.bin','stderr.bin','local-child.json','exit.json'):
+   capture.create(name,b'' if name.endswith('.bin') else b'{"state":"unknown","pid":null,"birth":null}')
+   fd=os.open(name,os.O_RDWR|os.O_NOFOLLOW,dir_fd=capture.fd);info=os.fstat(fd)
+   slots[name]=(fd,(info.st_dev,info.st_ino))
+  retain();guard()
+  process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+  try:
+   birth=_process_generation(process.pid)
+   if hasattr(capture,'_check'):capture._check()
+   retain();selector=selectors.DefaultSelector()
+   for name in chunks:
+    pipe=getattr(process,name);os.set_blocking(pipe.fileno(),False);selector.register(pipe,selectors.EVENT_READ,name)
+   outbound=bytearray(source_frame);acknowledged=False;source_remaining=len(source_frame)
+   os.set_blocking(process.stdin.fileno(),False);selector.register(process.stdin,selectors.EVENT_WRITE,'stdin')
+   while selector.get_map():
+    if time.monotonic()>=deadline:raise ValueError('host-stage-deadline')
+    for key,_ in selector.select(.25):
+     if key.data=='stdin':
+      if not outbound:
+       selector.unregister(process.stdin)
+       if acknowledged:process.stdin.close();ack_written=True
+       continue
+      try:written=os.write(process.stdin.fileno(),outbound[:4096])
+      except BlockingIOError:continue
+      if written<=0:raise ValueError('host-stage-input-write')
+      source_remaining=max(0,source_remaining-written);source_written=source_remaining==0;del outbound[:written];continue
+     block=os.read(key.fileobj.fileno(),4096)
+     if not block:selector.unregister(key.fileobj);closed.add(key.data);continue
+     room=262144-len(chunks[key.data]);chunks[key.data].extend(block[:room])
+     if len(block)>room:raise ValueError('host-stage-output-cap')
+     if key.data=='stderr':
+      pending.extend(block)
+      while b'\n' in pending:
+       line,rest=pending.split(b'\n',1);pending=bytearray(rest)
+       if not line.startswith(b'CP117-OBSERVE '):continue
+       capture.create(diagnostic+'-event-raw-%d.private'%len(events),bytes(line));os.fsync(capture.fd)
+       event=json.loads(line[14:])
+       if type(event)is not dict or any(event.get(k)!=v for k,v in {'diagnosticId':diagnostic,'nonce':nonce,'sourceSha256':sha,'qemu':qemu}.items()):raise ValueError('gui-event-binding')
+       if event.get('kind')=='submitted':
+        if child is not None or type(event.get('pid'))is not int or event['pid']<=0:raise ValueError('gui-one-child')
+        child=event['pid']
+       elif event.get('kind')in ('poll','terminal'):
+        if child is None or event.get('pid')!=child:raise ValueError('gui-same-child')
+       elif event.get('kind')!='exception':raise ValueError('gui-event-kind')
+       pin=capture.create(diagnostic+'-event-%d.json'%len(events),json.dumps(event,sort_keys=True).encode());os.fsync(capture.fd);events.append({'event':event,'pin':pin})
+       if event['kind']=='submitted':
+        ack=installed.precise.owner.guest.recovery._digest({'diagnosticId':diagnostic,'nonce':nonce,'sourceSha256':sha,'pid':child});outbound.extend((ack+'\n').encode());acknowledged=True
+        if process.stdin.closed:raise ValueError('source-frame-ack-channel')
+        try:selector.get_key(process.stdin)
+        except KeyError:selector.register(process.stdin,selectors.EVENT_WRITE,'stdin')
+
+   code=process.wait(timeout=max(.001,deadline-time.monotonic()));status=retain()
+   if birth is None:raise ValueError('host-stage-birth-unknown')
+   if code!=0:raise ValueError('host-stage-transport-exit')
+   guard();value=json.loads(chunks['stdout'])
+   if type(value)is not dict:raise ValueError('guest-response-type')
+   return value,events,status
+  except Exception as error:
+   error.events=events
+   primary=error
+   if not process.stdin.closed:process.stdin.close()
+   if selector is not None:selector.close();selector=None
+   # Same held pipes only; bounded prefixes, drain excess, no signal or adoption.
+   for name in chunks:os.set_blocking(getattr(process,name).fileno(),False)
+   while time.monotonic()<deadline and (closed!={'stdout','stderr'} or process.poll() is None):
+    progress=False
+    for name in chunks:
+     if name in closed:continue
+     try:block=os.read(getattr(process,name).fileno(),4096)
+     except BlockingIOError:continue
+     if not block:closed.add(name);continue
+     progress=True;chunks[name].extend(block[:max(0,262144-len(chunks[name]))])
+    if not progress:time.sleep(.01)
+   try:error.localObservation=retain()
+   except Exception as retention_error:error.localObservation={'pid':process.pid,'birth':birth,'returncode':process.poll(),'retentionFailure':type(retention_error).__name__}
+   raise
+ finally:
+  if selector is not None:selector.close()
+  if process is not None:
+   for pipe in (process.stdin,process.stdout,process.stderr):
+    if not pipe.closed:pipe.close()
+  for fd,_ in slots.values():os.close(fd)
+HOST_RESULT_PATH=str(Path.cwd()/'.runtime/parity-evidence/windows-direct-fixture-host-stage-6425b65b-3a0d-4bf4-9ee9-74c628799adb/result.json')
+HOST_RESULT_SHA='9859eacc3fd8c7fcb1c5f04db0cda1c199f9ddd8a5f920db2af1c4f28e162be5'
+BASELINE_PATH=str(Path.cwd()/'.runtime/parity-evidence/windows-provision-derived-39430b2d-7513-4459-a275-c0079e299955/decision.private')
+BASELINE_SHA='be44bce677a9d6e624ca1b3e297171b396d2e9ec2eb982ab8612fba4c3cf4141'
+BUNDLE_PATH=str(Path.cwd()/'.runtime/parity-evidence/windows-direct-fixture-stage-2bb5fd18-308d-45e5-8c47-51c8baddbb70/bundle.zip')
+MANIFEST_PATH=str(Path.cwd()/'.runtime/parity-evidence/windows-direct-fixture-stage-2bb5fd18-308d-45e5-8c47-51c8baddbb70/bundle-manifest.json')
+MANIFEST_SHA='39274d0431684f0a6065e43b72605a1133db807dcc981f131bb010ed003c39f0'
+
+DOWNLOAD_PARSE_BEFORE='    bootstrap=action+bootstrap.replace(argument,"-Argument (\'-NoProfile -NonInteractive -EncodedCommand \'+$cp117ActionEncoded)")'
+DOWNLOAD_PARSE_AFTER='    action+="$cp117Tokens=$null;$cp117ParseErrors=$null;[void][Management.Automation.Language.Parser]::ParseInput($cp117ActionSource,[ref]$cp117Tokens,[ref]$cp117ParseErrors);if($cp117ParseErrors.Count -ne 0){throw \'DOWNLOAD_ACTION_PARSE\'};\\n"\n    bootstrap=action+bootstrap.replace(argument,"-Argument (\'-NoProfile -NonInteractive -EncodedCommand \'+$cp117ActionEncoded)")'
+DOWNLOAD_LOADER_BEFORE="    encoded=base64.b64encode(bootstrap.encode('utf-16le')).decode()\n    if len(data)>65536 or len(encoded)>=30000:raise ValueError('refresh-download-command-cap')"
+DOWNLOAD_LOADER_AFTER='    call="& ([ScriptBlock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($v)))"\n    if bootstrap.count(call)!=1:raise ValueError(\'direct-download-parser-closure\')\n    bootstrap=bootstrap.replace(call,"$cp117Source=[Text.UTF8Encoding]::new($false,$true).GetString($v);$cp117Tokens=$null;$cp117ParseErrors=$null;[void][Management.Automation.Language.Parser]::ParseInput($cp117Source,[ref]$cp117Tokens,[ref]$cp117ParseErrors);if($cp117ParseErrors.Count -ne 0){throw \'DOWNLOAD_BODY_PARSE\'};& ([ScriptBlock]::Create($cp117Source))")\n    encoded=base64.b64encode(bootstrap.encode(\'utf-16le\')).decode()\n    if len(data)>65536 or len(encoded)>=30000:raise ValueError(\'refresh-download-command-cap\')'
+
+def admit_download(value,events,status,source,nonce,sha,qemu,capture):
+ if type(status)is not dict or status.get('returncode')!=0 or type(status.get('returncode'))is not int or status.get('pipesClosed')is not True or status.get('sourceFrameWritten')is not True or status.get('ackWritten')is not True or type(status.get('birth'))is not str:raise ValueError('download-transport-proof')
+ if type(value)is not dict or set(value)!={'state','facts','qemu','guestChildPid','appAdmission','installerAction'} or value['state']!='observed' or value['appAdmission']is not False or value['installerAction']is not False or value['qemu']!=qemu:raise ValueError('download-result-schema')
+ submitted=[];terminal=[]
+ for index,item in enumerate(events):
+  if type(item)is not dict or set(item)!={'event','pin'}:raise ValueError('download-event-schema')
+  name=DOWNLOAD_CORRELATION+'-event-%d.json'%index;capture.verify(name,item['pin'])
+  fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=capture.fd)
+  try:raw=os.read(fd,262145)
+  finally:os.close(fd)
+  capture.verify(name,item['pin'])
+  if len(raw)>262144 or json.loads(raw)!=item['event']:raise ValueError('download-event-record')
+  e=item['event']
+  if any(e.get(k)!=v for k,v in {'diagnosticId':DOWNLOAD_CORRELATION,'nonce':nonce,'sourceSha256':sha,'qemu':qemu}.items()):raise ValueError('download-event-binding')
+  if e.get('kind')=='submitted':submitted.append(e)
+  elif e.get('kind')=='terminal':terminal.append(e)
+  elif e.get('kind')!='poll':raise ValueError('download-event-failure')
+ if len(submitted)!=1 or len(terminal)!=1 or not events or events[0]['event']!=submitted[0] or events[-1]['event']!=terminal[0]:raise ValueError('download-event-order')
+ pid=submitted[0].get('pid')
+ if type(pid)is not int or pid<=0 or type(value['guestChildPid'])is not int or value['guestChildPid']!=pid or any(x['event'].get('pid')!=pid for x in events):raise ValueError('download-child-binding')
+ # Execute only the source-generated validator block, never transport/effect code.
+ tree=ast.parse(source);start=next(n for n in tree.body if isinstance(n,ast.Import)and [x.name for x in n.names]==['re','types']);end=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='parse_terminal')
+ nodes=[n for n in tree.body if start.lineno<=n.lineno<=end.lineno]
+ if any(isinstance(n,(ast.ImportFrom,ast.ClassDef))for n in nodes):raise ValueError('download-validator-closure')
+ ns={'base64':base64,'json':json};exec(compile(ast.Module(body=nodes,type_ignores=[]),'<source-bound-download-validator>','exec'),ns)
+ payload=terminal[0].get('payload')
+ if type(payload)is not dict:raise ValueError('download-terminal-payload')
+ native=ns['parse_terminal'](payload,nonce,sha,pid)
+ ns['validate_download'](value['facts'])
+ if native is None or native!=value['facts'] or native.get('outcome')!='complete':raise ValueError('download-native-proof')
+ return True
+
+
+SUBMITTED_ACTION_SHA='37b7c8bb1dff5ead4d17be25131009a8159727dc7bee7f92fdbc3a68cd7d5a49'
+ROUTE_INPUT=b''
+
+PRIOR_LEAF='windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0'
+PRIOR_CALLER='/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-transfer-readback-1a7c7fee-5f8d-4fe8-9618-88eededb6374/observe.py'
+HISTORY={'/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/result.json': {'generation': [16777234, 115558023, 33152, 503, 20, 1, 19890, 1791233148061160972, 1791233148061160972], 'sha256': 'e631c7743a19b6b8edb9d97ae08271ef26c91e7d4f88313331834d08ba4a2648'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/submission.json': {'generation': [16777234, 115557913, 33152, 503, 20, 1, 586, 1791233141958583443, 1791233141958583443], 'sha256': '8d66fbd92d7ac2fe3663e4dcf70add60c2b3e789ed5b068ef8ab5c7880884288'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/remote.py': {'generation': [16777234, 115557911, 33152, 503, 20, 1, 62745, 1791233141958087902, 1791233141958087902], 'sha256': '94ee65de054cea4904aa7db77f768c4910aad039192b7e6ae0be546ac0a0ac32'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/exit.json': {'generation': [16777234, 115557925, 33152, 503, 20, 1, 170, 1791233147478398766, 1791233147478398766], 'sha256': 'd13e720e18c659ff652ab90b3b578f02d5b318f4d3d3b8328e218b9c09d9a6b9'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/request.json': {'generation': [16777234, 115557868, 33152, 503, 20, 1, 10618, 1791233140214372905, 1791233140214372905], 'sha256': '1a7f495de4c8434e6492c65f6c59436f75c784fac94ff254e4709d95d16d5fb1'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-0.json': {'generation': [16777234, 115557944, 33152, 503, 20, 1, 403, 1791233143817655165, 1791233143817655165], 'sha256': '1f0c7982eb7a4acdaf539bba657e1023dd9a3295b9491d95b52b468b83c17a7a'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-1.json': {'generation': [16777234, 115557947, 33152, 503, 20, 1, 426, 1791233143929420684, 1791233143929420684], 'sha256': '37802093240c44f14197d18d79f265fc0d973eaca0206654aaa6794d63284c59'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-10.json': {'generation': [16777234, 115557996, 33152, 503, 20, 1, 427, 1791233146567712249, 1791233146567712249], 'sha256': 'cfb2d476609389fcd0fdb1dfdd0113e6a16a9e9c908f219c2a2b58fa22f871e6'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-11.json': {'generation': [16777234, 115558000, 33152, 503, 20, 1, 427, 1791233146821844144, 1791233146821844144], 'sha256': '1b6c850e9d60441e5f29256d57025d0ac5ac6e069ecc386d3fc304fbdc019327'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-12.json': {'generation': [16777234, 115558005, 33152, 503, 20, 1, 427, 1791233147143107501, 1791233147143107501], 'sha256': '2262d923bb9ef783b9b29786b34562f3264c9b701ec428927c562cf9994c4067'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-13.json': {'generation': [16777234, 115558013, 33152, 503, 20, 1, 426, 1791233147466791772, 1791233147466791772], 'sha256': '74b5653a783d9b24ca1e0d75f7bafc679cf93dd1fbfacdaa70e387dff1d970fe'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-14.json': {'generation': [16777234, 115558015, 33152, 503, 20, 1, 8782, 1791233147475375809, 1791233147475375809], 'sha256': 'c8f97d435364e298ff98fe8ad5e4caab04dbdda6280abe2fbedd447e5de45702'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-2.json': {'generation': [16777234, 115557951, 33152, 503, 20, 1, 426, 1791233144181580497, 1791233144181580497], 'sha256': '812c81abb98382fe57300063409aba79ee29685b377e06c631875a219db2b3ea'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-3.json': {'generation': [16777234, 115557956, 33152, 503, 20, 1, 426, 1791233144501856812, 1791233144501856812], 'sha256': '2f7b84a0f82b2514b993b248734ebab91ff16017d48ef7fdacea13647a29794f'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-4.json': {'generation': [16777234, 115557962, 33152, 503, 20, 1, 426, 1791233144826267543, 1791233144826267543], 'sha256': '1031f2e684558bad8500ec9c918a5304b106df16c52b820a8b9c11f978a3991f'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-5.json': {'generation': [16777234, 115557969, 33152, 503, 20, 1, 426, 1791233145077648940, 1791233145077648940], 'sha256': '13314e97fafb69784dd64b8e837e6071457a673584511855f19601e872191e1c'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-6.json': {'generation': [16777234, 115557977, 33152, 503, 20, 1, 426, 1791233145415381036, 1791233145415381036], 'sha256': '11f8efba04b799d336ea4e583b7d50ecef74cbae3a0162537c3ee0559704637b'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-7.json': {'generation': [16777234, 115557981, 33152, 503, 20, 1, 426, 1791233145657278565, 1791233145657278565], 'sha256': 'beef9e47df5ad0f174ecf0221a5d2a7c312a40bc212ee80a2cf03dd8d790703f'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-8.json': {'generation': [16777234, 115557987, 33152, 503, 20, 1, 426, 1791233145989229707, 1791233145989229707], 'sha256': '218250b2baa47633bb5667d53a97d5ece648319ebefa7c005ef17b21f4e16e48'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-9.json': {'generation': [16777234, 115557992, 33152, 503, 20, 1, 426, 1791233146313323728, 1791233146313323728], 'sha256': '0100a31036680bcc77bdb87cbc5ab9cd78082d340a6ee2ffc35518c84e85c19d'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-0.private': {'generation': [16777234, 115557943, 33152, 503, 20, 1, 399, 1791233143817183707, 1791233143817183707], 'sha256': '606fbe61dd8d06a5c7df8ff5047aaffc8559ee3c2b9233b4bf359b689b86a851'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-1.private': {'generation': [16777234, 115557946, 33152, 503, 20, 1, 418, 1791233143929007017, 1791233143929007017], 'sha256': '4b8041cbb106efb625689bd46015a3f249aeab4fcb1ebddff4efc7041ff32483'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-10.private': {'generation': [16777234, 115557995, 33152, 503, 20, 1, 419, 1791233146567287416, 1791233146567287416], 'sha256': '344c72b5d9b514885139368ebed51009c3cc91f530070d783d7fbd51c029f167'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-11.private': {'generation': [16777234, 115557999, 33152, 503, 20, 1, 419, 1791233146821378770, 1791233146821378770], 'sha256': 'e9c16ee0a81f7e73791208c926c9ae2dd3c961e85037f22b704da14d311beaf8'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-12.private': {'generation': [16777234, 115558004, 33152, 503, 20, 1, 419, 1791233147142698459, 1791233147142698459], 'sha256': '3271c54724b3cc1fa7e99559777f93bc0806ae495f527d8fe88fa77a9ee8c2f3'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-13.private': {'generation': [16777234, 115558012, 33152, 503, 20, 1, 418, 1791233147466379481, 1791233147466379481], 'sha256': 'a332655a12148fca4328ed16a95368f0a20752ed762f5470e22a4a4b4f99c11d'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-14.private': {'generation': [16777234, 115558014, 33152, 503, 20, 1, 8763, 1791233147474941351, 1791233147474941351], 'sha256': '44370537665c9f598121dcbc8ddd71952c674adce49c83e3d63fc4fefad0b88a'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-2.private': {'generation': [16777234, 115557950, 33152, 503, 20, 1, 418, 1791233144181189830, 1791233144181189830], 'sha256': '9973d4652cdab2ec608c04703fcbac3c4c8600b51f9ca0fedd660c8bbbdfe19c'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-3.private': {'generation': [16777234, 115557955, 33152, 503, 20, 1, 418, 1791233144501454188, 1791233144501454188], 'sha256': 'a12f4437a35b14e58e1b241664841508a4ec7762489dbf01052fad64c74286da'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-4.private': {'generation': [16777234, 115557961, 33152, 503, 20, 1, 418, 1791233144825405377, 1791233144825405377], 'sha256': 'cf102a692c7938a6d038af9757738a88bb73906f37ced12839ae8c4eb2775110'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-5.private': {'generation': [16777234, 115557968, 33152, 503, 20, 1, 418, 1791233145077276856, 1791233145077276856], 'sha256': '0e4ca259ae622cafe0a27c5ead93052497d0c6887f4eafb80f127cbd55b67da9'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-6.private': {'generation': [16777234, 115557976, 33152, 503, 20, 1, 418, 1791233145414979203, 1791233145414979203], 'sha256': '8d58649be8b7d5165762c41a67b27b605e127157b3c24ad3e0a452081be52963'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-7.private': {'generation': [16777234, 115557980, 33152, 503, 20, 1, 418, 1791233145656864648, 1791233145656864648], 'sha256': '9a8b2e9ef5d78c13c46f44d72c3f9c5bde1f6747e5aabff18a2d0378b9586588'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-8.private': {'generation': [16777234, 115557986, 33152, 503, 20, 1, 418, 1791233145988884790, 1791233145988884790], 'sha256': 'b066d21a1134d1de29b14a2db03d43c70a02541bc0c33d1529924e1530a2595a'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/014de030-7be2-46ab-8605-b5b93fe1dc47-event-raw-9.private': {'generation': [16777234, 115557991, 33152, 503, 20, 1, 418, 1791233146313168895, 1791233146313168895], 'sha256': 'c83d851339b37ba39e2f363699cf9e65d4519b890fc5bcae611bfd33ee8297f0'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/attempt.json': {'generation': [16777234, 115557914, 33152, 503, 20, 1, 127, 1791233141958676235, 1791233141958676235], 'sha256': 'c55bff3cce2789ccc3a27d675d3f43d3e728c0456c495c561295c82e4f6bd794'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/caller.py': {'generation': [16777234, 115557867, 33152, 503, 20, 1, 41181, 1791233140214144989, 1791233140214144989], 'sha256': '746e8c7552f640880884cadb845e1d588a8d08a39c0d0ff12bb1ab6bfbc8bad7'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/helper.py': {'generation': [16777234, 115557865, 33152, 503, 20, 1, 156453, 1791233140212914323, 1791233140212914323], 'sha256': '8708e75d47885830702fe5553661f5dd3a1f4f758000f1e8f9368d75aa79bcfa'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/history-10.private': {'generation': [16777234, 115557855, 33152, 503, 20, 1, 2138, 1791233139471276999, 1791233139471276999], 'sha256': '39274d0431684f0a6065e43b72605a1133db807dcc981f131bb010ed003c39f0'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/history-8.private': {'generation': [16777234, 115557853, 33152, 503, 20, 1, 276, 1791233139470764416, 1791233139470764416], 'sha256': '9859eacc3fd8c7fcb1c5f04db0cda1c199f9ddd8a5f920db2af1c4f28e162be5'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/history-9.private': {'generation': [16777234, 115557854, 33152, 503, 20, 1, 7438, 1791233139471113208, 1791233139471113208], 'sha256': 'be44bce677a9d6e624ca1b3e297171b396d2e9ec2eb982ab8612fba4c3cf4141'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/local-child.json': {'generation': [16777234, 115557924, 33152, 503, 20, 1, 63, 1791233147478295557, 1791233147478295557], 'sha256': '51924f8621237748b21ea20259adbaa0705c886dcf92f9b4076e2b3ee182acff'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/source-frame.private': {'generation': [16777234, 115557912, 33152, 503, 20, 1, 24693, 1791233141958432693, 1791233141958432693], 'sha256': 'ab3145636ea735031b556e279329ac5c7220417e33ba6319b6c1cc24e5b68a5e'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/stderr.bin': {'generation': [16777234, 115557923, 33152, 503, 20, 1, 14614, 1791233147478186558, 1791233147478186558], 'sha256': '68208eaedad0fa9baa2c4619ff40df7c83e84bd56f57e183a7c7473f19d03582'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/stdout.bin': {'generation': [16777234, 115557922, 33152, 503, 20, 1, 1760, 1791233147477768766, 1791233147477768766], 'sha256': 'aad80df6fe912b9cc2a97806fa26390a5f37378fc947edf4456ac8626e9fa544'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/test.py': {'generation': [16777234, 115557866, 33152, 503, 20, 1, 741071, 1791233140213330281, 1791233140213330281], 'sha256': 'f6440f19f527674fc468ee991a6428d7b48d5fbdbe1de079b6b161a25efb0389'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47-listener/attempt.json': {'generation': [16777234, 115557872, 33152, 503, 20, 1, 139, 1791233140215138863, 1791233140215138863], 'sha256': 'cd1ed895ef545c4dd221c5409caee41e4c9a0fad489fca5a1a46d2ce43fb6a5a'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47-listener/exit.json': {'generation': [16777234, 115557882, 33152, 503, 20, 1, 149, 1791233141344399171, 1791233141344399171], 'sha256': 'ab4c55ae1646bca7f306325252c8ca4e0d0a0747e3847f056fcb3b047c3fb310'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47-listener/local-child.json': {'generation': [16777234, 115557881, 33152, 503, 20, 1, 62, 1791233141344340130, 1791233141344340130], 'sha256': 'd25814cd197fcbe2690a33513bab3b05f39bc5414235b2fbc334ea59d76c33a5'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47-listener/remote.py': {'generation': [16777234, 115557869, 33152, 503, 20, 1, 61455, 1791233140214574489, 1791233140214574489], 'sha256': 'b9c573ecf075cfe3ea209824349d98431323b23921e8d6bd8bcb26c6466b6761'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47-listener/result.json': {'generation': [16777234, 115557895, 33152, 503, 20, 1, 114, 1791233141627706009, 1791233141627706009], 'sha256': '4933071709ff6d504320957937553b1bda0ff34bab9f6c2e400d78908b6ebb9b'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47-listener/route.private': {'generation': [16777234, 115557871, 33152, 503, 20, 1, 77, 1791233140214805155, 1791233140214805155], 'sha256': 'b93dddeb39434d96d2deafb8b1de7f6ce58990e1c76c0776d03100d2de7d7406'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47-listener/source-frame.private': {'generation': [16777234, 115557870, 33152, 503, 20, 1, 23896, 1791233140214699322, 1791233140214699322], 'sha256': 'd3c081a264f54fc556993a9775c0ee9ab8eb34fb59d12aa61a6bba608e1a34ce'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47-listener/stderr.bin': {'generation': [16777234, 115557880, 33152, 503, 20, 1, 0, 1791233141344296172, 1791233141344296172], 'sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47-listener/stdout.bin': {'generation': [16777234, 115557879, 33152, 503, 20, 1, 110, 1791233141344256422, 1791233141344256422], 'sha256': 'a2cb46a96d665d3c461b3cdab9690ee4db10bc2f8ef194386491043a826f7ce2'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-transfer-17e5f847-a1d5-4ddc-a9a6-175681ce1119/observe-v5.py': {'generation': [16777234, 115551150, 33152, 503, 20, 1, 41181, 1791232651490926543, 1791232651490926543], 'sha256': '746e8c7552f640880884cadb845e1d588a8d08a39c0d0ff12bb1ab6bfbc8bad7'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47/raw-manifest.private': {'generation': [16777234, 115562926, 33152, 503, 20, 1, 22781, 1791233488112047041, 1791233488112047041], 'sha256': '46fed21d7da9815ab954eaabbacbcc3c8ef79ab477db3da1d61676d6b95bc584'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-download-014de030-7be2-46ab-8605-b5b93fe1dc47-listener/raw-manifest.private': {'generation': [16777234, 115562927, 33152, 503, 20, 1, 4624, 1791233488113019666, 1791233488113019666], 'sha256': 'd9a3faae29f1d470ab3414e8064e5afee23cac90665935a1af50b1877c0ecb90'}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-19.json': {'sha256': '602103653490e8d11f46357ea396a50fb0003bac0f652353f91b27cdb1b32c10', 'generation': [16777234, 115570837, 33152, 503, 20, 1, 6547, 1791234115265906013, 1791234115265906013]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-3.private': {'sha256': 'fb15a1e6b39b768796c300d294f35e4f9b3cd06ef8d47ca55bc5d7b106c2404d', 'generation': [16777234, 115570735, 33152, 503, 20, 1, 419, 1791234110852632083, 1791234110852632083]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/request.json': {'sha256': '17adef343109621b6d8d71b186a49e23da2da9713280e51668470115cbc0f7f5', 'generation': [16777234, 115570676, 33152, 503, 20, 1, 30851, 1791234107337405239, 1791234107337405239]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-14.private': {'sha256': '19017133fdf70215bfdfac4c1b8d7ca2c0ec1fdccf5a421850aad26b1c8cad5d', 'generation': [16777234, 115570809, 33152, 503, 20, 1, 420, 1791234113998260418, 1791234113998260418]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/stdout.bin': {'sha256': 'b89b5c26400f25bd1c14655f82053066cb33192c92dd44c27dc33cae66d75083', 'generation': [16777234, 115570713, 33152, 503, 20, 1, 2157, 1791234115269335538, 1791234115269335538]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/caller.py': {'sha256': 'be1f5862265a479f15b884a939c49da76b37593b02f05a2e022fbae27b0de933', 'generation': [16777234, 115570675, 33152, 503, 20, 1, 61694, 1791234107336958325, 1791234107336958325]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/exit.json': {'sha256': 'f1d3b13d4550933842aa0d25a97939d7c60f1a4124704cab03421fa278def190', 'generation': [16777234, 115570716, 33152, 503, 20, 1, 170, 1791234115269745661, 1791234115269745661]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-15.json': {'sha256': '1e704d76f2ea382d54f3dfed2e80721473448ba26733f3b4c823a3a812bdea63', 'generation': [16777234, 115570815, 33152, 503, 20, 1, 428, 1791234114310811586, 1791234114310811586]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-1.json': {'sha256': '3b1670ca38ee5a6f5266500923b5acbcd613b12e824c9a80a530a9d067dc6220', 'generation': [16777234, 115570726, 33152, 503, 20, 1, 427, 1791234110279188761, 1791234110279188761]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-0.json': {'sha256': '91499c0b42066568c0daffa985d19f650577616391e8534c791ec9b1223e82ca', 'generation': [16777234, 115570723, 33152, 503, 20, 1, 404, 1791234110176607817, 1791234110176607817]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/result.json': {'sha256': '4474d1d0d89d4590f3a43a51ca5f2049fffd9bd9d42705aedb4c46e1b1022646', 'generation': [16777234, 115570845, 33152, 503, 20, 1, 21373, 1791234115861721228, 1791234115861721228]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-14.json': {'sha256': 'd37941a6be3e6f510c000afc620989cdb316e083742568132e8a0460792f56e1', 'generation': [16777234, 115570810, 33152, 503, 20, 1, 428, 1791234113998674666, 1791234113998674666]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-2.private': {'sha256': 'dfe4123e401c4eaa1368033466a82427e8a2ba9c708ba187c06f65d52ef7539f', 'generation': [16777234, 115570730, 33152, 503, 20, 1, 419, 1791234110600507189, 1791234110600507189]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-15.private': {'sha256': '08379369bbf93612a6832e3b30517f28bcc81857c3e30bdedfbdaefb5e21290c', 'generation': [16777234, 115570814, 33152, 503, 20, 1, 420, 1791234114310391047, 1791234114310391047]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-18.json': {'sha256': '31a5e1380199bfb7db34347308826fc5a9886b89c1117d1eaaaf26c3af93769c', 'generation': [16777234, 115570835, 33152, 503, 20, 1, 427, 1791234115262174364, 1791234115262174364]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-13.json': {'sha256': 'd5468e13fbf8f1186715c36ec22222b47fabfc8e4cba3efa0f25b1e8d5ed30a4', 'generation': [16777234, 115570806, 33152, 503, 20, 1, 428, 1791234113735794259, 1791234113735794259]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-9.private': {'sha256': 'f8181d1f649a1887ca766680240b08ba817eb75059a9f66e40fcc59c5f3d0ade', 'generation': [16777234, 115570781, 33152, 503, 20, 1, 419, 1791234112509628260, 1791234112509628260]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/remote.py': {'sha256': '4f7fdb15162ae20d9b47cd2fc48d5d7e78d3e333e2031786a329ff287eaf428e', 'generation': [16777234, 115570679, 33152, 503, 20, 1, 59842, 1791234107337800320, 1791234107337800320]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-7.json': {'sha256': '7aa46bdff1dcb04528f6b70038ddcee383164b3e5b9820869a8b9bff64e89f5e', 'generation': [16777234, 115570757, 33152, 503, 20, 1, 427, 1791234112002491124, 1791234112002491124]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-0.private': {'sha256': '676749f5b97434382139a0e6f1957213516b8c7095651d4860813d5b0fdb8768', 'generation': [16777234, 115570722, 33152, 503, 20, 1, 400, 1791234110176028528, 1791234110176028528]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-17.private': {'sha256': 'cbdcb95dcfeb0740d526b4ef5ab4d2deb9f91ede06699440c84430371b347a9f', 'generation': [16777234, 115570824, 33152, 503, 20, 1, 420, 1791234114951823862, 1791234114951823862]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-1.private': {'sha256': '70e85db194d743189235230012b3e837d70654867ce81e379299468352e167f5', 'generation': [16777234, 115570725, 33152, 503, 20, 1, 419, 1791234110278845055, 1791234110278845055]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-16.private': {'sha256': '1b13d721da963975c50484ebda4b140c5208e9049dea3608b75e64428a9a3ecf', 'generation': [16777234, 115570819, 33152, 503, 20, 1, 420, 1791234114637959891, 1791234114637959891]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-6.json': {'sha256': 'b4c710696653d2f31e219a5394781762fed0ad996a7aedc3052d2aff5fe3ddb6', 'generation': [16777234, 115570752, 33152, 503, 20, 1, 427, 1791234111668148153, 1791234111668148153]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-8.private': {'sha256': '318618b41fff285e2f7960624c1a49d59c4895ca8981090bae801a68f63717e6', 'generation': [16777234, 115570777, 33152, 503, 20, 1, 419, 1791234112258033640, 1791234112258033640]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/test.py': {'sha256': '4a1a8dd134c2159406d30125bf0cec42d964d3c5c683b37aec3fd3f25e612df2', 'generation': [16777234, 115570674, 33152, 503, 20, 1, 801753, 1791234107336012081, 1791234107336012081]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-12.json': {'sha256': '1f2981efb4d7e6bf8c69aa02b8b16a4c1802ac5ef91cc2a157320228e23cddc8', 'generation': [16777234, 115570801, 33152, 503, 20, 1, 428, 1791234113483509238, 1791234113483509238]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-5.json': {'sha256': '68ace4bc339f1c3784079096f60cb059169f3cdf285c11c9ff4e61c593476b13', 'generation': [16777234, 115570748, 33152, 503, 20, 1, 427, 1791234111414458950, 1791234111414458950]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-11.json': {'sha256': '96b3d39d130db847fa582ee1ce199d19885f24b564ebfe063a63c1c35c1151ad', 'generation': [16777234, 115570796, 33152, 503, 20, 1, 428, 1791234113157689421, 1791234113157689421]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-9.json': {'sha256': '8eda86e43bde0c2e64d661ca2ea9da0b933ea7a1077cdde758ae10e11c4d52b6', 'generation': [16777234, 115570782, 33152, 503, 20, 1, 427, 1791234112509857300, 1791234112509857300]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-13.private': {'sha256': '8ef88dd420257dbea1dd6b05717b9a640618e1ef0b4599649968b0953f69f036', 'generation': [16777234, 115570805, 33152, 503, 20, 1, 420, 1791234113735414677, 1791234113735414677]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/raw-manifest.private': {'sha256': '2102798e5ddf52215b99db2d2edc084fda9fac870110bdb90ce1da502c205a00', 'generation': [16777234, 115571250, 33152, 503, 20, 1, 25946, 1791234149732049157, 1791234149732049157]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/stderr.bin': {'sha256': '23ecb6add50d2bbfc9614ae88155aa6d662c9f5a44b8cb767ed480ac52cb155a', 'generation': [16777234, 115570714, 33152, 503, 20, 1, 14498, 1791234115269614495, 1791234115269614495]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-4.private': {'sha256': '3397bbce58b9e1cc95696e35d4fb0cb2ede4cdf1ddd86452f6aada3416bfc86e', 'generation': [16777234, 115570743, 33152, 503, 20, 1, 419, 1791234111160222959, 1791234111160222959]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-12.private': {'sha256': '157cdbea1056f37a5bd9636db041bb6c16fccc98b74e997e5ae67b873d629128', 'generation': [16777234, 115570800, 33152, 503, 20, 1, 420, 1791234113483131365, 1791234113483131365]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-5.private': {'sha256': '098ba379e491172f6b7c153e00b26353b8cb8ef686c1eb6276e4e00d575de528', 'generation': [16777234, 115570747, 33152, 503, 20, 1, 419, 1791234111414261660, 1791234111414261660]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/helper.py': {'sha256': '8708e75d47885830702fe5553661f5dd3a1f4f758000f1e8f9368d75aa79bcfa', 'generation': [16777234, 115570673, 33152, 503, 20, 1, 156453, 1791234107335695749, 1791234107335695749]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-8.json': {'sha256': '3ba5abb3ba3de5c4b185b68685d2f33afcb6a88310616e230709097abc1800bb', 'generation': [16777234, 115570778, 33152, 503, 20, 1, 427, 1791234112258204264, 1791234112258204264]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-10.json': {'sha256': '33a88ee336d825636a761efaf942b53c182aaea8d568341cc9fe595ecee18080', 'generation': [16777234, 115570788, 33152, 503, 20, 1, 428, 1791234112835402128, 1791234112835402128]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/attempt.json': {'sha256': '1bb0b54d19306653216ae7a2debc18a8ab3b07b95da72c0b3a2c975677b7c201', 'generation': [16777234, 115570704, 33152, 503, 20, 1, 127, 1791234108986700413, 1791234108986700413]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-4.json': {'sha256': 'f5e72f7bed8b83f78213452182cd35c3236c25bd182aec196837a010a05a54fe', 'generation': [16777234, 115570744, 33152, 503, 20, 1, 427, 1791234111160409875, 1791234111160409875]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-10.private': {'sha256': '395b879b3580e2c231b397cef16ec39d1f2168d62727f7642157c68588a3128b', 'generation': [16777234, 115570787, 33152, 503, 20, 1, 420, 1791234112834949922, 1791234112834949922]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-7.private': {'sha256': 'b31c10215e477281e50aa6e4bdbf1fb77f9eef006170fee925c3018727f19651', 'generation': [16777234, 115570756, 33152, 503, 20, 1, 419, 1791234112002106084, 1791234112002106084]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-3.json': {'sha256': '53dee144a0b4d048c6b91c937b14fb78370d8b2da3a7bf19716d0073ac54019e', 'generation': [16777234, 115570736, 33152, 503, 20, 1, 427, 1791234110852974207, 1791234110852974207]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-19.private': {'sha256': '75354cef2c4028e9efc049c846d9e01b07f84c9c7270eb27299afc7c2ccf6a4a', 'generation': [16777234, 115570836, 33152, 503, 20, 1, 6528, 1791234115265740097, 1791234115265740097]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-17.json': {'sha256': '9559686968ac91b0d8d631de634f9613494704133d2d89decf93599d90486e67', 'generation': [16777234, 115570825, 33152, 503, 20, 1, 428, 1791234114952241859, 1791234114952241859]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-16.json': {'sha256': 'eba4a5e037c48a7b9b385e65c13c5dc9b8448476815453df804558e6c4266645', 'generation': [16777234, 115570820, 33152, 503, 20, 1, 428, 1791234114638333889, 1791234114638333889]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-18.private': {'sha256': 'a177235a0aa7d854dd2eafe20eb0d8e7c2fcbe23ac9c36f35ccf75f3cbb1a40d', 'generation': [16777234, 115570834, 33152, 503, 20, 1, 419, 1791234115262003656, 1791234115262003656]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/source-frame.private': {'sha256': '7bbaf7136e592190560cd103453f204bcba110d393e92375d0990a0a5d97f656', 'generation': [16777234, 115570680, 33152, 503, 20, 1, 23149, 1791234107337916195, 1791234107337916195]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-2.json': {'sha256': '0bf676f921366f749281b2eed601e00965b20bf7ec5ce7e3597d3b0ac6600bd1', 'generation': [16777234, 115570731, 33152, 503, 20, 1, 427, 1791234110600681229, 1791234110600681229]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-11.private': {'sha256': '363bfc5f181cc97ff189248ddb935b368f82974a4a2eb25296c0243358522290', 'generation': [16777234, 115570795, 33152, 503, 20, 1, 420, 1791234113157324923, 1791234113157324923]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/local-child.json': {'sha256': 'f34f9eced8fe39cee6459ae1860669ef112a41df4d8fd5a8552d0b72baa08162', 'generation': [16777234, 115570715, 33152, 503, 20, 1, 63, 1791234115269675536, 1791234115269675536]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0/59fd5380-46db-40c7-b438-f5e50114d5b0-event-raw-6.private': {'sha256': '3d54420e94841a2415dccfffc8973288f404055acf0c295152857911e64b6fa9', 'generation': [16777234, 115570751, 33152, 503, 20, 1, 419, 1791234111667816988, 1791234111667816988]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0-listener/stdout.bin': {'sha256': 'd08926cef65a3e1b98723754323f7c012a2efd92bc079afbf5a50ce52c8705c6', 'generation': [16777234, 115570689, 33152, 503, 20, 1, 112, 1791234108396937454, 1791234108396937454]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0-listener/exit.json': {'sha256': 'aad0c230515ad89add777645aa79e5c67da29ef20934de04b11dbebe37866ed3', 'generation': [16777234, 115570692, 33152, 503, 20, 1, 150, 1791234108397074204, 1791234108397074204]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0-listener/result.json': {'sha256': '302931c9ac1768a7b445549e4ca49b609b8e546d3bb9642cb8e48ec7eb176d4d', 'generation': [16777234, 115570700, 33152, 503, 20, 1, 116, 1791234108690325155, 1791234108690325155]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0-listener/remote.py': {'sha256': 'fa0946828d062741a90a14c0e52b90c0b829cdc1b0f9fdc10cd5338fec4b63b9', 'generation': [16777234, 115570677, 33152, 503, 20, 1, 58546, 1791234107337550697, 1791234107337550697]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0-listener/raw-manifest.private': {'sha256': 'aa95012158ec72bcf40d146683ddbe1a87c2b4b82d743f835c3d457e6f52e2bc', 'generation': [16777234, 115571251, 33152, 503, 20, 1, 4173, 1791234149733393444, 1791234149733393444]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0-listener/stderr.bin': {'sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', 'generation': [16777234, 115570690, 33152, 503, 20, 1, 0, 1791234108396973121, 1791234108396973121]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0-listener/attempt.json': {'sha256': 'd0195ca41498d5e5ce5ed518f24052877f271dc55f7faf02fab8b390a0a6dfb6', 'generation': [16777234, 115570681, 33152, 503, 20, 1, 139, 1791234107338244693, 1791234107338244693]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0-listener/source-frame.private': {'sha256': '461bd37b37da194e17cf8d7922d762bc866d5dbf8366aaa26735d5b98bcb6513', 'generation': [16777234, 115570678, 33152, 503, 20, 1, 21979, 1791234107337682738, 1791234107337682738]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-fixture-readback-59fd5380-46db-40c7-b438-f5e50114d5b0-listener/local-child.json': {'sha256': '2c399d96d86e8e38a8363cf21a5ac4d917d473c88f06a1a067c9beb81e129075', 'generation': [16777234, 115570691, 33152, 503, 20, 1, 63, 1791234108397017371, 1791234108397017371]}, '/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/windows-direct-transfer-readback-1a7c7fee-5f8d-4fe8-9618-88eededb6374/observe.py': {'sha256': 'be1f5862265a479f15b884a939c49da76b37593b02f05a2e022fbae27b0de933', 'generation': [16777234, 115568813, 33152, 503, 20, 1, 61694, 1791233968055694592, 1791233968055694592]}}
+
+STAGE_CORRELATION=DOWNLOAD_CORRELATION
+STAGE_MODULE_PATH=str(Path.cwd()/'agent_tools/windows_update_fixture_stage.py')
+STAGE_MODULE_SHA='3e37a30445a3ea14057b010d205b92ac9907d278c0a57164fabeb63f49d07bed'
+ACL_MODULE_SHA='30dcda8a0708a1d07465993485cb3ec8a995ae93e68b2d46e5327ca4b3dd953e'
+MEMBERS={'fixture-receipt.json': '31634170c6d0c358ee1aed84314170725b27b79895f76f5977133a5e466f94bb', 'packages/target/vpn-control-2.2.2.msi': 'f8a8741bcfd22c04be50836aa22da77009105ab1b63df4d9b7648397779a8dfc', 'server/fixture_environment.py': '0a36302028c3dc2605887a73abcd2850afcbaec302e28f2087a303926681b323', 'server/macos_packaging_jdk_preflight.py': '3e4aa0524cb916c343ce377cb6ca5ab00674d0f6e6981f82ae514f80136cbca5', 'server/prepare_desktop_update_fixture.py': 'ba8af2d4d7cc25d90201be448fde4fad2dce98bb875331343ee189f8386c70d5'}
+MEMBER_SIZES={'fixture-receipt.json': 3494, 'server/fixture_environment.py': 10311, 'server/macos_packaging_jdk_preflight.py': 2912, 'server/prepare_desktop_update_fixture.py': 99732, 'packages/target/vpn-control-2.2.2.msi': 131101044}
+ORIGINAL_ZIP_ID='3996455293:1179648:99901:2185510986:31282442:0:131218245:32:2176616659:31282442:1'
+def stage_templates():
+ from scripts import windows_fixture_stage_acl as acl
+ bound=installed.precise.owner.guest.recovery.authority._read_bound_file
+ pin,raw=bound(Path(STAGE_MODULE_PATH),retain_bytes=True);ap=bound(Path(acl.__file__))
+ if pin['sha256']!=STAGE_MODULE_SHA or ap['sha256']!=ACL_MODULE_SHA:raise ValueError('fixture-stage-source')
+ ns={'Mapping':dict,'public':installed.public,'_GUEST':r'C:\Users\vpncp117\AppData\Local\VpnControl','stage_acl_powershell':acl.stage_acl_powershell,'WindowsUpdateFixtureStageError':ValueError,'Any':object}
+ exec(compile(_functions(raw,('_stage_script','_create_script','_validate_state_acl')),'authenticated-stage-functions','exec'),ns)
+ if bound(Path(STAGE_MODULE_PATH))!=pin or bound(Path(acl.__file__))!=ap:raise ValueError('fixture-stage-source-drift')
+ return ns,acl
+
+def main():
+ root=Path.cwd().resolve(strict=True);r=installed.precise.owner.guest.recovery;bound=r.authority._read_bound_file
+ helper,hraw=bound(Path(worker.__file__),retain_bytes=True);test,traw=bound(root/'agent_tools/tests/test_windows_cp117_base_source_refresh.py',retain_bytes=True);entry,eraw=bound(Path(__file__),private=True,retain_bytes=True)
+ if helper['sha256']!=HELPER_SHA or test['sha256']!=TEST_SHA:raise ValueError('readback-source')
+ tested=ast.literal_eval(next(n.value for n in ast.parse(traw).body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='DIRECT_FIXTURE_STAGE_FACTORY_SOURCE'for t in n.targets)))
+ nodes=[n for n in ast.parse(eraw).body if not(isinstance(n,ast.FunctionDef)and n.name=='main')and not(isinstance(n,ast.If)and isinstance(n.test,ast.Compare))and not(isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id in('HELPER_SHA','TEST_SHA','HISTORY')for t in n.targets))]
+ actual='\n\n'.join(('@contextmanager\n'if isinstance(n,ast.FunctionDef)and n.name=='_held_bundle'else'')+ast.get_source_segment(eraw.decode(),n)for n in nodes)+'\n'
+ if actual!=tested:raise ValueError('readback-tested-source')
+ leaf='windows-direct-fixture-extract-'+DOWNLOAD_CORRELATION
+ if(root/'.runtime/parity-evidence'/leaf).exists()or(root/'.runtime/parity-evidence'/(leaf+'-listener')).exists():raise ValueError('readback-consumed')
+ (root/'.runtime/parity-evidence'/leaf).mkdir(mode=0o700);(root/'.runtime/parity-evidence'/(leaf+'-listener')).mkdir(mode=0o700)
+ capture=AuthorityCapture(root,leaf);listener=AuthorityCapture(root,leaf+'-listener');original=AuthorityCapture(root,'windows-cp117-recovery-'+r.CORRELATION);prior=AuthorityCapture(root,PRIOR_LEAF);events=[];bundlehold=None
+ try:
+  raw=r._local_read(original,installed.precise.owner.guest.ORIGINAL['name'],installed.precise.owner.guest.ORIGINAL['pin']);record=json.loads(raw)
+  sources={str(path):bound(path)for path in (Path(transfer.__file__),Path(installed.__file__),Path(installed.precise.__file__),Path(installed.public.__file__),Path(flow.__file__),Path(installed.precise.owner.guest.__file__),Path(r.authority.closure.base.__file__))}
+  def history_bound(path):
+   path=Path(path);expected=HISTORY[str(path)]
+   if path.parent.parent!=root/'.runtime/parity-evidence':raise ValueError('readback-history-parent')
+   held=AuthorityCapture(root,path.parent.name)
+   try:r._local_read(held,path.name,expected);return expected
+   finally:held.close()
+  for path,expected in HISTORY.items():
+   sources[path]=history_bound(path)
+  old_entry=Path(PRIOR_CALLER);oldpin,oldraw=bound(old_entry,private=True,retain_bytes=True)
+  if oldpin!=HISTORY[str(old_entry)]:raise ValueError('readback-prior-caller-drift')
+  if hashlib.sha256(oldraw).hexdigest()!='be1f5862265a479f15b884a939c49da76b37593b02f05a2e022fbae27b0de933':raise ValueError('readback-original-caller')
+  ns={'__name__':'authenticated_prior_without_main','__file__':str(old_entry)};exec(compile(oldraw,str(old_entry),'exec'),ns)
+  oldvalue=json.loads(r._local_read(prior,'result.json',HISTORY[str(root/'.runtime/parity-evidence'/PRIOR_LEAF/'result.json')]))
+  oldsource=r._local_read(prior,'remote.py',HISTORY[str(root/'.runtime/parity-evidence'/PRIOR_LEAF/'remote.py')]).decode();oldstatus=json.loads(r._local_read(prior,'exit.json',HISTORY[str(root/'.runtime/parity-evidence'/PRIOR_LEAF/'exit.json')]))
+  oldsha=hashlib.sha256(ns['download_body'](54935)[0].encode('utf-16le')).hexdigest()
+  ns['admit_download'](oldvalue['result'],oldvalue['events'],oldstatus,oldsource,ns['DOWNLOAD_NONCE'],oldsha,record['result']['qemu'],prior)
+  originalMark=oldvalue['result']['facts']['facts']['download']
+  if originalMark['task']['state']!='Ready' or originalMark['task']['lastTaskResult']!=0 or originalMark['task']['actionSha256']!=SUBMITTED_ACTION_SHA or oldvalue['listener']['state']!='served' or originalMark['identity']!=ORIGINAL_ZIP_ID:raise ValueError('stage-original-completion')
+  from scripts import windows_fixture_stage_acl as fixture_acl
+  for path in (Path(STAGE_MODULE_PATH),Path(fixture_acl.__file__)):sources[str(path)]=bound(path)
+  admitted=installed.pair(root);execution=flow._execution_source_proof(root,record);outer=r.authority._outer_authority(root);bundle_guard=lambda:None
+  def verify():
+   if bound(Path(worker.__file__))!=helper or bound(root/'agent_tools/tests/test_windows_cp117_base_source_refresh.py')!=test or bound(Path(__file__),private=True)!=entry or any((history_bound(path)if path in HISTORY else bound(Path(path)))!=pin for path,pin in sources.items()):raise ValueError('readback-drift')
+   if r._local_read(original,installed.precise.owner.guest.ORIGINAL['name'],installed.precise.owner.guest.ORIGINAL['pin'])!=raw or flow._execution_source_proof(root,record)!=execution or installed.pair(root)!=admitted:raise ValueError('readback-authority')
+   for i,item in enumerate(record['authority']):
+    r._validate_frame(item['frame'],record['request'],record['authority'][:i])
+    if json.loads(r._local_read(original,'authority-%d.json'%i,item['localPin']))!=item['frame']:raise ValueError('readback-original-frame')
+   r.authority._verify_outer(root,{'outerAuthority':outer});bundle_guard()
+  verify();candidate=_held_bundle(Path(BUNDLE_PATH));_,bundle_pin,bundle_guard=candidate.__enter__();bundlehold=candidate
+  listener_source=listener_program(record);source,sha,tasksha=download_program(record,54935)
+  listener_command,listener_frame=_stdin_shortcut_command(listener_source);command,frame=_stdin_shortcut_command(source)
+  for name,data in (('helper.py',hraw),('test.py',traw),('caller.py',eraw)):capture.create(name,data)
+  capture.create('request.json',json.dumps({'version':1,'correlationId':DOWNLOAD_CORRELATION,'nonce':DOWNLOAD_NONCE,'originalTransfer':PRIOR_LEAF,'sources':sources,'helper':helper,'test':test,'caller':entry,'bundle':bundle_pin,'pair':admitted,'executionSourceProof':execution,'outerAuthority':outer,'role':'SYSTEM','fixtureAction':True,'serverAction':False,'guestExecution':True,'taskAction':False,'guestFileCreation':True,'extractionAction':True,'installerAction':False,'runtimeAction':False,'credentialInput':False,'replayAllowed':False},sort_keys=True).encode());os.fsync(capture.fd)
+  listener.create('remote.py',listener_source.encode());listener.create('source-frame.private',listener_frame);os.fsync(listener.fd)
+  capture.create('remote.py',source.encode());capture.create('source-frame.private',frame);os.fsync(capture.fd)
+  config,_,_=r.authority.closure.base._descriptor(root)
+  def argv(command):
+   result=r.authority.closure.base.ssh_transport.build_ssh_argv(config,r.HOST,60,command=command)
+   if max(len(x.encode())for x in result)>4096:raise ValueError('readback-argv')
+   return result
+  listener.create('attempt.json',json.dumps({'state':'consumed','correlationId':DOWNLOAD_CORRELATION,'hostCorrelationId':HOST_STAGE_CORRELATION},sort_keys=True).encode());os.fsync(listener.fd);verify()
+  ready=listener_collect(argv(listener_command),io.BytesIO(b''),listener,verify,listener_frame)
+  if ready['state']!='served':raise ValueError('stage-listener-not-terminal')
+  listener.create('result.json',json.dumps(ready,sort_keys=True).encode());os.fsync(listener.fd);verify()
+  capture.create('attempt.json',json.dumps({'state':'consumed','correlationId':DOWNLOAD_CORRELATION,'nonce':DOWNLOAD_NONCE},sort_keys=True).encode());os.fsync(capture.fd);verify()
+  value,events,status=guest_collect(argv(command),capture,verify,frame,DOWNLOAD_CORRELATION,DOWNLOAD_NONCE,sha,record['result']['qemu']);verify()
+  pin=capture.create('result.json',json.dumps({'result':value,'events':events,'listener':ready,'role':'SYSTEM','fixtureAction':True,'serverAction':False,'guestExecution':True,'taskAction':False,'guestFileCreation':True,'extractionAction':True,'installerAction':False,'runtimeAction':False,'credentialInput':False,'replayAllowed':False},sort_keys=True).encode());os.fsync(capture.fd)
+  admit_download(value,events,status,source,DOWNLOAD_NONCE,sha,record['result']['qemu'],capture)
+  return {'state':'fixture-staged','role':'SYSTEM','evidenceLeaf':leaf,'receipt':pin,'stageRoot':r'C:\Users\vpncp117\AppData\Local\VpnControl\mcp-update-fixture-'+DOWNLOAD_CORRELATION,'ordinaryAclReadExecute':True,'stateAclFullControl':True,'ordinaryNativeReadProven':False,'serverReady':False,'extractionAction':True,'installerAction':False,'runtimeAction':False,'replayAllowed':False}
+ except Exception as error:
+  try:pin=capture.create('unknown.json',json.dumps({'state':'unknown','exceptionType':type(error).__name__,'error':str(error)[:256],'events':getattr(error,'events',events),'localObservation':getattr(error,'localObservation',None),'role':'SYSTEM','fixtureMayHaveChanged':True,'extractionMayHaveStarted':True,'taskAction':False,'installerAction':False,'replayAllowed':False},sort_keys=True).encode());os.fsync(capture.fd)
+  except Exception:pin=None
+  return {'state':'unknown','evidenceLeaf':leaf,'receipt':pin,'installerAction':False,'replayAllowed':False}
+ finally:
+  if bundlehold is not None:bundlehold.__exit__(None,None,None)
+  prior.close();original.close();listener.close();capture.close()
+if __name__=='__main__':print(json.dumps(main(),sort_keys=True))

@@ -22,6 +22,7 @@ from typing import Any, Iterator, Mapping
 
 REQUIREMENTS_PATH = Path(__file__).with_name("native_acceptance_requirements.json")
 RECEIPTS_RELATIVE = Path(".rag_index") / "native-acceptance"
+EQUIVALENCES_DIRECTORY = "equivalences"
 _SHA = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 _TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
@@ -117,6 +118,64 @@ def matrix_retract(root: Path | str, correction: Mapping[str, Any], *, requireme
             "originalReceiptSha256": original_hash}
 
 
+def matrix_equivalence_record(root: Path | str, value: Mapping[str, Any], *,
+                              requirements_path: Path | str = REQUIREMENTS_PATH) -> dict[str, Any]:
+    """Publish one reviewed, immutable committed-source equivalence link."""
+    if not isinstance(value, Mapping) or set(value) != {"receiptId", "artifactSetId", "targetSourceSHA", "reviewerAttestation"}:
+        raise NativeAcceptanceMatrixError("native acceptance equivalence fields are invalid")
+    receipt_id = value["receiptId"]
+    if not isinstance(receipt_id, str) or not _RECEIPT_ID.fullmatch(receipt_id):
+        raise NativeAcceptanceMatrixError("native acceptance equivalence receipt ID is invalid")
+    reviewer = value["reviewerAttestation"]
+    if not isinstance(reviewer, str) or not reviewer.strip() or len(reviewer) > 240:
+        raise NativeAcceptanceMatrixError("native acceptance equivalence reviewer is invalid")
+    if not isinstance(value["artifactSetId"], str) or not _TOKEN.fullmatch(value["artifactSetId"]):
+        raise NativeAcceptanceMatrixError("native acceptance equivalence artifact set is invalid")
+    if not isinstance(value["targetSourceSHA"], str) or not _SHA.fullmatch(value["targetSourceSHA"]):
+        raise NativeAcceptanceMatrixError("native acceptance equivalence target source is invalid")
+    requirements = load_requirements(requirements_path)
+    directory = _prepare_directory(root)
+    with _locked(directory):
+        receipt_path = directory / (receipt_id + ".json")
+        receipt = _read_receipt(receipt_path, requirements)
+        if (receipt["evidenceScope"] != "full-native" or receipt["result"] != "passed" or
+                receipt["missingEvidence"] or set(receipt["scenarioResults"]) != set(requirements[receipt["requirementId"]]["requiredScenarios"]) or
+                any(state != "passed" for state in receipt["scenarioResults"].values())):
+            raise NativeAcceptanceMatrixError("only complete passed full-native receipts may be linked")
+        _verify_evidence(root, receipt["evidencePath"], receipt["evidenceHash"])
+        _verify_artifacts(root, receipt["immutableArtifactIDs"], receipt["platform"], receipt["originalSourceSHA"])
+        for existing_path in directory.glob("native-acceptance-*.json"):
+            existing = _read_receipt(existing_path, requirements)
+            if existing["requirementId"] != receipt["requirementId"] or existing["originalSourceSHA"] != receipt["originalSourceSHA"]:
+                continue
+            if (existing["evidenceScope"] != "full-native" or existing["result"] != "passed" or existing["missingEvidence"] or
+                    set(existing["scenarioResults"]) != set(requirements[existing["requirementId"]]["requiredScenarios"]) or
+                    any(state != "passed" for state in existing["scenarioResults"].values())):
+                raise NativeAcceptanceMatrixError("conflicting, partial, or unknown native evidence cannot be linked")
+        try:
+            from agent_tools import native_artifact_reuse as reuse
+        except ImportError:
+            import native_artifact_reuse as reuse  # type: ignore[no-redef]
+        try:
+            proof = reuse.acceptance_equivalence_check(root, value["artifactSetId"], receipt["originalSourceSHA"], value["targetSourceSHA"])
+        except (reuse.ArtifactReuseError, OSError, ValueError) as error:
+            raise NativeAcceptanceMatrixError("native acceptance equivalence is not verified") from error
+        if proof["immutableArtifactIDs"] != receipt["immutableArtifactIDs"]:
+            raise NativeAcceptanceMatrixError("native acceptance equivalence artifacts differ from receipt")
+        receipt_hash = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+        body = {"schemaVersion": 1, "receiptId": receipt_id, "receiptSha256": receipt_hash,
+                **proof, "reviewerAttestation": reviewer}
+        link_id = "native-equivalence-" + hashlib.sha256(_encode(body)).hexdigest()[:32]
+        links = directory / EQUIVALENCES_DIRECTORY
+        _private_directory(links)
+        path = links / (link_id + ".json")
+        if path.exists() or path.is_symlink():
+            raise NativeAcceptanceMatrixError("native acceptance equivalence is already recorded")
+        _exclusive_write(path, _encode({"linkId": link_id, **body}))
+    return {"linkId": link_id, "receiptId": receipt_id, "originalSourceSHA": receipt["originalSourceSHA"],
+            "targetSourceSHA": proof["targetSourceSHA"], "requiredCurrentChecks": proof["requiredCurrentChecks"]}
+
+
 def matrix_status(root: Path | str, current_source_sha: str, *, requirements_path: Path | str = REQUIREMENTS_PATH) -> dict[str, Any]:
     """Return a compact machine-readable report and a human-readable table."""
     if not isinstance(current_source_sha, str) or not _SHA.fullmatch(current_source_sha):
@@ -126,6 +185,12 @@ def matrix_status(root: Path | str, current_source_sha: str, *, requirements_pat
     records = [] if directory is None else _records_read_only(directory, requirements)
     retracted = set() if directory is None else _read_retractions(directory, requirements)
     records = [record for record in records if record["receiptId"] not in retracted]
+    links = [] if directory is None else _equivalences_read_only(directory, requirements, root, current_source_sha)
+    by_receipt = {record["receiptId"]: record for record in records}
+    for link in links:
+        record = by_receipt.get(link["receiptId"])
+        if record is not None:
+            record["_equivalenceLink"] = link
     for record in records:
         record["_verificationError"] = _verification_error(root, record)
     rows: list[dict[str, Any]] = []
@@ -218,7 +283,8 @@ def _stored_observation(value: Mapping[str, Any], requirements: Mapping[str, Map
 
 
 def _row(requirement: Mapping[str, Any], records: list[Mapping[str, Any]], current_source_sha: str) -> dict[str, Any]:
-    current = [record for record in records if record["originalSourceSHA"] == current_source_sha]
+    current = [record for record in records if record["originalSourceSHA"] == current_source_sha or
+               record.get("_equivalenceLink", {}).get("targetSourceSHA") == current_source_sha]
     if not current:
         if records:
             return {"requirementId": requirement["requirementId"], "platform": requirement["platform"], "status": "historical",
@@ -244,6 +310,10 @@ def _row(requirement: Mapping[str, Any], records: list[Mapping[str, Any]], curre
            "result": record["result"], "missingEvidence": record["missingEvidence"], "missingScenarios": missing_scenarios,
            "nextFixedCommand": record["nextFixedCommand"], "receiptCount": len(current), "conflictingScenarios": conflicts,
            "partialReceiptCount": len(current) - len(full), "verificationFailures": verification_failures}
+    link = record.get("_equivalenceLink")
+    if isinstance(link, Mapping):
+        row.update(equivalenceLinkId=link["linkId"], equivalentToSourceSHA=link["targetSourceSHA"],
+                   requiredCurrentChecks=link["requiredCurrentChecks"])
     if verification_failures:
         row.update(status="unknown", reason="recorded evidence or registered artifacts no longer verify")
     elif conflicts or len({record["result"] for record in current}) > 1:
@@ -306,10 +376,28 @@ def _verify_artifacts(root: Path | str, artifact_ids: list[str], platform: str, 
 def _verification_error(root: Path | str, record: Mapping[str, Any]) -> str | None:
     try:
         _verify_evidence(root, record["evidencePath"], record["evidenceHash"])
-        _verify_artifacts(root, record["immutableArtifactIDs"], record["platform"], record["originalSourceSHA"])
+        _verify_artifacts_readonly(root, record["immutableArtifactIDs"], record["platform"], record["originalSourceSHA"])
     except (NativeAcceptanceMatrixError, OSError, ValueError) as error:
         return str(error)
     return None
+
+
+def _verify_artifacts_readonly(root: Path | str, artifact_ids: list[str], platform: str, source_sha: str) -> None:
+    """Status-time artifact verification without registry housekeeping."""
+    try:
+        from agent_tools import native_artifact_registry as registry
+    except ImportError:
+        import native_artifact_registry as registry  # type: ignore[no-redef]
+    platforms: set[str] = set()
+    for artifact_id in artifact_ids:
+        result = registry.verify_artifact_readonly(root, artifact_id)
+        artifact = result.get("artifact")
+        if not isinstance(artifact, Mapping) or artifact.get("sourceSha") != source_sha or result.get("verification") != "verified":
+            raise NativeAcceptanceMatrixError("native acceptance artifact is not read-only verified for original source")
+        platforms.add(artifact.get("platform"))
+    expected = _PLATFORMS - {"cross-platform"} if platform == "cross-platform" else {platform}
+    if platforms != expected:
+        raise NativeAcceptanceMatrixError("native acceptance registered artifacts do not cover the requirement platform")
 
 
 def _prepare_directory(root: Path | str) -> Path:
@@ -458,12 +546,15 @@ def _read_receipt(path: Path, requirements: Mapping[str, Mapping[str, Any]]) -> 
             if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
                 raise NativeAcceptanceMatrixError("native acceptance receipt is unsafe")
             raw = stream.read(_MAX_RECORD + 1)
-        if len(raw) > _MAX_RECORD:
+            after = os.fstat(stream.fileno())
+        named = path.lstat()
+        if (info.st_nlink != 1 or not _same_generation(info, after) or not _same_generation(info, named) or
+                len(raw) != info.st_size or len(raw) > _MAX_RECORD):
             raise NativeAcceptanceMatrixError("native acceptance receipt is unsafe")
         value = json.loads(raw.decode("utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise NativeAcceptanceMatrixError("native acceptance receipt is corrupt") from error
-    if not isinstance(value, Mapping) or value.get("schemaVersion") != 1:
+    if not isinstance(value, Mapping) or type(value.get("schemaVersion")) is not int or value.get("schemaVersion") != 1:
         raise NativeAcceptanceMatrixError("native acceptance receipt is corrupt")
     fields = {"requirementId", "platform", "originalSourceSHA", "immutableArtifactIDs", "evidencePath", "evidenceHash", "environment", "result", "scenarioResults", "missingEvidence", "nextFixedCommand", "reviewerAttestation", "evidenceScope"}
     raw = {key: item for key, item in value.items() if key not in {"schemaVersion", "receiptId"}}
@@ -478,6 +569,175 @@ def _read_receipt(path: Path, requirements: Mapping[str, Mapping[str, Any]]) -> 
             receipt_id != "native-acceptance-" + hashlib.sha256(_encode(normalized)).hexdigest()[:32]):
         raise NativeAcceptanceMatrixError("native acceptance receipt is corrupt")
     return normalized
+
+
+def _equivalences_read_only(directory: Path, requirements: Mapping[str, Mapping[str, Any]],
+                            root: Path | str, target_source_sha: str) -> list[dict[str, Any]]:
+    """Load only links that still reproduce from committed Git and frozen bytes."""
+    links = directory / EQUIVALENCES_DIRECTORY
+    if not links.exists() and not links.is_symlink():
+        return []
+    try:
+        info = links.lstat()
+        if (links.is_symlink() or not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or
+                stat.S_IMODE(info.st_mode) != 0o700):
+            raise NativeAcceptanceMatrixError("native acceptance equivalence directory is unsafe")
+        paths = sorted(links.glob("native-equivalence-*.json"))
+    except OSError as error:
+        raise NativeAcceptanceMatrixError("native acceptance equivalences are unavailable") from error
+    found = []
+    directory_pin = _directory_pin(directory)
+    links_pin = _directory_pin(links)
+    for path in paths:
+        link_pin = _file_pin(path)
+        value = _read_private_link(path)
+        _link_schema(value, path)
+        link_digest = hashlib.sha256(_encode(value)).hexdigest()
+        if value["targetSourceSHA"] != target_source_sha:
+            continue
+        receipt = directory / (value["receiptId"] + ".json")
+        if not receipt.exists() or receipt.is_symlink():
+            continue
+        receipt_pin = _file_pin(receipt)
+        if not _receipt_still_bound(receipt, value["receiptSha256"], directory, directory_pin, receipt_pin):
+            continue
+        observation = _read_receipt(receipt, requirements)
+        if not _receipt_still_bound(receipt, value["receiptSha256"], directory, directory_pin, receipt_pin):
+            continue
+        if (observation["originalSourceSHA"] != value["originalSourceSHA"] or
+                observation["immutableArtifactIDs"] != value["immutableArtifactIDs"] or
+                observation["evidenceScope"] != "full-native" or observation["result"] != "passed" or
+                observation["missingEvidence"] or set(observation["scenarioResults"]) != set(requirements[observation["requirementId"]]["requiredScenarios"]) or
+                any(state != "passed" for state in observation["scenarioResults"].values())):
+            continue
+        try:
+            _verify_evidence(root, observation["evidencePath"], observation["evidenceHash"])
+        except NativeAcceptanceMatrixError:
+            continue
+        if not _receipt_still_bound(receipt, value["receiptSha256"], directory, directory_pin, receipt_pin):
+            continue
+        peers = [_read_receipt(item, requirements) for item in directory.glob("native-acceptance-*.json")]
+        if any(peer["requirementId"] == observation["requirementId"] and
+               peer["originalSourceSHA"] == observation["originalSourceSHA"] and
+               (peer["evidenceScope"] != "full-native" or peer["result"] != "passed" or peer["missingEvidence"] or
+                set(peer["scenarioResults"]) != set(requirements[peer["requirementId"]]["requiredScenarios"]) or
+                any(state != "passed" for state in peer["scenarioResults"].values()))
+               for peer in peers):
+            continue
+        if not _receipt_still_bound(receipt, value["receiptSha256"], directory, directory_pin, receipt_pin):
+            continue
+        try:
+            from agent_tools import native_artifact_reuse as reuse
+        except ImportError:
+            import native_artifact_reuse as reuse  # type: ignore[no-redef]
+        try:
+            proof = reuse.acceptance_equivalence_check_readonly(root, value["artifactSetId"], value["originalSourceSHA"], target_source_sha)
+        except (reuse.ArtifactReuseError, OSError, ValueError):
+            continue
+        expected = {key: value[key] for key in ("schemaVersion", "artifactSetId", "originalSourceSHA", "targetSourceSHA",
+                                                 "immutableArtifactIDs", "productTreeSha256", "diffSha256", "changedPaths", "requiredCurrentChecks")}
+        if proof != expected:
+            continue
+        if (not _receipt_still_bound(receipt, value["receiptSha256"], directory, directory_pin, receipt_pin) or
+                not _link_still_bound(path, link_digest, links, links_pin, link_pin) or
+                not _same_generation(_directory_pin(links), links_pin)):
+            continue
+        found.append(value)
+    return found
+
+
+def _read_private_link(path: Path) -> dict[str, Any]:
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            raw = stream.read(_MAX_RECORD + 1)
+            after = os.fstat(stream.fileno())
+        named = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or
+                len(raw) > _MAX_RECORD or len(raw) != info.st_size or not _same_generation(info, after) or not _same_generation(info, named)):
+            raise NativeAcceptanceMatrixError("native acceptance equivalence is unsafe")
+        value = json.loads(raw.decode("utf-8"))
+        if not isinstance(value, Mapping) or _encode(value) != raw:
+            raise NativeAcceptanceMatrixError("native acceptance equivalence is noncanonical")
+        return dict(value)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise NativeAcceptanceMatrixError("native acceptance equivalence is corrupt") from error
+
+
+def _link_schema(value: Any, path: Path) -> None:
+    fields = {"linkId", "schemaVersion", "receiptId", "receiptSha256", "artifactSetId", "originalSourceSHA", "targetSourceSHA",
+              "immutableArtifactIDs", "productTreeSha256", "diffSha256", "changedPaths", "requiredCurrentChecks", "reviewerAttestation"}
+    if not isinstance(value, Mapping) or set(value) != fields or type(value.get("schemaVersion")) is not int or value.get("schemaVersion") != 1:
+        raise NativeAcceptanceMatrixError("native acceptance equivalence is corrupt")
+    if (not isinstance(value.get("linkId"), str) or not re.fullmatch(r"native-equivalence-[0-9a-f]{32}", value["linkId"]) or
+            path.name != value["linkId"] + ".json" or not isinstance(value.get("receiptId"), str) or
+            not _RECEIPT_ID.fullmatch(value["receiptId"]) or not isinstance(value.get("receiptSha256"), str) or
+            not _HASH.fullmatch(value["receiptSha256"]) or not isinstance(value.get("artifactSetId"), str) or
+            not _TOKEN.fullmatch(value["artifactSetId"]) or any(not isinstance(value.get(key), str) or not _SHA.fullmatch(value[key]) for key in ("originalSourceSHA", "targetSourceSHA")) or
+            any(not isinstance(value.get(key), str) or not _HASH.fullmatch(value[key]) for key in ("productTreeSha256", "diffSha256")) or
+            not isinstance(value.get("reviewerAttestation"), str) or not value["reviewerAttestation"].strip() or len(value["reviewerAttestation"]) > 240):
+        raise NativeAcceptanceMatrixError("native acceptance equivalence is corrupt")
+    artifacts = value.get("immutableArtifactIDs")
+    if not isinstance(artifacts, list) or not artifacts or len(artifacts) > 16 or len(set(artifacts)) != len(artifacts) or not all(isinstance(item, str) and _ARTIFACT.fullmatch(item) for item in artifacts):
+        raise NativeAcceptanceMatrixError("native acceptance equivalence is corrupt")
+    paths = value.get("changedPaths")
+    if (not isinstance(paths, list) or len(paths) > 512 or any(not isinstance(item, Mapping) or set(item) != {"status", "oldMode", "newMode", "path", "class"} or
+            item.get("status") not in {"A", "M", "D"} or not isinstance(item.get("oldMode"), str) or not re.fullmatch(r"[0-7]{6}", item["oldMode"]) or
+            not isinstance(item.get("newMode"), str) or not re.fullmatch(r"[0-7]{6}", item["newMode"]) or not isinstance(item.get("path"), str) or
+            not item["path"] or item["path"].startswith("/") or any(part in {"", ".", ".."} for part in item["path"].split("/")) or
+            item.get("class") not in {"docs", "test", "agent-tool"} for item in paths)):
+        raise NativeAcceptanceMatrixError("native acceptance equivalence is corrupt")
+    checks = value.get("requiredCurrentChecks")
+    if not isinstance(checks, list) or not checks or len(checks) > 2 or checks[0] != "exact-sha-ci" or any(item not in {"exact-sha-ci", "changed-tool-tests"} for item in checks):
+        raise NativeAcceptanceMatrixError("native acceptance equivalence is corrupt")
+    body = {key: item for key, item in value.items() if key != "linkId"}
+    if value["linkId"] != "native-equivalence-" + hashlib.sha256(_encode(body)).hexdigest()[:32]:
+        raise NativeAcceptanceMatrixError("native acceptance equivalence is corrupt")
+
+
+def _same_generation(first: os.stat_result, second: os.stat_result) -> bool:
+    return (first.st_dev, first.st_ino, first.st_mode, first.st_uid, first.st_gid, first.st_nlink,
+            first.st_size, first.st_mtime_ns, first.st_ctime_ns) == (
+            second.st_dev, second.st_ino, second.st_mode, second.st_uid, second.st_gid, second.st_nlink,
+            second.st_size, second.st_mtime_ns, second.st_ctime_ns)
+
+
+def _directory_pin(path: Path) -> os.stat_result:
+    info = path.lstat()
+    if path.is_symlink() or not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise NativeAcceptanceMatrixError("native acceptance private directory changed")
+    return info
+
+
+def _file_pin(path: Path) -> os.stat_result:
+    info = path.lstat()
+    if path.is_symlink() or not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1:
+        raise NativeAcceptanceMatrixError("native acceptance immutable file changed")
+    return info
+
+
+def _receipt_still_bound(path: Path, expected_digest: str, parent: Path, parent_pin: os.stat_result,
+                         original_pin: os.stat_result) -> bool:
+    try:
+        if not _same_generation(_directory_pin(parent), parent_pin):
+            return False
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(fd, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            raw = stream.read(_MAX_RECORD + 1)
+            after = os.fstat(stream.fileno())
+        named = path.lstat()
+        return (_same_generation(before, original_pin) and _same_generation(before, after) and _same_generation(before, named) and
+                len(raw) <= _MAX_RECORD and len(raw) == before.st_size and
+                hashlib.sha256(raw).hexdigest() == expected_digest)
+    except OSError:
+        return False
+
+
+def _link_still_bound(path: Path, expected_digest: str, parent: Path, parent_pin: os.stat_result,
+                      original_pin: os.stat_result) -> bool:
+    return _receipt_still_bound(path, expected_digest, parent, parent_pin, original_pin)
 
 
 def _cleanup(directory: Path) -> None:

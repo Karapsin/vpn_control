@@ -142,6 +142,41 @@ def _previous_closed(root: Path, request: Mapping[str, str], descriptor: tuple[A
         os.close(lock)
 
 
+def _previous_closed_readonly(root: Path, request: Mapping[str, str], descriptor: tuple[Any, ...],
+                              config: Any, target: Any, cleanup: str) -> None:
+    """Read the original closure under validated SH; never initialize state.
+
+    Mutation entry points retain `_previous_closed` and its exclusive lock.
+    Archive preflight may already own the same SH descriptor, which the history
+    reader reuses only after validating PID/thread/root/inode/permissions.
+    """
+    from . import windows_cp117_historical_base_archives as history
+    previous = request.get('previousLeaseId')
+    if (not isinstance(previous, str) or not _UUID.fullmatch(previous)
+            or not isinstance(cleanup, str) or not lease._HASH.fullmatch(cleanup)):
+        raise WindowsCp117CampaignRebaseError('Previous CP117 lease is invalid.')
+    with history._history_lock(root):
+        directory = root / lease._DIR
+        active = directory / 'active.json'
+        if os.path.lexists(active):
+            raise WindowsCp117CampaignRebaseError('CP117 campaign is still active or unknown.')
+        path = directory / (previous + '.closed.json')
+        closed = history._read(path)
+        expected = base._campaign_identity({**request, 'correlationId': previous}, descriptor)
+        fields = {'version', 'identity', 'sequence', 'state', 'role', 'correlationId',
+                  'server', 'credentials', 'lastEvidenceSha256', 'lastOutcome'}
+        if (set(closed) != fields or type(closed['version']) is not int or closed['version'] != 1
+                or closed['identity'] != expected or type(closed['sequence']) is not int
+                or closed['sequence'] <= 0 or closed['state'] != 'closed' or closed['role'] is not None
+                or closed['correlationId'] is not None or closed['server'] != 'stopped'
+                or closed['credentials'] != 'absent' or closed['lastOutcome'] != 'failed-cleaned'
+                or closed['lastEvidenceSha256'] != cleanup
+                or not lease._remote_confirm(base._campaign_remote(config, target), 'status', closed, None)):
+            raise WindowsCp117CampaignRebaseError('Closed CP117 campaign proof is unavailable.')
+        if os.path.lexists(active) or history._read(path) != closed:
+            raise WindowsCp117CampaignRebaseError('Closed CP117 campaign proof changed.')
+
+
 def start(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     """Reserve one continuation lease after all old-stage evidence is revalidated."""
     root = Path(root).resolve(strict=True)

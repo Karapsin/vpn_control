@@ -58,6 +58,48 @@ class AndroidNativeFixtureTest(unittest.TestCase):
             self.assertEqual([":app:assembleNativeFixture", "-PvpnControlVersion=2.2.1"], planned["targetBuildArgs"])
             self.assertFalse(planned["deviceMutationAllowed"])
 
+    def test_clean_linked_source_plans_223_from_current_222_base_despite_dirty_coordinator(self):
+        with tempfile.TemporaryDirectory() as raw:
+            coordinator = Path(raw) / "coordinator"; coordinator.mkdir()
+            source_root = Path(raw) / "clean-source"; source_root.mkdir()
+            (source_root / "gradle.properties").write_text("vpnControlVersion=2.2.2\n")
+            artifact = {"platform": "android", "artifactKind": "apk", "sha256": BASE[7:],
+                        "sourceSha": SOURCE, "size": 100}
+            package = {"package": "com.kardinal.vpncontrol", "code": 16840,
+                       "version": "2.2.2", "abi": "x86_64", "signerSha256": SIGNER, "debuggable": False}
+            with mock.patch.object(fixture, "_source_root", return_value=source_root) as bind, \
+                    mock.patch.object(fixture, "_head", side_effect=lambda path: SOURCE if path == source_root else "dirty") as head, \
+                    mock.patch.object(fixture, "_clean", side_effect=lambda path: path == source_root) as clean, \
+                    mock.patch.object(fixture, "_artifact", return_value=(artifact, package)) as artifact_read:
+                planned = fixture.prepare_requirements(coordinator, SOURCE, source_root=source_root)
+            self.assertEqual("2.2.3", planned["targetVersion"])
+            self.assertEqual(16860, planned["targetCode"])
+            self.assertEqual([":app:assembleNativeFixture", "-PvpnControlVersion=2.2.3"], planned["targetBuildArgs"])
+            bind.assert_called_once_with(coordinator.resolve(), source_root)
+            self.assertEqual(head.call_args_list, [mock.call(source_root)])
+            self.assertEqual(clean.call_args_list, [mock.call(source_root)])
+            artifact_read.assert_called_once_with(coordinator.resolve(), BASE)
+
+    def test_source_root_rejects_symlink_foreign_dirty_and_mismatched_before_artifact_read(self):
+        with tempfile.TemporaryDirectory() as raw:
+            coordinator = Path(raw) / "coordinator"; coordinator.mkdir()
+            source_root = Path(raw) / "clean-source"; source_root.mkdir()
+            (source_root / "gradle.properties").write_text("vpnControlVersion=2.2.2\n")
+            link = Path(raw) / "source-link"; link.symlink_to(source_root, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                fixture.prepare_requirements(coordinator, SOURCE, source_root=link)
+            for common_pair, head, clean in ((("/foreign/.git", "/coordinator/.git"), SOURCE, True),
+                                              (("/shared/.git", "/shared/.git"), SOURCE, False),
+                                              (("/shared/.git", "/shared/.git"), "b" * 40, True)):
+                with self.subTest(common_pair=common_pair, head=head, clean=clean), \
+                        mock.patch.object(fixture, "_git_common_dir", side_effect=common_pair), \
+                        mock.patch.object(fixture, "_head", return_value=head), \
+                        mock.patch.object(fixture, "_clean", return_value=clean), \
+                        mock.patch.object(fixture, "_artifact") as artifact_read:
+                    with self.assertRaises(ValueError):
+                        fixture.prepare_requirements(coordinator, SOURCE, source_root=source_root)
+                    artifact_read.assert_not_called()
+
     def test_target_rejects_wrong_source_signer_and_version(self):
         requirements = {"sourceSha": SOURCE, "baseArtifactId": BASE, "baseSignerSha256": SIGNER,
                         "targetVersion": "2.2.1", "targetCode": 16820}

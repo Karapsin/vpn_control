@@ -474,6 +474,8 @@ class AndroidInstallerDispatchTest(unittest.TestCase):
                  mock.patch.object(dispatch.android_admission_readback, "async_collect", return_value={
                      "result": {"backup": {"path": "/private/fixture/opening.json"}}}), \
                  mock.patch.object(dispatch.android_installer_target, "create_intent", side_effect=ValueError("owner changed")), \
+                 mock.patch.object(dispatch, "_fixture_bytes", return_value=b"tls"), \
+                 mock.patch.object(dispatch, "_source_bytes", return_value=b"tool"), \
                  mock.patch.object(dispatch, "_remote") as submitted:
                 with self.assertRaisesRegex(ValueError, "owner changed"):
                     dispatch.start(root, "archlinux", "api35", CORR, "a" * 40,
@@ -596,6 +598,134 @@ class AndroidInstallerDispatchTest(unittest.TestCase):
                 self.assertEqual("closing_owner_changed", foreign["reason"])
                 remote.assert_not_called()
 
+
+
+    def test_tool_or_tls_preflight_rejection_never_creates_product_intent_or_claim(self):
+        from contextlib import ExitStack
+        for failure in ('source','tls'):
+            with self.subTest(failure=failure),tempfile.TemporaryDirectory() as raw,ExitStack() as stack:
+                root=Path(raw);root.chmod(0o700)
+                profile={'adb':'/adb','cli':'/cli','serial':'emulator-5554','expectedAvd':'owned-api35','api':35}
+                config=SimpleNamespace(hosts={'archlinux':SimpleNamespace(android_devices={'api35':profile},fixture_transfer_root=Path('/private/fixture'))})
+                patches=[(dispatch.ssh_transport,'load_config',{'return_value':config}),
+                    (dispatch.ssh_transport,'connection_host',{'return_value':SimpleNamespace(password=None)}),
+                    (dispatch.android_observation,'_profile',{'return_value':profile}),
+                    (dispatch.android_cli_stage,'collect',{'return_value':{'ok':True,'state':'published','sourceSha':'a'*40,'receipt':{'cliPath':'/cli'}}}),
+                    (dispatch.android_cli_stage,'_read_intent',{'return_value':{'host':'archlinux'}}),
+                    (dispatch.android_installer_target,'admit_pair',{'return_value':{'sourceSha':'a'*40}}),
+                    (dispatch.android_admission_readback,'async_collect',{'return_value':{'result':{'backup':{'path':'/backup'}}}}),
+                    (dispatch,'_source_bytes',{'side_effect':ValueError('unreviewed source')} if failure=='source' else {'return_value':b'tool'}),
+                    (dispatch,'_fixture_bytes',{'side_effect':ValueError('unverified TLS')} if failure=='tls' else {'return_value':b'tls'})]
+                for obj,name,kw in patches:stack.enter_context(mock.patch.object(obj,name,**kw))
+                create=stack.enter_context(mock.patch.object(dispatch.android_installer_target,'create_intent'))
+                claim=stack.enter_context(mock.patch.object(dispatch,'_claim_local'))
+                remote=stack.enter_context(mock.patch.object(dispatch,'_remote'))
+                with self.assertRaises(ValueError):dispatch.start(root,'archlinux','api35',CORR,'a'*40,'sha256-'+'b'*64,'sha256-'+'c'*64,'5a328d13-28a6-442b-bcc0-266ca20368f5','6a328d13-28a6-442b-bcc0-266ca20368f5','owner',4,'d'*64,'installed','7a328d13-28a6-442b-bcc0-266ca20368f5','sha256-'+'e'*64,'sha256-'+'f'*64,'sha256-'+'0'*64)
+                create.assert_not_called();claim.assert_not_called();remote.assert_not_called()
+
+    def test_reviewed_tool_bundle_dispatch_keeps_original_product_source_and_no_retry(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); root.chmod(0o700)
+            base = root / "base.apk"; target = root / "target.apk"
+            base.write_bytes(b"base"); target.write_bytes(b"target")
+            pair = {"basePath": str(base), "targetPath": str(target), "baseSha256": "b" * 64,
+                "targetSha256": "c" * 64, "sourceSha": "a" * 40}
+            profile = {"adb": "/adb", "cli": "/cli", "serial": "emulator-5554",
+                "expectedAvd": "owned-api35", "api": 35}
+            host = SimpleNamespace(android_devices={"api35": profile},
+                                   fixture_transfer_root=Path("/private/fixture"))
+            config = SimpleNamespace(hosts={"archlinux": host})
+            tools={'toolBundleId':'sha256-'+'1'*64,'reviewedTreeSha256':'2'*64,'manifest':{'schema':1,'kind':'android-installer-reviewed-tools','files':[]},'files':{name:b'reviewed tooling' for name in dispatch._BUNDLE}}
+            def create(_root, output, correlation, pair, **_):
+                output.mkdir(mode=0o700)
+                dispatch.android_installer_target._write_private(output / "intent.json",
+                    {"schema": 1, "correlationId": correlation, "pair": pair, "replayAllowed": False})
+            with mock.patch.object(dispatch.ssh_transport, "load_config", return_value=config), \
+                 mock.patch.object(dispatch.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
+                 mock.patch.object(dispatch.android_observation, "_profile", return_value=profile), \
+                 mock.patch.object(dispatch.android_cli_stage, "collect", return_value={"ok": True,
+                     "state": "published", "sourceSha": "a" * 40,
+                     "receipt": {"cliPath": "/private/fixture/cli"}}), \
+                 mock.patch.object(dispatch.android_cli_stage, "_read_intent", return_value={"host": "archlinux"}), \
+                 mock.patch.object(dispatch.android_installer_target, "admit_pair", return_value=pair), \
+                 mock.patch.object(dispatch.android_admission_readback, "async_collect", return_value={
+                     "result": {"backup": {"path": "/private/fixture/opening.json"}}}), \
+                 mock.patch.object(dispatch.android_installer_target, "create_intent", side_effect=create), \
+                 mock.patch.object(dispatch, "_fixture_bytes", return_value=b"fixture"), \
+                 mock.patch.object(dispatch, "_source_bytes", side_effect=AssertionError("product SHA must not identify reviewed tools")), \
+                 mock.patch.object(dispatch.android_installer_tool_bundle, "load", return_value=tools), \
+                 mock.patch.object(dispatch, "_remote", return_value={"state": "unknown", "reason": "response_loss"}) as submitted:
+                result = dispatch.start(root, "archlinux", "api35", CORR, "a" * 40,
+                    "sha256-" + "b" * 64, "sha256-" + "c" * 64,
+                    "5a328d13-28a6-442b-bcc0-266ca20368f5",
+                    "6a328d13-28a6-442b-bcc0-266ca20368f5",
+                    "owner", 4, "d" * 64, "installed",
+                    "7a328d13-28a6-442b-bcc0-266ca20368f5",
+                    "sha256-" + "e" * 64, "sha256-" + "f" * 64,
+                    "sha256-" + "0" * 64, tool_bundle_id=tools["toolBundleId"])
+                self.assertEqual("unknown", result["state"])
+                self.assertFalse(result["replayAllowed"])
+                self.assertTrue((dispatch._directory(root) / CORR / "dispatch.json").is_file())
+                self.assertTrue((dispatch._shared_directory(root) / "lease-archlinux-api35.json").is_file())
+                self.assertEqual(1, submitted.call_count)
+                recorded=dispatch._local_intent(root,CORR)
+                self.assertEqual('a'*40,recorded['sourceSha']);self.assertEqual('a'*40,recorded['remote']['sourceSha'])
+                self.assertEqual(tools['toolBundleId'],recorded['toolBundleId'])
+                self.assertEqual({key:tools[key] for key in ('toolBundleId','reviewedTreeSha256','manifest')},recorded['remote']['toolBundle'])
+                with self.assertRaises(FileExistsError):
+                    dispatch.start(root, "archlinux", "api35", CORR, "a" * 40,
+                        "sha256-" + "b" * 64, "sha256-" + "c" * 64,
+                        "5a328d13-28a6-442b-bcc0-266ca20368f5",
+                        "6a328d13-28a6-442b-bcc0-266ca20368f5",
+                        "owner", 4, "d" * 64, "installed",
+                        "7a328d13-28a6-442b-bcc0-266ca20368f5",
+                        "sha256-" + "e" * 64, "sha256-" + "f" * 64,
+                        "sha256-" + "0" * 64, tool_bundle_id=tools["toolBundleId"])
+                self.assertEqual(1, submitted.call_count)
+
+
+    def test_actual_remote_tool_manifest_rejection_occurs_before_worker_launch(self):
+        from agent_tools import android_installer_tool_bundle as bundle
+        for attack in ('manifest-hash','file-binding','bad-id'):
+            with self.subTest(attack=attack),tempfile.TemporaryDirectory() as raw:
+                root=Path(raw);root.chmod(0o700)
+                files=[{'name':'bundle/'+name,'size':5,'sha256':hashlib.sha256(b'pass\n').hexdigest()} for name in bundle.FILES]
+                product=json.dumps({'correlationId':CORR,'host':'archlinux','device':'api35','pair':{'sourceSha':'a'*40}}).encode()
+                files.append({'name':'output/intent.json','size':len(product),'sha256':hashlib.sha256(product).hexdigest()})
+                manifest={'schema':1,'kind':'android-installer-reviewed-tools','files':[{'path':name,'size':5,'sha256':hashlib.sha256(b'pass\n').hexdigest()} for name in bundle.FILES]}
+                tools={'toolBundleId':'sha256-'+'1'*64,'reviewedTreeSha256':hashlib.sha256(bundle._bytes(manifest)).hexdigest(),'manifest':manifest}
+                if attack=='manifest-hash':tools['reviewedTreeSha256']='0'*64
+                elif attack=='file-binding':manifest['files'][0]['sha256']='0'*64;tools['reviewedTreeSha256']=hashlib.sha256(bundle._bytes(manifest)).hexdigest()
+                else:tools['toolBundleId']='invalid'
+                expected={'sourceSha':'a'*40,'files':files,'toolBundle':tools}
+                result=subprocess.run([sys.executable,'-I','-B','-c','exec('+repr(dispatch._REMOTE)+')','start',str(root),'archlinux','api35',CORR,json.dumps(expected)],input=b'pass\n'*7+product,capture_output=True,timeout=5)
+                self.assertEqual(0,result.returncode,result.stderr);value=json.loads(result.stdout)
+                self.assertEqual('unknown',value['state']);self.assertIn(value['reason'],{'tool_bundle_invalid','tool_bundle_manifest_changed'})
+                self.assertFalse((root/('android-installer-'+CORR)/'launch-intent.json').exists())
+                self.assertFalse((root/('android-installer-'+CORR)/'identity.json').exists())
+
+    def test_generated_remote_tool_generation_marker_rejects_same_byte_rewrite(self):
+        import ast,re,stat
+        from agent_tools import android_installer_tool_bundle as bundle
+        with tempfile.TemporaryDirectory() as raw:
+            job=Path(raw);files=[]
+            for name in bundle.FILES:
+                path=job/'bundle'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'reviewed');path.chmod(0o600)
+                files.append({'name':'bundle/'+name,'size':8,'sha256':hashlib.sha256(b'reviewed').hexdigest()})
+            manifest={'schema':1,'kind':'android-installer-reviewed-tools','files':[{'path':name,'size':8,'sha256':hashlib.sha256(b'reviewed').hexdigest()} for name in bundle.FILES]}
+            expected={'files':files,'toolBundle':{'toolBundleId':'sha256-'+'1'*64,'reviewedTreeSha256':hashlib.sha256(bundle._bytes(manifest)).hexdigest(),'manifest':manifest}}
+            def unknown(reason):raise ValueError(reason)
+            def put(path,data):
+                path.write_bytes(data);path.chmod(0o600)
+            environment={'job':job,'expected':expected,'action':'start','tool_stream_pins':{},'os':os,'stat':stat,'re':re,'hashlib':hashlib,'json':json,'unknown':unknown,'put':put,'private':lambda path,limit:path.read_bytes()}
+            tree=ast.parse(dispatch._REMOTE)
+            functions=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in {'tool_file_pin','verify_tool_bundle'}]
+            exec(compile(ast.Module(body=functions,type_ignores=[]),'<actual-tool-guards>','exec'),environment)
+            environment['verify_tool_bundle']()
+            self.assertTrue((job/'tool-bundle-owned.json').exists())
+            environment['action']='status';environment['verify_tool_bundle']()
+            path=job/'bundle'/bundle.FILES[0];path.write_bytes(path.read_bytes())
+            with self.assertRaisesRegex(ValueError,'tool_bundle_generation_changed'):environment['verify_tool_bundle']()
 
 if __name__ == "__main__":
     unittest.main()

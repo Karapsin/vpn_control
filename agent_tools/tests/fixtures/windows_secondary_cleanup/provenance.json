@@ -1,0 +1,87 @@
+{
+  "files": {
+    "current_file_binding.ps1": {
+      "bytes": 1168,
+      "sha256": "807a7e5073d625a05db775ad0ca91cc8a70e0e2171fc560d2d4e7113b8ff40ce",
+      "sourceSha256": "23732d90fabb585c3a18b75d09da4d5c170e88b4d7b872f2c4668c2879058b4a"
+    },
+    "current_publication.source": {
+      "bytes": 6687,
+      "sha256": "a64e175d3339a4c137829b25ec780b587442a72c8d886928a3b3f8b6b824a94c",
+      "sourceSha256": "a64e175d3339a4c137829b25ec780b587442a72c8d886928a3b3f8b6b824a94c"
+    },
+    "decision_consumer.source": {
+      "bytes": 4144,
+      "sha256": "0f1f107566e47709c87ae2f58cb4b1021a3dfc2a66bcf669040d766a8c5206ce",
+      "sourceSha256": "15a20b3834db29ab1660952317d7ed77cfeedc71630cc406043ed1cdfbca393f"
+    },
+    "delete_native.cs": {
+      "bytes": 877,
+      "sha256": "1b7f387d605083e637e03f392fae22ceeb234615a95e746a563cc69f31290121",
+      "sourceSha256": "56c6d6b797b4354826b188b5c5e000d8725df58cf735efbd2438bf7145bdbc5e"
+    },
+    "legacy_admission_guards.source": {
+      "bytes": 661,
+      "selection": "Actual two admission need-call ASTs; no source predicate normalization",
+      "sha256": "152078ace056b9d1dd6bdef779f0d37838b5cfc237dadd0816e61b459165dff8",
+      "sourceSha256": "f676467b393262b259b73a2b5327b9007c0f8cd783a39ba1262a7dbf5fc4392c"
+    },
+    "legacy_file_binding.ps1": {
+      "bytes": 1184,
+      "sha256": "29e95680eed45ee6038dfd0e1829f9cb016cce25f2ff598535163656aee5fb4a",
+      "sourceSha256": "56c6d6b797b4354826b188b5c5e000d8725df58cf735efbd2438bf7145bdbc5e"
+    },
+    "legacy_interfaces.source": {
+      "bytes": 5140,
+      "sha256": "ebc5f0de12a5a3f23e6311628f1f7c5917a6ea670987c2234a272828147d9573",
+      "sourceSha256": "ebc5f0de12a5a3f23e6311628f1f7c5917a6ea670987c2234a272828147d9573"
+    },
+    "legacy_publication.source": {
+      "bytes": 6355,
+      "sha256": "feb6cda2e2197c586f4ae5246d0c4a1c3a78861e32bb0ebb2d81bf29c1e704d0",
+      "sourceSha256": "feb6cda2e2197c586f4ae5246d0c4a1c3a78861e32bb0ebb2d81bf29c1e704d0"
+    },
+    "legacy_resources.source": {
+      "bytes": 6152,
+      "sha256": "2ef21001da072cebf9a95df9317b6dad4e40df6958c97622ca3a3bdb791a5c76",
+      "sourceSha256": "2ef21001da072cebf9a95df9317b6dad4e40df6958c97622ca3a3bdb791a5c76"
+    },
+    "reader_handles.ps1": {
+      "bytes": 909,
+      "sha256": "5abca334b93202894dc734c8143c36e4bd4539866a29830bc5e3e36416067d1f",
+      "sourceSha256": "23732d90fabb585c3a18b75d09da4d5c170e88b4d7b872f2c4668c2879058b4a"
+    },
+    "reviewed_admission_consumer.source": {
+      "bytes": 7217,
+      "selection": "Actual admission body AST; only correlation, script/body hashes, arguments lifted to factory parameters",
+      "sha256": "194e53f3bb896358a28e02cfe201bbb4300e1256865407d633d5033718285b92",
+      "sourceSha256": "51fbe5be0bffa40b2fcfb2321f3bb26705f72cef7b1545eaffe70dd6d24db6f4"
+    },
+    "sdk_consumer.source": {
+      "additionalText": "imports, public namespace defaults, constants; no bindings/credentials/native artifacts",
+      "bytes": 14194,
+      "selectedActualDefinitions": [
+        "AccessClient",
+        "Guest",
+        "QgaObservationError",
+        "QgaObservationUnknown",
+        "QgaProtocolError",
+        "QgaReadOnlyClient",
+        "file_hash",
+        "fixed_guest",
+        "generation",
+        "need",
+        "parent_identity",
+        "read_record",
+        "record_at"
+      ],
+      "sha256": "083037d4bd5a9aac669de07793c41a421d5262637e0cbd1629fdd1731cbacb2d",
+      "sourceSha256": "6324dd29300f6c63e624722c9c2c91acc26baf726bbeb77d2d0b1d4e3093da4f"
+    }
+  },
+  "historicalSourceHolds": [
+    "91d73fcbecc57e7b2113fe25be621660e07eed6aa3d1bcd0e298d089a94f3320",
+    "e6782038e241c3e78c952bebad97c5cf0dbbc76590d3c32b3c515bd95bda4902"
+  ],
+  "scope": "Exact source specimens for causal consumer regressions; no native authority"
+}

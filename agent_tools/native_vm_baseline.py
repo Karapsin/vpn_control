@@ -221,13 +221,26 @@ class QemuProvider(Provider):
 
     @staticmethod
     def inspect_flat_qcow2(path: Path) -> None:
-        """Only independent qcow2 sources; no backing chain can go stale."""
+        """Only independent qcow2 sources; no backing or external data dependency."""
         try:
             result = subprocess.run(("qemu-img", "info", "--output=json", str(path)),
                                     check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
             data = json.loads(result.stdout) if result.returncode == 0 else None
         except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
             raise VmBaselineError("QEMU source format cannot be verified") from error
+        _need(type(data) is dict, "QEMU image dependency descriptor is invalid")
+        _need(not {"data-file", "data-file-raw"}.intersection(data),
+              "QEMU baseline cannot depend on an external data file")
+        if "format-specific" in data:
+            descriptor = data["format-specific"]
+            _need(type(descriptor) is dict and descriptor.get("type") == "qcow2" and
+                  type(descriptor.get("data")) is dict,
+                  "QEMU image dependency descriptor is invalid")
+            # QCOW2 external data is independent of its backing chain. Even
+            # empty or false dependency fields cannot establish a flat image.
+            _need(not {"data-file", "data-file-raw"}.intersection(descriptor) and
+                  not {"data-file", "data-file-raw"}.intersection(descriptor["data"]),
+                  "QEMU baseline cannot depend on an external data file")
         _need(isinstance(data, dict) and data.get("format") == "qcow2" and
               not data.get("backing-filename") and not data.get("full-backing-filename"),
               "QEMU baseline requires an independent qcow2 without a backing chain")

@@ -1,10 +1,42 @@
 """Table tests for safe next-action guidance using public workflow response shapes."""
 import unittest
+from unittest import mock
 
 from agent_tools.native_next_action import next_action
 
 
 class NativeNextActionTest(unittest.TestCase):
+    def test_public_ssh_wrapper_preserves_fixed_recovery_guidance(self):
+        from agent_tools import mcp_server, native_failure_evidence
+        result = {"tool": "ssh_workflow", "host": "guest", "status": "nested_master_absent",
+                  "ok": False, "recoveryHost": "archlinux"}
+        with mock.patch.object(mcp_server, "_ssh_workflow_impl", return_value=result), \
+                mock.patch.object(native_failure_evidence, "record_failure", return_value={}):
+            actual = mcp_server.ssh_workflow("probe", "guest")
+        self.assertEqual("recover-configured-ssh-master", actual["nextAction"]["kind"])
+        self.assertEqual({"tool": "ssh_workflow", "action": "connection-recover",
+                          "args": {"host": "archlinux"}}, actual["nextAction"]["action"])
+        self.assertFalse(actual["nextAction"]["replayAllowed"])
+
+    def test_expired_nested_probe_guidance_survives_boundary_reclassification(self):
+        result = {"host": "guest", "status": "nested_master_absent", "ok": False,
+                  "recoveryHost": "archlinux", "nextAction": {"action": "foreign-command"}}
+        actual = next_action("ssh_workflow", "probe", result)
+        self.assertEqual("recover-configured-ssh-master", actual["kind"])
+        self.assertEqual({"tool": "ssh_workflow", "action": "connection-recover",
+                          "args": {"host": "archlinux"}}, actual["action"])
+        self.assertFalse(actual["replayAllowed"])
+        for invalid in (None, [], "arch;touch /tmp/foreign", "a" * 65, ":foreign"):
+            with self.subTest(host=invalid):
+                rejected = next_action("ssh_workflow", "probe", {**result, "recoveryHost": invalid})
+                self.assertEqual("inspect-evidence", rejected["kind"])
+                self.assertNotIn("action", rejected)
+        for tool, action, extra in (("vm_workflow", "probe", {}),
+                                    ("ssh_workflow", "job-status", {}),
+                                    ("ssh_workflow", "probe", {"status": "authentication_failed"}),
+                                    ("ssh_workflow", "probe", {"ok": True})):
+            self.assertNotEqual("recover-configured-ssh-master", next_action(tool, action, {**result, **extra})["kind"])
+
     def test_known_response_taxonomy(self):
         job = {"host": "vm", "identity": {"jobId": "job-17", "pid": 417, "startTicks": 9981}, "status": "running", "reason": "process_live", "ok": True}
         cases = (

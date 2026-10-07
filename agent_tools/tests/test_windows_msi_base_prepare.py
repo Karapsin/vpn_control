@@ -354,6 +354,107 @@ def _run_unknown_cleanup_program(replies, *, mode: str, stage: str, polls: int =
 
 
 class BasePrepareTests(unittest.TestCase):
+    def test_route_census_inventory_lock_parent_and_source_drift_reject_admission(self):
+        for mutation in ('new-unknown','same-bytes','lock-exchange','parent-exchange','source-change'):
+            with self.subTest(mutation=mutation),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);directory=root/base._LOCAL
+                directory.mkdir(parents=True,mode=0o700);directory.parent.chmod(0o700)
+                for name in ('.environment.lock','a.json'):
+                    (directory/name).write_bytes(b'{}');(directory/name).chmod(0o600)
+                source=root/'source.py';source.write_bytes(b'original')
+                def census(*args):
+                    if mutation=='new-unknown':
+                        (directory/'new.json').write_bytes(b'{}');(directory/'new.json').chmod(0o600)
+                    elif mutation=='same-bytes':(directory/'a.json').write_bytes(b'{}')
+                    elif mutation=='lock-exchange':
+                        (directory/'.environment.lock').unlink();(directory/'.environment.lock').write_bytes(b'{}');(directory/'.environment.lock').chmod(0o600)
+                    elif mutation=='parent-exchange':
+                        directory.rename(directory.with_name('retained'));directory.mkdir(mode=0o700)
+                    elif mutation=='source-change':source.write_bytes(b'changed')
+                    return {'a.json','new.json'}
+                with patch.object(base,'__file__',str(source)),patch.object(base,'_archived_base_record_names',side_effect=census) as observed:
+                    with self.assertRaises((base.WindowsMsiBasePrepareError,OSError)):
+                        base._require_base_route_free(root)
+                    self.assertEqual(observed.call_count,1)
+
+    def test_route_census_shared_parent_metadata_changes_do_not_change_base_authority(self):
+        for mutation in ('same-mode-chmod','unrelated-sibling'):
+            with self.subTest(mutation=mutation),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);directory=root/base._LOCAL
+                directory.mkdir(parents=True,mode=0o700);directory.parent.chmod(0o700)
+                for name in ('.environment.lock','a.json'):
+                    (directory/name).write_bytes(b'{}');(directory/name).chmod(0o600)
+                def census(*args):
+                    before=directory.parent.stat()
+                    if mutation=='same-mode-chmod':directory.parent.chmod(0o700)
+                    else:(directory.parent/'unrelated-platform').mkdir(mode=0o700)
+                    after=directory.parent.stat()
+                    self.assertEqual((before.st_dev,before.st_ino,before.st_mode,before.st_uid,before.st_gid),
+                                     (after.st_dev,after.st_ino,after.st_mode,after.st_uid,after.st_gid))
+                    self.assertNotEqual(before.st_ctime_ns,after.st_ctime_ns)
+                    return {'a.json'}
+                with patch.object(base,'_archived_base_record_names',side_effect=census) as observed:
+                    base._require_base_route_free(root)
+                    self.assertEqual(observed.call_count,1)
+
+    def test_route_census_shared_parent_uid_gid_drift_rejects(self):
+        from types import SimpleNamespace
+        for field in ('st_uid','st_gid'):
+            with self.subTest(field=field),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);directory=root/base._LOCAL
+                directory.mkdir(parents=True,mode=0o700);directory.parent.chmod(0o700)
+                for name in ('.environment.lock','a.json'):
+                    (directory/name).write_bytes(b'{}');(directory/name).chmod(0o600)
+                changed=[False];actual_lstat=Path.lstat
+                def lstat(path,*args,**kwargs):
+                    info=actual_lstat(path,*args,**kwargs)
+                    if path==directory.parent and changed[0]:
+                        values={key:getattr(info,key) for key in ('st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns')}
+                        values[field]+=1;return SimpleNamespace(**values)
+                    return info
+                def census(*args):changed[0]=True;return {'a.json'}
+                with patch.object(Path,'lstat',lstat),patch.object(base,'_archived_base_record_names',side_effect=census):
+                    with self.assertRaises(base.WindowsMsiBasePrepareError):base._require_base_route_free(root)
+
+    def test_route_census_shared_parent_exchange_and_permissions_reject(self):
+        for mutation in ('parent-exchange','parent-permissions'):
+            with self.subTest(mutation=mutation),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);directory=root/base._LOCAL
+                directory.mkdir(parents=True,mode=0o700);directory.parent.chmod(0o700)
+                for name in ('.environment.lock','a.json'):
+                    (directory/name).write_bytes(b'{}');(directory/name).chmod(0o600)
+                def census(*args):
+                    if mutation=='parent-exchange':
+                        directory.parent.rename(root/'retained-rag');directory.parent.mkdir(mode=0o700)
+                    else:directory.parent.chmod(0o755)
+                    return {'a.json'}
+                with patch.object(base,'_archived_base_record_names',side_effect=census):
+                    with self.assertRaises((base.WindowsMsiBasePrepareError,OSError)):
+                        base._require_base_route_free(root)
+
+    def test_route_census_stable_unknown_json_still_blocks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);directory=root/base._LOCAL
+            directory.mkdir(parents=True,mode=0o700);directory.parent.chmod(0o700)
+            for name in ('.environment.lock','unknown.json'):
+                (directory/name).write_bytes(b'{}');(directory/name).chmod(0o600)
+            with patch.object(base,'_archived_base_record_names',return_value=set()) as observed:
+                with self.assertRaises(base.WindowsMsiBasePrepareError):base._require_base_route_free(root)
+                self.assertEqual(observed.call_count,1)
+
+    def test_actual_route_census_runs_once_for_all_json_in_one_admission(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);directory=root/base._LOCAL
+            directory.mkdir(parents=True,mode=0o700);directory.parent.chmod(0o700)
+            for name in ('.environment.lock','a.json','b.json','c.json'):
+                (directory/name).write_bytes(b'{}');(directory/name).chmod(0o600)
+            with patch.object(base,'_archived_base_record_names',return_value={'a.json','b.json','c.json'}) as census:
+                base._require_base_route_free(root)
+                self.assertEqual(census.call_count,1)
+                base._require_base_route_free(root)
+                self.assertEqual(census.call_count,2)  # no cache across admissions
+
+
     def test_terminal_reconcile_survives_consumed_bootstrap_status_only_with_durable_proof(self):
         """A terminal QGA status can be read once; later reads must use bound facts."""
         intent = {"environment": "windows-cp117", "socketPath": "/private/qga.sock",
@@ -853,6 +954,7 @@ def call(sock,command,args):
                       "environment": descriptor[0], "socketPath": descriptor[1],
                       "pid": descriptor[2], "startTicks": descriptor[3], "expectedSid": sid}
             base._reserve(root, intent)
+            (root / ".rag_index").chmod(0o700)  # private campaign read-lock ancestry
             original = base._private_intent(root, corr)
             identity = base._campaign_identity(base._PRE_EFFECT_REJECTED_REQUEST, descriptor)
             def remote(action, request):
@@ -2267,6 +2369,9 @@ def call(sock,command,args):
     def test_unknown_closed_archive_allows_new_intent_without_deleting_old_journal(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); config, target, descriptor = self._unknown_close_root(root)
+            (root / ".rag_index").chmod(0o700)
+            lock = root / base._LOCAL / ".environment.lock"
+            lock.write_bytes(b""); lock.chmod(0o600)
             old_intent = base._private_intent(root, base._UNKNOWN_CLOSURE_CORRELATION)
             marker = base._unknown_closure_marker(root)
             marker.write_text("{}")
@@ -2282,5 +2387,273 @@ def call(sock,command,args):
             self.assertIsNotNone(base._private_intent(root, next_corr))
 
 
+class Source67ArchiveAllowListTests(unittest.TestCase):
+    def test_allow_list_requires_actual_fixed_private_validation_and_current_proof(self):
+        from agent_tools.tests.test_windows_cp117_source_pre_effect_close import source67_archive_fixture
+        from agent_tools import windows_cp117_source_pre_effect_close as close
+        with source67_archive_fixture() as (root, descriptor, _intent, _marker):
+            expected = {close._CORRELATION + ".json", close._CORRELATION + close._MARKER_SUFFIX}
+            self.assertEqual(expected, base._archived_base_record_names(root, object(), object(), descriptor))
+            original = base._intent_path(root, close._CORRELATION)
+            marker = close._marker(root); before = (original.read_bytes(), marker.read_bytes())
+            base._reserve(root, {"request": REQUEST}, config=object(), target=object(), descriptor=descriptor)
+            self.assertEqual(before, (original.read_bytes(), marker.read_bytes()))
+            self.assertEqual({"request": REQUEST}, base._private_intent(root, CORR))
+            with patch.object(close, "_guest_absent", return_value=None):
+                self.assertTrue(expected.isdisjoint(base._archived_base_record_names(root, object(), object(), descriptor)))
+            close._marker(root).write_text("{}")
+            self.assertTrue(expected.isdisjoint(base._archived_base_record_names(root, object(), object(), descriptor)))
+            self.assertTrue(base._intent_path(root, close._CORRELATION).exists())
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class FixedHistoricalTaskAdmissionTests(unittest.TestCase):
+    descriptor = ("windows-cp117", "/qga.sock", 589342, 520739, "S-1-5-21-1-2-3-1002")
+
+    def observe(self, census, *, c32=True, recovery=True):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(base, "_descriptor", return_value=(object(), object(), self.descriptor)), \
+                 patch.object(base, "_remote", return_value=json.dumps({"state": "observed", "inventory": census})), \
+                 patch.object(base, "_fixed_c32_task_terminal", return_value=c32), \
+                 patch.object(base, "_fixed_recovery_task_terminal", return_value=recovery):
+                return base._legacy_task_observation(Path(directory), self.descriptor, CORR)
+
+    def census(self):
+        # Actual 2026-10-02 census: only retained C32 and c2c0 recovery.
+        return {"version": 2, "legacyTaskCount": 0, "otherTaskCount": 0,
+                "c32TaskCount": 1, "recoveryTaskCount": 1, "activeInstallerCount": 0}
+
+    def test_two_fixed_tasks_require_both_current_terminal_proofs(self):
+        self.assertEqual(self.observe(self.census())["state"], "cleaned")
+
+    def test_actual_submitted_recovery_still_blocks(self):
+        self.assertEqual(self.observe(self.census(), recovery=False)["state"], "blocked")
+
+    def test_unknown_tasks_active_installers_and_wrong_counts_block(self):
+        for name in ("legacyTaskCount", "otherTaskCount", "activeInstallerCount", "c32TaskCount", "recoveryTaskCount"):
+            with self.subTest(name=name):
+                value = self.census(); value[name] += 1
+                self.assertNotEqual(self.observe(value)["state"], "cleaned")
+        self.assertEqual(self.observe(self.census(), c32=False)["state"], "blocked")
+
+    def test_fixed_reader_is_inert_and_covers_cp117_namespace(self):
+        body = base._legacy_task_script()
+        self.assertIn("VpnControlCp117", body)
+        self.assertIn("c32cb108-4d48-407e-9153-40774559ba50", body)
+        self.assertIn("c2c0e5c9-77aa-4bd2-91a1-fb7540aa9f58", body)
+        for mutation in ("Unregister-ScheduledTask", "Start-ScheduledTask", "Stop-Process"):
+            self.assertNotIn(mutation, body)
+
+    def test_original_reader_cannot_distinguish_retained_c32_from_unknown_task(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(base, "_descriptor", return_value=(object(), object(), self.descriptor)), \
+                 patch.object(base, "_remote", return_value=json.dumps({"state": "observed", "inventory": {
+                     "version": 1, "code": "BUSY_OR_UNKNOWN", "legacyTaskCount": 0,
+                     "otherTaskCount": 1, "activeInstallerCount": 0}})):
+                # The old reader counts C32 as other and misses c2c0 entirely.
+                self.assertIn("VpnControlCp117GuestAgentRecovery-", base._legacy_task_script())
+                self.assertEqual(base._legacy_task_observation(Path(directory), self.descriptor)["state"], "unknown")
+
+    def test_recovery_proof_is_fresh_bound_and_never_writes_terminal(self):
+        from agent_tools import windows_cp117_guest_agent_recovery_successor as recovery
+        from agent_tools import windows_cp117_historical_base_archives as history
+        before = {"name": "qemu-ga", "state": "Running", "startName": "LocalSystem",
+                  "pid": 12, "startTicks": 41, "path": r"C:\qemu-ga.exe"}
+        intent = {"recoveryCorrelationId": recovery._RECOVERY, "service": before, "guestGeneration": {"socketPath": self.descriptor[1],
+                  "qemuPid": self.descriptor[2], "startTicks": self.descriptor[3]}}
+        digest = recovery._digest(intent)
+        action_sha = recovery._action(before, digest)
+        terminal = {"intentSha256": digest, "outcome": "restarted"}
+        action = {"intentSha256": digest, "actionSha256": action_sha}
+        observed = {"binding": digest, "terminalBinding": digest, "outcome": "restarted",
+                    "taskSystem": True, "taskState": "Ready", "actionSha256": action_sha,
+                    "service": {**before, "pid": 13, "startTicks": 42},
+                    "recoveryCorrelationId": recovery._RECOVERY, "childPid": 20, "childStartTicks": 40}
+        variants = [(observed, terminal, True), (observed, None, False)]
+        for key, value in (("binding", "0" * 64), ("actionSha256", "0" * 64),
+                           ("taskSystem", False), ("taskState", "Running"),
+                           ("recoveryCorrelationId", CORR), ("childPid", True),
+                           ("childStartTicks", 0), ("service", before)):
+            variants.append(({**observed, key: value}, terminal, False))
+        for guest, local_terminal, expected in variants:
+            with self.subTest(guest=guest, local_terminal=local_terminal), \
+                 tempfile.TemporaryDirectory() as directory, \
+                 patch.object(history, "_read", side_effect=[intent, local_terminal, action]), \
+                 patch.object(base, "_descriptor", return_value=(object(), object(), self.descriptor)), \
+                 patch.object(recovery.original, "_run_ps", return_value=guest) as run, \
+                 patch.object(recovery.original, "record_terminal") as record, \
+                 patch.object(recovery.guards, "secure_write_create") as write:
+                journal = Path(directory) / recovery._DIR
+                journal.mkdir(mode=0o700, parents=True)
+                self.assertEqual(base._fixed_recovery_task_terminal(Path(directory), self.descriptor), expected)
+                record.assert_not_called(); write.assert_not_called()
+                if local_terminal is None:
+                    run.assert_not_called()
+        script = recovery._status_script()
+        for guard in ("CHILD_LIVE", "ServiceAccount", "Highest", "Read-SecureJson 'terminal.json'", "ACTION"):
+            self.assertIn(guard, script)
+
+    def test_c32_proof_requires_current_archive_and_same_guest_generation(self):
+        from agent_tools import windows_cp117_c32_archive_admission as archive
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for proof, current, expected in (({"state": "ready", "correlationId": base._FIXED_C32_TASK.removeprefix("VpnControlMcpBase-")}, self.descriptor, True),
+                                             ({"state": "blocked"}, self.descriptor, False),
+                                             ({"state": "ready", "correlationId": CORR}, self.descriptor, False),
+                                             ({"state": "ready", "correlationId": base._FIXED_C32_TASK.removeprefix("VpnControlMcpBase-")}, (*self.descriptor[:3], 1, self.descriptor[4]), False)):
+                with patch.object(archive, "preflight", return_value=proof), \
+                     patch.object(base, "_descriptor", return_value=(object(), object(), current)):
+                    self.assertEqual(base._fixed_c32_task_terminal(root, self.descriptor, CORR), expected)
+
+    def test_census_does_not_hide_owned_tasks_in_subfolders(self):
+        script = base._legacy_task_script()
+        self.assertNotIn("Get-ScheduledTask -TaskPath", script)
+        self.assertIn("$_.TaskPath -ceq '\\'", script)
+        self.assertIn("$_.TaskPath -cne '\\'", script)
+
+    def test_ready_terminal_recovery_requires_no_trigger_or_restart(self):
+        script = base._fixed_recovery_task_status_script()
+        self.assertIn("$task.Triggers", script)
+        self.assertIn("$task.Settings.RestartCount", script)
+        self.assertIn("RECOVERY_AUTOSTART", script)
+        self.assertIn("ParseInput", script)
+
+    def test_recovery_missing_metadata_never_creates_directory(self):
+        from agent_tools import windows_cp117_guest_agent_recovery_successor as recovery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertFalse(base._fixed_recovery_task_terminal(root, self.descriptor))
+            self.assertFalse((root / '.rag_index').exists())
+
+    @unittest.skipUnless(os.name == "posix", "POSIX private-file and flock semantics")
+    def test_recovery_private_reader_rejects_unsafe_files_and_duplicate_keys(self):
+        from agent_tools import windows_cp117_guest_agent_recovery_successor as recovery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); journal = root / recovery._DIR
+            journal.mkdir(parents=True, mode=0o700)
+            record = journal / 'intent.json'
+            record.write_text('{"recoveryCorrelationId":"x","recoveryCorrelationId":"y"}')
+            record.chmod(0o600)
+            with self.assertRaises(ValueError):
+                base._fixed_recovery_task_terminal(root, self.descriptor)
+            record.write_text('{}'); record.chmod(0o644)
+            with self.assertRaises(ValueError):
+                base._fixed_recovery_task_terminal(root, self.descriptor)
+            record.unlink(); record.symlink_to(root / 'foreign.json')
+            with self.assertRaises(OSError):
+                base._fixed_recovery_task_terminal(root, self.descriptor)
+
+    def test_consumed_static_retirement_excludes_another_lease_after_ssh_deadline(self):
+        from agent_tools import windows_cp117_static_tasks_retire as retire
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); journal = root / retire._DIR
+            journal.mkdir(parents=True, mode=0o700)
+            # Durable consumed intent survives transport expiry; bytes are not
+            # manually promoted into an archive or successful outcome.
+            (journal / 'intent.json').write_text('{}')
+            with patch.object(retire, "status", return_value=retire._result('unknown', 'dispatch')), \
+                 patch.object(base, "_descriptor", return_value=(object(), object(), self.descriptor)), \
+                 patch.object(base, "_remote", return_value=json.dumps({"state": "observed", "inventory": self.census()})), \
+                 patch.object(base, "_fixed_c32_task_terminal", return_value=True), \
+                 patch.object(base, "_fixed_recovery_task_terminal", return_value=True):
+                self.assertEqual(base._legacy_task_observation(root, self.descriptor, CORR)['state'], 'blocked')
+
+    def test_verified_static_retirement_then_two_fresh_task_proofs_admit(self):
+        from agent_tools import windows_cp117_static_tasks_retire as retire
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); journal = root / retire._DIR
+            journal.mkdir(parents=True, mode=0o700); (journal / 'intent.json').write_text('{}')
+            with patch.object(retire, "status", return_value=retire._result('retired', 'complete')) as status, \
+                 patch.object(base, "_descriptor", return_value=(object(), object(), self.descriptor)), \
+                 patch.object(base, "_remote", return_value=json.dumps({"state": "observed", "inventory": self.census()})), \
+                 patch.object(base, "_fixed_c32_task_terminal", return_value=True) as c32, \
+                 patch.object(base, "_fixed_recovery_task_terminal", return_value=True) as recovery:
+                self.assertEqual(base._legacy_task_observation(root, self.descriptor, CORR)['state'], 'cleaned')
+                status.assert_called_once_with(root, {})
+                c32.assert_called_once_with(root, self.descriptor, CORR)
+                recovery.assert_called_once_with(root, self.descriptor)
+
+    def test_consumed_static_retirement_rejects_incomplete_or_malformed_closure(self):
+        from agent_tools import windows_cp117_static_tasks_retire as retire
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); journal = root / retire._DIR
+            journal.mkdir(parents=True, mode=0o700); (journal / 'intent.json').symlink_to(root / 'missing.json')
+            valid = retire._result('retired', 'complete')
+            for proof in (retire._result('not-started', 'intent'), retire._result('unknown', 'dispatch'),
+                          {**valid, 'phase': 'absence'}, {**valid, 'extra': True},
+                          {**valid, 'retirementCorrelationId': CORR}, {**valid, 'productAction': 0}):
+                with self.subTest(proof=proof), patch.object(retire, 'status', return_value=proof), \
+                     patch.object(base, '_descriptor', return_value=(object(), object(), self.descriptor)):
+                    self.assertFalse(base._static_task_retirement_admitted(root, self.descriptor))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX private-file and flock semantics")
+    def test_reservation_rechecks_static_intent_published_after_preflight(self):
+        from agent_tools import windows_cp117_static_tasks_retire as retire
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            # First observation precedes retirement's atomic intent publication.
+            self.assertTrue(base._static_task_retirement_admitted(root, self.descriptor))
+            journal = root / retire._DIR; journal.mkdir(parents=True, mode=0o700)
+            (journal / 'intent.json').write_text('{}')
+            with patch.object(base, '_archived_base_record_names', return_value=set()), \
+                 patch.object(retire, 'status', return_value=retire._result('unknown', 'dispatch')):
+                with self.assertRaisesRegex(base.WindowsMsiBasePrepareError, 'STATIC_RETIREMENT_UNVERIFIED'):
+                    base._reserve(root, {'request': REQUEST}, descriptor=self.descriptor)
+            self.assertFalse(base._intent_path(root, CORR).exists())
+
+    @unittest.skipUnless(os.name == "posix", "POSIX private-file and flock semantics")
+    def test_static_publication_under_base_lock_excludes_waiting_reservation(self):
+        import fcntl
+        from agent_tools import windows_cp117_static_tasks_retire as retire
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); base_journal = root / base._LOCAL
+            base_journal.mkdir(parents=True, mode=0o700)
+            lock = os.open(base_journal / '.environment.lock', os.O_CREAT | os.O_RDWR, 0o600)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            started = threading.Event(); attempted = threading.Event(); outcomes = []
+            actual_flock = fcntl.flock
+            def observed_flock(fd, operation):
+                if fd != lock and operation == fcntl.LOCK_EX:
+                    attempted.set()
+                return actual_flock(fd, operation)
+            def reserve():
+                started.set()
+                try:
+                    base._reserve(root, {'request': REQUEST}, descriptor=self.descriptor)
+                    outcomes.append('reserved')
+                except base.WindowsMsiBasePrepareError as error:
+                    outcomes.append(str(error))
+            worker = threading.Thread(target=reserve)
+            try:
+                with patch.object(fcntl, 'flock', side_effect=observed_flock), \
+                     patch.object(base, '_archived_base_record_names', return_value=set()), \
+                     patch.object(retire, 'status', return_value=retire._result('unknown', 'dispatch')):
+                    worker.start(); self.assertTrue(started.wait(2)); self.assertTrue(attempted.wait(2))
+                    self.assertFalse(base._intent_path(root, CORR).exists())
+                    journal = root / retire._DIR; journal.mkdir(parents=True, mode=0o700)
+                    (journal / 'intent.json').write_text('{}')
+                    fcntl.flock(lock, fcntl.LOCK_UN)
+                    worker.join(2)
+                    self.assertFalse(worker.is_alive())
+            finally:
+                os.close(lock)
+                worker.join(2)
+            self.assertEqual(outcomes, ['STATIC_RETIREMENT_UNVERIFIED'])
+            self.assertFalse(base._intent_path(root, CORR).exists())
+
+    @unittest.skipUnless(os.name == 'posix', 'POSIX inode and flock semantics')
+    def test_reservation_rejects_replaced_shared_lock_before_consuming_intent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            def replace_lock(*args):
+                path = root / base._LOCAL / '.environment.lock'
+                path.unlink(); path.write_text(''); path.chmod(0o600)
+                return True
+            with patch.object(base, '_archived_base_record_names', return_value=set()), \
+                 patch.object(base, '_static_task_retirement_admitted', side_effect=replace_lock):
+                with self.assertRaisesRegex(base.WindowsMsiBasePrepareError, 'lock'):
+                    base._reserve(root, {'request': REQUEST}, descriptor=self.descriptor)
+            self.assertFalse(base._intent_path(root, CORR).exists())

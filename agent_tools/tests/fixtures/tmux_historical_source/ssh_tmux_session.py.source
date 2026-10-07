@@ -1,0 +1,397 @@
+"""Optional Linux packaging persistence; no arbitrary shell or interactive attach.
+
+Runs on the owned Linux build host AFTER source staging. Transport and result
+collection belong to the caller. The fixed build's existing artifact receipts
+remain authoritative. No close/kill API is provided: child-runtime absence has
+not been established for packaging descendants (including Gradle daemons).
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import stat
+import subprocess
+import sys
+import time
+from uuid import UUID
+
+PURPOSE = "linux-package-fixture-build"
+REVIEWED_BUILD_SHA256 = "2aeaef328f9ccb9b7a1d929603929c9ee1fbb827c027ca09d3953dc0cb00a8c8"
+MAX_RESULT = 3 * 1024**3 + 16384
+
+
+class SessionError(ValueError):
+    """Finite public reason only; raw commands, output, and environment are private."""
+
+
+def need(condition, reason):
+    if not condition:
+        raise SessionError(reason)
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def generation(info):
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_nlink]
+
+
+def private_dir(path):
+    info = path.lstat()
+    need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and
+         stat.S_IMODE(info.st_mode) == 0o700, "unsafe_directory")
+    return generation(info)[:5]  # Child creation legitimately changes size/times.
+
+
+def read(path, maximum=16384):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(fd)
+        need(stat.S_ISREG(before.st_mode) and before.st_uid == os.getuid() and
+             stat.S_IMODE(before.st_mode) == 0o600 and before.st_nlink == 1 and
+             before.st_size <= maximum, "unsafe_record")
+        raw = os.read(fd, maximum + 1)
+        after = os.fstat(fd)
+        need(len(raw) == before.st_size and generation(before) == generation(after) ==
+             generation(path.lstat()), "record_changed")
+        return raw, {"generation": generation(after), "sha256": hashlib.sha256(raw).hexdigest()}
+    finally:
+        os.close(fd)
+
+
+def write_once(path, raw):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        view = memoryview(raw)
+        while view:
+            count = os.write(fd, view)
+            need(count > 0, "record_write_failed")
+            view = view[count:]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    dfd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(dfd)
+    finally:
+        os.close(dfd)
+    return read(path)[1]
+
+
+def request(raw):
+    need(type(raw) is dict and set(raw) == {"purpose", "host", "environment", "sourceSha",
+                                          "baseVersion", "targetVersion", "correlationId"}, "invalid_request")
+    need(raw["purpose"] == PURPOSE and raw["host"] == "archlinux" and
+         raw["environment"] == "owned-linux-package-build", "unsupported_purpose")
+    try:
+        valid_uuid = type(raw["correlationId"]) is str and str(UUID(raw["correlationId"])) == raw["correlationId"]
+    except (ValueError, TypeError, AttributeError):
+        valid_uuid = False
+    need(valid_uuid and type(raw["sourceSha"]) is str and
+         re.fullmatch(r"[0-9a-f]{40}", raw["sourceSha"]), "invalid_identity")
+    from scripts.version_metadata import parse_version
+    try:
+        need(type(raw["baseVersion"]) is str and type(raw["targetVersion"]) is str and
+             parse_version(raw["baseVersion"]) < parse_version(raw["targetVersion"]), "invalid_versions")
+    except (ValueError, TypeError):
+        raise SessionError("invalid_versions") from None
+    return dict(raw)
+
+
+def run(argv, cwd=None):
+    try:
+        value = subprocess.run(argv, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True,
+                               timeout=10, check=False, env={"PATH": "/usr/bin:/bin", "HOME": str(Path.home()),
+                                                          "LANG": "C", "LC_ALL": "C"})
+    except (OSError, subprocess.TimeoutExpired):
+        raise SessionError("command_unavailable") from None
+    need(len(value.stdout) <= 16384 and len(value.stderr) <= 16384, "response_oversized")
+    return value
+
+
+def source_pin(source, req):
+    need(source.is_absolute() and not source.is_symlink(), "unsafe_source")
+    for args, expected in ((["rev-parse", "HEAD"], req["sourceSha"]),
+                           (["status", "--porcelain", "--untracked-files=no"], "")):
+        result = run(["git", "-C", str(source), *args])
+        need(result.returncode == 0 and (result.stdout.decode().strip() == expected or (args[0] == "status" and result.stdout == b" M agent_tools/linux_package_fixture_build.py\n")), "source_changed")
+    path = source / "agent_tools/linux_package_fixture_build.py"
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(fd)
+        need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size <= 1024**2,
+             "unsafe_build_source")
+        raw = os.read(fd, 1024**2 + 1)
+        need(hashlib.sha256(raw).hexdigest() == REVIEWED_BUILD_SHA256 and
+             generation(info) == generation(os.fstat(fd)) == generation(path.lstat()), "unreviewed_build_source")
+    finally:
+        os.close(fd)
+    return {"helperGeneration": generation(info), "helperSha256": REVIEWED_BUILD_SHA256}
+
+
+# The pane is deliberately gated. Its PID/start ticks are journaled before release.
+# A lost submit response leaves the create-only launch fence consumed; never replay.
+_WORKER = r'''
+import base64,hashlib,json,os,pathlib,resource,stat,subprocess,sys,time
+job=pathlib.Path(sys.argv[1]);source=pathlib.Path(sys.argv[2]);request=json.loads(base64.b64decode(sys.argv[3],validate=True))
+os.umask(0o077)
+for unused in range(3000):
+    if (job/'release.json').exists():break
+    time.sleep(.1)
+else:raise SystemExit(72)
+gen=lambda s:[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_nlink]
+def record(path):
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    try:
+        info=os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1 or info.st_size>16384:raise SystemExit(73)
+        raw=os.read(fd,16385)
+        if len(raw)!=info.st_size or gen(os.fstat(fd))!=gen(info) or gen(path.lstat())!=gen(info):raise SystemExit(73)
+        return raw,{'generation':gen(info),'sha256':hashlib.sha256(raw).hexdigest()}
+    finally:os.close(fd)
+release_raw,release_pin=record(job/'release.json');release=json.loads(release_raw)
+if set(release)!={'correlationId','pid','releaseFencePin'} or release['correlationId']!=request['correlationId'] or type(release['pid'])is not int or release['pid']!=os.getpid():raise SystemExit(73)
+anchor_raw,anchor_pin=record(job/'tmux-anchor.json');anchor=json.loads(anchor_raw);proof=anchor['proof']
+fence_raw,fence_pin=record(job/'tmux-release-fence.json')
+if release['releaseFencePin']!=fence_pin or json.loads(fence_raw)!={'anchorPin':anchor_pin,'correlationId':request['correlationId']}:raise SystemExit(73)
+if proof['request']!=request:raise SystemExit(74)
+def guard():
+    if gen(job.lstat())[:5]!=proof['job'] or gen(job.parent.lstat())[:5]!=proof['parent']:raise SystemExit(74)
+    if record(job/'tmux-anchor.json')[1]!=anchor_pin or record(job/'release.json')[1]!=release_pin or record(job/'tmux-release-fence.json')[1]!=fence_pin:raise SystemExit(74)
+    if record(job/'tmux-worker.py')[1]!=anchor['worker'] or record(job/'tmux-launch.json')[0]!=json.dumps(proof,sort_keys=True,separators=(',',':')).encode():raise SystemExit(74)
+guard()
+helper=source/'agent_tools/linux_package_fixture_build.py'
+fd=os.open(helper,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+try:
+    info=os.fstat(fd);raw=os.read(fd,1048577)
+    gen=lambda s:[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_nlink]
+    if gen(info)!=proof['source']['helperGeneration'] or gen(os.fstat(fd))!=gen(info) or gen(helper.lstat())!=gen(info) or hashlib.sha256(raw).hexdigest()!=proof['source']['helperSha256']:raise SystemExit(74)
+finally:os.close(fd)
+for args,expected in ((['rev-parse','HEAD'],request['sourceSha']),(['status','--porcelain','--untracked-files=no'],'')):
+    p=subprocess.run(['git','-C',str(source),*args],capture_output=True,timeout=10,check=False)
+    if p.returncode or (p.stdout.decode().strip()!=expected and not (args[0]=='status' and p.stdout==b' M agent_tools/linux_package_fixture_build.py\n')):raise SystemExit(74)
+# Bound both private streams, without exposing them through the status response.
+resource.setrlimit(resource.RLIMIT_FSIZE,(3221241856,3221241856))
+fixed={key:request[key] for key in ('sourceSha','baseVersion','targetVersion','correlationId')}
+encoded=base64.b64encode(json.dumps(fixed,sort_keys=True,separators=(',',':')).encode()).decode()
+guard()
+with (job/'result.tar').open('xb') as out,(job/'build.log').open('xb') as log:
+    try:
+        p=subprocess.run([sys.executable,'-B','-m','agent_tools.linux_package_fixture_build','--remote-run',str(job),encoded],cwd=source,stdin=subprocess.DEVNULL,stdout=out,stderr=log,timeout=10800,check=False)
+        code=p.returncode
+    except subprocess.TimeoutExpired:code=None
+    out.flush();os.fsync(out.fileno());log.flush();os.fsync(log.fileno())
+result=job/'result.tar';digest=hashlib.sha256()
+with result.open('rb') as f:
+    while block:=f.read(1048576):digest.update(block)
+terminal={'schemaVersion':1,'correlationId':request['correlationId'],'sourceSha':request['sourceSha'],'exitCode':code,'resultBytes':result.stat().st_size,'resultSha256':digest.hexdigest(),'artifactVerification':'required','replayAllowed':False}
+guard()
+with (job/'terminal.json').open('xb') as f:
+    f.write(json.dumps(terminal,sort_keys=True,separators=(',',':')).encode());f.flush();os.fsync(f.fileno())
+fd=os.open(job,os.O_RDONLY|os.O_DIRECTORY);os.fsync(fd);os.close(fd)
+'''
+
+
+def proc_identity(pid):
+    need(type(pid) is int and pid > 0, "invalid_pid")
+    try:
+        text = Path(f"/proc/{pid}/stat").read_text()
+        fields = text[text.rfind(")") + 2:].split()
+        ticks = int(fields[19])
+    except (OSError, ValueError, IndexError):
+        raise SessionError("process_identity_unavailable") from None
+    need(ticks > 0, "process_identity_unavailable")
+    return {"pid": pid, "startTicks": ticks}
+
+
+def tmux(socket, *args):
+    return run(["tmux", "-f", "/dev/null", "-S", str(socket), *args])
+
+
+def preflight(job, source, raw):
+    req = request(raw)
+    job, source = Path(job), Path(source)
+    need(job.is_absolute() and source == job / "source" and job.name == req["correlationId"], "invalid_job")
+    private_dir(job.parent)
+    private_dir(job)
+    need(len(os.fsencode(job / "tmux.sock")) < 100, "socket_path_too_long")
+    need(not os.path.lexists(job / "tmux-launch.json") and not os.path.lexists(job / "tmux.sock"), "consumed_or_foreign")
+    version = run(["tmux", "-V"])
+    need(version.returncode == 0 and re.fullmatch(rb"tmux [0-9]+\.[0-9]+[a-z]?\n?", version.stdout), "tmux_unavailable")
+    return {"request": req, "source": source_pin(source, req), "parent": private_dir(job.parent),
+            "job": private_dir(job), "workerSha256": hashlib.sha256(_WORKER.encode()).hexdigest()}
+
+
+def start(job, source, raw):
+    """Exactly one submit. Return external full pins needed for later observation."""
+    job, source = Path(job), Path(source)
+    proof = preflight(job, source, raw)
+    req = proof["request"]
+    session = "vpn-build-" + req["correlationId"]
+    # Every local effect uses the authorized single-operator private job namespace.
+    write_once(job / "tmux-launch.json", canonical(proof))
+    worker_pin = write_once(job / "tmux-worker.py", _WORKER.encode())
+    need(private_dir(job.parent) == proof["parent"] and private_dir(job) == proof["job"] and
+         source_pin(source, req) == proof["source"] and
+         read(job / "tmux-launch.json")[0] == canonical(proof) and
+         read(job / "tmux-worker.py")[1] == worker_pin, "authority_changed")
+    need(not os.path.lexists(job / "tmux.sock"), "foreign_socket")
+    argv = [sys.executable, "-I", "-B", str(job / "tmux-worker.py"), str(job), str(source),
+            base64.b64encode(canonical(req)).decode()]
+    result = tmux(job / "tmux.sock", "new-session", "-d", "-s", session, "-c", str(source), "exec " + shlex.join(argv))
+    need(result.returncode == 0, "submit_unknown")
+    observed = tmux(job / "tmux.sock", "display-message", "-p", "-t", session, "#{pid} #{pane_pid}")
+    need(observed.returncode == 0 and re.fullmatch(rb"[1-9][0-9]* [1-9][0-9]*\n?", observed.stdout), "submit_unknown")
+    server, pane = (int(value) for value in observed.stdout.split())
+    socket = (job / "tmux.sock").lstat()
+    need(stat.S_ISSOCK(socket.st_mode) and socket.st_uid == os.getuid() and
+         not socket.st_mode & 0o077, "foreign_socket")
+    anchor = {"proof": proof, "worker": worker_pin, "socket": generation(socket),
+              "server": proc_identity(server), "pane": proc_identity(pane), "session": session}
+    pin = write_once(job / "tmux-anchor.json", canonical(anchor))
+    # Validate current owner again before allowing the pane to execute the fixed job.
+    status(job, source, pin)
+    return {"state": "prepared", "correlationId": req["correlationId"], "anchorPin": pin,
+            "replayAllowed": False, "artifactVerification": "required"}
+
+
+
+def release(job, source, expected_anchor):
+    """Caller must durably retain the prepare pin BEFORE this one-shot gate."""
+    job, source = Path(job), Path(source)
+    anchor = _anchor(job, source, expected_anchor)
+    need(not os.path.lexists(job / "tmux-release-fence.json") and
+         not os.path.lexists(job / "release.json"), "release_consumed")
+    need(status(job, source, expected_anchor)["state"] == "prepared", "owner_changed")
+    fence_pin = write_once(job / "tmux-release-fence.json", canonical({"anchorPin": expected_anchor,
+                                                         "correlationId": anchor["proof"]["request"]["correlationId"]}))
+    need(status(job, source, expected_anchor)["state"] == "prepared", "owner_changed")
+    _anchor(job, source, expected_anchor)
+    need(read(job / "tmux-release-fence.json")[1] == fence_pin, "release_changed")
+    write_once(job / "release.json", canonical({"correlationId": anchor["proof"]["request"]["correlationId"],
+                                              "pid": anchor["pane"]["pid"], "releaseFencePin": fence_pin}))
+    return {"state": "released", "correlationId": anchor["proof"]["request"]["correlationId"],
+            "replayAllowed": False, "artifactVerification": "required"}
+
+def _valid_pin(value):
+    return (type(value) is dict and set(value) == {"generation", "sha256"} and
+            type(value["generation"]) is list and len(value["generation"]) == 9 and
+            all(type(part) is int and part >= 0 for part in value["generation"]) and
+            type(value["sha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", value["sha256"]) is not None)
+
+
+def _anchor(job, source, expected):
+    need(_valid_pin(expected), "external_pin_required")
+    raw, pin = read(job / "tmux-anchor.json")
+    need(pin == expected, "anchor_changed")
+    anchor = json.loads(raw)
+    proof = anchor["proof"]
+    need(private_dir(job.parent) == proof["parent"] and private_dir(job) == proof["job"] and
+         source_pin(source, proof["request"]) == proof["source"] and
+         read(job / "tmux-launch.json")[0] == canonical(proof) and
+         read(job / "tmux-worker.py")[1] == anchor["worker"], "authority_changed")
+    return anchor
+
+
+
+def _released(job, anchor, expected_anchor):
+    if not os.path.lexists(job / "release.json"):
+        return False
+    raw, unused = read(job / "release.json")
+    gate = json.loads(raw)
+    need(type(gate) is dict and set(gate) == {"correlationId", "pid", "releaseFencePin"} and
+         type(gate["pid"]) is int and gate["pid"] == anchor["pane"]["pid"] and
+         gate["correlationId"] == anchor["proof"]["request"]["correlationId"] and
+         _valid_pin(gate["releaseFencePin"]), "release_changed")
+    fence_raw, fence_pin = read(job / "tmux-release-fence.json")
+    need(fence_pin == gate["releaseFencePin"] and fence_raw == canonical({"anchorPin": expected_anchor,
+          "correlationId": anchor["proof"]["request"]["correlationId"]}), "release_changed")
+    return True
+
+def status(job, source, expected_anchor):
+    """Reattach means observe original job; never launch, restart, signal, or attach UI."""
+    job, source = Path(job), Path(source)
+    anchor = _anchor(job, source, expected_anchor)
+    req = anchor["proof"]["request"]
+    released = _released(job, anchor, expected_anchor)
+    if os.path.lexists(job / "terminal.json"):
+        need(released, "terminal_without_release")
+        raw, pin = read(job / "terminal.json")
+        value = json.loads(raw)
+        need(type(value) is dict and set(value) == {"schemaVersion", "correlationId", "sourceSha", "exitCode",
+                                                   "resultBytes", "resultSha256", "artifactVerification", "replayAllowed"}
+             and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1 and
+             value["correlationId"] == req["correlationId"] and value["sourceSha"] == req["sourceSha"] and
+             (value["exitCode"] is None or type(value["exitCode"]) is int) and
+             type(value["resultBytes"]) is int and 0 <= value["resultBytes"] <= MAX_RESULT and
+             type(value["resultSha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", value["resultSha256"]) and
+             value["artifactVerification"] == "required" and value["replayAllowed"] is False, "invalid_terminal")
+        _anchor(job, source, expected_anchor)
+        need(read(job / "terminal.json")[1] == pin, "terminal_changed")
+        return {"state": "terminal" if value["exitCode"] is not None else "unknown", "correlationId": req["correlationId"],
+                "exitCode": value["exitCode"], "terminalPin": pin, "artifactVerification": "required", "replayAllowed": False}
+    socket = (job / "tmux.sock").lstat()
+    need(generation(socket) == anchor["socket"] and proc_identity(anchor["server"]["pid"]) == anchor["server"] and
+         proc_identity(anchor["pane"]["pid"]) == anchor["pane"], "owner_changed")
+    value = tmux(job / "tmux.sock", "list-sessions", "-F", "#{session_name}")
+    need(value.returncode == 0 and value.stdout == (anchor["session"] + "\n").encode(), "foreign_session")
+    value = tmux(job / "tmux.sock", "display-message", "-p", "-t", anchor["session"], "#{pid} #{pane_pid}")
+    need(value.returncode == 0 and value.stdout.strip() ==
+         f"{anchor['server']['pid']} {anchor['pane']['pid']}".encode(), "owner_changed")
+    _anchor(job, source, expected_anchor)
+    need(generation((job / "tmux.sock").lstat()) == anchor["socket"] and
+         proc_identity(anchor["server"]["pid"]) == anchor["server"] and
+         proc_identity(anchor["pane"]["pid"]) == anchor["pane"], "owner_changed")
+    state = "running" if _released(job, anchor, expected_anchor) else "prepared"
+    return {"state": state, "correlationId": req["correlationId"], "replayAllowed": False,
+            "artifactVerification": "required"}
+
+
+def collect(job, source, expected_anchor, terminal_pin, offset, limit=1536, expected_result=None):
+    """Fixed result.tar chunk only. No commands, retry, or artifact promotion.
+
+    Caller must preserve the terminal pin and run the existing complete artifact
+    verifier after collecting every byte. A zero/nonzero exit alone is insufficient.
+    """
+    need(type(offset) is int and 0 <= offset <= MAX_RESULT and type(limit) is int and
+         1 <= limit <= 1024**2, "invalid_chunk")
+    job, source = Path(job), Path(source)
+    _anchor(job, source, expected_anchor)
+    raw, actual = read(job / "terminal.json")
+    need(_valid_pin(terminal_pin) and actual == terminal_pin, "terminal_changed")
+    terminal = json.loads(raw)
+    observation = status(job, source, expected_anchor)
+    need(observation["terminalPin"] == terminal_pin and observation["state"] == "terminal", "terminal_unavailable")
+    fd = os.open(job / "result.tar", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(fd)
+        need(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and
+             stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1 and
+             info.st_size == terminal["resultBytes"] and offset <= info.st_size, "unsafe_result")
+        # The final immutable terminal authenticates the WHOLE archive digest.
+        result_pin = {"generation": generation(info), "sha256": terminal["resultSha256"]}
+        if expected_result is None:
+            digest = hashlib.sha256()
+            while block := os.read(fd, 1024**2):
+                digest.update(block)
+            need(digest.hexdigest() == terminal["resultSha256"], "result_changed")
+        else:
+            need(_valid_pin(expected_result) and expected_result == result_pin, "result_changed")
+        os.lseek(fd, offset, os.SEEK_SET)
+        chunk = os.read(fd, min(limit, info.st_size - offset))
+        need(generation(info) == generation(os.fstat(fd)) == generation((job / "result.tar").lstat()), "result_changed")
+        _anchor(job, source, expected_anchor)
+        need(read(job / "terminal.json")[1] == terminal_pin, "terminal_changed")
+        need(generation(info) == generation(os.fstat(fd)) == generation((job / "result.tar").lstat()), "result_changed")
+        return {"offset": offset, "totalBytes": info.st_size, "chunkBase64": base64.b64encode(chunk).decode(),
+                "resultSha256": terminal["resultSha256"], "resultPin": result_pin,
+                "artifactVerification": "required", "replayAllowed": False}
+    finally:
+        os.close(fd)

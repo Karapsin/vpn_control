@@ -54,18 +54,18 @@ class WindowsFixtureWorkflowTest(unittest.TestCase):
     def request(self):
         return {'sourceSha': SHA, 'baseVersion': '2.1.19', 'correlationId': CORR}
 
-    def test_equal_installed_base_is_rejected_before_hosted_dispatch_intent(self):
+    def test_equal_installed_base_dispatches_only_from_a_fresh_idle_exact_product(self):
         with tempfile.TemporaryDirectory() as tmp, \
              patch.object(base_prepare, 'readiness', return_value={
                  'state': 'ready', 'code': 'READY',
-                 'installedVersion': '2.1.17', 'productCount': 1,
-                 'activeCount': 0, 'ownedExplorerCount': 1}):
+                 'installedVersion': '2.1.19', 'productCount': 1,
+                 'activeCount': 0, 'activeProcesses': [], 'ownedExplorerCount': 1}):
             root = Path(tmp)
-            runner = Runner([])
-            with self.assertRaisesRegex(ValueError, 'newer than installed'):
-                fixture.dispatch(root, {**self.request(), 'baseVersion': '2.1.17'}, runner=runner)
-            self.assertFalse((root / '.runtime').exists())
-            self.assertEqual([], runner.calls)
+            runner = Runner([(0, SHA + '\n'), (0, '')])
+            result = fixture.dispatch(root, self.request(), runner=runner)
+            self.assertEqual('submitted', result['state'])
+            self.assertTrue((root / '.runtime/windows-msi-fixture-dispatch' /
+                             (CORR + '.json')).is_file())
 
     def test_newer_base_accepts_observed_product_version_mismatch(self):
         with tempfile.TemporaryDirectory() as tmp, \
@@ -99,7 +99,38 @@ class WindowsFixtureWorkflowTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'Fresh idle CP117'):
                     fixture.dispatch(root, self.request(), runner=runner)
                 self.assertFalse((root / '.runtime').exists())
-                self.assertEqual([], runner.calls)
+                self.assertEqual(1, len(runner.calls))
+                self.assertTrue(runner.calls[0][-1].endswith(':gradle.properties'))
+
+    def test_equal_installed_base_refuses_ambiguous_or_active_inventory(self):
+        inventories = (
+            {'state': 'blocked', 'code': 'PRODUCT_VERSION', 'installedVersion': '2.1.19',
+             'productCount': 1, 'activeCount': 0, 'activeProcesses': [], 'ownedExplorerCount': 1},
+            {'state': 'ready', 'code': 'READY', 'installedVersion': '2.1.19',
+             'productCount': 1, 'activeCount': 1, 'activeProcesses': [{'kind': 'msiexec'}],
+             'ownedExplorerCount': 1},
+            {'state': 'ready', 'code': 'READY', 'installedVersion': '2.1.19',
+             'productCount': 1, 'activeCount': 0, 'activeProcesses': [{'kind': 'vpn-control'}],
+             'ownedExplorerCount': 1},
+        )
+        for inventory in inventories:
+            with self.subTest(inventory=inventory), tempfile.TemporaryDirectory() as tmp, \
+                 patch.object(base_prepare, 'readiness', return_value=inventory):
+                runner = Runner([])
+                with self.assertRaisesRegex(ValueError, 'Fresh idle CP117|fresh idle CP117 product'):
+                    fixture.dispatch(Path(tmp), self.request(), runner=runner)
+                self.assertEqual(1, len(runner.calls))
+                self.assertTrue(runner.calls[0][-1].endswith(':gradle.properties'))
+
+    def test_equal_installed_base_requires_a_newer_target_from_the_pinned_source(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(base_prepare, 'readiness') as observe:
+            def runner(argv):
+                self.assertEqual('gradle.properties', argv[-1].split(':', 1)[1])
+                return subprocess.CompletedProcess(argv, 0, 'vpnControlVersion=2.1.19\n', '')
+            with self.assertRaisesRegex(ValueError, 'precede tracked target version'):
+                fixture.dispatch(Path(tmp), self.request(), runner=runner)
+            observe.assert_not_called()
 
     def test_intent_is_durable_before_dispatch_and_response_loss_is_not_replayed(self):
         with tempfile.TemporaryDirectory() as tmp:

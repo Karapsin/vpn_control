@@ -61,6 +61,64 @@ class WindowsAdmissionTest(unittest.TestCase):
 
 
 class AndroidInstallerTargetTest(unittest.TestCase):
+    def test_current_222_base_admits_canonical_223_target(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            old_path, new_path = root / "base.apk", root / "target.apk"
+            old_hash = fixture(old_path, b"base-222")
+            new_hash = fixture(new_path, b"target-223")
+            source = "a" * 40
+
+            def artifact(_root, artifact_id):
+                digest = artifact_id[7:]
+                path = old_path if digest == old_hash else new_path
+                return {"verification": "verified", "artifact": {
+                    "platform": "android", "artifactKind": "apk", "sha256": digest,
+                    "sourceSha": "historical" if path == old_path else source,
+                }, "location": {"localPath": str(path)}}
+
+            def inspect(_root, path):
+                old = path == old_path
+                return {"package": "com.kardinal.vpncontrol", "abi": "x86_64", "debuggable": False,
+                        "version": "2.2.2" if old else "2.2.3", "code": 16840 if old else 16860,
+                        "signerSha256": "b" * 64}
+
+            with mock.patch.object(native_artifact_registry, "verify_artifact", side_effect=artifact), \
+                    mock.patch.object(android_package_install, "_inspect_apk", side_effect=inspect), \
+                    mock.patch.object(target.subprocess, "run", return_value=mock.Mock(stdout=source + "\n")):
+                pair = target.admit_pair(root, source, "sha256-" + old_hash,
+                                         "sha256-" + new_hash, old_hash)
+            self.assertEqual(("2.2.2", 16840, "2.2.3", 16860),
+                             (pair["baseVersion"], pair["baseCode"],
+                              pair["targetVersion"], pair["targetCode"]))
+
+    def test_remote_pair_rechecks_canonical_codes_increase_and_exact_hash_ids(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            base_path, target_path = root / "base.apk", root / "target.apk"
+            base_hash = fixture(base_path, b"base-222")
+            target_hash = fixture(target_path, b"target-223")
+            pair = {"sourceSha": "a" * 40, "baseArtifactId": "sha256-" + base_hash,
+                    "baseSha256": base_hash, "basePath": "/protected/base.apk",
+                    "baseVersion": "2.2.2", "baseCode": 16840,
+                    "targetArtifactId": "sha256-" + target_hash, "targetSha256": target_hash,
+                    "targetPath": "/protected/target.apk", "targetVersion": "2.2.3",
+                    "targetCode": 16860, "signerSha256": "b" * 64}
+            target.verify_staged_pair(pair, base_path, target_path)
+            invalid = (
+                {**pair, "targetCode": 16840},
+                {**pair, "targetVersion": "2.2.2", "targetCode": 16840},
+                {**pair, "targetArtifactId": "sha256-" + "0" * 64},
+                {**pair, "signerSha256": "c" * 63},
+            )
+            for changed in invalid:
+                with self.subTest(changed=changed):
+                    with self.assertRaises(ValueError):
+                        target.verify_staged_pair(changed, base_path, target_path)
+            target_path.write_bytes(b"changed")
+            with self.assertRaisesRegex(ValueError, "bytes changed"):
+                target.verify_staged_pair(pair, base_path, target_path)
+
     def test_target_must_be_exact_source_higher_version_and_same_signer(self):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
@@ -92,6 +150,15 @@ class AndroidInstallerTargetTest(unittest.TestCase):
                 with mock.patch.object(android_package_install, "_inspect_apk",
                                        side_effect=lambda _root, path: {**inspect(_root, path),
                                            "signerSha256": "c" * 64 if path == new_path else "b" * 64}):
+                    with self.assertRaisesRegex(ValueError, "compatible"):
+                        target.admit_pair(root, source, "sha256-" + old_hash,
+                                          "sha256-" + new_hash, old_hash)
+                def wrong_source(_root, artifact_id):
+                    value = artifact(_root, artifact_id)
+                    if artifact_id == "sha256-" + new_hash:
+                        value["artifact"]["sourceSha"] = "c" * 40
+                    return value
+                with mock.patch.object(native_artifact_registry, "verify_artifact", side_effect=wrong_source):
                     with self.assertRaisesRegex(ValueError, "compatible"):
                         target.admit_pair(root, source, "sha256-" + old_hash,
                                           "sha256-" + new_hash, old_hash)
@@ -233,6 +300,56 @@ class AndroidInstallerTargetTest(unittest.TestCase):
         checkpoint["callbackReceipt"]["installerLifecycle"]["interactiveAccepted"]["response"]["configurationRevision"] = 5
         with self.assertRaisesRegex(ValueError, "original_submission_not_bound"):
             target._terminal(intent, checkpoint, receipt)
+
+
+class ComponentActionLineageTests(unittest.TestCase):
+    """Execute the unchanged TLS/action producer; never manufacture admission."""
+    def campaign(self):
+        from agent_tools.tests.test_android_installer_phase_guards import InstallerPhaseGuardTests
+        case=InstallerPhaseGuardTests();case.setUp();self.addCleanup(case.doCleanups)
+        receipt=case.campaign()
+        return case,receipt,json.loads((case.args.output/'probe.json').read_bytes()),json.loads((case.args.output/'handoff.json').read_bytes())
+
+    def test_actual_owner_transition_red_then_original_intent_bound_green(self):
+        case,receipt,checkpoint,handoff=self.campaign();intent=json.loads(case.original_intent)
+        with self.assertRaisesRegex(ValueError,'original_submission_not_bound'):
+            target._terminal(intent,checkpoint,receipt,handoff)
+        answer=case.selected['lifecycle'].target_admission._terminal(intent,checkpoint,receipt,handoff,intent_path=case.args.intent_file)
+        self.assertEqual('complete',answer['state']);self.assertEqual(case.original_intent,case.args.intent_file.read_bytes())
+        changed=json.loads(json.dumps(checkpoint));changed['callbackReceipt']['installerLifecycle']['interactiveAccepted']['response']['controllerId']=intent['expectedOwner']
+        with self.assertRaisesRegex(ValueError,'original_submission_not_bound'):
+            case.selected['lifecycle'].target_admission._terminal(intent,changed,receipt,handoff,intent_path=case.args.intent_file)
+
+    def test_actual_action_typed_pin_and_foreign_lease_refuse(self):
+        case,receipt,checkpoint,handoff=self.campaign();module=case.selected['lifecycle'].target_admission
+        path=case.args.output/'component-guard-action-admission.json';original=path.read_bytes();data=json.loads(original)
+        data['record']['originalIntentPin']['generation'][5]=True
+        path.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError,'component_action_admission_changed'):module.component_action_binding(case.args.intent_file)
+        path.write_bytes(original)
+        # Restoring bytes cannot restore its original ctime. Regeneration is
+        # refused by the accepted-operation's immutable action pin as well.
+        with self.assertRaises(ValueError):module.component_action_binding(case.args.intent_file)
+
+    def test_actual_late_body_scan_mutation_refused_by_final_generation_pass(self):
+        case,receipt,checkpoint,handoff=self.campaign();module=case.selected['lifecycle'].target_admission
+        importer=case.selected['adapter'].__dict__['__builtins__']['__import__']
+        staged=importer('agent_tools.android_installer_component_bundle',{},None,('_read',),0)
+        original=staged._read;action_path=case.args.output/'component-guard-action-admission.json';called=False
+        def mutate(path,*args,**kwargs):
+            nonlocal called
+            result=original(path,*args,**kwargs)
+            if Path(path).name=='component-guard-accepted-operation.json' and not called:
+                called=True;action_path.write_bytes(action_path.read_bytes()+b' ')
+            return result
+        with mock.patch.object(staged,'_read',side_effect=mutate):
+            with self.assertRaises(ValueError):module.component_action_binding(case.args.intent_file)
+        self.assertTrue(called)
+
+    def test_actual_missing_accepted_receipt_refuses(self):
+        case,receipt,checkpoint,handoff=self.campaign()
+        (case.args.output/'component-guard-accepted-operation.json').unlink()
+        with self.assertRaises(FileNotFoundError):case.selected['lifecycle'].target_admission.component_action_binding(case.args.intent_file)
 
 
 if __name__ == "__main__":

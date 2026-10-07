@@ -19,6 +19,40 @@ _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _ARTIFACT = re.compile(r"sha256-[0-9a-f]{64}\Z")
 _PACKAGE = "com.kardinal.vpncontrol"
 _MAX_RECEIPT = 1_048_576
+_VERSION = re.compile(r"[1-9][0-9]?\.(?:0|[1-9][0-9]?)\.(?:0|[1-9][0-9]?)\Z")
+_PAIR_FIELDS = {"sourceSha", "baseArtifactId", "baseSha256", "basePath", "baseVersion", "baseCode",
+                "targetArtifactId", "targetSha256", "targetPath", "targetVersion", "targetCode",
+                "signerSha256"}
+
+
+def _product_version(version: Any, code: Any) -> tuple[int, int, int]:
+    """Validate the canonical product version and its non-displayed code."""
+    if not isinstance(version, str) or _VERSION.fullmatch(version) is None or type(code) is not int:
+        raise ValueError("Android installer product version identity is invalid")
+    values = tuple(int(part) for part in version.split("."))
+    if any(part > 19 for part in values) or code != ((values[0] * 20 + values[1]) * 20 + values[2]) * 20:
+        raise ValueError("Android installer product version code is invalid")
+    return values
+
+
+def _pair_identity(pair: Any) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """Keep the immutable pair schema while allowing any canonical increase."""
+    if not isinstance(pair, dict) or set(pair) != _PAIR_FIELDS:
+        raise ValueError("Android installer staged pair identity changed")
+    if (not isinstance(pair["sourceSha"], str) or not re.fullmatch(r"[0-9a-f]{40}", pair["sourceSha"]) or
+            not isinstance(pair["baseSha256"], str) or _SHA.fullmatch(pair["baseSha256"]) is None or
+            not isinstance(pair["targetSha256"], str) or _SHA.fullmatch(pair["targetSha256"]) is None or
+            pair["baseArtifactId"] != "sha256-" + pair["baseSha256"] or
+            pair["targetArtifactId"] != "sha256-" + pair["targetSha256"] or
+            not isinstance(pair["signerSha256"], str) or _SHA.fullmatch(pair["signerSha256"]) is None or
+            not all(isinstance(pair[name], str) and pair[name]
+                    for name in ("basePath", "targetPath"))):
+        raise ValueError("Android installer staged pair identity changed")
+    base = _product_version(pair["baseVersion"], pair["baseCode"])
+    target = _product_version(pair["targetVersion"], pair["targetCode"])
+    if base >= target:
+        raise ValueError("Android installer staged pair is not an increase")
+    return base, target
 
 
 def _hash(path: Path) -> str:
@@ -103,9 +137,8 @@ def _artifact(root: Path, artifact_id: str) -> tuple[dict[str, Any], Path, dict[
 
 def admit_pair(root: Path | str, source_sha: str, base_artifact_id: str,
                target_artifact_id: str, installed_base_sha256: str) -> dict[str, Any]:
-    """Prove a fixed 2.2.0 to 2.2.1 update against actual installed bytes."""
+    """Prove one canonical, source-bound Android product-version increase."""
     root = Path(root)
-    from agent_tools import android_package_install
     if (not isinstance(source_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", source_sha) or
             not isinstance(installed_base_sha256, str) or not _SHA.fullmatch(installed_base_sha256)):
         raise ValueError("Android installer source or installed digest is invalid")
@@ -115,10 +148,9 @@ def admit_pair(root: Path | str, source_sha: str, base_artifact_id: str,
         raise ValueError("Android installer target source differs from checkout")
     base, base_path, old = _artifact(root, base_artifact_id)
     target, target_path, new = _artifact(root, target_artifact_id)
-    if (base.get("sha256") != installed_base_sha256 or
-            old.get("version") != "2.2.0" or old.get("code") != 16800 or
-            new.get("version") != "2.2.1" or new.get("code") != 16820 or
-            android_package_install._version_identity(old) >= android_package_install._version_identity(new) or
+    old_version = _product_version(old.get("version"), old.get("code"))
+    new_version = _product_version(new.get("version"), new.get("code"))
+    if (base.get("sha256") != installed_base_sha256 or old_version >= new_version or
             old.get("signerSha256") != new.get("signerSha256") or
             target.get("sourceSha") != source_sha):
         raise ValueError("Android installer target is not an exact compatible version increase")
@@ -132,14 +164,7 @@ def admit_pair(root: Path | str, source_sha: str, base_artifact_id: str,
 
 def verify_staged_pair(pair: dict[str, Any], base_path: Path | str, target_path: Path | str) -> None:
     """The remote driver checks the exact bytes admitted by the local registry."""
-    if (not isinstance(pair, dict) or pair.get("baseVersion") != "2.2.0" or
-            pair.get("baseCode") != 16800 or pair.get("targetVersion") != "2.2.1" or
-            pair.get("targetCode") != 16820 or
-            not isinstance(pair.get("sourceSha"), str) or not re.fullmatch(r"[0-9a-f]{40}", pair["sourceSha"]) or
-            not isinstance(pair.get("signerSha256"), str) or not _SHA.fullmatch(pair["signerSha256"]) or
-            pair.get("baseArtifactId") != "sha256-" + str(pair.get("baseSha256")) or
-            pair.get("targetArtifactId") != "sha256-" + str(pair.get("targetSha256"))):
-        raise ValueError("Android installer staged pair identity changed")
+    _pair_identity(pair)
     if _hash(Path(base_path)) != pair["baseSha256"] or _hash(Path(target_path)) != pair["targetSha256"]:
         raise ValueError("Android installer staged APK bytes changed")
 
@@ -273,15 +298,115 @@ def status(output: Path | str, correlation_id: str) -> dict[str, Any]:
         receipt = json.loads(_private_file(terminal_path, _MAX_RECEIPT))
         handoff_path = output / "handoff.json"
         handoff = json.loads(_private_file(handoff_path, _MAX_RECEIPT)) if handoff_path.exists() else None
-        return _terminal(intent, probe, receipt, handoff)
+        return _terminal(intent, probe, receipt, handoff, intent_path=output / "intent.json")
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return {"ok": False, "state": "unknown", "correlationId": correlation_id,
                 "replayAllowed": False}
 
 
+def component_action_binding(intent_path: Path | str) -> dict[str, Any]:
+    """Reopen the original intent and its separate fixed component action epoch.
+
+    Root/unroot and force-stop can create a new public owner. That owner belongs
+    to the durable action admission; it never replaces the immutable baseline.
+    """
+    from . import android_installer_component_bundle as component
+    path = Path(intent_path)
+    raw, pin = component._read(path, True)
+    intent = load_intent(path)
+    action_path = path.parent / "component-guard-action-admission.json"
+    action_raw, action_pin = component._read(action_path, True)
+    envelope = json.loads(action_raw)
+    action = envelope.get("record")
+    same = lambda a, b: component._raw(a) == component._raw(b)
+    binding = {"correlationId": intent["correlationId"], "sourceSha": intent["pair"]["sourceSha"],
+        "targetArtifactId": intent["pair"]["targetArtifactId"],
+        "intentCanonicalSha256": hashlib.sha256(json.dumps(intent, sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
+    keys = {"originalIntentPin", "setupFacts", "actionFacts", "owner", "revision", "transport", "sameCampaignAndLease", "reservation"}
+    if (path.name != "intent.json" or json.loads(raw) != intent or type(envelope) is not dict or
+            envelope.get("kind") != "android-installer-component-current-guard" or
+            type(envelope.get("schema")) is not int or envelope["schema"] != 1 or
+            not same(envelope.get("binding"), binding) or type(action) is not dict or set(action) != keys or
+            not same(action["originalIntentPin"], pin) or type(action["owner"]) is not str or
+            _UUID.fullmatch(action["owner"]) is None or type(action["revision"]) is not int or
+            action["revision"] != intent["expectedRevision"] or
+            type(action["reservation"]) is not dict or not action["reservation"]):
+        raise ValueError("component_action_admission_changed")
+    lease_path = path.parent.parent / ("android-native-device-" + intent["device"] + ".lease")
+    lease_raw, lease_pin = component._read(lease_path, True)
+    lease_value = {"owner": "android-installer", "host": intent["host"], "device": intent["device"], "correlationId": intent["correlationId"]}
+    expected_lease = {"path": str(lease_path), "pin": lease_pin, "value": lease_value}
+    if not same(json.loads(lease_raw), lease_value) or not same(action["sameCampaignAndLease"], expected_lease):
+        raise ValueError("component_action_lease_changed")
+    admission_raw, admission_pin = component._read(path.parent / "component-guard-current-admission.json", True)
+    admission = json.loads(admission_raw)
+    original = admission.get("record", {})
+    if (not same(admission.get("binding"), binding) or original.get("owner") != intent["expectedOwner"] or
+            type(original.get("revision")) is not int or original["revision"] != intent["expectedRevision"] or
+            not same(original.get("intentPin"), pin) or not same(original.get("lease"), expected_lease) or
+            not same(original.get("facts"), action["setupFacts"])):
+        raise ValueError("component_action_original_admission_changed")
+    accepted_path = path.parent / "component-guard-accepted-operation.json"
+    accepted_raw, accepted_pin = component._read(accepted_path, True)
+    accepted = json.loads(accepted_raw)
+    captured = accepted.get("record", {})
+    if (not same(accepted.get("binding"), binding) or
+            captured.get("owner") != action["owner"] or type(captured.get("revision")) is not int or
+            captured["revision"] != action["revision"] or
+            not same(captured.get("actionAdmission"), {"path": str(action_path), "pin": action_pin}) or
+            type(captured.get("operationId")) is not str or _UUID.fullmatch(captured["operationId"]) is None):
+        raise ValueError("component_action_accepted_lineage_changed")
+    reply_pin = captured.get("rawReplyPin")
+    if (type(reply_pin) is not dict or set(reply_pin) != {"path", "snapshot", "sha256"} or
+            type(reply_pin["path"]) is not str):
+        raise ValueError("component_action_raw_capture_changed")
+    reply_path = Path(reply_pin["path"])
+    if reply_path.parent != path.parent or re.fullmatch(r"component-cli-[0-9]{5}\.json", reply_path.name) is None:
+        raise ValueError("component_action_raw_capture_changed")
+    reply_raw, reply_source_pin = component._read(reply_path, True)
+    # Frozen availability snapshot order: dev,ino,size,mtime,ctime,mode,uid,gid,nlink.
+    generation = reply_source_pin["generation"]
+    availability_pin = [generation[index] for index in (0,1,6,7,8,2,3,4,5)]
+    reply_record = json.loads(reply_raw).get("record", {})
+    if (not same(reply_pin["snapshot"], availability_pin) or reply_pin["sha256"] != reply_source_pin["sha256"] or
+            type(reply_record) is not dict or reply_record.get("phase") != "install-interactive" or
+            reply_record.get("words") != ["updates", "install"] or reply_record.get("owner") != action["owner"] or
+            type(reply_record.get("revision")) is not int or reply_record["revision"] != action["revision"] or
+            type(reply_record.get("returncode")) is not int or reply_record["returncode"] != 0 or
+            reply_record.get("stderrRaw") != "" or type(reply_record.get("stdoutRaw")) is not str):
+        raise ValueError("component_action_raw_capture_changed")
+    response = json.loads(reply_record["stdoutRaw"])
+    if (type(response) is not dict or response.get("ok") is not True or response.get("final") is not False or
+            response.get("code") != "ACCEPTED" or response.get("operationId") != captured["operationId"] or
+            response.get("controllerId") != action["owner"] or type(response.get("configurationRevision")) is not int or
+            response["configurationRevision"] != action["revision"]):
+        raise ValueError("component_action_raw_capture_changed")
+    # Close original held/named evidence again after every body read above.
+    for leaf, expected in ((path, (raw, pin)), (action_path, (action_raw, action_pin)),
+            (lease_path, (lease_raw, lease_pin)), (path.parent / "component-guard-current-admission.json", (admission_raw, admission_pin)),
+            (accepted_path, (accepted_raw, accepted_pin))):
+        closing_raw, closing_pin = component._read(leaf, True)
+        if closing_raw != expected[0] or not same(closing_pin, expected[1]):
+            raise ValueError("component_action_evidence_changed")
+    component._evidence_generation_closure({path:pin,action_path:action_pin,lease_path:lease_pin,
+        path.parent / "component-guard-current-admission.json":admission_pin,accepted_path:accepted_pin,reply_path:reply_source_pin})
+    return {"owner": action["owner"], "revision": action["revision"], "originalOwner": intent["expectedOwner"],
+        "originalIntentPin": pin, "actionAdmissionPin": action_pin, "lease": expected_lease,
+        "operationId": captured["operationId"], "acceptedOperationPin": accepted_pin, "acceptedResponse": response, "rawReplySourcePin": reply_source_pin}
+
+
 def _terminal(intent: dict[str, Any], checkpoint: dict[str, Any], receipt: dict[str, Any],
-              handoff: dict[str, Any] | None = None) -> dict[str, Any]:
+              handoff: dict[str, Any] | None = None, *, intent_path: Path | str | None = None) -> dict[str, Any]:
     correlation_id = intent["correlationId"]
+    action = None
+    if intent_path is not None:
+        path = Path(intent_path)
+        if json.dumps(load_intent(path), sort_keys=True) != json.dumps(intent, sort_keys=True):
+            raise ValueError("component_terminal_original_intent_changed")
+        if (path.parent / "component-guard-action-admission.json").exists():
+            action = component_action_binding(path)
+    accepted_owner = action["owner"] if action is not None else intent["expectedOwner"]
+    accepted_revision = action["revision"] if action is not None else intent["expectedRevision"]
     lifecycle = receipt.get("probe", {}) if isinstance(receipt, dict) else None
     if not isinstance(lifecycle, dict):
         raise ValueError("terminal_lifecycle_missing")
@@ -292,12 +417,17 @@ def _terminal(intent: dict[str, Any], checkpoint: dict[str, Any], receipt: dict[
             response.get("ok") is not True or response.get("code") != "ACCEPTED" or
             response.get("final") is not False or response.get("operationId") != lifecycle.get("operationId") or
             lifecycle.get("operationId") != original.get("operationId") or
-            response.get("controllerId") != intent["expectedOwner"] or
-            response.get("configurationRevision") != intent["expectedRevision"]):
+            response.get("controllerId") != accepted_owner or
+            type(response.get("configurationRevision")) is not int or
+            response.get("configurationRevision") != accepted_revision):
         raise ValueError("original_submission_not_bound")
+    if action is not None and json.dumps(response, sort_keys=True) != json.dumps(action["acceptedResponse"], sort_keys=True):
+        raise ValueError("component_terminal_accepted_capture_changed")
     if lifecycle.get("acceptance") != "terminal-confirmed" or lifecycle.get("targetSha256") != intent["pair"]["targetSha256"]:
         raise ValueError("terminal_not_confirmed")
     operation = lifecycle.get("operationId")
+    if action is not None and action["operationId"] != operation:
+        raise ValueError("component_terminal_operation_changed")
     original_operation = lifecycle.get("originalOperation", {})
     identity = original_operation.get("identity", {}) if isinstance(original_operation, dict) else None
     if (not isinstance(operation, str) or not operation or not isinstance(identity, dict) or
@@ -310,12 +440,13 @@ def _terminal(intent: dict[str, Any], checkpoint: dict[str, Any], receipt: dict[
     if handoff is not None:
         handed = handoff.get("identity") if isinstance(handoff, dict) else None
         original_handoff = handoff.get("originalOperation") if isinstance(handoff, dict) else None
-        if (not isinstance(handed, dict) or handed != identity or
+        if (not isinstance(handed, dict) or json.dumps(handed, sort_keys=True) != json.dumps(identity, sort_keys=True) or
                 not isinstance(original_handoff, dict) or
-                original_handoff.get("response") != response or
+                json.dumps(original_handoff.get("response"), sort_keys=True) != json.dumps(response, sort_keys=True) or
                 handoff.get("targetSha256") != intent["pair"]["targetSha256"] or
                 handoff.get("targetVersion") != intent["pair"]["targetVersion"] or
-                handoff.get("targetCode") != intent["pair"]["targetCode"]):
+                (type(handoff.get("targetCode")) not in (int, str) or
+                 handoff.get("targetCode") not in (intent["pair"]["targetCode"], str(intent["pair"]["targetCode"])) )):
             raise ValueError("historical_handoff_identity_changed")
     elif intent["expectedTerminal"] == "installed":
         raise ValueError("installed_handoff_missing")
@@ -353,6 +484,8 @@ def _terminal(intent: dict[str, Any], checkpoint: dict[str, Any], receipt: dict[
         raise ValueError("cancelled_owner_changed")
     if receipt.get("cleanupFailures"):
         raise ValueError("fixture_cleanup_uncertain")
+    if action is not None and json.dumps(component_action_binding(intent_path), sort_keys=True) != json.dumps(action, sort_keys=True):
+        raise ValueError("component_terminal_action_changed")
     return {"ok": True, "state": "complete", "correlationId": correlation_id,
             "terminal": intent["expectedTerminal"], "operationId": operation,
             "receiptId": identity["receiptId"], "sessionId": identity["sessionId"],

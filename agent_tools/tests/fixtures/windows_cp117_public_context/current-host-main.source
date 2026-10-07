@@ -1,0 +1,184 @@
+"""Complete public update host entry. SOURCE PREPARATION; no native GO inferred.
+Only an exact externally admitted manifest digest enables source loading. Context
+and assets are loaded from retained bytes after full FD/named/parent closure.
+"""
+import ast,base64,gzip,hashlib,json,os,secrets,stat,sys,time
+from pathlib import Path
+from types import ModuleType
+import importlib.abc,importlib.util
+PUBLIC_FOLDER='.runtime/parity-evidence/windows-public-update-complete-6815bdda-18db-42e7-8d48-99a7a8af39aa'
+OLD_CALLER='.runtime/parity-evidence/windows-ae66-server-read-76c9fe44-8231-46fd-b87a-44e0d2badeec/observe-v3.py'
+OLD_SHA='5d107e8fd0f1bd3337e4a1b29e9b4b120b42b9d25756ea68c71306050a74eab4'
+
+def generation(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def unique(pairs):
+ d={}
+ for k,v in pairs:
+  if k in d:raise ValueError('public-input-duplicate')
+  d[k]=v
+ return d
+
+def strict_json(raw):return json.loads(raw.decode('utf-8','strict'),object_pairs_hook=unique,parse_constant=lambda _:(_ for _ in ()).throw(ValueError('public-input-constant')))
+
+class PublicInputs:
+ def __init__(self,root,manifest,expected_sha):
+  self.root=root;self.fds={};self.parents={};self.bytes={};self.pins={};self.modules={}
+  try:
+   fd=os.open(manifest,os.O_RDONLY|os.O_NOFOLLOW);self.fds[str(manifest)]=fd
+   m=os.fstat(fd);raw=os.read(fd,2097153)
+   if not stat.S_ISREG(m.st_mode)or m.st_uid!=os.geteuid()or stat.S_IMODE(m.st_mode)!=0o600 or m.st_nlink!=1 or len(raw)>2097152 or hashlib.sha256(raw).hexdigest()!=expected_sha:raise ValueError('public-manifest-binding')
+   self.pins[str(manifest)]={'generation':generation(m),'sha256':expected_sha};self.bytes[str(manifest)]=raw
+   value=strict_json(raw)
+   if type(value)is not dict or set(value)!={'version','scope','inputs'}or type(value['version'])is not int or value['version']!=1 or value['scope']!='complete-direct-public-update-source' or type(value['inputs'])is not dict or not value['inputs']:raise ValueError('public-manifest-schema')
+   for name,pin in value['inputs'].items():
+    path=Path(name)
+    if not path.is_absolute()or root not in path.parents or type(pin)is not dict or set(pin)!={'generation','sha256'}or type(pin['generation'])is not list or len(pin['generation'])!=9 or any(type(x)is not int for x in pin['generation'])or type(pin['sha256'])is not str or len(pin['sha256'])!=64:raise ValueError('public-manifest-input')
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);self.fds[name]=fd;self.pins[name]=pin
+    if generation(os.fstat(fd))!=pin['generation']or not stat.S_ISREG(os.fstat(fd).st_mode):raise ValueError('public-source-open')
+   # Hash/read ALL bodies before pure whole-population identity closure. No
+   # executable code is loaded until this whole population has passed.
+   for name,fd in self.fds.items():
+    p=str(Path(name).parent)
+    if p not in self.parents:
+     pf=os.open(p,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);self.parents[p]=(pf,generation(os.fstat(pf))[:5])
+    os.lseek(fd,0,os.SEEK_SET);h=hashlib.sha256();parts=[];retain=name.endswith(('.py','.ps1','.json','.cs'))and self.pins[name]['generation'][6]<=2097152
+    while True:
+     part=os.read(fd,65536)
+     if not part:break
+     h.update(part)
+     if retain:parts.append(part)
+    if h.hexdigest()!=self.pins[name]['sha256']:raise ValueError('public-source-hash')
+    if retain:self.bytes[name]=b''.join(parts)
+   self.close_generation()
+  except BaseException:self.close();raise
+ def close_generation(self):
+  for name,fd in self.fds.items():
+   if generation(os.fstat(fd))!=self.pins[name]['generation']or generation(Path(name).lstat())!=self.pins[name]['generation']:raise ValueError('public-source-closing')
+  for name,(fd,pin)in self.parents.items():
+   if generation(os.fstat(fd))[:5]!=pin or generation(Path(name).lstat())[:5]!=pin:raise ValueError('public-parent-closing')
+  for name,fd in self.fds.items():
+   if generation(os.fstat(fd))!=self.pins[name]['generation']or generation(Path(name).lstat())!=self.pins[name]['generation']:raise ValueError('public-terminal-source-closing')
+ def verify(self):
+  # Participating FDs stay open. No later named code is adopted.
+  for name,fd in self.fds.items():
+   os.lseek(fd,0,os.SEEK_SET);h=hashlib.sha256()
+   while True:
+    part=os.read(fd,65536)
+    if not part:break
+    h.update(part)
+   if h.hexdigest()!=self.pins[name]['sha256']:raise ValueError('public-source-drift')
+  self.close_generation()
+ def body(self,path):
+  if str(path)not in self.bytes:raise ValueError('public-retained-body')
+  return self.bytes[str(path)]
+ def namespace(self,path,name):
+  self.close_generation()
+  if name in sys.modules:raise ValueError('public-module-name-used')
+  module=ModuleType(name);module.__file__=str(path);self.modules[name]=module;sys.modules[name]=module
+  try:
+   exec(compile(self.body(path),str(path),'exec'),module.__dict__);self.close_generation();return module.__dict__
+  except BaseException:
+   if sys.modules.get(name)is module:sys.modules.pop(name)
+   self.modules.pop(name,None);raise
+ def close(self):
+  if hasattr(self,'finder')and self.finder in sys.meta_path:sys.meta_path.remove(self.finder)
+  for fd in self.fds.values():os.close(fd)
+  for fd,_ in self.parents.values():os.close(fd)
+  self.fds={};self.parents={}
+  for name,module in self.modules.items():
+   if sys.modules.get(name)is module:sys.modules.pop(name)
+  self.modules={}
+
+class RetainedRepoModules(importlib.abc.MetaPathFinder,importlib.abc.Loader):
+ def __init__(self,inputs):self.inputs=inputs
+ def find_spec(self,fullname,path=None,target=None):
+  if fullname.split('.')[0]not in ('agent_tools','scripts'):return None
+  base=self.inputs.root.joinpath(*fullname.split('.'));package=base/'__init__.py';module=base.with_suffix('.py')
+  if str(package)in self.inputs.bytes:return importlib.util.spec_from_loader(fullname,self,origin=str(package),is_package=True)
+  if str(module)in self.inputs.bytes:return importlib.util.spec_from_loader(fullname,self,origin=str(module),is_package=False)
+  if base.is_dir()and any(Path(name).parent==base for name in self.inputs.bytes):
+   spec=importlib.util.spec_from_loader(fullname,loader=None,is_package=True);spec.submodule_search_locations=[str(base)];return spec
+  raise ImportError('public-repository-import-not-held')
+ def create_module(self,spec):return None
+ def exec_module(self,module):
+  self.inputs.close_generation();path=Path(module.__spec__.origin);module.__file__=str(path)
+  if module.__spec__.submodule_search_locations is not None:module.__path__=[str(path.parent)]
+  self.inputs.modules[module.__name__]=module
+  exec(compile(self.inputs.body(path),str(path),'exec'),module.__dict__);self.inputs.close_generation()
+
+def validate_historical_proof_composition(test_raw,context_raw):
+ tree=ast.parse(test_raw)
+ declarations=[n for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='PUBLIC_HISTORICAL_STAGE_PROOF_SOURCE'for t in n.targets)]
+ if len(declarations)!=1:raise ValueError('public-historical-proof-source')
+ expected=ast.parse(ast.literal_eval(declarations[0].value))
+ names=('successor_stage_proof','recorded_attribute_validator');actual_tree=ast.parse(context_raw);actual=[]
+ for name in names:
+  actual.append(next(n for n in reversed(actual_tree.body)if isinstance(n,ast.FunctionDef)and n.name==name))
+ if ast.dump(ast.Module(body=actual,type_ignores=[]),include_attributes=False)!=ast.dump(expected,include_attributes=False):raise ValueError('public-historical-proof-composition')
+ declared=next(n for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(x,ast.Name)and x.id=='PUBLIC_CURRENT_CONTEXT_TESTPIN_SOURCE'for x in n.targets))
+ wanted=ast.parse(ast.literal_eval(declared.value)).body[0]
+ prepare=next(n for n in actual_tree.body if isinstance(n,ast.FunctionDef)and n.name=='prepare_public_context')
+ cutoff=next(i for i,n in enumerate(prepare.body)if isinstance(n,ast.If))+1
+ prefix=ast.FunctionDef(name=wanted.name,args=prepare.args,body=prepare.body[:cutoff],decorator_list=[])
+ if ast.dump(prefix,include_attributes=False)!=ast.dump(wanted,include_attributes=False):raise ValueError('public-current-context-testpin-composition')
+
+
+ for literal,function in (('PUBLIC_CURRENT_TEST_SUCCESSOR_SOURCE','verify_current_test_successor'),('PUBLIC_RECORDED_STAGE_BODY_SOURCE','recorded_stage_body_sha')):
+  declaration=next(n for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id==literal for t in n.targets))
+  expected_function=ast.parse(ast.literal_eval(declaration.value)).body[0]
+  actual_function=next(n for n in actual_tree.body if isinstance(n,ast.FunctionDef)and n.name==function)
+  if ast.dump(expected_function,include_attributes=False)!=ast.dump(actual_function,include_attributes=False):raise ValueError('public-current-context-helper-composition')
+
+def assemble_context(inputs):
+ root=inputs.root;folder=root/PUBLIC_FOLDER;old=root/OLD_CALLER
+ for name,module in tuple(sys.modules.items()):
+  if name.split('.')[0]in ('agent_tools','scripts'):raise ValueError('public-repository-module-preloaded')
+ finder=RetainedRepoModules(inputs);sys.meta_path.insert(0,finder);inputs.finder=finder
+ if inputs.pins[str(old)]['sha256']!=OLD_SHA:raise ValueError('public-original-caller')
+ old_ns=inputs.namespace(old,'authenticated_public_original_without_main')
+ # Compile the reviewed context in the original retained namespace so its
+ # unchanged source equality check sees the exact historical __file__/constants.
+ exec(compile(inputs.body(folder/'public-context.draft.py'),'<retained-public-context>','exec'),old_ns)
+ c=old_ns['prepare_public_context']();prior_verify=c['verify']
+ def verify():
+  inputs.verify();prior_verify();inputs.close_generation()
+ c['verify']=verify;c['consumed']=set();c['current_phase']=None
+ test_raw=inputs.body(root/'agent_tools/tests/test_windows_cp117_public_update_flow.py')
+ validate_historical_proof_composition(test_raw,inputs.body(folder/'public-context.draft.py'))
+ node=next(n for n in ast.parse(test_raw).body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='PUBLIC_UPDATE_FACTORY_SOURCE'for t in n.targets))
+ factory_source=ast.literal_eval(node.value);factory={'__name__':'authenticated_public_factory'};exec(compile(factory_source,'<retained-public-factory>','exec'),factory);factory['PUBLIC_FACTORY_SOURCE_FOR_VALIDATOR']=factory_source
+ c['factory']=factory;c['factory_source']=factory_source
+ c['assets']={Path(name).name:raw.decode('utf-8','strict')for name,raw in inputs.bytes.items()if Path(name).parent==folder and name.endswith(('.py','.ps1','.json','.cs'))}
+ c['recipe']=inputs.namespace(root/'.runtime/windows-cp117-uac-approval-proposal/cp117_uac_recipe.py','authenticated_uac_recipe')
+ executor=inputs.namespace(folder/'public-phase-executor.draft.py','authenticated_phase_executor');c['phase_ids']=executor['PUBLIC_PHASE_IDS']
+ c['private_collect_namespace']=dict(old_ns)
+ private_source=factory['private_collector_source'](old_ns['guest_collect'])if False else factory['private_collector_source'](c['assets']['public-private-collector.original.py'])
+ exec(compile(private_source,'<retained-private-collector>','exec'),c['private_collect_namespace']);c['private_collect']=c['private_collect_namespace']['private_guest_collect']
+ c['builders_namespace']=inputs.namespace(folder/'public-builders.draft.py','authenticated_public_builders')
+ controller=inputs.namespace(folder/'public-controller.draft.py','authenticated_public_controller');controller['run_fixed_phase']=executor['run_fixed_phase'];c['controller']=controller
+ c['original_namespace']=old_ns;c['original_caller_relative']=OLD_CALLER;c['inputs']=inputs
+ c['qmp_producer']=inputs.namespace(root/'.runtime/parity-evidence/windows-public-update-qmp-v3-final/public-qmp-bridge-v3.py','authenticated_public_qmp_producer')
+ qmp_executor=inputs.namespace(folder/'public-qmp-executor.draft.py','authenticated_public_qmp_executor')
+ interfaces=inputs.namespace(folder/'public-host-interfaces.draft.py','authenticated_public_host_interfaces');interfaces['unique']=unique;interfaces['perform_qmp_action']=qmp_executor['perform_qmp_action']
+ c['interfaces']=interfaces
+ verify();return c
+
+def main():
+ root=Path.cwd().resolve(strict=True)
+ if len(sys.argv)!=3 or sys.argv[1]not in ('--assemble-only','--execute')or len(sys.argv[2])!=64:raise ValueError('public-host-entry')
+ inputs=PublicInputs(root,root/PUBLIC_FOLDER/'complete-inputs.json',sys.argv[2]);c=None
+ try:
+  c=assemble_context(inputs)
+  # Provider/QMP interfaces are installed only by the retained concrete host
+  # integration below; missing wiring is a pre-effect refusal, never success.
+  c['interfaces']['bind_host_interfaces'](c,inputs)
+  builders=c['builders_namespace']['make_builders'](c);c['verify']()
+  if sys.argv[1]=='--assemble-only':return {'state':'assembled','nativeExecuted':False,'phases':sorted(builders),'privateMaterialCreated':False}
+  result=c['controller']['drive_public_update'](c,builders,c['visual_operator']);c['verify']()
+  return result
+ finally:
+  if c is not None:c['close']()
+  inputs.close()
+
+if __name__=='__main__':
+ answer=main();print(json.dumps(answer,sort_keys=True))

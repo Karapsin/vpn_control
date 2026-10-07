@@ -14,6 +14,7 @@ from urllib.request import urlopen
 from types import SimpleNamespace
 
 from agent_tools import windows_msi_http_transfer as transfer
+from agent_tools import windows_cp117_source_campaign as source_campaign
 
 
 CORRELATION = "2ace6a48-ba60-4705-9200-4ff857f2aba6"
@@ -344,6 +345,28 @@ def call(sock,command,args):
               mock.patch.object(transfer, "remote_stage", return_value={"state": "staged"}) as staged):
             self.assertEqual(transfer.workflow(Path.cwd(), "stage-start", {"correlationId": CORRELATION})["state"], "staged")
             self.assertEqual(staged.call_args.args[-1], artifact)
+
+    def test_source_campaign_prepare_uses_fixed_admission_without_relaxing_generic_base_rule(self):
+        request = {"host": "archlinux", "correlationId": "f18df6cb-2c43-4265-b1ba-4bbadf9b708a",
+                   "sourceSha": source_campaign._SOURCE,
+                   "fixtureReceiptArtifactId": source_campaign._RECEIPT,
+                   "baseMsiArtifactId": source_campaign._BASE,
+                   "targetMsiArtifactId": source_campaign._TARGET,
+                   "expectedCurrentVersion": "2.1.19"}
+        descriptor = ("windows-cp117", "/private/cp117/qga.sock", 1234, 5678, SID)
+        target = SimpleNamespace(fixture_transfer_root="/remote/cp117")
+        artifact = Path("/verified/d32-base.msi")
+        with (mock.patch.object(transfer.base, "_descriptor", return_value=(object(), target, descriptor)),
+              mock.patch.object(source_campaign, "transfer_admission", return_value=artifact) as admitted,
+              mock.patch.object(transfer.base, "_require_reconciled_legacy") as legacy,
+              mock.patch.object(transfer.base, "_require_base_route_free") as route_free,
+              mock.patch.object(transfer.base, "_admit") as ordinary_admit,
+              mock.patch.object(transfer, "_admit_current"),
+              mock.patch.object(transfer, "prepare", return_value={"state": "prepared"}) as prepared):
+            self.assertEqual("prepared", transfer.workflow(Path.cwd(), "prepare", request)["state"])
+        admitted.assert_called_once()
+        legacy.assert_not_called(); route_free.assert_not_called(); ordinary_admit.assert_not_called()
+        self.assertEqual(artifact, prepared.call_args.args[2])
 
     def test_workflow_redacts_listener_endpoint_and_poisoned_unknown(self):
         record = {"correlationId": CORRELATION, "artifactPath": "/verified/base.msi"}

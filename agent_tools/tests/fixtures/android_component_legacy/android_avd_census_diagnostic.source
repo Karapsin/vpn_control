@@ -1,0 +1,130 @@
+"""Fixed phase diagnostic for consumed privileged AVD census observations.
+
+Preserves the frozen census program and ancestry rejection. No AVD/native effect
+is submitted by this module. A separately correlated private census capsule
+records finite failure facts; it never grants product or launch authority.
+"""
+from __future__ import annotations
+import ast
+import hashlib
+import json
+from pathlib import Path
+from . import android_avd_launch_recovery as census
+from . import android_device_availability as availability
+
+CENSUS_SHA='eb89ef4cccdb5417becd02b4116eccd10b2e4da4d9fe81f3a8c54d8f97b13fa0'
+FAILED_ID='d87f1452-4a70-4be3-bb77-e1ae7f981845'
+FAILED_SHA='16eac0186df9e21aaea334790af149d4fbc462189b511b4ac3f23ba1ad236b53'
+_TRACE=r'''
+import errno
+TAGS={};FAILURE={};ACTIVE='observation'
+REASONS={'census_host_boot_changed','census_claim_changed','census_avd_directory_changed','census_avd_config_changed','census_avd_inventory_changed','census_avd_disk_changed','census_avd_inventory_type','census_sdk_changed','census_tree_limit','census_tree_type','census_tree_owner','census_tree_changed','census_ancestry_invalid','census_ancestry_changed','census_file_type','census_file_changed','census_metadata_limit','census_inventory_changed_during_scan','census_process_limit','census_process_stat_limit','census_process_command_limit','census_fd_limit','census_pid_reused','census_ports_unknown','census_boot_unknown'}
+def finite_reason(exc):
+ if isinstance(exc,OSError):
+  if isinstance(exc,PermissionError) or exc.errno in (errno.EACCES,errno.EPERM):return 'permission-denied'
+  return {errno.ENOTDIR:'not-directory',errno.ELOOP:'symlink-loop',errno.ENOENT:'missing',errno.EIO:'io-error'}.get(exc.errno,'os-error')
+ if isinstance(exc,UnicodeError):return 'encoding-error'
+ if isinstance(exc,ValueError):return str(exc) if str(exc) in REASONS else 'value-error'
+ return 'unexpected-error'
+def ancestry_facts(path):
+ # Every read is anchored and NOFOLLOW. Neither names nor link contents escape.
+ result=[];fds=[]
+ try:
+  path=pathlib.Path(path)
+  if not path.is_absolute() or len(path.parts)>32:return [{'level':0,'kind':'unadmitted'}]
+  fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);fds.append(fd)
+  for number,name in enumerate(path.parts[1:-1],1):
+   try:
+    info=os.stat(name,dir_fd=fds[-1],follow_symlinks=False)
+    kind='symlink' if stat.S_ISLNK(info.st_mode) else 'directory' if stat.S_ISDIR(info.st_mode) else 'other'
+    item={'level':number,'kind':kind,'generation':fp(info)}
+    if kind=='symlink':item['linkMatchesCanonicalSDK']=os.readlink(name,dir_fd=fds[-1])=='/opt/android-sdk'
+    result.append(item)
+    if kind!='directory':break
+    fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fds[-1]);fds.append(fd)
+    if fp(os.fstat(fd))!=fp(info):result.append({'level':number,'kind':'changed'});break
+   except (OSError,ValueError) as exc:result.append({'level':number,'kind':'unavailable','reason':finite_reason(exc)});break
+  return result
+ finally:
+  for fd in reversed(fds):os.close(fd)
+def remember(exc,reader,path=None):
+ global FAILURE
+ if FAILURE:return
+ phase=TAGS.get(str(path),ACTIVE) if path is not None else ACTIVE
+ FAILURE={'error':'census_diagnostic_failure','phase':phase,'reader':reader,'reason':finite_reason(exc)}
+ if path is not None:
+  try:FAILURE['ancestry']=ancestry_facts(path)
+  except (OSError,ValueError):FAILURE['ancestry']=[{'level':0,'kind':'unavailable'}]
+def wrap_reader(original,name):
+ def wrapped(*args,**kwargs):
+  try:return original(*args,**kwargs)
+  except (OSError,ValueError,UnicodeError) as exc:remember(exc,name,args[0] if args else None);raise
+ return wrapped
+def wrap_phase(original,name,phase):
+ def wrapped(*args,**kwargs):
+  global ACTIVE
+  old=ACTIVE;ACTIVE=phase
+  try:return original(*args,**kwargs)
+  except (OSError,ValueError,UnicodeError) as exc:remember(exc,name);raise
+  finally:ACTIVE=old
+ return wrapped
+_saved_observe=observe
+parent_fds=wrap_reader(parent_fds,'parent_fds')
+read_fixed=wrap_reader(read_fixed,'read_fixed')
+facts=wrap_reader(facts,'facts')
+tree_facts=wrap_reader(tree_facts,'tree_facts')
+guard_proof=wrap_phase(guard_proof,'guard_proof','proof-and-claims')
+metadata=wrap_phase(metadata,'metadata','avd-metadata')
+process_census=wrap_phase(process_census,'process_census','process-fds')
+ports=wrap_phase(ports,'ports','owned-ports')
+def observe(proof):
+ global FAILURE,ACTIVE,TAGS
+ FAILURE={};ACTIVE='observation'
+ for alias,saved in proof.get('observations',[{'avds':{}}])[0].get('avds',{}).items():
+  directory=saved['avdDirectory']['path'];TAGS[directory]=alias+'-avd-tree'
+  TAGS[directory+'/config.ini']=alias+'-avd-config'
+  TAGS[str(pathlib.Path(directory).parent/(saved['historicalSelection']['avd']+'.ini'))]=alias+'-avd-ini'
+  for name in saved['inventory']:TAGS[directory+'/'+name]=alias+'-avd-file'
+  sdk_roles={'emulator':'sdk-emulator','adb':'sdk-adb','package.xml':'sdk-image-metadata','system.img':'sdk-system-image','userdata.img':'sdk-userdata-image','ramdisk.img':'sdk-ramdisk','kernel-ranchu':'sdk-kernel'}
+  for name in saved['sdkFiles']:
+   role=sdk_roles.get(pathlib.Path(name).name,'sdk-file');phase=alias+'-'+role
+   TAGS[name]='shared-'+role if name in TAGS and TAGS[name]!=phase else phase
+ for alias in ('api29','api35'):TAGS[str(ROOT/('android-native-device-'+alias+'.lease'))]=alias+'-device-claim'
+ try:return _saved_observe(proof)
+ except (OSError,ValueError,UnicodeError) as exc:
+  remember(exc,'observe');return dict(FAILURE)
+'''
+
+def prepare_diagnostic(root: Path,correlation: str) -> dict:
+    root=Path(root).absolute()
+    own=Path(__file__).absolute();own_pin,own_raw=availability._snapshot(own)
+    consumed=Path(census.__file__).absolute();old_pin,old_raw=availability._snapshot(consumed)
+    if hashlib.sha256(old_raw).hexdigest()!=CENSUS_SHA:raise ValueError('avd_diagnostic_consumed_source_changed')
+    prepared=census.prepare_privileged_census(root,correlation)
+    base=root/'.runtime/parity-evidence'/('android-avd-privileged-census-'+FAILED_ID)
+    paths=[base/'remote-full.json',base/'result.json']
+    saved={}
+    for path in paths:
+        pin,raw=availability._snapshot(path);prepared['snapshots'][path]=(pin,raw);saved[path.name]=json.loads(raw)
+        if path.name=='remote-full.json' and hashlib.sha256(raw).hexdigest()!=FAILED_SHA:raise ValueError('avd_diagnostic_failure_evidence_changed')
+    pin=saved['result.json']['pin']
+    if pin['sha256']!=FAILED_SHA or pin['generation'][2]!=2053 or saved['remote-full.json']['correlationId']!=FAILED_ID:raise ValueError('avd_diagnostic_failure_binding_changed')
+    prepared['snapshots'][own]=(own_pin,own_raw)
+    # Only CFG metadata and append instrumentation change; frozen defs are exact.
+    binding=prepared['binding'];binding['source'][str(own.relative_to(root))]=hashlib.sha256(own_raw).hexdigest()
+    binding['failedCensus']={'correlationId':FAILED_ID,'pin':pin}
+    template=ast.literal_eval(next(n.value for n in ast.parse(old_raw).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_CENSUS' for t in n.targets)))
+    trace=ast.literal_eval(next(n.value for n in ast.parse(own_raw).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_TRACE' for t in n.targets)))
+    nodes=ast.parse(template.replace('__CFG__',repr(binding))).body
+    if not isinstance(nodes[-1],ast.Expr) or ast.unparse(nodes[-1])!='capture()':raise ValueError('avd_diagnostic_dispatch_changed')
+    program=template.replace('__CFG__',repr(binding))
+    if not program.endswith('capture()\n'):raise ValueError('avd_diagnostic_dispatch_changed')
+    # Authenticate historical failed capsule before observing; no old capture replay.
+    historical="\n_failed_path=ROOT/('android-avd-privileged-census-'+CFG['failedCensus']['correlationId']+'.json')\n_failed=read_fixed(_failed_path,524288);_failed.pop('raw')\nif _failed!=CFG['failedCensus']['pin']:raise ValueError('census_failed_evidence_changed')\n"
+    program=program[:-len('capture()\n')]+historical+trace+'\ncapture()\n'
+    compile(program,'<fixed-census-diagnostic>','exec');prepared['program']=program
+    census.guard_prepared(prepared)
+    return prepared
+
+def guard_prepared(prepared: dict) -> None:
+    census.guard_prepared(prepared)

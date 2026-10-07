@@ -112,7 +112,7 @@ def _source_workflow_contract(root, source, runner):
         "Exact-source Windows artifact does not bind fixture correlation")
 
 
-def _require_newer_than_installed(root, base_version):
+def _require_newer_than_installed(root, base_version, target_version):
     """Observe the owned CP117 installation before spending a hosted build."""
     from . import windows_msi_base_prepare
 
@@ -126,8 +126,15 @@ def _require_newer_than_installed(root, base_version):
              and observed.get("activeCount") == 0
              and observed.get("ownedExplorerCount") == 1,
              "Fresh idle CP117 installed version is unavailable")
-    _require(parse_version(base_version) > parse_version(installed),
-             "Fixture baseVersion must be newer than installed CP117 version")
+    base = parse_version(base_version)
+    current = parse_version(installed)
+    if base > current:
+        return
+    _require(base == current
+             and target_version > base
+             and (observed.get("state"), observed.get("code")) == ("ready", "READY")
+             and observed.get("activeProcesses") == [],
+             "Fixture baseVersion must be newer than installed CP117 version, or exactly match a fresh idle CP117 product")
 
 
 def dispatch(root, request: Mapping, runner=None):
@@ -138,7 +145,6 @@ def dispatch(root, request: Mapping, runner=None):
     _correlation(correlation)
     _require(isinstance(base, str), "Invalid baseVersion")
     parse_version(base)
-    _require_newer_than_installed(root, base)
     runner = runner or _run
     try:
         tracked = runner(["git", "-C", str(Path(root).resolve(strict=True)), "show",
@@ -148,6 +154,7 @@ def dispatch(root, request: Mapping, runner=None):
     match = VERSION_PATTERN.search(tracked.stdout) if tracked.returncode == 0 else None
     _require(match is not None and parse_version(base) < parse_version(match.group(1)),
              "Fixture baseVersion must precede tracked target version")
+    _require_newer_than_installed(root, base, parse_version(match.group(1)))
     _source_workflow_contract(root, source, runner)
     path = _journal_path(root, correlation, create=True)
     intent = {"schemaVersion": 1, "workflow": WORKFLOW, "repository": REPOSITORY,

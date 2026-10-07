@@ -7,6 +7,13 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Hardened Windows update fixture ACL admission and recovery diagnostics.
 - Preserved exact read-only admission guidance and test discovery.
+- Recover Windows update fixtures with protected service journals and exact source-bound admission.
+- Verify and preserve historical Windows baseline evidence before source-bound update admission.
+- Report finite historical Windows reservation blockers without changing installer admission.
+- Harden native acceptance SSH custody and routine update-flow provenance regressions.
+- Retain complete check evidence, isolate native regression fixtures, and preserve authenticated source archives in hygiene checks.
+- Close reviewed native test custody gaps and preserve original update-flow evidence.
+- Harden native evidence and installer custody while separating current and historical acceptance sources.
 
 ## 2.2.2 - 2026-09-30
 

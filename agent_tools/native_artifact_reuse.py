@@ -29,6 +29,11 @@ _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 _ALLOWED_PREFIXES = ("docs/", "agent_docs/", "tests/")
 _FORBIDDEN = ("package", "packaging", "release", "native", "runtime", "workflow", "build", "gradle", "fixture")
+_CRITICAL_AGENT_TOOLS = {
+    "agent_tools/mcp_server.py", "agent_tools/native_artifact_reuse.py",
+    "agent_tools/native_artifact_registry.py", "agent_tools/native_acceptance_matrix.py",
+    "agent_tools/native_acceptance_overview.py", "agent_tools/native_acceptance_requirements.json",
+}
 
 
 def artifact_set_freeze(root: str | Path, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -94,6 +99,42 @@ def artifact_set_verify(root: str | Path, artifact_set: str | Mapping[str, Any])
     return {"verification": "verified", "packages": checked, "originalSourceSha": source}
 
 
+def artifact_set_verify_readonly(root: str | Path, artifact_set: str | Mapping[str, Any]) -> dict[str, Any]:
+    """Verify a frozen set without registry creation, cleanup, migration, or locks."""
+    root = _root(root)
+    try:
+        artifact_set = _load_set_readonly(root, artifact_set)
+        _fields(artifact_set, {"artifactSetId", "schemaVersion", "sourceSha", "productInputs", "packages"})
+        if type(artifact_set["schemaVersion"]) is not int or artifact_set["schemaVersion"] != 1 or artifact_set["artifactSetId"] != _set_id(
+                {key: artifact_set[key] for key in ("schemaVersion", "sourceSha", "productInputs", "packages")}):
+            raise ArtifactReuseError("artifact set identity is invalid")
+        source = _sha(artifact_set["sourceSha"], "sourceSha")
+        inputs = artifact_set["productInputs"]
+        _fields(inputs, {"buildManifestSha256", "runtimeFiles", "version", "provenance"})
+        _digest(inputs["buildManifestSha256"]); _version(inputs["version"])
+        _validate_provenance(root, inputs["provenance"], verify_only=True)
+        packages = artifact_set["packages"]
+        if not isinstance(packages, list) or not packages or packages != sorted(packages, key=lambda p: p["artifactId"]):
+            raise ArtifactReuseError("package list is invalid")
+        _mixed(packages); checked = []
+        for package in packages:
+            _fields(package, {"artifactId", "locationId", "artifactKind", "platform", "sha256", "size", "sourceSha"})
+            result = registry.verify_artifact_readonly(root, package["artifactId"], package["locationId"])
+            artifact = result["artifact"]
+            expected = {key: artifact[key] for key in ("artifactKind", "platform", "sha256", "size", "sourceSha")}
+            if result["verification"] != "verified" or artifact["sourceSha"] != source or any(package[key] != expected[key] for key in expected):
+                raise ArtifactReuseError("registered package bytes or identity changed")
+            checked.append({"artifactId": package["artifactId"], "verification": "verified"})
+        runtime = inputs["runtimeFiles"]
+        if not isinstance(runtime, list) or not runtime or runtime != sorted(runtime, key=lambda p: p["path"]):
+            raise ArtifactReuseError("runtime file list is invalid")
+        if _runtime_files(root, [item["path"] for item in runtime]) != runtime or _provenance(root, inputs["provenance"], verify_only=True) != inputs["provenance"]:
+            raise ArtifactReuseError("runtime or signer bytes changed")
+    except (ArtifactReuseError, registry.NativeArtifactRegistryError, KeyError, TypeError, ValueError, OSError) as error:
+        return {"verification": "mismatch", "reason": str(error)}
+    return {"verification": "verified", "packages": checked, "originalSourceSha": source}
+
+
 def artifact_reuse_check(root: str | Path, value: Mapping[str, Any], *,
                          inspectors: Mapping[str, Callable[[Path, Mapping[str, Any]], Mapping[str, Any]]] | None = None) -> dict[str, Any]:
     """Allow a frozen set only when current Git changes are strictly safe docs/tests."""
@@ -141,8 +182,73 @@ def artifact_reuse_check(root: str | Path, value: Mapping[str, Any], *,
             missing_checks.append(package["artifactKind"] + ": native signer/architecture inspection failed")
     return {"decision": decision, "reasons": reasons, "verification": verified["verification"],
             "originalSourceSha": original, "currentSourceSha": current,
-            "attestation": provenance, "nativeAdmissionReady": not missing_checks,
+            "attestation": provenance,
+            "nativeAdmissionReady": decision != "rebuild-required" and
+                verified["verification"] == "verified" and not missing_checks,
             "missingChecks": missing_checks, "ciRequired": True}
+
+
+def acceptance_equivalence_check(root: str | Path, artifact_set_id: str,
+                                 original_source_sha: str, target_source_sha: str) -> dict[str, Any]:
+    """Derive a committed-source-only proof usable by the acceptance ledger.
+
+    This is deliberately narrower than byte-cache reuse.  It accepts no caller
+    paths or diff claims, never changes registry provenance, and refuses a dirty
+    checkout because a receipt for a commit cannot be inferred from loose files.
+    """
+    return _acceptance_equivalence_check(root, artifact_set_id, original_source_sha, target_source_sha, readonly=False)
+
+
+def acceptance_equivalence_check_readonly(root: str | Path, artifact_set_id: str,
+                                          original_source_sha: str, target_source_sha: str) -> dict[str, Any]:
+    """Replay equivalence evidence without registry housekeeping or locks."""
+    return _acceptance_equivalence_check(root, artifact_set_id, original_source_sha, target_source_sha, readonly=True)
+
+
+def _acceptance_equivalence_check(root: str | Path, artifact_set_id: str,
+                                  original_source_sha: str, target_source_sha: str, *, readonly: bool) -> dict[str, Any]:
+    root = _root(root)
+    original = _sha(original_source_sha, "originalSourceSHA")
+    target = _sha(target_source_sha, "targetSourceSHA")
+    if _head(root) != target:
+        raise ArtifactReuseError("targetSourceSHA must be checked-out HEAD")
+    if _dirty_paths(root):
+        raise ArtifactReuseError("equivalence target checkout must be fully clean")
+    frozen = _load_set_readonly(root, artifact_set_id) if readonly else _load_set(root, artifact_set_id)
+    if frozen.get("sourceSha") != original:
+        raise ArtifactReuseError("artifact set source does not match native receipt")
+    verified = artifact_set_verify_readonly(root, frozen) if readonly else artifact_set_verify(root, frozen)
+    if verified.get("verification") != "verified":
+        raise ArtifactReuseError("artifact set or current bytes are not verified")
+    entries = _equivalence_diff(root, original, target)
+    if not entries:
+        classes: list[str] = []
+    else:
+        classes = sorted({entry["class"] for entry in entries})
+    if any(entry["class"] == "rejected" for entry in entries):
+        raise ArtifactReuseError("commit diff is not eligible for acceptance equivalence")
+    product_before = _equivalence_product_tree(root, original)
+    product_after = _equivalence_product_tree(root, target)
+    if product_before != product_after:
+        raise ArtifactReuseError("product tree differs across equivalence target")
+    obligations = ["exact-sha-ci"]
+    if any(kind in {"test", "agent-tool"} for kind in classes):
+        obligations.append("changed-tool-tests")
+    canonical = [{key: entry[key] for key in ("status", "oldMode", "newMode", "path", "class")}
+                 for entry in entries]
+    # Git traversal and byte streaming can take long enough for another actor to
+    # move the checkout.  A proof is for this exact target commit only.
+    final_verified = artifact_set_verify_readonly(root, frozen) if readonly else artifact_set_verify(root, frozen)
+    if final_verified.get("verification") != "verified":
+        raise ArtifactReuseError("artifact set or current bytes changed during equivalence verification")
+    if _head(root) != target or _dirty_paths(root):
+        raise ArtifactReuseError("equivalence target changed during verification")
+    return {"schemaVersion": 1, "artifactSetId": frozen["artifactSetId"],
+            "originalSourceSHA": original, "targetSourceSHA": target,
+            "immutableArtifactIDs": [item["artifactId"] for item in frozen["packages"]],
+            "productTreeSha256": product_before,
+            "diffSha256": hashlib.sha256(_encode(canonical)).hexdigest(),
+            "changedPaths": canonical, "requiredCurrentChecks": obligations}
 
 
 def _root(root: str | Path) -> Path:
@@ -207,6 +313,72 @@ def _changed_paths(root: Path, before: str, after: str) -> list[str] | None:
         return [p.decode("utf-8") for p in raw.split(b"\0") if p]
     except (ArtifactReuseError, UnicodeDecodeError):
         return None
+
+
+def _equivalence_diff(root: Path, before: str, after: str) -> list[dict[str, str]]:
+    """Return a canonical, mode-sensitive Git diff or fail closed."""
+    for sha in (before, after):
+        _git(root, "cat-file", "-e", sha + "^{commit}")
+    rename_status = _git(root, "diff", "-M", "--name-status", "-z", before, after).split(b"\0")
+    if any(item.startswith((b"R", b"C")) for item in rename_status[::2] if item):
+        raise ArtifactReuseError("Git equivalence diff contains a rename or copy")
+    raw = _git(root, "diff", "--no-renames", "--raw", "-z", before, after)
+    parts = raw.split(b"\0")
+    entries: list[dict[str, str]] = []
+    index = 0
+    while index < len(parts) - 1:
+        metadata = parts[index]
+        if not metadata:
+            index += 1
+            continue
+        if index + 1 >= len(parts):
+            raise ArtifactReuseError("Git equivalence diff is malformed")
+        path_bytes = parts[index + 1]
+        index += 2
+        try:
+            fields = metadata.decode("ascii").split()
+            path = path_bytes.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise ArtifactReuseError("Git equivalence diff contains a non-UTF-8 path") from error
+        if len(fields) != 5 or not fields[0].startswith(":") or fields[4] not in {"A", "M", "D"}:
+            raise ArtifactReuseError("Git equivalence diff has unsupported status")
+        old_mode, new_mode = fields[0][1:], fields[1]
+        if old_mode == "120000" or new_mode == "120000" or old_mode != new_mode and fields[4] == "M":
+            raise ArtifactReuseError("Git equivalence diff changes an unsafe mode")
+        entries.append({"status": fields[4], "oldMode": old_mode, "newMode": new_mode,
+                        "path": path, "class": _equivalence_class(path)})
+    return entries
+
+
+def _equivalence_class(path: str) -> str:
+    if not path or path.startswith("/") or any(part in {"", ".", ".."} for part in path.split("/")):
+        return "rejected"
+    lowered = path.lower()
+    if any(word in lowered for word in _FORBIDDEN):
+        return "rejected"
+    if path == "README.md" or path.startswith(("docs/", "agent_docs/")):
+        return "docs"
+    if path.startswith("tests/") or path.startswith("agent_tools/tests/"):
+        return "test"
+    if path.startswith("agent_tools/") and path.endswith(".py") and path not in _CRITICAL_AGENT_TOOLS:
+        return "agent-tool"
+    return "rejected"
+
+
+def _equivalence_product_tree(root: Path, source: str) -> str:
+    raw = _git(root, "ls-tree", "-r", "-z", source)
+    entries = []
+    for item in raw.split(b"\0"):
+        if not item:
+            continue
+        metadata, name = item.split(b"\t", 1)
+        try:
+            path = name.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise ArtifactReuseError("Git tree contains a non-UTF-8 path") from error
+        if _equivalence_class(path) == "rejected":
+            entries.append([path, *metadata.decode("ascii").split(" ")])
+    return hashlib.sha256(_encode(entries)).hexdigest()
 
 
 def _dirty_paths(root: Path) -> list[str]:
@@ -391,3 +563,48 @@ def _load_set(root: Path, reference: str | Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(reference, Mapping) and reference != stored:
         raise ArtifactReuseError("caller artifact set differs from immutable stored evidence")
     return stored
+
+
+def _load_set_readonly(root: Path, reference: str | Mapping[str, Any]) -> dict[str, Any]:
+    """Read a current immutable set without invoking the writer-side directory helper."""
+    set_id = reference.get("artifactSetId") if isinstance(reference, Mapping) else reference
+    try:
+        registry._readonly_private_directory(root / ".rag_index")
+        directory = root / ".rag_index" / "native-artifact-sets"
+        registry._readonly_private_directory(directory)
+        stored = _read_set_readonly(_set_path(directory, set_id))
+    except registry.NativeArtifactRegistryError as error:
+        raise ArtifactReuseError("artifact set record is unavailable or unsafe") from error
+    if isinstance(reference, Mapping) and reference != stored:
+        raise ArtifactReuseError("caller artifact set differs from immutable stored evidence")
+    return stored
+
+
+def _read_set_readonly(path: Path) -> dict[str, Any]:
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(fd, "rb") as source:
+            before = os.fstat(source.fileno())
+            raw = source.read(65537)
+            after = os.fstat(source.fileno())
+        named = path.lstat()
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or stat.S_IMODE(before.st_mode) != 0o600 or
+                before.st_nlink != 1 or len(raw) > 65536 or not _same_generation(before, after) or
+                not _same_generation(before, named) or len(raw) != before.st_size):
+            raise ArtifactReuseError("artifact set record is unsafe or changed")
+        value = json.loads(raw.decode("utf-8"))
+        if (not isinstance(value, dict) or type(value.get("schemaVersion")) is not int or value.get("schemaVersion") != 1 or
+                not isinstance(value.get("artifactSetId"), str) or value["artifactSetId"] + ".json" != path.name):
+            raise ArtifactReuseError("artifact set record identity is invalid")
+        return value
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+        if isinstance(error, ArtifactReuseError):
+            raise
+        raise ArtifactReuseError("artifact set record is unavailable or corrupt") from error
+
+
+def _same_generation(first: os.stat_result, second: os.stat_result) -> bool:
+    return (first.st_dev, first.st_ino, first.st_mode, first.st_uid, first.st_gid, first.st_nlink,
+            first.st_size, first.st_mtime_ns, first.st_ctime_ns) == (
+            second.st_dev, second.st_ino, second.st_mode, second.st_uid, second.st_gid, second.st_nlink,
+            second.st_size, second.st_mtime_ns, second.st_ctime_ns)

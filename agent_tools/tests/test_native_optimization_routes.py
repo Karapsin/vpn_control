@@ -532,7 +532,7 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         from agent_tools import native_acceptance_overview, native_artifact_registry
         source = "a" * 40
         with TemporaryDirectory() as raw:
-            root = Path(raw)
+            root = Path(raw).resolve()
             self.assertEqual({"matches": [], "records": {}}, native_acceptance_overview.read_artifact_index(
                 root, source, native_artifact_registry))
             self.assertFalse((root / ".rag_index").exists())

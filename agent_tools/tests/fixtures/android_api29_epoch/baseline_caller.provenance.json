@@ -1,0 +1,17 @@
+{
+  "bytes": 36590,
+  "credentialsEmbedded": false,
+  "executionAuthority": false,
+  "kind": "public-python-source-only",
+  "nativePayloadIncluded": false,
+  "schema": 1,
+  "selectedFunctions": [
+    "encoded",
+    "digest",
+    "archive",
+    "validate_proof"
+  ],
+  "sha256": "8c732007d817bb84aec5fc2295340da431a3b761a6bbc36611bcdac9e39047c6",
+  "source": ".runtime/run-api29-installer-component-baseline-once.py",
+  "syntheticRecords": "own TempFS only; not retained413 proof"
+}

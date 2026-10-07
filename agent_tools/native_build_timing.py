@@ -68,33 +68,69 @@ def report(root: Path, current_source: str, request: Mapping[str, Any]) -> dict[
             "nativeActionAllowed": False, "productAction": False}
 
 
+def _generation(info: os.stat_result) -> tuple[int, ...]:
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _directory_generation(info: os.stat_result) -> tuple[int, ...]:
+    # Child creation changes directory timestamps; authority is its structural identity.
+    return _generation(info)[:5]
+
+
+def _guard_directories(chain: list[tuple[Path, int, tuple[int, ...]]]) -> None:
+    for index, (path, fd, saved) in enumerate(chain):
+        named = (os.stat(path, follow_symlinks=False) if index == 0 else
+                 os.stat(path.name, dir_fd=chain[index - 1][1], follow_symlinks=False))
+        if (_directory_generation(os.fstat(fd)) != saved or
+                _directory_generation(named) != saved):
+            raise ValueError("Build timing directory generation changed.")
+
+
 def _read(root: Path, name: str, expected: str) -> dict[str, Any]:
     owner = getattr(os, "getuid", lambda: None)()
     if owner is None:
         raise ValueError("Build timing read requires local owner identity.")
-    for path in (root, root / ".rag_index", root / ".rag_index" / "build-timings"):
-        info = path.lstat()
-        if path.is_symlink() or not stat.S_ISDIR(info.st_mode):
-            raise ValueError("Build timing directory is unsafe.")
-        if path != root and (info.st_uid != owner or stat.S_IMODE(info.st_mode) != 0o700):
-            raise ValueError("Build timing directory ownership is unsafe.")
-    path = root / name
-    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
-    with os.fdopen(fd, "rb") as stream:
-        info = os.fstat(stream.fileno())
-        raw = stream.read(_MAX_BYTES + 1)
-        after = os.fstat(stream.fileno())
-    if (not stat.S_ISREG(info.st_mode) or info.st_uid != owner or
-            stat.S_IMODE(info.st_mode) != 0o600 or len(raw) > _MAX_BYTES or
-            (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns) !=
-            (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) or
-            len(raw) != info.st_size or
-            hashlib.sha256(raw).hexdigest() != expected):
-        raise ValueError("Build timing receipt bytes or ownership are invalid.")
+    chain: list[tuple[Path, int, tuple[int, ...]]] = []
     try:
-        value = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ValueError("Build timing receipt JSON is invalid.") from error
-    if not isinstance(value, dict):
-        raise ValueError("Build timing receipt must be an object.")
-    return value
+        for path in (root, root / ".rag_index", root / ".rag_index" / "build-timings"):
+            parent = chain[-1][1] if chain else None
+            leaf = path.name if chain else path
+            fd = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            info = os.fstat(fd)
+            chain.append((path, fd, _directory_generation(info)))
+            if not stat.S_ISDIR(info.st_mode):
+                raise ValueError("Build timing directory is unsafe.")
+            if path != root and (info.st_uid != owner or stat.S_IMODE(info.st_mode) != 0o700):
+                raise ValueError("Build timing directory ownership is unsafe.")
+        _guard_directories(chain)
+        path = root / name
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=chain[-1][1])
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            saved = _generation(info)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != owner or
+                    stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or
+                    info.st_size > _MAX_BYTES):
+                raise ValueError("Build timing receipt bytes or ownership are invalid.")
+            raw = stream.read(_MAX_BYTES + 1)
+            if len(raw) != info.st_size or hashlib.sha256(raw).hexdigest() != expected:
+                raise ValueError("Build timing receipt bytes or ownership are invalid.")
+            try:
+                value = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise ValueError("Build timing receipt JSON is invalid.") from error
+            if not isinstance(value, dict):
+                raise ValueError("Build timing receipt must be an object.")
+            # Parent observations may expose a late unlink/replacement. Finish
+            # them before the terminal original held/named file generation pass.
+            _guard_directories(chain)
+            named = os.stat(path.name, dir_fd=chain[-1][1], follow_symlinks=False)
+            if _generation(os.fstat(stream.fileno())) != saved or _generation(named) != saved:
+                raise ValueError("Build timing receipt bytes or generation changed.")
+            return value
+    except OSError as error:
+        raise ValueError("Build timing receipt or directory is unsafe.") from error
+    finally:
+        for _, fd, _ in reversed(chain):
+            os.close(fd)

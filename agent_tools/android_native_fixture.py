@@ -68,6 +68,44 @@ def _clean(root: Path) -> bool:
                               timeout=10, env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"}).stdout.strip()
 
 
+def _git_common_dir(root: Path) -> Path:
+    """Resolve the common Git directory without making a repository mutation."""
+    try:
+        result = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=root,
+                                check=False, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ValueError("Android fixture source repository is unavailable") from error
+    common = result.stdout.strip()
+    if result.returncode != 0 or not common or "\n" in common:
+        raise ValueError("Android fixture source repository is unavailable")
+    path = Path(common)
+    if not path.is_absolute():
+        path = root / path
+    return path.resolve()
+
+
+def _source_root(coordinator: Path, source_root: Path | str | None) -> Path:
+    """Allow a clean linked worktree while coordinator-owned evidence stays put."""
+    if source_root is None:
+        return coordinator
+    supplied = Path(source_root)
+    if supplied.is_symlink():
+        raise ValueError("Android fixture source root is unusable")
+    try:
+        candidate = supplied.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise ValueError("Android fixture source root is unusable") from error
+    if not candidate.is_dir() or _git_common_dir(candidate) != _git_common_dir(coordinator):
+        raise ValueError("Android fixture source root is not the coordinator repository")
+    return candidate
+
+
+def _source_matches(root: Path, source_sha: str) -> None:
+    if (not isinstance(source_sha, str) or not _SHA.fullmatch(source_sha) or
+            _head(root) != source_sha or not _clean(root)):
+        raise ValueError("Android fixture source SHA differs from checkout")
+
+
 def _artifact(root: Path, artifact_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
     try:
         from agent_tools import android_package_install, native_artifact_registry
@@ -105,15 +143,15 @@ def endpoint_contract() -> dict[str, Any]:
     }
 
 
-def prepare_requirements(root: Path | str, source_sha: str, base_artifact_id: str = BASE_ARTIFACT_ID) -> dict[str, Any]:
+def prepare_requirements(root: Path | str, source_sha: str, base_artifact_id: str = BASE_ARTIFACT_ID, *,
+                         source_root: Path | str | None = None) -> dict[str, Any]:
     """Bind a future target build to an exact checkout and verified installed base."""
-    root = Path(root)
-    if (not isinstance(source_sha, str) or not _SHA.fullmatch(source_sha) or
-            _head(root) != source_sha or not _clean(root)):
-        raise ValueError("Android fixture source SHA differs from checkout")
+    root = Path(root).resolve(strict=True)
+    source = _source_root(root, source_root)
+    _source_matches(source, source_sha)
     base, package = _artifact(root, base_artifact_id)
     source_line = re.search(r"(?m)^vpnControlVersion=([^\s]+)$",
-                            (root / "gradle.properties").read_text(encoding="utf-8"))
+                            (source / "gradle.properties").read_text(encoding="utf-8"))
     if not source_line:
         raise ValueError("Android fixture source version is unavailable")
     current = _version(source_line.group(1))
@@ -138,12 +176,17 @@ def prepare_requirements(root: Path | str, source_sha: str, base_artifact_id: st
     }
 
 
-def verify_target(root: Path | str, requirements: dict[str, Any], target_artifact_id: str) -> dict[str, Any]:
+def verify_target(root: Path | str, requirements: dict[str, Any], target_artifact_id: str, *,
+                  source_root: Path | str | None = None) -> dict[str, Any]:
     """Accept only exact-source, higher-version, same-signer nondebuggable APK."""
-    root = Path(root)
-    if _head(root) != requirements.get("sourceSha") or not _clean(root):
-        raise ValueError("Android fixture source SHA changed")
-    fresh = prepare_requirements(root, requirements["sourceSha"], requirements["baseArtifactId"])
+    root = Path(root).resolve(strict=True)
+    source = _source_root(root, source_root)
+    try:
+        _source_matches(source, requirements.get("sourceSha"))
+    except ValueError as error:
+        raise ValueError("Android fixture source SHA changed") from error
+    fresh = prepare_requirements(root, requirements["sourceSha"], requirements["baseArtifactId"],
+                                 source_root=source)
     if fresh != requirements:
         raise ValueError("Android fixture opening package plan changed")
     target, package = _artifact(root, target_artifact_id)

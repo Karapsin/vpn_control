@@ -1,0 +1,468 @@
+"""Reviewed once-only API29 read baseline carrier. Native execution is root-owned."""
+import ast
+import base64
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import select
+import stat
+import subprocess
+import sys
+import time
+import uuid
+
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
+from agent_tools import android_api29_current_owner_observation as observer
+from agent_tools import android_component_command_transport as command
+from agent_tools import android_installer_component_bundle as bundle
+from agent_tools import android_device_availability as availability
+from agent_tools import android_component_operation_history as operation_history
+from agent_tools import ssh_transport
+from agent_tools import windows_diagnostic_authority_capture as authority
+
+OWNER='6373d143-1372-4835-a89b-baafb0959b9f'
+OPERATION='cf7ca786-f4ce-4c21-9885-856d6eaffffe'
+PRODUCT='d32f719a08db57e5d40ce2bf77e0d7c5b42de557'
+RESERVATION='env-11f1a10b21cfea11b504bd9db53dd9a0'
+PROOF='.runtime/parity-evidence/android-api29-current-epoch-permission-5f4eb451-2b69-4cc9-97e9-5709c089f3a3/result-0.private'
+PROOF_SHA='c9d09af0b6c6eb7df71fd64737d99ffb51f08fdab4af3385fa39de4502ce3eec'
+FROZEN={
+ 'agent_tools/android_component_operation_history.py':'7613e8a3a3fba1cc76aeb3b39790b764cbedf282c2ca0700fe68014b20d781c6',
+ 'agent_tools/tests/test_android_component_operation_history.py':'bdddbeebb4997f94372aaf57b29b266f432c760ad0d73f50720b15f4a6edf165',
+ 'agent_tools/android_installer_component_bundle.py':'46c1d3f8c59b42bc6a17903d0945c8299063c5c6d4f46951ff9007f3f59ef35e',
+ 'agent_tools/tests/test_android_installer_component_bundle.py':'1e2cc5dbc255783e2f78b56985826f5fc6e14049de2ff67ce131f0a7798f9dfa',
+ 'agent_tools/android_component_command_transport.py':'c9b50649485ca29bdd40877032b08af529f54bc3ca4f1932cbb30fa5517ff6d1',
+ 'agent_tools/android_installer_component_adapter.py':'f279fea2695950266600f97e5d66f563aa6bbb81dc82f82852c0cb72ef1a0212',
+ 'agent_tools/tests/test_android_installer_component_adapter.py':'7d0eb98c76a4beaf6494f46b5d2500bd74e199dd85badc196726acb5037fd7d9',
+ 'agent_tools/android_external_java_component_transport.py':'c466a58180280fc0606481b423f19e51f9900b82ea09718df4f3b8b504ad7782',
+}
+KNOWN_FAILURE_CODES=('command_backend_already_present', 'command_dispatch_changed', 'command_program_changed', 'command_read_source_changed', 'component_baseline_crossed_binding', 'component_baseline_fixed_request_required', 'component_baseline_installed_version_changed', 'component_baseline_reservation_changed', 'component_bundle_changed_while_loading', 'component_bundle_correlation_required', 'component_bundle_directory_changed', 'component_bundle_directory_unsafe', 'component_bundle_factory_changed', 'component_bundle_file_changed', 'component_bundle_file_limit', 'component_bundle_file_unsafe', 'component_bundle_inventory_changed', 'component_bundle_manifest_changed', 'component_bundle_parent_changed', 'component_bundle_posix_fd_required', 'component_bundle_receipt_invalid', 'component_bundle_receiver_root_changed', 'component_bundle_receiver_root_required', 'component_bundle_review_required', 'component_bundle_source_changed', 'component_bundle_transfer_changed', 'component_bundle_transfer_invalid', 'component_bundle_transfer_limit', 'component_bundle_transport_source_changed', 'component_bundle_write_changed', 'component_guard_admission_changed', 'component_guard_backend_changed', 'component_guard_context_source_changed', 'component_guard_crossed_binding', 'component_guard_device_unadmitted', 'component_guard_fixed_backend_required:child_identity', 'component_guard_fixed_backend_required:command_binary', 'component_guard_fixed_backend_required:command_bounded', 'component_guard_fixed_backend_required:command_host_guard', 'component_guard_fixed_backend_required:command_host_identity', 'component_guard_fixed_backend_required:command_request', 'component_guard_fixed_backend_required:component_command', 'component_guard_fixed_backend_required:external_file', 'component_guard_fixed_backend_required:external_jdk', 'component_guard_fixed_backend_required:external_jdk_guard', 'component_guard_fixed_backend_required:getter_stage', 'component_guard_fixed_backend_required:qemu_fact', 'component_guard_fixed_backend_required:session_guest', 'component_guard_fixed_source_changed', 'component_guard_generation_changed', 'component_guard_guest_read_unknown', 'component_guard_host_changed', 'component_guard_installer_lease_changed', 'component_guard_installer_lease_required', 'component_guard_intent_changed', 'component_guard_modules_required', 'component_guard_operations_unknown', 'component_guard_owned_process_changed', 'component_guard_owner_changed', 'component_guard_package_changed', 'component_guard_package_path_unknown', 'component_guard_process_unknown', 'component_guard_public_changed', 'component_guard_runtime_changed', 'component_guard_stage_changed', 'component_guard_unstaged_module', 'installer_adapter_backend_changed', 'installer_adapter_context_device_required', 'installer_adapter_crossed_call', 'installer_adapter_crossed_context', 'installer_adapter_crossed_stage_device', 'installer_adapter_current_guard_required', 'installer_adapter_effect_fence_changed', 'installer_adapter_environment_changed', 'installer_adapter_fence_changed', 'installer_adapter_flags_invalid', 'installer_adapter_hook_changed', 'installer_adapter_intent_changed', 'installer_adapter_source_changed', 'installer_adapter_tls_call_changed', 'installer_adapter_tls_hook_changed', 'installer_adapter_tls_public_failed', 'installer_adapter_uncertain_effect_consumed')
+KNOWN_FAILURE_FUNCTIONS=('__call__', '__init__', '_adb', '_bounded_source', '_capture', '_close', '_context_device', '_directory', '_evidence', '_guard_backend', '_module', '_new_directory', '_parents', '_phase', '_physical', '_pin', '_process_facts', '_public', '_public_reads', '_raw', '_read', '_selected_modules', '_semantic_code', '_stage', '_task_guard', '_text', '_tree', '_write', 'baseline_read_only', 'capture', 'carrier_source', 'child_identity', 'command_binary', 'command_bounded', 'command_host_guard', 'command_host_identity', 'command_request', 'component_command', 'external_file', 'external_jdk', 'external_jdk_guard', 'get', 'getter_stage', 'guard', 'importer', 'install', 'installed_baseline', 'invoke', 'load', 'modules', 'namespace_source', 'payload', 'prepare', 'production_imports', 'public_run', 'qemu_fact', 'restore', 'reviewed_tree', 'session_guest', 'stage_payload')
+CHUNK=524288
+SOURCE_LIMIT=8388608
+STREAM_LIMIT=67108864
+ROOT_BOOT=r'''
+import os,sys,hashlib,stat,select,time,resource,io
+EXPECTED_BYTES=__BYTES__;EXPECTED_SHA=__SHA__;FILE_LIMIT=8388608
+HEADER=('VPNCONTROL_COMPONENT_SOURCE_V1 '+str(EXPECTED_BYTES)+' '+EXPECTED_SHA+'\n').encode('ascii')
+def identity():
+ value=[os.getuid(),os.geteuid(),os.getgid(),os.getegid(),sorted(os.getgroups())]
+ if value[:4]!=[0,0,0,0] or len(value[4])>64 or any(type(x)is not int or x<0 for x in value[4]):raise ValueError('baseline_root_supervisor_unadmitted')
+ return value
+def pin(info):return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+initial=identity();fd=os.dup(sys.stdin.fileno());before=pin(os.fstat(fd));raw=bytearray();deadline=time.monotonic()+120
+try:
+ if not stat.S_ISFIFO(before[2]) or before[3:6]!=[1000,1000,1]:raise ValueError('baseline_root_stdin_unadmitted')
+ while True:
+  remaining=deadline-time.monotonic()
+  if remaining<=0:raise ValueError('baseline_root_stdin_timeout')
+  ready,_,_=select.select([fd],[],[],min(remaining,1))
+  if not ready:continue
+  part=os.read(fd,min(65536,EXPECTED_BYTES+len(HEADER)+514-len(raw)))
+  if not part:break
+  raw.extend(part)
+  if len(raw)>EXPECTED_BYTES+len(HEADER)+513:raise ValueError('baseline_root_stdin_limit')
+ # Exact source header, with at most one unused cached-sudo credential line.
+ first,separator,remainder=raw.partition(b'\n')
+ if not separator:raise ValueError('baseline_root_source_header_unknown')
+ if first+b'\n'==HEADER:raw=remainder
+ else:
+  if not 0<len(first)<=512 or b'\0' in first or b'\r' in first:raise ValueError('baseline_root_credential_frame_unknown')
+  header,separator,source=remainder.partition(b'\n')
+  if not separator or header+b'\n'!=HEADER:raise ValueError('baseline_root_source_header_unknown')
+  raw=source;first=bytearray()
+ if len(raw)!=EXPECTED_BYTES or hashlib.sha256(raw).hexdigest()!=EXPECTED_SHA or pin(os.fstat(fd))[:6]!=before[:6] or identity()!=initial:raise ValueError('baseline_root_source_unknown')
+ admitted_pin=pin(os.fstat(fd))
+ original_limit=resource.getrlimit(resource.RLIMIT_FSIZE);failure=None;closing_failure=False
+ class BoundedOutput(io.StringIO):
+  def __init__(self):super().__init__();self.bytes_written=0
+  def write(self,value):
+   self.bytes_written+=len(value.encode('utf-8'))
+   if self.bytes_written>67108864:raise ValueError('baseline_root_output_limit')
+   return super().write(value)
+ output=BoundedOutput();original_stdout=sys.stdout
+ try:
+  resource.setrlimit(resource.RLIMIT_FSIZE,(FILE_LIMIT,FILE_LIMIT))
+  if resource.getrlimit(resource.RLIMIT_FSIZE)!=(FILE_LIMIT,FILE_LIMIT):raise ValueError('baseline_root_file_limit_unknown')
+  sys.stdout=output
+  try:exec(compile(bytes(raw),'<fixed-api29-component-baseline>','exec'),{'__name__':'__component_baseline__','CARRIER_ORIGINAL_FSIZE':original_limit,'CARRIER_ADMITTED_FSIZE':(FILE_LIMIT,FILE_LIMIT),'CARRIER_SOURCE_STDIN_PIN':admitted_pin,'CARRIER_INITIAL_STDIN_PIN':before})
+  except BaseException as error:failure=error
+ finally:
+  sys.stdout=original_stdout
+  try:
+   resource.setrlimit(resource.RLIMIT_FSIZE,original_limit)
+   if resource.getrlimit(resource.RLIMIT_FSIZE)!=original_limit or pin(os.fstat(fd))!=admitted_pin or identity()!=initial:raise ValueError('baseline_root_closing_unknown')
+  except Exception:closing_failure=True
+  # Complete program stdout is released only after attempting the checked restore.
+  original_stdout.write(output.getvalue());original_stdout.flush();output.close()
+ if closing_failure:raise ValueError('baseline_root_closing_unknown')
+ if failure is not None:raise failure
+finally:os.close(fd)
+'''
+REMOTE=r'''
+import sys,os,select,time,subprocess,hashlib,base64,json
+EXPECTED_BYTES=__BYTES__;EXPECTED_SHA=__SHA__;ROOT_BOOT=__BOOT__
+def host_identity():
+ value={'uid':os.getuid(),'euid':os.geteuid(),'gid':os.getgid(),'egid':os.getegid(),'groups':sorted(os.getgroups())}
+ if any(value[key]!=1000 for key in ('uid','euid','gid','egid')) or len(value['groups'])>64 or any(type(x)is not int or x<0 for x in value['groups']):raise ValueError('baseline_receiver_uid_unadmitted')
+ return value
+initial=host_identity();secret=bytearray();raw=bytearray();deadline=time.monotonic()+120
+while not secret.endswith(b'\n'):
+ if time.monotonic()>=deadline:raise ValueError('baseline_source_receive_timeout')
+ ready,_,_=select.select([sys.stdin],[],[],1)
+ if not ready:continue
+ part=os.read(sys.stdin.fileno(),1)
+ if not part or len(secret)>=513:raise ValueError('baseline_credential_envelope_unknown')
+ secret.extend(part)
+if not 1<len(secret)<=513 or b'\0' in secret or b'\r' in secret:raise ValueError('baseline_credential_envelope_unknown')
+while True:
+ remaining=deadline-time.monotonic()
+ if remaining<=0:raise ValueError('baseline_source_receive_timeout')
+ ready,_,_=select.select([sys.stdin],[],[],min(remaining,1))
+ if not ready:continue
+ part=os.read(sys.stdin.fileno(),min(65536,EXPECTED_BYTES+1-len(raw)))
+ if not part:break
+ raw.extend(part)
+ if len(raw)>EXPECTED_BYTES:raise ValueError('baseline_source_receive_limit')
+if len(raw)!=EXPECTED_BYTES or hashlib.sha256(raw).hexdigest()!=EXPECTED_SHA or host_identity()!=initial:raise ValueError('baseline_source_changed')
+header=('VPNCONTROL_COMPONENT_SOURCE_V1 '+str(EXPECTED_BYTES)+' '+EXPECTED_SHA+'\n').encode('ascii')
+p=None;streams={};failure=None;payload=secret+header+raw;secret=bytearray();raw=bytearray()
+try:
+ p=subprocess.Popen(['/usr/bin/sudo','-S','-p','','--','/usr/bin/python3','-I','-B','-c',ROOT_BOOT],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+ streams={p.stdout:bytearray(),p.stderr:bytearray()};opened=list(streams);deadline=time.monotonic()+1200;offset=0;writer=p.stdin
+ os.set_blocking(writer.fileno(),False)
+ while opened or writer is not None:
+  remaining=deadline-time.monotonic()
+  if remaining<=0:raise ValueError('baseline_remote_collection_timeout')
+  ready,writable,_=select.select(opened,[writer] if writer is not None else [],[],min(remaining,1))
+  if writable:
+   sent=os.write(writer.fileno(),payload[offset:offset+65536])
+   if sent<=0:raise ValueError('baseline_root_stdin_write_unknown')
+   payload[offset:offset+sent]=b'\0'*sent;offset+=sent
+   if offset==len(payload):writer.close();writer=None;payload.clear()
+  for stream in ready:
+   part=os.read(stream.fileno(),65536)
+   if not part:opened.remove(stream);continue
+   streams[stream].extend(part)
+   if sum(map(len,streams.values()))>67108864:raise ValueError('baseline_remote_collection_limit')
+ p.wait(timeout=max(.01,deadline-time.monotonic()))
+except Exception as error:failure=type(error).__name__
+finally:
+ payload.clear();secret=bytearray()
+ if p is not None:
+  if p.stdin is not None and not p.stdin.closed:p.stdin.close()
+  if p.poll()is None:p.kill();p.wait(timeout=5)
+  remaining_streams=[stream for stream in streams if not stream.closed];drain_deadline=time.monotonic()+5
+  while remaining_streams and time.monotonic()<drain_deadline:
+   ready,_,_=select.select(remaining_streams,[],[],.1)
+   for stream in ready:
+    part=os.read(stream.fileno(),65536)
+    if not part:remaining_streams.remove(stream);continue
+    streams[stream].extend(part)
+    if sum(map(len,streams.values()))>67108864:failure='baseline_remote_collection_limit';remaining_streams=[];break
+ for stream in streams:stream.close()
+ try:
+  if host_identity()!=initial:failure='baseline_receiver_identity_changed'
+ except Exception:failure='baseline_receiver_identity_unknown'
+ out=bytes(streams.get(getattr(p,'stdout',None),b''));err=bytes(streams.get(getattr(p,'stderr',None),b''))
+ print(json.dumps({'schema':1,'kind':'api29-component-baseline-terminal','returncode':p.returncode if p is not None else None,'failure':failure,'hostIdentity':initial,'sourceBytes':EXPECTED_BYTES,'sourceSha256':EXPECTED_SHA,'stdoutBytes':len(out),'stdoutSha256':hashlib.sha256(out).hexdigest(),'stderrBytes':len(err),'stderrSha256':hashlib.sha256(err).hexdigest()},sort_keys=True,separators=(',',':')),flush=True)
+ for name,data in [('out',out),('err',err)]:
+  for offset in range(0,len(data),524288):print(name+':'+base64.b64encode(data[offset:offset+524288]).decode(),flush=True)
+'''
+
+
+
+def encoded(value):return (json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode()
+def digest(raw):return hashlib.sha256(raw).hexdigest()
+
+
+def archive(capture,name,raw):
+    """Every local evidence file is <=512KiB; the manifest binds full bytes."""
+    chunks=[]
+    for index,offset in enumerate(range(0,len(raw),CHUNK)):
+        child=name+'-'+str(index)+'.private';pin=capture.create(child,raw[offset:offset+CHUNK])
+        chunks.append({'name':child,'pin':pin})
+    manifest={'bytes':len(raw),'sha256':digest(raw),'chunks':chunks}
+    capture.create(name+'-manifest.json',encoded(manifest))
+    return manifest
+
+
+def prepared_only(root,correlation=None):
+    """Local factory/archive admission only. It never launches an SSH process."""
+    root=Path(root).absolute();correlation=correlation or str(uuid.uuid4())
+    uuid.UUID(correlation)
+    leaf='android-api29-installer-component-baseline-'+correlation
+    folder=root/'.runtime/parity-evidence'/leaf;folder.mkdir(mode=0o700,exist_ok=False)
+    capture=authority.AuthorityCapture(root,leaf)
+    try:
+        paths=set(bundle.FILES)|set(FROZEN)|{
+            'agent_tools/tests/test_android_component_command_transport.py',
+            'agent_tools/tests/test_android_installer_component_adapter.py',
+            'agent_tools/tests/test_android_external_java_component_transport.py',
+            'agent_tools/tests/test_android_api29_current_owner_observation.py',
+            'agent_tools/ssh_transport.py','agent_tools/windows_diagnostic_authority_capture.py',
+            '.runtime/run-api29-installer-component-baseline-once.py',PROOF,
+            '.rag_index/native-environments/reservations.json',ssh_transport.CONFIG_FILENAME}
+        local={root/name:bundle._read(root/name) for name in sorted(paths)}
+        credential_path=root/'.codex/arch-sudo.local'
+        credential_raw,credential_pin=bundle._read(credential_path,True)
+        if not 0<len(credential_raw)<=513 or b'\0' in credential_raw or b'\r' in credential_raw or b'\n' in credential_raw.rstrip(b'\n'):
+            raise ValueError('baseline_credential_unadmitted')
+        credential_raw=b''
+        for name,sha in FROZEN.items():
+            if local[root/name][1]['sha256']!=sha:raise ValueError('baseline_frozen_source_changed')
+        raw_proof=local[root/PROOF][0]
+        if digest(raw_proof)!=PROOF_SHA:raise ValueError('baseline_original_epoch_proof_changed')
+        proof=json.loads(raw_proof)
+        if (proof.get('controllerId')!=OWNER or type(proof.get('configurationRevision'))is not int or proof['configurationRevision']!=0 or
+            proof.get('correlationId')!='79ed4085-5ed1-4b5d-8bcd-6f642adc86fb' or proof.get('closingGuardsVerified')is not True or
+            proof.get('permissionObserved')is not True or proof.get('ownedOperation',{}).get('id')!=OPERATION or
+            proof['ownedOperation'].get('final')is not True or proof['ownedOperation'].get('phase')!='succeeded'):
+            raise ValueError('baseline_original_current_owner_unproven')
+        expected_ledger=proof['records']['operationsAfter']['stdout']['data']['operations']
+        if not expected_ledger or any(type(row)is not dict or row.get('final')is not True or row.get('controllerId')!=OWNER for row in expected_ledger):
+            raise ValueError('baseline_original_terminal_ledger_unknown')
+        registry=json.loads(local[root/'.rag_index/native-environments/reservations.json'][0])
+        rows=[row for row in registry['reservations'] if row['id']==RESERVATION]
+        if len(rows)!=1:raise ValueError('baseline_owned_reservation_unknown')
+        row=rows[0]
+        if (row['hostAlias']!='archlinux' or row['environment']!='owned-android-api29-coldboot' or
+            row['operator']!='root-android' or row['allocationState'] not in ('pending','running')):
+            raise ValueError('baseline_owned_reservation_crossed')
+        identity={key:row[{'reservationId':'id'}.get(key,key)] for key in ('reservationId','token','hostAlias','environment','operator')}
+        owned=observer.prepare(root,identity)
+        owned,binding=command.prepare(root,owned,'android-api29')
+        tree=ast.parse(owned['program'])
+        launch=command.readonly._assignment(tree,'LAUNCH');getter=command.readonly._assignment(tree,'GETTER')
+        if launch['intent']['reservation']!=identity or launch['device']!='api29':raise ValueError('baseline_original_launch_crossed')
+        review=bundle.reviewed_tree(root);receipt=bundle.prepare(root,folder/'tools',review['treeSha256'])
+        request={'host':'archlinux','device':'android-api29','correlationId':correlation,'sourceSha':PRODUCT,
+                 'expectedOwner':OWNER,'expectedRevision':0,'expectedAvd':launch['avd'],'expectedApi':29,
+                 'packageSha256':getter['packageSha256'],'reservation':identity}
+        program=bundle.carrier_source(receipt,owned,correlation)
+        root_node=next(node for node in ast.parse(program).body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=='ROOT' for target in node.targets))
+        remote_root=ast.literal_eval(root_node.value.args[0])
+        # Fixed result and complete raw evidence collection, even after a failed read.
+        suffix='''
+RESULT=None;FAILURE=None;FAILURE_DETAIL=None
+try:RESULT=COMPONENT_BUNDLE.baseline_read_only(COMPONENT_RECEIPT,globals(),BASELINE_REQUEST)
+except Exception as error:
+ FAILURE='ValueError' if type(error)is ValueError else 'Exception';code=None;phase_functions=[]
+ if type(error)is ValueError and len(error.args)==1 and type(error.args[0])is str and len(error.args[0])<=160 and error.args[0] in KNOWN_FAILURE_CODES:code=error.args[0]
+ trace=error.__traceback__;depth=0
+ while trace is not None and depth<16:
+  name=trace.tb_frame.f_code.co_name
+  if name in KNOWN_FAILURE_FUNCTIONS:phase_functions.append(name)
+  trace=trace.tb_next;depth+=1
+ FAILURE_DETAIL={'type':FAILURE,'code':code,'phaseFunctions':phase_functions}
+records=[];directory=ROOT/('android-installer-component-baseline-'+BASELINE_REQUEST['correlationId'])
+if directory.exists():
+ COMPONENT_BUNDLE._directory(directory)
+ names=sorted(entry.name for entry in directory.iterdir())
+ if len(names)>2000 or any(re.fullmatch(r'component-guard-(?:read-[0-9]{5}|current-admission)\\.json',name)is None for name in names):raise ValueError('baseline_evidence_inventory_changed')
+ for name in names:
+  raw,pin=COMPONENT_BUNDLE._read(directory/name,True)
+  records.append({'name':name,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'pin':pin,'rawBase64':BASELINE_BASE64.b64encode(raw).decode()})
+ COMPONENT_BUNDLE._directory(directory)
+COMPONENT_BUNDLE.load(COMPONENT_RECEIPT);command_host_guard()
+print(json.dumps({'schema':1,'kind':'api29-installer-component-baseline-proof','request':BASELINE_REQUEST,'baseline':RESULT,'failure':FAILURE,'failureDetail':FAILURE_DETAIL,'records':records,'carrierSourceStdinPin':CARRIER_SOURCE_STDIN_PIN,'carrierInitialStdinPin':CARRIER_INITIAL_STDIN_PIN,'originalFileLimit':CARRIER_ORIGINAL_FSIZE,'admittedFileLimit':CARRIER_ADMITTED_FSIZE,'installedLauncherAccepted':False,'bundledRuntimeAccepted':False,'acceptanceComplete':False},sort_keys=True,separators=(',',':')),flush=True)
+if FAILURE is not None:raise SystemExit(2)
+'''
+        program+='\nKNOWN_FAILURE_CODES='+repr(KNOWN_FAILURE_CODES)+'\nKNOWN_FAILURE_FUNCTIONS='+repr(KNOWN_FAILURE_FUNCTIONS)+'\nBASELINE_REQUEST='+repr(request)+"\nBASELINE_BASE64=__import__('base64')\n"+suffix
+        compile(program,'<api29-baseline-reviewed-full-program>','exec')
+        source=program.encode()
+        if len(source)>SOURCE_LIMIT:raise ValueError('baseline_source_limit')
+        boot=ROOT_BOOT.replace('__BYTES__',str(len(source))).replace('__SHA__',repr(digest(source)))
+        compile(boot,'<api29-root-fixed-file-bootstrap>','exec')
+        remote=REMOTE.replace('__BYTES__',str(len(source))).replace('__SHA__',repr(digest(source))).replace('__BOOT__',repr(boot))
+        compile(remote,'<api29-baseline-small-stdin-receiver>','exec')
+        config=ssh_transport.load_config(root)
+        if str(config.hosts['archlinux'].fixture_transfer_root)!=remote_root or config.hosts['archlinux'].user!='kardinal':
+            raise ValueError('baseline_private_ssh_root_crossed')
+        argv=ssh_transport.build_ssh_argv(config,'archlinux',60,
+            command=['/usr/bin/python3','-I','-B','-c','exec('+repr(remote)+')'],
+            ssh_binary='/usr/bin/ssh',nested_ssh_binary='/usr/bin/ssh')
+        if sum(len(word.encode())+1 for word in argv)>65536:raise ValueError('baseline_ssh_argv_limit')
+        source_manifest=[]
+        for index,(path,(raw,pin)) in enumerate(sorted(local.items())):
+            name='source-'+str(index);manifest=archive(capture,name,raw)
+            source_manifest.append({'path':str(path.relative_to(root)),'pin':pin,'archive':manifest})
+        capture.create('sources.json',encoded(source_manifest))
+        archive(capture,'program',source);archive(capture,'receiver',remote.encode());archive(capture,'root-bootstrap',boot.encode())
+        capture.create('binding.json',encoded({'phase':'baseline-read-only','request':request,
+            'originalEpochProofSha256':PROOF_SHA,'toolReceipt':receipt,'commandBinding':binding,
+            'programBytes':len(source),'programSha256':digest(source),'argvBytes':sum(len(x.encode())+1 for x in argv),'credentialPin':credential_pin,'rootFileBudget':8388608,
+            'installedLauncherAccepted':False,'bundledRuntimeAccepted':False,'acceptanceComplete':False,'replayAllowed':False}))
+        os.fsync(capture.fd)
+        return {'root':root,'capture':capture,'leaf':leaf,'local':local,'prepared':owned,'receipt':receipt,
+                'argv':argv,'source':source,'request':request,'ledger':expected_ledger,'historicalOperation':proof['ownedOperation'],'credentialPath':credential_path,'credentialPin':credential_pin}
+    except BaseException:capture.close();raise
+
+
+def guard(state):
+    command.readonly.guard(state['prepared']);bundle.load(state['receipt'])
+    for path,pin in state['local'].items():
+        if bundle._read(path)!=pin:raise ValueError('baseline_local_source_or_authority_changed')
+    if bundle._read(state['credentialPath'],True)[1]!=state['credentialPin']:raise ValueError('baseline_credential_generation_changed')
+    state['capture']._check()
+
+
+def collect(state,credential):
+    capture=state['capture'];streams={};process=None;failure=None;payload=bytearray(credential)+state['source'];credential=b''
+    try:
+        process=subprocess.Popen(state['argv'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        streams={process.stdout:bytearray(),process.stderr:bytearray()}
+        deadline=time.monotonic()+1250
+        capture.create('handle.json',encoded({'pid':process.pid,'started':time.time(),'deadlineSeconds':1250}))
+        os.set_blocking(process.stdin.fileno(),False);opened=list(streams);offset=0;writer=process.stdin
+        while opened or writer is not None:
+            remaining=deadline-time.monotonic()
+            if remaining<=0:raise ValueError('baseline_local_collection_timeout')
+            ready,writable,_=select.select(opened,[writer] if writer is not None else [],[],min(remaining,1))
+            if writable:
+                end=min(offset+65536,len(payload));sent=os.write(writer.fileno(),payload[offset:end])
+                if sent<=0:raise ValueError('baseline_stdin_transfer_unknown')
+                payload[offset:offset+sent]=b'\0'*sent;offset+=sent
+                if offset==len(payload):writer.close();writer=None;payload.clear()
+            for stream in ready:
+                part=os.read(stream.fileno(),65536)
+                if not part:opened.remove(stream);continue
+                streams[stream].extend(part)
+                if sum(map(len,streams.values()))>STREAM_LIMIT:raise ValueError('baseline_local_collection_limit')
+        process.wait(timeout=max(.01,deadline-time.monotonic()))
+    except Exception as error:failure=type(error).__name__
+    finally:
+        payload.clear()
+        if process is not None:
+            if process.stdin is not None and not process.stdin.closed:process.stdin.close()
+            if process.poll()is None:process.kill();process.wait(timeout=5)
+            # Retain bytes already in both pipes after a timeout or writer loss.
+            remaining_streams=[stream for stream in streams if not stream.closed]
+            drain_deadline=time.monotonic()+5
+            while remaining_streams and time.monotonic()<drain_deadline:
+                ready,_,_=select.select(remaining_streams,[],[],.1)
+                for stream in ready:
+                    part=os.read(stream.fileno(),65536)
+                    if not part:remaining_streams.remove(stream);continue
+                    streams[stream].extend(part)
+                    if sum(map(len,streams.values()))>STREAM_LIMIT:failure='baseline_local_collection_limit';remaining_streams=[];break
+        for name,stream in [('stdout',getattr(process,'stdout',None)),('stderr',getattr(process,'stderr',None))]:
+            archive(capture,name,bytes(streams.get(stream,b'')))
+            if stream is not None:stream.close()
+        capture.create('exit.json',encoded({'returncode':process.returncode if process is not None else None,'failure':failure}))
+        os.fsync(capture.fd)
+    if process is None or failure is not None or type(process.returncode)is not int or process.returncode!=0:
+        raise ValueError('baseline_transport_unknown_raw_retained')
+    if streams[process.stderr]:raise ValueError('baseline_ssh_stderr_unknown_raw_retained')
+    return bytes(streams[process.stdout])
+
+
+def parse_terminal(raw,state):
+    lines=raw.splitlines()
+    if not lines:raise ValueError('baseline_remote_terminal_missing')
+    header=json.loads(lines[0]);required={'schema','kind','returncode','failure','hostIdentity','sourceBytes','sourceSha256','stdoutBytes','stdoutSha256','stderrBytes','stderrSha256'}
+    if (type(header)is not dict or set(header)!=required or type(header['schema'])is not int or header['schema']!=1 or
+        header['kind']!='api29-component-baseline-terminal' or header['sourceBytes']!=len(state['source']) or header['sourceSha256']!=digest(state['source'])):
+        raise ValueError('baseline_remote_terminal_unknown_raw_retained')
+    identity=header['hostIdentity']
+    if type(identity)is not dict or set(identity)!={'uid','euid','gid','egid','groups'} or any(type(identity[key])is not int or identity[key]!=1000 for key in ('uid','euid','gid','egid')) or type(identity['groups'])is not list or len(identity['groups'])>64 or any(type(x)is not int or x<0 for x in identity['groups']):
+        raise ValueError('baseline_remote_host_unknown')
+    decoded={};offset=1
+    for name,label in [('out','stdout'),('err','stderr')]:
+        count=header[label+'Bytes']
+        if type(count)is not int or not 0<=count<=STREAM_LIMIT:raise ValueError('baseline_remote_stream_size_unknown')
+        rows=[]
+        for _ in range(math.ceil(count/CHUNK)):
+            if offset>=len(lines) or not lines[offset].startswith((name+':').encode()):raise ValueError('baseline_remote_stream_frame_unknown')
+            part=base64.b64decode(lines[offset][len(name)+1:],validate=True);offset+=1
+            if len(part)>CHUNK:raise ValueError('baseline_remote_stream_chunk_unknown')
+            rows.append(part)
+        value=b''.join(rows)
+        if len(value)!=count or digest(value)!=header[label+'Sha256']:raise ValueError('baseline_remote_stream_changed')
+        archive(state['capture'],'remote-'+label,value);decoded[name]=value
+    if offset!=len(lines):raise ValueError('baseline_remote_extra_frame_unknown')
+    state['capture'].create('remote-terminal.json',encoded(header))
+    if type(header['returncode'])is not int or header['returncode']!=0 or header['failure']is not None or decoded['err']:
+        raise ValueError('baseline_component_terminal_unknown_raw_retained')
+    return decoded['out']
+
+
+def validate_proof(raw,state):
+    value=json.loads(raw)
+    if (type(value)is not dict or value.get('schema')!=1 or value.get('kind')!='api29-installer-component-baseline-proof' or
+        value.get('request')!=state['request'] or value.get('failure')is not None or value.get('failureDetail')is not None or
+        value.get('installedLauncherAccepted')is not False or value.get('bundledRuntimeAccepted')is not False or
+        value.get('acceptanceComplete')is not False or type(value.get('records'))is not list):
+        raise ValueError('baseline_component_proof_unknown')
+    stdin_pin=value.get('carrierSourceStdinPin');initial_pin=value.get('carrierInitialStdinPin')
+    if type(initial_pin)is not list or len(initial_pin)!=9 or type(stdin_pin)is not list or len(stdin_pin)!=9 or initial_pin[:6]!=stdin_pin[:6] or stdin_pin[3:6]!=[1000,1000,1] or not stat.S_ISFIFO(stdin_pin[2]) or value.get('admittedFileLimit')!=[8388608,8388608] or type(value.get('originalFileLimit'))is not list or len(value['originalFileLimit'])!=2:
+        raise ValueError('baseline_carrier_limits_or_stdin_unknown')
+    result=value.get('baseline')
+    if (type(result)is not dict or result.get('state')!='component-installed-baseline-observed' or result.get('phase')!='baseline-read-only' or
+        result.get('owner')!=OWNER or type(result.get('revision'))is not int or result['revision']!=0 or
+        any(result.get(key)is not False for key in ('installerLeaseGranted','guestMutationPerformed','installedLauncherAccepted','bundledRuntimeAccepted','acceptanceComplete','replayAllowed'))):
+        raise ValueError('baseline_component_result_unknown')
+    replies=[];seen=set();current_ledgers=[]
+    for index,row in enumerate(value['records']):
+        if type(row)is not dict or set(row)!={'name','bytes','sha256','pin','rawBase64'} or row['name'] in seen or not re.fullmatch(r'component-guard-(?:read-[0-9]{5}|current-admission)\.json',row['name']):raise ValueError('baseline_evidence_inventory_unknown')
+        seen.add(row['name']);content=base64.b64decode(row['rawBase64'],validate=True)
+        if type(row['bytes'])is not int or len(content)!=row['bytes'] or digest(content)!=row['sha256'] or row['pin'].get('sha256')!=row['sha256']:
+            raise ValueError('baseline_evidence_bytes_changed')
+        archive(state['capture'],'guard-record-'+str(index),content)
+        evidence=json.loads(content)
+        if evidence.get('binding')!=state['request'] or evidence.get('phase')!='baseline-read-only' or evidence.get('installerLeaseGranted')is not False:
+            raise ValueError('baseline_evidence_binding_unknown')
+        record=evidence.get('record',{})
+        if record.get('phase')=='baseline' and record.get('words') in (['status'],['operations','list']):
+            reply=json.loads(record['stdoutRaw'])
+            if (type(record.get('returncode'))is not int or record['returncode']!=0 or record.get('stderrRaw')!='' or
+                reply.get('ok')is not True or reply.get('final')is not True or reply.get('code')!='OK' or
+                reply.get('controllerId')!=OWNER or type(reply.get('configurationRevision'))is not int or reply['configurationRevision']!=0):
+                raise ValueError('baseline_public_owner_unknown')
+            data=reply.get('data')
+            if type(data)is not dict:raise ValueError('baseline_public_data_unknown')
+            if record['words']==['status']:
+                if data.get('runtimeRunning')is not False or data.get('runtimeObservation')!='stopped':raise ValueError('baseline_runtime_not_off')
+            else:
+                if set(data)!={'scope','operations'} or data['scope']!='android-provider-operations':
+                    raise ValueError('baseline_owned_terminal_ledger_unknown')
+                current_ledgers.append(data['operations'])
+            replies.append(record['words'])
+    if 'component-guard-current-admission.json' not in seen or replies.count(['status'])<2 or replies.count(['operations','list'])<1:
+        raise ValueError('baseline_public_read_set_incomplete')
+    history=operation_history.validate(current_ledgers,owner=OWNER,revision=0,
+        historical_operation=state['historicalOperation'])
+    return {'state':'read-only-component-baseline-verified','leaf':state['leaf'],'owner':OWNER,'revision':0,
+            'operationHistory':history,'historicalEpochProofSha256':PROOF_SHA,'historicalTerminalOperation':OPERATION,'resultSha256':digest(raw),'recordCount':len(seen),
+            'installedLauncherAccepted':False,'bundledRuntimeAccepted':False,'acceptanceComplete':False,'replayAllowed':False}
+
+
+def main():
+    state=prepared_only(ROOT);capture=state['capture']
+    try:
+        print(json.dumps({'state':'prepared-read-only-baseline','leaf':state['leaf']}),flush=True)
+        credential,credential_pin=bundle._read(state['credentialPath'],True)
+        if credential_pin!=state['credentialPin']:raise ValueError('baseline_credential_generation_changed')
+        credential=credential.rstrip(b'\n')+b'\n'
+        if not 1<len(credential)<=513:raise ValueError('baseline_credential_unadmitted')
+        guard(state)
+        capture.create('before-dispatch-fence.json',encoded({'request':state['request'],'programBytes':len(state['source']),
+            'programSha256':digest(state['source']),'phase':'baseline-read-only','replayAllowed':False}))
+        os.fsync(capture.fd)
+        raw=collect(state,credential)  # Every stream is durably retained before checks below.
+        credential=b''
+        proof=parse_terminal(raw,state)
+        guard(state)
+        summary=validate_proof(proof,state)
+        guard(state);capture.create('summary.json',encoded(summary));os.fsync(capture.fd)
+        print(json.dumps(summary,sort_keys=True),flush=True)
+    finally:
+        credential=b''
+        capture.close()
+
+
+if __name__=='__main__':main()

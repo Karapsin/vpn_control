@@ -255,11 +255,13 @@ def _proofs(entry: Mapping[str, Any], source_id: str, provider: str,
 def _configured_providers(root: Path | str) -> tuple[Path, dict[str, baseline.Provider]]:
     checkout = Path(root).resolve(strict=True)
     inventory, _ = _private_json(checkout / ssh_transport.CONFIG_FILENAME)
-    _need(inventory.get("schemaVersion") == 1 and isinstance(inventory.get("hosts"), dict),
+    _need(type(inventory.get("schemaVersion")) is int and inventory["schemaVersion"] == 1 and
+          isinstance(inventory.get("hosts"), dict),
           "private VM inventory schema is invalid")
     config = inventory.get("nativeBaselines")
     _need(isinstance(config, dict) and set(config) == {"schemaVersion", "sources"} and
-          config.get("schemaVersion") == 1 and isinstance(config.get("sources"), dict) and config["sources"],
+          type(config.get("schemaVersion")) is int and config["schemaVersion"] == 1 and
+          isinstance(config.get("sources"), dict) and config["sources"],
           "native baselines are not configured")
     catalog: dict[str, dict[str, Any]] = {}
     for source_id, entry in config["sources"].items():

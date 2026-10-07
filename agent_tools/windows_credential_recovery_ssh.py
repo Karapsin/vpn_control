@@ -22,9 +22,10 @@ import uuid
 from typing import Any
 
 try:
-    from . import native_credentials, windows_credential_probe_ssh as transport
+    from . import native_credentials, private_inventory_lock, windows_credential_probe_ssh as transport
 except ImportError:  # CLI/MCP server imports agent_tools modules as top-level names.
     import native_credentials
+    import private_inventory_lock
     import windows_credential_probe_ssh as transport
 
 
@@ -377,53 +378,54 @@ def _probe_correlation(correlation_id: str) -> str:
 
 
 def _publish_inventory(root: Path | str, host: str, record: dict[str, Any]) -> None:
-    store=native_credentials.NativeCredentialStore(root)
-    with store._locked():
-        path=Path(root).resolve()/'.vm-hosts.local.json'
-        info=os.lstat(path)
-        if (not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)
-                or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600):
-            raise WindowsCredentialRecoveryError('Private inventory cannot be updated safely.')
-        fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))
-        try:
-            opened=os.fstat(fd)
-            if (opened.st_dev,opened.st_ino)!=(info.st_dev,info.st_ino):
-                raise WindowsCredentialRecoveryError('Private inventory changed during read.')
-            raw=os.read(fd,1048577)
-        finally: os.close(fd)
-        if len(raw)>1048576:
-            raise WindowsCredentialRecoveryError('Private inventory is too large.')
-        config=json.loads(raw)
-        probe=config['hosts'][host]['windowsCredentialProbe']
-        if (probe['environment']!=record['environment'] or probe['accountName']!=record['accountName']
-                or probe['expectedSid']!=record['expectedSid'] or probe['qgaSocketPath']!=record['socketPath']
-                or probe['qemuPid']!=record['pid'] or probe['qemuStartTicks']!=record['startTicks']):
-            raise WindowsCredentialRecoveryError('Inventory account binding changed.')
-        new_path=str(store.path/record['handle']/'secret')
-        if probe['credentialPath']==new_path:
-            return
-        if probe['credentialPath']!=record['previousCredentialPath']:
-            raise WindowsCredentialRecoveryError('Inventory credential reference changed.')
-        probe['credentialPath']=new_path
-        fd,name=tempfile.mkstemp(prefix='.vm-hosts-credential-',dir=path.parent)
-        try:
-            os.fchmod(fd,0o600)
-            with os.fdopen(fd,'w',encoding='utf-8') as target:
-                json.dump(config,target,indent=2); target.write('\n'); target.flush(); os.fsync(target.fileno())
-            current=os.lstat(path)
-            if (current.st_dev,current.st_ino,current.st_size,current.st_mtime_ns)!=\
-                    (info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns):
-                raise WindowsCredentialRecoveryError('Private inventory changed before publication.')
-            check_fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))
-            try:
-                if os.read(check_fd,len(raw)+1)!=raw:
-                    raise WindowsCredentialRecoveryError('Private inventory bytes changed before publication.')
-            finally:
-                os.close(check_fd)
-            os.replace(name,path)
-            store._sync_dir(path.parent)
-        finally:
-            if os.path.exists(name): os.unlink(name)
+    store = native_credentials.NativeCredentialStore(root)
+    # Credential-store ownership and inventory ownership are distinct. The
+    # latter is shared with SSH adoption and held through durable publication.
+    try:
+        with store._locked(), private_inventory_lock.ownership(root) as (presented, directory, ownership):
+            with private_inventory_lock.Snapshot(directory, '.vm-hosts.local.json') as source:
+                config = json.loads(source.body)
+                probe = config['hosts'][host]['windowsCredentialProbe']
+                if (probe['environment'] != record['environment'] or probe['accountName'] != record['accountName']
+                        or probe['expectedSid'] != record['expectedSid'] or probe['qgaSocketPath'] != record['socketPath']
+                        or probe['qemuPid'] != record['pid'] or probe['qemuStartTicks'] != record['startTicks']):
+                    raise WindowsCredentialRecoveryError('Inventory account binding changed.')
+                new_path = str(store.path / record['handle'] / 'secret')
+                if probe['credentialPath'] == new_path:
+                    presented.guard(); ownership.guard(); source.guard()
+                    return
+                if probe['credentialPath'] != record['previousCredentialPath']:
+                    raise WindowsCredentialRecoveryError('Inventory credential reference changed.')
+                probe['credentialPath'] = new_path
+                encoded = (json.dumps(config, indent=2) + '\n').encode()
+                name = '.vm-hosts-credential-' + uuid.uuid4().hex
+                fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory.fd)
+                try:
+                    with os.fdopen(fd, 'wb') as target:
+                        target.write(encoded); target.flush(); os.fsync(target.fileno())
+                    with private_inventory_lock.Snapshot(directory, name) as candidate:
+                        if candidate.body != encoded:
+                            raise WindowsCredentialRecoveryError('Private replacement candidate changed.')
+                        replace_fd = directory.fd
+                        presented.guard(); ownership.guard(); candidate.guard()
+                        # No unrelated observation follows the final source
+                        # guard. Cooperating writers remain excluded by flock.
+                        source.guard()
+                        os.replace(name, '.vm-hosts.local.json', src_dir_fd=replace_fd, dst_dir_fd=replace_fd)
+                        name = None
+                        os.fsync(directory.fd)
+                    with private_inventory_lock.Snapshot(directory, '.vm-hosts.local.json') as published:
+                        if published.body != encoded:
+                            raise WindowsCredentialRecoveryError('Published inventory changed.')
+                        presented.guard(); ownership.guard(); published.guard()
+                finally:
+                    if name is not None:
+                        os.unlink(name, dir_fd=directory.fd)
+    except WindowsCredentialRecoveryError:
+        raise
+    except (OSError, ValueError, KeyError, TypeError, UnicodeError) as error:
+        raise WindowsCredentialRecoveryError('Private inventory changed before publication or ownership is unavailable.') from error
 
 
 def _verify_and_publish(root: Path | str, host: str, record: dict[str, Any], timeout_seconds: int) -> dict[str, Any]:

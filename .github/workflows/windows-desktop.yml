@@ -17,6 +17,10 @@ on:
       - dev
   pull_request:
     paths:
+      - ".gitattributes"
+      - "agent_tools/tests/test_historical_fixture_checkout_bytes.py"
+      - "agent_tools/tests/fixtures/**/*.source"
+      - "agent_tools/tests/fixtures/historical_source.py"
       - ".github/workflows/windows-desktop.yml"
       - "desktopApp/**"
       - "shared/**"
@@ -28,6 +32,8 @@ on:
       - "gradlew.bat"
       - "scripts/prepare_sing_box_desktop_runtime.ps1"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/prepare_desktop_update_fixture.py"
+      - "scripts/test_windows_fixture_stage_acl.py"
       - "scripts/version_metadata.py"
       - "scripts/check_release_metadata.py"
       - "scripts/test_vpn_integration_fixture.py"
@@ -54,8 +60,47 @@ on:
       - "scripts/windows_native_packaging.gradle"
       - "agent_tools/managed_check_lease.py"
       - "agent_tools/mcp_server.py"
+      - "agent_tools/windows_cp117_c32_absence.py"
+      - "agent_tools/windows_cp117_source_projection.py"
       - "agent_tools/tests/test_managed_check_lease.py"
       - "agent_tools/tests/test_mcp_server.py"
+      - "agent_tools/tests/test_windows_cp117_c32_absence.py"
+      - "agent_tools/tests/test_windows_cp117_source_projection.py"
+      - "agent_tools/windows_cp117_bound_absence_completion.py"
+      - "agent_tools/tests/test_windows_terminal_prefix_execution.py"
+      - "agent_tools/windows_cp117_secure_layout_observe.py"
+      - "agent_tools/tests/test_windows_cp117_secure_layout_observe.py"
+      - "agent_tools/tests/test_windows_secure_layout_source_execution.py"
+      - "agent_tools/windows_cp117_secure_input_observe.py"
+      - "agent_tools/tests/test_windows_cp117_secure_input_observe.py"
+      - "agent_tools/tests/test_windows_secure_input_failure_execution.py"
+      - "agent_tools/windows_cp117_secure_input_descendants_observe.py"
+      - "agent_tools/tests/test_windows_cp117_secure_input_descendants_observe.py"
+      - "agent_tools/windows_cp117_secure_input_geometry_observe.py"
+      - "agent_tools/tests/test_windows_cp117_secure_input_geometry_observe.py"
+      - "agent_tools/windows_cp117_windowless_edit_observe.py"
+      - "agent_tools/tests/test_windows_cp117_windowless_edit_observe.py"
+      - "agent_tools/windows_cp117_windowless_candidate_observe.py"
+      - "agent_tools/tests/test_windows_cp117_windowless_candidate_observe.py"
+      - "agent_tools/windows_cp117_windowless_gui_login.py"
+      - "agent_tools/tests/test_windows_cp117_windowless_gui_login.py"
+      - "agent_tools/windows_cp117_windowless_dismiss_observe.py"
+      - "agent_tools/tests/test_windows_cp117_windowless_dismiss_observe.py"
+      - "agent_tools/windows_cp117_windowless_provider_login.py"
+      - "agent_tools/tests/test_windows_cp117_windowless_provider_login.py"
+      - "agent_tools/windows_cp117_recovered_owner_diagnostic.py"
+      - "agent_tools/tests/test_windows_cp117_recovered_owner_diagnostic.py"
+      - "agent_tools/windows_cp117_installed_base_observe.py"
+      - "agent_tools/tests/test_windows_cp117_installed_base_observe.py"
+      - "agent_tools/windows_cp117_base_source_refresh.py"
+      - "agent_tools/tests/test_windows_cp117_base_source_refresh.py"
+      - "agent_tools/windows_cp117_source_campaign.py"
+      - "agent_tools/tests/test_windows_cp117_source_campaign.py"
+      - "agent_tools/tests/test_windows_cp117_server_read_binding.py"
+      - "agent_tools/windows_secondary_ordinary_read.py"
+      - "agent_tools/tests/test_windows_secondary_ordinary_read.py"
+      - "agent_tools/windows_tertiary_guest_stage.py"
+      - "agent_tools/tests/test_windows_tertiary_guest_stage.py"
 
 jobs:
   validate-windows-update-fixture:
@@ -129,7 +174,70 @@ jobs:
         run: ./scripts/check_release_hygiene.sh
 
       - name: Verify native managed-check locking and receipts
-        run: python -m unittest agent_tools.tests.test_managed_check_lease agent_tools.tests.test_mcp_server.FingerprintTest
+        run: python -m unittest agent_tools.tests.test_managed_check_lease agent_tools.tests.test_mcp_server.FingerprintTest agent_tools.tests.test_historical_fixture_checkout_bytes
+
+      - name: Require native Windows PowerShell for causal guards
+        run: python -c "import os, shutil; assert os.name == 'nt' and shutil.which('powershell.exe'), 'Native Windows PowerShell is required'"
+
+      - name: Verify CP117 PowerShell causal guards
+        shell: pwsh
+        run: >-
+          python -m unittest
+          agent_tools.tests.test_windows_cp117_c32_absence.C32AbsenceTests.test_windows_trigger_guard_accepts_only_empty_or_single_null
+          agent_tools.tests.test_windows_cp117_c32_absence.C32AbsenceTests.test_windows_result_decoder_accepts_only_utf8_with_optional_bom
+          agent_tools.tests.test_windows_cp117_source_campaign.SourceCampaignTests.test_actual_powershell_task_runtime_census_precedes_uninstall
+          agent_tools.tests.test_windows_terminal_prefix_execution
+          agent_tools.tests.test_windows_secure_layout_source_execution
+          agent_tools.tests.test_windows_secure_input_failure_execution
+          agent_tools.tests.test_windows_cp117_secure_input_descendants_observe
+          agent_tools.tests.test_windows_cp117_secure_input_geometry_observe
+          agent_tools.tests.test_windows_cp117_windowless_edit_observe
+          agent_tools.tests.test_windows_cp117_windowless_candidate_observe
+          agent_tools.tests.test_windows_cp117_windowless_gui_login
+          agent_tools.tests.test_windows_cp117_windowless_dismiss_observe
+          agent_tools.tests.test_windows_cp117_windowless_provider_login
+          agent_tools.tests.test_windows_cp117_recovered_owner_diagnostic
+          agent_tools.tests.test_windows_cp117_installed_base_observe
+          agent_tools.tests.test_windows_cp117_base_source_refresh
+          agent_tools.tests.test_windows_cp117_server_read_binding.ServerCensusFactoryTests.test_actual_complete_census_body_parser
+          agent_tools.tests.test_windows_cp117_server_read_binding.CompleteStageOutputCustodyTests
+          agent_tools.tests.test_windows_cp117_server_read_binding.CompleteSiblingServerTests.test_actual_complete_body_parser
+          scripts.test_windows_fixture_stage_acl.WindowsFixtureCopiedPackageReadOnlyTests
+          agent_tools.tests.test_windows_cp117_preprobe_identity.PreprobeIdentityOrderingTests
+          agent_tools.tests.test_windows_cp117_server_preflight.ServerPreflightFlowTests.test_actual_full_body_powershell_parser
+          agent_tools.tests.test_windows_cp117_server_preflight.ServerInheritedFailureDiagnosticTests
+          agent_tools.tests.test_windows_cp117_server_preflight.ServerFailureWireProjectionTests
+          agent_tools.tests.test_windows_cp117_server_preflight.ServerInitialTruncationTests
+          agent_tools.tests.test_windows_cp117_server_read_binding.PublisherCalibrationTests.test_actual_native_full_body_parser
+          agent_tools.tests.test_windows_cp117_server_read_binding.PublisherReadbackTests.test_actual_native_full_body_parser
+          agent_tools.tests.test_windows_cp117_server_read_binding.PublisherBoundaryTests.test_actual_native_full_body_parser
+          agent_tools.tests.test_windows_cp117_server_read_binding.PublisherBoundaryTests.test_actual_source_extracted_catch_preserves_inner_exception
+          agent_tools.tests.test_windows_cp117_server_read_binding.PublisherTypedReadTests.test_actual_native_full_body_parser
+          agent_tools.tests.test_windows_cp117_server_read_binding.PublisherTypedReadTests.test_actual_source_extracted_native_file_row_old_red_typed_green
+          agent_tools.tests.test_windows_cp117_server_read_binding.PublisherAccessOnlyReadTests.test_actual_installed_read_arity_old_refusal_one_argument_producer
+          agent_tools.tests.test_windows_cp117_server_read_binding.PublisherSuccessorStageTests.test_actual_native_full_body_parser
+          agent_tools.tests.test_windows_secondary_ordinary_read.NativeAccountGuardTests
+          agent_tools.tests.test_windows_cp117_public_update_flow.PublicPostConsentCoordinatorTests.test_actual_native_five_argument_consumer_and_complete_script_parser
+          agent_tools.tests.test_windows_secondary_ordinary_read.NativeWin32ClassificationTests.test_actual_hresult_red_typed_native_code_green
+          agent_tools.tests.test_windows_secondary_ordinary_read.NativeRecordCreationTests.test_actual_default_inheritance_red_protected_constructor_green
+          agent_tools.tests.test_windows_secondary_ordinary_read.NativeCleanupReaderLifetimeTests.test_actual_old_reader_closed_fixed_reader_survives_markdelete
+          agent_tools.tests.test_windows_tertiary_guest_stage.NativeSidRuleTests.test_actual_windows_in_memory_translation_control_and_typed_sid
+          agent_tools.tests.test_windows_tertiary_guest_stage.NativeShareCustodyTests.test_actual_windows_metadata_and_data_share_controls
+          agent_tools.tests.test_windows_tertiary_guest_stage.NativeReleaseGuardTests.test_actual_windows_in_memory_old_new_release_predicate
+          agent_tools.tests.test_windows_tertiary_guest_stage.NativeTargetOwnerTests.test_actual_windows_creation_time_owner_and_inherited_custody
+          agent_tools.tests.test_windows_tertiary_guest_stage.NativeInstalledCompressionTests.test_actual_fresh_powershell_old_type_refusal_and_explicit_reference
+          agent_tools.tests.test_windows_tertiary_guest_stage.NativeOrderedEntryTests.test_actual_old_dictionary_projection_refuses_and_key_lookup_succeeds
+          agent_tools.tests.test_windows_tertiary_guest_stage.OptionalAssignmentTypeTests.test_actual_native_property_control_and_optional_projection
+          agent_tools.tests.test_windows_tertiary_guest_stage.CachedContextPathCaseTests.test_actual_native_uppercase_old_refusal_and_current_guard
+          agent_tools.tests.test_windows_tertiary_guest_stage.NativeFixtureProcessTests.test_original_handle_retains_birth_after_fast_exit_and_bounds_stream
+          agent_tools.tests.test_windows_tertiary_guest_stage.FixtureProvisionFlowTests.test_actual_native_carrier_and_complete_flow_parser_without_effects
+          agent_tools.tests.test_windows_tertiary_guest_stage.NativeFixtureImageMembershipTests.test_actual_identity_only_old_guard_allows_new_child_and_membership_refuses
+          agent_tools.tests.test_windows_tertiary_guest_stage.FixtureCarrierScopeTests.test_actual_carrier_old_child_scope_red_and_dot_source_green
+          agent_tools.tests.test_windows_tertiary_guest_stage.FixedSystemInstallerRoleTests.test_fixed_system_role_does_not_change_private_single_link_guard
+          agent_tools.tests.test_windows_tertiary_guest_stage.FixedSystemInstallerRoleTests.test_actual_private_single_link_red_fixed_system_role_green
+          agent_tools.tests.test_windows_tertiary_guest_stage.FixtureTaskTriggerTests.test_guard_excludes_null_but_retains_real_triggers
+          agent_tools.tests.test_windows_tertiary_guest_stage.FixtureTaskTriggerTests.test_actual_null_trigger_old_count_red_filtered_count_green
+          agent_tools.tests.test_windows_tertiary_guest_stage.FixtureRecoveryStreamTests.test_actual_hash_consumes_stream_old_eof_red_rewind_green
 
       - name: Verify batch-logon fixture admission
         run: python scripts/test_windows_task_admission.py

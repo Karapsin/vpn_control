@@ -1,0 +1,490 @@
+"""Fenced restore of the measured API35 owned global proxy; no transport here.
+
+The current compiled getter is reused read-only.  A fresh correlation first
+observes, then arms metadata, then consumes one restore fence. Unknown effects
+never resume. Historical lifecycle/owner outcomes remain historical.
+"""
+from __future__ import annotations
+import ast, hashlib, json, uuid, os, re, stat, sys
+from pathlib import Path
+from . import android_api35_current_proxy_probe as current
+from . import android_device_availability as availability
+from . import android_avd_coldboot as coldboot
+from . import android_external_java_component_transport as component
+CURRENT_RECEIPT='45273bcc8e64bd91ebe27f2510bb975a7709eeece5d1943b14128622d2d26471'
+CURRENT_SOURCE='415f6992a47d10c453f292c13889db1dbbc5426d0c818ce245d7bae215927d48'
+COMPONENT_SOURCE='c466a58180280fc0606481b423f19e51f9900b82ea09718df4f3b8b504ad7782'
+DEX_SHA='9d8166f140df3bff4223776345f9982a4b70b9f65c7eddb992f782f22aa5fa16'
+PROBE_CORRELATION='fb44c6a8-d70b-4767-8d26-ee43e5d2dea5'
+CAPSULE='android-api35-current-proxy-a6ecd363-77da-4bae-b620-10acad4d0c0b'
+PRIMARY={'ProxyTracker':'80e1fca0d07e4adb44042b4dcac2b0cb9f318d24ea651e6369613dd3ad626cb0','ConnectivityService':'91b5d7a9922cd2386cae8284cc64b30dccbba180c55b098bea62756177937818'}
+_FIXED_RESTORE=(('put','http_proxy',':0'),('delete','global_http_proxy_host',None),('delete','global_http_proxy_port',None),('delete','global_http_proxy_pac',None),('delete','http_proxy',None))
+class RestoreError(ValueError):pass
+HISTORY={'correlationId':'0dd55704-1e80-4d62-8d9d-2f0a123e0c3b','lifecycleSha256':'b550f7ae50f60bcf53c0d688efda2165a6c39b505a997235bd9d78c710757e59','setupSha256':'e5770bf62b8a67a6adb02b8c15c0d3690403a3080d7012045f527f62c0293d21','cleanupSha256':'527c817340526e7c4ac6e933ce10b907827e7c347af8dc117b6ee6a8479ac636','intentSha256':'1b1eba7b0744ae47adc98b6b7fd7cc1480bc62a5b2ed7d4902fb36de580d7656','dispatchSha256':'23e6c8babcf76401f099d4636d569c922064e8334da647d05e795a612b704412'}
+
+_REMOTE=r'''
+RESTORE=__RESTORE__
+RESTORE_STEPS=__STEPS__
+RESTORE_KEYS=('http_proxy','global_http_proxy_host','global_http_proxy_port','global_http_proxy_pac','global_http_proxy_exclusion_list')
+RESTORE_OWNED={'http_proxy':'null','global_http_proxy_host':'127.0.0.1','global_http_proxy_port':'45635','global_http_proxy_pac':'null','global_http_proxy_exclusion_list':''}
+RESTORE_NORMAL={'http_proxy':':0','global_http_proxy_host':'','global_http_proxy_port':'0','global_http_proxy_pac':'','global_http_proxy_exclusion_list':''}
+
+def restore_read(command,mode):
+ if not RESTORE_CLOSING and time.monotonic()>=RESTORE_DEADLINE:raise ValueError('restore_deadline_exceeded')
+ case={'fd':3,'mode':mode,'command':command};PROBE_CASES.append(case)
+ try:return probe_read(case)
+ except BaseException:
+  # The frozen reader retains bounded partial bytes in GETTER_RECORDS.
+  raise
+
+def restore_settings_command():
+ # list distinguishes absent rows from a literal stored "null". Fixed keys only.
+ return 'set -eu; test "$(/system/bin/id -u)" = 2000; rows=$(/system/bin/settings list global); printf "%s\\n" "$rows" | while IFS= read -r row; do case "$row" in http_proxy=*|global_http_proxy_host=*|global_http_proxy_port=*|global_http_proxy_pac=*|global_http_proxy_exclusion_list=*) printf "%s\\n" "$row";; esac; done' 
+
+def restore_settings(reply):
+ rows={}
+ for line in probe_lines(reply):
+  key,sep,value=line.partition('=')
+  if key in RESTORE_KEYS:
+   if not sep or key in rows:raise ValueError('restore_settings_schema_changed')
+   rows[key]=value
+ if any(len(value)>4096 for value in rows.values()):raise ValueError('restore_settings_unbounded')
+ return {'rows':rows,'values':{key:rows.get(key,'null') for key in RESTORE_KEYS}}
+
+def restore_proxy_kind(value):
+ reads=value['reads']
+ if len(reads)!=2:raise ValueError('restore_binder_reads_changed')
+ if all(item=={'global':None,'defaultForShell':None} for item in reads):return 'clear'
+ expected={'host':'127.0.0.1','port':45635,'exclusionList':[''],'pacUrl':''}
+ if all(item=={'global':expected,'defaultForShell':expected} for item in reads):return 'owned'
+ raise ValueError('restore_binder_foreign')
+
+def restore_fixed_step(index):
+ if type(index)is not int or not 0<=index<len(RESTORE_STEPS):raise ValueError('restore_step_invalid')
+ op,key,value=RESTORE_STEPS[index];q=__import__('shlex').quote
+ return 'set -eu; test "$(/system/bin/id -u)" = 2000; /system/bin/settings '+op+' global '+q(key)+(' '+q(value) if value is not None else '')
+
+def restore_public_reply(record,kind):
+ if type(record.get('returncode'))is not int or record['returncode']!=0 or record.get('stderrRaw')!='' or record.get('captureComplete')is not True or record.get('componentRuntime')!='EXTERNAL_JDK' or record.get('backendSourceSha256')!=RESTORE['authority']['componentBackend']['backendSourceSha256'] or record.get('installedLauncherAccepted')is not False or record.get('bundledRuntimeAccepted')is not False:raise ValueError('restore_public_transport_unknown')
+ return fd_guard_reply(record,kind)
+
+def restore_guard(directory,baseline_stage):
+ global GETTER_APK_PASS
+ if not RESTORE_CLOSING and time.monotonic()>=RESTORE_DEADLINE:raise ValueError('restore_deadline_exceeded')
+ getter_generation(directory)
+ if getter_stage()!=baseline_stage:raise ValueError('restore_cli_stage_changed')
+ GETTER_APK_PASS='Current'
+ if getter_apk()!=GETTER['packageSha256']:raise ValueError('restore_package_changed')
+ status=getter_cli(['status'],FD_OWNER);GETTER_RECORDS.setdefault('restorePublic',[]).append(status);restore_public_reply(status,'status')
+ operations=getter_cli(['operations','list'],FD_OWNER);GETTER_RECORDS['restorePublic'].append(operations);restore_public_reply(operations,'operations')
+ # This also rechecks the authenticated compiled file and its parent full gens.
+ generation_reply=restore_read(probe_generation_command(),'restore-dex-generation');GETTER_RECORDS.setdefault('restoreDex',[]).append(generation_reply)
+ if probe_generation(generation_reply)!=RESTORE['deviceStageGeneration']:raise ValueError('restore_dex_changed')
+ return status
+
+def restore_census(directory,baseline_stage):
+ restore_guard(directory,baseline_stage)
+ first=restore_read(restore_settings_command(),'restore-settings-before');GETTER_RECORDS.setdefault('restoreSettings',[]).append(first);before=restore_settings(first)
+ binder_reply=restore_read(probe_getter_command(RESTORE['deviceStageGeneration']['file']),'restore-binder');GETTER_RECORDS.setdefault('restoreBinder',[]).append(binder_reply);binder=parse_probe_current(binder_reply)
+ second=restore_read(restore_settings_command(),'restore-settings-after');GETTER_RECORDS['restoreSettings'].append(second);after=restore_settings(second)
+ if before!=after:raise ValueError('restore_settings_changed')
+ restore_guard(directory,baseline_stage)
+ return {'settings':after,'binder':binder,'kind':restore_proxy_kind(binder)}
+
+def restore_expected(census,values,kind,absent=()):
+ if census['settings']['values']!=values or census['kind']!=kind or any(key in census['settings']['rows'] for key in absent):raise ValueError('restore_proxy_changed')
+
+# Remote journal is an authenticated child of the original e3 journal. The
+# inherited dispatcher holds the original device lock for all actions.
+def restore_journal(directory):return directory/('proxy-restore-'+RESTORE['correlationId'])
+
+def restore_journal_open(directory):
+ chain,leaf=parent_fds(restore_journal(directory)/'__record__');guard_parents(chain)
+ fd=os.dup(chain[-1]['fd']);pin=fp(os.fstat(fd))
+ if not stat.S_ISDIR(pin[5]) or stat.S_IMODE(pin[5])!=0o700 or pin[6:8]!=[0,0]:raise ValueError('restore_journal_unsafe')
+ return chain,fd,pin
+
+def restore_record(directory,name,value=None):
+ if name not in ('arm.json','readmission.json','effect-fence.json','terminal.json'):raise ValueError('restore_record_invalid')
+ chain,fd,pin=restore_journal_open(directory);record=None
+ try:
+  guard_parents(chain)
+  flags=os.O_RDONLY|os.O_NOFOLLOW if value is None else os.O_RDWR|os.O_NOFOLLOW|os.O_CREAT|os.O_EXCL
+  record=os.open(name,flags,0o600,dir_fd=fd)
+  if value is not None:
+   raw=(json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode();at=0
+   while at<len(raw):
+    count=os.write(record,raw[at:])
+    if count<=0:raise ValueError('restore_record_incomplete')
+    at+=count
+   os.fsync(record)
+  before=fp(os.fstat(record))
+  if not stat.S_ISREG(before[5]) or before[6:9]!=[0,0,1] or stat.S_IMODE(before[5])!=0o600 or before[2]>262144:raise ValueError('restore_record_unsafe')
+  os.lseek(record,0,os.SEEK_SET);raw=os.read(record,262145)
+  if len(raw)>262144 or before!=fp(os.fstat(record)) or before!=fp(os.stat(name,dir_fd=fd,follow_symlinks=False)):raise ValueError('restore_record_changed')
+  after=fp(os.fstat(fd))
+  if value is None:
+   if after!=pin:raise ValueError('restore_journal_changed')
+  elif any(after[n]!=pin[n] for n in (0,1,5,6,7,8)):raise ValueError('restore_journal_changed')
+  chain[-1]['pin']=after;guard_parents(chain)
+  if fp(os.stat(restore_journal(directory)))!=after:raise ValueError('restore_journal_changed')
+  result=json.loads(raw)
+  if value is not None and result!=value:raise ValueError('restore_record_changed')
+  return {'value':result,'generation':before,'sha256':hashlib.sha256(raw).hexdigest()}
+ finally:
+  if record is not None:os.close(record)
+  os.close(fd);close_parents(chain)
+
+def restore_arm(directory,census):
+ # Authenticate original fb44 stage-fence before permitting the single new
+ # child. Only that controlled parent nlink/ctime progression is accepted.
+ old=RESTORE['stageFence'];probe_fence_guard(directory,old)
+ chain,leaf=parent_fds(directory/'__restore_child__');guard_parents(chain);fd=os.dup(chain[-1]['fd'])
+ try:
+  before=fp(os.fstat(fd));inventory=sorted(os.listdir(fd));original=probe_original_records(directory)
+  if before!=old['parentGeneration'] or inventory!=old['parentInventory']:raise ValueError('restore_parent_changed')
+  try:os.mkdir(restore_journal(directory).name,0o700,dir_fd=fd)
+  except FileExistsError:raise ValueError('restore_correlation_consumed')
+  after=fp(os.fstat(fd))
+  if any(after[n]!=before[n] for n in (0,1,5,6,7)) or after[8]!=before[8]+1 or fp(directory.lstat())!=after or sorted(os.listdir(fd))!=sorted(inventory+[restore_journal(directory).name]) or probe_original_records(directory)!=original:raise ValueError('restore_parent_changed')
+  chain[-1]['pin']=after;guard_parents(chain);os.fsync(fd)
+  adjusted={**old,'parentGeneration':after,'parentInventory':sorted(inventory+[restore_journal(directory).name])};probe_fence_guard(directory,adjusted)
+ finally:os.close(fd);close_parents(chain)
+ journal_identity=fp(os.stat(restore_journal(directory),follow_symlinks=False))
+ value={'journalIdentity':{str(n):journal_identity[n] for n in (0,1,5,6,7,8)},'schema':1,'correlationId':RESTORE['correlationId'],'sourceSha256':RESTORE['sourceSha256'],'binding':RESTORE['authority'],'stageFence':adjusted,'census':census,'replayAllowed':False}
+ return restore_record(directory,'arm.json',value)
+
+def restore_arm_guard(directory):
+ record=restore_record(directory,'arm.json');value=record['value']
+ if value.get('schema')!=1 or type(value.get('schema'))is not int or value.get('correlationId')!=RESTORE['correlationId'] or value.get('sourceSha256')!=RESTORE['sourceSha256'] or value.get('binding')!=RESTORE['authority'] or value.get('replayAllowed')is not False:raise ValueError('restore_arm_changed')
+ identity=fp(os.stat(restore_journal(directory),follow_symlinks=False))
+ if value.get('journalIdentity')!={str(n):identity[n] for n in (0,1,5,6,7,8)}:raise ValueError('restore_journal_changed')
+ names=sorted(p.name for p in restore_journal(directory).iterdir())
+ allowed=(['arm.json'],['arm.json','effect-fence.json'],['arm.json','effect-fence.json','terminal.json'])
+ if RESTORE['action'].startswith('readmission-'):
+  allowed=(['arm.json','readmission.json'],['arm.json','effect-fence.json','readmission.json'],['arm.json','effect-fence.json','readmission.json','terminal.json'])
+  if RESTORE['action']=='readmission-admit':allowed=(['arm.json'],)
+ if names not in allowed:raise ValueError('restore_journal_inventory_changed')
+ probe_fence_guard(directory,value['stageFence']);restore_expected(value['census'],RESTORE_OWNED,'owned')
+ if RESTORE['action']in ('restore','status') and {key:record[key] for key in ('generation','sha256')}!=RESTORE['armPin']:raise ValueError('restore_arm_changed')
+ if RESTORE['action'].startswith('readmission-') and {key:record[key] for key in ('generation','sha256')}!=RESTORE['readmission']['originalArmPin']:raise ValueError('restore_readmission_arm_changed')
+ return record
+
+def restore_metadata(directory,census):
+ # Original interrupted arm only: no mutation, no acceptance or ready adoption.
+ record=restore_arm_guard(directory);value=record['value'];old=RESTORE['stageFence'];adjusted=value['stageFence']
+ before=old['parentGeneration'];after=adjusted['parentGeneration'];name=restore_journal(directory).name
+ if any(after[n]!=before[n] for n in (0,1,5,6,7)) or after[8]!=before[8]+1 or adjusted!={**old,'parentGeneration':after,'parentInventory':sorted(old['parentInventory']+[name])}:raise ValueError('restore_metadata_parent_changed')
+ if value['census']!=census:raise ValueError('restore_metadata_census_changed')
+ chain,fd,pin=restore_journal_open(directory)
+ try:
+  guard_parents(chain)
+  if sorted(os.listdir(fd))!=['arm.json']:raise ValueError('restore_metadata_effect_unknown')
+  for leaf in ('effect-fence.json','terminal.json'):
+   try:os.stat(leaf,dir_fd=fd,follow_symlinks=False)
+   except FileNotFoundError:pass
+   else:raise ValueError('restore_metadata_effect_unknown')
+  if fp(os.fstat(fd))!=pin:raise ValueError('restore_metadata_journal_changed')
+  guard_parents(chain)
+ finally:os.close(fd);close_parents(chain)
+ if restore_arm_guard(directory)!=record:raise ValueError('restore_metadata_record_changed')
+ return {'state':'arm-metadata-observed','record':record,'effectFenceAbsent':True,'terminalAbsent':True,'originalOutcome':'unknown','readmissionGranted':False}
+
+def restore_readmission_guard(directory):
+ readmission=restore_record(directory,'readmission.json');value=readmission['value'];operation=RESTORE['readmission']
+ if value!={'schema':1,'operation':operation,'originalArmPin':operation['originalArmPin'],'originalOutcome':'unknown','replayAllowed':False}:raise ValueError('restore_readmission_changed')
+ if RESTORE['action']!='readmission-admit' and {key:readmission[key] for key in ('generation','sha256')}!=RESTORE['readmissionPin']:raise ValueError('restore_readmission_pin_changed')
+ restore_arm_guard(directory)
+ return readmission
+
+def restore_readmission_admit(directory,census):
+ # The original consumed arm is only bridged by its independently observed pin.
+ restore_metadata(directory,census)
+ operation=RESTORE['readmission']
+ value={'schema':1,'operation':operation,'originalArmPin':operation['originalArmPin'],'originalOutcome':'unknown','replayAllowed':False}
+ return restore_record(directory,'readmission.json',value)
+
+def restore_operation():
+ return RESTORE.get('readmission',RESTORE)
+
+def restore_transaction(directory,baseline_stage):
+ arm=restore_arm_guard(directory);original=probe_original_records(directory)
+ readmission=restore_readmission_guard(directory) if 'readmission' in RESTORE else None;operation=restore_operation()
+ current=restore_census(directory,baseline_stage);restore_expected(current,RESTORE_OWNED,'owned')
+ # Durable O_EXCL fence before the FIRST settings command. No resume exists.
+ fence=restore_record(directory,'effect-fence.json',{'schema':1,'correlationId':operation['correlationId'],'sourceSha256':operation['sourceSha256'],'readmissionPin':RESTORE.get('readmissionPin'),'armPin':{k:arm[k] for k in ('generation','sha256')},'initial':current,'effect':'owned-global-proxy-restore','replayAllowed':False})
+ expected=dict(RESTORE_OWNED);kind='owned';absent=[]
+ for index,step in enumerate(RESTORE_STEPS):
+  if probe_original_records(directory)!=original or restore_arm_guard(directory)!=arm or restore_record(directory,'effect-fence.json')!=fence:raise ValueError('restore_authority_changed')
+  if readmission is not None and restore_readmission_guard(directory)!=readmission:raise ValueError('restore_readmission_changed')
+  before=restore_census(directory,baseline_stage);restore_expected(before,expected,kind,absent)
+  effect=restore_read(restore_fixed_step(index),'restore-effect-'+str(index));GETTER_RECORDS.setdefault('restoreEffects',[]).append(effect);probe_lines(effect)
+  if index==0:
+   # SettingsObserver delivery is asynchronous. Permit no subsequent effect
+   # until the exact clear tuple and two NULL Binder reads are proven.
+   cleared=None
+   for poll in range(8):
+    seen=restore_census(directory,baseline_stage)
+    if seen['settings']['values']==RESTORE_NORMAL and seen['kind']=='clear':cleared=seen;break
+    # Only the known pre/post values may appear while the internal four writes
+    # progress. Any foreign setting/binder fails closed.
+    if seen['kind']not in ('owned','clear') or any(seen['settings']['values'][key]not in (RESTORE_OWNED[key],RESTORE_NORMAL[key]) for key in RESTORE_KEYS):raise ValueError('restore_trigger_foreign')
+    time.sleep(0.1)
+   if cleared is None:raise ValueError('restore_trigger_not_observed')
+   expected=dict(RESTORE_NORMAL);kind='clear'
+  else:
+   key=step[1];expected[key]='null';absent.append(key)
+   after=restore_census(directory,baseline_stage);restore_expected(after,expected,'clear',absent)
+ final=restore_census(directory,baseline_stage);restore_expected(final,{key:'' if key=='global_http_proxy_exclusion_list' else 'null' for key in RESTORE_KEYS},'clear',list(RESTORE_KEYS[:-1]))
+ if final['settings']['rows']!={'global_http_proxy_exclusion_list':''}:raise ValueError('restore_final_rows_changed')
+ if readmission is not None and restore_readmission_guard(directory)!=readmission:raise ValueError('restore_readmission_changed')
+ terminal={'schema':1,'correlationId':operation['correlationId'],'sourceSha256':operation['sourceSha256'],'readmissionPin':RESTORE.get('readmissionPin'),'originalOutcome':'unknown','state':'owned-proxy-restored','final':final,'fenceSha256':fence['sha256'],'historicalUnknownsPreserved':True,'replayAllowed':False}
+ return restore_record(directory,'terminal.json',terminal)
+
+def observed_getter(directory):
+ global GETTER_RECORDS,GETTER_APK_PASS,PROBE_CASES,RESTORE_CLOSING,RESTORE_DEADLINE
+ RESTORE_CLOSING=False;RESTORE_DEADLINE=time.monotonic()+600
+ GETTER_RECORDS={'shellFdReads':[]};PROBE_CASES=[];result=None;failure=None;closing=False;stage=None
+ try:
+  stage=getter_stage();initial=restore_census(directory,stage)
+  if RESTORE['action']=='probe':
+   probe_fence_guard(directory,RESTORE['stageFence']);restore_expected(initial,RESTORE_OWNED,'owned');result={'state':'owned-proxy-observed','census':initial}
+  elif RESTORE['action']=='arm':
+   restore_expected(initial,RESTORE_OWNED,'owned');record=restore_arm(directory,initial);result={'state':'restore-armed','record':record}
+  elif RESTORE['action']=='metadata':
+   restore_expected(initial,RESTORE_OWNED,'owned');result=restore_metadata(directory,initial)
+  elif RESTORE['action']=='readmission-admit':
+   restore_expected(initial,RESTORE_OWNED,'owned');record=restore_readmission_admit(directory,initial);result={'state':'restore-readmission-admitted','record':record}
+  elif RESTORE['action']=='readmission-restore':result={'state':'owned-proxy-restored','record':restore_transaction(directory,stage)}
+  elif RESTORE['action']=='readmission-status':
+   restore_readmission_guard(directory);arm=restore_arm_guard(directory);operation=restore_operation()
+   try:
+    terminal=restore_record(directory,'terminal.json');fence=restore_record(directory,'effect-fence.json');value=terminal['value']
+    if type(value.get('schema'))is not int or value['schema']!=1 or value.get('historicalUnknownsPreserved')is not True or value.get('correlationId')!=operation['correlationId'] or value.get('sourceSha256')!=operation['sourceSha256'] or value.get('readmissionPin')!=RESTORE['readmissionPin'] or value.get('state')!='owned-proxy-restored' or value.get('fenceSha256')!=fence['sha256'] or value.get('originalOutcome')!='unknown' or value.get('replayAllowed')is not False:raise ValueError('restore_readmission_terminal_changed')
+    if type(fence['value'].get('schema'))is not int or fence['value']['schema']!=1 or fence['value'].get('armPin')!=operation['originalArmPin'] or fence['value'].get('replayAllowed')is not False or fence['value'].get('effect')!='owned-global-proxy-restore' or fence['value'].get('correlationId')!=operation['correlationId'] or fence['value'].get('sourceSha256')!=operation['sourceSha256'] or fence['value'].get('readmissionPin')!=RESTORE['readmissionPin']:raise ValueError('restore_readmission_fence_changed')
+    final_values={key:'' if key=='global_http_proxy_exclusion_list' else 'null' for key in RESTORE_KEYS}
+    restore_expected(initial,final_values,'clear',list(RESTORE_KEYS[:-1]));restore_expected(value['final'],final_values,'clear',list(RESTORE_KEYS[:-1]))
+    if initial['settings']['rows']!={'global_http_proxy_exclusion_list':''} or initial!=value['final']:raise ValueError('restore_terminal_changed')
+    result={'state':'owned-proxy-restored','record':terminal,'originalOutcome':'unknown'}
+   except FileNotFoundError:result={'state':'unknown','reason':'restore_terminal_absent','arm':arm}
+  elif RESTORE['action']=='restore':result={'state':'owned-proxy-restored','record':restore_transaction(directory,stage)}
+  elif RESTORE['action']=='status':
+   arm=restore_arm_guard(directory)
+   try:
+    terminal=restore_record(directory,'terminal.json');value=terminal['value'];fence=restore_record(directory,'effect-fence.json')
+    if type(value.get('schema'))is not int or value.get('schema')!=1 or value.get('correlationId')!=RESTORE['correlationId'] or value.get('sourceSha256')!=RESTORE['sourceSha256'] or value.get('state')!='owned-proxy-restored' or value.get('fenceSha256')!=fence['sha256'] or value.get('historicalUnknownsPreserved')is not True or value.get('replayAllowed')is not False:raise ValueError('restore_terminal_changed')
+    final_values={key:'' if key=='global_http_proxy_exclusion_list' else 'null' for key in RESTORE_KEYS}
+    restore_expected(initial,final_values,'clear',list(RESTORE_KEYS[:-1]));restore_expected(value['final'],final_values,'clear',list(RESTORE_KEYS[:-1]))
+    if initial['settings']['rows']!={'global_http_proxy_exclusion_list':''} or initial!=value['final']:raise ValueError('restore_terminal_changed')
+    result={'state':'owned-proxy-restored','record':terminal}
+   except FileNotFoundError:result={'state':'unknown','reason':'restore_terminal_absent','arm':arm}
+  else:raise ValueError('restore_action_invalid')
+ except (ValueError,OSError,KeyError,TypeError,UnicodeError,subprocess.TimeoutExpired) as error:
+  failure=str(error) if isinstance(error,ValueError) and re.fullmatch(r'(?:restore|probe|getter|coldboot)_[a-z_]{1,72}',str(error)) else 'restore_execution_unknown'
+ finally:
+  RESTORE_CLOSING=True
+  try:
+   if stage is not None:restore_guard(directory,stage)
+   else:raise ValueError('restore_stage_unobserved')
+   closing=True
+  except (ValueError,OSError,KeyError,TypeError,UnicodeError,subprocess.TimeoutExpired):failure='restore_closing_guard_rejected';result=None
+ return {'state':result['state'] if result is not None and closing else 'unknown','reason':failure,'correlationId':RESTORE['correlationId'],'operationCorrelationId':RESTORE.get('readmission',{}).get('correlationId'),'result':result,'records':GETTER_RECORDS,'closingGuardsVerified':closing,'productAdmitted':False,'acceptanceComplete':False,'historicalUnknownsPreserved':True,'replayAllowed':False,'rootUsed':False,'stageRetained':True}
+'''
+
+
+def _authority(root, snapshots):
+    def fixed(relative,sha):
+        path=root/relative;snap=availability._snapshot(path)
+        if hashlib.sha256(snap[1]).hexdigest()!=sha:raise RestoreError('historical_proof_changed')
+        snapshots[path]=snap;return json.loads(snap[1])
+    result=fixed('.runtime/parity-evidence/'+CAPSULE+'/result-0.private',CURRENT_RECEIPT)
+    if result.get('state')!='current-os-proxy-observed' or result.get('closingGuardsVerified')is not True or result.get('correlationId')!=PROBE_CORRELATION or result.get('proxyObservationVerified')is not True:raise RestoreError('current_proof_changed')
+    lifecycle=fixed('.runtime/parity-evidence/android-current/api35-update-0dd-lifecycle-receipt.json',HISTORY['lifecycleSha256'])
+    retirement=fixed('.runtime/parity-evidence/android-current/api35-retirement-d0fb-native-receipt.json','96489c3073bb358ba9a51e61331c6dc67eefae5de7c13f0dd2cff727c0b04eba')
+    base='.rag_index/android-installer-dispatch/'+HISTORY['correlationId']+'/'
+    fixed(base+'intent.json',HISTORY['intentSha256']);fixed(base+'dispatch.json',HISTORY['dispatchSha256'])
+    baseline={'http_proxy':'null','global_http_proxy_host':'null','global_http_proxy_port':'null','global_http_proxy_pac':'null','global_http_proxy_exclusion_list':''}
+    if lifecycle['effectiveProxyBaseline']!=baseline or retirement['effectiveProxy']['baseline']!=baseline:raise RestoreError('historical_baseline_changed')
+    for index,value in ((333,'127.0.0.1:45635'),(339,'null')):
+        item=lifecycle['commands'][index]
+        if item!={'args':['shell','settings','put','global','http_proxy',value],'exit':0,'stderr':'','stderrTruncated':False,'stdout':'','stdoutTruncated':False}:raise RestoreError('historical_effect_changed')
+    if retirement['effectiveProxy']['originalCombinedProxyCommands']!=[{'exit':0,'index':333,'sha256':HISTORY['setupSha256']},{'exit':0,'index':339,'sha256':HISTORY['cleanupSha256']}]:raise RestoreError('historical_effect_changed')
+    return result
+
+
+def compose(program,own_raw,binding):
+    tree=ast.parse(program)
+    if ast.unparse(tree.body[-1])!='coldboot_dispatch()':raise RestoreError('restore_dispatch_changed')
+    tree.body.pop();tree.body=[n for n in tree.body if not isinstance(n,ast.FunctionDef) or n.name not in ('observed_getter','probe_stage_command','probe_fence')]
+    template=ast.literal_eval(next(n.value for n in ast.parse(own_raw).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_REMOTE' for t in n.targets)))
+    output=ast.unparse(tree)+'\n'+template.replace('__RESTORE__',repr(binding)).replace('__STEPS__',repr(_FIXED_RESTORE))+'\ncoldboot_dispatch()\n'
+    compile(output,'<fixed-api35-proxy-restore>','exec');return output
+
+
+def _write_local(path,value,prepared):
+    if path.name not in ('intent.json','effect-fence.json','arm-ready.json','admission-ready.json') or path.parent.parent.name not in ('android-api35-owned-proxy-restore','android-api35-proxy-readmission-2e581948-3a05-4b75-a566-bbdee1d7c191') or path.parent.parent.parent.name!='.rag_index':raise RestoreError('restore_local_scope')
+    source_path=Path(coldboot.__file__).absolute();snap=prepared['snapshots'][source_path]
+    if hashlib.sha256(snap[1]).hexdigest()!='7d90c06070ffad1439e613c9ad5d63f979d43b738944f0630b2b15187f09fec6':raise RestoreError('restore_local_writer_changed')
+    tree=ast.parse(snap[1]);function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_write_local_intent')
+    # Exact FD writer with only its closed local journal scope adapted. No
+    # arbitrary writer or value-bearing source is accepted from a caller.
+    if ast.unparse(function.body[2].test).split(' or ')[0]!="path.name != 'launch.json'":raise RestoreError('restore_local_writer_changed')
+    function.body[2].test=ast.parse("path.name not in ('intent.json','effect-fence.json','arm-ready.json','admission-ready.json') or path.parent.parent.name not in ('android-api35-owned-proxy-restore','android-api35-proxy-readmission-2e581948-3a05-4b75-a566-bbdee1d7c191') or path.parent.parent.parent.name!='.rag_index' or str(uuid.UUID(path.parent.name))!=path.parent.name",mode='eval').body
+    generation=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_local_generation')
+    namespace=dict(os=os,sys=sys,stat=stat,re=re,json=json,Path=Path,uuid=uuid)
+    exec(compile(ast.Module(body=[generation,function],type_ignores=[]),'<frozen-local-fd-writer>','exec'),namespace)
+    namespace['_write_local_intent'](path,value)
+
+
+def prepare(root,reservation,correlation,action='probe'):
+    if not isinstance(correlation,str) or str(uuid.UUID(correlation))!=correlation or correlation in (HISTORY['correlationId'],PROBE_CORRELATION):raise RestoreError('new_correlation_required')
+    if action not in ('probe','arm','restore','status'):raise RestoreError('restore_action_invalid')
+    root=Path(root).absolute();path=Path(current.__file__).absolute();source=availability._snapshot(path)
+    if hashlib.sha256(source[1]).hexdigest()!=CURRENT_SOURCE:raise RestoreError('current_source_changed')
+    own=Path(__file__).absolute();own_snapshot=availability._snapshot(own)
+    prepared=current.prepare(root,reservation,PROBE_CORRELATION)
+    if availability._snapshot(path)!=source:raise RestoreError('current_source_changed')
+    prepared['snapshots'][path]=source;prepared['snapshots'][own]=own_snapshot
+    backend_path=Path(component.__file__).absolute();backend_snapshot=availability._snapshot(backend_path)
+    if hashlib.sha256(backend_snapshot[1]).hexdigest()!=COMPONENT_SOURCE:raise RestoreError('restore_backend_source_changed')
+    backend_binding=component.prepare_binding(root,prepared,'android-api35')
+    if availability._snapshot(backend_path)!=backend_snapshot or prepared['snapshots'].get(backend_path)!=backend_snapshot:raise RestoreError('restore_backend_source_changed')
+    component.install(prepared,backend_binding)
+    if availability._snapshot(backend_path)!=backend_snapshot:raise RestoreError('restore_backend_source_changed')
+    proof=_authority(root,prepared['snapshots'])
+    authority={'componentBackend':backend_binding,'componentCalibrationOnly':True,'installedLauncherAccepted':False,'bundledRuntimeAccepted':False,'currentReceiptSha256':CURRENT_RECEIPT,'historical':HISTORY,'primary':PRIMARY,'historicalRowPresence':'unavailable','finalAbsentRepresentation':'new-proof-required','compiledProbeCorrelation':PROBE_CORRELATION,'dexSha256':DEX_SHA,'newSourceSha256':hashlib.sha256(own_snapshot[1]).hexdigest()}
+    binding={'correlationId':correlation,'action':action,'sourceSha256':authority['newSourceSha256'],'authority':authority,'stageFence':proof['stageFence'],'deviceStageGeneration':proof['deviceStageGeneration']}
+    local=root/'.rag_index/android-api35-owned-proxy-restore'/correlation
+    if action=='arm':_write_local(local/'intent.json',authority,prepared)
+    if action in ('arm','restore','status'):
+        snap=availability._snapshot(local/'intent.json')
+        if json.loads(snap[1])!=authority:raise RestoreError('restore_local_intent_changed')
+        prepared['snapshots'][local/'intent.json']=snap
+        authority={**authority,'localIntentPin':{'generation':list(snap[0]),'sha256':hashlib.sha256(snap[1]).hexdigest()}}
+        binding['authority']=authority
+    if action in ('restore','status'):
+        ready=availability._snapshot(local/'arm-ready.json');value=json.loads(ready[1]);prepared['snapshots'][local/'arm-ready.json']=ready
+        if value.get('correlationId')!=correlation or value.get('authority')!=authority or value.get('sourceSha256')!=binding['sourceSha256']:raise RestoreError('restore_local_arm_changed')
+        binding['armPin']=value['armPin']
+        if action=='restore':_write_local(local/'effect-fence.json',{'correlationId':correlation,'authority':authority,'armPin':binding['armPin'],'replayAllowed':False},prepared)
+        if action=='restore':prepared['snapshots'][local/'effect-fence.json']=availability._snapshot(local/'effect-fence.json')
+    prepared['restoreCorrelationId']=correlation;prepared['restoreAction']=action;prepared['restoreBinding']=binding
+    prepared['program']=compose(prepared['program'],own_snapshot[1],binding)
+    current.guard_prepared(prepared);return prepared
+
+
+def retain_arm(root,prepared,raw):
+    """Retain the exact completed arm response, never a caller boolean/command."""
+    if prepared.get('restoreAction')!='arm' or not isinstance(raw,bytes) or len(raw)>4194304:raise RestoreError('restore_arm_response_invalid')
+    guard_prepared(prepared);value=json.loads(raw);binding=prepared['restoreBinding']
+    if value.get('state')!='restore-armed' or value.get('closingGuardsVerified')is not True or value.get('correlationId')!=binding['correlationId'] or value.get('historicalUnknownsPreserved')is not True or value.get('replayAllowed')is not False:raise RestoreError('restore_arm_response_invalid')
+    record=value['result']['record'];content=record['value']
+    if content.get('binding')!=binding['authority'] or content.get('correlationId')!=binding['correlationId'] or content.get('sourceSha256')!=binding['sourceSha256'] or type(content.get('schema'))is not int or content['schema']!=1:raise RestoreError('restore_arm_response_invalid')
+    canonical=(json.dumps(content,sort_keys=True,separators=(',',':'))+'\n').encode()
+    pin=record.get('generation')
+    if not isinstance(pin,list) or len(pin)!=9 or any(type(item)is not int for item in pin) or pin[2]!=len(canonical) or not stat.S_ISREG(pin[5]) or stat.S_IMODE(pin[5])!=0o600 or pin[6:9]!=[0,0,1] or record.get('sha256')!=hashlib.sha256(canonical).hexdigest():raise RestoreError('restore_arm_response_invalid')
+    path=Path(root).absolute()/'.rag_index/android-api35-owned-proxy-restore'/binding['correlationId']/'arm-ready.json'
+    _write_local(path,{'correlationId':binding['correlationId'],'authority':binding['authority'],'sourceSha256':binding['sourceSha256'],'armPin':{'generation':pin,'sha256':record['sha256']},'responseSha256':hashlib.sha256(raw).hexdigest()},prepared)
+    guard_prepared(prepared)
+    return availability._snapshot(path)
+
+
+def probe(root,reservation,correlation):return prepare(root,reservation,correlation,'probe')
+def arm(root,reservation,correlation):return prepare(root,reservation,correlation,'arm')
+def restore_once(root,reservation,correlation):return prepare(root,reservation,correlation,'restore')
+def status(root,reservation,correlation):return prepare(root,reservation,correlation,'status')
+def guard_prepared(prepared):current.guard_prepared(prepared)
+def restore_carrier(prepared):
+    if prepared.get('restoreAction')not in ('probe','arm','restore','status','metadata','readmission-admit','readmission-restore','readmission-status'):raise RestoreError('restore_prepared_required')
+    guard_prepared(prepared);return current.ssh_carrier(prepared)
+
+
+_INTERRUPTED='2e581948-3a05-4b75-a566-bbdee1d7c191'
+_INTERRUPTED_CAPSULE='android-api35-owned-proxy-flow-'+_INTERRUPTED
+_INTERRUPTED_PROGRAM='f85a97229ae843a6c2b172878b386f7bcbf5aef1d884e6a01979c126d8b6ecf9'
+_INTERRUPTED_SOURCE='4f1c26526a29d0326febc196267b4c10f46bfdbc54df94d43b8071976f49b838'
+
+def arm_metadata(root,reservation):
+    """Fixed read-only census of the consumed interrupted arm; no adoption."""
+    root=Path(root).absolute()
+    prepared=prepare(root,reservation,_INTERRUPTED,'probe')
+    path=root/'.runtime/parity-evidence'/ _INTERRUPTED_CAPSULE/'arm-program.py'
+    snapshot=availability._snapshot(path)
+    if hashlib.sha256(snapshot[1]).hexdigest()!=_INTERRUPTED_PROGRAM:raise RestoreError('restore_interrupted_source_changed')
+    tree=ast.parse(snapshot[1]);assignments=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='RESTORE' for t in n.targets)]
+    if len(assignments)!=1:raise RestoreError('restore_interrupted_binding_changed')
+    # JSON serialization was the measured original representation boundary.
+    binding=json.loads(json.dumps(ast.literal_eval(assignments[0].value)))
+    if binding['correlationId']!=_INTERRUPTED or binding['action']!='arm' or binding['sourceSha256']!=_INTERRUPTED_SOURCE:raise RestoreError('restore_interrupted_binding_changed')
+    own=root/'.runtime/parity-evidence'/ _INTERRUPTED_CAPSULE/'helper.py';own_snapshot=availability._snapshot(own)
+    if hashlib.sha256(own_snapshot[1]).hexdigest()!=_INTERRUPTED_SOURCE:raise RestoreError('restore_interrupted_source_changed')
+    local=root/'.rag_index/android-api35-owned-proxy-restore'/ _INTERRUPTED/'intent.json';intent=availability._snapshot(local);pin={'generation':list(intent[0]),'sha256':hashlib.sha256(intent[1]).hexdigest()}
+    if pin!=binding['authority']['localIntentPin'] or json.loads(intent[1])!={k:v for k,v in binding['authority'].items() if k!='localIntentPin'}:raise RestoreError('restore_interrupted_intent_changed')
+    binding['action']='metadata';newtree=ast.parse(prepared['program']);count=0
+    for node in newtree.body:
+        if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='RESTORE' for t in node.targets):node.value=ast.parse(repr(binding),mode='eval').body;count+=1
+    if count!=1:raise RestoreError('restore_interrupted_composition_changed')
+    prepared['program']=ast.unparse(ast.fix_missing_locations(newtree))+'\n';prepared['restoreAction']='metadata';prepared['restoreBinding']=binding
+    prepared['snapshots'].update({path:snapshot,own:own_snapshot,local:intent});guard_prepared(prepared)
+    return prepared
+
+
+_METADATA_CAPSULE='android-api35-interrupted-arm-metadata-48d6137f-9d85-4738-b711-1f67adca4a3c'
+_METADATA_SHA='567d75e1e05108f93832f95f5538abe39f8f02259abeb3a23cb92bfa428e53d8'
+_METADATA_SOURCE='7845714ffd2ab52e46b490c182d8505750ece842eaf49d98d12bdfe9920e8ef4'
+_ORIGINAL_ARM_SHA='e27192cb475c631bd9bb758e0ab47804ba3c5754c6e526f96a381101214abf25'
+_ORIGINAL_ARM_GEN=[66307,103946091,10603,1791069979449654461,1791069979449654461,33152,0,0,1]
+
+def _replace_restore(prepared,binding):
+    tree=ast.parse(prepared['program']);count=0
+    for node in tree.body:
+        if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='RESTORE' for t in node.targets):node.value=ast.parse(repr(binding),mode='eval').body;count+=1
+    if count!=1:raise RestoreError('restore_interrupted_composition_changed')
+    prepared['program']=ast.unparse(ast.fix_missing_locations(tree))+'\n';prepared['restoreBinding']=binding;prepared['restoreAction']=binding['action']
+
+def _readmission_prepare(root,reservation,correlation,action):
+    if not isinstance(correlation,str) or str(uuid.UUID(correlation))!=correlation or correlation==_INTERRUPTED:raise RestoreError('restore_readmission_correlation_invalid')
+    root=Path(root).absolute();prepared=arm_metadata(root,reservation);binding=prepared['restoreBinding']
+    path=root/'.runtime/parity-evidence'/ _METADATA_CAPSULE/'metadata-remote-stdout-0.private';snapshot=availability._snapshot(path)
+    if hashlib.sha256(snapshot[1]).hexdigest()!=_METADATA_SHA:raise RestoreError('restore_metadata_proof_changed')
+    value=json.loads(snapshot[1]);result=value['result'];record=result['record'];pin={key:record[key] for key in ('generation','sha256')}
+    if value.get('state')!='arm-metadata-observed' or value.get('closingGuardsVerified')is not True or value.get('correlationId')!=_INTERRUPTED or result.get('effectFenceAbsent')is not True or result.get('terminalAbsent')is not True or result.get('originalOutcome')!='unknown' or result.get('readmissionGranted')is not False or pin!={'generation':_ORIGINAL_ARM_GEN,'sha256':_ORIGINAL_ARM_SHA}:raise RestoreError('restore_metadata_proof_changed')
+    old=root/'.runtime/parity-evidence'/ _METADATA_CAPSULE/'helper.py';old_snapshot=availability._snapshot(old)
+    if hashlib.sha256(old_snapshot[1]).hexdigest()!=_METADATA_SOURCE:raise RestoreError('restore_metadata_source_changed')
+    prepared['snapshots'].update({path:snapshot,old:old_snapshot})
+    authority={'correlationId':correlation,'sourceSha256':hashlib.sha256(prepared['snapshots'][Path(__file__).absolute()][1]).hexdigest(),'originalCorrelationId':_INTERRUPTED,'originalSourceSha256':_INTERRUPTED_SOURCE,'originalArmPin':pin,'metadataProofPin':{'generation':list(snapshot[0]),'sha256':_METADATA_SHA},'metadataSourceSha256':_METADATA_SOURCE,'originalAuthority':binding['authority'],'originalOutcome':'unknown','replayAllowed':False}
+    local=root/'.rag_index'/('android-api35-proxy-readmission-'+_INTERRUPTED)/correlation
+    if action=='admit':_write_local(local/'intent.json',authority,prepared)
+    intent=availability._snapshot(local/'intent.json')
+    if json.loads(intent[1])!=authority:raise RestoreError('restore_readmission_local_changed')
+    prepared['snapshots'][local/'intent.json']=intent
+    operation={**authority,'localIntentPin':{'generation':list(intent[0]),'sha256':hashlib.sha256(intent[1]).hexdigest()}}
+    binding['readmission']=operation;binding['action']='readmission-'+action
+    if action in ('restore','status'):
+        ready=availability._snapshot(local/'admission-ready.json');v=json.loads(ready[1])
+        if v.get('operation')!=operation or v.get('originalOutcome')!='unknown':raise RestoreError('restore_readmission_local_changed')
+        _regular_root_pin(v['readmissionPin']);binding['readmissionPin']=v['readmissionPin'];prepared['snapshots'][local/'admission-ready.json']=ready
+        if action=='restore':
+            _write_local(local/'effect-fence.json',{'operation':operation,'readmissionPin':binding['readmissionPin'],'replayAllowed':False},prepared)
+            prepared['snapshots'][local/'effect-fence.json']=availability._snapshot(local/'effect-fence.json')
+    _replace_restore(prepared,binding);prepared['readmissionCorrelationId']=correlation;guard_prepared(prepared);return prepared
+
+def _regular_root_pin(pin):
+    generation=pin.get('generation');sha=pin.get('sha256')
+    if not isinstance(generation,list) or len(generation)!=9 or any(type(x)is not int for x in generation) or not stat.S_ISREG(generation[5]) or stat.S_IMODE(generation[5])!=0o600 or generation[6:9]!=[0,0,1] or not 0<generation[2]<=262144 or not isinstance(sha,str) or re.fullmatch('[0-9a-f]{64}',sha)is None:raise RestoreError('restore_readmission_pin_invalid')
+
+def readmission_admit(root,reservation,correlation):return _readmission_prepare(root,reservation,correlation,'admit')
+def readmission_restore_once(root,reservation,correlation):return _readmission_prepare(root,reservation,correlation,'restore')
+def readmission_status(root,reservation,correlation):return _readmission_prepare(root,reservation,correlation,'status')
+
+def retain_readmission(root,prepared,raw):
+    if prepared.get('restoreAction')!='readmission-admit' or not isinstance(raw,bytes) or len(raw)>4194304:raise RestoreError('restore_readmission_response_invalid')
+    guard_prepared(prepared);value=json.loads(raw);binding=prepared['restoreBinding'];operation=binding['readmission']
+    if value.get('state')!='restore-readmission-admitted' or value.get('closingGuardsVerified')is not True or value.get('correlationId')!=_INTERRUPTED or value.get('historicalUnknownsPreserved')is not True or value.get('replayAllowed')is not False:raise RestoreError('restore_readmission_response_invalid')
+    record=value['result']['record'];pin={key:record[key] for key in ('generation','sha256')};_regular_root_pin(pin)
+    expected={'schema':1,'operation':operation,'originalArmPin':operation['originalArmPin'],'originalOutcome':'unknown','replayAllowed':False}
+    if record['value']!=expected:raise RestoreError('restore_readmission_response_invalid')
+    encoded=(json.dumps(expected,sort_keys=True,separators=(',',':'))+'\n').encode()
+    if hashlib.sha256(encoded).hexdigest()!=pin['sha256'] or len(encoded)!=pin['generation'][2]:raise RestoreError('restore_readmission_response_invalid')
+    path=Path(root).absolute()/'.rag_index'/('android-api35-proxy-readmission-'+_INTERRUPTED)/operation['correlationId']/'admission-ready.json'
+    _write_local(path,{'operation':operation,'readmissionPin':pin,'originalOutcome':'unknown','responseSha256':hashlib.sha256(raw).hexdigest()},prepared);guard_prepared(prepared);return availability._snapshot(path)

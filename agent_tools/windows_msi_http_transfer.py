@@ -2251,16 +2251,25 @@ def workflow(root: Path | str, action: str, inputs: Mapping[str, Any]) -> dict[s
         try:
             root = Path(root).resolve(strict=True)
             config, target, descriptor = base._descriptor(root)
-            base._require_reconciled_legacy(root, descriptor, request["expectedCurrentVersion"])
-            base._require_base_route_free(root, config, target, descriptor)
-            ready = base.readiness(root, {"host": "archlinux",
-                                          "expectedCurrentVersion": request["expectedCurrentVersion"]})
-            if (ready.get("state") != "ready" or ready.get("ready") is not True
-                    or ready.get("installedVersion") != request["expectedCurrentVersion"]
-                    or ready.get("productCount") != 1 or ready.get("activeCount") != 0
-                    or ready.get("activeProcesses") != []):
-                return dict(_UNKNOWN)
-            _pair, artifact, _size = base._admit(root, request)
+            from . import windows_cp117_source_campaign as source_campaign
+            source_artifact = None
+            try:
+                source_artifact = source_campaign.transfer_admission(root, request)
+            except source_campaign.WindowsCp117SourceCampaignError:
+                pass
+            if source_artifact is None:
+                base._require_reconciled_legacy(root, descriptor, request["expectedCurrentVersion"])
+                base._require_base_route_free(root, config, target, descriptor)
+                ready = base.readiness(root, {"host": "archlinux",
+                                              "expectedCurrentVersion": request["expectedCurrentVersion"]})
+                if (ready.get("state") != "ready" or ready.get("ready") is not True
+                        or ready.get("installedVersion") != request["expectedCurrentVersion"]
+                        or ready.get("productCount") != 1 or ready.get("activeCount") != 0
+                        or ready.get("activeProcesses") != []):
+                    return dict(_UNKNOWN)
+                _pair, artifact, _size = base._admit(root, request)
+            else:
+                artifact = source_artifact
             binding = {"correlationId": request["correlationId"], "sourceSha": request["sourceSha"],
                        "baseMsiArtifactId": request["baseMsiArtifactId"], "environment": descriptor[0],
                        "socketPath": descriptor[1], "qemuPid": descriptor[2],

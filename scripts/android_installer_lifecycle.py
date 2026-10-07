@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise one Android self-update installer interaction on an admitted AVD."""
 import argparse
+import base64
 import hashlib
 import json
 import math
@@ -48,31 +49,31 @@ def invoke(cli, serial, *words, interactive=False, asynchronous=False, environme
     except json.JSONDecodeError as error:
         raise InvocationFailure("CLI did not return JSON", {"argv": argv, "exit": done.returncode,
             "stdout": done.stdout, "stderr": done.stderr}) from error
-    return {"argv": argv, "exit": done.returncode, "response": body, "stderr": done.stderr}
+    return {"argv": argv, "exit": done.returncode, "response": body, "stdout": done.stdout, "stderr": done.stderr}
 
 
 def final(record, expected):
     if (record["exit"] != EXIT[expected] or record["response"].get("code") != expected
             or record["response"].get("final") is not True):
-        raise RuntimeError(f"expected final {expected}: {record}")
+        raise RuntimeError("installer terminal result rejected")
 
 
 def correlated_terminal(record, operation, expected):
     response = record["response"]
     if response.get("operationId") != operation:
-        raise RuntimeError(f"terminal operation correlation changed: {record}")
+        raise RuntimeError("terminal operation correlation changed")
     if expected == "installed":
         if (record["exit"] != EXIT["OK"] or response.get("ok") is not True or response.get("code") != "OK"
                 or response.get("final") is not True
                 or (response.get("data") or {}).get("installPhase") != "installed"
                 or (response.get("data") or {}).get("installed") is not True):
-            raise RuntimeError(f"expected confirmed installed terminal: {record}")
+            raise RuntimeError("expected confirmed installed terminal")
     elif expected == "cancelled":
         if (record["exit"] != EXIT["CANCELLED"] or response.get("ok") is not False or response.get("code") != "CANCELLED"
                 or response.get("final") is not True
                 or (response.get("data") or {}).get("installPhase") != "cancelled"
                 or (response.get("data") or {}).get("installed") is not False):
-            raise RuntimeError(f"expected confirmed cancelled terminal: {record}")
+            raise RuntimeError("expected confirmed cancelled terminal")
     else:
         raise ValueError("terminal expectation must be installed or cancelled")
 
@@ -87,7 +88,7 @@ def handoff_identity(record, operation, target_version, target_sha256, controlle
             or not isinstance(data.get("installReceiptId"), str) or not data["installReceiptId"]
             or not valid_session_id(data.get("installSessionId"))
             or controller_id is not None and response.get("controllerId") != controller_id):
-        raise RuntimeError(f"expected immutable historical installer handoff: {record}")
+        raise RuntimeError("expected immutable historical installer handoff")
     return {"operationId": operation, "receiptId": data["installReceiptId"],
             "sessionId": data["installSessionId"], "version": target_version,
             "targetSha256": target_sha256, "controllerId": response.get("controllerId")}
@@ -98,7 +99,7 @@ def terminal_identity(record, operation, expected, target_version, target_sha256
     data = record["response"].get("data") or {}
     if (data.get("availableVersion") != target_version or not isinstance(data.get("installReceiptId"), str)
             or not data["installReceiptId"] or not valid_session_id(data.get("installSessionId"))):
-        raise RuntimeError(f"expected exact terminal installer identity: {record}")
+        raise RuntimeError("expected exact terminal installer identity")
     return {"operationId": operation, "receiptId": data["installReceiptId"],
             "sessionId": data["installSessionId"], "version": target_version,
             "targetSha256": target_sha256}
@@ -309,14 +310,111 @@ def await_handoff_identity(args, operation, controller_id):
         time.sleep(min(interval, remaining))
 
 
+_REPLY_PHASES = {'check', 'download', 'noninteractive', 'interactive'}
+_REPLY_CODES = {'OK','ACCEPTED','INVALID_ARGUMENT','NOT_FOUND','AMBIGUOUS_LOCATION',
+    'READ_ONLY_SOURCE','BUSY','CONFLICT','UNSUPPORTED','INTERACTION_REQUIRED',
+    'PERMISSION_DENIED','PERSISTENCE_FAILED','RUNTIME_FAILED','TIMEOUT',
+    'OUTCOME_UNKNOWN','UNAVAILABLE','INCOMPATIBLE_PROTOCOL','CANCELLED'}
+_REPLY_LIMIT = 32768
+
+
+def reply_binding(args):
+    intent = args.intent
+    if (not isinstance(intent, dict) or not isinstance(intent.get('correlationId'), str) or
+            re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}', intent['correlationId']) is None or
+            not isinstance(intent.get('pair'), dict) or not isinstance(intent['pair'].get('sourceSha'), str) or
+            re.fullmatch(r'[0-9a-f]{40}', intent['pair']['sourceSha']) is None or
+            not isinstance(intent['pair'].get('targetArtifactId'), str) or
+            re.fullmatch(r'sha256-[0-9a-f]{64}', intent['pair']['targetArtifactId']) is None):
+        raise ValueError('Installer CLI evidence binding invalid')
+    canonical = json.dumps(intent, sort_keys=True, separators=(',', ':')).encode()
+    return {'correlationId': intent['correlationId'], 'sourceSha': intent['pair']['sourceSha'],
+        'targetArtifactId': intent['pair']['targetArtifactId'],
+        'intentCanonicalSha256': hashlib.sha256(canonical).hexdigest()}
+
+
+def reply_code(record):
+    value = record.get('response', {}).get('code') if isinstance(record.get('response'), dict) else None
+    return value if isinstance(value, str) and value in _REPLY_CODES else 'UNRECOGNIZED'
+
+
+def write_cli_evidence(args, name, value):
+    if os.name != 'posix':
+        raise ValueError('Installer CLI evidence requires POSIX file APIs')
+    parent = Path(args.output)
+    before = parent.lstat()
+    if not stat.S_ISDIR(before.st_mode) or before.st_uid != os.getuid() or stat.S_IMODE(before.st_mode) != 0o700:
+        raise ValueError('Installer CLI evidence parent unsafe')
+    directory = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | getattr(os, 'O_NOFOLLOW', 0))
+    try:
+        opened = os.fstat(directory)
+        if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+            raise ValueError('Installer CLI evidence parent changed')
+        data = (json.dumps(value, sort_keys=True, separators=(',', ':'))+'\n').encode()
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600, dir_fd=directory)
+        with os.fdopen(fd, 'wb') as output:
+            output.write(data); output.flush(); os.fsync(output.fileno())
+            info = os.fstat(output.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+                raise ValueError('Installer CLI evidence file unsafe')
+        named = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        fingerprint = lambda x: (x.st_dev,x.st_ino,x.st_size,x.st_mtime_ns,x.st_ctime_ns,x.st_mode,x.st_uid,x.st_nlink)
+        current = parent.lstat()
+        if fingerprint(named) != fingerprint(info) or (current.st_dev,current.st_ino,current.st_mode,current.st_uid) != (before.st_dev,before.st_ino,before.st_mode,before.st_uid):
+            raise ValueError('Installer CLI evidence generation changed')
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def retain_cli_reply(args, name, record):
+    if getattr(args, 'intent', None) is None:
+        return
+    if name not in _REPLY_PHASES:
+        raise ValueError('Installer CLI reply phase invalid')
+    # Parsed response plus exact original stdout/stderr are private evidence.
+    # Oversized replies retain a bounded prefix and full digest, explicitly
+    # marked truncated. This never changes the record validated by the guards.
+    raw = json.dumps(record, sort_keys=True, separators=(',', ':')).encode()
+    value = {'schema': 1, 'kind': 'android-installer-cli-reply',
+        'binding': reply_binding(args), 'phase': name, 'code': reply_code(record),
+        'record': {'size': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),
+            'truncated': len(raw) > _REPLY_LIMIT,
+            'base64': base64.b64encode(raw[:_REPLY_LIMIT]).decode()}}
+    write_cli_evidence(args, 'cli-' + name + '-reply.json', value)
+
+
+def retain_cli_failure(args, receipt, name, record, guard):
+    if getattr(args, 'intent', None) is None:
+        return
+    if name not in _REPLY_PHASES or guard not in {'terminal-result','owner-revision','invocation','acceptance','dialog-changed'}:
+        raise ValueError('Installer CLI failure classification invalid')
+    value = {'schema': 1, 'binding': reply_binding(args), 'phase': name,
+             'code': reply_code(record), 'guard': guard}
+    write_cli_evidence(args, 'cli-failure.json', value)
+    receipt['installerActionFailure'] = value
+
+
+def invoke_retained(args, receipt, name, *words, **kwargs):
+    try:
+        value = invoke(args.cli, args.serial, *words, **kwargs)
+    except InvocationFailure as error:
+        retain_cli_reply(args, name, error.record)
+        retain_cli_failure(args, receipt, name, error.record, 'invocation')
+        raise
+    retain_cli_reply(args, name, value)
+    return value
+
+
 def action(args, adb, receipt):
     if adb.shell_id() != "uid=2000":
         raise RuntimeError("product action requires public UID 2000")
     environment = getattr(args, "cli_environment", None)
-    def same_owner(record):
+    def same_owner(name, record):
         if getattr(args, "intent", None) is not None and (
                 record.get("response", {}).get("controllerId") != args.intent["expectedOwner"] or
                 record.get("response", {}).get("configurationRevision") != args.intent["expectedRevision"]):
+            retain_cli_failure(args, receipt, name, record, 'owner-revision')
             raise RuntimeError("installer public owner changed during session")
     if getattr(args, "intent", None) is not None:
         receipt["installerIntent"] = {"correlationId": args.intent["correlationId"],
@@ -324,31 +422,42 @@ def action(args, adb, receipt):
             "targetArtifactId": args.intent["pair"]["targetArtifactId"],
             "backupSha256": args.intent["backupSha256"]}
         phase(args, "check")
-    check = invoke(args.cli, args.serial, "updates", "check", environment=environment)
-    final(check, "OK")
-    same_owner(check)
+    check = invoke_retained(args, receipt, 'check', "updates", "check", environment=environment)
+    try: final(check, "OK")
+    except RuntimeError:
+        retain_cli_failure(args, receipt, 'check', check, 'terminal-result')
+        raise
+    same_owner('check', check)
     if getattr(args, "intent", None) is not None: phase(args, "download")
-    download = invoke(args.cli, args.serial, "updates", "download", environment=environment)
-    final(download, "OK")
-    same_owner(download)
+    download = invoke_retained(args, receipt, 'download', "updates", "download", environment=environment)
+    try: final(download, "OK")
+    except RuntimeError:
+        retain_cli_failure(args, receipt, 'download', download, 'terminal-result')
+        raise
+    same_owner('download', download)
     before_windows = focused_dialog_state(adb)
     if getattr(args, "intent", None) is not None: phase(args, "noninteractive")
-    rejected = invoke(args.cli, args.serial, "updates", "install", environment=environment)
-    final(rejected, "INTERACTION_REQUIRED")
-    same_owner(rejected)
+    rejected = invoke_retained(args, receipt, 'noninteractive', "updates", "install", environment=environment)
+    try: final(rejected, "INTERACTION_REQUIRED")
+    except RuntimeError:
+        retain_cli_failure(args, receipt, 'noninteractive', rejected, 'terminal-result')
+        raise
+    same_owner('noninteractive', rejected)
     if focused_dialog_state(adb) != before_windows:
+        retain_cli_failure(args, receipt, 'noninteractive', rejected, 'dialog-changed')
         raise RuntimeError("noninteractive install opened a focused OS dialog")
     if getattr(args, "intent", None) is not None: phase(args, "interactive")
-    accepted = invoke(args.cli, args.serial, "updates", "install", interactive=True,
+    accepted = invoke_retained(args, receipt, 'interactive', "updates", "install", interactive=True,
                       asynchronous=True, environment=environment)
-    same_owner(accepted)
+    same_owner('interactive', accepted)
     operation = accepted["response"].get("operationId")
     accepted_controller = accepted["response"].get("controllerId")
     if (accepted["exit"] != 0 or accepted["response"].get("code") != "ACCEPTED"
             or accepted["response"].get("final") is not False
             or not isinstance(operation, str) or not operation
             or not isinstance(accepted_controller, str) or not accepted_controller):
-        raise RuntimeError(f"interactive install was not accepted once: {accepted}")
+        retain_cli_failure(args, receipt, 'interactive', accepted, 'acceptance')
+        raise RuntimeError("interactive install was not accepted once")
     receipt["installerLifecycle"] = {"check": check, "download": download,
         "noninteractiveRejected": rejected, "interactiveAccepted": accepted,
         "operationId": operation, "targetSha256": args.target_sha256,
@@ -366,7 +475,7 @@ def action(args, adb, receipt):
                 raise RuntimeError("governed installer handoff session changed")
         receipt["installerLifecycle"]["handoffCapture"] = handoff
         if handoff.get("outcome") == "OUTCOME_UNKNOWN":
-            raise RuntimeError(f"installer handoff outcome unknown: {handoff}")
+            raise RuntimeError("installer handoff outcome unknown")
         persist_private_json(args.probe_output.parent / "handoff.json", {
             "originalOperation": accepted, "identity": handoff["identity"], "handoffCapture": handoff,
             "targetSha256": args.target_sha256, "targetVersion": args.target_version,
@@ -381,7 +490,7 @@ def action(args, adb, receipt):
             "identity": handoff["identity"], "status": handoff["operationStatus"][-1]}
         receipt["installerLifecycle"]["reconciliation"] = reconciliation
         if reconciliation.get("outcome") == "OUTCOME_UNKNOWN":
-            raise RuntimeError(f"installer reconciliation outcome unknown: {reconciliation}")
+            raise RuntimeError("installer reconciliation outcome unknown")
         if expected_terminal == "installed":
             receipt["installerLifecycle"]["installedBaseSha256"] = verify_installed_target(args, adb)
         receipt["installerLifecycle"]["acceptance"] = "terminal-confirmed"
@@ -413,7 +522,7 @@ def action(args, adb, receipt):
         reconciliation = await_reconciled_terminal(args, identity, expected_terminal)
         receipt["installerLifecycle"]["reconciliation"] = reconciliation
         if reconciliation.get("outcome") == "OUTCOME_UNKNOWN":
-            raise RuntimeError(f"installer reconciliation outcome unknown: {reconciliation}")
+            raise RuntimeError("installer reconciliation outcome unknown")
     if expected_terminal == "installed":
         receipt["installerLifecycle"]["installedBaseSha256"] = verify_installed_target(args, adb)
     receipt["installerLifecycle"]["acceptance"] = "terminal-confirmed"

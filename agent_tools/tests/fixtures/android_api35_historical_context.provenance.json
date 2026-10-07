@@ -1,0 +1,33 @@
+{
+  "additionalPublicSources": [
+    {
+      "bytes": 28415,
+      "file": "android_api35_historical_arm.source",
+      "origin": ".runtime/parity-evidence/android-api35-owned-proxy-flow-2e581948-3a05-4b75-a566-bbdee1d7c191/helper.py",
+      "role": "complete public helper source only; no native programme/receipt",
+      "sha256": "4f1c26526a29d0326febc196267b4c10f46bfdbc54df94d43b8071976f49b838"
+    },
+    {
+      "bytes": 32606,
+      "file": "android_api35_historical_metadata.source",
+      "origin": ".runtime/parity-evidence/android-api35-interrupted-arm-metadata-48d6137f-9d85-4738-b711-1f67adca4a3c/helper.py",
+      "role": "complete public helper source only; no native programme/receipt",
+      "sha256": "7845714ffd2ab52e46b490c182d8505750ece842eaf49d98d12bdfe9920e8ef4"
+    },
+    {
+      "bytes": 43993,
+      "file": "android_api35_historical_readmission.source",
+      "origin": ".runtime/parity-evidence/android-api35-proxy-readmission-flow-66f5e1d4-114c-4e05-8b53-cc64e92563bf/helper.py",
+      "role": "complete public helper source only; no native programme/receipt",
+      "sha256": "532b8df2fa94f1a78f40a596d33d1cda3b036abc4f81664ae3a1a7dbd8a450e0"
+    }
+  ],
+  "bytes": 19756,
+  "kind": "public-historical-api35-getter-source",
+  "nativeAuthority": false,
+  "origin": ".runtime/parity-evidence/android-linear-read-source-freeze-6d32cbfb-e0cc-4cd0-951a-389105458948/source-7.private",
+  "originSha256": "01351f6385504da1eeaa736b0f3164c0e5a7d2fef978b7001ccc4323f8d4c148",
+  "reconstruction": "Reverse exactly two recorded source SHA literal substitutions from public source-only manifest android-linear-read-source-freeze-6d32cbfb; complete original c908 digest reproduced.",
+  "schema": 1,
+  "sha256": "c908a23200cf633c9db6a2ccfc057f2e360267519153593a23c4471fbefe528b"
+}

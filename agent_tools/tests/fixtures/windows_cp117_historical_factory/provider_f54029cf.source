@@ -1,0 +1,741 @@
+"""Fixed disposable CP117 provider login preparation; no generic input API.
+
+The immutable observed role reader supplies current secure-field admission. A
+noninheritable duplicate of the original QGA stdin pipe is granted only to the
+held suspended diagnostic child. Secret bytes remain in that original pipe.
+"""
+import ast,base64,gzip,hashlib,inspect,json,os,re,stat,time
+from pathlib import Path
+from . import windows_cp117_windowless_gui_login as role
+from .windows_diagnostic_authority_capture import AuthorityCapture
+ROLE_SHA='afaa1184bc10f9358d57238e2d6d736de2435c0f7b2553a7aaf7343efe9ae7a8'
+SECURE_SHA='bbcb1de84c89b44d7e541a35a2634ba0cf644e89f5cef7d9061e3a33e6499782'
+login=role.login
+CORRELATION='ab9a3ed5-b49f-4b4f-8efb-2f590fb0370d'
+NONCE='7a12a8bd-c74e-4509-8f06-4fc5407bda1a'
+INERT_CORRELATION='74494867-a46a-4b2d-af11-853c69aef984'
+INERT_NONCE='e83751d5-9471-41d9-980b-cbb8a24a473a'
+PUBLIC_SENTINEL=b'CP117-PUBLIC-INERT-PIPE'
+
+_DUPLICATE_CS=r'''
+ [DllImport("kernel32.dll",SetLastError=true)] static extern IntPtr GetStdHandle(int kind);
+ [DllImport("kernel32.dll",SetLastError=true)] static extern uint GetFileType(IntPtr handle);
+ [DllImport("kernel32.dll",SetLastError=true)] static extern bool DuplicateHandle(IntPtr source,IntPtr input,IntPtr target,out IntPtr duplicate,uint access,bool inherit,uint options);
+ static bool inputDuplicated;
+ public static long DuplicateInput(PI p,string birth){lock(ownership){
+  Held(p);if(expired||inputDuplicated)throw new InvalidOperationException("PROVIDER_INPUT_CONSUMED");
+  if(Session(p)!=1||Birth(p)!=birth)throw new InvalidOperationException("PROVIDER_INPUT_CHILD");
+  IntPtr input=GetStdHandle(-10);if(input==IntPtr.Zero||input==new IntPtr(-1)||GetFileType(input)!=3)throw new InvalidOperationException("PROVIDER_INPUT_PIPE");
+  inputDuplicated=true;IntPtr duplicate;
+  if(!DuplicateHandle(GetCurrentProcess(),input,p.process,out duplicate,0,false,2))throw new InvalidOperationException("PROVIDER_INPUT_DUPLICATE");
+  if(duplicate==IntPtr.Zero||duplicate==new IntPtr(-1)||Birth(p)!=birth||GetStdHandle(-10)!=input||GetFileType(input)!=3)throw new InvalidOperationException("PROVIDER_INPUT_CHANGED");
+  return duplicate.ToInt64();
+ }}
+'''
+
+
+def _sources():
+    if hashlib.sha256(Path(role.__file__).read_bytes()).hexdigest()!=ROLE_SHA or hashlib.sha256(Path(role.secure.__file__).read_bytes()).hexdigest()!=SECURE_SHA:raise ValueError('provider-source')
+    role._factories()
+
+
+def native_source():
+    _sources();source=role.secure._NATIVE
+    marker=' public static PI Suspended(string application,string encoded,string directory) {'
+    if source.count(marker)!=1:raise ValueError('provider-native-factory')
+    source=source.replace(marker,_DUPLICATE_CS+'\n'+marker)
+    # The new class remains a fixed derivative; original watchdog/Held/Birth and
+    # cleanup predicates are byte-identical. No inherited generic handles.
+    if 'IntPtr.Zero,false,0x08000004'not in source:raise ValueError('provider-no-inheritance')
+    return source
+
+
+def validate_secret(secret):
+    """Validate bounded framed input internally without publishing its length."""
+    if not isinstance(secret,bytes)or not 1<=len(secret)<=512:raise ValueError('provider-private-input')
+    try:value=secret.decode('utf-8',errors='strict')
+    except UnicodeError:raise ValueError('provider-private-input')from None
+    if '\0'in value:raise ValueError('provider-private-input')
+    return secret
+
+
+def private_stdin(parent,secret):
+    """Only used at dispatch; never part of a retained source/request record."""
+    validate_secret(secret);return _public_frames(parent)+len(secret).to_bytes(4,'big')+secret
+
+_INPUT_CS='using System;using System.IO;using System.Runtime.InteropServices;using System.Text;using Microsoft.Win32.SafeHandles;public static class CP117OriginalInput{\n [DllImport("kernel32.dll",SetLastError=true)] static extern uint GetFileType(IntPtr handle);\n public static Stream Open(long number){if(number<=0)throw new InvalidOperationException("PROVIDER_INPUT_HANDLE");IntPtr handle=new IntPtr(number);if(GetFileType(handle)!=3)throw new InvalidOperationException("PROVIDER_INPUT_PIPE");return new FileStream(new SafeFileHandle(handle,true),FileAccess.Read);}\n public static byte[] ReadSecret(Stream file){try{\n  int count=0;for(int i=0;i<4;i++){int b=file.ReadByte();if(b<0)throw new InvalidOperationException("PROVIDER_INPUT_SHORT");count=checked(count*256+b);}if(count<1||count>512)throw new InvalidOperationException("PROVIDER_INPUT_BOUND");\n  byte[] bytes=new byte[count];try{int offset=0;while(offset<count){int n=file.Read(bytes,offset,count-offset);if(n<=0)throw new InvalidOperationException("PROVIDER_INPUT_SHORT");offset+=n;}if(file.ReadByte()!=-1)throw new InvalidOperationException("PROVIDER_INPUT_TRAILING");string value=new UTF8Encoding(false,true).GetString(bytes);if(value.IndexOf(\'\\0\')>=0)throw new InvalidOperationException("PROVIDER_INPUT_UTF8");return bytes;}catch{Array.Clear(bytes,0,bytes.Length);throw;}\n }catch{throw new InvalidOperationException("PROVIDER_INPUT_FAILED");}\n }}'
+
+_INPUT_READ=r'''
+Add-Type -TypeDefinition @'
+__INPUT_CS__
+'@
+$inputPath=Join-Path $dir 'stdin.json'
+if(([IO.File]::GetAttributes($inputPath) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'PROVIDER_INPUT_REPARSE'}
+$inputFile=[IO.FileStream]::new($inputPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+try{
+ $acl=[IO.File]::GetAccessControl($inputPath);$sid=[Security.Principal.SecurityIdentifier];$rules=@($acl.GetAccessRules($true,$true,$sid));$sddl=$acl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)
+ if(-not $acl.AreAccessRulesProtected -or $acl.GetOwner($sid).Value -cne 'S-1-5-18' -or $acl.GetGroup($sid).Value -cne 'S-1-5-18' -or $rules.Count -ne 1 -or @($acl.GetAuditRules($true,$true,$sid)).Count -ne 0){throw 'PROVIDER_INPUT_ACL'}
+ $rule=$rules[0];if($rule.IdentityReference.Value -cne 'S-1-5-18' -or $rule.IsInherited -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or [int]$rule.FileSystemRights -ne 2032127 -or [int]$rule.InheritanceFlags -ne 0 -or [int]$rule.PropagationFlags -ne 0){throw 'PROVIDER_INPUT_ACL'}
+ $info=[IO.FileInfo]::new($inputPath);$generation=@($info.CreationTimeUtc.Ticks,$info.LastWriteTimeUtc.Ticks,$info.Length,[int]$info.Attributes)
+ if($inputFile.Length -le 0 -or $inputFile.Length -gt 2048){throw 'PROVIDER_INPUT_METADATA_BOUND'};$inputRaw=[byte[]]::new([int]$inputFile.Length);if($inputFile.Read($inputRaw,0,$inputRaw.Length) -ne $inputRaw.Length){throw 'PROVIDER_INPUT_METADATA_SHORT'};$inputRecord=[Text.Encoding]::UTF8.GetString($inputRaw)|ConvertFrom-Json
+ $after=[IO.FileInfo]::new($inputPath);if(($generation -join ',') -cne ((@($after.CreationTimeUtc.Ticks,$after.LastWriteTimeUtc.Ticks,$after.Length,[int]$after.Attributes))-join ',') -or [IO.File]::GetAccessControl($inputPath).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All) -cne $sddl){throw 'PROVIDER_INPUT_METADATA_CHANGED'}
+ if((($inputRecord.PSObject.Properties.Name|Sort-Object)-join ',') -cne 'creationFileTime,handle,nonce,parentPid,pid,sessionId,sourceSha256'){throw 'PROVIDER_INPUT_METADATA_SCHEMA'}
+ foreach($key in @('creationFileTime','nonce','parentPid','pid','sessionId','sourceSha256')){if($inputRecord.$key -cne $birth.$key){throw 'PROVIDER_INPUT_METADATA_BINDING'}}
+ if($inputRecord.handle -isnot [long] -and $inputRecord.handle -isnot [int]){throw 'PROVIDER_INPUT_METADATA_HANDLE'}
+ $privateInput=[CP117OriginalInput]::Open([long]$inputRecord.handle)
+}finally{$inputFile.Dispose()}
+'''
+
+_WRITE_METHOD=r'''public static void SetExact(uint[] threads,Facts previous,string value){
+ var elapsed=System.Diagnostics.Stopwatch.StartNew();Facts fresh=Read(threads);Need(fresh.nodes.Length>=5&&previous.nodes.Length>=5&&fresh.valuePatternSupported&&!fresh.valuePatternReadOnly,"ROLE_WRITE_PROVIDER");
+ for(int i=0;i<5;i++)Need(Equal(fresh.nodes[i].runtimeId,previous.nodes[i].runtimeId),"ROLE_WRITE_IDENTITY");
+ AutomationElement edit=AutomationElement.FocusedElement;Need(edit!=null,"ROLE_WRITE_FOCUS");var p=edit.Current;Need(p.ProcessId==1096&&p.ControlType==ControlType.Edit&&p.IsPassword&&p.HasKeyboardFocus&&p.IsKeyboardFocusable&&p.IsEnabled&&!p.IsOffscreen&&Equal(edit.GetRuntimeId(),fresh.nodes[3].runtimeId),"ROLE_WRITE_FIELD");
+ object pattern;Need(edit.TryGetCurrentPattern(ValuePattern.Pattern,out pattern)&&pattern is ValuePattern&&!((ValuePattern)pattern).Current.IsReadOnly,"ROLE_WRITE_PROVIDER");uint thread;Need(Focus(threads,out thread).ToInt64()==65626&&thread==fresh.threadId&&elapsed.ElapsedMilliseconds<=5000,"ROLE_WRITE_CURRENT");
+ try{((ValuePattern)pattern).SetValue(value);}catch{throw new InvalidOperationException("ROLE_WRITE_FAILED");}
+}'''
+
+_WRITE_PS=r'''
+ if($cf.nodes.Count -notin @(5,6) -or -not $cf.valuePatternSupported -or $cf.valuePatternReadOnly){throw 'ROLE_WRITE_PROVIDER'}
+ $action=@{nonce=$nonce;sourceSha256=$sourceHash;pid=$PID;parentPid=[int]$self.ParentProcessId;creationFileTime=$selfCreation;sessionId=1;state='consumed'}
+ WritePrivate 'clear-attempt.json' $action
+ [CP117InputRead]::SetExact([uint32[]]$ids,$cf,'')
+ $cf=[CP117InputRead]::Read([uint32[]]$ids)
+ if($cf.nodes.Count -ne 6 -or -not $cf.nodes[5].passwordName){throw 'ROLE_CLEAR_OBSERVATION'}
+ WritePrivate 'cleared.json' @{nonce=$nonce;sourceSha256=$sourceHash;state='cleared';field=$cf.nodes[3].runtimeId}
+ WritePrivate 'typing-attempt.json' $action
+ try{$privateValue=[Text.UTF8Encoding]::new($false,$true).GetString($privateBytes);[CP117InputRead]::SetExact([uint32[]]$ids,$cf,$privateValue)}finally{[Array]::Clear($privateBytes,0,$privateBytes.Length);$privateValue=$null;$privateBytes=$null}
+ $cf=[CP117InputRead]::Read([uint32[]]$ids)
+ if($cf.nodes.Count -ne 5){throw 'ROLE_TYPED_OBSERVATION'}
+ WritePrivate 'typed.json' @{nonce=$nonce;sourceSha256=$sourceHash;state='typed';field=$cf.nodes[3].runtimeId}
+'''
+
+
+_ROLE_NATIVE_SHA='8a9701b709223573191f44dc4417ee50358bec5aacb471da493f5ccb7afa6cfb'
+_BASE_NATIVE_SHA='ca66d3aead0c278b4a69b2baf02628acf4c906d2d9d227cf053483e236137858'
+_ROLE_PARENT_SHA='143e2d9c6f64907e53038c771b7ba6bf30539f937a954515b7fcd68c3a622cc3'
+_ROLE_CHILD_SHA='afee661398d235c6a15d2dac957fc469cf4e21c3991e85b541c8e7524d0ae24e'
+
+
+def _parts(inert=False):
+    """Fixed derivative; source contains no credential bytes or credential hash."""
+    import re
+    if type(inert)is not bool:raise ValueError('provider-fixed-mode')
+    correlation=INERT_CORRELATION if inert else CORRELATION;nonce=INERT_NONCE if inert else NONCE
+    _sources()
+    if hashlib.sha256(role.secure._NATIVE.encode()).hexdigest()!=_BASE_NATIVE_SHA or hashlib.sha256(role._SEMANTIC_CS.encode()).hexdigest()!=_ROLE_NATIVE_SHA:raise ValueError('provider-fixed-native')
+    oldparent,oldchild,oldsha=role.bodies()
+    if oldsha!=_ROLE_CHILD_SHA or hashlib.sha256(oldparent.encode('utf-16le')).hexdigest()!=_ROLE_PARENT_SHA:raise ValueError('provider-fixed-reader')
+    match=re.search(r"FromBase64String\('([^']+)'\)",oldchild)
+    if match is None:raise ValueError('provider-reader-loader')
+    with gzip.GzipFile(fileobj=__import__('io').BytesIO(base64.b64decode(match.group(1))))as z:plain=z.read(16385)
+    if len(plain)>16384:raise ValueError('provider-original-bound')
+    child=plain.decode('utf-8').replace(role.CORRELATION,correlation).replace(role.NONCE,nonce)
+    head="if($sourceHash -cne $birth.sourceSha256){throw 'SECURE_READER_SOURCE'}"
+    if child.count(head)!=1:raise ValueError('provider-input-placement')
+    prefix,sep,child=child.partition(head)
+    if not sep:raise ValueError('provider-child-source-head')
+    prefix+=sep+'\n'
+    child='$privateBytes=[CP117OriginalInput]::ReadSecret($privateInput)\n'+child
+    native=role._SEMANTIC_CS[:-1]+_WRITE_METHOD+'}'
+    packed=base64.b64encode(gzip.compress(role._SEMANTIC_CS.encode(),mtime=0)).decode();newpacked=base64.b64encode(gzip.compress(native.encode(),mtime=0)).decode()
+    if child.count(packed)!=1 or child.count(_ROLE_NATIVE_SHA)!=1:raise ValueError('provider-native-placement')
+    expected_count="if($o -ne "+str(len(role._SEMANTIC_CS.encode()))+"){throw 'CENSUS_CS_BOUND'}"
+    if len(native.encode())>16384 or child.count(expected_count)!=1:raise ValueError('provider-fixed-cs-loader')
+    child=child.replace(packed,newpacked).replace(_ROLE_NATIVE_SHA,hashlib.sha256(native.encode()).hexdigest())
+    child=child.replace(expected_count,"if($o -ne "+str(len(native.encode()))+"){throw 'CENSUS_CS_BOUND'}")
+    marker='$cf=[CP117InputRead]::Read([uint32[]]$ids)' 
+    if child.count(marker)!=1:raise ValueError('provider-write-placement')
+    child=child.replace(marker,marker+'\n'+_WRITE_PS)
+    child=child.replace('secureInput=$cf};WritePrivate','secureInput=$cf;providerWrite=@{cleared=$true;typed=$true;contentRead=$false;credentialLogged=$false}};WritePrivate')
+    # Provider exceptions may mention their input. Never persist error details
+    # from a secret-bearing execution, even in protected failure receipts.
+    detail="$d=($_|Out-String);if($d.Length -gt 2048){$d=$d.Substring(0,2048)};"
+    if child.count(detail)!=1:raise ValueError('provider-private-error-placement')
+    child=child.replace(detail,"$d='';")
+    if inert:child=_inert_public()
+    public='\n'.join(line.lstrip(' ')for line in child.splitlines())+'\n'
+    if not 0<len(public.encode())<=16384:raise ValueError('provider-child-public-source-bound')
+    child=prefix+_INPUT_READ.replace('__INPUT_CS__',_INPUT_CS)+_PUBLIC_STAGE.replace('__PUBLIC_SHA__',hashlib.sha256(public.encode()).hexdigest())
+    childsha=hashlib.sha256(child.encode('utf-16le')).hexdigest()
+    parent=oldparent.replace(role.CORRELATION,correlation).replace(role.NONCE,nonce).replace(_ROLE_CHILD_SHA,childsha).replace(base64.b64encode(oldchild.encode('utf-16le')).decode(),base64.b64encode(child.encode('utf-16le')).decode())
+    if parent.count(role.secure._NATIVE)!=1:raise ValueError('provider-parent-native-placement')
+    parent=parent.replace(role.secure._NATIVE,native_source())
+    marker=" WritePrivate 'child.json' $record;GuardUI"
+    if parent.count(marker)!=1:raise ValueError('provider-parent-input-placement')
+    parent=parent.replace(marker,marker+"\n $inputHandle=[CP117SessionRead]::DuplicateInput($pi,$birth);GuardUI;if([CP117SessionRead]::Birth($pi) -cne $birth){throw 'PROVIDER_INPUT_CHILD'};WritePrivate 'stdin.json' @{nonce=$nonce;sourceSha256=$childSha;pid=[int]$pi.pid;parentPid=$PID;creationFileTime=$birth;sessionId=1;handle=[long]$inputHandle};"+_STDIN_PROTECT+";GuardUI")
+    # Only finite source-controlled parent classifications may reach output.
+    old="phase=$_.Exception.Message;readerCreated="
+    if parent.count(old)!=1:raise ValueError('provider-parent-private-catch')
+    parent=parent.replace(old,"phase='PROVIDER_PARENT_UNKNOWN';readerCreated=")
+    if len(parent.encode())>65536 or len(base64.b64encode(child.encode('utf-16le')))>30000:raise ValueError('provider-fixed-command-bound')
+    return parent,child,childsha,public
+
+
+_PUBLIC_STAGE=r"""
+try{
+ $sourceCount=0;for($index=0;$index -lt 4;$index++){$byte=$privateInput.ReadByte();if($byte -lt 0){throw 'PROVIDER_CHILD_SOURCE_HEADER'};$sourceCount=$sourceCount*256+$byte}
+ if($sourceCount -le 0 -or $sourceCount -gt 16384){throw 'PROVIDER_CHILD_SOURCE_BOUND'}
+ $publicBytes=[byte[]]::new($sourceCount);$offset=0;while($offset -lt $sourceCount){$read=$privateInput.Read($publicBytes,$offset,$sourceCount-$offset);if($read -le 0){throw 'PROVIDER_CHILD_SOURCE_SHORT'};$offset+=$read}
+ $hash=[Security.Cryptography.SHA256]::Create();try{$actual=([BitConverter]::ToString($hash.ComputeHash($publicBytes))).Replace('-','').ToLowerInvariant()}finally{$hash.Dispose()}
+ if($actual -cne '__PUBLIC_SHA__'){throw 'PROVIDER_CHILD_SOURCE_HASH'}
+ &([ScriptBlock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($publicBytes)))
+}finally{$privateInput.Dispose()}
+"""
+
+
+def bodies():
+    parent,child,sha,_=_parts();return parent,child,sha
+
+
+def _public_frames(parent,inert=False):
+    fixed,_,_,public=_parts(inert)
+    if parent!=fixed:raise ValueError('provider-fixed-parent')
+    a=parent.encode();b=public.encode()
+    return len(a).to_bytes(4,'big')+a+len(b).to_bytes(4,'big')+b
+
+CHILD_SHA='652610a25c6c983855023fb0f6d86aa2707a32a4ebfca995de8b7e627e078871'
+PARENT_SHA='1db103cde7e12d20eb7a151fd3eab5a6bf4883af96c0e9bcef96338f94550c3e'
+
+
+def _provider_terminal(value,nonce,sha,pid):
+    if value.get('exited')is not True:return None
+    if value.get('out-truncated')or value.get('err-truncated'):raise ValueError('provider-terminal-truncated')
+    raw=base64.b64decode(value.get('out-data',''),validate=True)
+    if len(raw)>32768:raise ValueError('provider-terminal-bound')
+    first,sep,body=raw.partition(b'\n')
+    if not sep or first.rstrip(b'\r')!=('CP117-READ %s %s %d'%(nonce,sha,pid)).encode():return None
+    if value.get('exitcode')!=0:raise ValueError('provider-terminal-exit')
+    answer=json.loads(body);write=answer.get('facts',{}).pop('providerWrite',None)
+    if not isinstance(write,dict)or set(write)!={'cleared','typed','contentRead','credentialLogged'}or any(type(v)is not bool for v in write.values())or write!={'cleared':True,'typed':True,'contentRead':False,'credentialLogged':False}:raise ValueError('provider-action-proof')
+    # Execute only the unchanged explicitly pinned strict parser with the fixed
+    # new child hash; no mutation of the consumed imported reader namespace.
+    namespace={'base64':base64,'json':json,'secure':role.secure,'CHILD_SHA':CHILD_SHA};exec(compile(inspect.getsource(role._bound_terminal),'fixed-provider-binding','exec'),namespace)
+    bound=dict(value);bound['out-data']=base64.b64encode(first+sep+json.dumps(answer).encode()).decode()
+    answer=namespace['_bound_terminal'](bound,nonce,sha,pid)
+    if answer is None:raise ValueError('provider-binding')
+    role.validate_semantic(answer);answer['facts']['providerWrite']=write;return answer
+
+
+def program(record):
+    return _program(record,False)
+
+def inert_program(record):
+    return _program(record,True)
+
+def _program(record,inert):
+    """One guarded fixed parent/child submit; secret is received only at run time."""
+    _sources();parent,child,childsha,_=_parts(inert)
+    parent_sha=hashlib.sha256(parent.encode('utf-16le')).hexdigest();nonce=INERT_NONCE if inert else NONCE;correlation=INERT_CORRELATION if inert else CORRELATION
+    if not inert and(childsha!=CHILD_SHA or parent_sha!=PARENT_SHA):raise ValueError('provider-rendered-source')
+    source,_=role.program(record);oldparent,oldchild,_=role.bodies()
+    tree=ast.parse(source);encoded=next(ast.literal_eval(n.value)for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='ENCODED'for t in n.targets))
+    bootstrap=base64.b64decode(encoded).decode('utf-16le').replace(role.NONCE,nonce).replace(_ROLE_PARENT_SHA,parent_sha)
+    oldinput=base64.b64encode(len(oldparent.encode()).to_bytes(4,'big')+oldparent.encode()).decode()
+    replacements={'D='+repr(role.CORRELATION):'D='+repr(correlation),'NONCE='+repr(role.NONCE):'NONCE='+repr(nonce),'BODY_SHA='+repr(_ROLE_PARENT_SHA):'BODY_SHA='+repr(parent_sha),'CHILD_SHA='+repr(_ROLE_CHILD_SHA):'CHILD_SHA='+repr(childsha),'ENCODED='+repr(encoded):'ENCODED='+repr(base64.b64encode(bootstrap.encode('utf-16le')).decode()),"'input-data':"+repr(oldinput):"'input-data':private_input_data"}
+    for old,new in replacements.items():
+        if source.count(old)!=1:raise ValueError('provider-fixed-reader-factory')
+        source=source.replace(old,new)
+    marker='\ntry:\n children='
+    source=source.replace(marker,'\n'+inspect.getsource(validate_secret)+inspect.getsource(_provider_terminal).replace('role.secure','secure').replace('role.validate_semantic','validate_semantic').replace("    namespace={'base64':base64,'json':json,'secure':secure,'CHILD_SHA':CHILD_SHA};exec(compile(inspect.getsource(role._bound_terminal),'fixed-provider-binding','exec'),namespace)","    namespace=globals()")+marker)
+    # Use the source-bound original parser definition already inside this fixed
+    # generated reader; invoke it directly after removing only action metadata.
+    source=source.replace("answer=parse_terminal(value,NONCE,BODY_SHA,pid)","answer=_provider_terminal(value,NONCE,BODY_SHA,pid)")
+    if inert:
+        source=source.replace(inspect.getsource(validate_secret),inspect.getsource(validate_secret)+inspect.getsource(_inert_terminal))
+        source=source.replace('answer=_provider_terminal(value,NONCE,BODY_SHA,pid)','answer=_inert_terminal(value,NONCE,BODY_SHA,pid)')
+    launch=" guards();child=call(LEAF+'/qga.sock','guest-exec',"
+    prefix=" guards();header=sys.stdin.buffer.read(4);need(len(header)==4,'provider-private-header');length=int.from_bytes(header,'big');need(1<=length<=512,'provider-private-bound');private_input=sys.stdin.buffer.read(length);need(len(private_input)==length,'provider-private-short');validate_secret(private_input);private_input_data=base64.b64encode("+repr(_public_frames(parent,inert))+"+length.to_bytes(4,'big')+private_input).decode();private_input=b'';child=call(LEAF+'/qga.sock','guest-exec',"
+    if source.count(launch)!=1:raise ValueError('provider-original-stdin-factory')
+    source=source.replace(launch,prefix)
+    source=source.replace(" need(isinstance(child,dict)and type(child.get('pid'))is int", " private_input_data='';need(isinstance(child,dict)and type(child.get('pid'))is int",1)
+    source=source.replace("'phase':str(e)if isinstance(e,ValueError)else type(e).__name__", "'phase':'PROVIDER_OBSERVATION_UNKNOWN'")
+    compile(source,'fixed-private-provider-reader','exec');return source,parent_sha
+
+
+def _inert_public():
+    # Fixed public test input only. The exact production reader and provider
+    # class are compiled, but no provider/UIA/keyboard/auth method is invoked.
+    native=role._SEMANTIC_CS[:-1]+_WRITE_METHOD+'}'
+    return """$bytes=[CP117OriginalInput]::ReadSecret($privateInput)
+try{if([Text.Encoding]::UTF8.GetString($bytes) -cne 'CP117-PUBLIC-INERT-PIPE'){throw 'ROLE_INERT_SENTINEL'}}finally{[Array]::Clear($bytes,0,$bytes.Length)}
+Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,WindowsBase
+Add-Type -ReferencedAssemblies @('System.dll','System.Core.dll',[Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.ControlType].Assembly.Location,[Windows.Rect].Assembly.Location) -TypeDefinition @'
+"""+native+"""
+'@
+$reader=@{nonce=$nonce;pid=$PID;parentPid=[int]$self.ParentProcessId;sessionId=[int]$self.SessionId;expectedSystem=$true;creationFileTime=$selfCreation;sourceSha256=$sourceHash}
+WritePrivate 'result.json' @{reader=$reader;facts=@{version=1;originalStdinPipe=$true;publicFramesPassed=$true;providerCompiled=$true;credentialInput=$false;providerInvoked=$false;keyboardAction=$false}}
+"""
+
+
+def _retained_inert_terminal(helper_bytes,helper_sha,child_sha,value,nonce,sha,pid):
+    """Interpret a fixed terminal using the caller's already authenticated bytes."""
+    if not isinstance(helper_bytes,bytes)or hashlib.sha256(helper_bytes).hexdigest()!=helper_sha:raise ValueError('retained-parser-source')
+    nodes=[n for n in ast.parse(helper_bytes.decode()).body if isinstance(n,ast.FunctionDef)and n.name=='_inert_terminal']
+    if len(nodes)!=1:raise ValueError('retained-parser-definition')
+    namespace={'base64':base64,'json':json,'CHILD_SHA':child_sha}
+    exec(compile(ast.Module(nodes,type_ignores=[]),'authenticated-inert-parser','exec'),namespace)
+    return namespace['_inert_terminal'](value,nonce,sha,pid)
+
+def _inert_terminal(value,nonce,sha,pid):
+    if value.get('exited')is not True:return None
+    if value.get('out-truncated')or value.get('err-truncated'):raise ValueError('pipe-inert-truncated')
+    raw=base64.b64decode(value.get('out-data',''),validate=True)
+    if len(raw)>32768:raise ValueError('pipe-inert-cap')
+    first,sep,body=raw.partition(b'\n')
+    if not sep or first.rstrip(b'\r')!=('CP117-READ %s %s %d'%(nonce,sha,pid)).encode():return None
+    if value.get('exitcode')!=0:raise ValueError('pipe-inert-exit')
+    answer=json.loads(body)
+    if not isinstance(answer,dict)or set(answer)!={'facts','reader','birth'}:raise ValueError('pipe-inert-schema')
+    expected={'version':1,'originalStdinPipe':True,'publicFramesPassed':True,'providerCompiled':True,'credentialInput':False,'providerInvoked':False,'keyboardAction':False}
+    if answer['facts']!=expected or any(type(answer['facts'].get(k))is not type(v)for k,v in expected.items()):raise ValueError('pipe-inert-facts')
+    reader=answer['reader'];birth=answer['birth']
+    if not isinstance(reader,dict)or set(reader)!={'nonce','pid','parentPid','sessionId','expectedSystem','creationFileTime','sourceSha256'}or not isinstance(birth,dict)or set(birth)!={'nonce','pid','parentPid','creationFileTime','sessionId','sourceSha256','applicationSha256'}:raise ValueError('pipe-inert-child-schema')
+    if reader['nonce']!=nonce or reader['sourceSha256']!=CHILD_SHA or reader['sessionId']!=1 or reader['expectedSystem']is not True or reader['parentPid']!=pid or type(reader['pid'])is not int or reader['pid']<=0 or type(reader['creationFileTime'])is not str or not reader['creationFileTime'].isdigit():raise ValueError('pipe-inert-child')
+    if any(birth[k]!=reader[k]for k in('nonce','pid','parentPid','creationFileTime','sessionId','sourceSha256'))or not isinstance(birth['applicationSha256'],str)or len(birth['applicationSha256'])!=64 or any(c not in'0123456789abcdef'for c in birth['applicationSha256'].lower()):raise ValueError('pipe-inert-birth')
+    return answer
+
+
+ROLE_STREAM_SHA='f31d295b9b1692eb53d31672577bdd77af4dd5c20c0320b1b1f59e0f44ea6d1a'
+def _stream(argv,capture,diagnostic,nonce,sha,qemu,secret):
+    _sources()
+    if hashlib.sha256(inspect.getsource(role._stream).encode()).hexdigest()!=ROLE_STREAM_SHA:raise ValueError('provider-fixed-stream')
+    import selectors,subprocess
+    r=login.guest.recovery
+    if secret is not None and(not isinstance(secret,bytes)or len(secret)>512):raise ValueError('gui-private-input-bound')
+    process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    selector=selectors.DefaultSelector();chunks={'stdout':bytearray(),'stderr':bytearray()};pending=bytearray();events=[];child=None;deadline=time.monotonic()+60
+    selector.register(process.stdout,selectors.EVENT_READ,'stdout');selector.register(process.stderr,selectors.EVENT_READ,'stderr')
+    try:
+        if secret is not None:
+            process.stdin.write(len(secret).to_bytes(4,'big')+secret);process.stdin.flush();secret=b''
+        while selector.get_map():
+            if time.monotonic()>=deadline:raise ValueError('gui-observer-deadline')
+            for key,_ in selector.select(.25):
+                data=os.read(key.fileobj.fileno(),4096)
+                if not data:selector.unregister(key.fileobj);continue
+                chunks[key.data].extend(data)
+                if len(chunks[key.data])>262144:raise ValueError('gui-observer-byte-cap')
+                if key.data=='stderr':
+                    pending.extend(data)
+                    while b'\n'in pending:
+                        line,rest=pending.split(b'\n',1);pending=bytearray(rest)
+                        if not line.startswith(b'CP117-OBSERVE '):continue
+                        event=json.loads(line[14:])
+                        if any(event.get(k)!=v for k,v in{'diagnosticId':diagnostic,'nonce':nonce,'sourceSha256':sha,'qemu':qemu}.items()):raise ValueError('gui-event-binding')
+                        if event['kind']=='submitted':
+                            if child is not None or type(event.get('pid'))is not int or event['pid']<=0:raise ValueError('gui-one-child')
+                            child=event['pid']
+                        elif event['kind']in('poll','terminal'):
+                            if child is None or event.get('pid')!=child:raise ValueError('gui-same-child')
+                        elif event['kind']!='exception':raise ValueError('gui-event-kind')
+                        pin=capture.create(diagnostic+'-event-%d.json'%len(events),json.dumps(event,sort_keys=True).encode());os.fsync(capture.fd);events.append({'event':event,'pin':pin})
+                        if event['kind']=='submitted':
+                            ack=r._digest({'diagnosticId':diagnostic,'nonce':nonce,'sourceSha256':sha,'pid':child});process.stdin.write((ack+'\n').encode());process.stdin.flush()
+        if process.wait(timeout=max(.001,deadline-time.monotonic()))!=0:raise ValueError('gui-observer-exit')
+        value=json.loads(chunks['stdout']);return value,events
+    except BaseException as e:
+        e.events=events
+        if process.poll()is None:process.kill()  # Only this local observer, never VM/app.
+        process.wait(timeout=3);raise
+    finally:
+        capture.create(diagnostic+'-transport.stdout.private',bytes(chunks['stdout']));capture.create(diagnostic+'-transport.stderr.private',bytes(chunks['stderr']));os.fsync(capture.fd)
+        selector.close();process.stdin.close();process.stdout.close();process.stderr.close()
+
+
+_STDIN_PROTECT="$inputAcl=[Security.AccessControl.FileSecurity]::new();$inputAcl.SetSecurityDescriptorSddlForm('O:SYG:SYD:P(A;;FA;;;SY)');[IO.File]::SetAccessControl((Join-Path $dir 'stdin.json'),$inputAcl);\n$inputPath=Join-Path $dir 'stdin.json';if(([IO.File]::GetAttributes($inputPath) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'PROVIDER_INPUT_REPARSE'}\n$inputCheck=[IO.FileStream]::new($inputPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);try{\n$acl=$inputCheck.GetAccessControl();$sid=[Security.Principal.SecurityIdentifier];$rules=@($acl.GetAccessRules($true,$true,$sid));$sddl=$acl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)\n if(-not $acl.AreAccessRulesProtected -or $acl.GetOwner($sid).Value -cne 'S-1-5-18' -or $acl.GetGroup($sid).Value -cne 'S-1-5-18' -or $rules.Count -ne 1 -or @($acl.GetAuditRules($true,$true,$sid)).Count -ne 0){throw 'PROVIDER_INPUT_ACL'}\n $rule=$rules[0];if($rule.IdentityReference.Value -cne 'S-1-5-18' -or $rule.IsInherited -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or [int]$rule.FileSystemRights -ne 2032127 -or [int]$rule.InheritanceFlags -ne 0 -or [int]$rule.PropagationFlags -ne 0){throw 'PROVIDER_INPUT_ACL'}\n\n}finally{$inputCheck.Dispose()}"
+
+# Prospective login phases: these correlations have never been dispatched.
+AUTH_CORRELATION='f047bf5a-4f12-40cc-af11-36c8cb485b97'
+AUTH_NONCE='b8629de5-9e97-4f9b-9885-670a9e102dc5'
+LOGIN_FLOW='9dbd4008-7f34-4e1d-85a6-f3f30ea7fdc0'
+
+def _credential_phase_program(root,record):
+    """Fixed fresh auth derivative; never replay the historical credential probe."""
+    _sources();source,oldsha,pins=login.credential_program(root,record,AUTH_NONCE)
+    tree=ast.parse(source);encoded=next(ast.literal_eval(n.value)for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='ENCODED'for t in n.targets))
+    original=base64.b64decode(encoded,validate=True).decode('utf-16le');first,sep,body=original.partition('\n')
+    if not sep or oldsha!=login._BOOTSTRAP_SHA or first!="[Console]::Out.WriteLine(('CP117-READ "+AUTH_NONCE+" "+oldsha+" '+$PID))" or login.CREDENTIAL_CORRELATION not in body:raise ValueError('login-auth-fixed-source')
+    body=body.replace(login.CREDENTIAL_CORRELATION,AUTH_CORRELATION);sha=hashlib.sha256(body.encode('utf-16le')).hexdigest()
+    header="[Console]::Out.WriteLine(('CP117-READ "+AUTH_NONCE+" "+sha+" '+$PID))\n"
+    replacements=[('ENCODED='+repr(encoded),'ENCODED='+repr(base64.b64encode((header+body).encode('utf-16le')).decode())),('BODY_SHA='+repr(oldsha),'BODY_SHA='+repr(sha))]
+    for old,new in replacements:
+        if source.count(old)!=1:raise ValueError('login-auth-render-factory')
+        source=source.replace(old,new)
+    source=source.replace(login.CREDENTIAL_CORRELATION,AUTH_CORRELATION)
+    if login.CREDENTIAL_CORRELATION in source or len(base64.b64encode((header+body).encode('utf-16le')))>30000:raise ValueError('login-auth-render-bound')
+    compile(source,'fixed-fresh-credential-validation','exec');return source,sha,pins
+
+
+def _validate_fresh_auth(value,qemu):
+    expected={'operation':'windows-credential-validity-v1','correlationId':AUTH_CORRELATION,'expectedSid':login.guest.SID,'success':True,'errorCategory':'none'}
+    if not isinstance(value,dict)or value.get('state')!='observed' or value.get('credential')!=expected or value.get('qemu')!=qemu or type(value.get('guestChildPid'))is not int or value['guestChildPid']<=0 or type(value['credential'].get('success'))is not bool:raise ValueError('login-fresh-auth')
+
+
+def _login_sequence(auth,prepare,write,submit,owner,retain,qemu):
+    """Finite complete control flow: any unknown stops before the next effect."""
+    validated=auth();retain('auth',validated);_validate_fresh_auth(validated,qemu)
+    prepared=prepare();retain('prepare',prepared)
+    if prepared.get('state')!='observed' or prepared.get('qemu')!=qemu:raise ValueError('login-prepare')
+    typed=write();retain('write',typed)
+    if typed.get('state')!='observed' or typed.get('qemu')!=qemu:raise ValueError('login-write')
+    view=dict(typed['facts']);view['facts']={k:v for k,v in view['facts'].items()if k!='providerWrite'};role.validate_semantic(view);s=view['facts']['secureInput']
+    if len(s['nodes'])!=5 or typed['facts']['facts'].get('providerWrite')!={'cleared':True,'typed':True,'contentRead':False,'credentialLogged':False}:raise ValueError('login-write-authority')
+    entered=submit(typed);retain('enter',entered)
+    if entered.get('state')!='observed' or entered.get('phase')!='entered' or entered.get('qemu')!=qemu:raise ValueError('login-submit')
+    current=owner();retain('owner',current)
+    if current.get('state')!='observed' or current.get('qemu')!=qemu:raise ValueError('login-owner')
+    return {'state':'observed','phase':'entered','typingAcknowledged':True,'loginSubmitted':True,'ownerObservation':current,'installerAction':False,'replayAllowed':False}
+
+from . import windows_cp117_secure_input_geometry_observe as geometry
+from . import windows_cp117_recovered_owner_observe as owner_reader
+windowless=role
+GEOMETRY_SHA='9f9efa88a58588d67afbf52f68ca201b11575aa1edf744941f1c42894f1cddcf'
+WINDOWLESS_SHA=ROLE_SHA
+LOGIN_SHA=role.LOGIN_SHA
+OWNER_SHA='9ff8275a77e71e8b1a7ae90ee4e7dd5a1910ad130720e4621ff85a6fe9b38342'
+WAKE_CORRELATION='1d572c4e-b45c-4baf-ab23-3db84a747984'
+WAKE_FACTORY_SHA='7406ba6cc52a320258126365614a2aa2e74f9824a1304cc262eceea8b31074fb'
+_LOGIN_SLOTS={
+ 'before1':('3eedbee7-3ba1-4356-a1ac-2f24e1e3bc76','54d11121-f67e-4f26-a769-ec2c0a706c80'),
+ 'before2':('2a417559-6fca-4f93-aeb1-2b5e4af86785','c30804d2-7077-4e19-acfb-7286d6a905f1'),
+ 'enter':('db96b797-f24b-4818-b68d-d341f7cef81c','18768145-c3f0-4417-995c-a91f1d849499'),
+ 'owner':('e108c54f-9fac-42e9-8852-b4a6ef13dcb8','bdc12892-e9e1-4381-a129-d7dd0ab851cd')}
+_READ_PHASE_HASHES={'before1': ('306418beceee5e6940ba8130a1460e084cad1295f7073fb091bd9e61e12efc44', 'f954c0c3ef6e89176ce40dd7723f7a136ef33ef037534952f45b9b1f8079bf86'), 'before2': ('99087f26c895a49a45488fa1b4cae572a8283488d3f53aafc91d26e076484961', '7781e28b72f6e0e8c340d683d4acc60c2c744aec95abbacb382672be2d5a4d1a'), 'enter': ('4e7d0b0bb4340629e73408ad5e4cc356d14bc445956f7df51f5449542dc3f4b5', '9306a3323b0a99215d025817de22f8121c75d1595758a251f46536f5aaf51bb5')}
+
+def _fixed_slot_bodies(slot):
+    if slot not in('before1','before2','enter'):raise ValueError('login-read-slot')
+    reader=role if slot=='enter'else geometry;expected=ROLE_SHA if reader is role else GEOMETRY_SHA
+    pin,raw=login.guest.recovery.authority._read_bound_file(Path(reader.__file__),retain_bytes=True)
+    if pin['sha256']!=expected:raise ValueError('login-read-source')
+    nodes=[n for n in ast.parse(raw.decode()).body if isinstance(n,ast.FunctionDef)and n.name=='bodies']
+    if len(nodes)!=1:raise ValueError('login-read-factory')
+    node=nodes[0]
+    # The prior source comparison pertains to the old correlation. Preserve
+    # every prior factory/privilege/cap check; fixed new render hashes are checked
+    # by this new catalog before any native dispatch.
+    last=node.body[-2]
+    if not isinstance(last,ast.If)or ast.unparse(last.test)!="sha != CHILD_SHA or hashlib.sha256(parent.encode('utf-16le')).hexdigest() != PARENT_SHA":raise ValueError('login-read-final-source-guard')
+    node.body.pop(-2);namespace=dict(vars(reader));namespace['CORRELATION'],namespace['NONCE']=_LOGIN_SLOTS[slot]
+    exec(compile(ast.Module([node],type_ignores=[]),'fixed-new-login-reader','exec'),namespace)
+    answer=namespace['bodies']()
+    if login.guest.recovery.authority._read_bound_file(Path(reader.__file__))!=pin:raise ValueError('login-read-source-drift')
+    return answer
+
+
+def _readonly_phase_program(record,slot):
+    if slot not in _LOGIN_SLOTS:raise ValueError('login-fixed-read-phase')
+    correlation,nonce=_LOGIN_SLOTS[slot]
+    if slot=='owner':
+        if login.guest.recovery.authority._read_bound_file(Path(owner_reader.__file__))['sha256']!=OWNER_SHA:raise ValueError('login-owner-source')
+        source,sha=owner_reader.program(record);source=source.replace(owner_reader.CORRELATION,correlation).replace(owner_reader.NONCE,nonce)
+        tree=ast.parse(source);encoded=next(ast.literal_eval(n.value)for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='ENCODED'for t in n.targets))
+        plain=base64.b64decode(encoded).decode('utf-16le');new=plain.replace(owner_reader.NONCE,nonce)
+        if new==plain:raise ValueError('login-owner-header')
+        source=source.replace(repr(encoded),repr(base64.b64encode(new.encode('utf-16le')).decode()));compile(source,'fixed-new-owner-reader','exec');return source,sha
+    reader=role if slot=='enter'else geometry
+    parent,child,childsha=_fixed_slot_bodies(slot);sha=hashlib.sha256(parent.encode('utf-16le')).hexdigest()
+    if (sha,childsha)!=_READ_PHASE_HASHES.get(slot):raise ValueError('login-read-rendered-catalog')
+    source,_=reader.program(record);oldparent,oldchild,oldchildsha=reader.bodies()
+    tree=ast.parse(source);encoded=next(ast.literal_eval(n.value)for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='ENCODED'for t in n.targets))
+    bootstrap=base64.b64decode(encoded).decode('utf-16le').replace(reader.NONCE,nonce).replace(reader.PARENT_SHA,sha)
+    oldinput=base64.b64encode(len(oldparent.encode()).to_bytes(4,'big')+oldparent.encode()).decode();newinput=base64.b64encode(len(parent.encode()).to_bytes(4,'big')+parent.encode()).decode()
+    replacements={'D='+repr(reader.CORRELATION):'D='+repr(correlation),'NONCE='+repr(reader.NONCE):'NONCE='+repr(nonce),'BODY_SHA='+repr(reader.PARENT_SHA):'BODY_SHA='+repr(sha),'CHILD_SHA='+repr(oldchildsha):'CHILD_SHA='+repr(childsha),'ENCODED='+repr(encoded):'ENCODED='+repr(base64.b64encode(bootstrap.encode('utf-16le')).decode()),repr(oldinput):repr(newinput)}
+    for old,new in replacements.items():
+        if source.count(old)!=1:raise ValueError('login-read-rebind-factory')
+        source=source.replace(old,new)
+    compile(source,'fixed-new-login-read-phase','exec');return source,sha
+
+
+def _wake_check_factories():
+ r=login.guest.recovery
+ if r.authority._read_bound_file(Path(geometry.__file__))['sha256']!=GEOMETRY_SHA or r.authority._read_bound_file(Path(login.__file__))['sha256']!=LOGIN_SHA:raise ValueError('dismiss-factory-source')
+ geometry._factories();windowless._factories()
+ if r.authority._read_bound_file(Path(windowless.__file__))['sha256']!=WINDOWLESS_SHA:raise ValueError('dismiss-windowless-source')
+ if hashlib.sha256((inspect.getsource(login.screen_program)+login._SCREEN+login._WAKE_BLOCK+inspect.getsource(login._guarded_wake)+inspect.getsource(login._validate_lockscreen)+inspect.getsource(login.validate_ppm)).encode()).hexdigest()!=WAKE_FACTORY_SHA:raise ValueError('dismiss-wake-source')
+
+
+def _no_edit(value):
+ if value.get('state')!='observed':raise ValueError('dismiss-read-unknown')
+ answer=value['facts'];geometry.validate_semantic(answer);s=answer['facts']['secureInput']
+ if any(n['controlId']==50004 for n in s['nodes']):raise ValueError('dismiss-edit-present')
+ return s
+
+
+def _admit_pair(first,second,now):
+ _no_edit(first['value']);_no_edit(second['value'])
+ if not 0<=now-first['observedAtNs']<=30_000_000_000 or not 0<=now-second['observedAtNs']<=15_000_000_000:raise ValueError('dismiss-before-expired')
+ a=first['value']['facts'];b=second['value']['facts']
+ if a['facts']['secureInput']['nodes']!=b['facts']['secureInput']['nodes']or a['facts']['processes']!=b['facts']['processes']:raise ValueError('dismiss-before-drift')
+
+
+def _wake_frame_authority(value,qemu):
+ fields={'st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns'}
+ before=value.get('beforeFrameAuthority');attempt=value.get('wakeAuthority')
+ if not isinstance(before,dict)or set(before)!={'path','generation','sha256'}or before['path']!=login.TRANSFER+'/cp117-login-screen-'+WAKE_CORRELATION+'/frame.ppm':raise ValueError('dismiss-preframe-schema')
+ def private(gen,cap):
+  if not isinstance(gen,dict)or set(gen)!=fields or any(type(v)is not int for v in gen.values())or gen['st_dev']<=0 or gen['st_ino']<=0 or gen['st_mode']!=stat.S_IFREG|0o600 or gen['st_uid']!=1000 or gen['st_gid']!=1000 or gen['st_nlink']!=1 or not 0<gen['st_size']<=cap or gen['st_mtime_ns']<=0 or gen['st_ctime_ns']<=0:raise ValueError('dismiss-frame-generation')
+ private(before['generation'],login.MAX_FRAME)
+ if before['generation']['st_size']!=3072016 or not isinstance(before['sha256'],str)or not re.fullmatch('[0-9a-f]{64}',before['sha256']):raise ValueError('dismiss-preframe-binding')
+ if not isinstance(attempt,dict)or set(attempt)!={'generation','sha256','record'}:raise ValueError('dismiss-attempt-schema')
+ private(attempt['generation'],8192);record=attempt['record']
+ if not isinstance(record,dict)or set(record)!={'state','diagnosticId','qemu','frameSha256'}or record!={'state':'consumed','diagnosticId':WAKE_CORRELATION,'qemu':qemu,'frameSha256':before['sha256']}:raise ValueError('dismiss-attempt-binding')
+ raw=json.dumps(record,sort_keys=True).encode()
+ if attempt['sha256']!=hashlib.sha256(raw).hexdigest()or attempt['generation']['st_size']!=len(raw):raise ValueError('dismiss-attempt-content')
+ return before
+
+
+def _wake_program(record,admission):
+ if not isinstance(admission,dict)or type(admission.get('observedAtNs'))is not int or admission['observedAtNs']<=0:raise ValueError('dismiss-admission-shape')
+ _wake_check_factories();source=login.screen_program(record,WAKE_CORRELATION,wake=False)
+ if source.count("  packed=gzip.compress(raw,mtime=0);")!=1:raise ValueError('dismiss-screen-factory')
+ marker='  validate_ppm(raw);screen_guard()\n'
+ if source.count(marker)!=1:raise ValueError('dismiss-screen-read')
+ extra=r"""  os.fsync(fd);os.fsync(jobfd);before_authority={'path':directory+'/frame.ppm','generation':fp(s),'sha256':hashlib.sha256(raw).hexdigest()};wake_authority={};original_screen_guard=screen_guard
+  def screen_guard():
+   original_screen_guard();need(fp(os.fstat(fd))==before_authority['generation']==fp(os.stat('frame.ppm',dir_fd=jobfd,follow_symlinks=False)),'dismiss-preframe-drift')
+   if wake_authority:
+    af=os.open('wake-attempt.json',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=jobfd)
+    try:
+     need(fp(os.fstat(af))==wake_authority['generation'],'dismiss-attempt-drift');ab=os.read(af,8193);need(hashlib.sha256(ab).hexdigest()==wake_authority['sha256']and fp(os.fstat(af))==wake_authority['generation']==fp(os.stat('wake-attempt.json',dir_fd=jobfd,follow_symlinks=False)),'dismiss-attempt-drift')
+    finally:os.close(af)
+   original_screen_guard()
+"""
+ block=login._WAKE_BLOCK.replace("os.fsync(f);need(fp(os.fstat(f))", "os.fsync(f);wake_authority.update({'generation':fp(os.fstat(f)),'sha256':hashlib.sha256(body).hexdigest(),'record':json.loads(body)});need(fp(os.fstat(f))")
+ source=source.replace(marker,marker+extra+block)
+ source=source.replace(" def guards():\n"," def guards():\n  need(0<=time.time_ns()-"+str(admission['observedAtNs'])+"<=15_000_000_000,'dismiss-session-expired')\n")
+ source=source.replace("'appAdmission':False,'installerAction':False})","'beforeFrameAuthority':before_authority,'wakeAuthority':wake_authority,'appAdmission':False,'installerAction':False})",1)
+ # Existing QMP ret hold-time 100 automatically releases; only the strict clock-page path reaches it.
+ if source.count("'execute':'send-key'")!=1 or "'data':'ret'"not in source or "'hold-time':100"not in source or 'guest-exec' in source:raise ValueError('dismiss-only-one-key')
+ compile(source,'fixed-dismiss-wake','exec');return source
+
+
+def _submit_role_gate(current,prior,elapsed):
+    if not isinstance(prior,dict)or set(prior)!={'reader','roles','qemu','writeSourceSha256'}:raise ValueError('login-typed-receipt-schema')
+    if not 0<=elapsed<=5:raise ValueError('login-enter-focus-expired')
+    facts=current['facts']['secureInput'];nodes=facts['nodes']
+    if len(nodes)!=5 or not facts['valuePatternSupported']or facts['valuePatternReadOnly']:raise ValueError('login-enter-filled-field')
+    if [n['runtimeId']for n in nodes]!=prior['roles']:raise ValueError('login-enter-role-drift')
+    if current['reader']['sessionId']!=1 or current['reader']['expectedSystem']is not True:raise ValueError('login-enter-reader')
+    field=nodes[3]
+    if not all(field[k]for k in('isPassword','keyboardFocus','keyboardFocusable','enabled'))or field['offscreen']or not nodes[1]['accountName']:raise ValueError('login-enter-destination')
+
+
+def _remote_submit(current,focus_started,prior):
+    """ONE Enter after fresh owned-role observation; never reads field content."""
+    import socket,struct
+    _submit_role_gate(current,prior,time.monotonic()-focus_started)
+    need(prior['qemu']==children[1]['child'],'login-enter-original-qemu')
+    parent=TRANSFER;parentfd=os.open(parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);parentinfo=os.fstat(parentfd)
+    need(stat.S_ISDIR(parentinfo.st_mode)and parentinfo.st_uid==os.geteuid()and stat.S_IMODE(parentinfo.st_mode)==0o700,'login-enter-parent')
+    identity=lambda v:tuple(getattr(v,k)for k in('st_dev','st_ino','st_mode','st_uid','st_gid'))
+    need(identity(parentinfo)==identity(os.lstat(parent)),'login-enter-parent-name')
+    job='cp117-provider-enter-'+FLOW;os.mkdir(job,0o700,dir_fd=parentfd);os.fsync(parentfd);jobfd=os.open(job,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parentfd);jobidentity=identity(os.fstat(jobfd));pins={};frames={}
+    def guard():
+        guards();need(identity(os.fstat(parentfd))==identity(os.lstat(parent))==identity(parentinfo),'login-enter-parent-drift')
+        need(identity(os.fstat(jobfd))==identity(os.stat(job,dir_fd=parentfd,follow_symlinks=False))==jobidentity,'login-enter-job-drift')
+        for leaf,pin in pins.items():
+            fd=os.open(leaf,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=jobfd)
+            try:
+                info=os.fstat(fd);need(stat.S_ISREG(info.st_mode)and info.st_uid==os.geteuid()and info.st_nlink==1 and stat.S_IMODE(info.st_mode)==0o600 and fp(info)==pin['fingerprint'],'login-enter-record')
+                raw=os.read(fd,32769);need(len(raw)==info.st_size and hashlib.sha256(raw).hexdigest()==pin['sha256']and fp(info)==fp(os.fstat(fd))==fp(os.stat(leaf,dir_fd=jobfd,follow_symlinks=False)),'login-enter-record-drift')
+            finally:os.close(fd)
+        need(identity(os.fstat(parentfd))==identity(os.lstat(parent))==identity(parentinfo)and identity(os.fstat(jobfd))==identity(os.stat(job,dir_fd=parentfd,follow_symlinks=False))==jobidentity,'login-enter-final-ancestry');guards()
+    def create(name,value):
+        guard();raw=json.dumps(value,sort_keys=True,separators=(',',':')).encode();need(0<len(raw)<=32768,'login-enter-record-bound')
+        fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=jobfd)
+        try:
+            need(os.write(fd,raw)==len(raw),'login-enter-write');os.fsync(fd);info=os.fstat(fd);need(fp(info)==fp(os.stat(name,dir_fd=jobfd,follow_symlinks=False)),'login-enter-name');pins[name]={'fingerprint':fp(info),'sha256':hashlib.sha256(raw).hexdigest()};os.fsync(jobfd)
+        finally:os.close(fd)
+        guard()
+    channel=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);channel.settimeout(5);stream=None;serial=0
+    try:
+        create('intent.json',{'flow':FLOW,'nonce':NONCE,'sourceSha256':BODY_SHA,'qemu':children[1]['child'],'prior':prior,'state':'consumed'})
+        guard();channel.connect(LEAF+'/qmp.sock');peer=struct.unpack('3i',channel.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12));need(peer[0]==children[1]['child']['pid']and peer[1]==os.geteuid(),'login-enter-qmp-peer');stream=channel.makefile('rb');guard()
+        def receive(wanted):
+            for _ in range(16):
+                raw=stream.readline(32769);need(0<len(raw)<=32768 and raw.endswith(b'\n'),'login-enter-qmp-bound');value=json.loads(raw)
+                if wanted is None:need('QMP'in value,'login-enter-greeting');return
+                if value.get('id')==wanted:need('return'in value and 'error'not in value,'login-enter-qmp-result');return
+                need('event'in value,'login-enter-qmp-id')
+            raise ValueError('login-enter-qmp-event-cap')
+        def command(kind,args=None):
+            nonlocal serial
+            guard();serial+=1;packet={'execute':kind,'id':serial}
+            if args is not None:packet['arguments']=args
+            channel.sendall(json.dumps(packet,separators=(',',':')).encode()+b'\n');receive(serial);guard()
+        receive(None);command('qmp_capabilities')
+        def capture(name):
+            guard();need(not os.path.lexists(parent+'/'+job+'/'+name),'login-enter-frame-existing');command('screendump',{'filename':parent+'/'+job+'/'+name});sampled=time.monotonic()
+            fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=jobfd)
+            try:
+                info=os.fstat(fd);need(stat.S_ISREG(info.st_mode)and info.st_nlink==1 and info.st_uid==os.geteuid()and 0<info.st_size<=16777216,'login-enter-frame');os.fchmod(fd,0o600);info=os.fstat(fd);raw=os.read(fd,16777217)
+                need(len(raw)==info.st_size and fp(info)==fp(os.fstat(fd))==fp(os.stat(name,dir_fd=jobfd,follow_symlinks=False)),'login-enter-frame-drift');validate_ppm(raw);os.fsync(fd);os.fsync(jobfd);frames[name]={'fingerprint':fp(info),'sha256':hashlib.sha256(raw).hexdigest()};create(name+'.json',frames[name]);guard();return sampled
+            finally:os.close(fd)
+        sampled=capture('enter-before.ppm');_submit_role_gate(current,prior,time.monotonic()-focus_started);need(0<=time.monotonic()-sampled<=5,'login-enter-frame-expired')
+        create('enter-attempt.json',{'state':'consumed','flow':FLOW,'nonce':NONCE,'sourceSha256':BODY_SHA,'qemu':children[1]['child'],'frame':frames['enter-before.ppm']})
+        _submit_role_gate(current,prior,time.monotonic()-focus_started);need(0<=time.monotonic()-sampled<=5,'login-enter-frame-expired');guard()
+        command('send-key',{'keys':[{'type':'qcode','data':'ret'}],'hold-time':100})
+        time.sleep(.75);capture('enter-after.ppm');guard()
+        return {'state':'observed','phase':'entered','qemu':children[1]['child'],'guestChildPid':pid,'hostAuthority':{'job':job,'identity':jobidentity,'pins':pins,'frames':frames},'installerAction':False,'replayAllowed':False}
+    except Exception as error:
+        error.frameAuthority={'job':job,'identity':jobidentity,'pins':pins,'frames':frames};raise
+    finally:
+        if stream is not None:stream.close()
+        channel.close();os.close(jobfd);os.close(parentfd)
+
+
+def _enter_phase_program(record,typed):
+    if typed.get('state')!='observed'or typed.get('qemu')!=record['result']['qemu']:raise ValueError('login-typed-prior')
+    answer=typed['facts'];view=dict(answer);view['facts']={k:v for k,v in answer['facts'].items()if k!='providerWrite'};role.validate_semantic(view)
+    if answer['facts'].get('providerWrite')!={'cleared':True,'typed':True,'contentRead':False,'credentialLogged':False}or len(view['facts']['secureInput']['nodes'])!=5 or answer['reader']['nonce']!=NONCE or answer['reader']['sourceSha256']!=CHILD_SHA:raise ValueError('login-typed-proof')
+    prior={'reader':answer['reader'],'roles':[n['runtimeId']for n in view['facts']['secureInput']['nodes']],'qemu':typed['qemu'],'writeSourceSha256':PARENT_SHA}
+    source,sha=_readonly_phase_program(record,'enter');marker='\ntry:\n children='
+    if source.count(marker)!=1:raise ValueError('login-enter-source-placement')
+    source=source.replace(marker,'\nFLOW='+repr(LOGIN_FLOW)+'\nTRANSFER='+repr(login.TRANSFER)+'\nPRIOR='+repr(prior)+'\n'+inspect.getsource(login.validate_ppm)+inspect.getsource(_submit_role_gate)+inspect.getsource(_remote_submit)+marker)
+    launch=" guards();child=call(LEAF+'/qga.sock','guest-exec',"
+    if source.count(launch)!=1:raise ValueError('login-enter-reader-placement')
+    source=source.replace(launch," guards();focus_started=time.monotonic();child=call(LEAF+'/qga.sock','guest-exec',")
+    result=" result({'state':'observed','facts':answer,'qemu':children[1]['child'],'guestChildPid':pid,'appAdmission':False,'installerAction':False})"
+    if source.count(result)!=1:raise ValueError('login-enter-terminal-placement')
+    source=source.replace(result,' result(_remote_submit(answer,focus_started,PRIOR))')
+    source=source.replace("'installerAction':False,'replayAllowed':False})","'installerAction':False,'replayAllowed':False,'frameAuthority':getattr(e,'frameAuthority',None)})")
+    compile(source,'fixed-provider-login-submit','exec');return source,sha
+
+_PIPE_PROOF_LEAF='windows-cp117-provider-pipe-derived-proof-7449'
+_PIPE_PROOF_PIN={'sha256':'ed13d5c833628dcca8efc41033ece66ca74b6bfa6171e75ea7e85ef65fa430ad','generation':[16777234,112807106,33152,503,20,1,5736,1791137465368652223,1791137465368652223]}
+
+def start(root):
+    """One complete fixed login attempt; every partial/unknown stops the flow."""
+    root=Path(root).resolve(strict=True);leaf='windows-cp117-provider-login-'+LOGIN_FLOW;r=login.guest.recovery
+    if(root/'.runtime/parity-evidence'/leaf).exists():return {'state':'unknown','phase':'provider-login-consumed','replayAllowed':False}
+    (root/'.runtime/parity-evidence'/leaf).mkdir(mode=0o700);capture=AuthorityCapture(root,leaf);original=AuthorityCapture(root,'windows-cp117-recovery-'+r.CORRELATION);inert=AuthorityCapture(root,_PIPE_PROOF_LEAF);secret=b'';events=[]
+    try:
+        raw=r._local_read(original,login.guest.ORIGINAL['name'],login.guest.ORIGINAL['pin']);record=json.loads(raw)
+        inert_raw=r._local_read(inert,'proof.json',_PIPE_PROOF_PIN);proof=json.loads(inert_raw)
+        expected={'version':1,'originalStdinPipe':True,'publicFramesPassed':True,'providerCompiled':True,'credentialInput':False,'providerInvoked':False,'keyboardAction':False}
+        if proof['state']!='derived' or proof['originalNativeFacts']['facts']!=expected or proof['currentVmAdmission']is not False or proof['inputAdmission']is not False or proof['originalUnknownPreserved']is not True:raise ValueError('login-pipe-proof')
+        modules=(role,geometry,owner_reader,role.original_semantic,role.secure,login,login.guest,login.session,r,r.authority,r.authority.closure,r.authority.closure.base)
+        pins={str(Path(module.__file__)):r.authority._read_bound_file(Path(module.__file__))for module in modules};own=r.authority._read_bound_file(Path(__file__));outer=r.authority._outer_authority(root)
+        secret,credential_path,credential_pin=login._configured_secret(root);validate_secret(secret)
+        execution_sources=_execution_source_proof(root,record)
+        config,target,_=r.authority.closure.base._descriptor(root)
+        if str(target.fixture_transfer_root)!=login.TRANSFER:raise ValueError('login-transfer-root')
+        typed_bytes=None;typed_pin=None
+        def verify():
+            _sources();_wake_check_factories()
+            if r.authority._read_bound_file(Path(__file__))!=own or any(r.authority._read_bound_file(Path(path))!=pin for path,pin in pins.items()):raise ValueError('login-source-generation')
+            if r._local_read(original,login.guest.ORIGINAL['name'],login.guest.ORIGINAL['pin'])!=raw or r._local_read(inert,'proof.json',_PIPE_PROOF_PIN)!=inert_raw:raise ValueError('login-original-proof-drift')
+            for i,item in enumerate(record['authority']):
+                r._validate_frame(item['frame'],record['request'],record['authority'][:i])
+                if json.loads(r._local_read(original,'authority-%d.json'%i,item['localPin']))!=item['frame']:raise ValueError('login-original-frame')
+            if _execution_source_proof(root,record)!=execution_sources:raise ValueError('login-execution-source-drift')
+            if r.authority._read_bound_file(credential_path)!=credential_pin:raise ValueError('login-credential-generation')
+            r.authority._verify_outer(root,{'outerAuthority':outer})
+            if typed_pin is not None and r._local_read(capture,'write-result.json',typed_pin)!=typed_bytes:raise ValueError('login-typed-local-authority')
+        verify();capture.create('intent.json',json.dumps({'state':'consumed','flow':LOGIN_FLOW,'original':login.guest.ORIGINAL,'source':own,'sources':pins,'outerAuthority':outer,'credentialGeneration':credential_pin['generation'],'historicalPipeProof':_PIPE_PROOF_PIN,'executionSourceProof':execution_sources,'installerAction':False},sort_keys=True).encode());os.fsync(capture.fd)
+        def retain(name,value):capture.create(name+'-result.json',json.dumps(value,sort_keys=True).encode());os.fsync(capture.fd)
+        def dispatch(name,source,sha,correlation,nonce,private=None):
+            verify();capture.create(name+'-remote.py',source.encode());capture.create(name+'-request.json',json.dumps({'flow':LOGIN_FLOW,'diagnosticId':correlation,'nonce':nonce,'sourceSha256':sha,'programSha256':hashlib.sha256(source.encode()).hexdigest(),'original':login.guest.ORIGINAL},sort_keys=True).encode());os.fsync(capture.fd)
+            argv=r.authority.closure.base.ssh_transport.build_ssh_argv(config,r.HOST,60,command=r.authority.closure.base.windows_credential_probe_ssh._remote_command(source))
+            capture.create(name+'-attempt.json',json.dumps({'state':'consumed','flow':LOGIN_FLOW,'phase':name,'diagnosticId':correlation,'nonce':nonce},sort_keys=True).encode());os.fsync(capture.fd);verify()
+            value,current_events=_stream(argv,capture,correlation,nonce,sha,record['result']['qemu'],private);events.extend(current_events);verify();return value
+        def read(slot):
+            source,sha=_readonly_phase_program(record,slot);correlation,nonce=_LOGIN_SLOTS[slot];value=dispatch(slot,source,sha,correlation,nonce);return {'value':value,'observedAtNs':time.time_ns()}
+        def auth():
+            source,sha,bootstrap_pins=_credential_phase_program(root,record)
+            for path,pin in bootstrap_pins.items():
+                if r.authority._read_bound_file(Path(path))!=pin:raise ValueError('login-auth-bootstrap')
+            value=dispatch('auth',source,sha,AUTH_CORRELATION,AUTH_NONCE,secret)
+            for path,pin in bootstrap_pins.items():
+                if r.authority._read_bound_file(Path(path))!=pin:raise ValueError('login-auth-bootstrap-drift')
+            return value
+        def prepare():
+            first=read('before1');retain('before1',first)
+            if first['value'].get('state')!='observed':raise ValueError('login-before-unknown')
+            geometry.validate_semantic(first['value']['facts']);nodes=first['value']['facts']['facts']['secureInput']['nodes']
+            if any(n['controlId']==50004 for n in nodes):return {'state':'observed','qemu':record['result']['qemu'],'clockDismissed':False}
+            second=read('before2');retain('before2',second);_admit_pair(first,second,time.time_ns());verify();source=_wake_program(record,second)
+            capture.create('wake-remote.py',source.encode());capture.create('wake-attempt.json',json.dumps({'state':'consumed','flow':LOGIN_FLOW,'sourceSha256':hashlib.sha256(source.encode()).hexdigest()},sort_keys=True).encode());os.fsync(capture.fd);verify()
+            argv=r.authority.closure.base.ssh_transport.build_ssh_argv(config,r.HOST,60,command=r.authority.closure.base.windows_credential_probe_ssh._remote_command(source))
+            import subprocess
+            try:completed=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
+            except subprocess.TimeoutExpired as error:
+                capture.create('wake-stdout-partial',(error.stdout or b'')[:1000000]);capture.create('wake-stderr-partial',(error.stderr or b'')[:131072]);os.fsync(capture.fd);raise ValueError('login-wake-unknown')from None
+            capture.create('wake-stdout.private',completed.stdout[:1000000]);capture.create('wake-stderr.private',completed.stderr[:131072]);os.fsync(capture.fd);verify()
+            if completed.returncode!=0 or len(completed.stdout)>1000000 or len(completed.stderr)>131072:raise ValueError('login-wake-transport')
+            value=json.loads(completed.stdout)
+            if value.get('state')!='observed' or value.get('qemu')!=record['result']['qemu']:raise ValueError('login-wake-result')
+            _wake_frame_authority(value,record['result']['qemu']);retain('wake',value);return {'state':'observed','qemu':record['result']['qemu'],'clockDismissed':True}
+        def write():
+            source,sha=program(record);return dispatch('write',source,sha,CORRELATION,NONCE,secret)
+        def retained(name,value):
+            nonlocal typed_bytes,typed_pin
+            rawvalue=json.dumps(value,sort_keys=True).encode();pin=capture.create(name+'-result.json',rawvalue);os.fsync(capture.fd)
+            if name=='write':typed_bytes=rawvalue;typed_pin=pin
+        def submit(typed):
+            verify()
+            if r._local_read(capture,'write-result.json',typed_pin)!=typed_bytes:raise ValueError('login-typed-local-authority')
+            source,sha=_enter_phase_program(record,typed);correlation,nonce=_LOGIN_SLOTS['enter'];return dispatch('enter',source,sha,correlation,nonce)
+        def owner():return read('owner')['value']
+        value=_login_sequence(auth,prepare,write,submit,owner,retained,record['result']['qemu']);verify();pin=capture.create('result.json',json.dumps({'result':value,'events':events},sort_keys=True).encode());os.fsync(capture.fd)
+        return dict(value,evidenceLeaf=leaf,receipt=pin)
+    except Exception as error:
+        events.extend(getattr(error,'events',[]));pin=capture.create('unknown.json',json.dumps({'state':'unknown','phase':str(error)if isinstance(error,ValueError)else type(error).__name__,'events':events},sort_keys=True).encode());os.fsync(capture.fd)
+        return {'state':'unknown','phase':str(error)if isinstance(error,ValueError)else type(error).__name__,'evidenceLeaf':leaf,'receipt':pin,'replayAllowed':False,'installerAction':False}
+    finally:secret=b'';inert.close();original.close();capture.close()
+
+_COMPAT_SOURCES={'base': {'archive': '.runtime/parity-evidence/windows-fcntl-import-pre-fix-22628997-f3b9-41fe-9e71-9540aa95ccde/windows_msi_base_prepare.py', 'originalPin': {'sha256': 'da3862602d906cb6146ce351fb2c3ee8697e82506f4253e39085263aecf3c9d3', 'generation': [16777234, 112808632, 33152, 503, 20, 1, 199991, 1790996685619880868, 1791138186684841952]}, 'currentSha256': '5d06ef745bbaba0208f08907a9b1c8ed7a3c8c549a940ecf5a4f127744d47cb7', 'currentPath': 'agent_tools/windows_msi_base_prepare.py'}, 'recovery': {'archive': '.runtime/parity-evidence/windows-fcntl-import-pre-fix-22628997-f3b9-41fe-9e71-9540aa95ccde/windows_cp117_fixture_recovery_short_socket.py', 'originalPin': {'sha256': '51538dad4c2fa6591384081f5a0aabacada1e752c1afd6a6ed50ebed9596663e', 'generation': [16777234, 112808633, 33152, 503, 20, 1, 42086, 1791038806867426589, 1791138186685006991]}, 'currentSha256': '55b562ef9d3c1ac4315b64d8838d500c6975073cf27ee29bdbb0faa779ec00bc', 'currentPath': 'agent_tools/windows_cp117_fixture_recovery_short_socket.py'}, 'lease': {'archive': '.runtime/parity-evidence/windows-lease-fcntl-pre-fix-b4b55214-f1a6-4980-a7eb-af1f19af4e35/windows_cp117_lease.py', 'originalPin': {'sha256': '720c74fc03b945155377741431218661cf855ea78ff64731d13e2bdb5dde1cbe', 'generation': [16777234, 112810428, 33152, 503, 20, 1, 33256, 1790760962063288020, 1791138426638777955]}, 'currentSha256': '2b0e6fc1727377b7bdefc7c17c4385f617f1f52563c0356b7da670dc8235944b', 'currentPath': 'agent_tools/windows_cp117_lease.py'}, 'completion': {'archive': '.runtime/parity-evidence/bound-absence-default-pre-fix-f388436e-8301-40fd-936d-398a8978597d/windows_cp117_bound_absence_completion.py', 'originalPin': {'sha256': 'ed85cff600d3b33c4aed37927df1d1b5c62fba660b24d5a46b804b9dfe46b939', 'generation': [16777234, 112810850, 33152, 503, 20, 1, 42842, 1791015453576787313, 1791139003610668422]}, 'currentSha256': '48234c12de9d48e61919fa981daacd03bf681ce56348bae2f381e9ab84b15ee0', 'currentPath': 'agent_tools/windows_cp117_bound_absence_completion.py'}}
+
+
+def _compatibility_ast(profile,original_bytes,current_bytes):
+    """Closed four-file import-only compatibility; native literals stay exact."""
+    if profile not in _COMPAT_SOURCES:raise ValueError('login-compatibility-profile')
+    old=ast.parse(original_bytes.decode('utf-8',errors='strict'));new=ast.parse(current_bytes.decode('utf-8',errors='strict'))
+    if profile in('base','recovery','lease'):
+        functions={'base':('_reserve','WindowsMsiBasePrepareError','Base preparation requires POSIX locking.'),'recovery':('_claim','RecoveryUnknown','posix-locking-unsupported'),'lease':('_locked','Cp117LeaseError','CP117 campaign locking is unsupported.')}
+        name,error,message=functions[profile]
+        imports=[n for n in old.body if isinstance(n,ast.Import)and any(a.name=='fcntl'for a in n.names)]
+        if len(imports)!=1:raise ValueError('login-compatibility-original-import')
+        importnode=imports[0];importnode.names=[a for a in importnode.names if a.name!='fcntl']
+        if not importnode.names:old.body.remove(importnode)
+        targets=[n for n in new.body if isinstance(n,ast.FunctionDef)and n.name==name]
+        expected=ast.parse('try:\n import fcntl\nexcept ModuleNotFoundError as exc:\n raise '+error+'('+repr(message)+') from exc').body[0]
+        if len(targets)!=1 or not targets[0].body or ast.dump(targets[0].body[0])!=ast.dump(expected):raise ValueError('login-compatibility-exact-lazy-import')
+        targets[0].body.pop(0)
+    else:
+        oldfn=[n for n in old.body if isinstance(n,ast.FunctionDef)and n.name=='_readonly_unknown_archive'];newfn=[n for n in new.body if isinstance(n,ast.FunctionDef)and n.name=='_readonly_unknown_archive']
+        if len(oldfn)!=1 or len(newfn)!=1:raise ValueError('login-compatibility-default-function')
+        oldfn=oldfn[0];newfn=newfn[0]
+        if len(oldfn.args.defaults)!=1 or len(newfn.args.defaults)!=1 or not isinstance(newfn.args.defaults[0],ast.Constant)or newfn.args.defaults[0].value is not None:raise ValueError('login-compatibility-default')
+        newfn.args.defaults[0]=oldfn.args.defaults[0]
+        expected1=ast.parse('if base is None:\n return False').body[0]
+        expected2=ast.parse('if correlation is None:\n correlation=base._UNKNOWN_CLOSURE_CORRELATION').body[0]
+        indexes=[]
+        for expected in(expected1,expected2):
+            matches=[i for i,node in enumerate(newfn.body)if ast.dump(node)==ast.dump(expected)]
+            if len(matches)!=1:raise ValueError('login-compatibility-deferred-default')
+            indexes.extend(matches)
+        for index in sorted(indexes,reverse=True):newfn.body.pop(index)
+    if ast.dump(old)!=ast.dump(new):raise ValueError('login-compatibility-unexpected-change')
+    # Equality after only approved import/refusal normalization also preserves
+    # every embedded PS/native/remote literal, not merely public function names.
+    return {'profile':profile,'nativeLiteralContinuity':True,'effectPredicateContinuity':True,'historicalSourceDifferent':True}
+
+
+def _execution_source_proof(root,record):
+    r=login.guest.recovery;historical=record['request']['sources'];current={};proofs={};archives={}
+    for key,profile in _COMPAT_SOURCES.items():
+        path=root/profile['archive'];pin,old=r.authority._read_bound_file(path,private=True,retain_bytes=True)
+        if pin!=profile['originalPin']:raise ValueError('login-compatibility-original-authority')
+        now,new=r.authority._read_bound_file(root/profile['currentPath'],retain_bytes=True)
+        if now['sha256']!=profile['currentSha256']:raise ValueError('login-compatibility-current-authority')
+        if key in historical and historical[key]['sha256']!=pin['sha256']:raise ValueError('login-compatibility-historical-source')
+        proofs[key]=_compatibility_ast(key,old,new);current[key]=now;archives[key]=pin
+        if r.authority._read_bound_file(path,private=True)!=pin or r.authority._read_bound_file(root/profile['currentPath'])!=now:raise ValueError('login-compatibility-source-drift')
+    unchanged={'closure':Path(r.authority.closure.__file__),'capture':root/'agent_tools/windows_diagnostic_authority_capture.py','consumedIntent':root/r.authority.closure._DIR/'intent.json'}
+    for key,path in unchanged.items():
+        pin=r.authority._read_bound_file(path,private=key=='consumedIntent')
+        if pin!=historical[key]:raise ValueError('login-original-unchanged-source')
+        current[key]=pin
+    if set(historical)!=set(current)-{'lease'}:raise ValueError('login-historical-source-keys')
+    return {'historicalVmSources':historical,'currentExecutingSources':current,'originalArchives':archives,'compatibility':proofs,'historicalVmAuthorityRewritten':False}

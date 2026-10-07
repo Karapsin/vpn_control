@@ -28,6 +28,8 @@ class WindowsFixtureServerAbortSuccessorError(ValueError):
 
 _SERVER = "2c438d90-9a77-4acd-b4d7-ab354b85a04a"
 _ABORT = "710f7aaa-f92d-4fef-9f7c-57cf6e405624"
+_HISTORICAL_SUCCESSOR = "bbc75e43-e220-44e8-ab60-ddc3876ba5fb"
+_REPLACEMENT_SERVER = "316e6189-5be0-4ea0-bca1-a3905816d815"
 _DIR = ".rag_index/windows-fixture-server-abort-successor"
 _UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z")
 _UNKNOWN = {"state": "unknown", "replayAllowed": False, "nativeActionAllowed": False,
@@ -438,6 +440,101 @@ def allows_server_restart(root: Path | str, prior_correlation: str, lease_id: st
         correlation, exitcode = matches[0]
         return _observe(root_path, config, target, descriptor, correlation, "verify") == {
             "state": "terminal", "exitcode": exitcode}
+    except (OSError, ValueError, KeyError, TypeError, WindowsFixtureServerAbortSuccessorError,
+            lease.Cp117LeaseError, base.WindowsMsiBasePrepareError):
+        return False
+
+
+def allows_cleanup_reservation(root: Path | str, prior_correlation: str, lease_id: str,
+                               prior_intent: Mapping[str, Any],
+                               candidate_intent: Mapping[str, Any] | None) -> bool:
+    """Allow one new abort cleanup after the fixed historical successor proof.
+
+    This is deliberately narrower than server restart admission: it admits only
+    the historical abort cleanup for `_SERVER`, after its fixed successor,
+    while the active role is the fixed replacement server-start.  It only reads
+    journals and observations; it never claims, finishes, or mutates a role.
+    """
+    if prior_correlation != _ABORT or not _UUID.fullmatch(lease_id):
+        return False
+    try:
+        root_path = Path(root).resolve(strict=True)
+        prior_request = server._cleanup_request(prior_intent.get("request", {}))
+        old_request = server._request(prior_intent.get("serverRequest", {}))
+        expected_prior = {
+            "schemaVersion": 1, "mode": "abort", "request": prior_request,
+            "serverRequest": old_request, "environment": "windows-cp117",
+            "socketPath": prior_intent.get("socketPath"), "qemuPid": prior_intent.get("qemuPid"),
+            "startTicks": prior_intent.get("startTicks"), "originalSid": prior_intent.get("originalSid"),
+            "serverPid": 0, "serverProcessStartIdentity": "", "serverPort": 0,
+            "commandSha256": prior_intent.get("commandSha256"),
+            "verifyCommandSha256": prior_intent.get("verifyCommandSha256"),
+        }
+        if (dict(prior_intent) != expected_prior or prior_request != {
+                "leaseId": lease_id, "serverCorrelationId": _SERVER,
+                "cleanupCorrelationId": _ABORT} or old_request["leaseId"] != lease_id
+                or old_request["serverCorrelationId"] != _SERVER
+                or not all(isinstance(prior_intent[key], str) and server._HASH.fullmatch(prior_intent[key])
+                           for key in ("commandSha256", "verifyCommandSha256"))):
+            return False
+        if not isinstance(candidate_intent, Mapping):
+            return False
+        current_request = server._cleanup_request(candidate_intent.get("request", {}))
+        current_server = server._request(candidate_intent.get("serverRequest", {}))
+        expected_current_server = {**old_request, "serverCorrelationId": _REPLACEMENT_SERVER}
+        expected_current = {
+            "schemaVersion": 1, "mode": "abort", "request": current_request,
+            "serverRequest": current_server, "environment": "windows-cp117",
+            "socketPath": candidate_intent.get("socketPath"), "qemuPid": candidate_intent.get("qemuPid"),
+            "startTicks": candidate_intent.get("startTicks"), "originalSid": candidate_intent.get("originalSid"),
+            "serverPid": 0, "serverProcessStartIdentity": "", "serverPort": 0,
+            "commandSha256": candidate_intent.get("commandSha256"),
+            "verifyCommandSha256": candidate_intent.get("verifyCommandSha256"),
+        }
+        if (dict(candidate_intent) != expected_current or current_server != expected_current_server
+                or current_request["leaseId"] != lease_id
+                or current_request["serverCorrelationId"] != _REPLACEMENT_SERVER
+                or current_request["cleanupCorrelationId"] in {_ABORT, _REPLACEMENT_SERVER}
+                or not all(isinstance(candidate_intent[key], str) and server._HASH.fullmatch(candidate_intent[key])
+                           for key in ("commandSha256", "verifyCommandSha256"))):
+            return False
+        config, target, descriptor = base._descriptor(root_path)
+        if (descriptor[0] != "windows-cp117"
+                or (prior_intent["socketPath"], prior_intent["qemuPid"], prior_intent["startTicks"], prior_intent["originalSid"])
+                   != descriptor[1:]
+                or (candidate_intent["socketPath"], candidate_intent["qemuPid"], candidate_intent["startTicks"], candidate_intent["originalSid"])
+                   != descriptor[1:]):
+            return False
+        successor_record = _read(root_path, _HISTORICAL_SUCCESSOR)
+        expected_successor = {
+            "version": 1, "request": {"successorCleanupCorrelationId": _HISTORICAL_SUCCESSOR},
+            "serverCorrelationId": _SERVER, "priorCleanupCorrelationId": _ABORT,
+            "serverRequest": old_request,
+            "guestGeneration": {"socketPath": descriptor[1], "qemuPid": descriptor[2],
+                                "startTicks": descriptor[3]},
+        }
+        terminal = _terminal(root_path, _HISTORICAL_SUCCESSOR)
+        if successor_record != expected_successor or terminal is None:
+            return False
+        digest = _digest(successor_record["request"], descriptor, terminal["exitcode"])
+        expected_identity = base._campaign_identity(
+            {**current_server, "correlationId": lease_id}, descriptor)
+        directory, lock = lease._locked(root_path)
+        try:
+            current = lease._active(directory)
+            if (not isinstance(current, Mapping) or current.get("identity") != expected_identity
+                    or current.get("state") != "role-active" or current.get("role") != "server-start"
+                    or current.get("correlationId") != _REPLACEMENT_SERVER
+                    or current.get("server") != "starting" or current.get("credentials") != "ready"
+                    or current.get("lastOutcome") != "failed-cleaned"
+                    or current.get("lastEvidenceSha256") != digest):
+                return False
+        finally:
+            os.close(lock)
+        remote = base._campaign_remote(config, target)
+        return (lease._remote_confirm(remote, "status", current, None)
+                and _observe(root_path, config, target, descriptor, _HISTORICAL_SUCCESSOR, "verify")
+                == {"state": "terminal", "exitcode": terminal["exitcode"]})
     except (OSError, ValueError, KeyError, TypeError, WindowsFixtureServerAbortSuccessorError,
             lease.Cp117LeaseError, base.WindowsMsiBasePrepareError):
         return False

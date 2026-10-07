@@ -1,0 +1,22 @@
+{
+  "credentialsEmbedded": false,
+  "executionAuthority": false,
+  "schema": 1,
+  "sources": {
+    "component-bundle.source": {
+      "originalPath": "agent_tools/android_installer_component_bundle.py",
+      "scope": "Authenticated source-only 0cc1 frozen repair, no ledger or native payload copied",
+      "sha256": "6d2ff26ae551d1d7c3b2b7ba7428b02fdd1e28e91beb760a4a4ee12de7738a85"
+    },
+    "product-launcher-test.source": {
+      "originalPath": "agent_tools/tests/test_temurin_product_launcher_recipe.py",
+      "scope": "Exact restored public beforeimage; extracted whole producer barrier only, no module top-level/private inputs executed",
+      "sha256": "b8da298ece97fa517222ff3870eec7662fe5e019d4a45d6284855753a8f0a46b"
+    },
+    "routing-reader-test.source": {
+      "originalPath": "agent_tools/tests/test_android_api35_large_routing_observation.py",
+      "scope": "Authentic public test source copied from source-only historical routing archive; no native ledger copied",
+      "sha256": "c058f6b34132d2a4411552b201a3cf2cff72b5e3717e80ed602a3c198ed62264"
+    }
+  }
+}

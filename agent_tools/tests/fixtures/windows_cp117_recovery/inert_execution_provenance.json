@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "fixture": "short_socket_51538dad.source",
+  "sha256": "51538dad4c2fa6591384081f5a0aabacada1e752c1afd6a6ed50ebed9596663e",
+  "sizeBytes": 42086,
+  "consumer": "agent_tools/tests/test_windows_cp117_recovered_guest_observe.py",
+  "purpose": "Extends hash-only fixture reuse with isolated exact-source compilation and pure recipe/digest execution. Function globals and code filenames must match the verified historical file. No claim, observe, native transport, VM, credential or lease operation executes from the historical module. Existing fixture and hash-only provenance remain untouched. Current production observer retains its consumed source pins and correctly refuses the current recovery module.",
+  "testImportSeam": "Historical namespace fcntl import is replaced with an isolated module whose every locking attribute raises historical_native_locking_forbidden, including on POSIX. Current production optional-API refusal remains real and separately tested."
+}

@@ -1,0 +1,202 @@
+"""Fixed read-only installed CP117 base package census; no process launch API."""
+import ast,base64,gzip,hashlib,json,os,re
+from pathlib import Path
+from . import windows_cp117_recovered_owner_diagnostic as precise
+from . import windows_msi_public_scenario as public
+from .windows_diagnostic_authority_capture import AuthorityCapture
+CORRELATION='b44bef1f-7f84-42e7-92a9-4dbe234821e7'
+NONCE='4f4436f4-1bf2-4e9a-b6d3-958da55b79f4'
+PRECISE_SHA='615e1b0975ea8a2875af91717aa9291110decb6f530c372d51b3c8f5cc793aa8'
+BASE_SHA='5d06ef745bbaba0208f08907a9b1c8ed7a3c8c549a940ecf5a4f127744d47cb7'
+PUBLIC_SHA='5e60d94fe2b020957694b21611b9bb5b4789c20830597589b42d32e8dafeeb78'
+PAIR_REQUEST=('d32f719a08db57e5d40ce2bf77e0d7c5b42de557','sha256-31634170c6d0c358ee1aed84314170725b27b79895f76f5977133a5e466f94bb','sha256-539504d691d396745d8426551e12107475281f3b189f75f3f802c5476920d1cd','sha256-f8a8741bcfd22c04be50836aa22da77009105ab1b63df4d9b7648397779a8dfc')
+PAIR_EXPECTED={'sourceSha': 'd32f719a08db57e5d40ce2bf77e0d7c5b42de557', 'sourceFingerprint': 'd51cc48266c7f148a00d68c444acf57888a0db9d52cfee7824ea33ae430063c8', 'receiptArtifactId': 'sha256-31634170c6d0c358ee1aed84314170725b27b79895f76f5977133a5e466f94bb', 'baseArtifactId': 'sha256-539504d691d396745d8426551e12107475281f3b189f75f3f802c5476920d1cd', 'targetArtifactId': 'sha256-f8a8741bcfd22c04be50836aa22da77009105ab1b63df4d9b7648397779a8dfc', 'baseVersion': '2.1.19', 'targetVersion': '2.2.2', 'baseCliSha256': 'ca95b4e671c3effe05eb8f888a4260dedb6ff22363fe347383290240801dd2b1', 'targetMsiSha256': 'f8a8741bcfd22c04be50836aa22da77009105ab1b63df4d9b7648397779a8dfc', 'targetMsiSize': 131101044, 'baseAppJarName': 'desktopApp-336a3942694065dfdd2af228a21976.jar', 'baseAppJarSha256': '5941bfdb167ee3a74139e7fcc556d95c8bcbfff515cf6c26ce0c5db0512de5d1', 'baseHelperSha256': 'ea6043aff284850be3a7cb9ff28f179743fc0a4e1a2c7f58107b09f619e38921', 'baseRuntimeSha256': 'ca74563c93440a2e9cb73eae6a04c109d3f5efce36a385f8261a654e362d2ea3'}
+OWNER_PROOF={'sha256':'9d9df665be272232863acf31f597b8d1abda4f68cdd46950c3a764581e0dc73b','generation':[16777234,112844578,33152,503,20,1,6838,1791149936857645561,1791149936857645561]}
+FILE_CS=r'''using System;using System.IO;using System.Runtime.InteropServices;using System.Security.Cryptography;
+public static class Cp117InstalledFile {
+ [StructLayout(LayoutKind.Sequential)]public struct Info {public uint Attr;public uint CH,CL,AH,AL,WH,WL,Volume,SizeHigh,SizeLow,Links,IdHigh,IdLow;}
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(IntPtr h,out Info info);
+ static string Pin(FileStream f){Info i;if(!GetFileInformationByHandle(f.SafeFileHandle.DangerousGetHandle(),out i)||i.Links!=1)throw new IOException("FILE_IDENTITY");return i.Volume+":"+i.IdHigh+":"+i.IdLow+":"+i.WH+":"+i.WL+":"+i.SizeHigh+":"+i.SizeLow+":"+i.Attr+":"+i.CH+":"+i.CL+":"+i.Links;}
+ public static string[] Read(string path){for(string p=path;p!=null;p=Path.GetDirectoryName(p)){if((File.GetAttributes(p)&FileAttributes.ReparsePoint)!=0)throw new IOException("FILE_REPARSE");if(Path.GetPathRoot(p)==p)break;}
+  using(FileStream f=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)){string first=Pin(f);if(f.Length<=0||f.Length>268435456)throw new IOException("FILE_BOUND");string hash;using(SHA256 h=SHA256.Create()){hash=BitConverter.ToString(h.ComputeHash(f)).Replace("-","").ToLowerInvariant();}if(Pin(f)!=first)throw new IOException("FILE_DRIFT");using(FileStream named=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)){if(Pin(named)!=first)throw new IOException("FILE_EXCHANGED");}return new string[]{hash,first};}
+ }
+ public static string Runtime(string path){using(FileStream f=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)){string first=Pin(f);using(System.IO.Compression.ZipArchive zip=new System.IO.Compression.ZipArchive(f,System.IO.Compression.ZipArchiveMode.Read,true)){var entry=zip.GetEntry("bin/windows-amd64/sing-box.exe");if(entry==null||entry.Length<=0||entry.Length>134217728)throw new IOException("RUNTIME_BOUND");int count=0;foreach(var item in zip.Entries)if(item.FullName==entry.FullName)count++;if(count!=1)throw new IOException("RUNTIME_DUPLICATE");string result;using(var stream=entry.Open())using(SHA256 h=SHA256.Create()){byte[] block=new byte[65536];long total=0;int n;while((n=stream.Read(block,0,block.Length))!=0){total+=n;if(total>entry.Length||total>134217728)throw new IOException("RUNTIME_EXPANSION");h.TransformBlock(block,0,n,block,0);}if(total!=entry.Length)throw new IOException("RUNTIME_LENGTH");h.TransformFinalBlock(new byte[0],0,0);result=BitConverter.ToString(h.Hash).Replace("-","").ToLowerInvariant();}if(Pin(f)!=first)throw new IOException("RUNTIME_DRIFT");return result;}}
+ }
+}'''
+PACKAGE_PS=r'''$script:cp117OwnerDiagStage='package'
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -TypeDefinition @'
+@FILE_CS@
+'@ -ReferencedAssemblies @('System','System.Core','System.IO.Compression')
+$install='C:\Users\vpncp117\AppData\Local\vpn-control';$cli=Join-Path $install 'vpn-control-cli.exe';$helper=Join-Path $install 'app\native\windows-amd64\vpn-control-install-helper.exe'
+$jars=@(Get-ChildItem -LiteralPath (Join-Path $install 'app') -Filter 'desktopApp-*.jar' -File -ErrorAction Stop)
+if($jars.Count -ne 1){throw 'PACKAGE_JAR_COUNT'}
+$jar=$jars[0].FullName
+$cliBefore=[Cp117InstalledFile]::Read($cli);$helperBefore=[Cp117InstalledFile]::Read($helper);$jarBefore=[Cp117InstalledFile]::Read($jar)
+$cliSignature=(Get-AuthenticodeSignature -LiteralPath $cli -ErrorAction Stop).Status.ToString();$helperSignature=(Get-AuthenticodeSignature -LiteralPath $helper -ErrorAction Stop).Status.ToString()
+$runtimeHash=[Cp117InstalledFile]::Runtime($jar)
+$cliAfter=[Cp117InstalledFile]::Read($cli);$helperAfter=[Cp117InstalledFile]::Read($helper);$jarAfter=[Cp117InstalledFile]::Read($jar)
+if($cliBefore[0] -cne $cliAfter[0] -or $cliBefore[1] -cne $cliAfter[1] -or $helperBefore[0] -cne $helperAfter[0] -or $helperBefore[1] -cne $helperAfter[1] -or $jarBefore[0] -cne $jarAfter[0] -or $jarBefore[1] -cne $jarAfter[1]){throw 'PACKAGE_DRIFT'}
+$cp117Package=@{jarCount=1;registeredPathMatches=($products.Count -eq 1 -and $products[0].InstallLocation.TrimEnd('\') -ceq $install);jarNameMatches=($jars[0].Name -ceq '@JAR_NAME@');cliSha256=$cliBefore[0];jarSha256=$jarBefore[0];helperSha256=$helperBefore[0];runtimeSha256=$runtimeHash;cliSignerStatus=$cliSignature;helperSignerStatus=$helperSignature;identitiesStable=$true}
+[Console]::Out.WriteLine((@{version=1;correlationId='@CORRELATION@';outcome='complete';stage='complete';category='none';errorType='none';hresult=0;observations=@($script:cp117OwnerDiagObservations);facts=@{owner=$cp117OwnerProof;readiness=$cp117ReadinessProof;package=$cp117Package};details=''}|ConvertTo-Json -Depth 12 -Compress))
+'''
+
+OWNER_BODY_SHA256='0802ba3fe2fabb8a815de6f7658566c4e7cc55775fecb03f5452923f0245df98'
+READINESS_SHA256='c5f97cc111d706a19abe5582aece64407767327964b8a0520d8d5cdf394076ad'
+FILE_CS_SHA256='3416d324fa812f00541a4429d1e58c25641fbfb981f0018dd945a8fa67499c5a'
+PACKAGE_TEMPLATE_SHA256='98297c743863b09d72ffc75e00c0de7ede005831fd16186210836b1aa0567ce2'
+
+def pair(root):
+    value=public._admit_pair(Path(root),*PAIR_REQUEST)
+    if value!=PAIR_EXPECTED:raise ValueError('installed-artifact-catalog')
+    return value
+
+CURRENT_PRECISE_SHA='87ef2d5decff79166b7417cedb9320c4e646beaeb536b55ecfc766d900242a98'
+
+def body(admitted):
+    return _body(admitted,PRECISE_SHA)
+
+def body_current(admitted):
+    return _body(admitted,CURRENT_PRECISE_SHA)
+
+def _body(admitted, expected_precise_sha):
+    if hashlib.sha256(Path(precise.__file__).read_bytes()).hexdigest()!=expected_precise_sha or hashlib.sha256(Path(precise.owner.guest.recovery.authority.closure.base.__file__).read_bytes()).hexdigest()!=BASE_SHA or hashlib.sha256(Path(public.__file__).read_bytes()).hexdigest()!=PUBLIC_SHA:raise ValueError('package-fixed-source')
+    if admitted!=PAIR_EXPECTED:raise ValueError('package-fixed-pair')
+    base=precise.owner.guest.recovery.authority.closure.base
+    readiness=base._readiness_script('2.1.19',precise.owner.SID)
+    if hashlib.sha256(readiness.encode('utf-16le')).hexdigest()!=READINESS_SHA256 or hashlib.sha256(precise.body().encode('utf-16le')).hexdigest()!=OWNER_BODY_SHA256 or hashlib.sha256(FILE_CS.encode()).hexdigest()!=FILE_CS_SHA256 or hashlib.sha256(PACKAGE_PS.encode()).hexdigest()!=PACKAGE_TEMPLATE_SHA256:raise ValueError('installed-fixed-body')
+    marker=" [Console]::Out.WriteLine(([pscustomobject]@{version=1;code=$code;installedVersion=$version;productCount=$products.Count;activeCount=$active.Count;activeKinds=$activeKinds;activeProcesses=$activeProcesses;workspaceLockPid=$lockPid;ownedExplorerCount=$owned}|ConvertTo-Json -Depth 5 -Compress))"
+    if readiness.count(marker)!=1:raise ValueError('package-readiness-factory')
+    readiness=readiness.replace(marker," $cp117ReadinessProof=[pscustomobject]@{version=1;code=$code;installedVersion=$version;productCount=$products.Count;activeCount=$active.Count;activeKinds=$activeKinds;activeProcesses=$activeProcesses;workspaceLockPid=$lockPid;ownedExplorerCount=$owned}")
+    source=precise.body();start=source.index(" [Console]::Out.WriteLine((@{version=1;correlationId=");end=source.index("}catch{",start)
+    source=source[:start]+" $cp117OwnerProof=$facts\n"+readiness+PACKAGE_PS.replace('@FILE_CS@',FILE_CS).replace('@JAR_NAME@',admitted['baseAppJarName']).replace('@CORRELATION@',CORRELATION)+source[end:]
+    return source.replace(precise.CORRELATION,CORRELATION)
+
+STAGES=precise.STAGES+('package',)
+SIGNERS={'Valid','UnknownError','NotSigned','HashMismatch','NotTrusted','NotSupportedFileFormat','Incompatible'}
+
+def validate(value):
+    fields={'version','correlationId','outcome','stage','category','errorType','hresult','observations','facts','details'}
+    if not isinstance(value,dict)or set(value)!=fields or type(value['version'])is not int or value['version']!=1 or value['correlationId']!=CORRELATION:raise ValueError('installed-schema')
+    if value['outcome']not in('complete','blocked')or value['stage']not in STAGES or type(value['hresult'])is not int or not isinstance(value['details'],str)or len(value['details'])>4096:raise ValueError('installed-classification')
+    if not isinstance(value['errorType'],str)or not value['errorType'].isascii()or not value['errorType'].isalnum()or len(value['errorType'])>80:raise ValueError('installed-error-type')
+    if value['category']not in {'none','stage-failure','OWNER_ACCOUNT_PROFILE','OWNER_PROCESS_BOUND','OWNER_PROCESS_GENERATION','OWNER_TOKEN_SESSION','OWNER_PROCESS_CHANGED','OWNER_DIAGNOSTIC_BOUND','PACKAGE_JAR_COUNT','PACKAGE_DRIFT'}:raise ValueError('installed-category')
+    # Reuse original bounded process observation validator, without importing
+    # current admission from an earlier reader or accepting arbitrary fields.
+    observed=dict(value,correlationId=precise.CORRELATION,stage='process-generation',outcome='blocked',category='stage-failure',facts=None)
+    precise.validate(observed)
+    if value['outcome']=='blocked':
+        if value['facts']is not None or value['category']=='none'or value['stage']=='complete':raise ValueError('installed-blocked')
+        return value
+    if value['stage']!='complete'or value['category']!='none'or value['errorType']!='none'or value['hresult']!=0 or value['details']!='':raise ValueError('installed-complete')
+    facts=value['facts']
+    if not isinstance(facts,dict)or set(facts)!={'owner','readiness','package'}:raise ValueError('installed-facts')
+    precise.owner.validate_facts(facts['owner'])
+    own=facts['owner']
+    if any(type(own[k])is not int for k in ('version','runtimeCount','installerCount')):raise ValueError('installed-owner-type')
+    for process in own['explorers']+own['apps']:
+        if any(type(process[k])is not int for k in ('pid','sessionId','elevationType')):raise ValueError('installed-token-type')
+    readiness=facts['readiness']
+    keys={'version','code','installedVersion','productCount','activeCount','activeKinds','activeProcesses','workspaceLockPid','ownedExplorerCount'}
+    if not isinstance(readiness,dict)or set(readiness)!=keys or type(readiness['version'])is not int or readiness['version']!=1 or readiness['code']not in {'READY','PRODUCT_COUNT','PRODUCT_VERSION','ACTIVE_PROCESS','SESSION_OWNER'}:raise ValueError('installed-readiness-schema')
+    for key in ('productCount','activeCount','ownedExplorerCount'):
+        if type(readiness[key])is not int or not 0<=readiness[key]<=64:raise ValueError('installed-readiness-count')
+    if readiness['installedVersion']is not None and(not isinstance(readiness['installedVersion'],str)or re.fullmatch(r'(?:[1-9]|1[0-9])\.(?:0|[1-9]|1[0-9])\.(?:0|[1-9]|1[0-9])',readiness['installedVersion'])is None):raise ValueError('installed-version')
+    if readiness['activeCount']!=0 or readiness['activeKinds']!=[]or readiness['activeProcesses']!=[]:raise ValueError('installed-active')
+    if readiness['workspaceLockPid']is not None and(type(readiness['workspaceLockPid'])is not int or readiness['workspaceLockPid']<=0):raise ValueError('installed-lockpid')
+    package=facts['package']
+    if not isinstance(package,dict)or set(package)!={'jarCount','registeredPathMatches','jarNameMatches','cliSha256','jarSha256','helperSha256','runtimeSha256','cliSignerStatus','helperSignerStatus','identitiesStable'}or type(package['jarCount'])is not int or package['jarCount']!=1 or type(package['registeredPathMatches'])is not bool or type(package['jarNameMatches'])is not bool or package['identitiesStable']is not True:raise ValueError('installed-package-schema')
+    for name in ('cliSha256','jarSha256','helperSha256','runtimeSha256'):
+        if not isinstance(package[name],str)or re.fullmatch('[0-9a-f]{64}',package[name])is None:raise ValueError('installed-package-hash')
+    if package['cliSignerStatus']not in SIGNERS or package['helperSignerStatus']not in SIGNERS:raise ValueError('installed-signer')
+    return value
+
+def parse_terminal(value,nonce,sha,pid):
+    if value.get('exited')is not True:return None
+    if value.get('out-truncated')or value.get('err-truncated'):raise ValueError('installed-truncated')
+    raw=base64.b64decode(value.get('out-data',''),validate=True)
+    if len(raw)>32768:raise ValueError('installed-output-cap')
+    header,sep,payload=raw.partition(b'\n')
+    if not sep or header.rstrip(b'\r')!=('CP117-READ %s %s %d'%(nonce,sha,pid)).encode():return None
+    if type(value.get('exitcode'))is not int or value['exitcode']!=0:raise ValueError('installed-guest-exit')
+    return validate(json.loads(payload))
+
+def program(record,admitted):
+    return _program(record,admitted,False)
+
+def program_current(record,admitted):
+    return _program(record,admitted,True)
+
+def _program(record,admitted,current):
+    r=precise.owner.guest.recovery
+    paths=(Path(__file__),Path(precise.__file__),Path(public.__file__),Path(r.authority.closure.base.__file__),Path(precise.owner.__file__))
+    pins={str(p):r.authority._read_bound_file(p,retain_bytes=True)for p in paths}
+    source,_=(precise.program_current(record) if current else precise.program(record));plain=(body_current(admitted) if current else body(admitted));sha=hashlib.sha256(plain.encode('utf-16le')).hexdigest()
+    old=base64.b64encode(("[Console]::Out.WriteLine(('CP117-READ "+precise.NONCE+" "+hashlib.sha256(precise.body().encode('utf-16le')).hexdigest()+" '+$PID))\n"+precise.body()).encode('utf-16le')).decode()
+    full="[Console]::Out.WriteLine(('CP117-READ "+NONCE+" "+sha+" '+$PID))\n"+plain
+    data=full.encode('utf-8');packed=base64.b64encode(gzip.compress(data,mtime=0)).decode()
+    # Explicit enum selects the reviewed GZip constructor; decode verifies exact
+    # complete source length/hash before any original owner or package read.
+    bootstrap="$ErrorActionPreference='Stop';$i=[IO.MemoryStream]::new([Convert]::FromBase64String('"+packed+"'));$z=[IO.Compression.GZipStream]::new($i,[IO.Compression.CompressionMode]::Decompress);$o=[IO.MemoryStream]::new();try{$b=New-Object byte[] 4096;while(($n=$z.Read($b,0,$b.Length)) -gt 0){$o.Write($b,0,$n);if($o.Length -gt 65536){throw 'PACKAGE_SOURCE_BOUND'}};$v=$o.ToArray();if($v.Length -ne "+str(len(data))+" -or [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($v)).Replace('-','').ToLowerInvariant() -cne '"+hashlib.sha256(data).hexdigest()+"'){throw 'PACKAGE_SOURCE_HASH'};& ([ScriptBlock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($v)))}finally{$z.Dispose();$i.Dispose();$o.Dispose()}"
+    encoded=base64.b64encode(bootstrap.encode('utf-16le')).decode()
+    if len(data)>65536 or len(encoded)>=30000:raise ValueError('installed-command-cap')
+    def functions(raw,names):
+        text=raw.decode();tree=ast.parse(text);return '\n\n'.join(ast.get_source_segment(text,next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name==name))for name in names)+'\n'
+    previous='CORRELATION='+repr(precise.CORRELATION)+'\nSTAGES='+repr(precise.STAGES)+'\n'+functions(pins[str(paths[1])][1],('validate','parse_terminal'))
+    original_validator=functions(pins[str(paths[1])][1],('validate',)).replace('def validate(value):','def original_validate(value):')
+    old_correlation=precise.CORRELATION
+    owner_validator=functions(pins[str(paths[4])][1],('validate_facts',))
+    replacement='import re,types\nSTAGES='+repr(STAGES)+'\nCORRELATION='+repr(CORRELATION)+'\n_original_ns={"CORRELATION":'+repr(old_correlation)+',"STAGES":'+repr(precise.STAGES)+'}\nexec('+repr(original_validator)+',_original_ns)\n_owner_ns={}\nexec('+repr(owner_validator)+',_owner_ns)\nprecise=types.SimpleNamespace(CORRELATION='+repr(old_correlation)+',validate=_original_ns["original_validate"],owner=types.SimpleNamespace(validate_facts=_owner_ns["validate_facts"]))\nSIGNERS='+repr(SIGNERS)+'\n'+functions(pins[str(paths[0])][1],('validate','parse_terminal'))
+    # original_validate refers to its original stage catalog through globals.
+    # The superset only permits the new package diagnostic stage; all original
+    # finite field and observation guards are kept.
+    for before,after in((repr(old),repr(encoded)),('D='+repr(precise.CORRELATION),'D='+repr(CORRELATION)),('NONCE='+repr(precise.NONCE),'NONCE='+repr(NONCE)),('BODY_SHA='+repr(hashlib.sha256(precise.body().encode('utf-16le')).hexdigest()),'BODY_SHA='+repr(sha)),(previous,replacement)):
+        if source.count(before)!=1:raise ValueError('installed-carrier-factory')
+        source=source.replace(before,after)
+    for path,(pin,_)in pins.items():
+        if r.authority._read_bound_file(Path(path))!=pin:raise ValueError('installed-factory-drift')
+    compile(source,'fixed-installed-base-observe','exec');return source,sha
+
+flow=precise.flow
+
+def summary(value,admitted):
+    validate(value)
+    matches={}
+    if value['outcome']=='complete':
+        package=value['facts']['package'];readiness=value['facts']['readiness']
+        for name,expected in (('cliSha256','baseCliSha256'),('jarSha256','baseAppJarSha256'),('helperSha256','baseHelperSha256'),('runtimeSha256','baseRuntimeSha256')):matches[name]=package[name]==admitted[expected]
+        matches['jarName']=package['jarNameMatches'];matches['registeredPath']=package['registeredPathMatches'];matches['registration']=readiness['code']=='READY'and readiness['installedVersion']=='2.1.19'and readiness['productCount']==1 and readiness['ownedExplorerCount']==1
+    ready=bool(matches)and all(matches.values())
+    return {'state':'observed','correlationId':CORRELATION,'outcome':value['outcome'],'stage':value['stage'],'category':value['category'],'baseBytesMatched':ready,'matches':matches,'signers':({k:value['facts']['package'][k]for k in('cliSignerStatus','helperSignerStatus')}if value['outcome']=='complete'else{}),'artifactCapabilitiesMatched':ready,'runtimeCapabilityExecuted':False,'ordinaryRequesterAdmission':False,'installerAction':False,'replayAllowed':False}
+
+def observe(root):
+    root=Path(root).resolve(strict=True);r=precise.owner.guest.recovery;leaf='windows-cp117-installed-base-' +CORRELATION
+    if(root/'.runtime/parity-evidence'/leaf).exists():return {'state':'unknown','correlationId':CORRELATION,'stage':'consumed','ordinaryRequesterAdmission':False,'installerAction':False,'replayAllowed':False}
+    (root/'.runtime/parity-evidence'/leaf).mkdir(mode=0o700);capture=AuthorityCapture(root,leaf);original=AuthorityCapture(root,'windows-cp117-recovery-'+r.CORRELATION);login=AuthorityCapture(root,'windows-cp117-owner-diagnostic-'+precise.CORRELATION);events=[]
+    try:
+        original_raw=r._local_read(original,precise.owner.guest.ORIGINAL['name'],precise.owner.guest.ORIGINAL['pin']);record=json.loads(original_raw)
+        unknown_raw=r._local_read(login,'result.json',OWNER_PROOF);historical=json.loads(unknown_raw)
+        precise.validate(historical['result']['facts']);precise.owner.validate_facts(historical['result']['facts']['facts'])
+        admitted=pair(root)
+        files=(Path(__file__),Path(precise.__file__),Path(public.__file__),Path(flow.__file__),Path(precise.owner.guest.__file__),Path(r.authority.closure.base.__file__))
+        pins={str(p):r.authority._read_bound_file(p)for p in files};execution=flow._execution_source_proof(root,record);outer=r.authority._outer_authority(root)
+        def verify():
+            if r._local_read(original,precise.owner.guest.ORIGINAL['name'],precise.owner.guest.ORIGINAL['pin'])!=original_raw or r._local_read(login,'result.json',OWNER_PROOF)!=unknown_raw:raise ValueError('diagnostic-historical-drift')
+            for i,item in enumerate(record['authority']):
+                r._validate_frame(item['frame'],record['request'],record['authority'][:i])
+                if json.loads(r._local_read(original,'authority-%d.json'%i,item['localPin']))!=item['frame']:raise ValueError('diagnostic-original-frame')
+            if flow._execution_source_proof(root,record)!=execution or any(r.authority._read_bound_file(Path(path))!=pin for path,pin in pins.items()):raise ValueError('diagnostic-source-drift')
+            r.authority._verify_outer(root,{'outerAuthority':outer})
+            if pair(root)!=admitted:raise ValueError('installed-artifact-drift')
+        verify();source,sha=program(record,admitted)
+        capture.create('request.json',json.dumps({'correlationId':CORRELATION,'nonce':NONCE,'sourceSha256':sha,'programSha256':hashlib.sha256(source.encode()).hexdigest(),'sources':pins,'historicalOwnerProof':OWNER_PROOF,'pair':admitted,'executionSourceProof':execution,'outerAuthority':outer,'ordinaryRequesterAdmission':False,'installerAction':False},sort_keys=True).encode());capture.create('remote.py',source.encode());os.fsync(capture.fd)
+        config,_,_=r.authority.closure.base._descriptor(root);argv=r.authority.closure.base.ssh_transport.build_ssh_argv(config,r.HOST,60,command=r.authority.closure.base.windows_credential_probe_ssh._remote_command(source))
+        capture.create('attempt.json',json.dumps({'state':'consumed','correlationId':CORRELATION,'nonce':NONCE},sort_keys=True).encode());os.fsync(capture.fd);verify()
+        value,events=flow._stream(argv,capture,CORRELATION,NONCE,sha,record['result']['qemu'],None);verify()
+        pin=capture.create('result.json',json.dumps({'result':value,'events':events},sort_keys=True).encode());os.fsync(capture.fd)
+        if value.get('state')!='observed':return {'state':'unknown','correlationId':CORRELATION,'stage':'observation','evidenceLeaf':leaf,'receipt':pin,'ordinaryRequesterAdmission':False,'installerAction':False,'replayAllowed':False}
+        return dict(summary(value['facts'],admitted),evidenceLeaf=leaf,receipt=pin)
+    except Exception as error:
+        events.extend(getattr(error,'events',[]));pin=capture.create('unknown.json',json.dumps({'state':'unknown','failureType':type(error).__name__,'events':events},sort_keys=True).encode());os.fsync(capture.fd)
+        return {'state':'unknown','correlationId':CORRELATION,'stage':'observation','evidenceLeaf':leaf,'receipt':pin,'ordinaryRequesterAdmission':False,'installerAction':False,'replayAllowed':False}
+    finally:login.close();original.close();capture.close()

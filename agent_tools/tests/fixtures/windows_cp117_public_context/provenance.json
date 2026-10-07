@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "scope": "public-source-and-reviewed-staging-terminal-only",
+  "nativeAdmission": false,
+  "credentialContent": false,
+  "inputs": {
+    "original-base-test.source": {
+      "sha256": "ec314ee71be2fe89ce48a32cd6336a6103e7ba921aec0fdb8bac8fedaa9bbb56",
+      "size": 1048262,
+      "source": ".runtime/parity-evidence/windows-public-context-testpin-successor/original-base-test-ec314.source"
+    },
+    "original-server-test.source": {
+      "sha256": "f6d09b0964063ad6cade1c0116ee8d9d8951db2e19552f0f80ec05e0caac97fa",
+      "size": 91164,
+      "source": ".runtime/parity-evidence/windows-public-context-testpin-successor/original-server-test-f6d09.source"
+    },
+    "original-context-caller.source": {
+      "sha256": "5d107e8fd0f1bd3337e4a1b29e9b4b120b42b9d25756ea68c71306050a74eab4",
+      "size": 432746,
+      "source": ".runtime/parity-evidence/windows-ae66-server-read-76c9fe44-8231-46fd-b87a-44e0d2badeec/observe-v3.py"
+    },
+    "original-stage-caller.source": {
+      "sha256": "1a040b2537ef2bef81019a6e2467a0bd62741a01bb1bd98b835016a6a312a209",
+      "size": 95054,
+      "source": ".runtime/parity-evidence/windows-direct-fixture-extract-f5d041a7-c49c-49ae-a5fc-afa1990544c4/observe.py"
+    },
+    "current-context.source": {
+      "sha256": "04c5935852e16e07eef0eec3792fb6c797b3c6a9e17fe27a0ec06c5343694cc8",
+      "size": 26129,
+      "source": ".runtime/parity-evidence/windows-public-update-complete-6815bdda-18db-42e7-8d48-99a7a8af39aa/public-context.draft.py"
+    },
+    "fixture-script.source": {
+      "sha256": "a6445062d5885ca013eae3017b39791b844373fb472d87d8d8c22f67576a3980",
+      "size": 100648,
+      "source": "scripts/prepare_desktop_update_fixture.py"
+    },
+    "original-stage-result.json": {
+      "sha256": "f3845d30469dad6ad0f608d5875103dca78945849413a546377afa95043303a5",
+      "size": 25879,
+      "source": ".runtime/parity-evidence/windows-direct-fixture-extract-add035da-53b7-4b5b-8131-38d838a7d840/result.json"
+    },
+    "original-stage-remote.source": {
+      "sha256": "0468265e44f5ba3321a08e5557521ed1caa72e649ce58c319a20c05a27341cdb",
+      "size": 53690,
+      "source": ".runtime/parity-evidence/windows-direct-fixture-extract-add035da-53b7-4b5b-8131-38d838a7d840/remote.py"
+    },
+    "original-stage-exit.json": {
+      "sha256": "7e2e00efb2c16d212ccab89f917e2ca342463fcae73273efb4773a7aae91b3a2",
+      "size": 170,
+      "source": ".runtime/parity-evidence/windows-direct-fixture-extract-add035da-53b7-4b5b-8131-38d838a7d840/exit.json"
+    },
+    "current-host-main.source": {
+      "sha256": "67e8d9fe53389512f1d243fe328a577df3614b37bd8c0e7de88c8b7814794725",
+      "size": 13189,
+      "source": ".runtime/parity-evidence/windows-public-update-complete-6815bdda-18db-42e7-8d48-99a7a8af39aa/public-host-main.draft.py"
+    },
+    "old-host-main.source": {
+      "sha256": "f103e418ded200297b89c5866f4b167452cd146d25b0048e135c30da4ea3679b",
+      "size": 12977,
+      "source": "agent_tools/tests/fixtures/windows_cp117_public_context/old-host-main.source"
+    },
+    "old-context.source": {
+      "sha256": "8dd8a577cc0f34b435a6896b03595c943f0083b048fa857c95ebb1e272dd3e18",
+      "size": 25731,
+      "source": ".runtime/parity-evidence/windows-public-context-testpin-successor/v11-held-closing-hold/1-public-context.draft.py"
+    }
+  }
+}

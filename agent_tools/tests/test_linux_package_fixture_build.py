@@ -137,6 +137,180 @@ class LinuxPackageFixtureBuildTest(unittest.TestCase):
             remote = next(call for call in calls if "ls-remote" in call)
             self.assertEqual(remote[:3], ["git", "-C", str(root.resolve())])
 
+    @staticmethod
+    def _metadata_probe_timeout(argv, **_):
+        if "show" in argv:
+            raise subprocess.TimeoutExpired(argv, 30)
+        if "rev-parse" in argv:
+            return subprocess.CompletedProcess(argv, 0, SOURCE + "\n", "")
+        if "--porcelain=v1" in argv:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if "ls-remote" in argv:
+            return subprocess.CompletedProcess(argv, 0, SOURCE + "\trefs/heads/dev\n", "")
+        raise AssertionError("Unexpected source probe")
+
+    def test_final_metadata_probe_timeout_refuses_before_private_config(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(fixture.subprocess, "run", side_effect=self._metadata_probe_timeout) as run, \
+                patch("agent_tools.ssh_transport.load_config") as config:
+            with self.assertRaises(fixture.LinuxPackageFixtureBuildError):
+                fixture.preflight(Path(directory), REQUEST)
+            config.assert_not_called()
+            self.assertEqual(4, run.call_count)
+            self.assertIn("show", run.call_args.args[0])
+
+    def test_actual_mcp_preflight_final_metadata_timeout_is_finite_unknown(self):
+        from agent_tools import mcp_server as server
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(server, "REPO_ROOT", Path(directory)), \
+                patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1), \
+                patch.object(fixture.subprocess, "run", side_effect=self._metadata_probe_timeout) as run, \
+                patch("agent_tools.ssh_transport.load_config") as config, \
+                patch.object(fixture.subprocess, "Popen", side_effect=AssertionError("No child permitted")) as child:
+            observed = server.vm_workflow("linux-package-fixture-build-preflight", dict(REQUEST))
+            self.assertEqual("unknown", observed["state"])
+            self.assertFalse(observed["ok"])
+            self.assertFalse(observed["nativeActionAllowed"])
+            self.assertFalse(observed["replayAllowed"])
+            self.assertEqual(CORRELATION, observed["correlationId"])
+            config.assert_not_called()
+            child.assert_not_called()
+            self.assertEqual(4, run.call_count)
+
+    def test_clean_linked_source_uses_its_git_checks_but_coordinator_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            coordinator = Path(directory) / "coordinator"
+            source_root = Path(directory) / "clean-source"
+            coordinator.mkdir()
+            source_root.mkdir()
+            calls = []
+
+            def run(argv, **_):
+                calls.append(argv)
+                if "--git-common-dir" in argv:
+                    return subprocess.CompletedProcess(argv, 0, "/shared/common.git\n", "")
+                if "rev-parse" in argv:
+                    return subprocess.CompletedProcess(argv, 0, SOURCE + "\n", "")
+                if "--porcelain=v1" in argv:
+                    return subprocess.CompletedProcess(argv, 0, "", "")
+                if "ls-remote" in argv:
+                    return subprocess.CompletedProcess(argv, 0, SOURCE + "\trefs/heads/dev\n", "")
+                return subprocess.CompletedProcess(argv, 0, "vpnControlVersion=2.2.1\n", "")
+
+            config = type("Config", (), {"hosts": {"archlinux": object()}})()
+            with patch.object(fixture.subprocess, "run", side_effect=run), \
+                    patch("agent_tools.ssh_transport.load_config", return_value=config) as load_config:
+                observed = fixture.preflight(coordinator, REQUEST, source_root=source_root)
+            self.assertEqual(observed["state"], "ready")
+            self.assertEqual(observed["sourceSha"], REQUEST["sourceSha"])
+            json.dumps(observed)
+            source_calls = [call for call in calls if "ls-remote" in call or "--porcelain=v1" in call]
+            self.assertTrue(source_calls)
+            self.assertTrue(all(str(source_root.resolve()) in call for call in source_calls))
+            load_config.assert_called_once_with(coordinator.resolve())
+
+    def test_foreign_dirty_or_mismatched_clean_source_is_rejected_before_config(self):
+        cases = {
+            "foreign": ("/coordinator/.git", "/foreign/.git", SOURCE, ""),
+            "dirty": ("/shared/.git", "/shared/.git", SOURCE, "changed\\n"),
+            "mismatched": ("/shared/.git", "/shared/.git", "b" * 40, ""),
+        }
+        for name, (coordinator_common, source_common, head, status) in cases.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                coordinator = Path(directory) / "coordinator"
+                source_root = Path(directory) / "source"
+                coordinator.mkdir()
+                source_root.mkdir()
+
+                def run(argv, **_):
+                    if "--git-common-dir" in argv:
+                        common = coordinator_common if str(coordinator.resolve()) in argv else source_common
+                        return subprocess.CompletedProcess(argv, 0, common + "\n", "")
+                    if "rev-parse" in argv:
+                        return subprocess.CompletedProcess(argv, 0, head + "\n", "")
+                    if "--porcelain=v1" in argv:
+                        return subprocess.CompletedProcess(argv, 0, status, "")
+                    if "ls-remote" in argv:
+                        return subprocess.CompletedProcess(argv, 0, SOURCE + "\trefs/heads/dev\n", "")
+                    return subprocess.CompletedProcess(argv, 0, "vpnControlVersion=2.2.1\n", "")
+
+                with patch.object(fixture.subprocess, "run", side_effect=run), \
+                        patch("agent_tools.ssh_transport.load_config") as load_config:
+                    with self.assertRaises(fixture.LinuxPackageFixtureBuildError):
+                        fixture.preflight(coordinator, REQUEST, source_root=source_root)
+                load_config.assert_not_called()
+
+    def test_unusable_source_root_is_rejected_before_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            coordinator = Path(directory)
+            with patch("agent_tools.ssh_transport.load_config") as load_config:
+                with self.assertRaises(fixture.LinuxPackageFixtureBuildError):
+                    fixture.preflight(coordinator, REQUEST,
+                                      source_root=coordinator / "missing-worktree")
+            load_config.assert_not_called()
+
+    def test_symlinked_caller_source_root_is_rejected_before_git_or_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            coordinator = Path(directory) / "coordinator"
+            target = Path(directory) / "clean-source"
+            supplied = Path(directory) / "source-link"
+            coordinator.mkdir()
+            target.mkdir()
+            supplied.symlink_to(target, target_is_directory=True)
+            with patch.object(fixture.subprocess, "run") as run, \
+                    patch("agent_tools.ssh_transport.load_config") as load_config:
+                with self.assertRaises(fixture.LinuxPackageFixtureBuildError):
+                    fixture.preflight(coordinator, REQUEST, source_root=supplied)
+            run.assert_not_called()
+            load_config.assert_not_called()
+
+    def test_existing_coordinator_claim_blocks_clean_source_without_dispatch_or_new_claim(self):
+        with tempfile.TemporaryDirectory() as directory:
+            coordinator = Path(directory) / "coordinator"
+            clean_source = Path(directory) / "clean-source"
+            coordinator.mkdir()
+            clean_source.mkdir()
+            journal = fixture._directory(coordinator, create=True)
+            existing = {"correlationId": "be60b777-7593-40e9-9e95-91fb474ba3c8",
+                        "host": "archlinux"}
+            fixture._write_once(journal / "archlinux.claim", existing)
+            next_request = {**REQUEST, "correlationId": "22222222-2222-4222-8222-222222222222"}
+
+            class Driver:
+                def submit(self, _request):
+                    raise AssertionError("existing claim must prevent dispatch")
+
+            with patch.object(fixture, "preflight", side_effect=AssertionError("must not preflight")) as preflight:
+                observed = fixture.start(coordinator, next_request, source_root=clean_source,
+                                         driver=Driver())
+            self.assertEqual(observed["state"], "blocked")
+            self.assertEqual(observed["reason"], "build-host-already-claimed")
+            preflight.assert_not_called()
+            self.assertEqual(fixture._read(journal / "archlinux.claim"), existing)
+            self.assertFalse((journal / (next_request["correlationId"] + ".json")).exists())
+
+    def test_start_passes_clean_source_only_to_preflight_and_keeps_driver_at_coordinator(self):
+        with tempfile.TemporaryDirectory() as directory:
+            coordinator = Path(directory) / "coordinator"
+            clean_source = Path(directory) / "clean-source"
+            coordinator.mkdir()
+            clean_source.mkdir()
+            seen = []
+
+            class Driver:
+                def submit(self, request):
+                    seen.append(request)
+                    return {"state": "submitted", "correlationId": request["correlationId"]}
+
+            with patch.object(fixture, "preflight", return_value={"state": "ready"}) as preflight:
+                observed = fixture.start(coordinator, REQUEST, source_root=clean_source,
+                                         driver=Driver())
+            self.assertEqual(observed["state"], "submitted")
+            preflight.assert_called_once_with(coordinator.resolve(), REQUEST, source_root=clean_source)
+            self.assertEqual(seen, [REQUEST])
+            journal = fixture._directory(coordinator, create=False)
+            self.assertEqual(fixture._read(journal / (CORRELATION + ".json")), REQUEST)
+
     def test_oversized_remote_stream_is_rejected_before_disk_write(self):
         read_fd, write_fd = os.pipe()
         try:

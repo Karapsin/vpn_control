@@ -34,6 +34,28 @@ The normal `agent_tools/tests` discovery covers artifact equivalence, configured
 VM baselines, durable batch recovery and acceptance evidence aggregation. These
 checks do not replace native package, traffic, installer or visual acceptance.
 
+`agent_tools/tests/test_historical_fixture_checkout_bytes.py` uses real Git with
+Windows line-ending conversion enabled to verify exact historical `.source`
+fixtures retain their recorded bytes. It runs in ordinary discovery and Windows
+package CI; the fixture attributes disable text conversion without changing the
+preserved source or its historical hashes.
+
+Windows package CI also executes the actual generated replacement-task ordering
+control from `test_windows_cp117_source_campaign`: a newly active runtime or
+installer must refuse before any counted uninstall. This uses no-effect command
+stubs; real Windows MSI acceptance remains separate.
+
+Windows package CI runs explicit PowerShell parser/reflection cases from
+`test_windows_cp117_server_read_binding`, including the native FileRow
+PSObject-to-string argument conversion regression. Ordinary Linux discovery
+runs the complete module, including the saved POSIX AuthorityCapture fixture.
+The Windows selection keeps actual native coverage without invoking Arch-only
+descriptor admission on the Windows runner.
+It also runs the ordinary-account constructor/parser and native SID/sharing
+regressions from `test_windows_secondary_ordinary_read` and
+`test_windows_tertiary_guest_stage`. A preceding step requires native Windows
+PowerShell so a missing interpreter cannot turn these checks into skipped GREEN.
+
 ## Validation Tiers
 
 Use the smallest tier that gives meaningful coverage for the touched boundary.
@@ -492,6 +514,18 @@ existing foreign-owned ancestors fail admission without chmod/chown. Its `keytoo
 subcommand explicitly forwards the public CA store environment through sudo and
 runs as the target user. `test_linux_public_install_fixture.py` covers these setup
 boundaries in routine hygiene; it does not replace native authorization/install tests.
+
+`agent_tools.tests.test_linux_public_install_negative` discovers three quick
+cases from `scripts/test_linux_public_install_negative.py` in the ordinary
+agent-tool/prepush suite. Actual public-install harness and HTTP responder run
+with owned temporary files and harmless child processes. A corrupt wire stops
+before install and retains the original raw terminal; an honest control reaches
+the harness recovery assertions. Both perform explicit test cleanup. A fresh
+Python child verifies import search-path restoration and real harness identity.
+CLI checksum/install/status, package ownership and OS/TTY boundaries are
+simulated. These tests do not establish product checksum handling, settings
+preservation or native authorization/install acceptance. POSIX flow cases skip
+honestly on Windows; the import isolation case is portable.
 
 The opt-in `scripts/test_macos_install_enospc.py` runs in the macOS package job
 using its assigned temporary fixture directory. It injects ENOSPC after a partial

@@ -1,0 +1,23 @@
+{
+  "bytes": 11011,
+  "credentialsEmbedded": false,
+  "executionAuthority": false,
+  "generationFormat": "descriptor9-dev-ino-mode-uid-gid-nlink-size-mtime-ctime",
+  "kind": "public-source-only-historical-fixture",
+  "nativePayloadIncluded": false,
+  "originGeneration": [
+    16777234,
+    111952110,
+    33152,
+    503,
+    20,
+    1,
+    11011,
+    1791085824176747355,
+    1791085824176747355
+  ],
+  "schema": 1,
+  "sha256": "c466a58180280fc0606481b423f19e51f9900b82ea09718df4f3b8b504ad7782",
+  "source": ".runtime/parity-evidence/android-api29-installer-component-baseline-a0714d5f-d252-41ec-8074-8d6449f1caca/tools/agent_tools/android_external_java_component_transport.py",
+  "syntheticProtocolInputs": "TempFS only; hashes explicitly differ from retained native history"
+}

@@ -101,6 +101,31 @@ def next_action(tool: str, action: str, result: Mapping[str, Any] | Any) -> dict
     verification = result.get("verification")
     summary = " ".join(str(result.get(key, "")) for key in ("summary", "message", "reason")).lower()
 
+    if tool == "ssh_workflow" and result.get("ok") is True:
+        host = _host(result)
+        if (action in {"connection-session-retire", "connection-session-retirement-status"}
+                and state == "retired" and result.get("replayAllowed") is False and host is not None
+                and isinstance(result.get("receiptSha256"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", result["receiptSha256"])):
+            return _guidance("prepare-ssh-session", "completed dead-session history is retained; check or prepare the current owner",
+                             action={"tool": "ssh_workflow", "action": "connection-session-prepare", "args": {"host": host}}, fresh=True)
+        if (action in {"connection-session-prepare", "connection-session-status"}
+                and state == "ready" and result.get("replayAllowed") is False and host is not None
+                and isinstance(result.get("receiptSha256"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", result["receiptSha256"])):
+            if action == "connection-session-prepare":
+                return _guidance("observe-ssh-session", "revalidate the existing outer master receipt",
+                                 action={"tool": "ssh_workflow", "action": "connection-session-status",
+                                         "args": {"host": host, "identity": {"receiptSha256": result["receiptSha256"]}}}, fresh=True)
+            return _guidance("probe-ssh-session", "verify connectivity through the admitted outer master",
+                             action={"tool": "ssh_workflow", "action": "probe", "args": {"host": host}}, fresh=True)
+        if action == "connection-recover" and state == "recovery_master_ready" and host is not None:
+            return _guidance("adopt-recovered-ssh-master", "the recorded replacement master is ready for guarded inventory adoption",
+                             action={"tool": "ssh_workflow", "action": "connection-adopt", "args": {"host": host}}, fresh=True)
+        if action == "connection-adopt" and state == "ready" and result.get("replayAllowed") is False and host is not None:
+            return _guidance("probe-adopted-ssh-master", "verify connectivity through the adopted private route",
+                             action={"tool": "ssh_workflow", "action": "probe", "args": {"host": host}}, fresh=True)
+
     if tool == "ssh_workflow" and action == "job-status":
         if status == "running":
             return _observe_job(result, "the correlated job is still running")
@@ -121,6 +146,15 @@ def next_action(tool: str, action: str, result: Mapping[str, Any] | Any) -> dict
 
     if tool == "ssh_workflow" and action == "probe" and status in {"timeout", "connection_failed", "ssh_failed"}:
         return _retry_probe(result, "the bounded read-only connectivity probe did not establish a result")
+
+    if tool == "ssh_workflow" and action == "probe" and status == "nested_master_absent" and result.get("ok") is False:
+        # Only the fixed probe produces this typed, configured-hop observation.
+        # Never copy an adapter's nextAction or derive a route from stderr.
+        hop = result.get("recoveryHost")
+        if not isinstance(hop, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", hop) is None:
+            return _guidance("inspect-evidence", "missing master has no valid configured hop", fresh=True)
+        return _guidance("recover-configured-ssh-master", "the exact configured nested master is confirmed absent",
+                         action={"tool": "ssh_workflow", "action": "connection-recover", "args": {"host": hop}}, fresh=True)
 
     if tool == "vm_workflow" and action in {"scenario-start", "scenario-status", "scenario-resume", "scenario-collect"}:
         if state in {"submitted", "submitting", "unknown"}:

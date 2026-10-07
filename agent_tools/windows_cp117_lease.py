@@ -8,7 +8,6 @@ marker alone is never native admission. An uncertain transport result is sticky.
 """
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
@@ -227,6 +226,10 @@ def _write(path: Path, value: Mapping[str, Any], *, create: bool = False) -> Non
 
 
 def _locked(root: Path):
+    try:
+        import fcntl
+    except ModuleNotFoundError as exc:
+        raise Cp117LeaseError('CP117 campaign locking is unsupported.') from exc
     directory = _directory(root)
     fd = os.open(directory / ".environment.lock", os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
     info = os.fstat(fd)

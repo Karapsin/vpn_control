@@ -1,0 +1,107 @@
+"""Fixed metadata-only probe of the measured API29 system-image alias.
+
+No generic symlink traversal or AVD launch is permitted. Original failed census
+and diagnostic are authenticated and remain historical unknown observations.
+"""
+from __future__ import annotations
+import ast
+import hashlib
+import json
+from pathlib import Path
+from . import android_avd_launch_recovery as census
+from . import android_device_availability as availability
+
+DIAGNOSTIC_ID='9537ae01-36da-4469-943d-2a0010df3f54'
+DIAGNOSTIC_SHA='fbdd04baa201a1449c75efcd942a72c56ee2513c3d1cb5756982d62f4f361d59'
+CENSUS_SHA='0d4ac9875ef793d8d1ebfe613f5c89557e1ac027d8fbbc6ff6ab084fc6f57e4d'
+_ALIAS=r'''
+ALIAS=__ALIAS__
+def alias_fact():
+ chain,name=parent_fds(pathlib.Path(ALIAS['path']))
+ try:
+  for item,wanted in zip(chain[1:],ALIAS['ancestors']):
+   if item['pin']!=wanted:raise ValueError('alias_ancestor_changed')
+  info=os.stat(name,dir_fd=chain[-1]['fd'],follow_symlinks=False)
+  if not stat.S_ISLNK(info.st_mode) or fp(info)!=ALIAS['generation']:raise ValueError('alias_link_changed')
+  target=os.readlink(name,dir_fd=chain[-1]['fd'])
+  if len(target)>256 or not re.fullmatch(r'[A-Za-z0-9_./-]+',target):raise ValueError('alias_target_unadmitted')
+  normalized=os.path.normpath(target if target.startswith('/') else str(pathlib.Path(ALIAS['path']).parent/target))
+  matched=normalized==ALIAS['target']
+  result={'linkGeneration':fp(info),'linkText':target,'normalizedTarget':normalized,'targetMatchesKnownSDK':matched,'leaves':{},'allLeavesMatchHistorical':False}
+  if matched:
+   target_chain,unused=parent_fds(pathlib.Path(ALIAS['target'])/'__alias_target_descriptor__')
+   try:
+    result['targetDirectoryGeneration']=target_chain[-1]['pin']
+    for relative,expected in ALIAS['leaves'].items():
+     current=facts(pathlib.Path(ALIAS['target'])/relative,16777216,relative.endswith('/package.xml'))
+     result['leaves'][relative]={'facts':current,'matchesHistorical':current==expected}
+    result['allLeavesMatchHistorical']=all(v['matchesHistorical'] for v in result['leaves'].values())
+    guard_parents(target_chain)
+   finally:close_parents(target_chain)
+  if fp(os.stat(name,dir_fd=chain[-1]['fd'],follow_symlinks=False))!=ALIAS['generation'] or os.readlink(name,dir_fd=chain[-1]['fd'])!=target:raise ValueError('alias_link_changed')
+  guard_parents(chain)
+  return result
+ finally:close_parents(chain)
+def alias_capture():
+ if os.getuid()!=0 or os.geteuid()!=0:raise ValueError('alias_root_required')
+ chain,unused=parent_fds(ROOT/'__alias_capsule_root__')
+ try:
+  parent=os.fstat(chain[-1]['fd'])
+  if parent.st_uid!=1000 or stat.S_IMODE(parent.st_mode)!=0o700:raise ValueError('alias_root_changed')
+  proof_path=ROOT/('android-avd-preflight-'+CFG['proofCorrelation']+'.json');observed=read_fixed(proof_path,524288);raw=observed.pop('raw')
+  if observed!=CFG['proofPin']:raise ValueError('alias_proof_changed')
+  proof=json.loads(raw)
+  diagnostic=read_fixed(ROOT/('android-avd-privileged-census-'+ALIAS['diagnosticId']+'.json'),524288);diagnostic.pop('raw')
+  if diagnostic!=ALIAS['diagnosticPin']:raise ValueError('alias_diagnostic_changed')
+  observations=[]
+  for number in range(2):
+   guard_proof(proof)
+   try:observations.append(alias_fact())
+   except (OSError,ValueError,UnicodeError) as exc:
+    reason=str(exc) if str(exc) in {'alias_ancestor_changed','alias_link_changed','alias_target_unadmitted','census_ancestry_changed','census_file_changed','census_file_type'} else 'alias_observation_unadmitted'
+    observations.append({'error':reason,'pass':number+1})
+   guard_proof(proof)
+  observed=read_fixed(proof_path,524288);observed.pop('raw')
+  diagnostic=read_fixed(ROOT/('android-avd-privileged-census-'+ALIAS['diagnosticId']+'.json'),524288);diagnostic.pop('raw')
+  if observed!=CFG['proofPin'] or diagnostic!=ALIAS['diagnosticPin']:raise ValueError('alias_history_changed')
+  stable=len(observations)==2 and all('error' not in o for o in observations) and observations[0]==observations[1]
+  summary={'stable':stable,'knownTargetMatched':stable and observations[0]['targetMatchesKnownSDK'],'historicalLeafFactsMatched':stable and observations[0]['allLeavesMatchHistorical'],'lifecycleAllowed':False,'productAdmitted':False}
+  result={'schema':1,'kind':'readonly-exact-sdk-alias-provenance','correlationId':CFG['correlationId'],'source':CFG['source'],'localClaims':CFG['localClaims'],'proofPin':CFG['proofPin'],'diagnosticPin':ALIAS['diagnosticPin'],'observations':observations,'summary':summary,'lifecycleAllowed':False,'historicalOutcomesPreserved':True}
+  data=(json.dumps(result,sort_keys=True,separators=(',',':'))+'\n').encode();name='android-avd-privileged-census-'+CFG['correlationId']+'.json'
+  write_capsule(chain,name,data);pin=read_fixed(ROOT/name,524288);pin.pop('raw');guard_parents(chain)
+  print(json.dumps({'state':'captured','correlationId':CFG['correlationId'],'name':name,'pin':pin,'summary':summary},separators=(',',':')))
+ finally:close_parents(chain)
+alias_capture()
+'''
+
+def prepare_observation(root: Path,correlation: str) -> dict:
+    root=Path(root).absolute();prepared=census.prepare_privileged_census(root,correlation)
+    old=Path(census.__file__).absolute();old_raw=prepared['snapshots'][old][1]
+    if hashlib.sha256(old_raw).hexdigest()!=CENSUS_SHA:raise ValueError('alias_consumed_source_changed')
+    base=root/'.runtime/parity-evidence'/('android-avd-census-diagnostic-'+DIAGNOSTIC_ID);saved={}
+    for name in ('remote-full.json','result.json'):
+        path=base/name;pin,raw=availability._snapshot(path);prepared['snapshots'][path]=(pin,raw);saved[name]=json.loads(raw)
+        if name=='remote-full.json' and hashlib.sha256(raw).hexdigest()!=DIAGNOSTIC_SHA:raise ValueError('alias_diagnostic_changed')
+    observations=saved['remote-full.json']['observations']
+    if len(observations)!=2 or observations[0]!=observations[1] or observations[0].get('phase')!='api29-sdk-kernel' or observations[0].get('reason')!='not-directory':raise ValueError('alias_cause_unproved')
+    ancestry=observations[0]['ancestry'];links=[x for x in ancestry if x['kind']=='symlink']
+    if len(links)!=1 or links[0]['level']!=5:raise ValueError('alias_cause_unproved')
+    proof_path=root/'.runtime/parity-evidence/android-current'/('owned-avd-preflight-'+census.PROOF_ID+'.json');proof=json.loads(prepared['snapshots'][proof_path][1]);sdk=proof['observations'][0]['avds']['api29']['sdkFiles']
+    kernels=[Path(name) for name in sdk if Path(name).name=='kernel-ranchu']
+    if len(kernels)!=1:raise ValueError('alias_kernel_selection_changed')
+    alias=Path(*kernels[0].parts[:6]);expected=Path(census.preflight.OWNED['api29']['sdk'])/'system-images'
+    if alias!=expected:raise ValueError('alias_path_changed')
+    target=Path(census.preflight.OWNED['api35']['sdk'])/'system-images'
+    leaves={str(Path(name).relative_to(alias)):value for name,value in sdk.items() if Path(name).is_relative_to(alias)}
+    diagnostic_pin=saved['result.json']['pin']
+    if diagnostic_pin['sha256']!=DIAGNOSTIC_SHA or diagnostic_pin['generation'][2]!=3607:raise ValueError('alias_diagnostic_pin_changed')
+    binding={'path':str(alias),'generation':links[0]['generation'],'ancestors':[v['generation'] for v in ancestry if v['level']<5],'target':str(target),'leaves':leaves,'diagnosticId':DIAGNOSTIC_ID,'diagnosticPin':diagnostic_pin}
+    own=Path(__file__).absolute();pin,raw=availability._snapshot(own);prepared['snapshots'][own]=(pin,raw);prepared['binding']['source'][str(own.relative_to(root))]=hashlib.sha256(raw).hexdigest()
+    template=ast.literal_eval(next(n.value for n in ast.parse(old_raw).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_CENSUS' for t in n.targets)))
+    extra=ast.literal_eval(next(n.value for n in ast.parse(raw).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_ALIAS' for t in n.targets)))
+    if not template.endswith('capture()\n'):raise ValueError('alias_frozen_dispatch_changed')
+    program=template[:-len('capture()\n')].replace('__CFG__',repr(prepared['binding']))+extra.replace('__ALIAS__',repr(binding))
+    compile(program,'<fixed-sdk-alias-observation>','exec');prepared['program']=program;census.guard_prepared(prepared);return prepared
+
+def guard_prepared(prepared: dict) -> None:
+    census.guard_prepared(prepared)

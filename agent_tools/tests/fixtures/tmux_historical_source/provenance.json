@@ -1,0 +1,22 @@
+{
+  "scope": "Historical source-only inert test family; not native admission.",
+  "producerProvenance": "Producer reconstructed by inverse of independently reviewed timeout-only delta; exact known whole-source SHA matches. Original physical inode is not claimed.",
+  "sources": {
+    "linux_package_fixture_build.py": {
+      "sha256": "2aeaef328f9ccb9b7a1d929603929c9ee1fbb827c027ca09d3953dc0cb00a8c8",
+      "origin": ".runtime/parity-evidence/checkpoint-review-continuation/linux-producer-2aea.reconstructed.source"
+    },
+    "ssh_tmux_session.py": {
+      "sha256": "468adbbb45d7b68de50c6df601cf9c25421ef0e09ca3b1c13dddb1dffc580fb3",
+      "origin": ".runtime/checkpoint-final-linux-review/tmux-pin-before/0-ssh_tmux_session.py"
+    },
+    "ssh_tmux_session_ssh.py": {
+      "sha256": "bec936bd1a34679939a817777443255fbb7c6d5fc2adafc3193e25ce9ed07c44",
+      "origin": ".runtime/checkpoint-final-linux-review/tmux-pin-before/2-ssh_tmux_session_ssh.py"
+    },
+    "ssh_tmux_source_staging_recovery.py": {
+      "sha256": "841cd9f40b045df5471184fca0997ce0d51151741db0f12d0b66d10f6fc36749",
+      "origin": ".runtime/tmux-pin-cascade-fix/before/ssh_tmux_source_staging_recovery.py"
+    }
+  }
+}

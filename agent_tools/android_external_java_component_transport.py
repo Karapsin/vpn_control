@@ -1,0 +1,123 @@
+"""Source-bound external-JDK component backend; callers retain native authority.
+
+This supplies only fixed public reads/diagnostics, never launcher acceptance.
+The caller must retain its guest/stage guards and fence diagnostics effects.
+"""
+from __future__ import annotations
+import ast, hashlib, json
+from pathlib import Path
+from . import android_api29_external_java_observation as proven
+from . import android_device_availability as availability
+from . import android_coldboot_product_observation as getter_source
+from . import android_api29_current_permission_observation as bounded_source
+SOURCE_SHA='03b0ad004aed35ae0afa20664ed2aafa7aeeeefed76ea7cd4c0e529343ac4239'
+CENSUS_SHA='325dc3cc8e77c60d577dfcc91f773afbf2b03f234d8c7ebeb10cc84eb9e73c74'
+PROOF='.runtime/parity-evidence/android-api29-external-java-compare-a8352c31-26d7-4a63-b4b0-b918e8d26b8b/result-0.private'
+PROOF_SHA='936fced918f7c29c5ad784e382f7113c960ce4e219d6da356dcae267505713a1'
+DEVICES={'android-api29':'emulator-5684','android-api35':'emulator-5682'}
+_BACKEND=r'''
+def component_cli(words,owner=None):
+ import base64
+ if type(words)is not list or any(type(x)is not str for x in words):raise ValueError('component_fixed_command_required')
+ fixed=words in (['status'],['operations','list'])
+ operation=len(words)==3 and words[:2] in (['operations','status'],['operations','wait']) and re.fullmatch('[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}',words[2]) is not None
+ diagnostic=words==['diagnostics','export','--output','-']
+ if not (fixed or operation or diagnostic):raise ValueError('component_fixed_command_required')
+ if owner is not None and (type(owner)is not str or not re.fullmatch('[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}',owner)):raise ValueError('component_owner_invalid')
+ if (operation or diagnostic) and owner is None:raise ValueError('component_owner_required')
+ if {k:GETTER[k] for k in ('cli','stageId','packageSha256','manifestSha256')}!=EXTERNAL['getterIdentity']:raise ValueError('component_stage_identity_changed')
+ if set(LAUNCH['environment'])!={'ANDROID_AVD_HOME','ANDROID_HOME','ANDROID_SDK_ROOT','HOME','LOGNAME','PATH','USER'}:raise ValueError('component_fixed_environment_required')
+ external_jdk_guard();stage=getter_stage()
+ try:
+  jdk=EXTERNAL['selectedJdk'];path=pathlib.Path(jdk['root'])/'bin/java';appdir=str(pathlib.Path(GETTER['cli']).parent.parent/'lib/app')
+  args=[*[option.replace('$APPDIR',appdir) for option in EXTERNAL['javaOptions']],'-cp',':'.join(appdir+'/'+name for name in EXTERNAL['classpath']),'com.kardinal.vpncontrol.desktop.MainKt']
+  args+=['--android','--serial',EXTERNAL['serial'],'--timeout-seconds','30',*(['--controller-id',owner] if owner else [])]
+  if not diagnostic:args+=['--json']
+  args+=words
+  environment=public_cli_environment(LAUNCH['adbPath'],pathlib.Path(GETTER['cli']),LAUNCH['environment'])
+  result=getter_binary(path,jdk['files']['bin/java']['generation'],args,environment,limit=1048576)
+  # getter_bounded retains both streams before decoding and returns only after EOF/wait.
+  captures=GETTER_RECORDS.get('captures',[])
+  if not captures:raise ValueError('component_capture_missing')
+  capture=captures[-1]
+  if type(result.get('returncode'))is not int or result['returncode']!=0 or result.get('stderrRaw')!='' or type(result.get('stdoutRaw'))is not str or capture.get('failure')is not None or type(capture.get('returncode'))is not int or capture['returncode']!=0 or capture.get('stdoutBase64')!=base64.b64encode(result['stdoutRaw'].encode()).decode() or capture.get('stderrBase64')!='' or type(capture.get('stdoutBytes'))is not int or capture.get('stdoutBytes')!=len(result['stdoutRaw'].encode()) or type(capture.get('stderrBytes'))is not int or capture.get('stderrBytes')!=0:raise ValueError('component_public_failed')
+  result.update(componentRuntime='EXTERNAL_JDK',backendSourceSha256=EXTERNAL['backendSourceSha256'],captureComplete=True,installedLauncherAccepted=False,bundledRuntimeAccepted=False)
+  if not diagnostic:
+   try:result['stdout']=json.loads(result['stdoutRaw'])
+   except (ValueError,TypeError):raise ValueError('component_public_invalid_json')
+  return result
+ finally:
+  try:external_jdk_guard()
+  finally:
+   if getter_stage()!=stage:raise ValueError('component_stage_generation_changed')
+'''
+
+def _assignment(tree,name):
+ nodes=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets)]
+ if len(nodes)!=1:raise ValueError('component_assignment_changed')
+ return ast.literal_eval(nodes[0].value)
+
+def guard(prepared):
+ for path,snapshot in prepared['snapshots'].items():
+  if availability._snapshot(path)!=snapshot:raise ValueError('component_source_changed')
+
+def prepare_binding(root:Path,prepared:dict,device:str)->dict:
+ if type(device)is not str or device not in DEVICES:raise ValueError('component_device_required')
+ root=Path(root).absolute();guard(prepared)
+ def saved(path,sha=None):
+  path=Path(path).absolute();snapshot=availability._snapshot(path)
+  if sha is not None and hashlib.sha256(snapshot[1]).hexdigest()!=sha:raise ValueError('component_proof_source_changed')
+  if path in prepared['snapshots'] and prepared['snapshots'][path]!=snapshot:raise ValueError('component_source_changed')
+  prepared['snapshots'][path]=snapshot;return snapshot[1]
+ source=saved(proven.__file__,SOURCE_SHA);own=saved(__file__)
+ getter=_assignment(ast.parse(prepared['program']),'GETTER')
+ if getter['generation']['device'].get('sdk')!=device.removeprefix('android-api') or getter['generation']['device'].get('matched')is not True:raise ValueError('component_crossed_device')
+ saved(getter_source.__file__,'d90b7c6338163bd46ea0c89b8582af45f10e9376b94d9b08c4e6902cfdc1c885')
+ saved(bounded_source.__file__,'818fef810405e93f06f7665252044ffdf4440d1e8388029ffa4a80b4c1623838')
+ census=json.loads(saved(root/proven.CENSUS,CENSUS_SHA));proof=json.loads(saved(root/PROOF,PROOF_SHA))
+ if proof.get('componentFlowObserved')is not True or proof.get('closingGuardsVerified')is not True or proof.get('jdkClosingGuardsVerified')is not True or proof.get('installedLauncherAccepted')is not False or proof.get('bundledRuntimeAccepted')is not False:raise ValueError('component_comparison_unadmitted')
+ selected=proven._selected(census,{k:census[k] for k in ('sourceSha256','originalSourceSha256','baselineSha256','generation','stageId','packageSha256')})
+ if census['sourceSha256']!=SOURCE_SHA or census['originalSourceSha256']!=proven.ORIGINAL_SHA or census['baselineSha256']!=proven.BASELINE_SHA or selected is None or proof.get('selectedJdk')!=selected:raise ValueError('component_jdk_proof_changed')
+ config=saved(root/'.rag_index/android-cli-stages'/getter['stageId']/'tree/opt/vpn-control/lib/app/vpn-control.cfg')
+ classes,options=proven._configuration(config,getter['manifest'])
+ binding={'candidates':proven.CANDIDATES,'jdkFiles':list(proven.JDK_FILES),'selectedJdk':selected,'classpath':classes,'javaOptions':options,'serial':DEVICES[device],'getterIdentity':{k:getter[k] for k in ('cli','stageId','packageSha256','manifestSha256')},'backendSourceSha256':hashlib.sha256(own).hexdigest(),'provenSourceSha256':SOURCE_SHA,'censusSha256':CENSUS_SHA,'comparisonSha256':PROOF_SHA}
+ guard(prepared);return binding
+
+def install(prepared:dict,binding:dict,hook:str='getter_cli')->dict:
+ if hook!='getter_cli':raise ValueError('component_fixed_hook_required')
+ guard(prepared)
+ if binding.get('backendSourceSha256')!=hashlib.sha256(availability._snapshot(Path(__file__).absolute())[1]).hexdigest() or binding.get('serial') not in DEVICES.values():raise ValueError('component_binding_changed')
+ # Binding must equal the factory result; caller edits cannot introduce JVM inputs.
+ root=Path(__file__).resolve().parents[1]
+ device=next(k for k,v in DEVICES.items() if v==binding['serial'])
+ if prepare_binding(root,prepared,device)!=binding:raise ValueError('component_binding_changed')
+ tree=ast.parse(prepared['program']);hooks=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==hook]
+ if len(hooks)!=1:raise ValueError('component_hook_changed')
+ expected_tree=ast.parse(getter_source._GETTER.replace('__GETTER__',repr({})))
+ expected=next(n for n in expected_tree.body if isinstance(n,ast.FunctionDef) and n.name==hook)
+ # The reviewed API35 factory only changes its exact fixed serial literal.
+ expected_text=ast.unparse(expected).replace("'emulator-5684'",repr(binding['serial']))
+ if ast.unparse(hooks[0])!=expected_text:raise ValueError('component_hook_changed')
+ expected_bounded=next(n for n in ast.parse(bounded_source._OBSERVER).body if isinstance(n,ast.FunctionDef) and n.name=='getter_bounded')
+ actual_bounded=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='getter_bounded']
+ if len(actual_bounded)!=1:raise ValueError('component_capture_source_changed')
+ bounded_hash=hashlib.sha256(ast.unparse(actual_bounded[0]).encode()).hexdigest()
+ if ast.dump(actual_bounded[0])!=ast.dump(expected_bounded):
+  old29=next(n for n in expected_tree.body if isinstance(n,ast.FunctionDef) and n.name=='getter_bounded')
+  accepted29=binding['serial']=='emulator-5684' and ast.dump(actual_bounded[0])==ast.dump(old29)
+  accepted35=binding['serial']=='emulator-5682' and bounded_hash=='3d72179faa888355f54b1b58464f73cd015a71667063587a8eb2816c8721207b'
+  if not (accepted29 or accepted35):raise ValueError('component_capture_source_changed')
+  # Upgrade only exact reviewed old readers to the frozen raw-retaining reader.
+  tree.body[tree.body.index(actual_bounded[0])]=expected_bounded
+ binary=next(n for n in expected_tree.body if isinstance(n,ast.FunctionDef) and n.name=='getter_binary')
+ actual_binary=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='getter_binary']
+ if len(actual_binary)!=1 or ast.dump(actual_binary[0])!=ast.dump(binary):raise ValueError('component_capture_source_changed')
+ if any(isinstance(n,(ast.FunctionDef,ast.Assign)) and (getattr(n,'name','').startswith(('component_','external_')) or isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='EXTERNAL' for t in n.targets)) for n in tree.body):raise ValueError('component_backend_already_present')
+ template=_assignment(ast.parse(availability._snapshot(Path(proven.__file__).absolute())[1]),'_REMOTE')
+ remote=ast.parse(template.replace('__EXTERNAL__',repr(binding)))
+ functions=[n for n in remote.body if isinstance(n,ast.FunctionDef) and n.name in ('external_file','external_jdk','external_jdk_guard')]
+ if len(functions)!=3:raise ValueError('component_proven_generator_changed')
+ tree.body=[n for n in tree.body if n not in hooks]
+ backend=ast.parse('EXTERNAL='+repr(binding)+'\n'+ast.unparse(ast.Module(body=functions,type_ignores=[]))+'\n'+_BACKEND+'\ndef getter_cli(words,owner=None):\n return component_cli(words,owner)\n')
+ tree.body[-1:-1]=backend.body
+ prepared['program']=ast.unparse(tree)+'\n';compile(prepared['program'],'<external-component-backend>','exec');guard(prepared);return prepared

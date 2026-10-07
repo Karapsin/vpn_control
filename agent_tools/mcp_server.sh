@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Desktop-injected dylibs can write diagnostics into exact MCP/SSH protocols.
+# Clear this before starting any child, preserving all other environment fields.
+unset DYLD_INSERT_LIBRARIES
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 requirements="$repo_root/agent_tools/requirements-mcp.txt"
 environment="$repo_root/.agent_venv"

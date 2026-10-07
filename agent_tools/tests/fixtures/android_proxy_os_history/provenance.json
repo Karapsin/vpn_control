@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "fixture": "retirement_3eed5a2e.source",
+  "sourceModule": "agent_tools/android_installer_failed_check_retirement.py",
+  "sha256": "3eed5a2ecf544ab306e79847152145e1d78112bd5f40ec00f66a8638e0c40f7c",
+  "sizeBytes": 97525,
+  "retainedArchive": ".runtime/parity-evidence/android-api35-original-claim-readiness-0c487463-d15e-4681-b0e7-0642001f0f5a/readiness-source-96-0.private",
+  "purpose": "Exact historical source for inert proxy observation composition tests. Only pure source factories/private tempfile helpers may execute. No native entry point, host transport, fencing or lease operation is called. Archive is provenance only, never a routine prerequisite. Production historical pins remain unchanged.",
+  "testImportSeam": "Historical namespace fcntl import is replaced with an isolated module whose every locking attribute raises historical_native_locking_forbidden, including on POSIX. No global import/module patch or historical native locking authority."
+}

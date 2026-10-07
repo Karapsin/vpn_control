@@ -15,6 +15,11 @@ import stat
 import subprocess
 from typing import Any, Callable, Mapping
 
+try:
+    from . import native_review_source_closure as source_custody
+except ImportError:  # MCP script import
+    import native_review_source_closure as source_custody
+
 
 _SHA = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\Z")
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\Z")
@@ -48,50 +53,97 @@ def checkout_state(root: Path) -> dict[str, bool]:
     return {"worktreeDirty": dirty, "checkoutExact": not dirty}
 
 
+class _ArtifactIndexHold(source_custody._Held):
+    """Shared ancestor/file custody with bounded self-observed record bytes."""
+
+    def __init__(self, maximum: int):
+        super().__init__()
+        self.maximum = maximum
+
+    def record(self, path: str) -> bytes:
+        parent, name = os.path.split(path)
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     dir_fd=self.directory(parent))
+        self.fds.append(fd)
+        info = os.fstat(fd)
+        generation = source_custody.generation(info)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or
+                stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or
+                info.st_size > self.maximum):
+            raise ValueError("Artifact index record is unsafe.")
+        raw = os.pread(fd, self.maximum + 1, 0)
+        if len(raw) != info.st_size or source_custody.generation(os.fstat(fd)) != generation:
+            raise ValueError("Artifact index record changed.")
+        self.files[path] = fd, generation, hashlib.sha256(raw).hexdigest(), raw
+        return raw
+
+    def close_records(self) -> None:
+        # Bound the last full-byte read too, before the final pure metadata pass.
+        for fd, generation, digest, _ in self.files.values():
+            raw = os.pread(fd, self.maximum + 1, 0)
+            if len(raw) != generation[6] or hashlib.sha256(raw).hexdigest() != digest:
+                raise ValueError("Artifact index record changed.")
+
+
+def _index_names(fd: int) -> list[str]:
+    names = []
+    with os.scandir(fd) as entries:
+        for entry in entries:
+            names.append(entry.name)
+            if len(names) > 1000:
+                raise ValueError("Artifact index is too large for a bounded status view.")
+    return sorted(names)
+
+
 def read_artifact_index(root: Path, source: str, registry: Any) -> dict[str, Any]:
     """Read the immutable index without its normal lock/cleanup/create path."""
     if not isinstance(source, str) or not _SHA.fullmatch(source):
         raise ValueError("Artifact source is invalid.")
-    owner_uid = getattr(os, "getuid", lambda: None)()
-    if owner_uid is None:
+    if os.name != "posix" or not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "getuid"):
         raise ValueError("Read-only artifact index requires owner identity.")
-    for path in (root, root / ".rag_index", root / ".rag_index" / "native-artifacts"):
-        try:
-            info = path.lstat()
-        except FileNotFoundError:
-            if path != root:
+    # abspath is lexical; no ancestor symlink is resolved before held opens.
+    root = Path(os.path.abspath(root))
+    held = _ArtifactIndexHold(registry.MAX_RECORD_BYTES)
+    try:
+        for path in (root, root / ".rag_index", root / ".rag_index" / "native-artifacts"):
+            try:
+                fd = held.directory(str(path))
+            except FileNotFoundError:
+                if path == root:
+                    raise ValueError("Artifact root is unavailable.") from None
+                held.final_identity_pass()
                 return {"matches": [], "records": {}}
-            raise ValueError("Artifact root is unavailable.")
-        if path.is_symlink() or not stat.S_ISDIR(info.st_mode):
-            raise ValueError("Artifact index path is unsafe.")
-        if path != root and (info.st_uid != owner_uid or stat.S_IMODE(info.st_mode) != 0o700):
-            raise ValueError("Artifact index ownership is uncertain.")
-    index = root / ".rag_index" / "native-artifacts"
-    entries = sorted(index.iterdir(), key=lambda path: path.name)
-    if len(entries) > 1000:
-        raise ValueError("Artifact index is too large for a bounded status view.")
+            info = os.fstat(fd)
+            if path != root and (info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700):
+                raise ValueError("Artifact index ownership is uncertain.")
+        index = root / ".rag_index" / "native-artifacts"
+        index_fd = held.directory(str(index))
+        entries = _index_names(index_fd)
+        result = _read_index_records(index, entries, source, registry, held)
+        held.close_records()
+        if _index_names(index_fd) != entries:
+            raise ValueError("Artifact index membership changed.")
+        held.final_identity_pass()
+        return result
+    finally:
+        held.close()
+
+
+def _read_index_records(index: Path, entries: list[str], source: str, registry: Any,
+                        held: _ArtifactIndexHold) -> dict[str, Any]:
     matches = []
     records: dict[str, dict[str, Any]] = {}
-    for path in entries:
-        if path.name == ".lock":
+    for name in entries:
+        if name == ".lock":
             continue
-        if not re.fullmatch(r"sha256-[0-9a-f]{64}\.json", path.name):
+        if not re.fullmatch(r"sha256-[0-9a-f]{64}\.json", name):
             raise ValueError("Artifact index contains an incomplete or unsafe entry.")
+        path = index / name
         # The normal registry reader migrates schema 1 in place.  Refuse that
         # case before invoking it so this status view never performs a write.
-        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
-        with os.fdopen(fd, "rb") as stream:
-            info = os.fstat(stream.fileno())
-            raw = stream.read(registry.MAX_RECORD_BYTES + 1)
-            after = os.fstat(stream.fileno())
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != owner_uid or
-                stat.S_IMODE(info.st_mode) != 0o600 or len(raw) > registry.MAX_RECORD_BYTES or
-                (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns) !=
-                (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) or
-                len(raw) != info.st_size):
-            raise ValueError("Artifact index record is unsafe.")
+        raw = held.record(str(path))
         try:
-            record = json.loads(raw.decode("utf-8"))
+            record = json.loads(raw.decode("utf-8"), object_pairs_hook=source_custody._pairs)
         except (UnicodeDecodeError, json.JSONDecodeError, AttributeError) as error:
             raise ValueError("Artifact index record is corrupt.") from error
         if not isinstance(record, dict) or record.get("schemaVersion") != 2:
@@ -295,12 +347,23 @@ def matrix_status_readonly(root: Path, source: str, matrix: Any, registry: Any,
     records = [] if directory is None else matrix._records_read_only(directory, requirements)
     retracted = set() if directory is None else matrix._read_retractions(directory, requirements)
     records = [record for record in records if record["receiptId"] not in retracted]
+    links = [] if directory is None else matrix._equivalences_read_only(directory, requirements, root, source)
+    by_receipt = {record["receiptId"]: record for record in records}
+    for link in links:
+        if link["receiptId"] in by_receipt:
+            by_receipt[link["receiptId"]]["_equivalenceLink"] = link
     indexed = artifact_index.get("records")
     if not isinstance(indexed, Mapping):
         raise ValueError("Read-only artifact index is incomplete.")
     for record in records:
         record["_verificationError"] = None
-        if record["originalSourceSHA"] != source:
+        equivalent = record.get("_equivalenceLink", {}).get("targetSourceSHA") == source
+        if record["originalSourceSHA"] != source and not equivalent:
+            continue
+        # _equivalences_read_only already replays the committed Git proof and
+        # frozen artifact/runtime/signer verification.  The current-source
+        # index intentionally cannot relabel those original-source artifacts.
+        if equivalent:
             continue
         try:
             matrix._verify_evidence(root, record["evidencePath"], record["evidenceHash"])
@@ -448,7 +511,7 @@ def acceptance_status(matrix: Mapping[str, Any], request: Mapping[str, Any],
         selected = [row for row in rows if isinstance(row, Mapping) and row.get("platform") == platform]
         if not selected:
             raise ValueError("Acceptance matrix lacks a platform.")
-        reviewed = {artifact for row in selected if row.get("originalSourceSHA") == source
+        reviewed = {artifact for row in selected if row.get("originalSourceSHA") == source or row.get("equivalentToSourceSHA") == source
                     for artifact in row.get("immutableArtifactIDs", [])
                     if isinstance(artifact, str) and re.fullmatch(r"sha256-[0-9a-f]{64}", artifact)}
         registered = {item["artifactId"]: item.get("artifactKind")
@@ -457,7 +520,7 @@ def acceptance_status(matrix: Mapping[str, Any], request: Mapping[str, Any],
                       item.get("sourceSha") == source and isinstance(item.get("artifactId"), str) and
                       re.fullmatch(r"sha256-[0-9a-f]{64}", item["artifactId"])}
         artifacts = [{"sha256": identifier, "kind": registered.get(identifier),
-                      "evidence": "reviewed-current-matrix" if identifier in reviewed else
+                      "evidence": "reviewed-current-or-equivalent-matrix" if identifier in reviewed else
                                   (artifact_verification or {}).get(identifier, "registered-unverified")}
                      for identifier in sorted(reviewed | registered.keys())]
         artifact_evidence = {item["evidence"] for item in artifacts}

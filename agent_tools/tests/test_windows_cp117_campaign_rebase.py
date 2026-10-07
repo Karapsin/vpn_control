@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import tempfile
+import json
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -125,3 +127,44 @@ class CampaignRebaseTests(unittest.TestCase):
              patch.object(rebase.lease, "_closed", return_value=closed), patch.object(rebase.lease, "_remote_confirm", return_value=True):
             with self.assertRaises(rebase.WindowsCp117CampaignRebaseError):
                 rebase._previous_closed(Path(temporary), REQUEST, DESC, object(), object(), "e" * 64)
+
+    def test_readonly_closed_proof_is_private_exact_fresh_and_never_writes(self):
+        from agent_tools import windows_cp117_historical_base_archives as history
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);directory=root/rebase.lease._DIR
+            directory.mkdir(parents=True,mode=0o700);directory.parent.chmod(0o700)
+            lock=directory/'.environment.lock';lock.write_bytes(b'');lock.chmod(0o600)
+            identity=rebase.base._campaign_identity({**REQUEST,'correlationId':OLD},DESC)
+            closed={'version':1,'identity':identity,'sequence':7,'state':'closed','role':None,'correlationId':None,'lastOutcome':'failed-cleaned','lastEvidenceSha256':'e'*64,'server':'stopped','credentials':'absent'}
+            path=directory/(OLD+'.closed.json')
+            def save(value):path.write_text(json.dumps(value));path.chmod(0o600)
+            save(closed);before=set(root.rglob('*'))
+            with patch.object(rebase.lease,'_remote_confirm',return_value=True),patch.object(rebase.base,'_campaign_remote',return_value=object()),patch.object(rebase.lease,'_locked',side_effect=AssertionError('exclusive mutation lock')):
+                with history._history_lock(root):rebase._previous_closed_readonly(root,REQUEST,DESC,object(),object(),'e'*64)
+                self.assertEqual(before,set(root.rglob('*')))
+                for key,value in [('lastEvidenceSha256','f'*64),('lastOutcome','unknown'),('state','pending-close'),('role','base'),('credentials','cleaned'),('version',True),('sequence',False),('identity',{**identity,'expectedSid':'foreign'})]:
+                    save({**closed,key:value})
+                    with self.subTest(key=key),self.assertRaises(ValueError):rebase._previous_closed_readonly(root,REQUEST,DESC,object(),object(),'e'*64)
+                save(closed)
+                for raw in ('{}','invalid'):
+                    active=directory/'active.json';active.write_text(raw);active.chmod(0o600)
+                    with self.assertRaises(ValueError):rebase._previous_closed_readonly(root,REQUEST,DESC,object(),object(),'e'*64)
+                    active.unlink()
+                path.chmod(0o644)
+                with self.assertRaises(ValueError):rebase._previous_closed_readonly(root,REQUEST,DESC,object(),object(),'e'*64)
+                path.chmod(0o600);path.write_text('{"version":1,"version":1}')
+                with self.assertRaises(ValueError):rebase._previous_closed_readonly(root,REQUEST,DESC,object(),object(),'e'*64)
+                path.unlink();path.symlink_to(directory/'missing')
+                with self.assertRaises(OSError):rebase._previous_closed_readonly(root,REQUEST,DESC,object(),object(),'e'*64)
+                path.unlink();save(closed)
+            with patch.object(rebase.lease,'_remote_confirm',return_value=False),patch.object(rebase.base,'_campaign_remote',return_value=object()):
+                with self.assertRaises(ValueError):rebase._previous_closed_readonly(root,REQUEST,DESC,object(),object(),'e'*64)
+            def changed(*args):save({**closed,'sequence':8});return True
+            with patch.object(rebase.lease,'_remote_confirm',side_effect=changed),patch.object(rebase.base,'_campaign_remote',return_value=object()):
+                with self.assertRaises(ValueError):rebase._previous_closed_readonly(root,REQUEST,DESC,object(),object(),'e'*64)
+
+    def test_readonly_missing_campaign_does_not_initialize_it(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            with self.assertRaises(OSError):rebase._previous_closed_readonly(root,REQUEST,DESC,object(),object(),'e'*64)
+            self.assertFalse((root/rebase.lease._DIR).exists())

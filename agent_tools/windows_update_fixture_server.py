@@ -84,7 +84,8 @@ def _read_intent(root: Path, correlation: str) -> dict[str, Any] | None:
     return value
 
 
-def _closed_server_history(root: Path, current_lease_id: str, *, group: str = _GROUP) -> None:
+def _closed_server_history(root: Path, current_lease_id: str, *, group: str = _GROUP,
+                           candidate_cleanup: Mapping[str, Any] | None = None) -> None:
     """Admit archived intents only after exact local and remote campaign closure."""
     directory = root / group
     if not directory.exists():
@@ -110,6 +111,11 @@ def _closed_server_history(root: Path, current_lease_id: str, *, group: str = _G
             if group == _GROUP:
                 from . import windows_fixture_server_abort_successor as successor
                 if successor.allows_server_restart(root, path.stem, current_lease_id, prior):
+                    continue
+            elif group == _CLEANUP_GROUP:
+                from . import windows_fixture_server_abort_successor as successor
+                if successor.allows_cleanup_reservation(
+                        root, path.stem, current_lease_id, prior, candidate_cleanup):
                     continue
             raise WindowsUpdateFixtureServerError("Server history is active or unknown.")
         campaign_directory, campaign_lock = lease._locked(root)
@@ -1369,7 +1375,8 @@ def _read_cleanup_intent(root: Path, correlation: str) -> dict[str, Any] | None:
 
 
 def _reserve_cleanup(root: Path, record: Mapping[str, Any]) -> None:
-    _closed_server_history(root, record["request"]["leaseId"], group=_CLEANUP_GROUP)
+    _closed_server_history(root, record["request"]["leaseId"], group=_CLEANUP_GROUP,
+                           candidate_cleanup=record)
     directory = root / _CLEANUP_GROUP
     directory.mkdir(parents=True, mode=0o700, exist_ok=True)
     info = directory.lstat()
@@ -1384,7 +1391,8 @@ def _reserve_cleanup(root: Path, record: Mapping[str, Any]) -> None:
                 or stat.S_IMODE(info.st_mode) != 0o600):
             raise WindowsUpdateFixtureServerError("Server cleanup lock is unsafe.")
         fcntl.flock(fd, fcntl.LOCK_EX)
-        _closed_server_history(root, record["request"]["leaseId"], group=_CLEANUP_GROUP)
+        _closed_server_history(root, record["request"]["leaseId"], group=_CLEANUP_GROUP,
+                               candidate_cleanup=record)
         raw = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode()
         if len(raw) > 16384:
             raise WindowsUpdateFixtureServerError("Server cleanup intent is too large.")

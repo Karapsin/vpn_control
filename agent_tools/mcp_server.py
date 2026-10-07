@@ -31,6 +31,7 @@ local_build_environment = importlib.import_module(
     f"{__package__}.local_build_environment" if __package__ else "local_build_environment"
 )
 managed_check_lease = importlib.import_module(f"{__package__ or 'agent_tools'}.managed_check_lease")
+check_output_retention = importlib.import_module(f"{__package__ or 'agent_tools'}.check_output_retention")
 
 try:  # The repository tests intentionally run without the optional MCP package.
     from mcp.server.fastmcp import FastMCP
@@ -407,8 +408,13 @@ def run_checks(
 def _run_check_commands(selected_area: str, level: str, commands: list[list[str]]) -> dict[str, Any]:
     checked_fingerprint = _snapshot_fingerprint() if level == "prepush" else None
     results = []
-    for command in commands:
-        result = _run(command, timeout=50 * 60)
+    output_fingerprint = checked_fingerprint or hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    for index, command in enumerate(commands):
+        def capture(returncode, stdout, stderr):
+            return check_output_retention.retain_completed_output(
+                REPO_ROOT, label=f"{level}-{index}", returncode=returncode,
+                stdout=stdout, stderr=stderr, source_fingerprint=output_fingerprint)
+        result = _run(command, timeout=50 * 60, output_capture=capture)
         results.append(result)
         if not result["ok"]:
             return _error(
@@ -1655,6 +1661,7 @@ def _run(
     command: list[str],
     timeout: int = 120,
     output_limit: int | None = MAX_OUTPUT_CHARS,
+    output_capture=None,
 ) -> dict[str, Any]:
     try:
         environment = local_build_environment.apply(REPO_ROOT, dict(os.environ))
@@ -1666,19 +1673,44 @@ def _run(
         completed = subprocess.run(
             command,
             cwd=REPO_ROOT,
-            text=True,
+            text=output_capture is None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=timeout,
             check=False,
             env=environment,
         )
+        retention = None
+        retention_error = None
+        if output_capture is not None:
+            try:
+                retention = output_capture(completed.returncode, completed.stdout, completed.stderr)
+            except (check_output_retention.RetentionError, OSError) as error:
+                # A completed child remains completed; failure to retain its
+                # evidence must not produce a successful validation receipt.
+                retention_error = (str(error) if isinstance(error, check_output_retention.RetentionError)
+                                   else "retention_io_error")
+        def excerpt(value: Any) -> str:
+            if isinstance(value, bytes):
+                value = value.decode("utf-8", errors="replace")
+            if completed.returncode == 0 or output_limit is None:
+                return _bounded(value, output_limit)
+            if output_limit <= 0:
+                return ""
+            # Keep causal failures and the terminal summary after noisy setup.
+            # The existing extractor needs room for its marker and tail; apply
+            # the caller's exact cap after extracting for very small limits.
+            return _failure_log_excerpt(_bounded(value, None), max(2000, output_limit))[-output_limit:]
         return {
-            "ok": completed.returncode == 0,
+            "ok": completed.returncode == 0 and retention_error is None,
             "command": _display(command),
             "returncode": completed.returncode,
-            "stdout": _bounded(completed.stdout, output_limit),
-            "stderr": _bounded(completed.stderr, output_limit),
+            "stdout": excerpt(completed.stdout),
+            "stderr": excerpt(completed.stderr),
+            **({"completionOutput": retention,
+                "completionOutputScope": "repository" if retention and retention["label"].startswith("prepush-") else "runner-source"}
+               if retention is not None else {}),
+            **({"retentionError": retention_error} if retention_error is not None else {}),
         }
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {
@@ -1763,17 +1795,417 @@ def _json_print(value: dict[str, Any]) -> int:
     return 0 if value.get("ok") else 1
 
 
+def _ssh_channel_workflow(action: str, host: str | None, timeout_seconds: int,
+                          identity: dict[str, Any] | None, transfer: Any, device: Any) -> dict[str, Any]:
+    """Expose connection admission without commands, paths or private captures."""
+    unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown",
+               "connectionOnly": True, "replayAllowed": False, "nativeActionAllowed": False,
+               "failurePhase": "input", "reason": "invalid_channel_input"}
+    method = action.removeprefix("connection-channel-")
+    selected = False
+    try:
+        if (host != "archlinux" or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                or transfer is not None or device is not None or type(identity) is not dict):
+            return unknown
+        fields = {"correlationId"}
+        if method == "ensure" and "receiptSha256" in identity:
+            fields.add("receiptSha256")
+        if (set(identity) != fields or type(identity["correlationId"]) is not str
+                or not _valid_uuid(identity["correlationId"])):
+            return unknown
+        digest = identity.get("receiptSha256")
+        if "receiptSha256" in identity and (type(digest) is not str or re.fullmatch("[0-9a-f]{64}", digest) is None):
+            return unknown
+        correlation = uuid.UUID(identity["correlationId"]).hex
+        unknown = {**unknown, "failurePhase": "parser", "reason": "invalid_channel_result",
+                   "correlationId": identity["correlationId"], "requestedCorrelationId": identity["correlationId"]}
+        adapter = importlib.import_module(f"{__package__ or 'agent_tools'}.ssh_fresh_nested_channel")
+        source_fingerprint = hashlib.sha256(Path(adapter.__file__).read_bytes()).hexdigest()
+        def retain_capture(capture):
+            check_output_retention.retain_observation_capture(
+                REPO_ROOT, label="ssh-channel-" + method + "-" + correlation,
+                capture=capture, source_fingerprint=source_fingerprint)
+        if method == "ensure":
+            result = adapter.ensure_channel(REPO_ROOT, host, correlation, digest,
+                                            _private_capture=retain_capture)
+        else:
+            result = getattr(adapter, method)(REPO_ROOT, host, correlation,
+                                               _private_capture=retain_capture)
+        if type(result) is not dict:
+            return unknown
+        if method == "ensure" and "outerOptions" in result:
+            if set(result) != {"correlationId", "receiptSha256", "outerReceiptSha256", "outerOptions", "innerOptions"}:
+                return unknown
+            candidate = result["correlationId"]
+            if type(candidate) is not str or re.fullmatch("[0-9a-f]{32}", candidate) is None:
+                return unknown
+            suffix = ("-o", "ControlMaster=no", "-o", "ControlPersist=no", "-o", "ProxyCommand=false")
+            outer = result["outerOptions"]
+            inner = result["innerOptions"]
+            if (type(outer) is not tuple or len(outer) != 8 or outer[0] != "-S"
+                    or type(outer[1]) is not str or not outer[1].startswith("/") or len(outer[1].encode()) > 85
+                    or outer[2:] != suffix or type(inner) is not tuple
+                    or inner != ("-S", "/tmp/vpn-channel-" + candidate + "/m", *suffix)):
+                return unknown
+            if any(type(result[key]) is not str or re.fullmatch("[0-9a-f]{64}", result[key]) is None
+                   for key in ("receiptSha256", "outerReceiptSha256")):
+                return unknown
+            unknown = {**unknown, "failurePhase": "selection",
+                       "correlationId": str(uuid.UUID(candidate))}
+            selector = importlib.import_module(f"{__package__ or 'agent_tools'}.ssh_channel_selection")
+            publication = selector.select_channel(REPO_ROOT, host, candidate, result["receiptSha256"])
+            expected = {"state": "selected", "host": host, "correlationId": candidate,
+                        "receiptSha256": result["receiptSha256"]}
+            if type(publication) is dict and publication == expected:
+                selected = True
+                result = {"state": "ready", "correlationId": candidate,
+                          "receiptSha256": result["receiptSha256"], "outerReceiptSha256": result["outerReceiptSha256"],
+                          "nativeActionAllowed": False, "replayAllowed": False}
+            elif type(publication) is dict and publication.get("state") == "unknown":
+                if type(publication.get("correlationId")) is not str or publication["correlationId"] != candidate:
+                    return unknown
+                result = {"correlationId": candidate, "failurePhase": "selection", **publication}
+            else:
+                return unknown
+        if (result.get("nativeActionAllowed") is not False or result.get("replayAllowed") is not False
+                or type(result.get("state")) is not str or result["state"] not in {"ready", "ended", "unknown"}):
+            return unknown
+        state = result["state"]
+        base = {"state", "nativeActionAllowed", "replayAllowed"}
+        candidate = result.get("correlationId", correlation)
+        if (type(candidate) is not str or re.fullmatch("[0-9a-f]{32}", candidate) is None
+                or (method != "ensure" and candidate != correlation)):
+            return unknown
+        public = {**{key: value for key, value in unknown.items() if key not in {"failurePhase", "reason"}},
+                  "correlationId": str(uuid.UUID(candidate)),
+                  "requestedCorrelationId": identity["correlationId"]}
+        if state == "unknown":
+            diagnostic_fields = {"failureReason", "exceptionClass", "errno"}
+            if set(result) - (base | {"correlationId", "failurePhase", "reason"} | diagnostic_fields):
+                return unknown
+            supplied = set(result) & diagnostic_fields
+            if supplied:
+                if (supplied != diagnostic_fields or "failurePhase" not in result
+                        or type(result["failureReason"]) is not str
+                        or result["failureReason"] not in adapter._REMOTE_REASONS
+                        or type(result["exceptionClass"]) is not str
+                        or result["exceptionClass"] not in adapter._EXCEPTION_CLASSES
+                        or (result["errno"] is not None
+                            and (type(result["errno"]) is not int or not 0 <= result["errno"] <= 255))):
+                    return unknown
+                public.update({key: result[key] for key in diagnostic_fields})
+            phases = {"input", "inventory", "route", "channel_journal", "outer_receipt", "outer_reuse", "intent",
+                      "transport", "capture_retention", "parser", "closing", "prepare_stage", "launch", "remote_intent",
+                      "master_snapshot", "arch_identity", "master_closing", "publication", "selection"}
+            reasons = {"outer_prompt_unavailable", "credential_unavailable", "intent_absent", "intent_binding_changed"}
+            public.update(failurePhase="parser", reason="channel_admission_unknown")
+            for key, choices in (("failurePhase", phases), ("reason", reasons)):
+                if key in result:
+                    if type(result[key]) is not str or result[key] not in choices:
+                        return unknown
+                    public[key] = result[key]
+            return public
+        if state == "ended":
+            if set(result) != base | {"correlationId"}:
+                return unknown
+            return {**public, "ok": True, "state": "ended"}
+        if set(result) != base | {"correlationId", "receiptSha256", "outerReceiptSha256"}:
+            return unknown
+        if any(type(result[key]) is not str or re.fullmatch("[0-9a-f]{64}", result[key]) is None
+               for key in ("receiptSha256", "outerReceiptSha256")):
+            return unknown
+        return {**public, "ok": True, "state": "ready", "receiptSha256": result["receiptSha256"],
+                "outerReceiptSha256": result["outerReceiptSha256"], **({"selected": True} if selected else {})}
+    except (OSError, ValueError, TypeError, KeyError, ImportError, AttributeError):
+        return unknown
+
+
 def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
     """Inspect configured SSH hosts, recover a nested connection, or transfer owned fixture helpers."""
+    if action in {"connection-channel-prepare", "connection-channel-status", "connection-channel-ensure"}:
+        return _ssh_channel_workflow(action, host, timeout_seconds, identity, transfer, device)
     transport = importlib.import_module(f"{__package__}.ssh_transport" if __package__ else "ssh_transport")
     try:
+        if action in {"connection-master-status", "gateway-tmux-status-diagnostic"}:
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown",
+                       "diagnosticOnly": True, "replayAllowed": False,
+                       "launchAllowed": False, "nativeActionAllowed": False}
+            try:
+                if (host != "archlinux" or type(timeout_seconds) is not int
+                        or not 1 <= timeout_seconds <= 60 or transfer is not None or device is not None):
+                    return unknown
+                if action == "connection-master-status":
+                    if identity is not None:
+                        return unknown
+                    adapter = importlib.import_module(f"{__package__}.ssh_connection_recovery" if __package__ else "ssh_connection_recovery")
+                    result = adapter.configured_master_fenced_status(REPO_ROOT, host, timeout_seconds)
+                    if (type(result) is not dict
+                            or set(result) != {"nestedState", "socketState", "failurePhase", "replayAllowed", "launchAllowed", "nativeActionAllowed"}
+                            or type(result["nestedState"]) is not str or result["nestedState"] not in {"ready", "unknown", "absent"}
+                            or type(result["socketState"]) is not str or result["socketState"] not in {"ready", "unknown", "absent", "refused"}
+                            or type(result["failurePhase"]) is not str or result["failurePhase"] not in {
+                                "configuration", "outer_admission", "socket_query", "closing_admission", "socket_parser", "capture_retention", "none"}
+                            or any(result[k] is not False for k in ("replayAllowed", "launchAllowed", "nativeActionAllowed"))):
+                        return unknown
+                    if result["nestedState"] in {"ready", "absent"}:
+                        if result["socketState"] != result["nestedState"] or result["failurePhase"] != "none":
+                            return unknown
+                    elif (result["socketState"] not in {"unknown", "refused"}
+                          or result["failurePhase"] == "none"
+                          or (result["socketState"] == "refused" and result["failurePhase"] != "socket_parser")):
+                        return unknown
+                    return {**unknown, **result, "ok": result["nestedState"] != "unknown",
+                            "state": "observed" if result["nestedState"] != "unknown" else "unknown"}
+                if (type(identity) is not dict or set(identity) != {"correlationId"}
+                        or type(identity["correlationId"]) is not str or not _valid_uuid(identity["correlationId"])):
+                    return unknown
+                adapter = _agent_module("ssh_gateway_tmux_master_ssh")
+                result = adapter.configured_status_diagnostic(REPO_ROOT, dict(identity))
+                if type(result) is not dict or result.get("nativeActionAllowed") is not False or result.get("replayAllowed") is not False:
+                    return unknown
+                if result.get("state") == "unknown":
+                    if (set(result) != {"state", "replayAllowed", "failurePhase", "nativeActionAllowed"}
+                            or type(result["failurePhase"]) is not str or result["failurePhase"] not in {"source", "config", "authority", "localmaster", "remotequery", "parser"}):
+                        return unknown
+                    return {**unknown, **result}
+                fields = {"state", "correlationId", "replayAllowed", "nativeActionAllowed"}
+                if result.get("correlationId") != identity["correlationId"]:
+                    return unknown
+                if result.get("state") == "prepared":
+                    if set(result) != fields:
+                        return unknown
+                elif result.get("state") == "ended":
+                    if set(result) != fields | {"exitCode"} or type(result["exitCode"]) is not int:
+                        return unknown
+                elif result.get("state") == "ready":
+                    if (set(result) != fields | {"readyPin", "controlPath", "recoveryCorrelationId", "adoptionAllowed"}
+                            or result["adoptionAllowed"] is not False
+                            or result["recoveryCorrelationId"] != identity["correlationId"].replace("-", "")
+                            or type(result["controlPath"]) is not str or not result["controlPath"].startswith("/")
+                            or len(result["controlPath"].encode()) > 85):
+                        return unknown
+                    adapter.valid_pin(result["readyPin"])
+                else:
+                    return unknown
+                return {**unknown, **{k: v for k, v in result.items() if k != "controlPath"}, "ok": True}
+            except (OSError, ValueError, TypeError, KeyError, AttributeError, ImportError, subprocess.SubprocessError):
+                return unknown
+        if action == "tmux-disconnect-probe":
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown",
+                       "replayAllowed": False, "productAcceptance": False}
+            if (host != "archlinux" or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or transfer is not None or device is not None or type(identity) is not dict
+                    or set(identity) != {"hop", "correlationId"}
+                    or identity["hop"] not in ("gateway", "archlinux")
+                    or type(identity["correlationId"]) is not str or not _valid_uuid(identity["correlationId"])):
+                return unknown
+            probe = None
+            try:
+                adapter = _agent_module("ssh_tmux_disconnect_probe")
+                probe = adapter.Probe(REPO_ROOT, identity["hop"], identity["correlationId"])
+                for method, expected in ((probe.prepare, "prepared"), (probe.release, "released"),
+                                         (probe.disconnect, "disconnected")):
+                    result = method()
+                    if (type(result) is not dict or set(result) != {"state", "replayAllowed"}
+                            or result["state"] != expected or result["replayAllowed"] is not False):
+                        return unknown
+                deadline = time.monotonic() + 35
+                while True:
+                    result = probe.observe()
+                    if (type(result) is not dict
+                            or set(result) != {"state", "sequence", "replayAllowed", "productAcceptance"}
+                            or result["state"] not in ("prepared", "released", "running", "completed")
+                            or type(result["sequence"]) is not int or not 0 <= result["sequence"] <= 20
+                            or result["replayAllowed"] is not False or result["productAcceptance"] is not False):
+                        return unknown
+                    if result["state"] == "completed":
+                        if result["sequence"] != 20:
+                            return unknown
+                        return {"tool": "ssh_workflow", "ok": True, **result,
+                                "hop": identity["hop"], "correlationId": identity["correlationId"]}
+                    if time.monotonic() >= deadline:
+                        return unknown
+                    time.sleep(4)
+            except (OSError, ValueError, TypeError, KeyError, ImportError, subprocess.SubprocessError):
+                return unknown
+            finally:
+                if probe is not None:
+                    probe.close()
+        if action == "gateway-tmux-reconciliation-status":
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            if (host != "archlinux" or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or any(value is not None for value in (identity, transfer, device))):
+                return unknown
+            try:
+                adapter = _agent_module("ssh_gateway_tmux_reconciliation_status")
+                result = adapter.observe(REPO_ROOT)
+                if (type(result) is not dict
+                        or set(result) != {"state", "replayAllowed", "launchAllowed", "adoptionAllowed"}
+                        or result["state"] not in ("published", "adopted", "unknown")
+                        or any(result[key] is not False for key in
+                               ("replayAllowed", "launchAllowed", "adoptionAllowed"))):
+                    return unknown
+                return {"tool": "ssh_workflow", "ok": result["state"] != "unknown", **result}
+            except (OSError, ValueError, TypeError, ImportError):
+                return unknown
+        if action in ("gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status"):
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            method = action.removeprefix("gateway-tmux-")
+            if (host != "archlinux" or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or transfer is not None or device is not None):
+                return unknown
+            if method == "availability":
+                if identity is not None:
+                    return unknown
+                inputs = {}
+            else:
+                if (type(identity) is not dict or set(identity) != {"correlationId"}
+                        or not isinstance(identity["correlationId"], str) or not _valid_uuid(identity["correlationId"])):
+                    return unknown
+                inputs = dict(identity)
+            try:
+                adapter = _agent_module("ssh_gateway_tmux_master_ssh")
+                result = adapter.operate(REPO_ROOT, method, inputs)
+                if type(result) is not dict:
+                    return unknown
+                if method == "availability":
+                    if (set(result) != {"available", "reason", "nativeActionAllowed"}
+                            or type(result["available"]) is not bool or result["nativeActionAllowed"] is not False
+                            or result["reason"] != ("available" if result["available"] else "tmux_unavailable")):
+                        return unknown
+                    return {"tool": "ssh_workflow", "ok": True, **result}
+                if result.get("replayAllowed") is not False or result.get("correlationId") != inputs["correlationId"]:
+                    return unknown
+                state = result.get("state")
+                fields = {"state", "correlationId", "replayAllowed"}
+                if method == "prepare":
+                    if state != "prepared" or set(result) != fields | {"anchorPin"}:
+                        return unknown
+                    adapter.valid_pin(result["anchorPin"])
+                elif method == "release":
+                    if state != "released" or set(result) != fields:
+                        return unknown
+                elif state == "ready":
+                    if (set(result) != fields | {"readyPin", "controlPath", "recoveryCorrelationId", "adoptionAllowed"}
+                            or result["adoptionAllowed"] is not False
+                            or result["recoveryCorrelationId"] != inputs["correlationId"].replace("-", "")
+                            or not isinstance(result["controlPath"], str) or not result["controlPath"].startswith("/")
+                            or len(result["controlPath"].encode()) > 85):
+                        return unknown
+                    adapter.valid_pin(result["readyPin"])
+                elif state == "ended":
+                    if set(result) != fields | {"exitCode"} or type(result["exitCode"]) is not int:
+                        return unknown
+                elif state != "prepared" or set(result) != fields:
+                    return unknown
+                return {"tool": "ssh_workflow", "ok": True, **{k: v for k, v in result.items() if k != "controlPath"}}
+            except (OSError, ValueError, TypeError, ImportError):
+                return unknown
+        if action in {"connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability"}:
+            transport._session_module()
+            routes = importlib.import_module(f"{__package__}.ssh_acceptance_observation_routes" if __package__ else "agent_tools.ssh_acceptance_observation_routes")
+            return routes.dispatch(REPO_ROOT, action, host, timeout_seconds, identity, transfer, device)
         if action == "inventory":
             return {"ok": True, "tool": "ssh_workflow", "hosts": list(transport.inventory(REPO_ROOT))}
         if action == "probe" and host:
             return {"tool": "ssh_workflow", **transport.probe(REPO_ROOT, host, timeout_seconds).as_dict()}
+        if action in ("connection-session-close", "connection-session-close-status"):
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            if (not isinstance(host, str) or not transport._ALIAS_RE.fullmatch(host)
+                    or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or transfer is not None or device is not None
+                    or not isinstance(identity, dict) or set(identity) != {"receiptSha256"}
+                    or not isinstance(identity["receiptSha256"], str)
+                    or re.fullmatch(r"[0-9a-f]{64}", identity["receiptSha256"]) is None):
+                return unknown
+            try:
+                transport._session_module()
+                close = _agent_module("ssh_connection_session_close")
+                operation = close.close if action == "connection-session-close" else close.status
+                result = operation(REPO_ROOT, host, identity["receiptSha256"])
+            except (OSError, ValueError, TypeError, ImportError):
+                return unknown
+            state = "exit_sent" if action == "connection-session-close" else "closed"
+            if result == {"state": "unknown", "host": host, "replayAllowed": False}:
+                return unknown
+            if (not isinstance(result, dict) or result.get("replayAllowed") is not False
+                    or result != {"state": state, "host": host, "receiptSha256": identity["receiptSha256"], "replayAllowed": False}):
+                return unknown
+            return {"tool": "ssh_workflow", "ok": True, **result}
+        if action in ("connection-session-retire", "connection-session-retirement-status"):
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            if (not isinstance(host, str) or not transport._ALIAS_RE.fullmatch(host)
+                    or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or transfer is not None or device is not None
+                    or not isinstance(identity, dict) or set(identity) != {"receiptSha256"}
+                    or not isinstance(identity["receiptSha256"], str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", identity["receiptSha256"])):
+                return unknown
+            try:
+                # Match the transport's package bootstrap for fresh CLI scripts.
+                transport._session_module()
+                retirement = importlib.import_module(f"{__package__}.ssh_connection_session_retirement" if __package__ else "agent_tools.ssh_connection_session_retirement")
+                operation = retirement.retire if action == "connection-session-retire" else retirement.status
+                result = operation(REPO_ROOT, host, identity["receiptSha256"])
+            except (OSError, ValueError, TypeError, ImportError):
+                return unknown
+            if (not isinstance(result, dict) or result.get("replayAllowed") is not False
+                    or result != {"state": "retired", "host": host, "receiptSha256": identity["receiptSha256"], "replayAllowed": False}):
+                return unknown
+            return {"tool": "ssh_workflow", "ok": True, **result}
+        if action in ("connection-session-prepare", "connection-session-status"):
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            if (not isinstance(host, str) or not transport._ALIAS_RE.fullmatch(host)
+                    or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or transfer is not None or device is not None):
+                return unknown
+            status = action == "connection-session-status"
+            if status:
+                if (not isinstance(identity, dict) or set(identity) != {"receiptSha256"}
+                        or not isinstance(identity["receiptSha256"], str)
+                        or not re.fullmatch(r"[0-9a-f]{64}", identity["receiptSha256"])):
+                    return unknown
+            elif identity is not None:
+                return unknown
+            try:
+                session = transport._session_module()
+                result = (session.admission(REPO_ROOT, host, identity["receiptSha256"]) if status
+                          else session.prepare(REPO_ROOT, host))
+            except (OSError, ValueError, TypeError, ImportError):
+                return unknown
+            if not isinstance(result, dict) or result.get("host") != host:
+                return unknown
+            if result.get("state") == "ready":
+                keys = {"state", "host", "receiptSha256"} | (set() if status else {"created"})
+                if (set(result) != keys or not isinstance(result.get("receiptSha256"), str)
+                        or not re.fullmatch(r"[0-9a-f]{64}", result["receiptSha256"])
+                        or not status and type(result.get("created")) is not bool
+                        or status and result["receiptSha256"] != identity["receiptSha256"]):
+                    return unknown
+                return {"tool": "ssh_workflow", "ok": True, "replayAllowed": False, **result}
+            if (set(result) == {"state", "host", "phase"} and result.get("state") == "unknown"
+                    and result.get("phase") in session._PHASES):
+                return {**unknown, "host": host, "phase": result["phase"]}
+            return unknown
         if action == "connection-recover" and host:
             recovery = importlib.import_module(f"{__package__}.ssh_connection_recovery" if __package__ else "ssh_connection_recovery")
-            return {"tool": "ssh_workflow", **recovery.recover(REPO_ROOT, host, timeout_seconds)}
+            return {"tool": "ssh_workflow", "host": host, **recovery.recover(REPO_ROOT, host, timeout_seconds)}
+        if action == "connection-adopt":
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            if (not isinstance(host, str) or not host or type(timeout_seconds) is not int
+                    or not 1 <= timeout_seconds <= 60 or any(value is not None for value in (identity, transfer, device))):
+                return unknown
+            adoption = importlib.import_module(f"{__package__}.ssh_recovery_adoption" if __package__ else "ssh_recovery_adoption")
+            try:
+                result = adoption.adopt(REPO_ROOT, host, timeout_seconds)
+            except (OSError, ValueError, TypeError):
+                return unknown
+            if (not isinstance(result, dict) or set(result) != {"state", "nextAction", "replayAllowed"}
+                    or result.get("replayAllowed") is not False
+                    or (result.get("state"), result.get("nextAction")) not in
+                    (("ready", "configured-probe"), ("unknown", "inspect-recovery"))):
+                return unknown
+            return {"tool": "ssh_workflow", "host": host, "ok": result["state"] == "ready", **result}
         if action in ("forward-open", "forward-status", "forward-close") and host:
             forward = importlib.import_module(f"{__package__}.ssh_forward" if __package__ else "ssh_forward")
             if action == "forward-open":
@@ -1853,16 +2285,23 @@ def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) ->
 
 
 _VM_NATIVE_ADAPTERS = (
-    "native_vm_baseline_config", "native_acceptance_matrix", "native_fixture_preflight",
+    "native_review_source_closure",
+    "ssh_tmux_disconnect_probe",
+    "ssh_gateway_tmux_master_ssh",
+    "ssh_gateway_tmux_reconciliation_status",
+    "ssh_connection_session_close",
+    "windows_cp117_cp95_task_retire", "windows_cp117_e848_http_task_retire", "windows_cp117_c32_retained_task_retire", "windows_cp117_source_pre_effect_close",
+    "windows_cp117_cp95_retained_tasks", "windows_cp117_e848_http_task",
+    "native_vm_baseline_config", "native_vm_baseline_inventory", "native_acceptance_matrix", "native_fixture_preflight",
     "native_scenario_batch", "native_artifact_reuse", "native_acceptance_overview", "native_scenario_execution",
     "native_scenario_ssh", "native_artifact_registry", "native_environment",
     "native_environment_observation", "native_scenario_bundle", "native_next_action",
-    "native_response_diagnostics", "native_build_timing",
+    "native_response_diagnostics", "native_build_timing", "native_parity_response_projection",
     "native_failure_evidence", "macos_installer_recovery", "native_rpm_public_install_adapter",
     "native_rpm_public_install_ssh", "android_admission_readback", "windows_msi_public_scenario", "windows_vm_swtpm_repair",
-    "linux_update_fixture_workflow", "linux_rpm_fixture_server_lifecycle", "linux_rpm_workspace_recovery", "linux_vm_readonly_inventory", "arch_ai_loop_observe", "arch_qemu_holder_census", "windows_vm_baseline_inventory", "windows_vm_secureboot_inventory", "windows_vm_virt_firmware_admission", "windows_vm_virt_firmware_install", "windows_vm_secureboot_clone", "windows_vm_secureboot_fresh", "windows_vm_driver_fetch", "windows_vm_fresh_setup", "windows_vm_optical_boot", "windows_vm_optical_boot_attempt2", "windows_vm_optical_boot_attempt3", "windows_vm_optical_post_collect", "windows_vm_optical_current_screen", "windows_update_fixture_workflow", "windows_update_fixture_server", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare", "windows_msi_transfer_endpoint", "windows_msi_http_transfer", "windows_msiexec_service_diagnostic",
+    "linux_update_fixture_workflow", "linux_rpm_fixture_server_lifecycle", "linux_rpm_workspace_recovery", "linux_vm_readonly_inventory", "arch_ai_loop_observe", "arch_qemu_holder_census", "windows_vm_baseline_inventory", "windows_parallel_vm_source_inventory", "windows_parallel_vm_prepare_transport", "windows_vm_secureboot_inventory", "windows_vm_virt_firmware_admission", "windows_vm_virt_firmware_install", "windows_vm_secureboot_clone", "windows_vm_secureboot_fresh", "windows_vm_driver_fetch", "windows_vm_fresh_setup", "windows_vm_optical_boot", "windows_vm_optical_boot_attempt2", "windows_vm_optical_boot_attempt3", "windows_vm_optical_post_collect", "windows_vm_optical_current_screen", "windows_update_fixture_workflow", "windows_update_fixture_server", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare", "windows_msi_transfer_endpoint", "windows_msi_http_transfer", "windows_msiexec_service_diagnostic",
     "windows_msi_owner_observe", "windows_msi_owner_census", "windows_msi_owner_diagnostic", "windows_msi_owner_liveness", "windows_msi_stale_lock_recovery", "windows_msi_stale_lock_reconcile", "windows_msi_owner_relaunch", "windows_msi_owner_public_status", "windows_msi_owner_public_status_retry", "windows_msi_owner_public_status_third", "windows_msi_owner_relaunch_quit", "windows_msi_owner_relaunch_quit_v2", "windows_msi_owner_relaunch_quit_v3", "windows_msi_owner_relaunch_quit_v4", "windows_msi_owner_quit_phase_diagnostic", "windows_msi_target_prepare",
-    "windows_update_fixture_stage", "windows_update_fixture_stage_recovery", "windows_update_fixture_http_stage", "windows_update_fixture_guest_create_abort", "windows_update_fixture_download_abort", "windows_update_fixture_download_abort_current", "windows_large_artifact_transfer", "windows_cp117_campaign_rebase", "windows_cp117_e66_successor", "windows_cp117_guest_abort_successor", "windows_cp117_download_abort_successor", "windows_cp117_download_abort_current_successor", "windows_cp117_campaign_status", "windows_fixture_phase_status", "windows_fixture_credentials", "windows_fixture_python_download_preflight", "windows_fixture_python_host_source", "windows_fixture_python_acquire_transfer", "windows_fixture_python_guest_install", "windows_fixture_package_mode_repair", "windows_fixture_server_abort_successor", "windows_fixture_server_resume", "windows_fixture_post_resource_diagnostic", "windows_fixture_acl_preflight",
+    "windows_update_fixture_stage", "windows_update_fixture_stage_recovery", "windows_update_fixture_http_stage", "windows_update_fixture_guest_create_abort", "windows_update_fixture_download_abort", "windows_update_fixture_download_abort_current", "windows_large_artifact_transfer", "windows_cp117_campaign_rebase", "windows_cp117_e66_successor", "windows_cp117_guest_abort_successor", "windows_cp117_download_abort_successor", "windows_cp117_download_abort_current_successor", "windows_cp117_campaign_status", "windows_cp117_staged_fixture_retire", "windows_cp117_c32_archive_admission", "windows_cp117_c32_host_archive", "windows_cp117_historical_base_archives", "windows_cp117_c32_absence", "windows_cp117_source_campaign", "windows_cp117_guest_agent_recovery", "windows_cp117_guest_agent_recovery_successor", "windows_cp117_retirement_recovery", "windows_fixture_phase_status", "windows_fixture_credentials", "windows_fixture_python_download_preflight", "windows_fixture_python_host_source", "windows_fixture_python_acquire_transfer", "windows_fixture_python_guest_install", "windows_fixture_package_mode_repair", "windows_fixture_server_abort_successor", "windows_fixture_server_second_abort_successor", "windows_fixture_server_resume", "windows_fixture_post_resource_diagnostic", "windows_fixture_acl_preflight",
     "windows_fixture_owner_network", "windows_fixture_network_probe",
     "windows_vm_setup_language_next",
     "windows_vm_setup_keyboard_next",
@@ -1870,9 +2309,9 @@ _VM_NATIVE_ADAPTERS = (
     "windows_vm_setup_install_focus",
     "windows_vm_setup_install_ack",
     "windows_vm_setup_install_next",
-    "android_package_install", "android_public_inspect", "android_document_acceptance", "android_document_retry", "android_document_retry_unknown", "android_document_recovery", "android_action_acceptance", "android_consent_acceptance", "android_native_fixture_lifecycle", "android_endpoint_admission", "android_installer_dispatch", "android_cli_stage",
+    "android_package_install", "android_public_inspect", "android_document_acceptance", "android_document_retry", "android_document_retry_unknown", "android_document_recovery", "android_action_acceptance", "android_runtime_acceptance", "android_obsolete_consent_denial", "android_vpn_permission_reset", "android_consent_grant_acceptance", "android_consent_acceptance", "android_native_fixture_lifecycle", "android_endpoint_admission", "android_recovered_endpoint_stage_cleanup", "android_installer_dispatch", "android_cli_stage",
     "macos_fixture_guest_stage", "macos_machine_server_stop", "linux_guest_park", "linux_package_fixture_build", "linux_deb_arch_guest_prepare", "linux_deb_arch_guest_prepare_remote",
-    "linux_deb_arch_acceptance", "linux_deb_arch_transport", "linux_deb_arch_host_supervisor",
+    "linux_deb_arch_acceptance", "linux_deb_arch_transport", "linux_deb_arch_host_supervisor", "tmux_workflow_routes", "android_coldboot_product_routes", "android_api35_large_routing_routes", "android_fixture_tls_routes", "android_api35_remaining_proxy_status_routes",
 )
 
 
@@ -1900,12 +2339,137 @@ def _valid_uuid(value: str) -> bool:
         return False
 
 
+def _windows_parallel_copy_result(value: Any, correlation: str, action: str, adapter: Any) -> dict[str, Any]:
+    """Validate only the fixed copy transport's actual producer DTOs."""
+    def need(condition):
+        if not condition:
+            raise ValueError("windows-parallel-copy-receipt-invalid")
+    def fields(row, keys):
+        need(type(row) is dict and set(row) == set(keys))
+    def number(value, minimum=1):
+        return type(value) is int and minimum <= value <= 2**63 - 1
+    def sha(value):
+        return type(value) is str and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+    def flags(row):
+        need(all(row.get(key) is False for key in ("nativeGuestStarted", "launchAdmitted", "productAcceptance")))
+    def generation(value, mode, uid, length=9, gid=1000):
+        need(type(value) is list and len(value) == length and all(number(v, 0) for v in value)
+             and value[0] > 0 and value[1] > 0 and value[2] == mode and value[3] == uid
+             and value[4] == gid)
+        if length == 9:
+            need(value[5] == 1 and 0 < value[6] <= 120 * 1024**3)
+    def pin(row, maximum=65537):
+        fields(row, ("generation", "sha256"))
+        generation(row["generation"], 0o100600, 0, gid=0)
+        need(row["generation"][6] <= maximum and sha(row["sha256"]))
+    def identity(row, supervisor=True):
+        keys = ("schemaVersion", "correlationId", "pid", "startTicks", "programSha256", "supervisorSha256") if supervisor else (
+            "correlationId", "pid", "startTicks", "programSha256", "workerPin")
+        fields(row, keys)
+        need(row["correlationId"] == correlation and number(row["pid"]) and number(row["startTicks"])
+             and sha(row["programSha256"]))
+        if supervisor:
+            need(type(row["schemaVersion"]) is int and row["schemaVersion"] == 1 and sha(row["supervisorSha256"]))
+        else:
+            pin(row["workerPin"], 262144)
+    base = {"state", "nativeGuestStarted", "launchAdmitted", "productAcceptance", "evidenceLeaf", "originalTransportPid"}
+    need(type(value) is dict and value.get("state") in ("submitted", "running", "prepared", "unknown"))
+    flags(value)
+    method = "start" if action.endswith("-start") else "status"
+    need(type(value.get("evidenceLeaf")) is str and re.fullmatch(
+        r"windows-parallel-vm-copy-" + method + r"-[0-9a-f]{32}", value["evidenceLeaf"]) is not None)
+    need(value.get("originalTransportPid") is None and value["state"] == "unknown"
+         or number(value.get("originalTransportPid")))
+    state = value["state"]
+    if state in ("submitted", "running"):
+        fields(value, base | {"identity"})
+        need(state == ("submitted" if method == "start" else "running"))
+        identity(value["identity"])
+    elif "terminal" in value:
+        fields(value, base | {"identity", "copyIdentity", "terminal", "result"})
+        need(method == "status")
+        identity(value["identity"])
+        identity(value["copyIdentity"], False)
+        child = value["copyIdentity"]
+        terminal = value["terminal"]
+        fields(terminal, set(child) | {"exitCode", "stdoutEof", "outputBytes", "retainedBytes", "overflow", "rawPin"})
+        need(all(json.dumps(terminal[key], sort_keys=True) == json.dumps(child[key], sort_keys=True) for key in child))
+        need(terminal["programSha256"] == value["identity"]["programSha256"])
+        need(type(terminal["exitCode"]) is int and -255 <= terminal["exitCode"] <= 255
+             and terminal["stdoutEof"] is True and type(terminal["overflow"]) is bool
+             and number(terminal["outputBytes"], 0) and number(terminal["retainedBytes"], 0)
+             and terminal["retainedBytes"] == min(terminal["outputBytes"], 65537)
+             and terminal["overflow"] is (terminal["outputBytes"] > 65536))
+        pin(terminal["rawPin"])
+        need(terminal["rawPin"]["generation"][6] == terminal["retainedBytes"])
+        result = value["result"]
+        flags(result)
+        need(result.get("state") == state)
+        if state == "prepared":
+            fields(result, {"state", "correlationId", "template", "templateSha256", "templateGeneration", "overlays",
+                            "nativeGuestStarted", "launchAdmitted", "productAcceptance", "ordinaryQemuReadAccessConfigured"})
+            need(terminal["exitCode"] == 0 and terminal["overflow"] is False
+                 and result["correlationId"] == correlation and sha(result["templateSha256"])
+                 and result["template"] == str(adapter.core.TEMPLATE_ROOT / "template.qcow2")
+                 and result["ordinaryQemuReadAccessConfigured"] is True)
+            generation(result["templateGeneration"], 0o100440, 0)
+            rows = result["overlays"]
+            need(type(rows) is list and len(rows) == 2)
+            for row, destination in zip(rows, adapter.inventory.DESTINATIONS):
+                fields(row, ("path", "generation", "guestGeneration"))
+                need(row["path"] == str(Path(destination) / "disk.qcow2"))
+                generation(row["generation"], 0o100600, 1000)
+                generation(row["guestGeneration"], 0o40700, 1000, 5)
+        else:
+            fields(result, ("state", "reason", "nativeGuestStarted", "launchAdmitted", "productAcceptance"))
+            need(type(result["reason"]) is str)
+            value = {**value, "result": {**result, "reason": "copy-native-unknown"}}
+    else:
+        need(state == "unknown")
+        extras = set(value) - base
+        need(extras in ({"reason", "replayAllowed"}, {"reason"}, {"reason", "correlationId", "pid", "startTicks"},
+                        {"reason", "identity", "originalSupervisorAlive"}))
+        need(type(value["reason"]) is str)
+        if "replayAllowed" in value:
+            need(value["replayAllowed"] is False)
+        if "correlationId" in value:
+            need(value["correlationId"] == correlation
+                 and (value["pid"] is None or number(value["pid"]))
+                 and (value["startTicks"] is None or number(value["startTicks"])))
+        if "identity" in value:
+            identity(value["identity"])
+            need(value["originalSupervisorAlive"] is True)
+        value = {**value, "reason": "copy-native-unknown"}
+    return value
+
+
 def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Validate staged inputs or calculate memory admission; neither action starts a VM."""
     workflow = importlib.import_module(f"{__package__}.vm_workflow" if __package__ else "vm_workflow")
     try:
         if not isinstance(inputs, dict):
             return _error("vm_workflow", "VM workflow inputs must be an object.")
+        if action == "source-review-close":
+            required = {"manifestPath", "manifestSha256"}
+            allowed = required | {"packetManifestPath", "packetManifestSha256",
+                                  "proofPath", "proofSha256"}
+            if not required <= set(inputs) or set(inputs) - allowed:
+                return _error("vm_workflow", "Invalid source closure input fields.")
+            try:
+                result = _agent_module("native_review_source_closure").close_review_sources(
+                    inputs["manifestPath"], inputs["manifestSha256"],
+                    packet_manifest_path=inputs.get("packetManifestPath"),
+                    packet_manifest_sha256=inputs.get("packetManifestSha256"),
+                    proof_path=inputs.get("proofPath"), proof_sha256=inputs.get("proofSha256"))
+                return {"tool": "vm_workflow", "ok": True, **result}
+            except (ValueError, TypeError, OSError):
+                return _error("vm_workflow", "Source closure authentication failed.")
+        if action == "android-api35-large-routing-observe":
+            return _agent_module("android_api35_large_routing_routes").dispatch(REPO_ROOT, action, inputs)
+        if action == "android-coldboot-product-api29-observe":
+            return _agent_module("android_coldboot_product_routes").dispatch(REPO_ROOT, action, inputs)
+        if action in {"linux-package-tmux-resource-prepare", "linux-package-tmux-availability", "linux-package-tmux-preflight", "linux-package-tmux-start", "linux-package-tmux-status", "linux-package-tmux-collect", "arch-tmux-install-preflight", "arch-tmux-install-start", "arch-tmux-install-status"}:
+            return _agent_module("tmux_workflow_routes").dispatch(REPO_ROOT, action, inputs)
         if action == "acceptance-status":
             overview = _agent_module("native_acceptance_overview")
             matrix = _agent_module("native_acceptance_matrix")
@@ -2005,10 +2569,60 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             if subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True).strip() != source:
                 return _error("vm_workflow", "Build timing source changed during the read-only report.")
             return {"tool": "vm_workflow", "ok": True, "evidenceClass": "source-bound-build-timing", **result}
+        if action == "baseline-source-inventory":
+            if inputs:
+                return {"tool": "vm_workflow", "ok": False,
+                        "reason": "baseline-source-inventory-requires-empty-inputs",
+                        "nativeActionAllowed": False, "readinessVerified": False}
+            try:
+                inventory = _agent_module("native_vm_baseline_inventory")
+                result = inventory.configured_source_metadata(REPO_ROOT)
+                return {"tool": "vm_workflow", "ok": True, **result}
+            except (ValueError, OSError, TypeError, KeyError) as error:
+                reason = getattr(error, "reason", "metadata_unavailable")
+                if reason not in ("baselines_not_configured", "invalid_inventory",
+                                  "invalid_source_configuration", "metadata_unavailable"):
+                    reason = "metadata_unavailable"
+                return {"tool": "vm_workflow", "ok": False,
+                        "reason": reason,
+                        "nativeActionAllowed": False, "readinessVerified": False}
         if action in {"baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight"}:
             baselines = _agent_module("native_vm_baseline_config")
             result = baselines.handle(REPO_ROOT, action, inputs)
             return {"tool": "vm_workflow", "ok": True, **result}
+        if action == "matrix-equivalence-record":
+            # This records provenance only. An unknown result must be inspected
+            # using matrix-status; it never grants replay or current CI success.
+            unknown = {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                       "replayAllowed": False, "nativeActionPerformed": False,
+                       "currentChecksCompleted": False}
+            if (set(inputs) != {"receiptId", "artifactSetId", "targetSourceSHA", "reviewerAttestation"}
+                    or not isinstance(inputs["receiptId"], str)
+                    or re.fullmatch(r"native-acceptance-[0-9a-f]{32}", inputs["receiptId"]) is None
+                    or not isinstance(inputs["artifactSetId"], str)
+                    or re.fullmatch(r"artifact-set-[0-9a-f]{64}", inputs["artifactSetId"]) is None
+                    or not isinstance(inputs["targetSourceSHA"], str)
+                    or re.fullmatch(r"[0-9a-f]{40}", inputs["targetSourceSHA"]) is None
+                    or not isinstance(inputs["reviewerAttestation"], str)
+                    or not inputs["reviewerAttestation"].strip()
+                    or len(inputs["reviewerAttestation"]) > 240):
+                return unknown
+            try:
+                result = _agent_module("native_acceptance_matrix").matrix_equivalence_record(REPO_ROOT, inputs)
+            except (ValueError, TypeError, OSError):
+                return unknown
+            if (not isinstance(result, dict)
+                    or set(result) != {"linkId", "receiptId", "originalSourceSHA", "targetSourceSHA", "requiredCurrentChecks"}
+                    or not isinstance(result["linkId"], str)
+                    or re.fullmatch(r"native-equivalence-[0-9a-f]{32}", result["linkId"]) is None
+                    or result["receiptId"] != inputs["receiptId"]
+                    or result["targetSourceSHA"] != inputs["targetSourceSHA"]
+                    or not isinstance(result["originalSourceSHA"], str)
+                    or re.fullmatch(r"[0-9a-f]{40}", result["originalSourceSHA"]) is None
+                    or result["requiredCurrentChecks"] not in (["exact-sha-ci"], ["exact-sha-ci", "changed-tool-tests"])):
+                return unknown
+            return {"tool": "vm_workflow", "ok": True, **result,
+                    "nativeActionPerformed": False, "currentChecksCompleted": False}
         if action in {"matrix-record", "matrix-retract", "matrix-status"}:
             matrix = _agent_module("native_acceptance_matrix")
             if action == "matrix-record":
@@ -3055,6 +3669,360 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "evidenceClass": "causal-diagnostic" if is_cleanup_status or is_abort_status else
                                      "causal-cleanup" if is_cleanup else "native-campaign",
                     "productAction": False, "nativeActionAllowed": False}
+        if action in {"windows-cp117-staged-fixture-retire-preflight", "windows-cp117-staged-fixture-retire-start", "windows-cp117-staged-fixture-retire-status", "windows-cp117-staged-fixture-retire-diagnose", "windows-cp117-staged-fixture-retire-parser", "windows-cp117-staged-fixture-retire-guard-diagnostic", "windows-cp117-staged-fixture-retire-boundary", "windows-cp117-staged-fixture-retire-tree", "windows-cp117-staged-fixture-retire-locks"}:
+            if not isinstance(inputs, dict) or inputs != {}:
+                return _error("vm_workflow", "Fixed CP117 staged fixture retirement takes no inputs.")
+            retire = _agent_module("windows_cp117_staged_fixture_retire")
+            method = {"windows-cp117-staged-fixture-retire-preflight": retire.preflight,
+                      "windows-cp117-staged-fixture-retire-start": retire.start,
+                      "windows-cp117-staged-fixture-retire-status": retire.status,
+                      "windows-cp117-staged-fixture-retire-diagnose": retire.diagnose,
+                      "windows-cp117-staged-fixture-retire-parser": retire.diagnose_parser,
+                      "windows-cp117-staged-fixture-retire-guard-diagnostic": retire.diagnose_guard,
+                      "windows-cp117-staged-fixture-retire-boundary": retire.diagnose_retirement_boundary,
+                      "windows-cp117-staged-fixture-retire-tree": retire.diagnose_tree,
+                      "windows-cp117-staged-fixture-retire-locks": retire.diagnose_locks}[action]
+            try:
+                result = method(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False,
+                          "nativeActionAllowed": False, "productAction": False}
+            projected = _agent_module("native_parity_response_projection").project(action, None, result)
+            return {"tool": "vm_workflow", **projected, "evidenceClass": "native-fixture"}
+        if action in {"windows-cp117-guest-agent-recovery-successor-preflight", "windows-cp117-guest-agent-recovery-successor-parser", "windows-cp117-guest-agent-recovery-successor-start", "windows-cp117-guest-agent-recovery-successor-status", "windows-cp117-guest-agent-recovery-preflight", "windows-cp117-guest-agent-recovery-parser", "windows-cp117-guest-agent-recovery-start", "windows-cp117-guest-agent-recovery-status", "windows-cp117-guest-agent-recovery-diagnose", "windows-cp117-guest-agent-recovery-journal"}:
+            if inputs != {}:
+                return _error("vm_workflow", "Fixed CP117 guest agent recovery takes no inputs.")
+            successor = action.startswith("windows-cp117-guest-agent-recovery-successor-")
+            prefix = "windows-cp117-guest-agent-recovery-successor-" if successor else "windows-cp117-guest-agent-recovery-"
+            recovery = _agent_module("windows_cp117_guest_agent_recovery_successor" if successor else "windows_cp117_guest_agent_recovery")
+            try:
+                result = recovery.workflow(REPO_ROOT, action.removeprefix(prefix), inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = dict(recovery._UNKNOWN)
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            valid = (isinstance(result, dict) and set(result) <= {"state", "recoveryCorrelationId", "phase", "scripts", "guard", *flags}
+                     and all(result.get(key) is value for key, value in flags.items())
+                     and result.get("state") in {"ready", "passed", "submitted", "terminal", "blocked", "unknown", "diagnosed", "not-started"}
+                     and result.get("recoveryCorrelationId", recovery._RECOVERY) == recovery._RECOVERY
+                     and result.get("phase", "parser") in {"parser", "guest-exec", "guest-status", "powershell-terminal", "json-shape", "census-ready", "service-identity", "transport", "binding", "fresh", "tree", "lock", "census", "journal", "predecessor", "successor"})
+            if "guard" in result:
+                valid = valid and result["guard"] in recovery._JOURNAL_CODES
+            if "scripts" in result:
+                scripts=result["scripts"]
+                valid = valid and isinstance(scripts,dict) and set(scripts)=={"validator","census","task","submit","status"} and all(value in {"valid","invalid","guest-exec","guest-status","powershell-terminal","json-shape","transport","oversize"} for value in scripts.values())
+            if not valid: result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] in {"ready", "passed", "submitted", "terminal", "diagnosed"},
+                    "evidenceClass": "native-recovery"}
+        if action in {"windows-cp117-retirement-recovery-preflight", "windows-cp117-retirement-recovery-parser", "windows-cp117-retirement-recovery-start", "windows-cp117-retirement-recovery-status", "windows-cp117-retirement-recovery-finish"}:
+            if inputs != {}:return _error("vm_workflow", "Fixed retirement recovery takes no inputs.")
+            recovery = _agent_module("windows_cp117_retirement_recovery")
+            try:result = recovery.workflow(REPO_ROOT, action.removeprefix("windows-cp117-retirement-recovery-"), inputs)
+            except (ValueError, OSError, KeyError, TypeError):result = dict(recovery._UNKNOWN)
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            valid = (isinstance(result, dict) and set(result) <= {"state", "phase", "reason", "stageCorrelationId", "leaseId", *flags}
+                     and all(result.get(key) is value for key, value in flags.items())
+                     and result.get("state") in {"ready", "passed", "retired", "guest-terminal", "after-delete", "blocked", "unknown", "not-started"}
+                     and result.get("stageCorrelationId", recovery.retire._STAGE) == recovery.retire._STAGE
+                     and result.get("leaseId", recovery.retire._LEASE) == recovery.retire._LEASE
+                     and result.get("phase", "binding") in {"binding", "fresh", "service", "census", "parser"}
+                     and result.get("reason", "admission") in {"admission", "remaining-result"})
+            if not valid:result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] in {"ready", "passed", "retired", "guest-terminal"}, "evidenceClass": "native-recovery"}
+        if action == "windows-cp117-historical-base-archives":
+            if inputs != {}: return _error("vm_workflow", "Fixed historical archive observation takes no inputs.")
+            observer = _agent_module("windows_cp117_historical_base_archives")
+            result = observer.observe(REPO_ROOT, inputs)
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            valid = (isinstance(result, dict) and set(result) == {"state", "phases", *flags}
+                and isinstance(result.get("state"), str) and result["state"] in {"ready", "blocked", "unknown"}
+                and all(result.get(k) is v for k, v in flags.items()))
+            phases = result.get("phases") if isinstance(result, dict) else None
+            allowed_phases = {"archived", "local-history", "remote-absence", "unknown", *("remote-" + phase for phase in ("guard", "root", "lock", "closed", "active", "stage", "exec", "status", "output", "identity", "task", "leaf", "result", "process", "installer", "product", "generation", "recheck", "transport"))}
+            allowed_phases.update("remote-" + phase for phase in ("parser", "output-envelope", "output-truncated", "output-stderr-progress", "output-stderr-error", "output-stderr-other", "output-empty", "output-json", "output-shape"))
+            valid = valid and isinstance(phases, dict) and set(phases) == {"transfer-recovery", "unknown-closure"} and all(isinstance(v, str) and v in allowed_phases for v in phases.values())
+            valid = valid and ((result["state"] == "ready") == all(v == "archived" for v in phases.values()))
+            if not valid: result = {"state": "unknown", "phases": {"transfer-recovery": "unknown", "unknown-closure": "unknown"}, **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] == "ready", "evidenceClass": "native-history"}
+        if action in {"windows-cp117-c32-host-archive-start", "windows-cp117-c32-host-archive-status"}:
+            if inputs != {}: return _error("vm_workflow", "Fixed host metadata archive takes no inputs.")
+            archive = _agent_module("windows_cp117_c32_host_archive")
+            result = (archive.start if action.endswith("-start") else archive.status)(REPO_ROOT, inputs)
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            valid = (isinstance(result, dict) and set(result) == {"state", *flags}
+                and isinstance(result.get("state"), str) and result["state"] in {"archived", "blocked", "not-started", "unknown"}
+                and all(result.get(k) is v for k, v in flags.items()))
+            if not valid: result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] == "archived", "evidenceClass": "native-history"}
+        if action == "windows-cp117-c32-host-archive-self-test":
+            if inputs != {}: return _error("vm_workflow", "Fixed host archive self-test takes no inputs.")
+            archive = _agent_module("windows_cp117_c32_host_archive")
+            result = archive.self_test(REPO_ROOT, inputs)
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False, "componentOnly": True}
+            valid = (isinstance(result, dict) and set(result) <= {"state", "cases", *flags}
+                and isinstance(result.get("state"), str) and result["state"] in {"passed", "failed", "unknown"}
+                and all(result.get(k) is v for k, v in flags.items()))
+            if "cases" in result:
+                cases = result["cases"]
+                valid = valid and isinstance(cases, dict) and set(cases) == {"exclusive-rename", "destination-race"} and all(isinstance(v, str) and v in {"passed", "failed", "unknown"} for v in cases.values())
+                valid = valid and ((result["state"] == "passed") == all(v == "passed" for v in cases.values()))
+            elif result.get("state") != "unknown": valid = False
+            if not valid: result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] == "passed", "evidenceClass": "component"}
+        if action == "windows-cp117-c32-retained-parser":
+            if inputs != {}:return _error("vm_workflow", "Fixed retained parser takes no inputs.")
+            observer=_agent_module("windows_cp117_c32_absence")
+            try:
+                config,target,descriptor=observer.base._descriptor(REPO_ROOT)
+                result=observer.parse_retained(REPO_ROOT,config,target,descriptor)
+            except (OSError,ValueError,KeyError,TypeError):result={"state":"unknown","phase":"transport","strict":"failed","diagnostic":"failed"}
+            valid=(isinstance(result,dict) and set(result)=={"state","phase","strict","diagnostic"}
+                and result["state"] in {"observed","unknown"} and result["phase"] in {"ast","binding","transport"}
+                and all(result[k] in {"passed","failed"} for k in ("strict","diagnostic")))
+            if not valid:result={"state":"unknown","phase":"transport","strict":"failed","diagnostic":"failed"}
+            observed=valid and result["state"]=="observed" and result["phase"]=="ast"
+            passed=observed and all(result[k]=="passed" for k in ("strict","diagnostic"))
+            return {"tool":"vm_workflow","state":"passed" if passed else "failed" if observed else "unknown","phase":result["phase"],"scripts":{k:result[k] for k in ("strict","diagnostic")},
+                "replayAllowed":False,"nativeActionAllowed":False,"productAction":False,"ok":passed,"evidenceClass":"native-parser"}
+        if action in {"windows-cp117-c32-archive-diagnose", "windows-cp117-c32-archive-preflight"}:
+            if not isinstance(inputs, dict) or set(inputs) != {"leaseId"}:
+                return _error("vm_workflow", "Fixed archive observation requires its new lease only.")
+            archive = _agent_module("windows_cp117_c32_archive_admission")
+            try:
+                method = archive.diagnose if action.endswith("-diagnose") else archive.preflight
+                result = method(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            valid = (isinstance(result, dict) and set(result) <= {"state", "phase", "absence", "retainedGuard", "retainedPhase", "hostBaseStage", "hostFailure", "hostKnownMask", "hostEntryCount", "hostFileMode", "correlationId", "baseTerminalReceiptSha256", "cleanupReceiptSha256", *flags}
+                and all(result.get(k) is v for k, v in flags.items())
+                and result.get("state") in {"ready", "blocked", "observed", "unknown"}
+                and result.get("phase", "local-ready") in {"request", "history", "transfer-binding", "terminal-cleanup-dispatch", "local-ready", "closed", "cleanup", "absence", "host-history"}
+                and result.get("hostBaseStage", "absent") in {"absent", "retained"}
+                and result.get("retainedGuard", "ready") in {"ready","TASK","TASK_COUNT","TASK_STATE","TASK_ACTION_COUNT","TASK_EXEC","TASK_TRIGGER_COUNT","TASK_TRIGGER_NULL","TASK_INFO","PRINCIPAL","ACTION","ROOT","OWNER","TREE","FILE","RESULT_SIZE","RESULT_READ","RESULT_JSON","RESULT_UTF8_BOM","RESULT_UTF16_LE","RESULT_UTF16_BE","runtime-error"}
+                and result.get("retainedPhase", "transport") in {"binding","script","transport","guest-exec","guest-status","running","terminal","json-shape","task","task-info","principal","action","root","owner","tree","file","result"}
+                and result.get("hostFailure", "parents") in {"parents","group","leaf","binding","dispatch"}
+                and result.get("hostFileMode", "unobserved") in {"unobserved","0600","0644","0664","0666"}
+                and result.get("hostKnownMask", "00") in {"00","01","10","11"}
+                and type(result.get("hostEntryCount", 0)) is int and 0<=result.get("hostEntryCount", 0)<=9
+                and result.get("correlationId", "c32cb108-4d48-407e-9153-40774559ba50") == "c32cb108-4d48-407e-9153-40774559ba50"
+                and all(isinstance(result[k], str) and re.fullmatch(r"[0-9a-f]{64}", result[k]) for k in ("baseTerminalReceiptSha256", "cleanupReceiptSha256") if k in result))
+            if "absence" in result:
+                census=result["absence"]
+                valid=valid and (census=="unknown" or (isinstance(census,dict)
+                    and set(census)=={"baseTask","transferTask","guestLeaf","baseMsi","correlationProcess"}
+                    and all(v in {"absent","present","ambiguous"} for v in census.values())))
+            if not valid: result = {"state": "unknown", **flags}
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] in {"observed", "ready"}, "evidenceClass": "native-history"}
+        if action in {"windows-cp117-c32-retained-task-retire-preflight", "windows-cp117-c32-retained-task-retire-start", "windows-cp117-c32-retained-task-retire-status"}:
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            retirement = "d8917ee1-667f-4ee6-9af7-b8d33f3e6fb9"
+            task = "VpnControlMcpBase-c32cb108-4d48-407e-9153-40774559ba50"
+            fallback = {"state": "unknown", **flags}
+            if not isinstance(inputs, dict) or inputs != {}:
+                return _error("vm_workflow", "Fixed c32 retained-task retirement takes no inputs.")
+            module = _agent_module("windows_cp117_c32_retained_task_retire")
+            try: result = module.workflow(REPO_ROOT, action.rsplit("-", 1)[1], {})
+            except (ValueError, OSError, KeyError, TypeError): result = fallback
+            blocked = {"intent", "platform", "binding", "lease", "terminal", "parser", "descriptor"}
+            unknown = {"generation", "lease", "parser", "remote", "recheck"}
+            valid = isinstance(result, dict) and all(result.get(k) is v for k, v in flags.items())
+            if valid and result.get("state") == "ready":
+                valid = set(result) == {"state", "retirementCorrelationId", "task", *flags} and result.get("retirementCorrelationId") == retirement and result.get("task") == task
+            elif valid and result.get("state") == "terminal":
+                valid = set(result) == {"state", "retirementCorrelationId", "task", *flags} and result.get("retirementCorrelationId") == retirement and result.get("task") == task
+            elif valid and result.get("state") == "blocked":
+                valid = set(result) == {"state", "phase", *flags} and isinstance(result.get("phase"), str) and result["phase"] in blocked
+            elif valid and result.get("state") == "unknown":
+                valid = (set(result) == {"state", *flags} or (set(result) == {"state", "phase", *flags} and isinstance(result.get("phase"), str) and result["phase"] in unknown))
+            else: valid = False
+            if not valid: result = fallback
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] in {"ready", "terminal"}, "evidenceClass": "native-history"}
+        if action in {"windows-cp117-source-pre-effect-status", "windows-cp117-source-pre-effect-close", "windows-cp117-source-pre-effect-diagnose"}:
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            fallback = {"state": "unknown", "phase": "local-intent", "correlationId": "67eeeedb-a618-42d5-8e31-821650d16302", **flags}
+            if not isinstance(inputs, dict) or inputs != {}:
+                return _error("vm_workflow", "Fixed source closure takes no inputs.")
+            module = _agent_module("windows_cp117_source_pre_effect_close")
+            try: result = module.workflow(REPO_ROOT, action.rsplit("-", 1)[1], {})
+            except (ValueError, OSError, KeyError, TypeError): result = fallback
+            phases = {"local-intent", "pair", "descriptor", "local-journal", "remote-journal", "guest-census", "readiness", "marker-conflict", "verified-absence", "closed"}
+            remote_phases = getattr(module, "_GUEST_CENSUS_PHASES", frozenset())
+            guest_phases = {"observed", *remote_phases} if isinstance(remote_phases, (set, frozenset)) else {"observed"}
+            valid = (isinstance(result, dict) and result.get("correlationId") == fallback["correlationId"]
+                     and all(result.get(k) is False for k in flags))
+            if action.endswith("-diagnose"):
+                diagnostic = {"state", "phase", "guestCensusPhase", "correlationId", *flags}
+                generic = {"state", "phase", "correlationId", *flags}
+                valid = valid and ((set(result) == diagnostic and result.get("phase") == "guest-census"
+                                    and isinstance(result.get("guestCensusPhase"), str) and result["guestCensusPhase"] in guest_phases
+                                    and ((result.get("state") == "observed") == (result.get("guestCensusPhase") == "observed")))
+                                   or (set(result) == generic and result.get("state") == "unknown"
+                                       and isinstance(result.get("phase"), str) and result["phase"] in phases))
+            elif valid and result.get("state") == "closed":
+                valid = (set(result) == {"state", "correlationId", "closureReceiptSha256", *flags}
+                         and isinstance(result.get("closureReceiptSha256"), str)
+                         and re.fullmatch(r"[0-9a-f]{64}", result["closureReceiptSha256"]) is not None)
+            elif valid:
+                valid = (set(result) == set(fallback) and result.get("state") in {"observed", "unknown"}
+                         and isinstance(result.get("phase"), str) and result["phase"] in phases
+                         and (result["state"] != "observed" or result["phase"] in {"verified-absence", "closed"}))
+            if not valid: result = fallback
+            return {"tool": "vm_workflow", **result, "ok": valid and result["state"] in {"observed", "closed"}, "evidenceClass": "native-history"}
+        if action == "windows-cp117-cp95-task-retire-successor-admission-diagnose":
+            if not isinstance(inputs, dict) or inputs != {}:
+                return _error("vm_workflow", "Fixed successor diagnosis takes no inputs.")
+            module = _agent_module("windows_cp117_cp95_task_retire")
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            fallback = {"state": "unknown", "phase": "intent", "retirementCorrelationId": "9a5d3d6a-5f43-4a3f-9e4e-f90b9cc86e86", "tailCorrelationId": "7cc61627-2881-4cc3-887d-a5bf545ed2ca", **flags}
+            stages = {"parent", "descriptor", "specs", "closure", "old-child", "successor-child", "lease", "tailplan", "fresh", "ready"}
+            phases = stages | {stage + "-" + kind for stage in stages for kind in {"oserror", "valueerror", "typeerror", "keyerror", "indexerror"}}
+            try:
+                result = module.successor_admission_diagnose(REPO_ROOT, {})
+            except (ValueError, OSError, KeyError, TypeError):
+                result = fallback
+            valid = (isinstance(result, dict) and set(result) == set(fallback) and
+                     result.get("state") == "diagnosed" and isinstance(result.get("phase"), str) and result["phase"] in phases and
+                     all(result.get(key) == fallback[key] for key in ("retirementCorrelationId", "tailCorrelationId")) and
+                     all(result.get(key) is False for key in flags))
+            return {"tool": "vm_workflow", **(result if valid else fallback), "ok": valid, "evidenceClass": "native-observation"}
+        if action in {"windows-cp117-cp95-task-retire-diagnose", "windows-cp117-cp95-task-retire-finish-diagnose", "windows-cp117-cp95-task-retire-tail-diagnose"}:
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            fallback = {"state": "unknown", "phase": "intent",
+                        "retirementCorrelationId": "9a5d3d6a-5f43-4a3f-9e4e-f90b9cc86e86", **flags}
+            tail = action.endswith("-tail-diagnose")
+            if tail:
+                fallback["tailCorrelationId"] = "60c5d5da-1d80-492b-90b5-7a4a9ad48b34"
+            if not isinstance(inputs, dict) or inputs != {}:
+                return _error("vm_workflow", "Fixed CP95 journal diagnosis takes no inputs.")
+            module = _agent_module("windows_cp117_cp95_task_retire")
+            try:
+                result = (module.finish_diagnose(REPO_ROOT, {}) if action.endswith("-finish-diagnose")
+                          else module.tail_diagnose(REPO_ROOT, {}) if tail
+                          else module.workflow(REPO_ROOT, "diagnose", {}))
+            except (ValueError, OSError, KeyError, TypeError):
+                result = fallback
+            phases = {"intent", "descriptor", "generation", "remote-stage", "remote-file",
+                      "remote-encoding", "remote-decoder", "archive", "terminal", "complete"}
+            phases |= {"remote-file-" + phase for phase in {"root-absent", "root-unsafe", "binding-absent",
+                       "archive-absent", "terminal-absent", "file-unsafe", "access", "readable"}}
+            if action.endswith("-finish-diagnose"):
+                phases = {"process", "binding", "archive", "task", "root", "terminal", "ready", "unknown"} | {"task-query", *{"task-present-" + str(i) for i in range(1, 6)}}
+            if tail:
+                phases = {"parent-intent", "child-intent-absent", "child-intent", "remote-file", "unknown"} | {"remote-file-" + phase for phase in {"root-absent", "root-unsafe", "binding-absent", "archive-absent", "terminal-absent", "file-unsafe", "access", "readable"}}
+            valid = (isinstance(result, dict) and set(result) == set(fallback) and
+                     result.get("state") == "diagnosed" and isinstance(result.get("phase"), str) and
+                     result["phase"] in phases and
+                     result.get("retirementCorrelationId") == fallback["retirementCorrelationId"] and
+                     all(result.get(key) is False for key in flags) and
+                     (not tail or result.get("tailCorrelationId") == fallback["tailCorrelationId"]))
+            if not valid:
+                result = fallback
+            return {"tool": "vm_workflow", **result, "ok": valid, "evidenceClass": "native-history"}
+        if action in {"windows-cp117-cp95-task-retire-successor-start", "windows-cp117-cp95-task-retire-successor-status", "windows-cp117-cp95-task-retire-tail-close-pre-effect", "windows-cp117-cp95-task-retire-tail-start", "windows-cp117-cp95-task-retire-tail-status", "windows-cp117-cp95-task-retire-finish", "windows-cp117-cp95-task-retire-preflight", "windows-cp117-cp95-task-retire-start", "windows-cp117-cp95-task-retire-status", "windows-cp117-e848-http-task-retire-preflight", "windows-cp117-e848-http-task-retire-start", "windows-cp117-e848-http-task-retire-status"}:
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            closure = action == "windows-cp117-cp95-task-retire-tail-close-pre-effect"
+            successor = action in {"windows-cp117-cp95-task-retire-successor-start", "windows-cp117-cp95-task-retire-successor-status"}
+            tail = closure or successor or action in {"windows-cp117-cp95-task-retire-tail-start", "windows-cp117-cp95-task-retire-tail-status"}
+            e848 = action.startswith("windows-cp117-e848-")
+            fallback = {"state": "unknown", "phase": "proof", "retirementCorrelationId": "477365c8-3c78-4d5c-83c9-2f6de2bd5997" if e848 else "9a5d3d6a-5f43-4a3f-9e4e-f90b9cc86e86", **flags}
+            if tail:
+                fallback["tailCorrelationId"] = "7cc61627-2881-4cc3-887d-a5bf545ed2ca" if successor else "60c5d5da-1d80-492b-90b5-7a4a9ad48b34"
+            if not isinstance(inputs, dict) or inputs != {}:
+                return _error("vm_workflow", "Fixed CP95 task retirement takes no inputs.")
+            module = _agent_module("windows_cp117_e848_http_task_retire" if e848 else "windows_cp117_cp95_task_retire")
+            try:
+                result = (module.successor_start(REPO_ROOT, {}) if action == "windows-cp117-cp95-task-retire-successor-start"
+                          else module.successor_status(REPO_ROOT, {}) if action == "windows-cp117-cp95-task-retire-successor-status"
+                          else module.tail_close_pre_effect(REPO_ROOT, {}) if closure
+                          else module.tail_start(REPO_ROOT, {}) if action == "windows-cp117-cp95-task-retire-tail-start"
+                          else module.tail_status(REPO_ROOT, {}) if action == "windows-cp117-cp95-task-retire-tail-status"
+                          else module.workflow(REPO_ROOT, action.rsplit("-", 1)[1], {}))
+            except (ValueError, OSError, KeyError, TypeError): result = fallback
+            phases = getattr(module, "_PHASES", frozenset())
+            diagnostic_phases = getattr(module, "_DIAGNOSTIC_PHASES", frozenset())
+            valid = (isinstance(phases, (set, frozenset)) and isinstance(diagnostic_phases, (set, frozenset))
+                     and isinstance(result, dict) and isinstance(result.get("state"), str) and result["state"] in {"not-started", "ready", "blocked", "unknown", "retired", "closed"}
+                     and isinstance(result.get("phase"), str) and result["phase"] in phases
+                     and result.get("retirementCorrelationId") == fallback["retirementCorrelationId"]
+                     and all(result.get(k) is False for k in flags)
+                     and (result["state"] != "retired" or result["phase"] == "complete") and
+                     (result["state"] != "closed" or (closure and result["phase"] == "tail-closure-complete")))
+            allowed = {"state", "phase", "retirementCorrelationId", *flags}
+            if tail:
+                allowed.add("tailCorrelationId")
+                valid = valid and result.get("tailCorrelationId") == fallback["tailCorrelationId"]
+            diagnostic = result.get("snapshotDiagnostic") if isinstance(result, dict) else None
+            if diagnostic is None:
+                valid = valid and set(result) == allowed
+            else:
+                valid = valid and not e848 and result.get("state") == "blocked" and set(result) == allowed | {"snapshotDiagnostic"}
+                valid = valid and isinstance(diagnostic, dict) and set(diagnostic) <= {"phase", "rawBytes", "wireBytes"} and "phase" in diagnostic
+                valid = valid and isinstance(diagnostic.get("phase"), str) and diagnostic["phase"] in diagnostic_phases and all(type(diagnostic[k]) is int and 0 <= diagnostic[k] <= 150000 for k in ("rawBytes", "wireBytes") if k in diagnostic)
+                valid = valid and result.get("phase") == "snapshot-output-" + diagnostic["phase"]
+            if not valid: result = fallback
+            return {"tool": "vm_workflow", **result, "ok": valid and (result["state"] in {"ready", "retired"} or (closure and result["state"] == "closed")), "evidenceClass": "native-history"}
+        if action == "windows-cp117-cp95-retained-tasks":
+            flags={"replayAllowed":False,"nativeActionAllowed":False,"productAction":False}
+            fallback={"state":"unknown","phase":"proof",**flags}
+            if not isinstance(inputs,dict) or inputs!={}:
+                return _error("vm_workflow","Fixed CP95 task observation takes no inputs.")
+            module=_agent_module("windows_cp117_cp95_retained_tasks")
+            try: result=module.status(REPO_ROOT,{})
+            except (ValueError,OSError,KeyError,TypeError):result=fallback
+            minimal={"state","phase",*flags}
+            full={"state","profiles","activeInstallerCount","opaquePowerShellCount",*flags}
+            phases={"platform","local-intent","dispatch","python-intent","descriptor","active-lease","command","qga","proof","generation","recheck"}
+            valid=isinstance(result,dict) and all(result.get(k) is False for k in flags)
+            if valid and result.get("state")=="unknown":
+                valid=set(result)==minimal and isinstance(result.get("phase"),str) and result["phase"] in phases
+            elif valid and result.get("state") in {"ready","blocked"}:
+                valid=(set(result)==(full if result["state"]=="ready" else full|{"phase"})
+                       and (result["state"]!="blocked" or result.get("phase")=="proof")
+                       and all(type(result.get(k)) is int and 0<=result[k]<=16 for k in ("activeInstallerCount","opaquePowerShellCount")))
+                names=("acquire-194eb94d","acquire-26ced2bf","acquire-7b721c91","acquire-f4930053","python-f4930053")
+                profiles=result.get("profiles")
+                valid=valid and isinstance(profiles,list) and len(profiles)==5
+                if valid:
+                    for name,item in zip(names,profiles):
+                        valid=(isinstance(item,dict) and set(item)=={"profile","state","result","correlatedProcess"}
+                               and item.get("profile")==name and isinstance(item.get("state"),str)
+                               and item["state"] in {"absent","mismatch","running","ready-unproven","terminal","unknown"}
+                               and isinstance(item.get("result"),str) and item["result"] in {"unknown","succeeded","failed"}
+                               and isinstance(item.get("correlatedProcess"),str) and item["correlatedProcess"] in {"absent","present","unknown"}
+                               and ((item["state"]=="terminal")== (item["result"] in {"succeeded","failed"})))
+                        if not valid:break
+                if valid:
+                    ready=(result["activeInstallerCount"]==0 and result["opaquePowerShellCount"]==0
+                           and all(p["state"]=="terminal" and p["correlatedProcess"]=="absent" for p in profiles))
+                    valid=(result["state"]=="ready")==ready
+            else:valid=False
+            if not valid:result=fallback
+            return {"tool":"vm_workflow",**result,"ok":valid and result["state"]=="ready","evidenceClass":"native-history"}
+        if action == "windows-cp117-e848-http-task":
+            flags={"replayAllowed":False,"nativeActionAllowed":False,"productAction":False}
+            if not isinstance(inputs,dict) or inputs!={}:
+                return _error("vm_workflow","Fixed retained HTTP task observation takes no inputs.")
+            module=_agent_module("windows_cp117_e848_http_task")
+            try: result=module.observe(REPO_ROOT,{})
+            except (ValueError,OSError,KeyError,TypeError):result={"state":"unknown","phase":"remote-transport","proof":"unverified",**flags}
+            phases={"platform","local-history","local-active","generation","remote-transport","remote-root","remote-lock","remote-closed","remote-active","remote-stage","remote-parser","remote-exec","remote-status","remote-output","remote-output-bom","remote-output-encoding","remote-output-envelope","remote-output-truncated","remote-output-stderr-progress","remote-output-stderr-error","remote-output-stderr-other","remote-output-empty","remote-output-json","remote-output-shape","remote-identity","remote-task","remote-process","remote-installer","remote-recheck","task-state","task-principal","task-settings","task-action","task-port","task-terminal","process","installer","verified"}
+            valid=(isinstance(result,dict) and set(result)=={"state","phase","proof",*flags}
+                   and all(result.get(k) is False for k in flags)
+                   and isinstance(result.get("phase"),str) and result["phase"] in phases|{"task-trigger","task-execution-limit"}
+                   and result.get("state") in {"ready","blocked","unknown"}
+                   and ((result["state"]=="ready" and result["phase"]=="verified" and result["proof"]=="terminal-success")
+                        or (result["state"]!="ready" and result["phase"]!="verified" and result["proof"]=="unverified")))
+            if not valid:result={"state":"unknown","phase":"remote-output","proof":"unverified",**flags}
+            return {"tool":"vm_workflow",**result,"ok":valid and result["state"]=="ready","evidenceClass":"native-history"}
+        if action in {"windows-cp117-source-campaign-reservation-diagnose", "windows-cp117-source-campaign-preflight", "windows-cp117-source-campaign-start", "windows-cp117-source-campaign-status", "windows-cp117-source-campaign-diagnose", "windows-cp117-source-campaign-terminal-reconcile", "windows-cp117-source-campaign-finish", "windows-cp117-source-campaign-parser"}:
+            campaign = _agent_module("windows_cp117_source_campaign")
+            try:
+                result = campaign.workflow(REPO_ROOT, action.removeprefix("windows-cp117-source-campaign-"), inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                result = {"state": "unknown", "replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            from agent_tools import windows_cp117_source_projection as source_projection
+            projected = source_projection.project(action.removeprefix("windows-cp117-source-campaign-"), result)
+            return {"tool": "vm_workflow", **projected, "evidenceClass": "native-campaign"}
         if action == "windows-cp117-campaign-status":
             if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
                 return _error("vm_workflow", "Exact CP117 campaign status host is required.")
@@ -3359,6 +4327,12 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 "windows-fixture-server-abort-successor-start": ("windows_fixture_server_abort_successor", "start", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"submitted"}),
                 "windows-fixture-server-abort-successor-status": ("windows_fixture_server_abort_successor", "status", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"running", "cleaned"}),
                 "windows-fixture-server-abort-successor-diagnostic": ("windows_fixture_server_abort_successor", "diagnose", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"observed", "diagnosed"}),
+                "windows-fixture-server-second-abort-successor-start": ("windows_fixture_server_second_abort_successor", "start", {"successorCorrelationId"}, {"successorCorrelationId"}, {"submitted"}),
+                "windows-fixture-server-second-abort-successor-status": ("windows_fixture_server_second_abort_successor", "status", {"successorCorrelationId"}, {"successorCorrelationId"}, {"cleaned"}),
+                "windows-fixture-server-second-abort-successor-diagnostic": ("windows_fixture_server_second_abort_successor", "diagnose", {"successorCorrelationId"}, {"successorCorrelationId"}, {"observed", "diagnosed"}),
+                "windows-fixture-server-second-abort-recovery-diagnose": ("windows_fixture_server_second_abort_successor", "resume_diagnose", {"recoveryCorrelationId"}, {"recoveryCorrelationId"}, {"observed", "diagnosed"}),
+                "windows-fixture-server-second-abort-recovery-start": ("windows_fixture_server_second_abort_successor", "resume_start", {"recoveryCorrelationId"}, {"recoveryCorrelationId"}, {"submitted"}),
+                "windows-fixture-server-second-abort-recovery-status": ("windows_fixture_server_second_abort_successor", "resume_status", {"recoveryCorrelationId"}, {"recoveryCorrelationId"}, {"cleaned"}),
                 "windows-fixture-server-resume-no-dispatch-start": ("windows_fixture_server_resume", "start", {"serverCorrelationId"}, {"serverCorrelationId"}, {"submitted"}),
                 "windows-fixture-server-post-resource-diagnostic": ("windows_fixture_post_resource_diagnostic", "diagnose", {"serverCorrelationId"}, {"serverCorrelationId"}, {"diagnosed"}),
                 "windows-fixture-server-probe-events-acl-diagnostic": ("windows_fixture_post_resource_diagnostic", "diagnose_events_acl", {"serverCorrelationId"}, {"serverCorrelationId"}, {"observed"}),
@@ -3401,6 +4375,19 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 return {"tool": "vm_workflow", **result, "ok": result.get("state") in passing_states and result.get("replayAllowed") is False,
                         "evidenceClass": "native-fixture", "productAction": False}
             except (ValueError, OSError, KeyError, TypeError) as error:
+                if action in {
+                        "windows-fixture-server-second-abort-successor-start",
+                        "windows-fixture-server-second-abort-successor-status",
+                        "windows-fixture-server-second-abort-successor-diagnostic",
+                        "windows-fixture-server-second-abort-recovery-diagnose",
+                        "windows-fixture-server-second-abort-recovery-start",
+                        "windows-fixture-server-second-abort-recovery-status"}:
+                    correlation_key = ("recoveryCorrelationId" if "-recovery-" in action
+                                       else "successorCorrelationId")
+                    return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                            "reason": "windows-fixture-lifecycle-unavailable",
+                            correlation_key: inputs[correlation_key], "replayAllowed": False,
+                            "nativeActionAllowed": False, "productAction": False}
                 return _error("vm_workflow", str(error))
         if action in {"linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status"}:
             base = _agent_module("linux_rpm_base_prepare")
@@ -3691,6 +4678,245 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "productAction": False}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
+        if action in {"android-consent-grant-acceptance-reconcile-status", "android-consent-grant-acceptance-reconcile-diagnose"}:
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"} or
+                    not isinstance(inputs["correlationId"], str) or not _valid_uuid(inputs["correlationId"])):
+                return _error("vm_workflow", "Reconciliation observation requires only the original canonical correlation.")
+            helper = _agent_module("android_consent_grant_acceptance")
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            result = None
+            try:
+                method = helper.reconcile_status if action.endswith("-status") else helper.reconcile_diagnose
+                result = method(REPO_ROOT, inputs["correlationId"])
+            except (ValueError, OSError, KeyError, TypeError):
+                pass
+            base_keys = {"ok", "state", "reason", "correlationId", *flags}
+            base_valid = (isinstance(result, dict) and result.get("correlationId") == inputs["correlationId"] and
+                          all(result.get(k) is False for k in flags))
+            enums = {"workerState": {"terminal", "live", "reused", "unknown"}, "grantRecords": {"absent", "present"},
+                     "baselineRecord": {"absent", "present"}, "remoteMarker": {"absent", "valid", "invalid"},
+                     "remoteClaim": {"absent", "owned", "foreign", "changed"}, "lockState": {"free", "busy", "missing", "unsafe"}}
+            observed_keys = base_keys | {"records", "localMarker", "localClaims", "currentProof"}
+            records = result.get("records") if isinstance(result, dict) else None
+            claims = result.get("localClaims") if isinstance(result, dict) else None
+            observed = (base_valid and set(result) in (observed_keys, observed_keys | {"historicalSourceSettings"}) and
+                        result.get("ok") is True and result.get("state") == "observed" and result.get("reason") is None and
+                        isinstance(records, dict) and set(records) == set(enums) and
+                        all(isinstance(records[k], str) and records[k] in values for k, values in enums.items()) and
+                        isinstance(result.get("localMarker"), str) and result["localMarker"] in {"absent", "valid", "invalid"} and
+                        isinstance(claims, dict) and set(claims) == {"shared", "document"} and
+                        all(isinstance(v, str) and v in {"absent", "owned", "foreign", "changed", "unsafe"} for v in claims.values()) and
+                        isinstance(result.get("currentProof"), str) and result["currentProof"] in {"not-probed", "matched", "drift"} and
+                        ("historicalSourceSettings" not in result or (isinstance(result["historicalSourceSettings"], str) and result["historicalSourceSettings"] in {"unavailable", "matched", "drift"})))
+            reasons = getattr(helper, "_RECONCILE_REASONS", ())
+            checkpoints = getattr(helper, "_RECONCILE_CHECKPOINTS", frozenset())
+            unknown = (base_valid and isinstance(reasons, tuple) and isinstance(checkpoints, (set, frozenset)) and
+                       set(result) in (base_keys, base_keys | {"checkpoint"}) and result.get("ok") is False and result.get("state") == "unknown" and
+                       isinstance(result.get("reason"), str) and result["reason"] in reasons and
+                       ("checkpoint" not in result or (isinstance(result["checkpoint"], str) and result["checkpoint"] in checkpoints)))
+            projection = ({key: result[key] for key in ("state", "reason", "records", "localMarker", "localClaims", "currentProof", "historicalSourceSettings", "checkpoint") if key in result}
+                          if observed or unknown else {"state": "unknown", "reason": "grant-reconciliation-observation-unavailable"})
+            return {"tool": "vm_workflow", **projection, **flags, "ok": bool(observed),
+                    "correlationId": inputs["correlationId"], "evidenceClass": "native-observation"}
+        if action == "android-consent-grant-acceptance-reconcile":
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"} or
+                    not isinstance(inputs["correlationId"], str) or not _valid_uuid(inputs["correlationId"])):
+                return _error("vm_workflow", "Grant reconciliation requires only the original correlation.")
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            result = None
+            try:
+                result = _agent_module("android_consent_grant_acceptance").reconcile(REPO_ROOT, inputs["correlationId"])
+            except (ValueError, OSError, KeyError, TypeError):
+                pass
+            proof = result.get("proof") if isinstance(result, dict) else None
+            true_keys = {"workerTerminal", "noGrantIntents", "configurationGenerationUnchanged", "fullRoutingUnchanged", "packageUnchanged", "currentSourceSettingsStable", "currentRuntimeStable", "currentOperationsStable", "permissionAbsent", "runtimeOff"}
+            hashes = {"retainedBindingsSha256", "currentSnapshotSha256"}
+            valid = (isinstance(result, dict) and set(result) == {"ok", "state", "reason", "correlationId", *flags, "proof", "claimsReleased", "originalOutcome", "grantObserved"} and
+                     result.get("ok") is True and result.get("state") == "closed" and result.get("reason") is None and
+                     result.get("correlationId") == inputs["correlationId"] and all(result.get(k) is False for k in flags) and
+                     result.get("claimsReleased") is True and result.get("originalOutcome") == "unknown" and result.get("grantObserved") is False and
+                     isinstance(proof, dict) and set(proof) == true_keys | hashes | {"historicalSourceSettingsAvailable"} and
+                     all(proof[k] is True for k in true_keys) and type(proof["historicalSourceSettingsAvailable"]) is bool and
+                     all(isinstance(proof[k], str) and re.fullmatch(r"[0-9a-f]{64}", proof[k]) is not None for k in hashes))
+            projection = ({"state": "closed", "claimsReleased": True, "originalOutcome": "unknown", "grantObserved": False, "proof": dict(proof)}
+                          if valid else {"state": "unknown", "reason": "grant-no-effect-closure-unavailable"})
+            return {"tool": "vm_workflow", **projection, **flags, "ok": valid,
+                    "correlationId": inputs["correlationId"], "evidenceClass": "native-reconciliation"}
+        if action == "android-obsolete-consent-denial-collect":
+            if (not isinstance(inputs, dict) or set(inputs) != {"denialId"} or
+                    not isinstance(inputs["denialId"], str) or not _valid_uuid(inputs["denialId"])):
+                return _error("vm_workflow", "Obsolete dialog collection requires only its canonical denial correlation.")
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            result = None
+            try:
+                result = _agent_module("android_obsolete_consent_denial").collect(REPO_ROOT, inputs["denialId"])
+            except (ValueError, OSError, KeyError, TypeError):
+                pass
+            proof = result.get("proof") if isinstance(result, dict) else None
+            ids = {"denialId", "closureId", "originalCorrelationId", "observationId"}
+            hashes = {"intentSha256", "tapSha256"}
+            false_keys = {"grantObserved", "permissionGranted", "runtimeStarted"}
+            valid = (isinstance(result, dict) and
+                     set(result) == {"ok", "state", "reason", "denialId", *flags, "originalOutcome",
+                                     "grantObserved", "proof", "remoteClaimReleased", "claimsReleased"} and
+                     result.get("ok") is True and result.get("state") == "complete" and result.get("reason") is None and
+                     result.get("denialId") == inputs["denialId"] and all(result.get(k) is False for k in flags) and
+                     result.get("originalOutcome") == "unknown" and result.get("grantObserved") is False and
+                     result.get("claimsReleased") is True and result.get("remoteClaimReleased") is True and
+                     isinstance(proof, dict) and set(proof) == ids | hashes | false_keys | {"schema", "originalOutcome", "uiAbsent", "scope"} and
+                     type(proof.get("schema")) is int and proof["schema"] == 1 and
+                     all(isinstance(proof[k], str) and _valid_uuid(proof[k]) for k in ids) and
+                     proof["denialId"] == inputs["denialId"] and
+                     proof["denialId"] not in {proof["closureId"], proof["originalCorrelationId"]} and
+                     all(isinstance(proof[k], str) and re.fullmatch(r"[0-9a-f]{64}", proof[k]) is not None for k in hashes) and
+                     all(proof[k] is False for k in false_keys) and proof["uiAbsent"] is True and
+                     proof["originalOutcome"] == "unknown" and proof["scope"] == "obsolete-dialog-denial")
+            return {"tool": "vm_workflow", "ok": valid, "state": "complete" if valid else "unknown",
+                    "reason": None if valid else "obsolete-dialog-collection-unavailable", **inputs, **flags,
+                    "claimsReleased": valid, "remoteClaimReleased": valid, "originalOutcome": "unknown",
+                    "grantObserved": False, "evidenceClass": "native-reconciliation",
+                    **({"proof": dict(proof)} if valid else {})}
+        if action == "android-consent-grant-prompt-collect":
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId", "observationId"} or
+                    any(not isinstance(inputs[k], str) or not _valid_uuid(inputs[k]) for k in inputs)):
+                return _error("vm_workflow", "Prompt collection requires canonical original and observation correlations.")
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False, "claimsReleased": False}
+            result = None
+            try:
+                result = _agent_module("android_consent_grant_acceptance").prompt_collect(REPO_ROOT, inputs["correlationId"], inputs["observationId"])
+            except (ValueError, OSError, KeyError, TypeError):
+                pass
+            parent = REPO_ROOT / ".rag_index/android-consent-grant-acceptance" / ("prompt-" + inputs["correlationId"] + "-" + inputs["observationId"])
+            expected_paths = {name: str(parent / name) for name in ("ui.xml", "ui.png", "binding.json", "operation-observation.json")}
+            valid = (isinstance(result, dict) and set(result) == {"ok", "state", "reason", "correlationId", "observationId", "localPaths", *flags} and
+                     result.get("ok") is True and result.get("state") == "complete" and result.get("reason") is None and
+                     result.get("correlationId") == inputs["correlationId"] and result.get("observationId") == inputs["observationId"] and
+                     all(result.get(k) is False for k in flags) and result.get("localPaths") == expected_paths)
+            return {"tool": "vm_workflow", "ok": valid, "state": "complete" if valid else "unknown",
+                    "reason": None if valid else "prompt-collection-unavailable", **inputs, **flags,
+                    "evidenceClass": "native-observation", "artifactCount": 4 if valid else 0}
+        if action == "android-consent-grant-acceptance-diagnose":
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"} or
+                    not isinstance(inputs["correlationId"], str) or not _valid_uuid(inputs["correlationId"])):
+                return _error("vm_workflow", "Grant diagnosis requires only the original canonical correlation.")
+            flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
+            result = None
+            try:
+                result = _agent_module("android_consent_grant_acceptance").diagnose(REPO_ROOT, inputs["correlationId"])
+            except (ValueError, OSError, KeyError, TypeError):
+                pass
+            checks = result.get("checks") if isinstance(result, dict) else None
+            facts = result.get("facts") if isinstance(result, dict) else None
+            check_keys = {"runtimeOff", "runtimeStopped", "vpnMode", "selectionNull", "activeNull", "locationsEmpty", "sourceCurrentLocations", "subscriptionNull"}
+            enums = {"configuredMode": {"vpn", "proxy-only", "missing", "other"},
+                     "runtimeObservation": {"stopped", "running", "unknown", "missing", "other"},
+                     "sourceMode": {"current-locations", "subscription", "missing", "other"},
+                     "subscriptionBinding": {"null", "empty", "selected", "missing", "other"},
+                     "locationShape": {"array", "missing", "other"}, "operationShape": {"array", "other"}}
+            bool_keys = {"locationCountTruncated", "operationCountTruncated", "operationsTerminal", "selectedFieldPresent", "activeFieldPresent"}
+            valid = (isinstance(result, dict) and set(result) == {"ok", "state", "reason", "correlationId", *flags, "historicalReason", "observationClass", "checks", "facts"} and
+                     result.get("ok") is True and result.get("state") == "diagnosed" and result.get("reason") is None and
+                     result.get("correlationId") == inputs["correlationId"] and all(result.get(k) is False for k in flags) and
+                     result.get("historicalReason") == "baseline_not_empty_off" and result.get("observationClass") == "fresh-current-baseline" and
+                     isinstance(checks, dict) and set(checks) == check_keys and all(type(v) is bool for v in checks.values()) and
+                     isinstance(facts, dict) and set(facts) == set(enums) | bool_keys | {"locationCount", "operationCount"} and
+                     all(isinstance(facts[k], str) and facts[k] in values for k, values in enums.items()) and
+                     all(type(facts[k]) is bool for k in bool_keys) and
+                     all(type(facts[k]) is int and 0 <= facts[k] <= 128 for k in ("locationCount", "operationCount")))
+            projection = ({"state": "diagnosed", "historicalReason": "baseline_not_empty_off", "observationClass": "fresh-current-baseline", "checks": dict(checks), "facts": dict(facts)}
+                          if valid else {"state": "unknown", "reason": "grant-diagnostic-proof-unavailable"})
+            return {"tool": "vm_workflow", **projection, **flags, "ok": valid,
+                    "correlationId": inputs["correlationId"], "evidenceClass": "native-observation"}
+        if action in {"android-consent-grant-acceptance-start", "android-consent-grant-acceptance-status",
+                      "android-consent-grant-acceptance-collect"}:
+            start_action = action.endswith("-start")
+            required = ({"host", "device", "correlationId", "artifactId", "cliStageCorrelationId",
+                         "openingReadbackCorrelationId", "expectedBackupSha256",
+                         "expectedOwner", "expectedRevision"} if start_action else {"correlationId"})
+            if not isinstance(inputs, dict) or set(inputs) != required:
+                return _error("vm_workflow", "Android consent grant requires exact receipt bindings.")
+            uuid_keys = ({"correlationId", "cliStageCorrelationId", "openingReadbackCorrelationId",
+                          "expectedOwner"} if start_action else {"correlationId"})
+            if any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in uuid_keys):
+                return _error("vm_workflow", "Android consent grant requires canonical correlations.")
+            if start_action and (not isinstance(inputs["artifactId"], str) or
+                    re.fullmatch(r"sha256-[0-9a-f]{64}", inputs["artifactId"]) is None or
+                    not isinstance(inputs["expectedBackupSha256"], str) or
+                    re.fullmatch(r"[0-9a-f]{64}", inputs["expectedBackupSha256"]) is None or
+                    type(inputs["expectedRevision"]) is not int or inputs["expectedRevision"] < 0):
+                return _error("vm_workflow", "Android consent grant requires exact artifact and revision.")
+            if start_action and (inputs["host"] != "archlinux" or inputs["device"] != "api35"):
+                return _error("vm_workflow", "Android grant requires the configured disposable API35 route.")
+            reset = _agent_module("android_consent_grant_acceptance")
+            try:
+                if start_action:
+                    result = reset.start(REPO_ROOT, inputs["host"], inputs["device"], inputs["correlationId"], inputs["artifactId"],
+                        inputs["cliStageCorrelationId"], inputs["openingReadbackCorrelationId"],
+                        inputs["expectedBackupSha256"], inputs["expectedOwner"], inputs["expectedRevision"])
+                else:
+                    method = reset.status if action.endswith("-status") else reset.collect
+                    result = method(REPO_ROOT, inputs["correlationId"])
+            except (ValueError, OSError, KeyError, TypeError):
+                result = None
+            projected = _agent_module("native_parity_response_projection").project(
+                action, inputs["correlationId"], result)
+            return {"tool": "vm_workflow", **projected,
+                    "evidenceClass": "native-consent-grant-acceptance"}
+        if action in {"android-vpn-permission-reset-start", "android-vpn-permission-reset-status",
+                      "android-vpn-permission-reset-collect"}:
+            start_action = action.endswith("-start")
+            required = ({"correlationId", "artifactId", "cliStageCorrelationId",
+                         "openingReadbackCorrelationId", "expectedBackupSha256",
+                         "expectedOwner", "expectedRevision"} if start_action else {"correlationId"})
+            if not isinstance(inputs, dict) or set(inputs) != required:
+                return _error("vm_workflow", "Android permission reset requires exact receipt bindings.")
+            uuid_keys = ({"correlationId", "cliStageCorrelationId", "openingReadbackCorrelationId",
+                          "expectedOwner"} if start_action else {"correlationId"})
+            if any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in uuid_keys):
+                return _error("vm_workflow", "Android permission reset requires canonical correlations.")
+            if start_action and (not isinstance(inputs["artifactId"], str) or
+                    re.fullmatch(r"sha256-[0-9a-f]{64}", inputs["artifactId"]) is None or
+                    not isinstance(inputs["expectedBackupSha256"], str) or
+                    re.fullmatch(r"[0-9a-f]{64}", inputs["expectedBackupSha256"]) is None or
+                    type(inputs["expectedRevision"]) is not int or inputs["expectedRevision"] < 0):
+                return _error("vm_workflow", "Android permission reset requires exact artifact and revision.")
+            reset = _agent_module("android_vpn_permission_reset")
+            try:
+                if start_action:
+                    result = reset.start(REPO_ROOT, inputs["correlationId"], inputs["artifactId"],
+                        inputs["cliStageCorrelationId"], inputs["openingReadbackCorrelationId"],
+                        inputs["expectedBackupSha256"], inputs["expectedOwner"], inputs["expectedRevision"])
+                else:
+                    method = reset.status if action.endswith("-status") else reset.collect
+                    result = method(REPO_ROOT, inputs["correlationId"])
+            except (ValueError, OSError, KeyError, TypeError):
+                result = None
+            projected = _agent_module("native_parity_response_projection").project(
+                action, inputs["correlationId"], result)
+            return {"tool": "vm_workflow", **projected,
+                    "evidenceClass": "native-vpn-permission-reset"}
+        if action in {"android-runtime-acceptance-start", "android-runtime-acceptance-status",
+                      "android-runtime-acceptance-collect"}:
+            required = ({"correlationId", "endpointCorrelationId", "cliStageCorrelationId"}
+                        if action.endswith("-start") else {"correlationId"})
+            if (not isinstance(inputs, dict) or set(inputs) != required or
+                    any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key])
+                        for key in required)):
+                return _error("vm_workflow", "Android runtime requires exact canonical correlations.")
+            runtime = _agent_module("android_runtime_acceptance")
+            try:
+                if action.endswith("-start"):
+                    result = runtime.start(REPO_ROOT, inputs["correlationId"],
+                        inputs["endpointCorrelationId"], inputs["cliStageCorrelationId"])
+                else:
+                    method = runtime.status if action.endswith("-status") else runtime.collect
+                    result = method(REPO_ROOT, inputs["correlationId"])
+            except (ValueError, OSError, KeyError, TypeError):
+                result = None
+            projected = _agent_module("native_parity_response_projection").project(
+                action, inputs["correlationId"], result)
+            return {"tool": "vm_workflow", **projected,
+                    "evidenceClass": "native-runtime-acceptance"}
         if action in {"android-action-acceptance-start", "android-action-acceptance-status",
                       "android-action-acceptance-collect"}:
             action_fixture = _agent_module("android_action_acceptance")
@@ -3714,11 +4940,98 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "evidenceClass": "native-action-acceptance", "productAction": action.endswith("-start")}
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
+        if action == "android-api35-remaining-proxy-status":
+            unknown = {"tool": "vm_workflow", "ok": False, "state": "diagnostic-only",
+                       "reason": "observation_unknown", "productAdmitted": False,
+                       "acceptanceComplete": False, "replayAllowed": False, "productAction": False}
+            if type(inputs) is not dict or inputs:
+                return unknown
+            try:
+                result = _agent_module("android_api35_remaining_proxy_status_routes").dispatch(REPO_ROOT, action, {})
+                keys = {"tool", "ok", "state", "reason", "productAdmitted", "acceptanceComplete",
+                        "replayAllowed", "receiptSha256", "receiptBytes", "controllerId",
+                        "configurationRevision", "runtimeOff", "fourProxyRowsAbsent", "exclusionEmpty",
+                        "binderProxyClear", "originalOperationOutcome", "historicalUnknownsPreserved", "recordCount"}
+                if (type(result) is not dict or set(result) != keys or
+                    result["tool"] != "vm_workflow" or result["ok"] is not True or
+                    result["state"] != "remaining-proxy-restored" or result["reason"] != "observed" or
+                    any(result[name] is not False for name in ("productAdmitted", "acceptanceComplete", "replayAllowed")) or
+                    any(result[name] is not True for name in ("runtimeOff", "fourProxyRowsAbsent", "exclusionEmpty", "binderProxyClear", "historicalUnknownsPreserved")) or
+                    result["originalOperationOutcome"] != "unknown" or
+                    type(result["receiptBytes"]) is not int or not 0 < result["receiptBytes"] <= 8388608 or
+                    type(result["configurationRevision"]) is not int or result["configurationRevision"] != 0 or
+                    type(result["recordCount"]) is not int or result["recordCount"] != 4 or
+                    type(result["receiptSha256"]) is not str or re.fullmatch(r"[0-9a-f]{64}", result["receiptSha256"]) is None or
+                    type(result["controllerId"]) is not str or re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", result["controllerId"]) is None):
+                    return unknown
+                return {**result, "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError):
+                return unknown
+        if action == "android-fixture-tls-mint":
+            required = {"campaignId", "sourceSha", "baseArtifactId", "targetArtifactId"}
+            if (not isinstance(inputs, dict) or set(inputs) not in (required, required | {"sourceRoot"}) or
+                    not isinstance(inputs.get("campaignId"), str) or not _valid_uuid(inputs["campaignId"]) or
+                    not isinstance(inputs.get("sourceSha"), str) or not re.fullmatch(r"[0-9a-f]{40}", inputs["sourceSha"]) or
+                    any(not isinstance(inputs[key], str) or not re.fullmatch(r"sha256-[0-9a-f]{64}", inputs[key])
+                        for key in ("baseArtifactId", "targetArtifactId")) or
+                    ("sourceRoot" in inputs and (not isinstance(inputs["sourceRoot"], str) or
+                     not 1 <= len(inputs["sourceRoot"]) <= 4096 or "\x00" in inputs["sourceRoot"] or
+                     not Path(inputs["sourceRoot"]).is_absolute()))):
+                return _error("vm_workflow", "TLS mint requires exact source-bound local fixture fields.")
+            try:
+                result = _agent_module("android_fixture_tls_routes").run(REPO_ROOT, inputs)
+                if (set(result) != {"ok", "campaignId", "receipt", "deviceMutationPerformed", "evidenceDirectory"} or
+                        result["ok"] is not True or result["campaignId"] != inputs["campaignId"] or
+                        result["deviceMutationPerformed"] is not False):
+                    raise ValueError("TLS route result invalid")
+                def tls_pin(value):
+                    return (type(value) is dict and set(value) == {"sha256", "bytes", "generation"} and
+                            type(value["sha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", value["sha256"]) and
+                            type(value["bytes"]) is int and 0 < value["bytes"] <= 1048576 and
+                            type(value["generation"]) is list and len(value["generation"]) == 8 and
+                            all(type(item) is int and item >= 0 for item in value["generation"]) and
+                            value["generation"][2] == value["bytes"] and value["generation"][5] == 0o600 and
+                            value["generation"][7] == 1)
+                receipt = result["receipt"]
+                if (type(receipt) is not dict or set(receipt) != {"schema", "campaignId", "tlsReceipt",
+                        "nestedBinding", "verifiedPlanSha256", "deviceMutationAllowed"} or
+                        type(receipt["schema"]) is not int or receipt["schema"] != 1 or
+                        receipt["campaignId"] != inputs["campaignId"] or receipt["deviceMutationAllowed"] is not False or
+                        type(receipt["verifiedPlanSha256"]) is not str or
+                        not re.fullmatch(r"[0-9a-f]{64}", receipt["verifiedPlanSha256"]) or
+                        not tls_pin(receipt["tlsReceipt"])):
+                    raise ValueError("TLS receipt invalid")
+                binding = receipt["nestedBinding"]
+                if (type(binding) is not dict or set(binding) != {"nestedName", "nestedGeneration", "materialPins"} or
+                        type(binding["nestedName"]) is not str or not binding["nestedName"].startswith("android-fixture-tls-") or
+                        not _valid_uuid(binding["nestedName"].removeprefix("android-fixture-tls-")) or
+                        type(binding["nestedGeneration"]) is not list or len(binding["nestedGeneration"]) != 8 or
+                        any(type(item) is not int or item < 0 for item in binding["nestedGeneration"]) or
+                        binding["nestedGeneration"][5] != 0o700 or binding["nestedGeneration"][7] < 2 or
+                        type(binding["materialPins"]) is not dict or set(binding["materialPins"]) !=
+                        {"ca-key.pem", "ca.pem", "leaf-key.pem", "leaf.pem", "receipt.json"} or
+                        not all(tls_pin(pin) for pin in binding["materialPins"].values()) or
+                        binding["materialPins"]["receipt.json"] != receipt["tlsReceipt"] or
+                        result["evidenceDirectory"] != str(REPO_ROOT.resolve() / ".runtime" / "parity-evidence" /
+                                                          ("android-fixture-tls-route-" + inputs["campaignId"]))):
+                    raise ValueError("TLS nested binding invalid")
+                return {"tool": "vm_workflow", "ok": True, "campaignId": result["campaignId"],
+                        "receipt": result["receipt"], "evidenceDirectory": result["evidenceDirectory"],
+                        "deviceMutationPerformed": False, "deviceMutationAllowed": False,
+                        "productAction": False, "evidenceClass": "local-only-tls-fixture"}
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error("vm_workflow", "TLS mint did not produce a verified receipt; preserve its campaign evidence.")
         if action in {"android-native-fixture-start", "android-native-fixture-status",
                       "android-native-fixture-stop", "android-native-fixture-collect"}:
             fixture = _agent_module("android_native_fixture_lifecycle")
             start_fields = {"host", "device", "campaignId", "planPath", "certificatePath", "privateKeyPath"}
-            if (set(inputs) != (start_fields if action.endswith("-start") else {"campaignId"}) or
+            allowed_fields = ((start_fields, start_fields | {"sourceRoot"})
+                              if action.endswith("-start") else ({"campaignId"},))
+            if (set(inputs) not in allowed_fields or
+                    ("sourceRoot" in inputs and
+                     (not isinstance(inputs["sourceRoot"], str) or
+                      not 1 <= len(inputs["sourceRoot"]) <= 4096 or
+                      "\x00" in inputs["sourceRoot"] or not Path(inputs["sourceRoot"]).is_absolute())) or
                     not isinstance(inputs.get("campaignId"), str) or
                     not _valid_uuid(inputs["campaignId"])):
                 return _error("vm_workflow", "Android fixture requires exact canonical campaign request.")
@@ -3733,7 +5046,8 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             try:
                 if action.endswith("-start"):
                     result = fixture.start(REPO_ROOT, inputs["host"], inputs["device"], inputs["campaignId"],
-                                           inputs["planPath"], inputs["certificatePath"], inputs["privateKeyPath"])
+                                           inputs["planPath"], inputs["certificatePath"], inputs["privateKeyPath"],
+                                           **({"source_root": inputs["sourceRoot"]} if "sourceRoot" in inputs else {}))
                 else:
                     method = {"android-native-fixture-status": fixture.status,
                               "android-native-fixture-stop": fixture.stop,
@@ -3747,6 +5061,222 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "campaignId": inputs["campaignId"], "replayAllowed": False,
                         "deviceMutationAllowed": False, "installerTargetAdmitted": False,
                         "productAction": False, "reason": "android-host-fixture-outcome-unavailable"}
+        if action == "android-endpoint-cleanup-mount-diagnostic":
+            required = {"correlationId", "readmissionCorrelationId"}
+            if (not isinstance(inputs, dict) or set(inputs) != required or
+                    any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in required) or
+                    inputs["correlationId"] == inputs["readmissionCorrelationId"]):
+                return _error("vm_workflow", "Mount diagnosis requires exact original and readmission correlations.")
+            endpoint = _agent_module("android_endpoint_admission")
+            flags = {"replayAllowed": False, "productMutationAllowed": False, "installerTargetAdmitted": False}
+            result = None
+            try:
+                result = endpoint.cleanup_mount_diagnostic(REPO_ROOT, inputs["correlationId"], inputs["readmissionCorrelationId"])
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                pass
+            diagnostic = result.get("mountDiagnostic") if isinstance(result, dict) else None
+            valid = (isinstance(result, dict) and set(result) == {"ok", "state", "reason", *required, *flags, "observationOnly", "mountDiagnostic"} and
+                     result.get("ok") is False and result.get("state") == "partial" and result.get("reason") == "readmission_target_mount_observed" and
+                     all(result.get(k) == inputs[k] for k in required) and result.get("observationOnly") is True and all(result.get(k) is False for k in flags) and
+                     isinstance(diagnostic, dict) and set(diagnostic) == {"targetEntryCount", "entries", "ownCaRelation", "openingTargetMountRecorded"} and
+                     type(diagnostic.get("targetEntryCount")) is int and 0 <= diagnostic["targetEntryCount"] <= 16 and
+                     isinstance(diagnostic.get("entries"), list) and len(diagnostic["entries"]) == diagnostic["targetEntryCount"] and
+                     diagnostic.get("openingTargetMountRecorded") is False and isinstance(diagnostic.get("ownCaRelation"), str) and
+                     diagnostic["ownCaRelation"] in {"absent", "owned", "foreign", "other"} and
+                     all(isinstance(entry, dict) and set(entry) == {"rootRelation", "filesystem"} and
+                         isinstance(entry.get("rootRelation"), str) and entry["rootRelation"] in {"stage-exact", "stage-descendant", "target-exact", "target-descendant", "root", "other"} and
+                         isinstance(entry.get("filesystem"), str) and entry["filesystem"] in {"ext4", "tmpfs", "overlay", "erofs", "fuse", "f2fs", "other"} for entry in diagnostic["entries"]))
+            projection = ({"state": "partial", "reason": "readmission_target_mount_observed", "mountDiagnostic": diagnostic}
+                          if valid else {"state": "unknown", "reason": "cleanup-mount-diagnostic-unavailable"})
+            reasons = getattr(endpoint, "_READMISSION_REASONS", frozenset())
+            command_diagnostic = result.get("commandDiagnostic") if isinstance(result, dict) else None
+            command_valid = (isinstance(command_diagnostic, dict) and
+                             set(command_diagnostic) == {"phase", "outcome", "stderrClass"} and
+                             all(isinstance(command_diagnostic.get(key), str) and
+                                 isinstance(getattr(endpoint, allowed, None), frozenset) and
+                                 command_diagnostic[key] in getattr(endpoint, allowed)
+                                 for key, allowed in (("phase", "_COMMAND_PHASES"), ("outcome", "_COMMAND_OUTCOMES"), ("stderrClass", "_COMMAND_STDERR_CLASSES"))))
+            finite_unknown = (isinstance(reasons, frozenset) and isinstance(result, dict) and
+                              (set(result) == {"ok", "state", "reason", *required, *flags, "observationOnly"} or
+                               (command_valid and set(result) == {"ok", "state", "reason", *required, *flags, "observationOnly", "commandDiagnostic"})) and
+                              result.get("state") == "unknown" and result.get("ok") is False and
+                              all(result.get(k) == inputs[k] for k in required) and result.get("observationOnly") is True and
+                              all(result.get(k) is False for k in flags) and isinstance(result.get("reason"), str) and result["reason"] in reasons)
+            if finite_unknown:
+                projection = {"state": "unknown", "reason": result["reason"]}
+                if command_valid:
+                    projection["commandDiagnostic"] = dict(command_diagnostic)
+            return {"tool": "vm_workflow", **projection, **flags, **inputs, "ok": False,
+                    "observationOnly": True, "nativeActionAllowed": False, "productAction": False, "evidenceClass": "native-observation"}
+        if action == "android-endpoint-mount-diagnostic-collect":
+            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId", "diagnosticCorrelationId"} or
+                    any(not isinstance(inputs[k], str) or not _valid_uuid(inputs[k]) for k in inputs) or
+                    inputs["correlationId"] == inputs["diagnosticCorrelationId"]):
+                return _error("vm_workflow", "Mount collection requires distinct canonical endpoint and diagnostic correlations.")
+            result = None
+            try:
+                result = _agent_module("android_endpoint_admission").mount_diagnostic_collect(REPO_ROOT, inputs["correlationId"], inputs["diagnosticCorrelationId"])
+            except (ValueError, OSError, KeyError, TypeError):
+                pass
+            parent = REPO_ROOT / ".rag_index/android-endpoint-admission" / ("mount-diagnostic-" + inputs["correlationId"] + "-" + inputs["diagnosticCorrelationId"])
+            keys = {"ok", "state", "reason", "correlationId", "diagnosticCorrelationId", "observationOnly", "replayAllowed", "installerTargetAdmitted", "productMutationAllowed", "localPath", "sha256", "bytes"}
+            valid = (isinstance(result, dict) and set(result) == keys and result.get("ok") is True and
+                     result.get("state") == "complete" and result.get("reason") is None and
+                     all(result.get(k) == inputs[k] for k in inputs) and result.get("observationOnly") is True and
+                     all(result.get(k) is False for k in ("replayAllowed", "installerTargetAdmitted", "productMutationAllowed")) and
+                     result.get("localPath") == str(parent / "mount-diagnostic.json") and
+                     isinstance(result.get("sha256"), str) and re.fullmatch(r"[0-9a-f]{64}", result["sha256"]) is not None and
+                     type(result.get("bytes")) is int and 0 < result["bytes"] <= 524288)
+            return {"tool": "vm_workflow", "ok": valid, "state": "complete" if valid else "unknown",
+                    "reason": None if valid else "mount-collection-unavailable", **inputs,
+                    "observationOnly": True, "replayAllowed": False, "nativeActionAllowed": False, "productAction": False,
+                    "evidenceClass": "native-observation", **({"sha256": result["sha256"], "bytes": result["bytes"]} if valid else {})}
+        if action == "android-recovered-endpoint-stage-collect":
+            required = {"correlationId", "historicalCorrelationId", "recoveryCorrelationId", "stageCorrelationId"}
+            if (not isinstance(inputs, dict) or set(inputs) != required or
+                    any(not isinstance(inputs[k], str) or not _valid_uuid(inputs[k]) for k in required) or
+                    len(set(inputs.values())) != 4):
+                return _error("vm_workflow", "Recovered-stage collection requires four distinct canonical correlations.")
+            flags = {"replayAllowed": False, "productMutationAllowed": False, "installerTargetAdmitted": False}
+            result = None
+            try:
+                result = _agent_module("android_recovered_endpoint_stage_cleanup").collect(
+                    REPO_ROOT, inputs["correlationId"], inputs["historicalCorrelationId"],
+                    inputs["recoveryCorrelationId"], inputs["stageCorrelationId"])
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                pass
+            keys = {"ok", "state", "reason", "correlationId", "recoveryCorrelationId", "stageCorrelationId",
+                    "stageOnly", "observationOnly", "device", *flags}
+            valid = (isinstance(result, dict) and set(result) == keys and result.get("ok") is True and
+                     result.get("state") == "cleaned" and result.get("reason") is None and
+                     all(result.get(k) == inputs[k] for k in ("correlationId", "recoveryCorrelationId", "stageCorrelationId")) and
+                     result.get("stageOnly") is True and result.get("observationOnly") is False and
+                     all(result.get(k) is False for k in flags) and isinstance(result.get("device"), dict) and
+                     set(result["device"]) == {"uid", "api", "avd"} and result["device"]["uid"] == "2000" and
+                     type(result["device"]["api"]) is int and result["device"]["api"] == 29 and
+                     isinstance(result["device"]["avd"], str) and
+                     re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", result["device"]["avd"]) is not None)
+            return {"tool": "vm_workflow", "ok": valid, "state": "cleaned" if valid else "unknown",
+                    "reason": None if valid else "recovered-stage-collection-unavailable", **inputs, **flags,
+                    "observationOnly": False, "nativeActionAllowed": False, "productAction": False,
+                    "originalOutcome": "unknown", "stageOnly": True, "evidenceClass": "native-reconciliation",
+                    **({"device": dict(result["device"])} if valid else {})}
+        if action == "android-endpoint-cleanup-readmitted-status":
+            required = {"correlationId", "readmissionCorrelationId"}
+            if (not isinstance(inputs, dict) or set(inputs) != required or
+                    any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in required) or
+                    inputs["correlationId"] == inputs["readmissionCorrelationId"]):
+                return _error("vm_workflow", "Cleanup terminal status requires exact distinct correlations.")
+            endpoint = _agent_module("android_endpoint_admission")
+            flags = {"replayAllowed": False, "productMutationAllowed": False, "installerTargetAdmitted": False}
+            result = None
+            try:
+                result = endpoint.cleanup_readmitted_status(REPO_ROOT, inputs["correlationId"], inputs["readmissionCorrelationId"])
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                pass
+            base_keys = {"ok", "state", "reason", "correlationId", "readmissionCorrelationId", "observationOnly", *flags}
+            valid = (isinstance(result, dict) and result.get("correlationId") == inputs["correlationId"] and
+                     result.get("readmissionCorrelationId") == inputs["readmissionCorrelationId"] and
+                     result.get("observationOnly") is True and all(result.get(k) is False for k in flags))
+            cleaned = False
+            if valid and set(result) == base_keys | {"result"} and result.get("ok") is True and result.get("state") == "cleaned" and result.get("reason") is None:
+                proof = result["result"]
+                cleaned = (isinstance(proof, dict) and set(proof) == {"state", "reason", "correlationId", "device", "packageSha256", "owner", "revision", "caSha256", "reversePorts"} and
+                           proof.get("state") == "cleaned" and proof.get("reason") is None and proof.get("correlationId") == inputs["correlationId"] and
+                           isinstance(proof.get("device"), dict) and set(proof["device"]) == {"uid", "api", "avd"} and
+                           proof["device"]["uid"] == "2000" and type(proof["device"]["api"]) is int and proof["device"]["api"] == 29 and
+                           isinstance(proof["device"]["avd"], str) and 0 < len(proof["device"]["avd"]) <= 128 and
+                           isinstance(proof.get("owner"), str) and _valid_uuid(proof["owner"]) and
+                           type(proof.get("revision")) is int and proof["revision"] >= 0 and proof.get("reversePorts") == [] and
+                           all(isinstance(proof.get(k), str) and re.fullmatch(r"[0-9a-f]{64}", proof[k]) for k in ("packageSha256", "caSha256")))
+            reasons = getattr(endpoint, "_READMISSION_REASONS", frozenset())
+            unknown = (valid and isinstance(reasons, frozenset) and set(result) == base_keys and result.get("ok") is False and
+                       result.get("state") == "unknown" and isinstance(result.get("reason"), str) and result["reason"] in reasons)
+            return {"tool": "vm_workflow", "ok": bool(cleaned), "state": "cleaned" if cleaned else "unknown",
+                    "reason": None if cleaned else result["reason"] if unknown else "cleanup-readmitted-status-unavailable",
+                    **inputs, **flags, "observationOnly": True, "nativeActionAllowed": False, "productAction": False,
+                    "evidenceClass": "native-observation"}
+        if action == "android-endpoint-cleanup-readmission-status":
+            required = {"correlationId", "readmissionCorrelationId"}
+            if (not isinstance(inputs, dict) or set(inputs) != required or
+                    any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in required) or
+                    inputs["correlationId"] == inputs["readmissionCorrelationId"]):
+                return _error("vm_workflow", "Cleanup status requires exact original and readmission correlations.")
+            endpoint = _agent_module("android_endpoint_admission")
+            flags = {"replayAllowed": False, "productMutationAllowed": False, "installerTargetAdmitted": False}
+            result = None
+            try:
+                result = endpoint.cleanup_readmission_status(REPO_ROOT, inputs["correlationId"], inputs["readmissionCorrelationId"])
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                pass
+            reasons = getattr(endpoint, "_READMISSION_REASONS", frozenset())
+            local_reasons = {"readmission_request_changed", "readmission_local_api_changed", "readmission_local_child_present", "readmission_local_lease_changed", "readmission_local_device_changed", "readmission_local_guard_unverified", "readmission_local_record_unverified"}
+            base_keys = {"ok", "state", "reason", "correlationId", "readmissionCorrelationId", "observationOnly", *flags}
+            valid = (isinstance(reasons, frozenset) and isinstance(result, dict) and
+                     set(result) in (base_keys, base_keys | {"freshGuardVerified", "receiptPresent"}) and
+                     result.get("ok") is False and isinstance(result.get("state"), str) and result["state"] in {"unknown", "partial"} and
+                     result.get("correlationId") == inputs["correlationId"] and result.get("readmissionCorrelationId") == inputs["readmissionCorrelationId"] and
+                     result.get("observationOnly") is True and all(result.get(k) is False for k in flags) and
+                     isinstance(result.get("reason"), str) and result["reason"] in reasons | local_reasons)
+            if valid and "freshGuardVerified" in result:
+                valid = (type(result["freshGuardVerified"]) is bool and type(result["receiptPresent"]) is bool and
+                         (result["state"] == "partial") == result["freshGuardVerified"] and
+                         (result["state"] != "partial" or result["reason"] in {"readmission_receipt_absent", "readmission_receipt_present"}) and
+                         result["receiptPresent"] == (result["reason"] == "readmission_receipt_present"))
+            elif valid:
+                valid = result["state"] == "unknown"
+            projection = ({key: result[key] for key in ("state", "reason", "freshGuardVerified", "receiptPresent") if key in result}
+                          if valid else {"state": "unknown", "reason": "cleanup-readmission-status-unavailable"})
+            return {"tool": "vm_workflow", **projection, **flags, "ok": False,
+                    **inputs, "observationOnly": True, "nativeActionAllowed": False, "productAction": False,
+                    "evidenceClass": "native-observation"}
+        if action in {"android-endpoint-cleanup-readmission", "android-endpoint-cleanup-readmitted"}:
+            required = {"correlationId", "readmissionCorrelationId"}
+            uuid_pattern = r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+            if (not isinstance(inputs, dict) or set(inputs) != required or
+                    any(not isinstance(inputs[key], str) or re.fullmatch(uuid_pattern, inputs[key]) is None
+                        for key in required) or inputs["correlationId"] == inputs["readmissionCorrelationId"]):
+                return _error("vm_workflow", "Endpoint cleanup readmission requires two distinct canonical correlations.")
+            endpoint = _agent_module("android_endpoint_admission")
+            try:
+                method = endpoint.cleanup_readmission if action.endswith("-readmission") else endpoint.cleanup_readmitted
+                result = method(REPO_ROOT, inputs["correlationId"], inputs["readmissionCorrelationId"])
+                base_keys = {"ok", "state", "reason", "correlationId", "replayAllowed",
+                             "productMutationAllowed", "installerTargetAdmitted"}
+                readmitting = action.endswith("-readmission")
+                expected_keys = base_keys | ({"readmissionCorrelationId", "owner", "revision", "cleanupOnly"}
+                                             if readmitting else {"result"})
+                valid = (isinstance(result, dict) and set(result) == expected_keys and
+                         result.get("correlationId") == inputs["correlationId"] and
+                         result.get("ok") is True and result.get("reason") is None and
+                         result.get("state") == ("ready" if readmitting else "cleaned") and
+                         all(result.get(key) is False for key in
+                             ("replayAllowed", "productMutationAllowed", "installerTargetAdmitted")))
+                if valid and readmitting:
+                    valid = (result.get("readmissionCorrelationId") == inputs["readmissionCorrelationId"] and
+                             result.get("cleanupOnly") is True and isinstance(result.get("owner"), str) and
+                             re.fullmatch(uuid_pattern, result["owner"]) is not None and
+                             type(result.get("revision")) is int and result["revision"] >= 0)
+                elif valid:
+                    proof = result.get("result")
+                    valid = (isinstance(proof, dict) and proof.get("correlationId") == inputs["correlationId"] and
+                             proof.get("state") == "cleaned")
+                projection = {"state": "ready" if readmitting else "cleaned", "cleanupOnly": True}
+                if valid and readmitting:
+                    projection.update(owner=result["owner"], revision=result["revision"])
+                if not valid:
+                    projection = {"state": "unknown", "reason": "android-endpoint-cleanup-readmission-unavailable"}
+                return {"tool": "vm_workflow", **projection, "ok": valid,
+                        "correlationId": inputs["correlationId"], "readmissionCorrelationId": inputs["readmissionCorrelationId"],
+                        "evidenceClass": "native-android-endpoint", "productAction": False,
+                        "installerTargetAdmitted": False, "productMutationAllowed": False,
+                        "nativeActionAllowed": False, "replayAllowed": False}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "android-endpoint-cleanup-readmission-unavailable",
+                        "correlationId": inputs["correlationId"], "readmissionCorrelationId": inputs["readmissionCorrelationId"],
+                        "installerTargetAdmitted": False, "productAction": False,
+                        "productMutationAllowed": False, "nativeActionAllowed": False, "replayAllowed": False}
         if action in {"android-endpoint-admission-start", "android-endpoint-admission-status",
                       "android-endpoint-admission-cleanup"}:
             endpoint = _agent_module("android_endpoint_admission")
@@ -3754,7 +5284,11 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 required = {"host", "device", "correlationId", "campaignId", "sourceSha",
                             "targetArtifactId", "caArtifactId", "backupCorrelationId",
                             "expectedOwner", "expectedRevision", "expectedBackupSha256"}
-                if (set(inputs) != required or
+                if (set(inputs) not in (required, required | {"sourceRoot"}) or
+                        ("sourceRoot" in inputs and
+                         (not isinstance(inputs["sourceRoot"], str) or
+                          not 1 <= len(inputs["sourceRoot"]) <= 4096 or
+                          "\x00" in inputs["sourceRoot"] or not Path(inputs["sourceRoot"]).is_absolute())) or
                         any(not isinstance(inputs[key], str) or
                             re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
                                          inputs[key]) is None
@@ -3785,7 +5319,8 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                                             inputs["sourceSha"], inputs["targetArtifactId"],
                                             inputs["caArtifactId"], inputs["backupCorrelationId"],
                                             inputs["expectedOwner"], inputs["expectedRevision"],
-                                            inputs["expectedBackupSha256"])
+                                            inputs["expectedBackupSha256"],
+                                            **({"source_root": inputs["sourceRoot"]} if "sourceRoot" in inputs else {}))
                 else:
                     method = endpoint.status if action.endswith("-status") else endpoint.cleanup
                     result = method(REPO_ROOT, inputs["correlationId"])
@@ -5219,7 +6754,14 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                       "linux-package-fixture-build-status", "linux-package-fixture-build-collect"}:
             build = _agent_module("linux_package_fixture_build")
             request_fields = {"sourceSha", "baseVersion", "targetVersion", "correlationId"}
-            if (set(inputs) != ({"correlationId"} if action.endswith(("-status", "-collect")) else request_fields) or
+            observing = action.endswith(("-status", "-collect"))
+            source_root = inputs.get("sourceRoot")
+            allowed_fields = ({"correlationId"},) if observing else (
+                request_fields, request_fields | {"sourceRoot"})
+            if (set(inputs) not in allowed_fields or
+                    ("sourceRoot" in inputs and
+                     (not isinstance(source_root, str) or not 1 <= len(source_root) <= 4096 or
+                      "\x00" in source_root or not Path(source_root).is_absolute())) or
                     not isinstance(inputs.get("correlationId"), str) or
                     not _valid_uuid(inputs["correlationId"]) or
                     (not action.endswith(("-status", "-collect")) and
@@ -5233,7 +6775,9 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                           "linux-package-fixture-build-start": build.start,
                           "linux-package-fixture-build-status": build.status,
                           "linux-package-fixture-build-collect": build.collect}[action]
-                result = method(REPO_ROOT, inputs)
+                request = {key: value for key, value in inputs.items() if key != "sourceRoot"}
+                result = (method(REPO_ROOT, request, source_root=source_root)
+                          if "sourceRoot" in inputs else method(REPO_ROOT, request))
                 return {"tool": "vm_workflow", **result,
                         "ok": result.get("state") in {"ready", "submitted", "running"},
                         "evidenceClass": "source-bound-package-fixture", "productAction": False}
@@ -5414,6 +6958,101 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 return {"tool": "vm_workflow", "ok": False, "state": "unknown",
                         "reason": "arch-qemu-census-unavailable", "host": "archlinux",
                         "nativeActionAllowed": False, "productAction": False}
+        if action in {"windows-parallel-vm-copy-start", "windows-parallel-vm-copy-status"}:
+            correlation = inputs.get("correlationId")
+            unknown = {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                       "reason": "windows-parallel-copy-unavailable", "host": "archlinux",
+                       "correlationId": correlation if type(correlation) is str and _valid_uuid(correlation) else None,
+                       "replayAllowed": False, "nativeGuestStarted": False, "launchAdmitted": False,
+                       "productAcceptance": False, "productAction": False, "nativeActionAllowed": False}
+            required = {"host", "correlationId", "timeoutSeconds"}
+            if action.endswith("-start"):
+                required.add("sourceEvidenceLeaf")
+            if (type(inputs) is not dict or set(inputs) != required or inputs.get("host") != "archlinux"
+                    or type(inputs.get("host")) is not str or type(correlation) is not str or not _valid_uuid(correlation)
+                    or type(inputs.get("timeoutSeconds")) is not int or not 5 <= inputs["timeoutSeconds"] <= 60
+                    or (action.endswith("-start") and (type(inputs["sourceEvidenceLeaf"]) is not str
+                        or re.fullmatch(r"windows-parallel-vm-source-read-[0-9a-f]{32}", inputs["sourceEvidenceLeaf"]) is None))):
+                return unknown
+            try:
+                adapter = _agent_module("windows_parallel_vm_prepare_transport")
+                kwargs = {"host": "archlinux", "correlation_id": correlation, "timeout_seconds": inputs["timeoutSeconds"]}
+                if action.endswith("-start"):
+                    result = adapter.start(REPO_ROOT, source_evidence_leaf=inputs["sourceEvidenceLeaf"], **kwargs)
+                else:
+                    result = adapter.status(REPO_ROOT, **kwargs)
+                result = _windows_parallel_copy_result(result, correlation, action, adapter)
+                return {"tool": "vm_workflow", **result, "correlationId": correlation, "host": "archlinux",
+                        "ok": result["state"] != "unknown", "replayAllowed": False,
+                        "evidenceClass": "native-windows-template-copy", "productAction": False, "nativeActionAllowed": False}
+            except Exception:
+                return unknown
+        if action == "windows-parallel-vm-source-inventory":
+            if (not isinstance(inputs, dict) or set(inputs) != {"host", "timeoutSeconds"}
+                    or inputs.get("host") != "archlinux"
+                    or type(inputs.get("timeoutSeconds")) is not int
+                    or not 30 <= inputs["timeoutSeconds"] <= 300):
+                return _error("vm_workflow", "Windows parallel source inventory requires fixed Arch host and bounded timeoutSeconds.")
+            try:
+                inventory = _agent_module("windows_parallel_vm_source_inventory")
+                result = inventory.observe(REPO_ROOT, host="archlinux",
+                                           timeout_seconds=inputs["timeoutSeconds"])
+                metadata = {"toolSources", "remoteProgramSha256", "configuredTransportAuthority",
+                            "evidenceLeaf", "rawReceipt", "transport"}
+                if not isinstance(result, dict) or not metadata.issubset(result):
+                    raise ValueError("windows-parallel-source-receipt-missing")
+                def digest(value):
+                    return type(value) is str and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+                def pin(value, *, raw=False):
+                    if type(value) is not dict or set(value) != {"sha256", "generation"} or not digest(value["sha256"]):
+                        return False
+                    generation = value["generation"]
+                    return (type(generation) is list and len(generation) == 9
+                            and all(type(item) is int and item >= 0 for item in generation)
+                            and generation[0] > 0 and generation[1] > 0
+                            and generation[2] & 0o170000 == 0o100000
+                            and generation[3] == os.getuid() and generation[5] == 1
+                            and (0 if raw else 1) <= generation[6] <= (inventory.MAX_OUTPUT + 1 if raw else 1048576)
+                            and (not raw or generation[2] & 0o777 == 0o600))
+
+                expected_sources = {str(REPO_ROOT / "agent_tools" / name) for name in (
+                    "windows_parallel_vm_source_inventory.py", "ssh_transport.py",
+                    "windows_credential_probe_ssh.py", "windows_cp117_bound_absence_completion.py",
+                    "windows_vm_virt_firmware_install.py")}
+                sources = result["toolSources"]
+                trace = result["transport"]
+                if (type(sources) is not dict or set(sources) != expected_sources
+                        or not all(pin(value) for value in sources.values())
+                        or not pin(result["rawReceipt"], raw=True)
+                        or not digest(result["remoteProgramSha256"])
+                        or not digest(result["configuredTransportAuthority"])
+                        or type(result["evidenceLeaf"]) is not str
+                        or re.fullmatch(r"windows-parallel-vm-source-read-[0-9a-f]{32}", result["evidenceLeaf"]) is None
+                        or type(trace) is not dict
+                        or set(trace) != {"pid", "stdoutEof", "exitCode", "reason", "clientTerminatedForBound"}
+                        or type(trace["pid"]) is not int or trace["pid"] <= 0
+                        or type(trace["stdoutEof"]) is not bool or type(trace["clientTerminatedForBound"]) is not bool
+                        or not (trace["exitCode"] is None or type(trace["exitCode"]) is int and -255 <= trace["exitCode"] <= 255)
+                        or trace["reason"] not in (None, "stdin-unavailable", "transport-deadline",
+                                                  "transport-output-limit", "transport-nonzero")
+                        or (trace["reason"] is None and (trace["exitCode"] != 0
+                            or trace["stdoutEof"] is not True or trace["clientTerminatedForBound"] is not False))):
+                    raise ValueError("windows-parallel-source-metadata-invalid")
+                inventory.validate_report({key: value for key, value in result.items()
+                                           if key not in metadata})
+                return {"tool": "vm_workflow", **result,
+                        "ok": result["state"] == "observed",
+                        "evidenceClass": "read-only-windows-source", "productAction": False,
+                        "nativeActionAllowed": False, "cloneAdmitted": False}
+            except (ValueError, OSError, KeyError, TypeError, AttributeError) as error:
+                reason = "windows-parallel-source-unavailable"
+                if isinstance(error, ValueError) and error.args == ("ssh-connect-timeout-out-of-contract",):
+                    reason = "ssh-connect-timeout-out-of-contract"
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "sourceState": "unknown", "reason": reason,
+                        "host": "archlinux", "productAction": False,
+                        "nativeActionAllowed": False, "cloneAdmitted": False}
         if action == "windows-vm-baseline-inventory":
             inventory = _agent_module("windows_vm_baseline_inventory")
             try:
@@ -6225,6 +7864,16 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
 
 def _native_response(tool: str, action: str, result: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
     """Add compact guidance and redacted durable failure evidence to native tools."""
+    if tool == "vm_workflow" and action in {"windows-parallel-vm-copy-start", "windows-parallel-vm-copy-status"}:
+        enriched = dict(result)
+        correlation = enriched.get("correlationId")
+        enriched["replayAllowed"] = False
+        enriched["nextAction"] = {"kind": "observe-original-copy" if enriched.get("state") != "prepared" else "inspect-prepared-template",
+                                  "replayAllowed": False, "requiresFreshEvidence": True}
+        if type(correlation) is str and _valid_uuid(correlation) and enriched.get("state") != "prepared":
+            enriched["nextAction"]["action"] = {"tool": "vm_workflow", "action": "windows-parallel-vm-copy-status",
+                "inputs": {"host": "archlinux", "correlationId": correlation, "timeoutSeconds": 60}}
+        return enriched
     guidance = _agent_module("native_next_action")
     enriched = dict(result)
     host = request.get("host") or request.get("hostAlias")
@@ -6249,7 +7898,7 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
                                     "readOnlyAction": None, "nativeActionAllowed": False}
         return enriched
     if tool == "vm_workflow" and action in {
-            "acceptance-status", "arch-ai-loop-observe", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-vm-secureboot-inventory", "windows-vm-virt-firmware-admission", "windows-vm-secureboot-clone-preflight", "vm-preflight-batch",
+            "acceptance-status", "arch-ai-loop-observe", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-parallel-vm-source-inventory", "windows-parallel-vm-copy-start", "windows-parallel-vm-copy-status", "windows-vm-secureboot-inventory", "windows-vm-virt-firmware-admission", "windows-vm-secureboot-clone-preflight", "vm-preflight-batch",
             "environment-status", "windows-msi-base-pre-effect-status",
             "linux-guest-park-preflight", "linux-guest-park-status",
             "linux-package-fixture-build-preflight", "linux-package-fixture-build-status",
@@ -6354,6 +8003,9 @@ def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_sec
 
 def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Manage verified artifacts, reservations, bundles and fixed resumable preflight scenarios."""
+    if action in {"source-review-close", "baseline-source-inventory"}:
+        # Metadata/source reads must not write native failure evidence on refusal.
+        return _vm_workflow_impl(action, inputs)
     if action in {"windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status",
                   "windows-vm-disk-probe-start", "windows-vm-disk-probe-status",
                   "windows-vm-fresh-start", "windows-vm-fresh-status",
@@ -6472,15 +8124,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     subparsers.add_parser("serve")
     ssh_parser = subparsers.add_parser("ssh-workflow")
-    ssh_parser.add_argument("action", choices=("inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
+    ssh_parser.add_argument("action", choices=("connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
     ssh_parser.add_argument("--host")
     ssh_parser.add_argument("--device")
     ssh_parser.add_argument("--timeout-seconds", type=int, default=15)
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "matrix-record", "matrix-retract", "matrix-status", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-guest-park-preflight", "linux-guest-park-start", "linux-guest-park-status", "linux-package-fixture-build-preflight", "linux-package-fixture-build-start", "linux-package-fixture-build-status", "linux-package-fixture-build-collect", "linux-package-fixture-build-pre-effect-status", "linux-package-fixture-build-pre-effect-close", "linux-package-fixture-build-terminal-ready-status", "linux-package-fixture-build-terminal-ready-close", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-vm-secureboot-inventory", "windows-vm-virt-firmware-admission", "windows-vm-secureboot-clone-preflight", "windows-vm-secureboot-fresh-preflight", "windows-vm-secureboot-fresh-start", "windows-vm-secureboot-fresh-status", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "windows-vm-optical-boot-preflight", "windows-vm-optical-boot-start", "windows-vm-optical-boot-status", "windows-vm-optical-close-preflight", "windows-vm-optical-close-start", "windows-vm-optical-close-status", "windows-vm-optical-attempt2-preflight", "windows-vm-optical-attempt2-start", "windows-vm-optical-attempt2-status", "windows-vm-optical-attempt2-phase-probe", "windows-vm-optical-attempt2-close-preflight", "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt2-close-status", "windows-vm-optical-attempt3-preflight", "windows-vm-optical-attempt3-start", "windows-vm-optical-attempt3-status", "windows-vm-optical-attempt3-frame-collect", "windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start", "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect", "windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start", "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect", "windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start", "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect", "windows-vm-setup-install-disk-proof", "windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start", "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect", "windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start", "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect", "windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start", "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "windows-fixture-stage-start", "windows-fixture-stage-status", "windows-fixture-stage-collect", "windows-fixture-credentials-start", "windows-fixture-credentials-status", "windows-fixture-credentials-collect", "windows-fixture-server-start", "windows-fixture-server-acl-preflight", "windows-fixture-server-status", "windows-fixture-server-collect", "windows-fixture-server-stop-start", "windows-fixture-server-stop-status", "windows-fixture-server-stop-collect", "windows-fixture-credentials-cleanup-start", "windows-fixture-credentials-cleanup-status", "windows-fixture-credentials-cleanup-collect", "windows-fixture-server-abort-start", "windows-fixture-server-abort-status", "windows-fixture-server-abort-collect", "windows-fixture-server-abort-successor-start", "windows-fixture-server-abort-successor-status", "windows-fixture-server-abort-successor-diagnostic", "windows-fixture-server-resume-no-dispatch-start", "windows-fixture-server-post-resource-diagnostic", "windows-fixture-server-probe-events-acl-diagnostic", "windows-fixture-acl-preflight", "windows-fixture-acl-preflight-status", "windows-fixture-credentials-abort-start", "windows-fixture-credentials-abort-status", "windows-fixture-credentials-abort-collect", "windows-fixture-owner-network-start", "windows-fixture-owner-network-status", "windows-fixture-owner-network-collect", "windows-fixture-network-probe-start", "windows-fixture-network-probe-status", "windows-fixture-network-probe-collect", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-package-install-unknown-proof", "android-package-install-unknown-release", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-document-retry-start", "android-document-retry-status", "android-document-retry-collect", "android-document-retry-recovery-start", "android-document-retry-recovery-status", "android-document-retry-recovery-collect", "android-document-retry-recovery-finalize", "android-document-retry-unknown-diagnose", "android-document-retry-unknown-close", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-endpoint-admission-start", "android-endpoint-admission-status", "android-endpoint-admission-cleanup", "android-installer-dispatch-start", "android-installer-dispatch-status", "android-installer-dispatch-collect", "android-installer-callback-handoff-ready", "android-installer-callback-continue", "android-installer-callback-status-handoff-ready", "android-installer-callback-status-continue", "android-installer-abort-prelaunch", "android-installer-reconcile", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-machine-server-stop-start", "macos-machine-server-stop-status", "macos-machine-server-stop-collect", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
+    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "baseline-source-inventory", "matrix-record", "matrix-retract", "matrix-status", "matrix-equivalence-record", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-guest-park-preflight", "linux-guest-park-start", "linux-guest-park-status", "linux-package-fixture-build-preflight", "linux-package-fixture-build-start", "linux-package-fixture-build-status", "linux-package-fixture-build-collect", "linux-package-fixture-build-pre-effect-status", "linux-package-fixture-build-pre-effect-close", "linux-package-fixture-build-terminal-ready-status", "linux-package-fixture-build-terminal-ready-close", "android-api35-large-routing-observe", "android-coldboot-product-api29-observe", "linux-package-tmux-resource-prepare", "linux-package-tmux-availability", "linux-package-tmux-preflight", "linux-package-tmux-start", "linux-package-tmux-status", "linux-package-tmux-collect", "arch-tmux-install-preflight", "arch-tmux-install-start", "arch-tmux-install-status", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-parallel-vm-source-inventory", "windows-parallel-vm-copy-start", "windows-parallel-vm-copy-status", "windows-vm-secureboot-inventory", "windows-vm-virt-firmware-admission", "windows-vm-secureboot-clone-preflight", "windows-vm-secureboot-fresh-preflight", "windows-vm-secureboot-fresh-start", "windows-vm-secureboot-fresh-status", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "windows-vm-optical-boot-preflight", "windows-vm-optical-boot-start", "windows-vm-optical-boot-status", "windows-vm-optical-close-preflight", "windows-vm-optical-close-start", "windows-vm-optical-close-status", "windows-vm-optical-attempt2-preflight", "windows-vm-optical-attempt2-start", "windows-vm-optical-attempt2-status", "windows-vm-optical-attempt2-phase-probe", "windows-vm-optical-attempt2-close-preflight", "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt2-close-status", "windows-vm-optical-attempt3-preflight", "windows-vm-optical-attempt3-start", "windows-vm-optical-attempt3-status", "windows-vm-optical-attempt3-frame-collect", "windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start", "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect", "windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start", "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect", "windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start", "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect", "windows-vm-setup-install-disk-proof", "windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start", "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect", "windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start", "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect", "windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start", "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "windows-fixture-stage-start", "windows-fixture-stage-status", "windows-fixture-stage-collect", "windows-fixture-credentials-start", "windows-fixture-credentials-status", "windows-fixture-credentials-collect", "windows-fixture-server-start", "windows-fixture-server-acl-preflight", "windows-fixture-server-status", "windows-fixture-server-collect", "windows-fixture-server-stop-start", "windows-fixture-server-stop-status", "windows-fixture-server-stop-collect", "windows-fixture-credentials-cleanup-start", "windows-fixture-credentials-cleanup-status", "windows-fixture-credentials-cleanup-collect", "windows-fixture-server-abort-start", "windows-fixture-server-abort-status", "windows-fixture-server-abort-collect", "windows-fixture-server-abort-successor-start", "windows-fixture-server-abort-successor-status", "windows-fixture-server-abort-successor-diagnostic", "windows-fixture-server-resume-no-dispatch-start", "windows-fixture-server-post-resource-diagnostic", "windows-fixture-server-probe-events-acl-diagnostic", "windows-fixture-acl-preflight", "windows-fixture-acl-preflight-status", "windows-fixture-credentials-abort-start", "windows-fixture-credentials-abort-status", "windows-fixture-credentials-abort-collect", "windows-fixture-owner-network-start", "windows-fixture-owner-network-status", "windows-fixture-owner-network-collect", "windows-fixture-network-probe-start", "windows-fixture-network-probe-status", "windows-fixture-network-probe-collect", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-package-install-unknown-proof", "android-package-install-unknown-release", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-document-retry-start", "android-document-retry-status", "android-document-retry-collect", "android-document-retry-recovery-start", "android-document-retry-recovery-status", "android-document-retry-recovery-collect", "android-document-retry-recovery-finalize", "android-document-retry-unknown-diagnose", "android-document-retry-unknown-close", "android-obsolete-consent-denial-collect", "android-consent-grant-prompt-collect", "android-consent-grant-acceptance-start", "android-consent-grant-acceptance-diagnose", "android-consent-grant-acceptance-reconcile", "android-consent-grant-acceptance-reconcile-status", "android-consent-grant-acceptance-reconcile-diagnose", "android-consent-grant-acceptance-status", "android-consent-grant-acceptance-collect", "android-vpn-permission-reset-start", "android-vpn-permission-reset-status", "android-vpn-permission-reset-collect", "android-runtime-acceptance-start", "android-runtime-acceptance-status", "android-runtime-acceptance-collect", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-api35-remaining-proxy-status", "android-fixture-tls-mint", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-endpoint-admission-start", "android-endpoint-admission-status", "android-endpoint-admission-cleanup", "android-endpoint-mount-diagnostic-collect", "android-endpoint-cleanup-readmission", "android-endpoint-cleanup-readmission-status", "android-endpoint-cleanup-readmitted-status", "android-recovered-endpoint-stage-collect", "android-endpoint-cleanup-mount-diagnostic", "android-endpoint-cleanup-readmitted", "android-installer-dispatch-start", "android-installer-dispatch-status", "android-installer-dispatch-collect", "android-installer-callback-handoff-ready", "android-installer-callback-continue", "android-installer-callback-status-handoff-ready", "android-installer-callback-status-continue", "android-installer-abort-prelaunch", "android-installer-reconcile", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-machine-server-stop-start", "macos-machine-server-stop-status", "macos-machine-server-stop-collect", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
     vm_parser._actions[-1].choices = (*vm_parser._actions[-1].choices,
+                                      "source-review-close",
                                       "windows-vm-virt-firmware-install-preflight",
                                       "windows-vm-virt-firmware-install-start",
                                       "windows-vm-virt-firmware-install-status",
@@ -6505,6 +8158,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                                       "windows-fixture-server-diagnostic",
                                       "windows-fixture-server-static-diagnostic",
                                       "windows-fixture-server-abort-diagnostic",
+                                      "windows-fixture-server-second-abort-successor-start",
+                                      "windows-fixture-server-second-abort-successor-status",
+                                      "windows-fixture-server-second-abort-successor-diagnostic",
+                                      "windows-fixture-server-second-abort-recovery-diagnose",
+                                      "windows-fixture-server-second-abort-recovery-start",
+                                      "windows-fixture-server-second-abort-recovery-status",
                                       "windows-fixture-package-mode-repair-start",
                                       "windows-fixture-package-mode-repair-status",
                                       "windows-fixture-package-mode-repair-collect",
@@ -6604,7 +8263,61 @@ def main(argv: Sequence[str] | None = None) -> int:
                                       "windows-update-fixture-download-abort-current-task-cleanup",
                                       "windows-update-fixture-download-abort-current-status",
                                       "windows-update-fixture-download-abort-current",
+                                      "windows-cp117-retirement-recovery-preflight",
+                                      "windows-cp117-retirement-recovery-parser",
+                                      "windows-cp117-retirement-recovery-start",
+                                      "windows-cp117-retirement-recovery-status",
+                                      "windows-cp117-retirement-recovery-finish",
+                                      "windows-cp117-guest-agent-recovery-successor-preflight",
+                                      "windows-cp117-guest-agent-recovery-successor-parser",
+                                      "windows-cp117-guest-agent-recovery-successor-start",
+                                      "windows-cp117-guest-agent-recovery-successor-status",
+                                      "windows-cp117-guest-agent-recovery-preflight",
+                                      "windows-cp117-guest-agent-recovery-parser",
+                                      "windows-cp117-guest-agent-recovery-start",
+                                      "windows-cp117-guest-agent-recovery-status",
+                                      "windows-cp117-guest-agent-recovery-diagnose",
+                                      "windows-cp117-guest-agent-recovery-journal",
+                                      "windows-cp117-c32-retained-parser",
+                                      "windows-cp117-c32-archive-diagnose",
+                                      "windows-cp117-c32-archive-preflight",
+                                      "windows-cp117-c32-host-archive-self-test",
+                                      "windows-cp117-c32-host-archive-start",
+                                      "windows-cp117-c32-host-archive-status",
+                                      "windows-cp117-historical-base-archives",
+                                      "windows-cp117-source-campaign-reservation-diagnose",
+                                      "windows-cp117-source-campaign-preflight",
+                                      "windows-cp117-cp95-retained-tasks",
+                                      "windows-cp117-cp95-task-retire-preflight",
+                                      "windows-cp117-cp95-task-retire-start",
+                                      "windows-cp117-cp95-task-retire-status", "windows-cp117-cp95-task-retire-finish", "windows-cp117-cp95-task-retire-tail-start", "windows-cp117-cp95-task-retire-tail-status", "windows-cp117-cp95-task-retire-tail-diagnose", "windows-cp117-cp95-task-retire-tail-close-pre-effect", "windows-cp117-cp95-task-retire-successor-start", "windows-cp117-cp95-task-retire-successor-status", "windows-cp117-cp95-task-retire-successor-admission-diagnose",
+                                      "windows-cp117-cp95-task-retire-diagnose", "windows-cp117-cp95-task-retire-finish-diagnose",
+                                      "windows-cp117-e848-http-task-retire-preflight",
+                                      "windows-cp117-e848-http-task-retire-start",
+                                      "windows-cp117-e848-http-task-retire-status",
+                                      "windows-cp117-source-pre-effect-status",
+                                      "windows-cp117-source-pre-effect-close",
+                                      "windows-cp117-source-pre-effect-diagnose",
+                                      "windows-cp117-c32-retained-task-retire-preflight",
+                                      "windows-cp117-c32-retained-task-retire-start",
+                                      "windows-cp117-c32-retained-task-retire-status",
+                                      "windows-cp117-e848-http-task",
+                                      "windows-cp117-source-campaign-start",
+                                      "windows-cp117-source-campaign-status",
+                                      "windows-cp117-source-campaign-diagnose",
+                                      "windows-cp117-source-campaign-terminal-reconcile",
+                                      "windows-cp117-source-campaign-finish",
+                                      "windows-cp117-source-campaign-parser",
                                       "windows-cp117-campaign-status",
+                                      "windows-cp117-staged-fixture-retire-preflight",
+                                      "windows-cp117-staged-fixture-retire-start",
+                                      "windows-cp117-staged-fixture-retire-status",
+                                      "windows-cp117-staged-fixture-retire-diagnose",
+                                      "windows-cp117-staged-fixture-retire-parser",
+                                      "windows-cp117-staged-fixture-retire-guard-diagnostic",
+                                      "windows-cp117-staged-fixture-retire-boundary",
+                                      "windows-cp117-staged-fixture-retire-tree",
+                                      "windows-cp117-staged-fixture-retire-locks",
                                       "windows-cp117-campaign-diagnostic",
                                       "windows-update-fixture-phase-status",
                                       "windows-update-fixture-http-stage-extract-diagnostic",

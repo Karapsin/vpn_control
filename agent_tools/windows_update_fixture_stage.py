@@ -24,6 +24,7 @@ from typing import Any, BinaryIO, Mapping
 from . import windows_msi_base_prepare as base
 from . import windows_msi_public_scenario as public
 from . import windows_cp117_lease as campaign_lease
+from . import windows_guest_receipt_read as guest_receipt_read
 from scripts.windows_fixture_stage_acl import stage_acl_powershell, validate_stage_acl_receipt
 
 
@@ -595,7 +596,7 @@ except Exception:out({'state':'unknown','correlationId':corr,'reason':'submissio
 '''
 
 
-_REMOTE_STATUS = base._QGA + r'''root,env,lease,corr,sock,pid,ticks,sid,source,fingerprint,bundle_hash,receipt_id,base_id,target_id=sys.argv[1:]
+_REMOTE_STATUS = base._QGA + guest_receipt_read.REMOTE_HELPER + r'''root,env,lease,corr,sock,pid,ticks,sid,source,fingerprint,bundle_hash,receipt_id,base_id,target_id=sys.argv[1:]
 def out(v):print(json.dumps(v,separators=(',',':'),sort_keys=True))
 try:
  if env!='windows-cp117' or not live(sock,pid,ticks):raise ValueError()
@@ -609,11 +610,11 @@ try:
  binding=json.load(open(os.path.join(stage,'binding.json'),encoding='utf-8'))
  if binding!={'correlationId':corr,'socketPath':sock,'pid':int(pid),'startTicks':int(ticks),'leaseId':lease,'sourceSha':source,'sourceFingerprint':fingerprint,'bundleSha256':bundle_hash,'expectedSid':sid,'fixtureReceiptArtifactId':receipt_id,'baseMsiArtifactId':base_id,'targetMsiArtifactId':target_id}:raise ValueError()
  dispatch=json.load(open(os.path.join(stage,'dispatch.json'),encoding='utf-8'))
- if type(dispatch.get('pid')) is not int or dispatch['pid']<=0:raise ValueError()
+ if set(dispatch)!={'pid'} or type(dispatch.get('pid')) is not int or dispatch['pid']<=0:raise ValueError()
  # QGA guest-exec-status may be consumed by the original one-shot wait.  A
  # bounded result receipt is therefore the first terminal proof.  The caller
  # still validates its full hashes and ACLs before completing the stage lease.
- raw=read(sock,'C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-update-fixture-'+corr+'\\result.json')
+ raw=read_fixed_receipt(sock,corr)
  if raw is not None:
   if not 0<len(raw)<=8192:raise ValueError()
   out({'state':'observed','correlationId':corr,'result':json.loads(decode(raw))});raise SystemExit(0)
@@ -625,11 +626,67 @@ except Exception:out({'state':'unknown','correlationId':corr})
 '''
 
 
+_REMOTE_LIVE_STAGE = base._QGA + r'''import base64,time
+sock,pid,ticks,encoded=sys.argv[1:]
+def out(value):print(json.dumps(value,separators=(',',':'),sort_keys=True))
+try:
+ if not live(sock,pid,ticks):raise ValueError()
+ child=call(sock,'guest-exec',{'path':'powershell.exe','arg':['-NoProfile','-NonInteractive','-EncodedCommand',encoded],'capture-output':True})['pid']
+ if type(child) is not int or child<=0:raise ValueError()
+ for _ in range(80):
+  item=call(sock,'guest-exec-status',{'pid':child})
+  if item.get('exited') is True:break
+  if item.get('exited') is not False:raise ValueError()
+  time.sleep(.25)
+ else:raise ValueError()
+ if item.get('exitcode')!=0 or item.get('out-truncated') is not False or item.get('err-truncated') is not False:raise ValueError()
+ value=json.loads(decode(base64.b64decode(item.get('out-data',''),validate=True)))
+ if not isinstance(value,dict) or set(value)!={'rootAcl'}:raise ValueError()
+ out({'state':'observed','receipt':value})
+except Exception:out({'state':'unknown'})
+'''
+
+
+def _live_stage_script(correlation: str, sid: str, bundle_hash: str, hashes: Mapping[str, str]) -> str:
+    """Read immutable stage bytes and the protected root ACL immediately before use."""
+    root = _GUEST + "\\mcp-update-fixture-" + correlation
+    expected = "\n".join("$expected[{}]={}".format(public._ps_literal(name), public._ps_literal(digest))
+                         for name, digest in sorted(hashes.items()))
+    return r'''$ErrorActionPreference='Stop';$root=@ROOT@;$content=Join-Path $root 'content';$expected=@{}
+@EXPECTED@
+function Safe([string]$path){$item=Get-Item -LiteralPath $path -Force -ErrorAction Stop;if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw 'REPARSE'};return $item}
+$rootItem=Safe $root;if(-not $rootItem.PSIsContainer){throw 'ROOT'};for($ancestor=$rootItem;$null -ne $ancestor;$ancestor=$ancestor.Parent){if(($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw 'ANCESTOR'}}
+$contentItem=Safe $content;if(-not $contentItem.PSIsContainer){throw 'CONTENT'};$all=@(Get-ChildItem -LiteralPath $root -Force -Recurse -ErrorAction Stop);if(@($all|Where-Object {($_.Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0}).Count -ne 0){throw 'REPARSE'}
+$bundle=Safe (Join-Path $root 'bundle.zip');if($bundle.PSIsContainer -or (Get-FileHash -LiteralPath $bundle.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne @HASH@){throw 'BUNDLE'}
+$files=@(Get-ChildItem -LiteralPath $content -Force -Recurse -File -ErrorAction Stop);if($files.Count -ne $expected.Count){throw 'FILE_COUNT'};foreach($file in $files){$relative=$file.FullName.Substring($content.Length+1).Replace('\','/');if(-not $expected.ContainsKey($relative) -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected[$relative]){throw 'FILE_HASH'}}
+$acl=Get-Acl -LiteralPath $root -ErrorAction Stop;$records=@($acl.Access|ForEach-Object {[ordered]@{sid=$_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value;rights=[int]$_.FileSystemRights;type=$_.AccessControlType.ToString();inherited=$_.IsInherited;inheritance=[int]$_.InheritanceFlags;propagation=[int]$_.PropagationFlags}});[ordered]@{rootAcl=[ordered]@{stage=$root;protected=$acl.AreAccessRulesProtected;acl=$records}}|ConvertTo-Json -Compress -Depth 4
+'''.replace("@ROOT@", public._ps_literal(root)).replace("@EXPECTED@", expected).replace("@HASH@", public._ps_literal(bundle_hash))
+
+
+def _live_stage_verified(config: Any, descriptor: tuple[Any, ...], intent: Mapping[str, Any]) -> bool:
+    """Fail closed unless the live immutable stage still matches its saved intent."""
+    try:
+        corr, sid = intent["request"]["correlationId"], descriptor[4]
+        script = _live_stage_script(corr, sid, intent["bundleSha256"], intent["fileHashes"])
+        encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+        raw = base._remote(config, _REMOTE_LIVE_STAGE,
+                           (str(descriptor[1]), str(descriptor[2]), str(descriptor[3]), encoded), None, 30)
+        observed = json.loads(raw) if raw is not None else None
+        receipt = observed.get("receipt") if isinstance(observed, dict) and observed.get("state") == "observed" else None
+        if not isinstance(receipt, dict) or set(receipt) != {"rootAcl"}:
+            return False
+        validate_stage_acl_receipt(receipt["rootAcl"], sid, _GUEST + "\\mcp-update-fixture-" + corr)
+        return True
+    except (OSError, ValueError, TypeError, KeyError, WindowsUpdateFixtureStageError,
+            base.WindowsMsiBasePrepareError):
+        return False
+
+
 # This projection is deliberately read-only.  It exists for a lost stage
 # response: a one-shot QGA bundle write cannot be safely retried merely because
 # the observer did not receive its receipt.  It reveals no guest path, account,
 # handle, process identifier, or raw receipt/log content.
-_REMOTE_DIAGNOSTIC = base._QGA + r'''import time
+_REMOTE_DIAGNOSTIC = base._QGA + guest_receipt_read.REMOTE_HELPER + r'''import time
 root,env,lease,corr,sock,pid,ticks,sid,source,fingerprint,bundle_hash,size_text,receipt_id,base_id,target_id=sys.argv[1:]
 def out(phase,binding='exact'):print(json.dumps({'state':'diagnosed','correlationId':corr,'binding':binding,'phase':phase},separators=(',',':'),sort_keys=True))
 def directory(path):
@@ -681,7 +738,7 @@ try:
  # A durable result receipt remains observable after the original QGA status
  # poll consumed the child status.  It is only a diagnostic here; status()
  # performs full receipt, hash, and ACL validation before reconciliation.
- try:raw=read(sock,'C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-update-fixture-'+corr+'\\result.json')
+ try:raw=read_fixed_receipt(sock,corr)
  except Exception:out('result-read-failed');raise SystemExit(0)
  if raw is not None:
   if not 0<len(raw)<=8192:out('receipt-invalid');raise SystemExit(0)
@@ -795,6 +852,10 @@ def status(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
         validate_stage_acl_receipt(result["rootAcl"], sid, _GUEST + "\\mcp-update-fixture-" + corr)
         _validate_state_acl(result["stateAcl"], sid, _GUEST + "\\mcp-update-fixture-" + corr + "\\server-state")
     except ValueError: return unknown
+    # The durable result proves the completed extraction once, but cannot prove
+    # its immutable bytes still exist.  Re-read bundle/content/root ACL before
+    # advancing the campaign into a physically staged state.
+    if not _live_stage_verified(config, descriptor, intent): return unknown
     if not _complete_stage_lease(root, intent, result, config, target, descriptor):
         return unknown
     return {"state": "staged-not-server-ready", "correlationId": corr,

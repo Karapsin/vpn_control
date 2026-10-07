@@ -1,0 +1,20 @@
+{
+  "fixture": "short_socket_51538dad.source",
+  "purpose": "Exact historical recovery source bytes for observer source-guard fixtures; read and hashed, never imported or executed. Runtime archive is provenance only, not a test prerequisite.",
+  "retainedArchive": ".runtime/parity-evidence/windows-fcntl-import-pre-fix-22628997-f3b9-41fe-9e71-9540aa95ccde/windows_cp117_fixture_recovery_short_socket.py",
+  "retainedArchiveGeneration": [
+    16777234,
+    112808633,
+    33152,
+    503,
+    20,
+    1,
+    42086,
+    1791038806867426589,
+    1791138186685006991
+  ],
+  "schemaVersion": 1,
+  "sha256": "51538dad4c2fa6591384081f5a0aabacada1e752c1afd6a6ed50ebed9596663e",
+  "sizeBytes": 42086,
+  "sourceModule": "agent_tools/windows_cp117_fixture_recovery_short_socket.py"
+}

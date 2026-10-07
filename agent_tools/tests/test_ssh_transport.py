@@ -104,6 +104,15 @@ class SshTransportTest(unittest.TestCase):
             self.assertEqual(argv[-1], "true")
             self.assertNotIn("s3cr3t", " ".join(argv))
 
+    def test_unknown_explicit_selection_never_falls_back_to_canonical_socket(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);group=root/'.rag_index'/'ssh-channel-selection';group.mkdir(parents=True,mode=0o700)
+            current=group/'current.json';current.write_bytes(b'{');current.chmod(0o600)
+            config=ssh.SshConfig(root=root,hosts={
+                'gateway':ssh.SshHost('gateway','ssh.example',2228,'fixture',Path('/inert/key'),Path('/inert/known')),
+                'archlinux':ssh.SshHost('archlinux','unused',22,'fixture',Path('/inert/key'),ssh.PurePosixPath('/inert/known'),transport='nested',gateway='gateway',remote_host_alias='archlinux',remote_control_path=ssh.PurePosixPath('/inert/old-canonical'))})
+            with self.assertRaises(ssh.SshConfigError):ssh.build_ssh_argv(config,'archlinux')
+
     def test_nested_route_uses_declared_gateway_and_quoted_remote_command(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -244,6 +253,93 @@ class SshTransportTest(unittest.TestCase):
 
     def test_probe_classifies_bytes_timeout(self):
         self.assertEqual(ssh._status_for_output(ssh._sanitized_output(b"Permission denied", ())), ssh.ProbeStatus.AUTHENTICATION_FAILED)
+
+    def test_expired_nested_master_is_not_misreported_as_bad_credentials(self):
+        from agent_tools import ssh_connection_recovery as recovery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            gateway = self.config()["hosts"]["vm"]
+            arch = {**gateway, "transport": "nested", "gateway": "gateway",
+                    "remoteHostAlias": "archlinux", "remoteControlPath": "/private/master.sock",
+                    "knownHostsFile": "/private/known", "password": "private-passphrase"}
+            self.write_config(root, self.config({"gateway": gateway, "arch": arch}))
+            failed = mock.Mock(returncode=255, stdout="", stderr="Permission denied (publickey).")
+            with mock.patch.object(ssh.subprocess, "run", return_value=failed) as run, \
+                    mock.patch.object(ssh, "_probe_cached_socket", return_value="absent") as check:
+                result = ssh.probe(root, "arch", 3)
+            self.assertEqual("nested_master_absent", result.status.value)
+            self.assertEqual(1, run.call_count, "No authentication retry")
+            self.assertEqual(1, check.call_count)
+            from agent_tools.native_next_action import next_action
+            guidance = next_action("ssh_workflow", "probe", result.as_dict())
+            self.assertEqual("arch", guidance["action"]["args"]["host"])
+            self.assertFalse(guidance["replayAllowed"])
+            self.assertNotIn("private-passphrase", json.dumps(result.as_dict()))
+
+    def test_ready_or_unknown_master_does_not_claim_expiry_or_offer_recovery(self):
+        from agent_tools import ssh_connection_recovery as recovery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            gateway = self.config()["hosts"]["vm"]
+            arch = {**gateway, "transport": "nested", "gateway": "gateway",
+                    "remoteHostAlias": "archlinux", "remoteControlPath": "/private/master.sock",
+                    "knownHostsFile": "/private/known"}
+            self.write_config(root, self.config({"gateway": gateway, "arch": arch}))
+            failed = mock.Mock(returncode=255, stdout="", stderr="Permission denied (publickey).")
+            for state in ("ready", "unknown"):
+                with self.subTest(state=state), mock.patch.object(ssh.subprocess, "run", return_value=failed), \
+                        mock.patch.object(ssh, "_probe_cached_socket", return_value=state):
+                    result = ssh.probe(root, "arch", 3)
+                self.assertEqual(ssh.ProbeStatus.AUTHENTICATION_FAILED if state=="ready" else ssh.ProbeStatus.SSH_FAILED, result.status)
+                self.assertNotIn("nextAction", result.as_dict())
+
+    def test_actual_cached_socket_refusal_does_not_claim_bad_credentials(self):
+        from agent_tools import ssh_connection_recovery as recovery
+        import subprocess
+        real_popen=subprocess.Popen
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);gateway=self.config()['hosts']['vm']
+            arch={**gateway,'transport':'nested','gateway':'gateway','remoteHostAlias':'archlinux',
+                  'remoteControlPath':'/private/master.sock','knownHostsFile':'/private/known'}
+            self.write_config(root,self.config({'gateway':gateway,'arch':arch}))
+            failed=mock.Mock(returncode=255,stdout='',stderr='Permission denied (publickey).')
+            cases=[(b'',b'Control socket connect(/private/master.sock): Connection refused\n',255,ssh.ProbeStatus.SSH_FAILED),
+                   (b'',b'Control socket connect(/private/master.sock): No such file or directory\n',255,ssh.ProbeStatus.NESTED_MASTER_ABSENT),
+                   (b'',b'Master running (pid=17)\n',0,ssh.ProbeStatus.AUTHENTICATION_FAILED),
+                   (b'x',b'Master running (pid=17)\n',0,ssh.ProbeStatus.SSH_FAILED),
+                   (b'',b'unknown socket reply\n',255,ssh.ProbeStatus.SSH_FAILED),
+                   (b'',b'Master running (pid=17)\nextra',0,ssh.ProbeStatus.SSH_FAILED)]
+            for stdout,stderr,code,expected in cases:
+                with self.subTest(stdout=stdout,stderr=stderr,code=code):
+                    def binary_child(argv,**kw):
+                        return real_popen([sys.executable,'-I','-B','-c',
+                            'import sys;sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]));sys.stderr.buffer.write(bytes.fromhex(sys.argv[2]));sys.exit(int(sys.argv[3]))',stdout.hex(),stderr.hex(),str(code)],**kw)
+                    with mock.patch.object(ssh.subprocess,'run',return_value=failed) as run,mock.patch.object(recovery.subprocess,'Popen',side_effect=binary_child) as query:
+                        result=ssh.probe(root,'arch',3)
+                    self.assertEqual(expected,result.status);self.assertEqual(1,run.call_count);self.assertEqual(1,query.call_count)
+                    self.assertNotIn('nextAction',result.as_dict()) if expected is not ssh.ProbeStatus.NESTED_MASTER_ABSENT else None
+
+    def test_mixed_route_and_auth_markers_do_not_claim_credentials_broken(self):
+        self.assertEqual(ssh.ProbeStatus.CONNECTION_FAILED,ssh._status_for_output('Connection refused\nPermission denied (publickey).'))
+
+    def test_missing_intermediate_master_guidance_names_that_hop(self):
+        from agent_tools import ssh_connection_recovery as recovery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            gateway = self.config()["hosts"]["vm"]
+            arch = {**gateway, "transport": "nested", "gateway": "gateway",
+                    "remoteHostAlias": "archlinux", "remoteControlPath": "/private/arch.sock",
+                    "knownHostsFile": "/private/known"}
+            guest = {**arch, "gateway": "arch", "remoteHostAlias": "guest",
+                     "remoteControlPath": "/private/guest.sock"}
+            self.write_config(root, self.config({"gateway": gateway, "arch": arch, "guest": guest}))
+            failed = mock.Mock(returncode=255, stdout="", stderr="Permission denied (publickey).")
+            with mock.patch.object(ssh.subprocess, "run", return_value=failed), \
+                    mock.patch.object(ssh, "_probe_cached_socket", return_value="absent") as check:
+                result = ssh.probe(root, "guest", 3)
+            self.assertEqual("arch", check.call_args.args[1].alias)
+            self.assertEqual(1, check.call_count, "Do not traverse an unavailable hop")
+            self.assertEqual("arch", result.as_dict()["recoveryHost"])
     @unittest.skipUnless(os.name == "posix", "POSIX shell fake SSH executable")
     def test_real_fake_ssh_argument_forwarding_and_timeout_on_posix(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -174,6 +174,36 @@ class NativeArtifactReuseTest(unittest.TestCase):
         supplied["architecture"] = "arm64"
         self.assertFalse(self.decision(inspectors={"desktop-package": lambda _root, _package: supplied})["nativeAdmissionReady"])
 
+    def test_successful_inspection_cannot_admit_changed_product_inputs(self) -> None:
+        # Real TempGit and registered/frozen bytes; only the native inspector
+        # is an explicit fixture seam, never native acceptance evidence.
+        inspectors = {"desktop-package": lambda _root, _package: {
+            "verified": True, "architecture": "x86_64", "signer": {"kind": "unsigned"}}}
+        self.assertTrue(self.decision(inspectors=inspectors)["nativeAdmissionReady"])
+        (self.root / "src.kt").write_text("val x = 2\n", encoding="utf-8")
+        dirty = self.decision(inspectors=inspectors)
+        self.assertEqual("rebuild-required", dirty["decision"])
+        self.assertEqual([], dirty["missingChecks"])
+        self.assertFalse(dirty["nativeAdmissionReady"])
+        self.commit()
+        committed = self.decision(inspectors=inspectors)
+        self.assertEqual("rebuild-required", committed["decision"])
+        self.assertEqual([], committed["missingChecks"])
+        self.assertFalse(committed["nativeAdmissionReady"])
+        self.assertEqual(self.source, committed["originalSourceSha"])
+        self.assertEqual(self.head(), committed["currentSourceSha"])
+
+    def test_eligible_docs_inspected_bytes_preserve_original_source(self) -> None:
+        (self.root / "docs" / "guide.md").write_text("revised\n", encoding="utf-8")
+        self.commit()
+        inspected = self.decision(inspectors={"desktop-package": lambda _root, _package: {
+            "verified": True, "architecture": "x86_64", "signer": {"kind": "unsigned"}}})
+        self.assertEqual("verified-equivalent-product-inputs", inspected["decision"])
+        self.assertTrue(inspected["nativeAdmissionReady"])
+        self.assertEqual(self.source, inspected["originalSourceSha"])
+        self.assertEqual(self.source, self.frozen["packages"][0]["sourceSha"])
+        self.assertTrue(inspected["ciRequired"])
+
 
 if __name__ == "__main__":
     unittest.main()

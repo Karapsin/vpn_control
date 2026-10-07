@@ -27,7 +27,7 @@ EXE and MSI distribution; the earlier question about their purpose did not
 authorize removing either format.
 
 Read [contracts.md](contracts.md) as product authority, especially PRODUCT-002,
-STATE-001..005, CLI-001..008, DESKTOP-001..008, TEST-001, ARTIFACT-001..004 and
+STATE-001..005, CLI-001..008, DESKTOP-001..008, TEST-001..003, ARTIFACT-001..004 and
 VISUAL-001..009. This plan schedules their implementation and verification; it
 does not change those contracts.
 
@@ -88,7 +88,9 @@ Allow the launcher to prepare `.agent_venv`; reload the session when the client
 inventory or cached server implementation is stale. If transport cannot use the
 current implementation, report that limitation and invoke the equivalent
 `agent_tools/mcp_tool.sh` action in a fresh process. Do not replace managed
-operations with improvised SSH/shell mutations.
+operations with improvised SSH/shell mutations. For native acceptance on every platform,
+TEST-002 requires the guarded direct native proof phase described in section
+12 before MCP integration and equivalent retesting.
 
 Toolchain paths may be supplied through ignored, owner-only
 `.codex/build-env.local.json` (`JAVA_HOME`, `ANDROID_HOME`). Use the validated
@@ -189,9 +191,13 @@ model override. The receiving coordinator is GPT-6 Sol medium.
 | Coordinator | Evidence matrix, common integration, artifact freeze, Gradle, metadata, delivery | Shared registry/model/protocol, mcp_server.py, workflow lists, docs, changelog |
 
 After critical fixes stabilize, assign a bounded independent review and a visual
-worker. The Windows runtime/broker slice may run next in its guest; it must not
-compete with the MSI operator. A document audit can run read-only in parallel,
-but shared codec edits require explicit ownership transfer.
+worker. Apply TEST-003 to run independent native scenarios in parallel, including
+Windows scenarios with separately verified guests or isolated state. The sole
+operator may batch independent read-only observations in one guest. Windows
+runtime/broker effects serialize with MSI work when they share a guest; separate
+verified guests may run them concurrently within available resources. A document
+audit can run read-only in parallel, but shared codec edits require explicit
+ownership transfer. Each scenario follows direct native proof, then MCP retest.
 
 Each worker brief must contain:
 
@@ -329,10 +335,16 @@ harness/driver, scheduled-refresh runner and corresponding tests.
 2. Keep descriptor cleanup and journal state durable on all failure paths. A
    receipt labelled passed needs verified terminal exit0, public recovery and
    scoped cleanup; batch/node success cannot manufacture those facts.
-3. The source-matched target RPM exists; admit a separate build guest for the
-   missing matching base RPM. Preserve Fedora2328's installed base and pending
-   installer state. Verify build prerequisites before expensive packaging:
-   JDK17, objcopy/binutils, correct native architecture and required package tools.
+3. Check current registered packages before admitting another build guest.
+   The historical handoff needed a matching base RPM. Local review on2026-10-06
+   verified build86fcac2e's d32 source-matched2.1.19→2.2.2 RPM, DEB and Arch pairs
+   with full registered size/hash/generation checks; no missing-base build remains
+   for that cohort. The separate bbe1aafe2.2.1→2.2.2 cohort must not mix with it.
+   This is local artifact evidence, not fresh guest eligibility or final-source
+   acceptance. Preserve Fedora2328's installed base and pending installer state.
+   If an actually missing or source-invalidated package requires a build, use a
+   separate admitted guest and verify prerequisites first: JDK17, objcopy/binutils,
+   correct native architecture and required package tools.
 4. Prepare/verify the immutable bundle and typed scenario inputs; register exact
    artifacts; use `batch-plan` with recipe `linux-rpm-public-install-recovery`,
    then `batch-status` with only `batchId` for verification/preflight nodes.
@@ -469,12 +481,28 @@ codec/registry tests and scripts for routing evidence/private publication.
    them before final exact-source review. Partial reviews must remain partial and
    must not create a release approval/status. This task does not authorize release.
 
-## 12. Repeated failure policy: improve MCP, not just the one-off script
+## 12. Native acceptance: direct proof, parallel ownership and MCP equivalence
 
 For each distinct integration/native/fixture failure, TEST-001 already requires a
 quick causal regression and a related MCP improvement. A repeated class must
 trigger explicit workflow repair before another expensive attempt. Track
 `failure class → cause → quick RED → fix → GREEN → routine suite → MCP action → native rerun`.
+
+Apply `TEST-002` on Windows, Android, Linux and macOS: first get each complete
+required scenario working directly through SSH, CLI, ADB or native tools outside
+MCP. Verify its success, applicable failure/recovery cases and cleanup with actual
+native evidence. Only then integrate the proven procedure into MCP and repeat
+the same cases against matching source/artifacts. Repeated MCP failures return
+the affected scenario to direct diagnosis. Both phases preserve ownership,
+protected state, provenance, causal regressions and non-replay rules. Normal
+repository startup and delivery still use MCP.
+
+Apply `TEST-003` to parallelize independently owned native scenarios. Record
+exact guest/emulator, source/artifacts, original process/job handle and cleanup
+owner for each. Serialize interfering installer, machine-wide VPN, reboot and
+recovery operations in one guest; use separate verified guests or isolated state
+for concurrent effects. Batch independent read-only observations under the sole
+guest operator. Resource limits and unknown outcomes remain binding.
 
 1. Save the failing command outcome, exact source/artifacts, request/job identity,
    bounded redacted diagnostics and cleanup/uncertainty state. Distinguish product,
@@ -547,15 +575,16 @@ portable tests accidentally invoking POSIX APIs on Windows.
   evidenceScope. Use exact current schema; component/historical/partial receipts
   remain labelled. A generic suggested next command is not a new callable tool.
 
-The current matrix only counts `originalSourceSHA == HEAD` as current. It does
-not consume the separate artifact-reuse decision. Therefore a valid docs/test-only
-reuse check alone will not close a row for a newer HEAD. Choose explicitly:
-collect exact-final-source evidence after the final source freeze, or extend the
-matrix with a tested, immutable, reviewed equivalence link that preserves original
-artifact provenance and rejects product/build/runtime changes. Keep equivalent
-evidence historical until that integration exists; never change originalSourceSHA
-to satisfy the matrix. This is a concrete MCP integration task if reuse is needed
-to avoid repeating already valid native work.
+The matrix now supports immutable reviewed equivalence links through
+`matrix-equivalence-record`, with separate read-only status observation. A reuse
+check alone does not close a row: the link must bind the original full-native
+receipt and registered artifact set to the exact committed target source and
+reject product/build/runtime changes, provenance races and conflicting receipts.
+Original source and artifact identities remain unchanged. Component baselines,
+inert checks and incomplete native scenarios cannot become full-native evidence
+through equivalence. Record an eligible reviewed link after the final source
+freeze, or collect exact-final-source native evidence. Changed-tool validation
+and all exact-SHA delivery gates remain required.
 
 The22 requirement groups are: API29/API35 native CLI; Linux/Windows/macOS native
 CLI; four platform visuals; final dev CI; API29/API35 installer and actions;

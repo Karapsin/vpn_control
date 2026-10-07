@@ -32,6 +32,7 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | --- | --- |
 | `contracts.md` | Single authoritative source for all product invariants. |
 | `development.md` | Workflow guide: source/generated boundaries, dirty worktree policy, and safe patch flow. |
+| `ssh-tmux-sessions.md` | Optional fixed Linux packaging persistence, reconnect authority, immutable result collection and integration gates. |
 | `architecture.md` | Import/subscription to parser, state, config, runtime, and diagnostics data flow. |
 | `state-ownership.md` | Shared, Android, and desktop state/action ownership boundaries. |
 | `test-matrix.md` | Which tests to run for each touched area. |

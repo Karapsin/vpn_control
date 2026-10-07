@@ -1,0 +1,250 @@
+"""Authenticated original-context setup. No child or guest action in this function.
+Derived from exact retained 5d107 old main: original proof and current guard setup
+unchanged; consumed observation leaves and its dispatch removed. Whole driver pins
+and retains the old module BEFORE executing these nodes.
+"""
+def prepare_public_context():
+    global TLS_PUBLIC, TLS_RECORD
+    root = Path.cwd().resolve(strict=True)
+    r = installed.precise.owner.guest.recovery
+    bound = r.authority._read_bound_file
+    helper, hraw = bound(Path(worker.__file__), retain_bytes=True)
+    test, traw = bound(root / 'agent_tools/tests/test_windows_cp117_base_source_refresh.py', retain_bytes=True)
+    entry, eraw = bound(Path(__file__), private=True, retain_bytes=True)
+    bindingTest, braw = bound(root / 'agent_tools/tests/test_windows_cp117_server_preflight.py', retain_bytes=True)
+    if helper['sha256'] != HELPER_SHA or test['sha256'] != 'bee23d9115fde0e1985590988e2e9be2761df32b0aa5e2575af68537791b2c5d' or bindingTest['sha256'] != '4b6612464904b342ced0602d5fc5177ac7c8f8078506285cc0c45e64d4dba870':
+        raise ValueError('readback-source')
+    archiveRoot=root/'.runtime/parity-evidence/windows-public-context-testpin-successor'
+    baseArchive,baseOld=bound(archiveRoot/'original-base-test-ec314.source',private=True,retain_bytes=True)
+    serverArchive,serverOld=bound(archiveRoot/'original-server-test-f6d09.source',private=True,retain_bytes=True)
+    verify_current_test_successor(baseOld,traw,TEST_SHA,test['sha256'],('ShortcutStdinCarrierTests.functions','ShortcutStdinCarrierTests.program','DirectFixtureTransferWholeMainPreflightTests.test_actual_main_current_local_authorities_bundle_factories_no_child_barrier'))
+    verify_current_test_successor(serverOld,braw,READ_BINDING_TEST_SHA,bindingTest['sha256'],())
+    tested = gzip.decompress(base64.b64decode(ast.literal_eval(next((n.value for n in ast.parse(braw).body if isinstance(n, ast.Assign) and any((isinstance(t, ast.Name) and t.id == 'SERVER_PREFLIGHT_FACTORY_GZIP' for t in n.targets))))))).decode()
+    nodes = [n for n in ast.parse(eraw).body if not (isinstance(n, ast.FunctionDef) and n.name == 'main') and (not (isinstance(n, ast.If) and isinstance(n.test, ast.Compare))) and (not (isinstance(n, ast.Assign) and any((isinstance(t, ast.Name) and t.id in ('HELPER_SHA', 'TEST_SHA', 'HISTORY', 'READ_BINDING_TEST_SHA') for t in n.targets))))]
+    actual = '\n\n'.join((('@contextmanager\n' if isinstance(n, ast.FunctionDef) and n.name == '_held_bundle' else '') + ast.get_source_segment(eraw.decode(), n) for n in nodes)) + '\n'
+    for cp117A, cp117B, cp117Text in reversed(json.loads(gzip.decompress(base64.b64decode('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')))):
+        tested = tested[:cp117A] + cp117Text + tested[cp117B:]
+    if actual != tested:
+        raise ValueError('readback-tested-source')
+    original = AuthorityCapture(root, 'windows-cp117-recovery-' + r.CORRELATION)
+    prior = AuthorityCapture(root, PRIOR_LEAF)
+    bundlehold = None
+    try:
+        tlsPath = root / '.runtime/parity-evidence/windows-direct-fixture-tls-bb2e85e5-4281-4f70-b70e-618f5604093b'
+        tlsPrior = AuthorityCapture(root, tlsPath.name)
+        raw = r._local_read(original, installed.precise.owner.guest.ORIGINAL['name'], installed.precise.owner.guest.ORIGINAL['pin'])
+        record = json.loads(raw)
+        sources = {str(path): bound(path) for path in (Path(transfer.__file__), Path(installed.__file__), Path(installed.precise.__file__), Path(installed.public.__file__), Path(flow.__file__), Path(installed.precise.owner.guest.__file__), Path(r.authority.closure.base.__file__))}
+
+        def history_bound(path):
+            path = Path(path)
+            expected = HISTORY[str(path)]
+            if path.parent.parent != root / '.runtime/parity-evidence':
+                raise ValueError('readback-history-parent')
+            held = AuthorityCapture(root, path.parent.name)
+            try:
+                r._local_read(held, path.name, expected)
+                return expected
+            finally:
+                held.close()
+        sources[str(archiveRoot/'original-base-test-ec314.source')]=baseArchive
+        sources[str(archiveRoot/'original-server-test-f6d09.source')]=serverArchive
+        for path, expected in HISTORY.items():
+            sources[path] = history_bound(path)
+        old_entry = Path(PRIOR_CALLER)
+        oldpin, oldraw = bound(old_entry, private=True, retain_bytes=True)
+        if oldpin != HISTORY[str(old_entry)]:
+            raise ValueError('readback-prior-caller-drift')
+        if hashlib.sha256(oldraw).hexdigest() != '1a040b2537ef2bef81019a6e2467a0bd62741a01bb1bd98b835016a6a312a209':
+            raise ValueError('readback-original-caller')
+        ns = {'__name__': 'authenticated_prior_without_main', '__file__': str(old_entry)}
+        exec(compile(oldraw, str(old_entry), 'exec'), ns)
+        oldvalue = json.loads(r._local_read(prior, 'result.json', HISTORY[str(root / '.runtime/parity-evidence' / PRIOR_LEAF / 'result.json')]))
+        oldsource = r._local_read(prior, 'remote.py', HISTORY[str(root / '.runtime/parity-evidence' / PRIOR_LEAF / 'remote.py')]).decode()
+        oldstatus = json.loads(r._local_read(prior, 'exit.json', HISTORY[str(root / '.runtime/parity-evidence' / PRIOR_LEAF / 'exit.json')]))
+        oldsha = recorded_stage_body_sha(oldsource)
+        ns['admit_download'](oldvalue['result'], oldvalue['events'], oldstatus, oldsource, ns['DOWNLOAD_NONCE'], oldsha, record['result']['qemu'], prior)
+        originalMark = oldvalue['result']['facts']['facts']['download']
+        if originalMark['state'] != 'staged' or originalMark['originalPreserved'] is not True or originalMark['originalZipIdentity'] != ORIGINAL_ZIP_ID or (originalMark['stage']['correlationId'] != STAGED_CORRELATION):
+            raise ValueError('tls-original-stage')
+        from scripts import windows_fixture_stage_acl as fixture_acl
+        for path in (Path(STAGE_MODULE_PATH), Path(fixture_acl.__file__), Path(credentials.__file__), Path(fixture_server.__file__)):
+            sources[str(path)] = bound(path)
+        admitted = installed.pair(root)
+        execution = flow._execution_source_proof(root, record)
+        outer = r.authority._outer_authority(root)
+        bundle_guard = lambda: None
+
+        def verify():
+            pins = dict(sources)
+            pins.update({str(root / 'agent_tools/tests/test_windows_cp117_server_preflight.py'): bindingTest, str(Path(worker.__file__)): helper, str(root / 'agent_tools/tests/test_windows_cp117_base_source_refresh.py'): test, str(Path(__file__)): entry})
+            held = {}
+            parents = {}
+
+            def gen(z):
+                return [z.st_dev, z.st_ino, z.st_mode, z.st_uid, z.st_gid, z.st_nlink, z.st_size, z.st_mtime_ns, z.st_ctime_ns]
+            try:
+                for name, pin in pins.items():
+                    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW)
+                    held[name] = fd
+                    if gen(os.fstat(fd)) != pin['generation']:
+                        raise ValueError('server-held-source-drift')
+                    parent = str(Path(name).parent)
+                    if parent not in parents:
+                        pfd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                        parents[parent] = (pfd, gen(os.fstat(pfd))[:5])
+                if bound(root / 'agent_tools/tests/test_windows_cp117_server_preflight.py') != bindingTest or bound(Path(worker.__file__)) != helper or bound(root / 'agent_tools/tests/test_windows_cp117_base_source_refresh.py') != test or (bound(Path(__file__), private=True) != entry) or any(((history_bound(path) if path in HISTORY else bound(Path(path))) != pin for path, pin in sources.items())):
+                    raise ValueError('readback-drift')
+                if r._local_read(original, installed.precise.owner.guest.ORIGINAL['name'], installed.precise.owner.guest.ORIGINAL['pin']) != raw or flow._execution_source_proof(root, record) != execution or installed.pair(root) != admitted:
+                    raise ValueError('readback-authority')
+                for i, item in enumerate(record['authority']):
+                    r._validate_frame(item['frame'], record['request'], record['authority'][:i])
+                    if json.loads(r._local_read(original, 'authority-%d.json' % i, item['localPin'])) != item['frame']:
+                        raise ValueError('readback-original-frame')
+                r.authority._verify_outer(root, {'outerAuthority': outer})
+                bundle_guard()
+                for name, fd in held.items():
+                    if gen(os.fstat(fd)) != pins[name]['generation'] or gen(Path(name).lstat()) != pins[name]['generation']:
+                        raise ValueError('server-pure-source-drift')
+                for parent, (pfd, pin) in parents.items():
+                    if gen(os.fstat(pfd))[:5] != pin or gen(Path(parent).lstat())[:5] != pin:
+                        raise ValueError('server-parent-drift')
+                # Parent observations can yield after the first leaf pass.
+                # Complete all parents, then close the entire leaf population.
+                for name, fd in held.items():
+                    if gen(os.fstat(fd)) != pins[name]['generation'] or gen(Path(name).lstat()) != pins[name]['generation']:
+                        raise ValueError('server-terminal-source-drift')
+            finally:
+                for fd in held.values():
+                    os.close(fd)
+                for pfd, _ in parents.values():
+                    os.close(pfd)
+        verify()
+        candidate = _held_bundle(Path(BUNDLE_PATH))
+        bundle_stream, bundle_pin, bundle_guard = candidate.__enter__()
+        bundlehold = candidate
+        import zipfile
+        with zipfile.ZipFile(bundle_stream) as archive:
+            fixture_source = archive.read('server/prepare_desktop_update_fixture.py')
+            fixture_receipt = json.loads(archive.read('fixture-receipt.json'))
+        if hashlib.sha256(fixture_source).hexdigest() != MEMBERS['server/prepare_desktop_update_fixture.py'] or not fixture_server._has_windows_safe_probe_events_mkdir(fixture_source) or (not _server_strict_equal(fixture_receipt['manifest'], SERVER_MANIFEST)):
+            raise ValueError('server-frozen-source')
+        bundle_guard()
+        TLS_PUBLIC = json.loads(r._local_read(tlsPrior, 'request.json', HISTORY[str(tlsPath / 'request.json')]))['tlsPublic']
+        TLS_RECORD = record
+        private_frame = b''
+        private_markers_value = ()
+        successorDecision = successor_stage_proof(root)
+        priorDecision = server_tls_prior(root, record, HISTORY)
+        if priorDecision['credentialHashes'] != TLS_PUBLIC['fileSha256']:
+            raise ValueError('tls-historical-credentials')
+        config, _, _ = r.authority.closure.base._descriptor(root)
+
+        def argv(command):
+            result = r.authority.closure.base.ssh_transport.build_ssh_argv(config, r.HOST, 60, command=command)
+            if max((len(x.encode()) for x in result)) > 4096:
+                raise ValueError('readback-argv')
+            return result
+
+        def close_context():
+            if bundlehold is not None:
+                bundlehold.__exit__(None, None, None)
+            tlsPrior.close()
+            prior.close()
+            original.close()
+        return dict(root=root, record=record, qemu=record['result']['qemu'], verify=verify, ssh_argv=argv, stdin_command=_stdin_shortcut_command, capture_class=AuthorityCapture, guest_collect=guest_collect, close=close_context, sources=sources, original_source=installed.program_current(record, admitted)[0], tlsPublic=TLS_PUBLIC, tlsRecord=TLS_RECORD, bundlePin=bundle_pin)
+    except BaseException:
+        if bundlehold is not None:
+            bundlehold.__exit__(None, None, None)
+        if 'tlsPrior' in locals():
+            tlsPrior.close()
+        prior.close()
+        original.close()
+        raise
+
+
+# Recorded historical stage/attribute proof, independently from current admission.
+def successor_stage_proof(root):
+ r=installed.precise.owner.guest.recovery;cap=AuthorityCapture(root,RECOVERED_STAGE_LEAF)
+ try:
+  value=json.loads(r._local_read(cap,'result.json',HISTORY[str(root/'.runtime/parity-evidence'/RECOVERED_STAGE_LEAF/'result.json')]))
+  source=r._local_read(cap,'remote.py',HISTORY[str(root/'.runtime/parity-evidence'/RECOVERED_STAGE_LEAF/'remote.py')]).decode('utf-8','strict')
+  status=json.loads(r._local_read(cap,'exit.json',HISTORY[str(root/'.runtime/parity-evidence'/RECOVERED_STAGE_LEAF/'exit.json')]))
+  oldPath=Path(PRIOR_ADMISSION_CALLER_PATH);oldCap=AuthorityCapture(root,oldPath.parent.name)
+  try:oldBytes=r._local_read(oldCap,oldPath.name,HISTORY[str(oldPath)])
+  finally:oldCap.close()
+  oldns={'__name__':'held_original_stage_admission_no_main','__file__':str(oldPath)};exec(compile(oldBytes,str(oldPath),'exec'),oldns)
+  oldns['admit_download'](value['result'],value['events'],status,source,RECOVERED_STAGE_NONCE,RECOVERED_STAGE_BODY_SHA,RECOVERED_STAGE_QEMU,cap)
+  if value['state']!='observed' or not _server_strict_equal(value['result']['facts']['facts']['download'],RECOVERED_STAGE_RECORD):raise ValueError('server-complete-stage-proof')
+ finally:cap.close()
+ attrcap=AuthorityCapture(root,ATTRIBUTE_RECEIPT_LEAF);caller=Path(ATTRIBUTE_RECEIPT_CALLER);callcap=AuthorityCapture(root,caller.parent.name)
+ try:
+  sourcebytes=r._local_read(callcap,caller.name,HISTORY[str(caller)]);n={'__name__':'authenticated_attribute_no_main','__file__':str(caller)};exec(compile(sourcebytes,str(caller),'exec'),n)
+  original=recorded_attribute_validator(root,r,n)
+  value=json.loads(r._local_read(attrcap,'result.json',HISTORY[str(root/'.runtime/parity-evidence'/ATTRIBUTE_RECEIPT_LEAF/'result.json')]))
+  status=json.loads(r._local_read(attrcap,'exit.json',HISTORY[str(root/'.runtime/parity-evidence'/ATTRIBUTE_RECEIPT_LEAF/'exit.json')]))
+  observedsource=r._local_read(attrcap,'remote.py',HISTORY[str(root/'.runtime/parity-evidence'/ATTRIBUTE_RECEIPT_LEAF/'remote.py')]).decode()
+  original['admit_download'](value['result'],value['events'],status,observedsource,ATTRIBUTE_RECEIPT_NONCE,ATTRIBUTE_RECEIPT_BODY_SHA,ATTRIBUTE_RECEIPT_QEMU,attrcap)
+  if value['state']!='observed'or not _server_strict_equal(value['result']['facts']['facts']['download'],ATTRIBUTE_RECEIPT_RECORD):raise ValueError('server-attribute-proof')
+ finally:callcap.close();attrcap.close()
+ return {'state':'historical-stage-and-attribute-positive','receiptSha256':HISTORY[str(root/'.runtime/parity-evidence'/RECOVERED_STAGE_LEAF/'result.json')]['sha256'],'root':SUCCESSOR_ROOT,'publisherSha256':SUCCESSOR_SOURCE_SHA,'currentVmAdmission':False,'serverReady':False}
+
+
+def recorded_attribute_validator(root,r,n):
+ prior=Path(n['PRIOR_CALLER']);priorcap=AuthorityCapture(root,prior.parent.name)
+ try:priorbytes=r._local_read(priorcap,prior.name,n['INPUTS'][str(prior)])
+ finally:priorcap.close()
+ original={'__name__':'authenticated_recorded_attribute_validator','__file__':str(prior)}
+ exec(compile(priorbytes,str(prior),'exec'),original)
+ bodypath=Path(n['BODY_PATH']);bodycap=AuthorityCapture(root,bodypath.parent.name)
+ try:bodybytes=r._local_read(bodycap,bodypath.name,n['INPUTS'][str(bodypath)])
+ finally:bodycap.close()
+ if hashlib.sha256(bodybytes.decode('utf-8','strict').encode('utf-16le')).hexdigest()!=ATTRIBUTE_RECEIPT_BODY_SHA:raise ValueError('historical-attribute-body')
+ return original
+
+def recorded_stage_body_sha(source):
+    tree=ast.parse(source)
+    values={}
+    for node in tree.body:
+        if isinstance(node,ast.Assign):
+            for target in node.targets:
+                if isinstance(target,ast.Name) and target.id in ('ENCODED','BODY_SHA'):
+                    if target.id in values:raise ValueError('historical-stage-body-duplicate')
+                    values[target.id]=ast.literal_eval(node.value)
+    if set(values)!= {'ENCODED','BODY_SHA'} or any(type(x)is not str for x in values.values()) or len(values['BODY_SHA'])!=64 or any(x not in '0123456789abcdef'for x in values['BODY_SHA']):raise ValueError('historical-stage-body-schema')
+    import re,zlib
+    encoded=values['ENCODED']
+    if encoded.startswith("$ErrorActionPreference='Stop';$i=[IO.MemoryStream]::new([Convert]::FromBase64String('"):
+        match=re.fullmatch(r"\$ErrorActionPreference='Stop';\$i=\[IO.MemoryStream\]::new\(\[Convert\]::FromBase64String\('([A-Za-z0-9+/=]+)'\)\);.*\$v.Length -ne ([1-9][0-9]{0,4}) .* -cne '([0-9a-f]{64})'.*",encoded)
+        if match is None or int(match[2])>65536:raise ValueError('historical-stage-bootstrap-schema')
+        decoder=zlib.decompressobj(16+zlib.MAX_WBITS);body=decoder.decompress(base64.b64decode(match[1],validate=True),int(match[2])+1)
+        if not decoder.eof or decoder.unused_data or decoder.unconsumed_tail or len(body)!=int(match[2])or hashlib.sha256(body).hexdigest()!=match[3]:raise ValueError('historical-stage-bootstrap-hash')
+        full=body.decode('utf-8','strict');header,separator,plain=full.partition('\n')
+        marker=re.fullmatch(r"\[Console\]::Out.WriteLine\(\('CP117-READ ([0-9a-f-]{36}) ([0-9a-f]{64}) '\+\$PID\)\)",header)
+        if not separator or marker is None or marker[2]!=values['BODY_SHA']:raise ValueError('historical-stage-read-header')
+        raw=plain.encode('utf-16le')
+    else:
+        raw=base64.b64decode(encoded,validate=True);raw.decode('utf-16le','strict')
+    if not raw or len(raw)>131072 or hashlib.sha256(raw).hexdigest()!=values['BODY_SHA']:raise ValueError('historical-stage-body-hash')
+    return values['BODY_SHA']
+
+def verify_current_test_successor(old_raw,current_raw,old_sha,current_sha,allowed_methods):
+    if hashlib.sha256(old_raw).hexdigest()!=old_sha or hashlib.sha256(current_raw).hexdigest()!=current_sha:raise ValueError('current-test-successor-hash')
+    old=ast.parse(old_raw);current=ast.parse(current_raw)
+    imports=[n for n in current.body if isinstance(n,ast.ImportFrom)and n.module=='agent_tools.tests.fixtures.windows_cp117_historical_factory.context']
+    if len(imports)!=1 or [(n.name,n.asname)for n in imports[0].names]!=[('HistoricalFactoryTestCase','HistoryCase'),('provider','historical_provider')]:raise ValueError('current-test-successor-import')
+    current.body.remove(imports[0]);changed=set()
+    for node in current.body:
+        if not isinstance(node,ast.ClassDef):continue
+        for index,base in enumerate(node.bases):
+            if isinstance(base,ast.Name)and base.id=='HistoryCase':node.bases[index]=ast.Attribute(value=ast.Name(id='unittest',ctx=ast.Load()),attr='TestCase',ctx=ast.Load())
+        old_class=next((n for n in old.body if isinstance(n,ast.ClassDef)and n.name==node.name),None)
+        if old_class is None:raise ValueError('current-test-successor-class')
+        for index,method in enumerate(node.body):
+            if not isinstance(method,ast.FunctionDef):continue
+            name=node.name+'.'+method.name
+            if name in allowed_methods:
+                prior=next(n for n in old_class.body if isinstance(n,ast.FunctionDef)and n.name==method.name)
+                if ast.dump(method,include_attributes=False)==ast.dump(prior,include_attributes=False):raise ValueError('current-test-successor-declared-delta')
+                node.body[index]=prior;changed.add(name)
+    if changed!=set(allowed_methods)or ast.dump(current,include_attributes=False)!=ast.dump(old,include_attributes=False):raise ValueError('current-test-successor-undeclared-delta')

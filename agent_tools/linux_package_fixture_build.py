@@ -62,10 +62,40 @@ def _request(raw: Mapping[str, Any]) -> dict[str, str]:
     return dict(raw)
 
 
-def preflight(root: Path | str, raw: Mapping[str, Any]) -> dict[str, Any]:
-    """Read-only source/host gate; a dirty or unfrozen source cannot build."""
-    request = _request(raw)
-    root = Path(root).resolve(strict=True)
+def _git_common_dir(root: Path) -> Path:
+    try:
+        result = subprocess.run(["git", "-C", str(root), "rev-parse", "--git-common-dir"],
+                                capture_output=True, text=True, timeout=30, check=False)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise LinuxPackageFixtureBuildError("Linux build source repository probe unavailable") from error
+    common = result.stdout.strip()
+    _need(result.returncode == 0 and common and "\n" not in common,
+          "Linux build source repository is unusable")
+    path = Path(common)
+    if not path.is_absolute():
+        path = root / path
+    return path.resolve()
+
+
+def _source_root(coordinator: Path, source_root: Path | str | None) -> Path:
+    """Bind an optional clean worktree to the coordinator's Git repository."""
+    if source_root is None:
+        return coordinator
+    supplied = Path(source_root)
+    _need(not supplied.is_symlink(), "Linux build source root is unusable")
+    try:
+        candidate = supplied.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise LinuxPackageFixtureBuildError("Linux build source root is unusable") from error
+    _need(candidate.is_dir() and not candidate.is_symlink(),
+          "Linux build source root is unusable")
+    _need(_git_common_dir(candidate) == _git_common_dir(coordinator),
+          "Linux build source root is from another repository")
+    return candidate
+
+
+def _source_preflight(root: Path, request: Mapping[str, str]) -> None:
+    """Read only immutable source checks, intentionally separate from coordination."""
     source = request["sourceSha"]
     probes = (
         (["git", "-C", str(root), "rev-parse", "HEAD"], source),
@@ -83,16 +113,28 @@ def preflight(root: Path | str, raw: Mapping[str, Any]) -> dict[str, Any]:
             raise LinuxPackageFixtureBuildError("Linux build source probe unavailable") from error
         _need(result.returncode == 0 and result.stdout.strip() == expected,
               "Linux build requires clean exact origin/dev source")
-    tracked = subprocess.run(["git", "-C", str(root), "show", source + ":gradle.properties"],
-                             capture_output=True, text=True, timeout=30, check=False)
+    try:
+        tracked = subprocess.run(["git", "-C", str(root), "show", source + ":gradle.properties"],
+                                 capture_output=True, text=True, timeout=30, check=False)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise LinuxPackageFixtureBuildError("Linux build source probe unavailable") from error
     _need(tracked.returncode == 0 and
           re.search(r"^vpnControlVersion=" + re.escape(request["targetVersion"]) + r"$",
                     tracked.stdout, re.MULTILINE) is not None,
           "Linux build target version differs from frozen source")
+
+
+def preflight(root: Path | str, raw: Mapping[str, Any], *,
+              source_root: Path | str | None = None) -> dict[str, Any]:
+    """Read-only source/host gate; a dirty or unfrozen source cannot build."""
+    request = _request(raw)
+    root = Path(root).resolve(strict=True)
+    source = _source_root(root, source_root)
+    _source_preflight(source, request)
     from . import ssh_transport
     config = ssh_transport.load_config(root)
     _need(_HOST in config.hosts, "Fixed Arch build host is not configured")
-    return {"state": "ready", "sourceSha": source, "baseVersion": request["baseVersion"],
+    return {"state": "ready", "sourceSha": request["sourceSha"], "baseVersion": request["baseVersion"],
             "targetVersion": request["targetVersion"], "host": _HOST,
             "packageFamilies": ["default", "arch"], "nativeActionAllowed": False}
 
@@ -158,7 +200,8 @@ def _unknown(correlation: str, reason: str) -> dict[str, Any]:
             "replayAllowed": False}
 
 
-def start(root: Path | str, raw: Mapping[str, Any], *, driver=None, admission=None) -> dict[str, Any]:
+def start(root: Path | str, raw: Mapping[str, Any], *, driver=None, admission=None,
+          source_root: Path | str | None = None) -> dict[str, Any]:
     request = _request(raw)
     root = Path(root).resolve(strict=True)
     directory = _directory(root, create=True)
@@ -172,7 +215,15 @@ def start(root: Path | str, raw: Mapping[str, Any], *, driver=None, admission=No
     if claim.exists() or claim.is_symlink():
         return {"state": "blocked", "correlationId": request["correlationId"],
                 "reason": "build-host-already-claimed", "replayAllowed": False}
-    admitted = (admission or preflight)(root, request)
+    if admission is None:
+        admitted = preflight(root, request, source_root=source_root)
+    else:
+        # Test and recovery admissions still cannot silently bypass a requested
+        # clean-worktree source binding.  Coordinator host configuration and
+        # claim ownership remain exclusively at ``root``.
+        if source_root is not None:
+            _source_preflight(_source_root(root, source_root), request)
+        admitted = admission(root, request)
     _need(isinstance(admitted, Mapping) and admitted.get("ready") is True or
           isinstance(admitted, Mapping) and admitted.get("state") == "ready",
           "Linux build preflight is not ready")

@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "kind": "nonsecret-exact-historical-source-fixture",
+  "originPath": "agent_tools/android_coldboot_product_observation.py",
+  "sha256": "ec56e238b0bac95d67ae1942b7218bb844db1e48b29cff1ad7b390b1721d8ae7",
+  "bytes": 14899,
+  "credentialsEmbedded": false,
+  "executionAuthority": false,
+  "retainedArchive": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/parity-evidence/android-linear-read-consumer-before-6cf98e56-c693-4a79-b154-03183106ad27/source-4.private",
+  "retainedManifestSha256": "efe1dd4b132309a522b1311bb11a6bacb77df0f6373bad0269849722df73c60f",
+  "dependencies": [
+    {
+      "originPath": "agent_tools/android_avd_census_diagnostic.py",
+      "fixture": "android_avd_census_diagnostic.source",
+      "sha256": "ac5c810179a0f3a2efaef3ed18dbe45787cb1b3409c8ac98895d21cea62f6fc8",
+      "bytes": 8244
+    },
+    {
+      "originPath": "agent_tools/android_avd_sdk_alias_observation.py",
+      "fixture": "android_avd_sdk_alias_observation.source",
+      "sha256": "ab2f1d0249a68a47d7a11ba74400615f0fc9aa27a067a1e0839ee188e63976c9",
+      "bytes": 8320
+    },
+    {
+      "originPath": "agent_tools/android_avd_sdk_alias_census.py",
+      "fixture": "android_avd_sdk_alias_census.source",
+      "sha256": "caac560d9183469ef1bc8fa4a267c69ca23db3960c43baec1edb02e83fab2ccf",
+      "bytes": 7146
+    },
+    {
+      "originPath": "agent_tools/android_avd_launch_recovery.py",
+      "fixture": "android_avd_launch_recovery.source",
+      "sha256": "eb89ef4cccdb5417becd02b4116eccd10b2e4da4d9fe81f3a8c54d8f97b13fa0",
+      "bytes": 16703,
+      "retainedManifestSha256": "9bc38947beecf49587e5cd407ddbcc66bc5f8a283274f2a6ec6fb58fd995e897"
+    }
+  ],
+  "coldbootProducer": {
+    "fixture": "../android_existing_readonly/coldboot_producer.source",
+    "sha256": "7d90c06070ffad1439e613c9ad5d63f979d43b738944f0630b2b15187f09fec6"
+  }
+}

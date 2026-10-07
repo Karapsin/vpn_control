@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "kind": "authenticated-public-historical-source",
+  "source": "agent_tools/windows_cp117_windowless_provider_login.py",
+  "currentSha256": "3447001b51cb4df248e4566135bba568c5e3e090a9a9744d4ba3eafc4e9a8c12",
+  "currentSize": 69939,
+  "inverseCleanup": {
+    "line": 146,
+    "operation": "insert one ASCII space immediately before LF"
+  },
+  "archiveSha256": "f54029cf3259011d71df93c51f15b3c2b7a886470008427cf85c8e127c567a72",
+  "archiveSize": 69940,
+  "authentication": "exact existing diagnostic FLOW_SHA and historical test stream anchor",
+  "nativeEvidence": false,
+  "scope": "inert factories only; no native entry points",
+  "diagnosticArchive": {
+    "source": ".runtime/parity-evidence/windows-public-current-factory-successor/0-windows_cp117_recovered_owner_diagnostic.py",
+    "sha256": "615e1b0975ea8a2875af91717aa9291110decb6f530c372d51b3c8f5cc793aa8",
+    "size": 13003,
+    "authentication": "exact installed PRECISE_SHA",
+    "nativeEvidence": false
+  },
+  "testScope": {
+    "providerExecution": "inert namespace only; native entry points never called",
+    "testReferences": "ExitStack per testcase; restored in cleanup",
+    "wholeMain": "existing public DIRECT_FIXTURE_TRANSFER_MAIN_SOURCE unchanged; synthetic TempFS protocol authority APIs; actual source/held bundle/capture/factory/argv guards",
+    "nativeHistory": "not read or reclassified; full public historical factory/main specimens remain in test constants",
+    "currentComposition": "separate operator-owned explicit successor"
+  },
+  "installedArchive": {
+    "source": ".runtime/parity-evidence/windows-public-current-factory-successor/1-windows_cp117_installed_base_observe.py",
+    "sha256": "fa5f054ecb6166ab09a29faaccbe3ce960cb864af764762b71e518a2716b531d",
+    "size": 23706,
+    "authentication": "exact refresh INSTALLED_SHA",
+    "nativeEvidence": false
+  }
+}
