@@ -1,0 +1,72 @@
+"""Fresh actual MCP SDK protocol; defaults to initialize/list only, no replay."""
+import argparse,asyncio,hashlib,importlib.metadata,json,os,re,sys,uuid
+from datetime import timedelta
+from pathlib import Path
+from mcp import ClientSession,StdioServerParameters
+from mcp.client.stdio import stdio_client
+ROOT=Path(__file__).resolve().parents[2];P=Path(__file__).resolve().parent
+ACTIONS=('connection-channel-keeper-source','connection-channel-keep','connection-channel-keep-status')
+def save(output,name,value):
+ raw=json.dumps(value,sort_keys=True,separators=(',',':')).encode();fd=os.open(output/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ try:
+  at=0
+  while at<len(raw):at+=os.write(fd,raw[at:])
+  os.fsync(fd)
+ finally:os.close(fd)
+def arguments(action,identity):
+ if action not in ACTIONS or type(identity)is not dict:raise ValueError('action_identity')
+ keys={'correlationId'} if action==ACTIONS[0] else {'correlationId','receiptSha256','sourceManifestSha256'}
+ if set(identity)!=keys or type(identity['correlationId'])is not str or str(uuid.UUID(identity['correlationId']))!=identity['correlationId']:raise ValueError('identity_schema')
+ if any(type(identity[k])is not str or not re.fullmatch('[0-9a-f]{64}',identity[k]) for k in keys-{'correlationId'}):raise ValueError('identity_digest')
+ return {'action':action,'host':'archlinux','timeout_seconds':1800 if action==ACTIONS[1] else 15,'identity':identity}
+async def main(args):
+ if not re.fullmatch('[0-9a-f]{64}',args.server_sha256):raise ValueError('source_digest')
+ if hashlib.sha256((ROOT/'agent_tools/mcp_server.py').read_bytes()).hexdigest()!=args.server_sha256:raise ValueError('server_source_changed')
+ identity=json.loads(args.identity) if args.identity else None
+ request=arguments(args.action,identity) if args.action else None
+ if not args.action and args.identity:raise ValueError('unexpected_identity')
+ output=P/args.session
+ if Path(args.session).name!=args.session or not re.fullmatch('[a-zA-Z0-9-]{1,80}',args.session):raise ValueError('session_leaf')
+ output.mkdir(mode=0o700);save(output,'client-intent.json',{'mode':'call_once' if request else 'initialize_list_only','request':request,'clientPid':os.getpid(),'sourceSha256':args.server_sha256,'sdkVersion':importlib.metadata.version('mcp'),'automaticReplay':False})
+ env={k:v for k,v in os.environ.items() if k!='DYLD_INSERT_LIBRARIES'};env['PYTHONDONTWRITEBYTECODE']='1'
+ parameters=StdioServerParameters(command=str(ROOT/'.agent_venv/bin/python'),args=['-B',str(P/'relay.py'),str(output),args.server_sha256],cwd=ROOT,env=env)
+ finite={'state':'unknown','automaticReplay':False,'nativeAcceptance':False}
+ try:
+  with open(output/'sdk.stderr','x',encoding='utf-8') as errlog:
+   os.chmod(output/'sdk.stderr',0o600)
+   async with stdio_client(parameters,errlog=errlog) as (reader,writer):
+    async with ClientSession(reader,writer,read_timeout_seconds=timedelta(seconds=30)) as session:
+     init=await session.initialize();save(output,'initialize.json',init.model_dump(mode='json'))
+     tools=await session.list_tools();save(output,'tools.json',tools.model_dump(mode='json'))
+     names=[tool.name for tool in tools.tools]
+     if 'ssh_workflow' not in names:raise ValueError('ssh_tool_missing')
+     finite={'state':'protocol_ready','protocolVersion':init.protocolVersion,'serverName':init.serverInfo.name,'toolCount':len(names),'sshWorkflowPresent':True,'automaticReplay':False,'nativeAcceptance':False,'effectfulCallSent':request is not None}
+     if request is not None:
+      # Exactly one RPC. Timeout/lost return never dispatches a second call.
+      result=await session.call_tool('ssh_workflow',request,read_timeout_seconds=timedelta(seconds=1905 if args.action==ACTIONS[1] else 90));save(output,'call-result.json',result.model_dump(mode='json'));finite['state']='rpc_returned';finite['toolError']=result.isError
+ except Exception as exc:
+  finite={'state':'unknown','exceptionClass':type(exc).__name__,'automaticReplay':False,'nativeAcceptance':False,'effectfulCallSent':request is not None}
+ if finite['state']!='unknown':
+  try:
+   terminal=json.loads((output/'server-terminal.json').read_bytes())
+   if terminal.get('complete') is not True or type(terminal.get('returnCode'))is not int or terminal['returnCode']!=0 or terminal.get('eof')!={'stdout':True,'stderr':True} or terminal.get('overflow')is not False or terminal.get('readError')is not False:raise ValueError('original_server_terminal_unproved')
+   for name in ('stdin','stdout','stderr'):
+    pin=terminal['raw'][name];fd=os.open(output/('server.'+name),os.O_RDONLY|os.O_NOFOLLOW)
+    try:
+     info=os.fstat(fd);generation=lambda v:[v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns]
+     if generation(info)!=pin['generation']:raise ValueError('raw_generation')
+     chunks=[];total=0
+     while True:
+      chunk=os.read(fd,min(65536,16777217-total))
+      if not chunk:break
+      chunks.append(chunk);total+=len(chunk)
+      if total>16777216:raise ValueError('raw_cap')
+     if total!=pin['bytes'] or hashlib.sha256(b''.join(chunks)).hexdigest()!=pin['sha256'] or generation(os.fstat(fd))!=pin['generation'] or generation(os.stat(output/('server.'+name),follow_symlinks=False))!=pin['generation']:raise ValueError('raw_closing')
+    finally:os.close(fd)
+   if hashlib.sha256((ROOT/'agent_tools/mcp_server.py').read_bytes()).hexdigest()!=args.server_sha256:raise ValueError('server_source_changed')
+   finite['originalServerTerminalClosed']=True
+  except (OSError,ValueError,KeyError,TypeError) as exc:
+   finite={'state':'unknown','exceptionClass':type(exc).__name__,'automaticReplay':False,'nativeAcceptance':False,'effectfulCallSent':request is not None}
+ save(output,'client-result.json',finite);print(json.dumps(finite,sort_keys=True));return 1 if finite['state']=='unknown' else 0
+if __name__=='__main__':
+ parser=argparse.ArgumentParser();parser.add_argument('--session',required=True);parser.add_argument('--server-sha256',required=True);parser.add_argument('--action',choices=ACTIONS);parser.add_argument('--identity');raise SystemExit(asyncio.run(main(parser.parse_args())))

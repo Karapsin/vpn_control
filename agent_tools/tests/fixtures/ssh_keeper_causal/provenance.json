@@ -1,0 +1,27 @@
+{
+  "fixedPositivesImportCanonicalModules": true,
+  "noRuntimeDependenciesInRoutineTestSources": true,
+  "sources": [
+    {
+      "label": "authentic public historical source; not production/native authority",
+      "path": "agent_tools/tests/fixtures/ssh_keeper_causal/owner-prepopen-and-terminal.source",
+      "publicOrigin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/ssh-keeper-owning-pipeline-825f-candidate/pipeline.py",
+      "sha256": "b96e0b8956987076f22aadcbd7c2c2d462e3ebd99cb5881e00707f794b781ace",
+      "whitespaceTrailingLineCount": 0
+    },
+    {
+      "label": "authentic public historical source; not production/native authority",
+      "path": "agent_tools/tests/fixtures/ssh_keeper_causal/owner-terminal-record.source",
+      "publicOrigin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/ssh-keeper-owning-pipeline-825f-terminal-successor/pipeline.py",
+      "sha256": "1950af2b3d4af1d7a7a4171651d7236e73ec11ebe6d6e8f43f9e2175cec43fc9",
+      "whitespaceTrailingLineCount": 0
+    },
+    {
+      "label": "authentic public historical source; not production/native authority",
+      "path": "agent_tools/tests/fixtures/ssh_keeper_causal/client-planned-accounting.source",
+      "publicOrigin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/ssh-keeper-fresh-mcp-client-preparation/client.py",
+      "sha256": "51505905b9894aa8d073a2dd30ccbe0f20c4c5fc4ddcccc3de343ad37c41352b",
+      "whitespaceTrailingLineCount": 0
+    }
+  ]
+}

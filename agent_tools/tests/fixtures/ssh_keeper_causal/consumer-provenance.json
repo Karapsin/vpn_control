@@ -1,0 +1,23 @@
+{
+  "nativeAuthority": false,
+  "productionFixtureImport": false,
+  "rows": [
+    {
+      "origin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/windows-native-launcher-topology-control-23901/before.py.source",
+      "sha256": "b154867da14bea53001c74308a15b25eb918891822d1d03c51c8f3397c544da5"
+    },
+    {
+      "origin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/windows-native-launcher-topology-control-23901/after.py.source",
+      "sha256": "cf3ebbca8a9cb032b59f4a1a5c1e2551ca94790f5a47586dd324adbb09076ca7"
+    },
+    {
+      "origin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/windows-native-launcher-topology-control-23901/control.py",
+      "sha256": "95592d27cbf8946d894577fa1edf39332fb0bfa69afee82234685bf647a8a137"
+    },
+    {
+      "origin": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/windows-native-launcher-topology-control-23901/result.json",
+      "sha256": "9c7fdcf15a79e0ab615428cb30500d15bdce23e0be2624fa645ccca7b1a21754"
+    }
+  ],
+  "scope": "public-source-only"
+}

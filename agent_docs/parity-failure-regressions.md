@@ -2629,3 +2629,90 @@ original native intents, source snapshots and failed receipts remain historical.
   new admitted correlation; it does not adopt old READY or replay the failed one.
 - Native rerun remains required after coherent delivery and fresh source/route
   admission. Source-local GREEN does not complete Windows or MCP acceptance.
+
+## Proposed canonical keeper regression promotion — 2026-10-08
+
+This is a reviewed source/local promotion proposal, not a delivery or current
+native acceptance receipt. Candidate715fa and peer5c493df0 retain the exact
+shared implementation and authenticated historical RED specimens. Existing
+keeper19 controls remain separate and unchanged.
+
+| Measured failure | Causal control and proposed routine owner | Evidence limit |
+| --- | --- | --- |
+| Late source drift during stderr setup allowed a child to start. | `test_ssh_keeper_process_owner.py`: actual setup mutation must refuse before `Popen` and close both output FDs. | Real TempFS and harmless original child; no native route. |
+| Source drift during the last stdout body read returned a terminal result. | Same module: actual late read mutation refuses while retaining the original terminal child. | Full source/raw body work precedes parent and final pure file checks. |
+| A mutated terminal record was learned after publication, adopting rc91 instead of original rc0. | Same module: original known bytes, FD/generation and hash refuse later record mutation. | Original child/terminal evidence remains; no replay or record adoption. |
+| Initialization or tool-list failure claimed a planned request was sent. | `test_ssh_keeper_mcp_accounting.py`: two actual SDK/inert-stream controls require zero `call_tool` attempts and no sent claim. | These are refusal/accounting controls, not successful tool execution. |
+| Complete, partial and non-call protocol frames blurred delivery and execution. | Same module: three actual `FrameObserver` controls distinguish frame observation/forwarding and keep server execution unproved. | Forwarded bytes alone do not prove server action. |
+| Actual SDK process creation uses a different session, so a session-equality join rejected the original descendant. | `test_ssh_keeper_sdk_custody.py`: five controlled real-SDK lineage/refusal cases join original PID, birth, UID, PPID, source and request receipts. | Explicit TempFS READY/local-actor placement; no MCP tool, SSH or app-update call. |
+
+The three modules provide13 routine controls only after actual integration and
+routine execution. Fixed positives import canonical shared code; historical
+source-only fixtures retain failing behavior without ignored/native dependencies.
+The fixture-only `/tmp` and missing-`O_NOFOLLOW` peer HOLDs are preserved: the
+successor uses the platform temporary directory and gates only journal-backed
+SDK cases before setup. Pure delivery controls stay enabled. Production
+no-follow/custody checks are unchanged.
+
+Root reports original native keeper e290 completed with651 captures, source
+closing and positive ENDED; current1c393 campaign is still live. These are keeper
+facts, not completed app updates. Final source/artifact equivalence, complete
+direct and MCP scenarios, and exact delivered-SHA CI remain open. Preserve all
+original native evidence and unknown outcomes. Apply TEST-001 for causal routine
+promotion and TEST-002 for direct proof followed by equivalent MCP acceptance;
+no source-local result authorizes replay or weaker guards.
+
+### Scoped native progress and distinct consumer failures
+
+The following are root-reported finite facts; this documentation proposal does
+not inspect private receipts or confer current authority:
+
+| Original scenario | Earned scope | Remaining gate |
+| --- | --- | --- |
+| Keeper e290 | Original keeper completed651 captures, full native/source closing and positive ENDED. | A completed keeper is not app-update acceptance or a reusable current channel. Fresh source/route/borrower admission remains required. |
+| Android23625 | FD, DEX, process and terminal-history proof. | Cleanup and update have not been earned. Complete direct scenario and equivalent MCP scenario remain open. |
+| Windows23901 | A consumer SDK-birth join defect was identified. | Repair must retain original birth/source/lineage facts and causal regression; a consumer repair does not prove guest effects or authorize replay. |
+| Windows24168 | A schema projection lost the underlying FILE_IDENTITY unknown disposition. | Projection loss and the underlying unknown are distinct failures. Finite projection repair cannot establish the Windows file-identity cause, server admission or successful update. |
+
+The current1c393 campaign was reported live at proposal time; do not infer its
+terminal outcome or final source/artifact equivalence. Preserve original unknown
+outcomes and native evidence. Canonical promotion715fa is still proposed here:
+13 controls become routine coverage only after root integration and actual
+routine execution. Complete direct/MCP app updates, final current-source
+equivalence and exact delivered-SHA CI remain open.
+
+The subsequent consumer23901 source candidate5140 retains its own four causal
+controls in `test_ssh_keeper_consumer_actors.py` (public test SHA9c0b). This is
+a separate proposed source/local correction: its independent peer and native
+equivalence are pending. It does not change the13-control715fa promotion count
+or establish Windows startup success. The24168 projection candidate reference
+remains pending; no unreviewed repair is marked complete here.
+
+### Canonical integration and native limits — 2026-10-08,14:43 Moscow
+
+Root integrated candidate5140/patchc621 after the same1c393 keeper completed
+naturally and canonical status confirmed ENDED. Its651 captures and complete
+source population closed; Windows and Android holders were released before
+any tracked edits. Independent consumer peer3dc081cd verified39 public pairs,
+the authentic old-prefix RED and four successor controls.
+
+All17 canonical controls passed in5.441s on the integrated tree. The first
+restricted-sandbox run was blocked by local process inspection and Unix-socket
+permissions; the permitted rerun passed. That environment refusal is not an SSH,
+authentication or native app failure. Full prepush and checkpoint delivery are
+separate gates. The historical proposal above retains its original scope.
+
+Windows33013 retained the public static error "explicitly selected channel
+unavailable" before any guest collector. The same builder was used by the
+earlier server attempt; an implicit-versus-explicit routing defect is not proved.
+The hidden underlying reason remains UNKNOWN. Preserve the original jobs and
+use a bounded private exception-chain diagnostic rather than inferring an auth
+failure or replaying a native action.
+
+Android timestamp compatibility candidate3bbf/peer3d12 passes ten controls and
+the owner reports an actual retained-proof RED/GREEN under the current7bf
+validator. Distinct old/current hashes and raw inputs remain unchanged. Current
+snapshots, original device lock, source/stage binding and all four fenced fresh
+checks remain required before release. Source/local compatibility does not close
+Android cleanup or update acceptance. Direct scenarios, canonical helper native
+equivalence, final packages, visuals and exact-SHA CI remain open.

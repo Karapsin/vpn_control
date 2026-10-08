@@ -108,6 +108,32 @@ original identity and use `connection-channel-keep-status`. A consumed keeper
 intent cannot launch again. Neither observing nor completed status grants replay,
 channel admission or native acceptance authority.
 
+### Shared keeper helpers and routine promotion
+
+The owning child collector, SDK
+process/receipt custody, SDK client, byte delivery accounting and stdio relay
+use five shared modules: `ssh_keeper_process_owner`, `ssh_keeper_sdk_custody`,
+`ssh_keeper_mcp_client`, `ssh_keeper_mcp_delivery` and `ssh_keeper_mcp_relay`.
+The owning caller and positive controls must use these same implementations.
+These helpers add no MCP action or channel authority.
+
+The routine suite contains 17 controls: three real harmless-child custody
+regressions, five SDK accounting/forwarding controls and five controlled SDK
+process-topology cases, plus four independent consumer actor checks. Consumer
+checks verify each original process separately; they do not require the SDK and
+keeper to share a birth or session and do not grant channel admission.
+Authenticated historical source specimens preserve the
+original REDs; they are test fixtures, never production source or native receipt
+adoption. The tests require no ignored source loader or private capture. Missing
+SDK or required journal/process capabilities have explicit skips; the three
+pure delivery-accounting controls remain portable.
+
+Planned requests, attempted SDK calls, fully forwarded frames and actual server
+execution are separate facts. A topology control or source-local GREEN does not
+complete direct or MCP app-update acceptance, prove current source/artifact
+equivalence, or establish CI success. Retain the original process, raw evidence,
+unknown-outcome non-replay and fresh borrower admission requirements above.
+
 ### Other MCP tools
 
 `vm_workflow(action="android-api35-remaining-proxy-status", inputs={})` performs

@@ -1,0 +1,23 @@
+from pathlib import Path
+import os,json,hashlib,subprocess,time,re
+from agent_tools.native_review_source_closure import close_review_sources,_Held
+from agent_tools.ssh_channel_keeper_entry import actor
+SDK={"pid":22943,"uid":503,"sessionId":22815,"birthSha256":"383629e2b1750b75ace3ff65bb7eb7d2d0891a2aa340812b07c8e365d6872ee6"}
+KEEPER=actor(22968)
+assert KEEPER["pid"]==22968 and KEEPER["uid"]==503 and KEEPER["birthSha256"]==SDK["birthSha256"]
+R=Path.cwd().resolve();D=R/'.runtime/windows-fresh-server-a0c9-credential47f';freeze='6e80542ace18ab30dfadf0cb5513c8c19b8d0b181e5cf36d8ff3ea3d1734cb6d';route='1c3935e4-fce7-46ee-bea9-7247b18c127b';compact=route.replace('-','');receipt='47223b0b5be320acf4b3946607734a4e256c68856fe06c4af575b448b3d922be';kr=R/'.runtime/parity-evidence'/('windows-owned-route-'+route)/'keeper.local.json';ks='e74431a38ca690df5d583ad9a6416f99a11d879ff7f7a34855d93144cb948b05';kp=R/'.runtime/ssh-route-investigation'/('native-receipt-bound-cooperative-busy-keeper-'+compact)
+def close_packet():
+ h=_Held()
+ try:
+  manifest=json.loads(h.read(str(D/'freeze.json'),freeze))
+  for name,pin in manifest['inputs'].items():h.read(str(R/name),pin['sha256'],tuple(pin['generation']))
+  h.finish()
+ finally:h.close()
+close_packet()
+held=_Held();q=max(x for x in kp.iterdir()if re.fullmatch(r'query-[0-9]{4}\.json',x.name));qsha=hashlib.sha256(q.read_bytes()).hexdigest();v=json.loads(held.read(str(q),qsha));keeper=json.loads(held.read(str(kr),ks));held.finish();assert v['state']=='ready'and v['stopReason']is None and v['correlationId']==compact and v['receiptSha256']==receipt and time.time()-q.stat().st_mtime<25 and not(kp/'result.json').exists();assert actor(22943)==SDK and actor(22968)==KEEPER;assert set(keeper)=={'conservativeDeadlineEpoch','correlationId','pid','prePopenStartEpoch','receiptSha256'};assert keeper['correlationId']==route and keeper['receiptSha256']==receipt and keeper['pid']==22968;assert keeper['conservativeDeadlineEpoch']-time.time()>=1020
+leaf=R/'.runtime/parity-evidence/windows-new-server-fullflow-original-6fdf48e6-4edd-41f7-9382-4993520be6a5';leaf.mkdir(mode=0o700)
+def save(name,value):
+ raw=json.dumps(value,sort_keys=True).encode();fd=os.open(leaf/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);os.write(fd,raw);os.fsync(fd);os.close(fd)
+env=dict(os.environ);env['PYTHONPATH']=str(R);env['PYTHONDONTWRITEBYTECODE']='1';[env.pop(k,None)for k in list(env)if k.startswith('DYLD_')]
+of=os.open(leaf/'stdout.private',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600);ef=os.open(leaf/'stderr.private',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+held.finish();close_packet();assert actor(22943)==SDK and actor(22968)==KEEPER;assert keeper["conservativeDeadlineEpoch"]-time.time()>=1020;p=subprocess.Popen([str(R/'.agent_venv/bin/python'),str(D/'public-host-main.py'),'--execute','480c0a7ac3f6db8982327b8449ebfff456aafe3bfb636a27705205d2dc107b9f',str(kr),ks],stdout=of,stderr=ef,env=env);os.close(of);os.close(ef);save('process.json',{'pid':p.pid,'acceptedEpoch':time.time(),'querySha256':qsha,'queryRole':q.name,'routeCorrelation':route});print(json.dumps({'acceptedPid':p.pid,'phase':'new-server-complete-fullflow','remaining':keeper['conservativeDeadlineEpoch']-time.time(),'queryRole':q.name,'querySha256':qsha}),flush=True);rc=p.wait();held.close();close_packet();out=(leaf/'stdout.private').read_bytes();err=(leaf/'stderr.private').read_bytes();save('terminal.json',{'returnCode':rc,'stdoutSha256':hashlib.sha256(out).hexdigest(),'stderrSha256':hashlib.sha256(err).hexdigest(),'sourceClosing':True});print(json.dumps({'returnCode':rc,'stdoutBytes':len(out),'stderrBytes':len(err),'sourceClosing':True}),flush=True)

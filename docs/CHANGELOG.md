@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep new Windows parser checks separate from archived test source identities.
 - Add receipt-bound SSH keepers with immutable source guards, retained diagnostics, and causal regressions.
 - Preserve ended SSH channel compatibility across reviewed tool updates.
+- Verify original SSH SDK process ownership and preserve launch, result and delivery custody.
 
 ## 2.2.3 - 2026-10-07
 

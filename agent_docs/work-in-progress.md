@@ -33,7 +33,30 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-08,11:38 Moscow
+## Current acceptance status — 2026-10-08,14:43 Moscow
+
+The last delivered baseline is `a0c9ec493eba0d12988a67a52f51d720dbf7326d`,
+product2.2.3. Root is integrating the reviewed shared keeper and consumer
+regressions into a coherent development checkpoint. The complete parity goal
+remains open. Required five-workflow exact-SHA CI stays deferred to final
+delivery as requested; no release is authorized.
+
+| Slice | Exclusive owner | Established scope | Next gate |
+| --- | --- | --- | --- |
+| Shared connection and custody | windows_operator native; root integration | Actual1c393 owning72763 completed naturally with651 captures and full source closure; same canonical35424 confirmed ENDED. All native and source holders released. Candidate5140/peer3dc introduces shared collector, SDK custody, client, relay/accounting and independent consumer identities;17 integrated controls pass. | Fresh final-content prepush and explicit checkpoint; current-source owning caller and native shared-helper equivalence before new platform admissions. |
+| Windows engineering update | windows_operator, sole Pi/Arch/Windows operator | Fresh credentials succeeded. Actual24168 returned authenticated FILE_IDENTITY but projection rejected the failure schema; effects remain UNKNOWN. Readonly29397/33013 reached no guest collector;33013 retained the selected-channel-unavailable wrapper error, whose underlying reason is still unknown. | Bounded private exception-chain diagnosis and exact new-fixture disposition; causal repair, server/HTTPS admission, actual public update, installed-image verification and cleanup. No original replay. |
+| Android API35 | android_mount_owner native; android_bundle_worker source | Actual23625 proves held FD/DEX execution, process and two terminal-history passes/three records/empty installer sessions. Candidate3bbf/peer3d12 and actual retained-proof control prove exact timestamp representation compatibility with distinct hashes. Cleanup/update remain unearned. | Current prepared backend/source-stage binding, original lock, two fresh snapshots and all four existing fence checks. Use the existing1200 global cutoff as an honest best-effort UNKNOWN bound; summed per-command maxima do not guarantee completion within1800. |
+| Source/package efficiency | root | Sourcea0c and D32/60bb engineering packages stayed frozen through the original campaign. Unchanged public reviews are reused; stage timing and the remaining-acceptance table are retained. | Settle tooling, freeze final coherent sourceC and build source-bound package pairs once. Engineering/partial receipts cannot become full acceptance by relabelling. |
+| Linux/macOS/final acceptance | platform source owners; root | Historical native evidence retains its scope. Linux approved runtime/archive provenance and macOS fresh visible-session/resource/package gates remain open. | Remaining direct native scenarios, matching MCP reruns, packages, matrix registration, opened visual review and final exact-SHA five-workflow CI. |
+
+Public summaries are under `.runtime/parity-remaining-acceptance-20261008-1418/`,
+`.runtime/native-stage-timing-20261008/`,
+`.runtime/ssh-keeper-canonical-consumer-successor/`,
+`.runtime/android-retained-component-proof-assessment/` and the separately scoped
+Windows/Android closeouts. Original private inputs, UNKNOWN jobs and historical
+evidence remain unchanged. No host VPN interruption occurred.
+
+## Historical acceptance status — 2026-10-08,11:38 Moscow
 
 The last delivered checkpoint is `825f5956cd8b061466285920f396d67a57e9d48a`,
 product2.2.3. This work repairs an observed tool-version transition failure;

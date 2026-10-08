@@ -1,0 +1,160 @@
+"""One owning admission pipeline. Native invocation requires root/operator GO.
+
+The same SDK process owns the long RPC until original terminal. No detach,
+replay, keeper renewal, or SDK disconnect-survival guarantee is implemented.
+"""
+import hashlib,json,os,subprocess,time,uuid
+from pathlib import Path
+from contextlib import ExitStack
+from agent_tools import native_review_source_closure as closure
+from agent_tools import ssh_channel_keeper_entry as entry
+from agent_tools import private_inventory_lock as private
+from agent_tools import ssh_channel_keeper as core
+ROOT=Path(__file__).resolve().parents[2]
+P=Path(__file__).resolve().parent
+HEAD='825f5956cd8b061466285920f396d67a57e9d48a'
+SERVER_SHA='5298fca440b8c6a0bf1ea49b8df06f88e13a24d425f358cecebd298c28d2a52d'
+OUTER='229a7f7e0b5fecbd344f9da1cc8c78324e383050d826c1bc8382e30d000eab61'
+OWNER_MANIFEST=ROOT/'.runtime/parity-evidence/windows-keeper-inputs-checkpoint825/keeper-inputs.json'
+OWNER_MANIFEST_SHA='dd5524061171e39c1dd06e7ed32f960a715def632acbdc147f85166a8f0c9bf7'
+def owner_boundary():
+ # Operator-owned135 historical rows: source peers must NOT open their bodies.
+ closure.close_review_sources(str(OWNER_MANIFEST),OWNER_MANIFEST_SHA)
+CLIENT=ROOT/'.runtime/ssh-keeper-fresh-mcp-client-delivered-825f/client.py'
+GATE=ROOT/'.runtime/parity-evidence/windows-current-eof-operational-strict-arch/cli-dispatch-controls/cli_gate.py'
+def save(path,value):entry.save(path,value)
+def load(raw):return json.loads(raw,object_pairs_hook=closure._pairs)
+def clean_environment(root):
+ env={k:v for k,v in os.environ.items() if not k.startswith('DYLD_')}
+ env['PYTHONPATH']=str(root);env['PYTHONDONTWRITEBYTECODE']='1';return env
+class Owner:
+ def __init__(self,root,output,guard,*,spawn=subprocess.Popen,clock=time.time,emit=lambda v:print(json.dumps(v,sort_keys=True),flush=True)):
+  self.root=root;self.output=output;self.guard=guard;self.spawn=spawn;self.clock=clock;self.emit=emit;self.children=[]
+ def start(self,role,args):
+  self.guard();start=self.clock();out=self.output/(role+'.stdout.private');err=self.output/(role+'.stderr.private')
+  of=os.open(out,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);ef=os.open(err,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+  try:p=self.spawn(args,stdout=of,stderr=ef,env=clean_environment(self.root),cwd=self.root)
+  finally:os.close(of);os.close(ef)
+  self.children.append((role,p));actor=entry.actor(p.pid)
+  save(self.output/(role+'.process.json'),{'localActor':actor,'prePopenStartEpoch':start,'automaticReplay':False})
+  self.emit({'stage':role,'localActor':actor});return p,start,actor
+ def finish(self,role,p):
+  # Wait without replacing the original process. The parent stays alive even if
+  # first-query validation failed. No timeout/kill/relaunch is supplied here.
+  rc=p.wait();save(self.output/(role+'.terminal.json'),{'returnCode':rc,'automaticReplay':False})
+  held=closure._Held()
+  try:
+   bodies={}
+   for stream in ('stdout','stderr'):
+    path=self.output/(role+'.'+stream+'.private');info=os.lstat(path)
+    if info.st_size>16777216:raise ValueError('owner_raw_cap')
+    # Original fd/name/generation is retained through parsing and source closing.
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);raw=os.read(fd,16777217);os.close(fd)
+    bodies[stream]=held.read(str(path),hashlib.sha256(raw).hexdigest(),closure.generation(info))
+   held.finish();self.guard();held.final_identity_pass()
+   save(self.output/(role+'.raw.json'),{'returnCode':rc,'raw':{k:{'bytes':len(v),'sha256':hashlib.sha256(v).hexdigest()}for k,v in bodies.items()},'originalProcessTerminal':True})
+   if rc!=0:raise ValueError('original_child_nonzero')
+   result=load(bodies['stdout']);self.guard();held.finish();return result
+  finally:held.close()
+ def invoke(self,role,args):
+  p,_,_=self.start(role,args);return self.finish(role,p)
+ def wait_all(self):
+  for role,p in self.children:
+   if p.poll() is None:p.wait()
+def rpc_result(session,finite):
+ if type(finite)is not dict or finite.get('state')!='rpc_returned' or finite.get('toolError')is not False or finite.get('sdkCallAttempted')is not True or finite.get('relayToolCallFrameFullyForwarded')is not True or finite.get('originalServerTerminalClosed')is not True or finite.get('automaticReplay')is not False or finite.get('serverExecutionProven')is not False:raise ValueError('sdk_original_terminal_unproved')
+ with private.Directory(session) as directory:
+  with private.Snapshot(directory,'call-result.json') as held:
+   value=load(held.body)
+   # Actual MCP SDK CallToolResult structuredContent: never parse a textual
+   # content fallback or treat forwarded request bytes as execution evidence.
+   if type(value)is not dict or value.get('isError')is not False or type(value.get('structuredContent'))is not dict:raise ValueError('rpc_structured_result')
+   result=value['structuredContent'];held.guard();directory.guard();held.guard();return result
+
+def source_result(value,corr):
+ keys={'tool','ok','state','correlationId','sourceManifestSha256','nativeActionAllowed','replayAllowed'}
+ if type(value)is not dict or set(value)!=keys or value['tool']!='ssh_workflow' or value['ok']is not True or value['state']!='source_recorded' or value['correlationId']!=uuid.UUID(corr).hex or value['nativeActionAllowed']is not False or value['replayAllowed']is not False:raise ValueError('source_rpc_result')
+ return entry._sha(value['sourceManifestSha256'])
+def first_ready(root,corr,receipt,digest,p,start,client_actor,guard,*,clock=time.time,sleep=time.sleep,emit=lambda v:print(json.dumps(v,sort_keys=True),flush=True)):
+ compact=uuid.UUID(corr).hex;output=entry.output_path(root,compact)
+ for _ in range(200):
+  if p.poll()is not None:raise ValueError('keeper_first_query_terminal')
+  try:
+   with ExitStack() as stack:
+    directory=stack.enter_context(private.Directory(output))
+    intent=stack.enter_context(private.Snapshot(directory,'intent.json'))
+    query=stack.enter_context(private.Snapshot(directory,'query-0000.json'))
+    i=load(intent.body);q=load(query.body)
+    expected={'correlationId':compact,'receiptSha256':receipt,'sourceManifestSha256':digest,'sourceSha256':core.SOURCE_SHA,'remoteSourceSha256':core.REMOTE_SHA,'action':'same_channel_readonly_status','durationSeconds':1800,'intervalSeconds':15,'maxIntervalSeconds':20,'newConnectionAllowed':False,'applicationReplayAllowed':False,'nativeActionAllowed':False}
+    if any(type(i.get(k))is not type(v) or i.get(k)!=v for k,v in expected.items()):raise ValueError('keeper_intent_binding')
+    local=i['localActor']
+    if entry.actor(local['pid'])!=local or local['uid']!=client_actor['uid'] or local['sessionId']!=client_actor['sessionId'] or entry.actor(p.pid)!=client_actor:raise ValueError('keeper_original_actor')
+    if q.get('correlationId')!=compact or q.get('receiptSha256')!=receipt or q.get('state')!='ready' or q.get('stopReason')is not None or q.get('status')!={'state':'ready'} or q.get('nativeActionAllowed')is not False or q.get('newConnectionAllowed')is not False or q.get('applicationReplayAllowed')is not False:raise ValueError('keeper_first_ready')
+    if type(q.get('elapsedSeconds'))not in (int,float) or not 0<=q['elapsedSeconds']<20 or not 0<=clock()-start<20:raise ValueError('keeper_first_ready_freshness')
+    receipt_guard=core.bind_receipt(root,compact,receipt,stack)
+    journal=stack.enter_context(private.Directory(core.channel._journal(root,False)))
+    original_intent=stack.enter_context(private.Snapshot(journal,compact+'.intent.json'));original_ready=stack.enter_context(private.Snapshot(journal,compact+'.ready.json'))
+    if original_ready.digest!=receipt:raise ValueError('keeper_receipt_binding')
+    source=entry.SourceGuard(root,compact,digest);stack.callback(source.close)
+    # External source population joins private original receipt/output closure.
+    def all_sources():guard();source.guard()
+    entry.close_records([intent,query,original_intent,original_ready],all_sources,receipt_guard,source_holders=(source.held,guard.holder))
+    if p.poll()is not None or entry.actor(p.pid)!=client_actor or entry.actor(local['pid'])!=local:raise ValueError('keeper_original_terminal')
+    all_sources();entry.close_records([intent,query,original_intent,original_ready],all_sources,receipt_guard,source_holders=(source.held,guard.holder))
+    value={'stage':'FIRST_READY','correlationId':corr,'receiptSha256':receipt,'sourceManifestSha256':digest,'keeperStartedEpoch':start,'keeperPid':local['pid'],'sdkActor':client_actor,'remaining':start+1800-clock(),'freshReadyObservationOnly':True,'nativeActionAllowed':False,'replayAllowed':False}
+    emit(value)
+    entry.close_records([intent,query,original_intent,original_ready],all_sources,receipt_guard,source_holders=(source.held,guard.holder))
+    return value
+  except FileNotFoundError:sleep(.1)
+ raise ValueError('keeper_first_query_absent')
+
+def publish_ready(output,start,corr,receipt,value,guard,emit):
+ if value.get('stage')!='FIRST_READY' or value.get('correlationId')!=corr or value.get('receiptSha256')!=receipt or type(value.get('keeperPid'))is not int or value['keeperPid']<=0:raise ValueError('earned_keeper_identity')
+ path=output/'keeper.local.json'
+ save(path,{'conservativeDeadlineEpoch':start+1800,'correlationId':corr,'pid':value['keeperPid'],'prePopenStartEpoch':start,'receiptSha256':receipt})
+ with private.Directory(output) as directory:
+  with private.Snapshot(directory,path.name) as record:
+   entry.close_records([record],guard,source_holders=(guard.holder,));sha=record.digest
+   emit({**value,'keeperReceiptSha256':sha});entry.close_records([record],guard,source_holders=(guard.holder,))
+
+class Guard:
+ def __init__(self,path,digest):
+  self.holder=closure._Held();obj=self.holder.json(str(path),entry._sha(digest))
+  if set(obj)!={'inputs'}:raise ValueError('source_manifest_schema')
+  for name,pin in obj['inputs'].items():
+   gen,sha=closure._pin(pin);self.holder.read(name,sha,gen)
+  self()
+ def __call__(self):
+  self.holder.finish();owner_boundary();self.holder.final_identity_pass()
+ def close(self):self.holder.close()
+def main(source_digest):
+ head=subprocess.run(['git','rev-parse','HEAD'],cwd=ROOT,check=True,stdout=subprocess.PIPE,env=clean_environment(ROOT)).stdout.decode().strip()
+ if head!=HEAD:raise ValueError('delivered_head_changed')
+ guard=Guard(P/'source-inputs.json',source_digest);corr=str(uuid.uuid4());compact=uuid.UUID(corr).hex
+ output=ROOT/'.runtime/parity-evidence'/('windows-owned-route-'+corr);output.mkdir(mode=0o700)
+ save(output/'identity.json',{'correlationId':corr});owner=Owner(ROOT,output,guard)
+ py=str(ROOT/'.agent_venv/bin/python');cli=str(ROOT/'agent_tools/mcp_tool.sh')
+ try:
+  # Preserved original CLI admission sequence; SDK source cannot precede gates.
+  v=owner.invoke('ensure',[cli,'ssh-workflow','connection-channel-ensure','--host','archlinux','--identity-file',str(output/'identity.json')]);receipt=entry._sha(v['receiptSha256'])
+  owner.invoke('ensure-gate',[py,str(GATE),str(output/'ensure.stdout.private'),'ensure',corr,receipt,OUTER])
+  owner.invoke('status',[cli,'ssh-workflow','connection-channel-status','--host','archlinux','--identity-file',str(output/'identity.json')])
+  owner.invoke('status-gate',[py,str(GATE),str(output/'status.stdout.private'),'status',corr,receipt,OUTER])
+  def args(action,identity,session):return [py,'-B',str(CLIENT),'--session',session,'--server-sha256',SERVER_SHA,'--action',action,'--identity',json.dumps(identity,sort_keys=True)]
+  source_session='source-'+compact
+  finite=owner.invoke('keeper-source',args('connection-channel-keeper-source',{'correlationId':corr},source_session))
+  digest=source_result(rpc_result(CLIENT.parent/source_session,finite),corr);guard()
+  identity={'correlationId':corr,'receiptSha256':receipt,'sourceManifestSha256':digest};save(output/'keeper-identity.json',identity)
+  session='keep-'+compact;p,start,actor=owner.start('keeper',args('connection-channel-keep',identity,session))
+  save(output/'keeper-sdk-ownership.json',{'correlationId':corr,'receiptSha256':receipt,'sourceManifestSha256':digest,'sdkActor':actor,'prePopenStartEpoch':start,'conservativeDeadlineEpoch':start+1800,'automaticReplay':False})
+  try:first_ready(ROOT,corr,receipt,digest,p,start,actor,guard,emit=lambda value:publish_ready(output,start,corr,receipt,value,guard,owner.emit))
+  finally:
+   # Even failed first READY must retain owning SDK context until real terminal.
+   finite=owner.finish('keeper',p)
+  result=rpc_result(CLIENT.parent/session,finite);guard()
+  if result.get('state')!='completed' or result.get('ok')is not True:raise ValueError('keeper_terminal_unknown')
+  save(output/'result.json',result);guard();owner.emit({'stage':'keeper-terminal','correlationId':corr,'nativeActionAllowed':False,'replayAllowed':False})
+ finally:owner.wait_all();guard.close()
+if __name__=='__main__':
+ import sys
+ main(*sys.argv[1:])
