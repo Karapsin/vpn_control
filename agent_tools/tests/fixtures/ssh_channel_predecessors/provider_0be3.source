@@ -23,7 +23,6 @@ from typing import Any
 from . import ssh_transport as transport, ssh_connection_session as session
 from . import ssh_connection_recovery as recovery
 from . import private_inventory_lock as private
-from . import ssh_channel_inventory_diagnostics as inventory_diagnostics
 from . import ssh_nested_socket_owned_home_observation as owned_home
 
 def validated_unknown(result):
@@ -60,11 +59,6 @@ _REVIEWED_ENDED_DIAGNOSTICS_012=types.MappingProxyType({
     'a10a21cfd20e4ddf9c32a1c74e393fa6':'f6efd83b9c2580876f7f8e38b7553346ce840c64ce9086ae8c50a23e3d6dea42',
     'e48177f1ee694cb69abacd96ffe8f1b8':'37b6c10baf4b5608e62278768380d12ac415e76759c2a28871bc7730f3b44991',
 })
-# The immediately preceding reviewed provider emitted the exact same rendered
-# remote programme. Only positively ENDED protected receipts may transition;
-# this pair never adopts old READY or authorizes an unrelated remote body.
-_REVIEWED_ENDED_PREDECESSOR_0BE3='0be3a94c8e0e5763a70b396e22d068555e6a93697f614f12c03f09bf6610e1d6'
-_REVIEWED_ENDED_REMOTE_0BE3='a0d5a30bbb83bea3ba4dd7fb3c5b1664e5be2dd90e1ade1e82c3fb6123d032fd'
 _REMOTE_REASONS=frozenset(('actor', 'actor_uid', 'arch_identity', 'changed', 'closing', 'closing_master', 'config_dependencies', 'config_or_keys_changed', 'directory', 'directory_membership', 'duplicate', 'effective_home_changed', 'effective_home_foreign', 'effective_home_unknown', 'effective_key_not_literal', 'effective_key_unavailable', 'effective_key_unknown', 'effective_route_unknown', 'fd_cap', 'fd_changed', 'gateway_reboot', 'kernel_duplicate_inode', 'kernel_fields', 'kernel_header', 'kernel_row', 'launch_unknown', 'listener_owner', 'listener_present', 'master_check', 'process_cap', 'process_changed', 'process_disappeared_partial', 'publication_master_changed', 'publication_ready_changed', 'ready_changed', 'ready_private', 'ready_publication', 'remote_intent', 'remote_intent_changed', 'route_file_changed', 'route_file_unbounded', 'route_file_unsafe', 'route_parent_changed', 'route_parent_unsafe', 'route_unknown', 'saved_binding', 'secret', 'socket', 'stage_appeared', 'stage_parent', 'status_input', 'unclassified', 'unseen_unknown'))
 _EXCEPTION_CLASSES=frozenset(('ValueError','FileNotFoundError','PermissionError','OSError','KeyError','TimeoutExpired','SubprocessError','other'))
 _REMOTE_PHASES=frozenset(('prepare_stage','launch','remote_intent','master_snapshot','arch_identity','master_closing','publication'))
@@ -353,22 +347,12 @@ def _ended_012_intent(value,current,prior_id):
     return json.dumps(value,sort_keys=True)==json.dumps(expected,sort_keys=True)
 
 
-def _ended_0be3_intent(value,current,prior_id):
-    if type(value)is not dict:return False
-    outer=value.get('outerReceiptSha256')
-    if type(outer)is not str or re.fullmatch('[0-9a-f]{64}',outer) is None:return False
-    expected={**current,'correlationId':prior_id,'sourceSha256':_REVIEWED_ENDED_PREDECESSOR_0BE3,
-              'remoteSourceSha256':_REVIEWED_ENDED_REMOTE_0BE3,'outerReceiptSha256':outer}
-    return json.dumps(value,sort_keys=True)==json.dumps(expected,sort_keys=True)
-
-
-def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inventory_diagnostic=None):
+def _operate(root,host,correlation_id,prepare,_private_capture=None):
     phase='input'
     try:
         if host!=HOST:return _public()
         _corr(correlation_id);root=Path(root).resolve(strict=True)
         if _private_capture is not None and not callable(_private_capture):raise ValueError('private_capture')
-        if _private_inventory_diagnostic is not None and not callable(_private_inventory_diagnostic):raise ValueError('private_inventory_diagnostic')
         phase='inventory'
         with private.ownership(root) as (presented,directory,ownership), ExitStack() as stack:
             config_source=stack.enter_context(private.Snapshot(directory,transport.CONFIG_FILENAME))
@@ -405,18 +389,16 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                     if set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'} or ended['state']!='ended' or ended['correlationId']!=prior_id:return _public()
                     old_intent=stack.enter_context(private.Snapshot(channel_dir,name))
                     old_value=json.loads(old_intent.body,object_pairs_hook=transport._reject_duplicate_keys)
-                    if ended['intentSha256']!=old_intent.digest or old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) or old_value.get('inventory')!=config_source.pin():return _public()
+                    if ended['intentSha256']!=old_intent.digest or old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012) or old_value.get('inventory')!=config_source.pin():return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9A and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9A):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9527 and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9527):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_012:
                         if not _ended_012_intent(old_value,intent,prior_id) or not isinstance(ended['gatewayBoot'],str) or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None:return _public()
-                    if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_0BE3:
-                        if not _ended_0be3_intent(old_value,intent,prior_id) or type(ended['gatewayBoot'])is not str or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None:return _public()
                     if ended['receiptSha256'] is not None:
                         old_ready=stack.enter_context(private.Snapshot(channel_dir,prior_id+'.ready.json'))
                         old_result=json.loads(old_ready.body,object_pairs_hook=transport._reject_duplicate_keys)
                         if ended['receiptSha256']!=old_ready.digest or ended['gatewayBoot']!=old_result['result']['master']['gatewayBoot']:return _public()
-                        if old_value.get('sourceSha256') in (_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3):
+                        if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_012:
                             if type(old_result)is not dict or set(old_result)!={'intent','result'} or json.dumps(old_result['intent'],sort_keys=True)!=json.dumps(old_intent.pin(),sort_keys=True):return _public()
                             prior=old_result['result']
                             if (type(prior)is not dict or set(prior)!={'state','correlationId','master','arch','controlPath'} or prior['state']!='ready' or prior['correlationId']!=prior_id or prior['controlPath']!='/tmp/vpn-channel-'+prior_id+'/m' or json.dumps(prior['arch'],sort_keys=True)!=json.dumps({'uid':EXPECTED_UID,'boot':EXPECTED_BOOT},sort_keys=True) or not _master_shape(prior['master'])):return _public()
@@ -491,21 +473,18 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             if json.loads(ready.body,object_pairs_hook=transport._reject_duplicate_keys)!=receipt:return _public()
             guard();ready.guard()
             return _public('ready',correlationId=correlation_id,receiptSha256=ready.digest,outerReceiptSha256=outer_receipt)
-    except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError) as failure:
-        if phase=='inventory' and _private_inventory_diagnostic is not None:
-            try:_private_inventory_diagnostic(inventory_diagnostics.detail(failure))
-            except Exception:pass
+    except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):
         return _public(failurePhase=phase)
 
 
-def prepare(root:Path|str,host:str,correlation_id:str,*,_private_capture=None,_private_inventory_diagnostic=None)->dict[str,Any]:
+def prepare(root:Path|str,host:str,correlation_id:str,*,_private_capture=None)->dict[str,Any]:
     """At most one channel launch; existing intent means read-only status."""
-    try:return _operate(root,host,correlation_id,True,_private_capture,_private_inventory_diagnostic)
+    try:return _operate(root,host,correlation_id,True,_private_capture)
     except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):return _public()
 
-def status(root:Path|str,host:str,correlation_id:str,*,_private_capture=None,_private_inventory_diagnostic=None)->dict[str,Any]:
+def status(root:Path|str,host:str,correlation_id:str,*,_private_capture=None)->dict[str,Any]:
     """Observe same original channel; never launch, remove, adopt or replay."""
-    try:return _operate(root,host,correlation_id,False,_private_capture,_private_inventory_diagnostic)
+    try:return _operate(root,host,correlation_id,False,_private_capture)
     except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):return _public()
 
 def route_options(root:Path|str,host:str,correlation_id:str,receipt_sha256:str)->dict[str,Any]:
@@ -532,7 +511,7 @@ def route_options(root:Path|str,host:str,correlation_id:str,receipt_sha256:str)-
             '-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false')}
 
 
-def ensure_channel(root:Path|str,host:str,correlation_id:str,receipt_sha256:str|None=None,*,_private_capture=None,_private_inventory_diagnostic=None)->dict[str,Any]:
+def ensure_channel(root:Path|str,host:str,correlation_id:str,receipt_sha256:str|None=None,*,_private_capture=None)->dict[str,Any]:
     """Explicit connection-only admission/renewal, at most one new launch.
 
     UNKNOWN observes the same intent and never starts another channel. Positive
@@ -550,10 +529,10 @@ def ensure_channel(root:Path|str,host:str,correlation_id:str,receipt_sha256:str|
                 with private.Snapshot(directory,correlation_id+'.ready.json') as held:
                     if held.digest!=receipt_sha256:return _public()
                     held.guard()
-        result=prepare(root,host,correlation_id,_private_capture=_private_capture,_private_inventory_diagnostic=_private_inventory_diagnostic)
+        result=prepare(root,host,correlation_id,_private_capture=_private_capture)
         if result.get('state')=='ended':
             correlation_id=uuid.uuid4().hex
-            result=prepare(root,host,correlation_id,_private_capture=_private_capture,_private_inventory_diagnostic=_private_inventory_diagnostic)
+            result=prepare(root,host,correlation_id,_private_capture=_private_capture)
         if result.get('state')!='ready':return result
         return route_options(root,host,correlation_id,result['receiptSha256'])
     except ChannelUnknown as failure:return failure.result

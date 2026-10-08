@@ -156,6 +156,78 @@ class FreshChannelTests(unittest.TestCase):
         self.invoke(corr='c'*32);self.assertEqual('prepare',self.calls[-1][6])
         self.assertEqual(old_intent,intent.read_bytes());self.assertEqual(old_terminal,terminal.read_bytes())
 
+    def ended_0be3_fixture(self,with_ready=True):
+        # Authenticated public historical source; production never imports it.
+        # Only placement/declared remote response are fixture seams. Actual old
+        # prepare/status produces the protected intent+ENDED receipt under real
+        # local guards, followed by the actual current predecessor loop.
+        path=Path(__file__).parent/'fixtures/ssh_channel_predecessors/provider_0be3.source'
+        raw=path.read_bytes();digest='0be3a94c8e0e5763a70b396e22d068555e6a93697f614f12c03f09bf6610e1d6'
+        self.assertEqual(digest,hashlib.sha256(raw).hexdigest())
+        old=types.ModuleType('agent_tools._fixture_predecessor_0be3');old.__package__='agent_tools';old.__file__=str(path)
+        exec(compile(raw,str(path),'exec'),old.__dict__)
+        self.assertEqual(digest,old._source());self.assertEqual(channel._REMOTE,old._REMOTE)
+        self.assertEqual('a0d5a30bbb83bea3ba4dd7fb3c5b1664e5be2dd90e1ade1e82c3fb6123d032fd',hashlib.sha256(old._REMOTE.encode()).hexdigest())
+        ready=self.ready_fixture() if with_ready else None
+        with mock.patch.dict(self.invoke.__func__.__globals__,{'channel':old}):
+            self.stdout=json.dumps(ready or {'state':'unknown','correlationId':self.corr}).encode();self.rc=0 if ready else 3
+            self.assertEqual('ready' if ready else 'unknown',self.invoke()['state'])
+            boot=ready['master']['gatewayBoot'] if ready else old.EXPECTED_BOOT
+            self.stdout=json.dumps({'state':'ended','correlationId':self.corr,'prior':ready,'gatewayBoot':boot}).encode();self.rc=0
+            self.assertEqual('ended',self.invoke(False)['state'])
+        self.stdout=b'{}';self.rc=3
+        group=self.root/'.rag_index/ssh-fresh-nested-channel';return group,group/(self.corr+'.intent.json'),group/(self.corr+'.terminal.json')
+
+    def test_actual_reviewed_0be3_ended_predecessor_allows_only_new_handle(self):
+        group,intent,terminal=self.ended_0be3_fixture();before=(intent.read_bytes(),terminal.read_bytes());count=len(self.calls)
+        value=self.invoke(corr='c'*32)
+        self.assertEqual(count+1,len(self.calls));self.assertEqual('prepare',self.calls[-1][6]);self.assertEqual('unknown',value['state'])
+        self.assertTrue((group/('c'*32+'.intent.json')).exists());self.assertEqual(before,(intent.read_bytes(),terminal.read_bytes()))
+
+    def test_reviewed_0be3_predecessor_intent_terminal_and_inventory_mutations_refuse(self):
+        group,intent,terminal=self.ended_0be3_fixture(with_ready=False);original=intent.read_bytes();ended_raw=terminal.read_bytes();count=len(self.calls)
+        for mode in ('source','source_known_other','source_bool','remote','remote_none','version_bool','host','corr','uid_float','uid_bool','outer','extra','inventory','inventory_float','intent_hash','unknown','gateway_bool','ready_hash','no_terminal'):
+            intent.write_bytes(original);terminal.write_bytes(ended_raw);value=json.loads(original);ended=json.loads(ended_raw)
+            if mode=='source':value['sourceSha256']='a'*64
+            elif mode=='source_known_other':value['sourceSha256']=channel._REVIEWED_ENDED_PREDECESSOR_9A
+            elif mode=='source_bool':value['sourceSha256']=True
+            elif mode=='remote':value['remoteSourceSha256']='a'*64
+            elif mode=='remote_none':value['remoteSourceSha256']=None
+            elif mode=='version_bool':value['version']=True
+            elif mode=='host':value['host']='foreign'
+            elif mode=='corr':value['correlationId']='a'*32
+            elif mode=='uid_float':value['expectedUid']=1000.0
+            elif mode=='uid_bool':value['expectedUid']=True
+            elif mode=='outer':value['outerReceiptSha256']='foreign'
+            elif mode=='extra':value['extra']='public fixture sentinel'
+            elif mode=='inventory':value['inventory']['sha256']='a'*64
+            elif mode=='inventory_float':value['inventory']['generation'][3]=float(value['inventory']['generation'][3])
+            elif mode=='intent_hash':ended['intentSha256']='a'*64
+            elif mode=='unknown':ended['state']='unknown'
+            elif mode=='gateway_bool':ended['gatewayBoot']=True
+            elif mode=='ready_hash':ended['receiptSha256']='a'*64
+            intent.write_text(json.dumps(value));intent.chmod(0o600)
+            if mode!='intent_hash':ended['intentSha256']=hashlib.sha256(intent.read_bytes()).hexdigest()
+            terminal.write_text(json.dumps(ended));terminal.chmod(0o600)
+            if mode=='no_terminal':terminal.unlink()
+            with self.subTest(mode=mode):
+                self.assertEqual('unknown',self.invoke(corr='c'*32)['state']);self.assertEqual(count,len(self.calls));self.assertFalse((group/('c'*32+'.intent.json')).exists())
+        intent.write_bytes(original);intent.chmod(0o600);terminal.write_bytes(ended_raw);terminal.chmod(0o600);self.invoke(corr='c'*32);self.assertEqual(count+1,len(self.calls))
+
+    def test_reviewed_0be3_ready_receipt_binding_mutations_refuse(self):
+        group,intent,terminal=self.ended_0be3_fixture();ready=group/(self.corr+'.ready.json');original=ready.read_bytes();ended_raw=terminal.read_bytes();count=len(self.calls)
+        for mode in ('intent_pin','corr','arch_float','control','actor_bool','extra'):
+            value=json.loads(original);ended=json.loads(ended_raw)
+            if mode=='intent_pin':value['intent']={}
+            elif mode=='corr':value['result']['correlationId']='a'*32
+            elif mode=='arch_float':value['result']['arch']['uid']=1000.0
+            elif mode=='control':value['result']['controlPath']='/tmp/foreign'
+            elif mode=='actor_bool':value['result']['master']['actor']['pid']=True
+            elif mode=='extra':value['extra']='public fixture sentinel'
+            ready.write_text(json.dumps(value));ready.chmod(0o600);ended['receiptSha256']=hashlib.sha256(ready.read_bytes()).hexdigest();terminal.write_text(json.dumps(ended));terminal.chmod(0o600)
+            with self.subTest(mode=mode):self.assertEqual('unknown',self.invoke(corr='c'*32)['state']);self.assertEqual(count,len(self.calls))
+        ready.write_bytes(original);terminal.write_bytes(ended_raw);self.invoke(corr='c'*32);self.assertEqual(count+1,len(self.calls))
+
     def ended_012_fixture(self,corr='b'*32,remote_sha=None,with_ready=False):
         # Exact canonical predecessor programme; only source identity and the
         # optional reviewed diagnostic hash field are declared receipt seams.

@@ -33,7 +33,47 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-08,05:44 Moscow
+## Current acceptance status — 2026-10-08,11:38 Moscow
+
+The last delivered checkpoint is `825f5956cd8b061466285920f396d67a57e9d48a`,
+product2.2.3. This work repairs an observed tool-version transition failure;
+it does not change the product packages or close native acceptance.
+
+- Windows original pipeline33670/33672 and ensure33673 ended with UNKNOWN,
+  correlation4534a196-88c9-4893-9ef5-619069f99250. No channel receipt was earned;
+  status, SDK keeper and guest dispatch were not reached. The owner verified
+  that the new intent was absent and released all source/private holders.
+- The retained positively ENDED predecessors use reviewed provider0be3 and
+  remotea0d5. The delivered provider7316 omitted that exact predecessor source.
+  A hermetic actual-old-producer/current-loop regression reproduced the refusal.
+  The strict compatibility successor7148 admits only that reviewed source/remote
+  pair with typed intent, inventory, terminal and retained receipt checks.
+  Seven focused controls pass; independent peer977dd693 closes25 public pairs.
+- The complete SDK-owning pipeline0bbf/peer72b39 passes16 controls, including
+  all three measured launch/result custody regressions. Its actual first launch
+  above remains UNKNOWN; source-local review is not native equivalence.
+- Windows retains sole Pi/Arch/Windows ownership. Outer229a was positively
+  retired; fresh outer5ab was genuinely READY. New admission must recheck it and
+  honestly rebind the changed provider and delivered source. Never replay4534.
+- Android observerabce/peer c1ca is source-ready with unchanged1335/1300 budgets;
+  no borrower or guest helper was launched. Original UNKNOWN jobs and lease
+  remain unchanged. Windows current-server disposition87fb/peer7fb is prepared,
+  but the expired server has not been newly observed.
+- Root owns integration, metadata, managed prepush and dev checkpoint delivery.
+  Keep engineering D32/60bb packages unchanged. Exact-SHA five-workflow CI is
+  deferred to final delivery. Native/MCP scenarios, current-source packages,
+  visuals and Linux/macOS gates remain open; no release is authorized.
+- Public stage timing is in `.runtime/native-stage-timing-20261008/`.
+  The source-only promotion auditf35bac28 records ten prototype-only causal
+  controls requiring executable routine promotion after complete native proof.
+  Existing keeper19 checks cover different boundaries and remain preserved.
+
+Public source/peer evidence for this repair is under
+`.runtime/ssh-channel-ended-predecessor-0be3-candidate/` and
+`.runtime/ssh-channel-ended-predecessor-0be3-independent-peer/`.
+All earlier evidence below remains historical and retains its original scope.
+
+## Historical acceptance status — 2026-10-08,05:44 Moscow
 
 The inherited delivered baseline is `6289371e7dca6e72b69ebd4771b39dff2d0e5242`,
 product2.2.3. This checkpoint integrates the reviewed receipt-bound SSH keeper,

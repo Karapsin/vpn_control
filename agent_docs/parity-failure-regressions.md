@@ -2604,3 +2604,28 @@ selected-route and keeper verification remain separate pending gates.
 
 Current evidence and exclusive repair ownership are in work-in-progress.md; all
 original native intents, source snapshots and failed receipts remain historical.
+
+## Reviewed ended-channel predecessor across tool delivery
+
+- Failure: Windows original33670/33673, correlation4534a196-88c9-4893-9ef5-619069f99250,
+  returned UNKNOWN before new intent creation. No channel receipt, SDK keeper
+  or guest submission followed; the original result is retained without replay.
+- Cause: provider7316's ended-predecessor allowlist omitted authenticated
+  immediately previous provider0be3, whose rendered remotea0d5 is unchanged.
+  The owner verified positive ENDED, matching intent digest and current inventory.
+- Causal regression: the authenticated public historical source fixture produces
+  genuine local READY/ENDED records, then the actual current predecessor loop
+  refuses. Original RED is one failure and zero errors; the strict successor
+  passes seven focused controls. Peer977dd693 independently reproduces both.
+- Routine coverage: `agent_tools/tests/test_ssh_fresh_nested_channel.py`,
+  `test_actual_reviewed_0be3_ended_predecessor_allows_only_new_handle`,
+  `test_reviewed_0be3_predecessor_intent_terminal_and_inventory_mutations_refuse`,
+  and `test_reviewed_0be3_ready_receipt_binding_mutations_refuse`. The portable
+  fixture is `agent_tools/tests/fixtures/ssh_channel_predecessors/provider_0be3.source`;
+  production never loads it and routine tests do not depend on ignored receipts.
+- Fix scope: exact reviewed source/remote pair, typed full intent and inventory,
+  positive terminal/hash/boot, and existing strict READY receipt bindings.
+  Unknown records and unrelated sources still refuse. This permits a genuinely
+  new admitted correlation; it does not adopt old READY or replay the failed one.
+- Native rerun remains required after coherent delivery and fresh source/route
+  admission. Source-local GREEN does not complete Windows or MCP acceptance.

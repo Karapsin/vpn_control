@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve Windows fixture CONNECT/HTTPS deadlines and verify complete PowerShell cleanup scripts before native execution.
 - Keep new Windows parser checks separate from archived test source identities.
 - Add receipt-bound SSH keepers with immutable source guards, retained diagnostics, and causal regressions.
+- Preserve ended SSH channel compatibility across reviewed tool updates.
 
 ## 2.2.3 - 2026-10-07
 
