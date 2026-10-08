@@ -1920,8 +1920,105 @@ def _ssh_channel_workflow(action: str, host: str | None, timeout_seconds: int,
         return unknown
 
 
+from contextlib import contextmanager
+import ast,builtins,inspect,types,importlib.abc,importlib.util
+# Trusted shared custody primitive is imported with canonical server startup.
+keeper_source_closure=importlib.import_module(f"{__package__ or 'agent_tools'}.native_review_source_closure")
+_KEEPER_ROLES=('ssh_channel_keeper_entry.py','ssh_channel_keeper.py','ssh_channel_inventory_diagnostics.py','ssh_fresh_nested_channel.py','private_inventory_lock.py','native_review_source_closure.py','check_output_retention.py','ssh_transport.py','ssh_connection_session.py','ssh_connection_recovery.py','ssh_nested_socket_owned_home_observation.py','ssh_channel_selection.py','mcp_server.py','ssh_nested_socket_noninteractive_observation.py','ssh_nested_socket_retirement.py','ssh_nested_socket_route_diagnostic.py','ssh_recovery_adoption.py')
+@contextmanager
+def _keeper_authenticated_entry(corr,digest=None):
+    custody=keeper_source_closure;held=custody._Held();prefix='_keeper_'+uuid.uuid4().hex
+    package=types.ModuleType(prefix);package.__path__=[];sys.modules[prefix]=package;finder=None
+    try:
+        paths={str(REPO_ROOT/'agent_tools'/name) for name in _KEEPER_ROLES}
+        if digest is None:
+            pins={}
+            for path in sorted(paths):
+                raw=Path(path).read_bytes();sha=hashlib.sha256(raw).hexdigest();held.read(path,sha);pins[path]={'sha256':sha,'generation':list(held.files[path][1])}
+        else:
+            if type(digest)is not str or re.fullmatch('[0-9a-f]{64}',digest)is None:raise ValueError('digest')
+            manifest=REPO_ROOT/'.runtime/ssh-channel-keeper-source'/(corr+'.json');obj=json.loads(held.read(str(manifest),digest),object_pairs_hook=custody._pairs)
+            if type(obj)is not dict or set(obj)!={'inputs'} or type(obj['inputs'])is not dict or set(obj['inputs'])!=paths:raise ValueError('source_roles')
+            pins=obj['inputs']
+        cached={}
+        for path,pin in pins.items():
+            gen,sha=custody._pin(pin);raw=held.read(path,sha,gen)
+            if Path(path).name!='mcp_server.py':cached[prefix+'.'+Path(path).stem]=(path,raw)
+        held.finish();by_path={path:raw for path,raw in cached.values()}
+        def extract(target):
+            if inspect.ismodule(target):return cached[target.__name__][1].decode(),1
+            if inspect.isclass(target):path=sys.modules[target.__module__].__file__;qualified=target.__qualname__
+            else:path=target.__code__.co_filename;qualified=target.__qualname__
+            node=ast.parse(by_path[path])
+            for component in qualified.split('.'):
+                matches=[v for v in node.body if isinstance(v,(ast.ClassDef,ast.FunctionDef,ast.AsyncFunctionDef)) and v.name==component]
+                if len(matches)!=1:raise ValueError('source_target')
+                node=matches[0]
+            start=min([node.lineno]+[d.lineno for d in node.decorator_list]);return ''.join(by_path[path].decode().splitlines(True)[start-1:node.end_lineno]),start
+        view=types.ModuleType('inspect');view.__dict__.update(vars(inspect))
+        def source(target):
+            if getattr(target,'__module__',getattr(target,'__name__','')).startswith(prefix):return extract(target)[0]
+            return inspect.getsource(target)
+        def lines(target):
+            if getattr(target,'__module__',getattr(target,'__name__','')).startswith(prefix):
+                raw,start=extract(target);return raw.splitlines(True),start
+            return inspect.getsourcelines(target)
+        view.getsource=source;view.getsourcelines=lines
+        def importing(name,globals=None,locals=None,fromlist=(),level=0):
+            if name=='inspect' and level==0:return view
+            return builtins.__import__(name,globals,locals,fromlist,level)
+        class Loader(importlib.abc.Loader):
+            def create_module(self,spec):return None
+            def exec_module(self,module):
+                path,raw=cached[module.__name__];module.__file__=path;module.__builtins__={**vars(builtins),'__import__':importing};held.finish();exec(compile(raw,path,'exec'),module.__dict__);held.finish()
+        class Finder(importlib.abc.MetaPathFinder):
+            def find_spec(self,name,path=None,target=None):
+                if name in cached:return importlib.util.spec_from_loader(name,Loader(),origin=cached[name][0])
+                if name.startswith(prefix+'.'):raise ImportError('undeclared_keeper_module')
+        finder=Finder();sys.meta_path.insert(0,finder);entry=importlib.import_module(prefix+'.ssh_channel_keeper_entry');held.finish()
+        yield entry,held
+    finally:
+        if finder is not None:sys.meta_path.remove(finder)
+        for name in list(sys.modules):
+            if name==prefix or name.startswith(prefix+'.'):sys.modules.pop(name,None)
+        held.close()
+
+def _ssh_channel_keeper_workflow(action,host,timeout_seconds,identity,transfer,device):
+    unknown={'tool':'ssh_workflow','ok':False,'state':'unknown','connectionOnly':True,'nativeActionAllowed':False,'replayAllowed':False,'failurePhase':'keeper'}
+    try:
+        if host!='archlinux' or transfer is not None or device is not None or type(identity)is not dict or type(timeout_seconds)is not int: return unknown
+        fields={'correlationId'} if action=='connection-channel-keeper-source' else {'correlationId','receiptSha256','sourceManifestSha256'}
+        if set(identity)!=fields or not _valid_uuid(identity['correlationId']):return unknown
+        corr=uuid.UUID(identity['correlationId']).hex
+        if (action=='connection-channel-keep' and timeout_seconds!=1800) or (action!='connection-channel-keep' and not 1<=timeout_seconds<=60):return unknown
+        digest=None if action=='connection-channel-keeper-source' else identity['sourceManifestSha256']
+        with _keeper_authenticated_entry(corr,digest) as (entry,authenticated):
+            return _keeper_dispatch_authenticated(entry,authenticated,action,corr,identity)
+    except (OSError,ValueError,TypeError,KeyError,ImportError,subprocess.SubprocessError):return unknown
+
+
+def _keeper_dispatch_authenticated(entry,authenticated,action,corr,identity):
+    unknown={'tool':'ssh_workflow','ok':False,'state':'unknown','connectionOnly':True,'nativeActionAllowed':False,'replayAllowed':False,'failurePhase':'keeper'}
+    if action=='connection-channel-keeper-source':
+        value=entry.source_snapshot(REPO_ROOT,corr);authenticated.finish();return {'tool':'ssh_workflow','ok':True,**value}
+    receipt=entry._sha(identity['receiptSha256']);digest=entry._sha(identity['sourceManifestSha256'])
+    if action=='connection-channel-keep-status':return {'tool':'ssh_workflow','ok':True,**entry.observe(REPO_ROOT,corr,receipt,digest,_outer_source_holder=authenticated)}
+    source=entry.SourceGuard(REPO_ROOT,corr,digest)
+    try:
+        source.guard()
+        fingerprint=hashlib.sha256(source.held.files[str(entry.SOURCE_FILES['ssh_channel_keeper_entry.py'])][3]).hexdigest()
+        def capture(rc,out,err):return check_output_retention.retain_completed_output(REPO_ROOT,label='ssh-keeper-'+corr,returncode=rc,stdout=out,stderr=err,source_fingerprint=fingerprint)
+        result=_run(entry.child_argv(AGENT_TEST_PYTHON,REPO_ROOT,corr,receipt,digest,source),timeout=1845,output_limit=0,output_capture=capture)
+        source.guard()
+        if not result.get('ok') or result.get('returncode')!=0 or 'completionOutput' not in result:return unknown
+        # Read guarded original result only AFTER exact original child's raw retention.
+        return {'tool':'ssh_workflow','ok':True,**entry.observe(REPO_ROOT,corr,receipt,digest,_outer_source_holder=authenticated)}
+    finally:source.close()
+
 def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
     """Inspect configured SSH hosts, recover a nested connection, or transfer owned fixture helpers."""
+    if action in {"connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status"}:
+        return _ssh_channel_keeper_workflow(action,host,timeout_seconds,identity,transfer,device)
     if action in {"connection-channel-prepare", "connection-channel-status", "connection-channel-ensure"}:
         return _ssh_channel_workflow(action, host, timeout_seconds, identity, transfer, device)
     transport = importlib.import_module(f"{__package__}.ssh_transport" if __package__ else "ssh_transport")
@@ -7998,6 +8095,7 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
 def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
     """Observe or perform fixed configured SSH fixture actions with durable evidence and safe next steps."""
     result = _ssh_workflow_impl(action, host, timeout_seconds, identity, transfer, device)
+    if action in {"connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status"}:return result
     return _native_response("ssh_workflow", action, result, {"host": host, **(transfer or {})})
 
 
@@ -8124,7 +8222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     subparsers.add_parser("serve")
     ssh_parser = subparsers.add_parser("ssh-workflow")
-    ssh_parser.add_argument("action", choices=("connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
+    ssh_parser.add_argument("action", choices=("connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status", "connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
     ssh_parser.add_argument("--host")
     ssh_parser.add_argument("--device")
     ssh_parser.add_argument("--timeout-seconds", type=int, default=15)

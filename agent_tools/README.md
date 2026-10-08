@@ -72,6 +72,44 @@ MCP remains the repository startup and delivery entry point.
 
 `ssh_workflow(action="connection-channel-prepare", host="archlinux", identity={"correlationId":"<canonical UUID>"})` creates one isolated configured two-hop connection channel. `connection-channel-status` accepts the same identity and only observes it. `connection-channel-ensure` accepts the identity plus an optional exact `receiptSha256`; it explicitly renews only after positive channel end. These connection-only actions accept no command, path, transfer or device fields. They preserve unknown correlations, return finite phases, hide private route options and never replay application jobs. Current selection publication integration and native equivalence remain pending. A channel UNKNOWN never authorizes another launch: preserve its correlation and observe or diagnose that same channel. Snapshot refusal is not an authentication failure. Use the fresh `mcp_tool.sh ssh-workflow <action> --host archlinux --identity-file <local JSON>` fallback while the running server has cached predecessor code.
 
+### Receipt-bound channel keeper
+
+The three keeper actions use `host="archlinux"` and reject command, path,
+transfer, device and extra identity fields. The correlation is the canonical UUID
+of an already admitted channel. They never prepare or renew a channel, start a
+new master, or replay an application job.
+
+| Action | Exact identity and timeout | Result |
+| --- | --- | --- |
+| `connection-channel-keeper-source` | `{correlationId}`; `timeout_seconds` in `1..60` | Create one source manifest for the fixed public keeper dependencies; return `sourceManifestSha256`. This does not admit a channel. |
+| `connection-channel-keep` | `{correlationId, receiptSha256, sourceManifestSha256}`; `timeout_seconds=1800` | Start one local keeper bound to that exact existing channel receipt and source manifest. |
+| `connection-channel-keep-status` | The same three identity fields; `timeout_seconds` in `1..60` | Observe only the original keeper intent, process identity and protected terminal result; never start or replay it. |
+
+`receiptSha256` is the exact admitted READY receipt, not a branch, artifact or
+remaining-time claim. Supply identity through the CLI `--identity-file` when
+using `mcp_tool.sh ssh-workflow <action> --host archlinux`; the keep action also
+requires `--timeout-seconds 1800`.
+
+The fixed keeper observes the same channel every 15 seconds, for at most 1800
+seconds and 120 queries. A gap over 20 seconds stops it, and the final 35 seconds
+are reserved rather than starting another query. It retains the original local
+PID, birth and session identity, each query's raw evidence before parsing, and
+its terminal result. A durably classified nonblocking configuration-lock busy
+observation may continue within this same deadline; it remains UNKNOWN until a
+later actual READY observation. Other UNKNOWN outcomes stop the keeper.
+Borrowers still need their freshest actual READY; keeper completion, a previous
+READY or remaining lifetime does not authorize a native action.
+
+The MCP call is synchronous. Its existing child supervision has an 1845-second
+timeout around the fixed 1800-second loop. This allowance does not prove survival
+of an MCP disconnect or server death, or bound kernel scheduling and I/O. A lost
+response, timeout or missing terminal record remains UNKNOWN: preserve the
+original identity and use `connection-channel-keep-status`. A consumed keeper
+intent cannot launch again. Neither observing nor completed status grants replay,
+channel admission or native acceptance authority.
+
+### Other MCP tools
+
 `vm_workflow(action="android-api35-remaining-proxy-status", inputs={})` performs
 only a fresh read of the fixed completed API35 cleanup0670. It verifies the
 original terminal bytes and current stopped owner, settings and Binder state.

@@ -33,7 +33,34 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-07,18:43 Moscow
+## Current acceptance status — 2026-10-08,05:44 Moscow
+
+The inherited delivered baseline is `6289371e7dca6e72b69ebd4771b39dff2d0e5242`,
+product2.2.3. This checkpoint integrates the reviewed receipt-bound SSH keeper,
+its immutable source loading, classified inventory-lock diagnostics and19 routine
+regressions. An extra diagnostics EOF newline was removed without changing its
+Python syntax or behavior. The full parity goal remains incomplete; the last
+queried acceptance matrix was0passed/2historical/20open. Required CI remains the
+single final exact-SHA five-workflow gate requested by the user.
+
+| Slice | Exclusive owner | Established scope | Remaining gate |
+| --- | --- | --- | --- |
+| Windows engineering update | windows_operator | Genuine existing server task/process/listener and validated HTTPS manifest were observed. The old admin13e remains UNKNOWN; later read-only reconciliation found its account and public task absent. Complete repaired source921c/peer2b9a passes six safe controls plus an earned receipt-to-renderer control. | Honestly refresh the current provider source pin, original facts and protected1531 inputs; prove the native update and cleanup, then MCP equivalence. Engineering D32 artifacts are not final-source packages. |
+| Android API35 | android_mount_owner | Original35512/35573 closed with complete raw streams; missing emitted shlex failed before helper staging and left the old lease unchanged. Successor d4846/peer ec19 passes12 controls and1882 source/archive pairs; the emitted namespace also binds canonical privileged_command and opening root identity. | Rebind to the delivered tool source and fresh1335/1300-second admission, then prove guest FD inheritance and exact terminal history before any retirement or installer action. |
+| Arch transport | windows_operator | Original4c027 owner34877/session85906 and keeper34982 completed0. Same canonical status44269 positively ENDED05:43:09 with genuine136-source pre/post closing. All native and source holders were released before integration. A prior real inventory contention/release preserved UNKNOWN then returned actual READY on the same original keeper. | Prove the integrated canonical keeper over actual MCP and admit only fresh actual READY borrowers. Disconnect or server-death survival remains unproved. |
+| MCP integration and delivery | root | Reviewed production bodies, actual handler/CLI tests and README actions are integrated. Fresh stdio initialize/list-tools succeeded using the real server and installed client; effectful RPC actions remain unproved. | Current-source routine checks, metadata, fresh full prepush and coherent dev checkpoint; then actual RPC keeper equivalence. |
+| Linux/macOS/final acceptance | platform source owners; root | Historical engineering evidence is retained. macOS host lock was observed05:22; no visible prompt test ran. | Approved Linux runtime/archive provenance and capacity, macOS visible denial and recovery, source-matched package pairs, all native/MCP scenarios, visuals and final exact-SHA CI. |
+
+All original UNKNOWN jobs, credentials, private captures, package images and
+correlations remain unchanged. Windows D32 and Android source60bb packages retain
+their engineering provenance; neither is relabelled as current-source acceptance.
+No host VPN interruption, release, main merge, tag or publisher is authorized.
+Current keeper integration and terminal source-release evidence is under ignored
+`root-keeper-integration-path-plan-20261008-0536/`, with source/local peer packets
+at their original `.runtime/` locators. Final operation admissions must use actual
+fresh observations and new current-source manifests rather than this ledger.
+
+## Historical acceptance snapshot — 2026-10-07,18:43 Moscow
 
 Delivered baseline is `13e63f6a148309b6eb06423acffc9628a4e130d3`,
 product2.2.3. Root is integrating the reviewed CONNECT/HTTPS routine and the
