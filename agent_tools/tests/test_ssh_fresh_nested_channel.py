@@ -436,6 +436,54 @@ class FreshChannelTests(unittest.TestCase):
         def drift(value):
             self.raw.update(value);body=self.f.config_path.read_bytes();self.f.config_path.write_bytes(body)
         self.assertEqual('unknown',self.invoke(retainer=drift)['state']);self.assertTrue(self.raw['complete'])
+    def test_outer_socket_loss_after_successful_raw_retention_stops_without_replay(self):
+        # Real harmless collector and real outer verifier; only the existing
+        # fixture's native SSH/process facts are declared inert seams.
+        from agent_tools import ssh_channel_keeper as keeper
+        from agent_tools.check_output_retention import retain_observation_capture
+        self.stdout=json.dumps(self.ready_fixture()).encode();self.rc=0
+        ready=self.invoke();self.assertEqual('ready',ready['state'])
+        receipt=ready['receiptSha256'];source=channel._source()
+        calls_before=len(self.calls);spawns_before=len(self.f.spawns)
+        self.stdout=b'';self.stderr=b'mux_client_request_session: Broken pipe\n';self.rc=255
+        output=self.root/'retained-capture';output.mkdir(mode=0o700)
+        retained=[];published=[];events=[]
+        socket_path=Path(self.f.sockets[0].getsockname())
+        real_verify=channel.session.verify_reuse
+        def verify(*args,**kwargs):
+            events.append(('verify',socket_path.exists()))
+            return real_verify(*args,**kwargs)
+        def retain(index,raw):
+            self.assertEqual(0,index)
+            retained.append(retain_observation_capture(output,label='query-0000',
+                capture=raw,source_fingerprint=source))
+            self.raw.update(raw);events.append(('retained',socket_path.exists()))
+            socket_path.unlink()
+        def guard():self.assertEqual(source,channel._source())
+        with mock.patch.object(channel.subprocess,'Popen',side_effect=self.consumer),mock.patch.object(channel.session,'verify_reuse',side_effect=verify):
+            result=keeper.bound_keep(self.root,self.corr,receipt,retain,
+                lambda i,value:published.append(value),guard,clock=lambda:0,sleep=lambda _:None)
+        self.assertEqual([('verify',True),('retained',True),('verify',False)],events)
+        self.assertEqual(1,len(retained));self.assertEqual(1,len(published))
+        raw_dir=output/'.rag_index/observation-runs'/retained[0]['runId']
+        self.assertEqual(b'',(raw_dir/'stdout.private').read_bytes())
+        self.assertEqual(self.stderr,(raw_dir/'stderr.private').read_bytes())
+        self.assertEqual(255,self.raw['returnCode']);self.assertTrue(self.raw['complete'])
+        self.assertEqual({'stdout':True,'stderr':True},self.raw['eof'])
+        self.assertEqual({'stdout':0,'stderr':len(self.stderr)},self.raw['counts'])
+        self.assertFalse(any(self.raw[k] for k in ('timeout','overflow','readError')))
+        query=published[0]
+        self.assertEqual('unknown',query['state']);self.assertEqual('closing',query['status']['failurePhase'])
+        self.assertEqual([],query['inventoryDiagnostics']);self.assertFalse(query['inventoryRetentionFailed'])
+        self.assertEqual(255,query['transport'][0]['returnCode'])
+        self.assertEqual(1,result['queryCount']);self.assertEqual('unknown',result['lastState'])
+        self.assertEqual('unknown',result['stopReason'])
+        for value in (query,result):
+            self.assertFalse(value['nativeActionAllowed']);self.assertFalse(value['newConnectionAllowed'])
+            self.assertFalse(value['applicationReplayAllowed'])
+        self.assertFalse(query['status']['replayAllowed'])
+        self.assertEqual(calls_before+1,len(self.calls));self.assertEqual(spawns_before,len(self.f.spawns))
+
     def test_raw_retention_exception_keeps_unknown(self):
         def refuse(value):raise OSError('private sentinel')
         value=self.invoke(retainer=refuse);self.assertEqual('unknown',value['state']);self.assertNotIn('sentinel',json.dumps(value))

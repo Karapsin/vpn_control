@@ -997,6 +997,66 @@ else:
         with self.assertRaisesRegex(ValueError,'admission_changed'):guard()
 
 
+
+    def full_context_program(self,selected,device):
+        from agent_tools import android_api35_coldboot_product_observation as api35
+        from agent_tools import android_avd_launch_recovery as census
+        reader=command.readonly;getter=api35 if device=='api35' else reader.getter_source
+        return ast.unparse(ast.parse(selected['adapter'].production_imports(device)+'\n'.join((
+            census._CENSUS.replace('__CFG__',repr({})),
+            getter.coldboot._BOOT.replace('__LAUNCH__',repr({})),
+            getter._GETTER.replace('__GETTER__',repr({})),
+            reader.proven._REMOTE.replace('__EXTERNAL__',repr({})),command.REMOTE,command._bounded_source()))))+'\n'
+
+    def install_compiled_full_context(self,backend,program):
+        names={'component_command','command_binary','command_request','command_host_identity','command_host_guard','command_bounded','getter_stage','child_identity','session_guest','qemu_fact','external_file','external_jdk','external_jdk_guard'}
+        full=compile(program,'<actual-full-production-context>','exec',dont_inherit=True)
+        found=set()
+        for value in full.co_consts:
+            if isinstance(value,types.CodeType) and value.co_name in names:
+                previous=backend[value.co_name]
+                backend[value.co_name]=types.FunctionType(value,backend,argdefs=previous.__defaults__)
+                found.add(value.co_name)
+        self.assertEqual(found,names)
+        return names
+
+    def test_complete_emitter_extra_import_context_requires_source_owned_rebinding(self):
+        selected,backend,args,_,log,_,_=self.api35_fixture()
+        original=self.full_context_program(selected,'api35')
+        names=self.install_compiled_full_context(backend,original)
+        reference={name:selected['adapter']._semantic_code(backend[name].__code__) for name in names}
+        self.assertEqual(set(bundle._guard_backend(selected,backend,'api35'))&names,names)
+        # Real direct assembler imports appended to the complete canonical
+        # producer alter Python3.14 module-attribute instructions. Compile only;
+        # no top-level observation or transport executes.
+        self.install_compiled_full_context(backend,original+'import math,copy\n')
+        mismatch={name for name in names if selected['adapter']._semantic_code(backend[name].__code__)!=reference[name]}
+        self.assertTrue(all(isinstance(backend[name],types.FunctionType) and backend[name].__globals__ is backend for name in names))
+        if mismatch:
+            with self.assertRaisesRegex(ValueError,'component_guard_fixed_backend_required:'):
+                bundle._guard_backend(selected,backend,'api35')
+        else:
+            # Older Python compilers do not make this optimization; coverage
+            # stays active, without fabricating bytecode or skipping a guard.
+            bundle._guard_backend(selected,backend,'api35')
+        # A source-owned consumer must restore the ORIGINAL complete producer
+        # CodeTypes before the genuine guard; no comparator/source waiver.
+        self.install_compiled_full_context(backend,original)
+        pins=bundle._guard_backend(selected,backend,'api35')
+        self.assertTrue(all(pins[name][0] is backend[name] and pins[name][1] is backend[name].__code__ for name in names))
+        bundle._selected_modules(self.receipt,selected)
+        self.assertFalse(log.exists())
+
+    def test_complete_emitter_rebinding_does_not_accept_foreign_globals(self):
+        selected,backend,args,_,log,_,_=self.api35_fixture()
+        names=self.install_compiled_full_context(backend,self.full_context_program(selected,'api35'))
+        original=backend['component_command']
+        backend['component_command']=types.FunctionType(original.__code__,dict(backend),argdefs=original.__defaults__)
+        with self.assertRaisesRegex(ValueError,'component_guard_fixed_backend_required:component_command'):
+            bundle._guard_backend(selected,backend,'api35')
+        self.assertFalse(log.exists())
+
+
 class CleanupReadmissionTests(unittest.TestCase):
     def campaign(self):
         from agent_tools.tests import test_android_installer_phase_guards as phase

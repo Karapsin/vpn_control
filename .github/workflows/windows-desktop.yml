@@ -187,6 +187,7 @@ jobs:
         shell: pwsh
         run: >-
           python -m unittest
+          agent_tools.tests.test_windows_diagnostic_authority_capture.PrivateExceptionChainTests
           agent_tools.tests.test_windows_cp117_c32_absence.C32AbsenceTests.test_windows_trigger_guard_accepts_only_empty_or_single_null
           agent_tools.tests.test_windows_cp117_c32_absence.C32AbsenceTests.test_windows_result_decoder_accepts_only_utf8_with_optional_bom
           agent_tools.tests.test_windows_cp117_source_campaign.SourceCampaignTests.test_actual_powershell_task_runtime_census_precedes_uninstall

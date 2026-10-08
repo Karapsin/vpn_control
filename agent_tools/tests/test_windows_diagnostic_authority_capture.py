@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
-from agent_tools.windows_diagnostic_authority_capture import AuthorityCapture
+from agent_tools.windows_diagnostic_authority_capture import AuthorityCapture, private_exception_chain
 
 
 class TestAuthorityCapture(unittest.TestCase):
@@ -115,6 +115,45 @@ class TestAuthorityCapture(unittest.TestCase):
         self.leaf.chmod(0o755)
         with self.assertRaises(ValueError): AuthorityCapture(self.root, self.leaf.name)
 
+
+    def test_private_exception_chain_is_private_bounded_and_capture_pinned(self):
+        class Inner(ValueError):
+            pass
+        class Outer(ValueError):
+            pass
+        inner = Inner("selected-status-detail")
+        outer = Outer("outer-rendered-error")
+        outer.__context__ = inner
+        outer.__suppress_context__ = True
+        raw = private_exception_chain(outer)
+        value = json.loads(raw)
+        self.assertEqual([row["exceptionType"] for row in value["contextChain"]], ["Outer", "Inner"])
+        self.assertEqual("selected-status-detail", value["contextChain"][1]["message"])
+        self.assertTrue(value["contextChain"][0]["displaySuppressed"])
+        pin = self.capture.create("original-exception.private", raw)
+        self.assertEqual(raw, self.capture.verify("original-exception.private", pin))
+        (self.leaf / "original-exception.private").write_bytes(raw)
+        with self.assertRaises(ValueError):
+            self.capture.verify("original-exception.private", pin)
+
+
+    def test_private_exception_chain_eight_unicode_control_nodes_fit_serialized_budget(self):
+        text = ('é' * 200) + '\x00\x01\n' * 100
+        rows = [ValueError(text) for _ in range(8)]
+        for left, right in zip(rows, rows[1:]): left.__context__ = right
+        raw = private_exception_chain(rows[0])
+        value = json.loads(raw)
+        self.assertLessEqual(len(raw), 8192)
+        self.assertEqual(['ValueError'] * 8, [row['exceptionType'] for row in value['contextChain']])
+        self.assertTrue(value['chainTruncated'])
+        for row in value['contextChain']:
+            self.assertLessEqual(len(row['message'].encode('utf-8')), 512)
+        pin = self.capture.create('escaped-chain.private', raw)
+        self.assertEqual(raw, self.capture.verify('escaped-chain.private', pin))
+
+
+
+
     def test_restrictive_umask_preserves_actual_public_parent_and_mode_drift_cases(self):
         # These exact native-causal conditions previously disappeared under077:
         # the old reader wrongly became eligible and700 was no mode transition.
@@ -129,3 +168,79 @@ class TestAuthorityCapture(unittest.TestCase):
             self.assertEqual([], result.skipped)
         finally:
             os.umask(previous)
+
+
+class PrivateExceptionChainTests(unittest.TestCase):
+    """Pure serializer contract; no native filesystem or POSIX fixture."""
+    def test_private_exception_chain_is_private_bounded_and_context_preserved(self):
+            class Inner(ValueError):
+                pass
+            class Outer(ValueError):
+                pass
+            inner = Inner("selected-status-detail")
+            outer = Outer("outer-rendered-error")
+            outer.__context__ = inner
+            outer.__suppress_context__ = True
+            raw = private_exception_chain(outer)
+            value = json.loads(raw)
+            self.assertEqual([row["exceptionType"] for row in value["contextChain"]], ["Outer", "Inner"])
+            self.assertEqual("selected-status-detail", value["contextChain"][1]["message"])
+            self.assertTrue(value["contextChain"][0]["displaySuppressed"])
+
+    def test_private_exception_chain_cycles_and_large_messages_are_bounded(self):
+            value = ValueError("x" * 50000)
+            value.__context__ = value
+            raw = private_exception_chain(value)
+            self.assertLessEqual(len(raw), 8192)
+            self.assertTrue(json.loads(raw)["chainTruncated"])
+
+    def test_private_exception_chain_eight_unicode_control_nodes_fit_serialized_budget(self):
+            text = ('é' * 200) + '\x00\x01\n' * 100
+            rows = [ValueError(text) for _ in range(8)]
+            for left, right in zip(rows, rows[1:]): left.__context__ = right
+            raw = private_exception_chain(rows[0])
+            value = json.loads(raw)
+            self.assertLessEqual(len(raw), 8192)
+            self.assertEqual(['ValueError'] * 8, [row['exceptionType'] for row in value['contextChain']])
+            self.assertTrue(value['chainTruncated'])
+            for row in value['contextChain']:
+                self.assertLessEqual(len(row['message'].encode('utf-8')), 512)
+
+    def test_private_exception_chain_final_false_flag_width_edge_is_honest(self):
+            kind = type('Edge', (ValueError,), {})
+            kind.__name__ = '\x01' * 128
+            rows = [kind('x' * 512), kind('x' * 188)] + [kind('') for _ in range(6)]
+            for left, right in zip(rows, rows[1:]): left.__context__ = right
+            raw = private_exception_chain(rows[0]); value = json.loads(raw)
+            self.assertEqual(8191, len(raw)); self.assertTrue(value['chainTruncated'])
+            self.assertEqual(8, len(value['contextChain']))
+            self.assertEqual([kind.__name__] * 8, [row['exceptionType'] for row in value['contextChain']])
+            self.assertEqual(699, sum(len(row['message']) for row in value['contextChain']))
+            # This actual boundary is8192 with True but8193 with False.
+            value['contextChain'][-1]['message'] += 'x'
+            encoded = lambda: json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+            self.assertEqual(8192, len(encoded()))
+            value['chainTruncated'] = False; self.assertEqual(8193, len(encoded()))
+
+    def test_private_exception_chain_complete_and_small_cycle_flags_preserve_nodes(self):
+            one = ValueError('first é'); two = RuntimeError('second'); one.__context__ = two
+            value = json.loads(private_exception_chain(one))
+            self.assertFalse(value['chainTruncated'])
+            self.assertEqual(['ValueError', 'RuntimeError'], [row['exceptionType'] for row in value['contextChain']])
+            self.assertEqual(['first é', 'second'], [row['message'] for row in value['contextChain']])
+            two.__context__ = one
+            value = json.loads(private_exception_chain(one))
+            self.assertTrue(value['chainTruncated']); self.assertEqual(2, len(value['contextChain']))
+
+    def test_private_exception_chain_unprintable_invalid_and_utf8_type_bounds(self):
+            class Unprintable(ValueError):
+                def __str__(self): raise RuntimeError('not printable')
+            value = json.loads(private_exception_chain(Unprintable()))
+            self.assertEqual('<unprintable>', value['contextChain'][0]['message'])
+            self.assertTrue(value['chainTruncated'])
+            kind = type('Long', (ValueError,), {}); kind.__name__ = 'é' * 128
+            value = json.loads(private_exception_chain(kind('message')))
+            self.assertLessEqual(len(value['exceptionType'].encode('utf-8')), 128)
+            self.assertLessEqual(len(value['contextChain'][0]['exceptionType'].encode('utf-8')), 128)
+            self.assertTrue(value['chainTruncated'])
+            with self.assertRaises(ValueError): private_exception_chain('foreign')

@@ -1264,3 +1264,33 @@ class RetirementTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     retirement.release_fenced(lease, root / "release", root / "fence", expected, generation, digest, proof())
             self.assertTrue(lease.exists()); self.assertTrue((base / "old-parent" / "lease").exists())
+
+
+class ComponentReleaseExportTests(unittest.TestCase):
+    """Actual held-source producer and consuming binding, no native records."""
+    def emitted(self):
+        raw=Path(retirement.__file__).read_bytes()
+        return raw, retirement.component_release_source(raw,hashlib.sha256(raw).hexdigest())
+
+    def test_actual_release_factory_exports_original_validator(self):
+        import ast,types
+        raw,source=self.emitted();scope={}
+        # Execute only the genuine pure generated definitions. A real consumer
+        # subscript, not an injected dict/function or synthetic missing export.
+        exec(compile(source,'<actual-release-producer>','exec',dont_inherit=True),scope)
+        function=scope['validate_original'];self.assertIs(function.__globals__,scope)
+        node=next(n for n in ast.parse(raw).body if isinstance(n,ast.FunctionDef) and n.name=='validate_original')
+        expected={'Any':object};exec(compile(ast.get_source_segment(raw.decode(),node),'<actual-held-validator>','exec',dont_inherit=True),expected)
+        self.assertEqual(function.__code__.co_code,expected['validate_original'].__code__.co_code)
+        self.assertEqual(function.__code__.co_names,expected['validate_original'].__code__.co_names)
+        dispatch={'sourceSha':'d32f719a08db57e5d40ce2bf77e0d7c5b42de557','toolBundleId':'sha256-64c3b9f8176515770db963dd5858d3044ebd969b8d460272eb9ef3f4c9deb7ac'}
+        product={'correlationId':CORR,'pair':{'sourceSha':dispatch['sourceSha']}}
+        function(dispatch,product,CORR)
+        with self.assertRaisesRegex(ValueError,'only_reviewed_original_allowed'):function(dispatch,product,NEW)
+        changed={**product,'pair':{'sourceSha':'foreign'}}
+        with self.assertRaises(ValueError):function(dispatch,changed,CORR)
+
+    def test_actual_release_factory_source_exchange_refuses(self):
+        raw,source=self.emitted();digest=hashlib.sha256(raw).hexdigest()
+        with self.assertRaisesRegex(ValueError,'component_factory_source_changed'):
+            retirement.component_release_source(raw+b'\n# exchanged',digest)

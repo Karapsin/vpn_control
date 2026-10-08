@@ -137,6 +137,27 @@ class RouteTests(unittest.TestCase):
                     if kind in paths:p=paths[kind];p.write_bytes(p.read_bytes()+b' ')
                 _,run=self.mocks(stack,transport);stack.enter_context(mock.patch.object(route.availability,'_snapshot',side_effect=snapshot));result=route.dispatch(root,route.ACTION,{})
                 self.assertFalse(result['ok']);self.assertIn('receiptSha256',result);run.assert_called_once()
+    def test_reviewed_capture_dependency_matches_actual_source_epoch(self):
+        # Reviewed capture diagnostics add only pure helpers; full module remains
+        # fixed and authenticated, while the actual capture implementation is unchanged.
+        reviewed='9f231543e1922a3554be4f42c006ddbf7f46cb206e85a71cc1d017d68e1a431f'
+        self.assertEqual(reviewed,hashlib.sha256(Path(route.authority.__file__).read_bytes()).hexdigest())
+        self.assertEqual(reviewed,route.CAPTURE_SOURCE)
+
+    @unittest.skipUnless(POSIX_CAPABLE,'POSIX descriptors required')
+    def test_capture_source_changed_before_transport_refuses_without_receipt(self):
+        with tempfile.TemporaryDirectory()as tmp,ExitStack()as stack:
+            root=Path(tmp).resolve();self.fixture(root);_,run=self.mocks(stack,lambda *args:None)
+            original=route.availability._snapshot
+            def changed_capture(path):
+                pin,raw=original(path)
+                if Path(path)==Path(route.authority.__file__).absolute():raw+=b'\n'
+                return pin,raw
+            stack.enter_context(mock.patch.object(route.availability,'_snapshot',side_effect=changed_capture))
+            result=route.dispatch(root,route.ACTION,{})
+            self.assertFalse(result['ok']);self.assertEqual('observation_unknown',result['reason'])
+            run.assert_not_called();self.assertNotIn('receiptSha256',result);self.assertFalse((root/'.runtime').exists())
+
     @unittest.skipUnless(POSIX_CAPABLE,'POSIX descriptors and pipe selection required')
     def test_frozen_source_wrong_before_transport(self):
         with tempfile.TemporaryDirectory()as tmp,ExitStack()as stack:

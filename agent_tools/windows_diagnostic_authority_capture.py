@@ -5,6 +5,7 @@ private. This captures original authority, never recovers it from named files.
 """
 from pathlib import Path
 import hashlib
+import json
 import os
 import re
 import stat
@@ -17,6 +18,94 @@ def _identity(s):
 def _generation(s):
     return [s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_gid,
             s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns]
+
+
+def _private_utf8(value: str, limit: int) -> tuple[str, bool]:
+    raw = value.encode("utf-8", "replace")
+    clipped = raw[:limit]
+    return clipped.decode("utf-8", "ignore"), len(raw) > len(clipped)
+
+
+def private_exception_chain(exc: BaseException) -> bytes:
+    """Serialize a bounded exception chain for a private AuthorityCapture record."""
+    if not isinstance(exc, BaseException):
+        raise ValueError("diagnostic-exception")
+    rows = []
+    seen = set()
+    current = exc
+    incomplete = False
+    while current is not None and len(rows) < 8 and id(current) not in seen:
+        seen.add(id(current))
+        try:
+            rendered = str(current)
+        except BaseException:
+            rendered = "<unprintable>"
+            incomplete = True
+        message, message_clipped = _private_utf8(rendered, 512)
+        kind, kind_clipped = _private_utf8(type(current).__name__, 128)
+        incomplete = incomplete or message_clipped or kind_clipped
+        rows.append({
+            "exceptionType": kind,
+            "message": message,
+            "displaySuppressed": current.__suppress_context__ is True,
+        })
+        current = current.__cause__ if current.__cause__ is not None else current.__context__
+    incomplete = incomplete or current is not None
+    outer, outer_clipped = _private_utf8(type(exc).__name__, 128)
+    incomplete = incomplete or outer_clipped
+    value = {
+        "version": 1,
+        "exceptionType": outer,
+        "contextChain": rows,
+        # Fit pessimistically.  False is one byte longer and is checked below.
+        "chainTruncated": True,
+        "nativeDispatchProven": False,
+    }
+
+    def encoded():
+        return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                          ensure_ascii=False).encode("utf-8")
+
+    def fit_true_budget():
+        nonlocal incomplete
+        for row in rows:
+            if len(encoded()) <= 8192:
+                break
+            full = row["message"]
+            lo, hi = 0, len(full)
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                row["message"] = full[:mid]
+                if len(encoded()) <= 8192:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            row["message"] = full[:lo]
+            if lo != len(full):
+                incomplete = True
+        if len(encoded()) > 8192:
+            raise ValueError("diagnostic-exception-chain-schema")
+
+    fit_true_budget()
+    value["chainTruncated"] = incomplete
+    # The final False literal is one byte longer than the pessimistic True
+    # literal.  If it crosses the boundary, remove one available code point
+    # and mark that loss honestly, then re-fit with the final True literal.
+    if len(encoded()) > 8192:
+        for row in reversed(rows):
+            if row["message"]:
+                row["message"] = row["message"][:-1]
+                incomplete = True
+                value["chainTruncated"] = True
+                fit_true_budget()
+                break
+        else:
+            raise ValueError("diagnostic-exception-chain-schema")
+    value["chainTruncated"] = incomplete
+    raw = encoded()
+    if len(raw) > 8192:
+        raise ValueError("diagnostic-exception-chain-schema")
+    return raw
 
 
 class AuthorityCapture:

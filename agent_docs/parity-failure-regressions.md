@@ -1,5 +1,35 @@
 # Parity Failure-to-Regression Ledger
 
+## Routine export, compiler, diagnostics and closing coverage — 2026-10-08
+
+This checkpoint promotes reviewed source/local controls; it does not close native
+update acceptance or recover an unrecorded historical failure cause.
+
+| Failure class | Causal evidence and narrow change | Routine coverage | Remaining gate |
+| --- | --- | --- | --- |
+| Android definitions export | Original36546 failed with KeyError `validate_original` before entry. The complete canonical definitions producer reproduces the omission; exporting the existing authenticated definition fixes it without changing validator, lease or admission behavior. | Two definitions export/source-exchange controls in `test_android_installer_failed_check_retirement.py`. | Complete current direct assembly and original native cleanup/update, then matching MCP. |
+| Android compiler context | Extra imports affect Python3.14 generated attribute instructions. Tests compile the complete canonical template context and retain genuine function/code/global guards; production comparison remains unchanged. | Two compiler-context and foreign-context controls in `test_android_installer_component_bundle.py`; older compilers retain honest guard coverage. | The separate direct assembler and native scenario remain required. |
+| Android current capture dependency | Full prepush ran5985 tests in1608.093 seconds and failed three routing cases because the active route retained capture source8101 after the reviewed diagnostics helper changed its complete module to9f231. Actual capture class and generation code are unchanged. Update only the explicit current dependency pin; keep the getter246 historical pin and every source/drift guard. | Original three dispatch failures and the new dependency regression fail before the fix. All16 `RouteTests` pass after it, including unexpected capture bytes refusing before getter/config/credential/capture/transport. The existing reservation read still precedes source checking. | Source/local repair does not establish a current native routing or update result. Fresh complete prepush and native/MCP acceptance remain required. |
+| Private exception serialization | Actual eight-node escaped/Unicode chain overflow and final boolean-width boundary fail before the bounded UTF-8 repair. The helper preserves type/node identity and honest truncation within8192 bytes. | Six fixture-free `PrivateExceptionChainTests`, both complete FD/capture controls, and the actual suppressed selected-route context case. Pure cases run with getuid/O_DIRECTORY/O_NOFOLLOW absent and in the existing Windows package CI selection. | The helper is opt-in; actual diagnostic holder/input/raw wiring is not established. Existing POSIX FD integration remains on its supported host. |
+| SSH close after retained result | A genuine harmless collector completes with retained rc255 and dual EOF, then exact owned outer socket removal before closing yields UNKNOWN without replay, relaunch or dropping retained custody. | `FreshChannelTests.test_outer_socket_loss_after_successful_raw_retention_stops_without_replay`. | Preventive interruption coverage does not identify the cause of an earlier lost connection or prove native app acceptance. |
+
+Public promotion and peer evidence are retained in
+`.runtime/android-routine-promotion-candidate/`,
+`.runtime/android-routine-promotion-peer/`,
+`.runtime/windows-context-chain-portable-promotion/`,
+`.runtime/windows-context-chain-portable-peer/` and
+`.runtime/ssh-keeper-closing-source-map/diagnostic-compatible-successor/`.
+The routing dependency repair and independent16-test review are in
+`.runtime/android-routing-prepush-repair/` and
+`.runtime/android-routing-prepush-peer/`.
+The combined root map preserves exact before/after hashes and reviewed paths.
+Original failed source, logs and partial native receipts are not relabelled.
+
+The current Windows40b transport actor-publication failure and Android3807 routing
+failure have separate original receipts and source/local successors. Their complete
+native/MCP and routine extraction gates remain pending; the delivered controls
+above must not be used to claim those scenarios passed.
+
 ## Complete Windows script and HTTPS routine guards — 2026-10-07
 
 - Actual0ad8 diagnostic suffix replacement omitted the original outer finally.

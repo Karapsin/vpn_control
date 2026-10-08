@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.4 - 2026-10-08
 
 - Keep receipt-bound SSH close compatible with the reviewed transport and test production source pins.
 - Add routine regressions for enrolled server sources at dispatch and result publication.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Add receipt-bound SSH keepers with immutable source guards, retained diagnostics, and causal regressions.
 - Preserve ended SSH channel compatibility across reviewed tool updates.
 - Verify original SSH SDK process ownership and preserve launch, result and delivery custody.
+- Restore authenticated Android exports and capture bindings; add portable private diagnostics and SSH closing regressions.
 
 ## 2.2.3 - 2026-10-07
 

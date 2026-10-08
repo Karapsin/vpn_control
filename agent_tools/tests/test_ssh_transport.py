@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import shlex
 import sys
 import tempfile
@@ -15,6 +16,7 @@ ssh = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = ssh
 assert spec.loader is not None
 spec.loader.exec_module(ssh)
+from agent_tools.windows_diagnostic_authority_capture import private_exception_chain
 
 
 class SshTransportTest(unittest.TestCase):
@@ -103,6 +105,33 @@ class SshTransportTest(unittest.TestCase):
             self.assertIn(f"UserKnownHostsFile={known}", argv)
             self.assertEqual(argv[-1], "true")
             self.assertNotIn("s3cr3t", " ".join(argv))
+
+
+    def test_selected_route_from_none_private_chain_retains_context_without_changing_throw(self):
+        class SelectionUnknown(ValueError):
+            pass
+        class SessionUnknown(ValueError):
+            pass
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".rag_index/ssh-channel-selection").mkdir(parents=True, mode=0o700)
+            config = SimpleNamespace(root=root, hosts={"archlinux": object()})
+            def selected_failure(*_args):
+                raise SelectionUnknown("controlled-selected-status-unknown")
+            selection = SimpleNamespace(selected_route_options=selected_failure,
+                                        SelectionUnknown=SelectionUnknown, transport=ssh)
+            session = SimpleNamespace(SessionUnknown=SessionUnknown)
+            with mock.patch.object(ssh, "_route_hosts", return_value=[object(), object()]), \
+                 mock.patch.object(ssh, "_selection_module", return_value=selection), \
+                 mock.patch.object(ssh, "_session_module", return_value=session):
+                with self.assertRaises(ssh.SshConfigError) as raised:
+                    ssh.build_ssh_argv(config, "archlinux", 60, command=["true"])
+        self.assertIsInstance(raised.exception.__context__, SelectionUnknown)
+        self.assertNotIn("controlled-selected-status-unknown", str(raised.exception))
+        chain = json.loads(private_exception_chain(raised.exception))
+        self.assertEqual([item["exceptionType"] for item in chain["contextChain"]],
+                         ["SshConfigError", "SelectionUnknown"])
+        self.assertTrue(chain["contextChain"][0]["displaySuppressed"])
 
     def test_unknown_explicit_selection_never_falls_back_to_canonical_socket(self):
         with tempfile.TemporaryDirectory() as directory:

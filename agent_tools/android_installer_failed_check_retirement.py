@@ -558,7 +558,7 @@ def component_admission_source(source_raw: bytes, expected_source_sha256: str) -
     # authenticated by the fixed caller's reviewed source SHA. No getsource or
     # named-path reread can introduce exchanged bytes during preparation.
     text=source_raw.decode('utf-8','strict');tree=ast.parse(text)
-    names=('validate_component_terminal_history','validate_component_certificate','validate_component_public_receipt',
+    names=('validate_original','validate_component_terminal_history','validate_component_certificate','validate_component_public_receipt',
         'measure_component_retained_snapshot','validate_component_retained_proof',
         'admit_component_fenced','_canonical','routing_digest','_generation','_ancestry','_create')
     definitions=[]
