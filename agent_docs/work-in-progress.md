@@ -33,7 +33,65 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-09
+## Current acceptance status — 2026-10-10,02:00 Moscow
+
+Delivered HEAD and origin/dev remain `68397817fabf1eef9a06e79958649240ed59645a`,
+product2.2.4. The next intentional tooling checkpoint spans the reviewed direct
+SSH provider, Windows test portability, Android immutable JDK preparation and
+the exact dependency pin for the existing SSH close tool. Root owns integration,
+metadata, validation and delivery. No release is authorized.
+
+| Slice | Owner and environment | Verified evidence | Next gate |
+| --- | --- | --- | --- |
+| Windows connection | windows_operator; sole Pi/Arch/Windows operator | Actual managed prepare, actual receipt selection and normal probe passed; genuine idle expiry positively ended the connection, expired selection refused without fallback, then a fresh correlation prepared and ended. Every source/capture holder closed. | New exact-source MSI pair, installed old-to-new public update, ordinary-user return, failure/recovery/cleanup directly, then equivalent MCP cases. |
+| Windows packaging | assembly_review returned four portability scripts; root integrates | Hosted correlationcd758 is terminal failed and unreplayed. Precise POSIX guards preserve portable cases; Windows-like86-test probe and actual POSIX suites pass. | Validated dev checkpoint, new correlation and actual hosted packaging. |
+| Tooling validation | root; local host | Original managed prepush2749 ended failed after6078 agent tests:27 failures and five errors, all in the close module. Its transport source pin still named the previous reviewed bytes. Existing current-source regression reproduces the refusal; the worker returned a one-literal repair with26 close and71 related tests passing, zero skips. Earlier diff/release/docs hygiene passed. | Focused causal GREEN, final metadata and fresh complete prepush before push. |
+| Android API35 | android_api35_operator; ignored factory/caller preparation; Windows operator admits remote execution | Reviewed actual caller packet closes1046 descriptors and preserves seven measured RED failures;12 portable controls pass. Root applied the exact two-file JDK source-context proposal. Fixed six immutable root-owned JDK roles only; fresh public/physical queries and writable getter checks remain. | Canonical focused checks, honest changed active source pins and genuine LOCAL preparation, then fresh admitted native proof; no replay of the original unknown fullfacts operation. |
+| Android packages | root; clean source683 managed worktree | Nondebuggable x86_64 base2.2.3 and target2.2.4 APKs built and inspected with matching development signer; retained hashesefd4daf1 andb18a5ba6 preserve original source683. | Installed signer and fresh cohort admission; packages remain engineering evidence. |
+| Remaining full acceptance | root with platform owners | Current matrix remains22 groups/217 overlapping occurrences:zero passed, two historical,20 open.249 visual pairs retain243 valid baselines and six missing desktop Add/Edit pairs. | Complete Windows/Android, then Linux/macOS direct/MCP/visual scenarios, reconcile evidence and perform one final exact-SHA five-workflow check. |
+
+Current native connection closeout:
+`.runtime/windows-managed-direct-lifecycle-771454ee/native-lifecycle-closeout.json`
+(SHA c4453e21). Actual failed prepush receipt:
+`.rag_index/check-runs/5a6d7340-fbca-4939-8f1d-f2eb0e665bcb/receipt.json`.
+Android exact two-file handoff and causal receipts:
+`.runtime/android-current-proof-readonly-a23/jdk-join-candidate-ccedf018-bc43-42db-acc9-7442ba340fa4/integration-handoff-exact.json`
+(SHA8ccadf90). These component and connection results do not prove product update
+acceptance. Preserve every historical unknown operation and consumed correlation.
+
+## Historical acceptance status — 2026-10-10,01:14 Moscow
+
+Delivered checkpoint `68397817fabf1eef9a06e79958649240ed59645a` is on dev,
+product2.2.4, with six Unreleased bullets. Its content-bound prepush85279 passed
+all15 commands. It delivers the Windows retained ordinary-user return admission,
+Android cold-owner installer resume, and portable current-owner factory controls.
+Required five-workflow verification remains deferred to final delivery as requested.
+
+| Slice | Exclusive owner and environment | Established current evidence | Next gate |
+| --- | --- | --- | --- |
+| Windows native operation | windows_operator; assigned Windows guest and Pi/Arch route | Direct SSH authenticated, installed2.1.19 readiness passed, and canonical fixture dispatch submitted exact-source683 pair2.2.3/2.2.4, correlationcd758626-5098-4bf4-b61b-4fe6e75c7295. Hosted run37996135529 then failed before MSI packaging because two Android test suites consumed POSIX-only APIs on Windows. No installer started. | Fix precise test selection, validate and push; build a new exact-source pair under a new correlation, then prove public update, return, recovery and cleanup directly and through MCP. |
+| Windows build-check repair | assembly_review; four owned Python test/platform-probe scripts only | Preserved actual test bodies reproduce20 failing methods under Windows-like APIs. Fixed86-test probe has54 passes/32 precise skips/zero errors; all five explicit portable checks remain active. Actual POSIX suites42+44 pass without skips. Native privacy APIs stay strict and all Windows source holders are closed. | Final peer/proof review, root canonical checks and delivery, then actual fresh-source hosted packaging. |
+| SSH MCP integration | root integration; worker returned six canonical paths | Direct configured nested route and fresh canonical askpass/master setup worked through readiness and durable hosted dispatch. Root authenticated23 source/proof bodies and integrated explicit direct prepare/status/select, separate journal and version2 selector. Canonical151 focused controls pass; Windows-like discovery has13 POSIX skips/three portable passes with no POSIX imports. Historical journals remain unchanged. | Deliver the reviewed provider and prove equivalent actual MCP flow, idle-end refusal and fresh-correlation lifecycle. Local controls do not prove native equivalence. |
+| Android API35 | android_api35_operator; emulator5682 and ignored JDK join sources | Original fullfacts timeout and unknown guest effects remain preserved. Immutable six-role JDK context has16 component controls, including genuine alias-mutation RED/GREEN. Actual caller join controls exposed additional method/cleanup defects now being repaired. | Finish real caller regressions, preserve every fresh public/physical query, then bounded current proof and exact lease cleanup before native installer scenarios. |
+| Android package preparation | root; clean managed android-parity-683 worktree, local Gradle | Source683 nativeFixture pair2.2.3/code16860 and2.2.4/code16880 built under original handle17882, terminal0,76.38s and33.31s. Both x86_64/nondebuggable packages passed canonical APK inspection and have the same development signer; APK hashesefd4daf1… andb18a5ba6… retain source683 provenance. No guest install or old artifact relabelling occurred. | Verify installed signer compatibility and coordinate a fresh admitted cohort with the Android owner. Engineering builds do not close native acceptance. |
+| Integration, Linux/macOS and final matrix | root; tracked docs, Gradle, Git and local Mac | Full acceptance audit remains22 groups/217 overlapping occurrences:0 current passed,2 historical,20 open. Visual inventory remains249 pairs,243 valid, six missing desktop Locations Add/Edit baselines. | Deliver coherent repairs; complete Windows/Android, then Linux/macOS direct and MCP scenarios, current visuals, matrix reconciliation and final exact-SHA five-workflow gate. |
+
+The original hosted correlation is terminal/failed and must not be redispatched.
+The separate c653 ordinary-process control ended with TaskStateReady/LastTaskResult1
+and no terminal result; it does not prove a product update defect or the historical
+cb process-exit cause. Its exact task observation and route closure are retained.
+All new Windows outer/native observers are terminal and current canonical holders
+are zero before source repair. Historical unknown jobs and fixture leases remain
+unchanged. Engineering APK/MSI evidence does not close final-source acceptance.
+
+Public current evidence: `windows-hosted-pair-cd758-status-002/public.json`,
+`windows-hosted-pair-cd758-failed-log/public.json`,
+`windows-real-process-control-readonly-683-44f45b406d904d679ac382d5209b5b0c/public.json`,
+and `windows-direct-inner-ended-683-a9e70e70d6864f6ca165259c5ea50b39/public.json`.
+Original Android component/join evidence and retained private captures stay at their
+existing ignored locators. No release is authorized.
+
+## Historical acceptance status — 2026-10-09
 
 Checkpoint `3eb2254c31ebe8eba8e47d50fa092230f2f3cd16` delivered the reviewed
 collector, Android physical-batch, public source regression and Windows CLI alias

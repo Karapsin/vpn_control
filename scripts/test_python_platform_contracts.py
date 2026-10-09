@@ -2,6 +2,8 @@
 """Causal regressions for the executable Python platform-contract probes."""
 from __future__ import annotations
 
+import ast
+import json
 import unittest
 
 import check_python_platform_contracts as subject
@@ -57,6 +59,47 @@ with mock.patch.object(os_surface, "getsid", return_value=123, create=True):
         for probe in subject.METHOD_PROBES:
             result = subject.probe_test_methods(probe)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+
+class AndroidTestCapabilityProbeTest(unittest.TestCase):
+    @staticmethod
+    def without_skip(module, method):
+        """Remove a guard while retaining the actual test and production bodies."""
+        tree = ast.parse((subject.SCRIPTS / (module + ".py")).read_text(encoding="utf-8"))
+        class_name, method_name = method.split(".")
+        case = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == class_name)
+        body = next(node for node in case.body if isinstance(node, ast.FunctionDef) and node.name == method_name)
+        body.decorator_list = []
+        return ast.unparse(tree)
+
+    def test_missing_preflight_guard_executes_real_body_and_fails_without_directory_flags(self):
+        module = "test_android_no_update_tls_preflight"
+        method = "PreflightScriptTest.test_push_failure_after_owned_staging_removes_stage_and_restores_public_adbd"
+        result = subject.probe_windows_android_test_suites({module: self.without_skip(module, method)})
+        self.assertNotEqual(0, result.returncode)
+        summary = json.loads(result.stdout.splitlines()[-1])
+        self.assertIn(module + "." + method, summary["errors"])
+        self.assertIn("AttributeError: O_DIRECTORY", result.stderr)
+
+    def test_missing_installer_guard_reaches_actual_windows_private_write_refusal(self):
+        module = "test_android_installer_lifecycle"
+        method = "InstallerEarlyReplyEvidenceTest.test_all_four_replies_are_private_create_only_and_oversized_data_is_explicitly_bounded"
+        result = subject.probe_windows_android_test_suites({module: self.without_skip(module, method)})
+        self.assertNotEqual(0, result.returncode)
+        summary = json.loads(result.stdout.splitlines()[-1])
+        self.assertIn(module + "." + method, summary["errors"])
+        self.assertIn("ValueError: Installer CLI evidence requires POSIX file APIs", result.stderr)
+
+    def test_real_suites_keep_exact_posix_skips_and_portable_windows_coverage(self):
+        result = subject.probe_windows_android_test_suites()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        summary = json.loads(result.stdout.splitlines()[-1])
+        expected = {module + "." + method for module, methods in subject.ANDROID_POSIX_METHODS.items() for method in methods}
+        self.assertEqual(expected, set(summary["skipped"]))
+        self.assertEqual(set(subject.ANDROID_WINDOWS_METHODS), set(summary["portablePassed"]))
+        self.assertGreater(summary["passed"], len(subject.ANDROID_WINDOWS_METHODS))
+        self.assertEqual([], summary["errors"])
+        self.assertEqual([], summary["failures"])
 
 
 class ManifestTest(unittest.TestCase):

@@ -1,5 +1,87 @@
 # Parity Failure-to-Regression Ledger
 
+## SSH close dependency enrollment and Android JDK caller — 2026-10-10
+
+The complete managed prepush2749 preserved32 failing events in the existing
+SSH close suite:27 failures and five errors among6078 tests. The exact transport
+pin still named the earlier reviewed file, so close refused before creating its
+intent or control child. The existing actual-current-source test reproduces RED;
+only the admitted transport constant is reenrolled. The same current-source and
+unauthorized-byte selectors pass afterward, as do26 close and71 related tests
+with zero skips; exact byte inverse and independent review pass. Unauthorized transport bytes,
+original history, configuration and source replacement remain refused. The close
+suite stays in routine discovery; full validation and delivery remain separate.
+Original evidence: `.rag_index/check-runs/5a6d7340-fbca-4939-8f1d-f2eb0e665bcb/`.
+
+Android's actual immutable-JDK caller join exposed mutable adapter methods/code,
+checker replacement and incomplete cleanup. The preserved sources reproduce five
+plus two failures; the reviewed successor passes12 portable controls and13 focused
+controls. Root integrated the exact bundle and new discovery test. The context is
+default-off and restricted to six immutable root-owned JDK files, with full initial
+and closing byte checks and per-use descriptor/generation checks. Public status,
+physical observations, writable getter reads and original native queries remain
+fresh. Tests use owned synthetic-principal descriptors and do not establish Linux
+or Android native acceptance. Original timeout/unknown effects remain unreplayed.
+Exact source/causal packet: `.runtime/android-current-proof-readonly-a23/jdk-join-candidate-ccedf018-bc43-42db-acc9-7442ba340fa4/sealed-final-packet.json`
+(SHA55b673b6); normal `agent_tools/tests` discovery includes the new JDK suite.
+Canonical focused tests, genuine LOCAL preparation and native proof remain open.
+
+## Windows fixture packaging portability — 2026-10-10
+
+Hosted Windows fixture run37996135529 for source68397817, pair2.2.3/2.2.4,
+correlationcd758626-5098-4bf4-b61b-4fe6e75c7295 failed before producing MSIs.
+Release hygiene invoked Android tests that require O_DIRECTORY and private POSIX
+evidence APIs. The production private writer correctly refused on Windows;
+this failure does not establish a product installer defect. The correlation is
+terminal/failed and cannot be redispatched.
+
+The test owner preserved original bodies and ran the complete suites with
+module-local Windows-like API proxies, exposing additional POSIX-only cases
+beyond the bounded hosted excerpt. The original86-test probe has32 error events
+from20 methods; the fixed probe has54 passes/32 precise skips/zero errors, with
+all five explicit portable checks passing in both. Twenty-one new method guards
+preserve original test bodies under an exact AST inverse. Actual POSIX suites
+pass42+44 tests without skips;12 checker tests and its two import/five capability
+probes pass, including real-body guard-removal regressions. The existing release
+hygiene runs the new probe. Root reviewed the four exact canonical bodies and
+independent clear peer. Full prepush and a new exact-source hosted fixture build
+remain open; Windows-like local evidence is not native packaging acceptance.
+
+Public native evidence:
+`.runtime/parity-evidence/windows-hosted-pair-cd758-status-002/public.json` and
+`.runtime/parity-evidence/windows-hosted-pair-cd758-failed-log/public.json`.
+Repair beforeimages and actual test-body controls are owned under
+`.runtime/windows-posix-check-fix-23833a39-9570-4d2f-8c29-1241c2d455fe/`.
+
+## Explicit direct nested transport — 2026-10-10
+
+Refreshing Windows VM descriptor fields invalidated the historical whole-config
+outer-session authority. It did not prove an SSH credential failure. An explicit
+configured direct gateway route and unchanged canonical fresh-inner program then
+authenticated, passed installed2.1.19 readiness, and submitted the hosted fixture
+build above. Original route journals and unknown native jobs were not rewritten.
+
+The MCP candidate adds explicit prepare/status/select, a separate create-only
+journal and current version2 selector with an owned reuse-only inner socket.
+It preserves full config/password/key/source checks and forbids automatic
+fallback or replay. Initial local evidence is148 controls including the actual
+preserved metadata-refresh RED/GREEN. Review found an unguarded POSIX-only test
+class. The preserved initial module reproduces Windows-like fcntl import failure;
+the successor discovers16 tests, skips13 precise POSIX cases and passes three
+portable unsupported-coordinator checks without POSIX imports. All151 focused
+POSIX controls pass. Root authenticated23 source/proof bodies and integrated the
+six reviewed paths; canonical checks and native equivalence remain separate gates.
+Actual managed prepare/select/probe, idle-end refusal and a subsequent fresh
+correlation lifecycle passed in engineering source683 plus the frozen14-path
+provider checkpoint. Both connections positively ended and every holder closed;
+closeout is `.runtime/windows-managed-direct-lifecycle-771454ee/native-lifecycle-closeout.json`
+(SHAc4453e21). This proves connection equivalence only; product acceptance remains
+open.
+
+Source-only packets are retained under
+`.runtime/windows-direct-engineering-transport-683/`,
+`.runtime/windows-direct-engineering-auth-683/` and
+`.runtime/ssh-direct-mcp-integration-3f89f190-35d6-42e9-a2e9-c1163ddb2f0e/`.
 
 ## Product return/resume and current-owner source binding — 2026-10-09
 

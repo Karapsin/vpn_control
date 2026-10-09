@@ -2015,12 +2015,52 @@ def _keeper_dispatch_authenticated(entry,authenticated,action,corr,identity):
         return {'tool':'ssh_workflow','ok':True,**entry.observe(REPO_ROOT,corr,receipt,digest,_outer_source_holder=authenticated)}
     finally:source.close()
 
+def _ssh_direct_channel_workflow(action,host,timeout_seconds,identity,transfer,device):
+    """Explicit connection-only entry; no command, old-session adoption or replay."""
+    unknown={'tool':'ssh_workflow','ok':False,'state':'unknown','connectionOnly':True,
+             'nativeActionAllowed':False,'replayAllowed':False}
+    try:
+        method=action.removeprefix('connection-direct-channel-')
+        fields={'correlationId','receiptSha256'} if method=='select' else {'correlationId'}
+        if host!='archlinux' or type(timeout_seconds)is not int or not 1<=timeout_seconds<=60 or transfer is not None or device is not None or type(identity)is not dict or set(identity)!=fields or not _valid_uuid(identity['correlationId']):return unknown
+        corr=uuid.UUID(identity['correlationId']).hex
+        adapter=importlib.import_module(f"{__package__ or 'agent_tools'}.ssh_direct_nested_channel")
+        if not adapter.coordinator_capable():return unknown
+        if method=='select':
+            digest=identity['receiptSha256']
+            if type(digest)is not str or re.fullmatch('[0-9a-f]{64}',digest)is None:return unknown
+            selector=importlib.import_module(f"{__package__ or 'agent_tools'}.ssh_channel_selection")
+            value=selector.select_channel(REPO_ROOT,host,corr,digest,direct=True)
+            expected={'state':'selected','host':host,'correlationId':corr,'receiptSha256':digest}
+            return {**unknown,'ok':True,**value} if value==expected else unknown
+        if method not in ('prepare','status'):return unknown
+        def retain(capture):
+            check_output_retention.retain_observation_capture(REPO_ROOT,label='ssh-direct-channel-'+method+'-'+corr,capture=capture,source_fingerprint=hashlib.sha256(Path(adapter.__file__).read_bytes()).hexdigest())
+        value=getattr(adapter,method)(REPO_ROOT,host,corr,_private_capture=retain)
+        if type(value)is not dict or value.get('nativeActionAllowed')is not False or value.get('replayAllowed')is not False:return unknown
+        base={'state','nativeActionAllowed','replayAllowed','correlationId'}
+        if value.get('state')=='ready':
+            if set(value)!=base|{'receiptSha256','outerAuthoritySha256'} or value['correlationId']!=corr or any(type(value[k])is not str or re.fullmatch('[0-9a-f]{64}',value[k])is None for k in ('receiptSha256','outerAuthoritySha256')):return unknown
+            return {**unknown,'ok':True,**value}
+        if value.get('state')=='ended' and set(value)==base and value['correlationId']==corr:return {**unknown,'ok':True,**value}
+        # Reuse the strict finite UNKNOWN DTO; provider exceptions never escape.
+        value={**value,'correlationId':corr}
+        reason=value.pop('reason',None)
+        if reason is not None and reason not in {'outer_prompt_unavailable','credential_unavailable','intent_absent','intent_binding_changed'}:return unknown
+        value=adapter.validated_unknown(value)
+        if reason is not None:value['reason']=reason
+        return {**unknown,**value}
+    except (OSError,ValueError,TypeError,KeyError,ImportError,AttributeError):return unknown
+
+
 def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
     """Inspect configured SSH hosts, recover a nested connection, or transfer owned fixture helpers."""
     if action in {"connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status"}:
         return _ssh_channel_keeper_workflow(action,host,timeout_seconds,identity,transfer,device)
     if action in {"connection-channel-prepare", "connection-channel-status", "connection-channel-ensure"}:
         return _ssh_channel_workflow(action, host, timeout_seconds, identity, transfer, device)
+    if action in {"connection-direct-channel-prepare","connection-direct-channel-status","connection-direct-channel-select"}:
+        return _ssh_direct_channel_workflow(action,host,timeout_seconds,identity,transfer,device)
     transport = importlib.import_module(f"{__package__}.ssh_transport" if __package__ else "ssh_transport")
     try:
         if action in {"connection-master-status", "gateway-tmux-status-diagnostic"}:
@@ -8222,7 +8262,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     subparsers.add_parser("serve")
     ssh_parser = subparsers.add_parser("ssh-workflow")
-    ssh_parser.add_argument("action", choices=("connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status", "connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
+    ssh_parser.add_argument("action", choices=("connection-direct-channel-prepare", "connection-direct-channel-status", "connection-direct-channel-select", "connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status", "connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
     ssh_parser.add_argument("--host")
     ssh_parser.add_argument("--device")
     ssh_parser.add_argument("--timeout-seconds", type=int, default=15)

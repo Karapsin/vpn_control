@@ -799,6 +799,7 @@ class StrictInstallerAdmissionTest(unittest.TestCase):
 
 
 class InstallerEarlyReplyEvidenceTest(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_check_and_download_reply_survives_result_or_owner_guard_before_probe(self):
         import base64,stat
         for phase in ('check','download'):
@@ -824,6 +825,7 @@ class InstallerEarlyReplyEvidenceTest(unittest.TestCase):
                     self.assertEqual('terminal-result' if attack=='unexpected-result' else 'owner-revision',failed['guard'])
                     self.assertEqual(failed,receipt['installerActionFailure'])
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_all_four_replies_are_private_create_only_and_oversized_data_is_explicitly_bounded(self):
         import base64,io,stat
         from contextlib import redirect_stdout
@@ -847,6 +849,7 @@ class InstallerEarlyReplyEvidenceTest(unittest.TestCase):
                 self.assertEqual(before,path.read_bytes())
             self.assertEqual('',stream.getvalue())
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_noninteractive_and_interactive_guard_failures_retain_immediate_reply(self):
         for phase in ('noninteractive','interactive'):
             with self.subTest(phase=phase),tempfile.TemporaryDirectory() as raw:
@@ -862,6 +865,7 @@ class InstallerEarlyReplyEvidenceTest(unittest.TestCase):
                 self.assertEqual(phase,json.loads((output/'cli-failure.json').read_bytes())['phase'])
                 self.assertFalse((output/'probe.json').exists())
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_invoke_retains_exact_stdout_whitespace_and_nonjson_invocation_failure(self):
         import base64
         with tempfile.TemporaryDirectory() as raw:
@@ -878,6 +882,7 @@ class InstallerEarlyReplyEvidenceTest(unittest.TestCase):
                 with self.assertRaises(driver.InvocationFailure):driver.invoke_retained(args,{},'download','updates','download')
             failed=json.loads((output/'cli-failure.json').read_bytes());self.assertEqual('download',failed['phase']);self.assertEqual('UNRECOGNIZED',failed['code']);self.assertEqual('invocation',failed['guard'])
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_reply_writer_rejects_unsafe_parent_and_unbound_identity_before_publication(self):
         for attack in ('mode','symlink','correlation','source'):
             with self.subTest(attack=attack),tempfile.TemporaryDirectory() as raw:
@@ -890,6 +895,7 @@ class InstallerEarlyReplyEvidenceTest(unittest.TestCase):
                 with self.assertRaises(ValueError):driver.retain_cli_reply(SimpleNamespace(output=output,intent=intent),'check',record('OK',True))
                 self.assertFalse((output/'cli-check-reply.json').exists())
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_rejected_cli_records_remain_private_in_exceptions_and_formatted_stderr(self):
         import traceback,base64
         secret='PRIVATE_CLI_PAYLOAD_8927'

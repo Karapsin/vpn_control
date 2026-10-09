@@ -458,7 +458,8 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
             if nested.remote_config_file is not None:inner.extend(('-F',str(nested.remote_config_file)))
             inner.extend(metadata['innerOptions'])
             inner.extend(('-T','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no',nested.remote_host_alias,shlex.join(command)))
-            return [ssh_binary,*prefix[1:],*metadata['outerOptions'],'-T',endpoint,shlex.join(inner)]
+            extra=['-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no'] if metadata.get('transportMode')=='direct' else []
+            return [ssh_binary,*prefix[1:],*metadata['outerOptions'],*extra,'-T',endpoint,shlex.join(inner)]
         except (selection.SelectionUnknown,session.SessionUnknown,selection.transport.SshConfigError):
             raise SshConfigError('Explicitly selected SSH channel is unavailable; observe or renew it explicitly.') from None
     # Compose from the destination outward. Each layer quotes one complete argv

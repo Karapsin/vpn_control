@@ -22,7 +22,7 @@ from . import ssh_connection_session as session
 from .private_inventory_lock import Directory, PresentedPath, _generation
 
 _ORIGINAL_SOURCE = 'dba4466d09aff57787cb008edcd044bc1cb4c3a22f4325c6a41efebe230a0720'
-_TRANSPORT_SOURCE = 'adbf95d716ee57ab4908738d925fd3763bc3cd7cde0b43dca9e89f1914e30bed'
+_TRANSPORT_SOURCE = '6e4e9bfcdf620dab84cec100a4990121198fc95b331e0468adf8b79fb2e9e372'
 _INVENTORY_SOURCE = 'd6ce7b228059470b4792c47e4562017235cad26ae6666c2a899dd459887358b8'
 _HASH = re.compile(r'[0-9a-f]{64}')
 _LIMIT = 4096

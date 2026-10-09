@@ -281,6 +281,7 @@ class PreflightScriptTest(unittest.TestCase):
         self.assertEqual({}, adb.reverse_map)
         self.assertEqual('null', adb.proxy)
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_push_failure_after_owned_staging_removes_stage_and_restores_public_adbd(self):
         """A failed CA push happens before a mount, but the created stage is still ours."""
         class PushFailingAdb(FakeAdb):
@@ -323,6 +324,7 @@ class PreflightScriptTest(unittest.TestCase):
                               '/system/etc/security/cacerts'), fake.calls)
             self.assertFalse(fake.rooted)
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_lost_bind_mount_response_preserves_staging_and_records_unknown_mount(self):
         """A mount may take effect before ADB loses its response, so deletion is unsafe."""
         class LostMountResponseAdb(FakeAdb):
@@ -368,6 +370,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertNotIn(('shell', 'rm', '-r', args.staging), fake.calls)
             self.assertFalse(fake.rooted)
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_changed_zygote_cleanup_records_failure_but_restores_public_and_receipt(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
@@ -458,6 +461,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertNotIn(('root',), fake.calls)
             self.assertEqual({}, fake.reverse_map)
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_apex_target_and_colon_zero_baseline_are_used_and_restored(self):
         class StableZygoteAdb(FakeAdb):
             def shell(self, *args):
@@ -500,6 +504,7 @@ class PreflightScriptTest(unittest.TestCase):
                            '/data/local/tmp/vpn-control-test', '/apex/com.android.conscrypt/cacerts'), fake.calls)
             self.assertIn(('shell', 'nsenter', '-t', '177', '-m', '--', 'umount', '/apex/com.android.conscrypt/cacerts'), fake.calls)
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_injected_action_failure_still_reaches_terminal_fixture_cleanup(self):
         class StableZygoteAdb(FakeAdb):
             def shell(self, *args):
@@ -546,6 +551,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertEqual({}, fake.reverse_map)
             self.assertEqual('null', fake.proxy)
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_native_companion_proxy_residue_is_restored_after_action_failure(self):
         class StableZygoteAdb(FakeAdb):
             def set_global_proxy(self, value):
@@ -599,6 +605,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertEqual(original, fake.proxy_settings)
 
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_lost_setup_reply_still_restores_measured_owned_five_fields(self):
         class StableZygoteAdb(FakeAdb):
             def set_global_proxy(self, value):
@@ -653,6 +660,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertEqual(original, fake.proxy_settings)
 
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_presence_only_drift_before_setup_refuses_reverse_and_proxy(self):
         class StableZygoteAdb(FakeAdb):
             def set_global_proxy(self, value):
@@ -712,6 +720,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertFalse(receipt.with_name(receipt.name + '.proxy-owned.json').exists())
 
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_same_byte_baseline_exchange_before_setup_refuses_effects(self):
         class StableZygoteAdb(FakeAdb):
             def set_global_proxy(self, value):
@@ -772,6 +781,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertFalse(receipt.with_name(receipt.name + '.proxy-owned.json').exists())
 
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_five_field_cleanup_refuses_drift_replay_and_bad_postread(self):
         for failure in ("foreign", "replay", "readback", "fence-drift", "fence-exchange", "presence-drift", "presence-during-write", "owned-exchange", "authority-drift"):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temp:
@@ -833,6 +843,7 @@ class PreflightScriptTest(unittest.TestCase):
         self.assertEqual({45390: 61000}, adb.reverse_map)
         self.assertTrue(adb.proxy_presence['global_http_proxy_pac'])
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_exact_empty_proxy_restore_survives_real_adb_shell_flattening(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); adb = FakeAdb(); baseline = preflight.fixture_proxy_snapshot(adb)
@@ -934,6 +945,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertNotIn(('root',), fake.calls)
             self.assertEqual({}, fake.reverse_map)
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_tls_fixture_cold_action_follows_ca_bind_public_adbd_and_transport(self):
         """The public probe must see the fixture only after its complete cold-start setup."""
         class OrderedAdb(FakeAdb):
@@ -1008,6 +1020,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertEqual({}, fake.reverse_map)
             self.assertFalse(fake.rooted)
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_main_preserves_route_when_single_fenced_cleanup_remove_fails(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
@@ -1038,6 +1051,7 @@ class PreflightScriptTest(unittest.TestCase):
             self.assertTrue(receipt.with_name(receipt.name + '.proxy-restore-intent.json').is_file())
             self.assertFalse(fake.rooted)
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_main_rejects_staged_certificate_label_before_bind(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'
@@ -1067,6 +1081,7 @@ class PreflightScriptTest(unittest.TestCase):
                               '/data/local/tmp/vpn-control-test', '/system/etc/security/cacerts'), fake.calls)
             self.assertFalse(fake.rooted)
 
+    @unittest.skipUnless(os.name == 'posix', 'private fixture evidence requires POSIX file APIs')
     def test_main_rejects_current_hash_staged_ca_filename_before_bind(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); base = root / 'base.apk'; cert = root / 'ca.pem'; leaf = root / 'leaf.pem'; receipt = root / 'receipt.json'

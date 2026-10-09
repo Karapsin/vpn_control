@@ -15,6 +15,7 @@ import uuid
 from . import private_inventory_lock as private
 from . import ssh_fresh_nested_channel as channel
 from . import ssh_connection_session as session
+from . import ssh_direct_nested_channel as direct_channel
 from . import ssh_transport as transport
 
 class SelectionUnknown(ValueError):
@@ -29,7 +30,7 @@ _KEYS={'correlationId','receiptSha256','outerReceiptSha256','outerOptions','inne
 
 def _sources():
     result={}
-    for name,source in (('selector',__file__),('channel',channel.__file__),('transport',transport.__file__)):
+    for name,source in (('selector',__file__),('channel',channel.__file__),('transport',transport.__file__),('direct',direct_channel.__file__)):
         body,generation=session._bytes(Path(source),private=False)
         result[name]={'generation':list(generation),'sha256':hashlib.sha256(body).hexdigest()}
     return result
@@ -37,6 +38,14 @@ def _sources():
 def _json(body):return json.loads(body,object_pairs_hook=transport._reject_duplicate_keys)
 
 def _metadata(value,corr,receipt):
+    if isinstance(value,dict) and value.get('transportMode')=='direct':
+        keys={'transportMode','correlationId','receiptSha256','outerAuthoritySha256','outerOptions','innerOptions'}
+        if set(value)!=keys or value['correlationId']!=corr or value['receiptSha256']!=receipt:raise SelectionUnknown()
+        if type(value['outerAuthoritySha256'])is not str or re.fullmatch('[0-9a-f]{64}',value['outerAuthoritySha256'])is None:raise SelectionUnknown()
+        if tuple(value['outerOptions'])!=direct_channel.OUTER_OPTIONS:raise SelectionUnknown()
+        expected=('-S','/tmp/vpn-channel-'+corr+'/m','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false')
+        if tuple(value['innerOptions'])!=expected:raise SelectionUnknown()
+        return {key:list(item) if isinstance(item,tuple) else item for key,item in value.items()}
     if not isinstance(value,dict) or set(value)!=_KEYS or value['correlationId']!=corr or value['receiptSha256']!=receipt:raise SelectionUnknown()
     if not isinstance(value['outerReceiptSha256'],str) or re.fullmatch('[0-9a-f]{64}',value['outerReceiptSha256']) is None:raise SelectionUnknown()
     for name in ('outerOptions','innerOptions'):
@@ -68,18 +77,19 @@ def _replace(directory,value,old):
         if _json(current.body)!=value:raise SelectionUnknown()
         current.guard()
 
-def select_channel(root,host,correlation_id,receipt_sha256):
+def select_channel(root,host,correlation_id,receipt_sha256,*,direct=False):
     """Publish selection only after genuine current read-only admission."""
     try:
         channel._corr(correlation_id)
         if host!=channel.HOST or not isinstance(receipt_sha256,str) or re.fullmatch('[0-9a-f]{64}',receipt_sha256) is None:raise SelectionUnknown()
+        provider=direct_channel if direct else channel
         presented=private.PresentedPath(Path(root).absolute());root=presented.canonical
         with private.Directory(root) as base, private.Snapshot(base,transport.CONFIG_FILENAME) as inventory, ExitStack() as stack:
-            source=_sources();metadata=_metadata(channel.route_options(root,host,correlation_id,receipt_sha256),correlation_id,receipt_sha256)
+            source=_sources();metadata=_metadata(provider.route_options(root,host,correlation_id,receipt_sha256),correlation_id,receipt_sha256)
             group=stack.enter_context(private.Directory(_group(root,True)))
             lock=stack.enter_context(_Lock(group))
             current=stack.enter_context(private.Snapshot(group,'current.json')) if os.path.lexists(group.path/'current.json') else None
-            value={'version':1,'host':host,'metadata':metadata,'inventory':inventory.pin(),'sources':source}
+            value={'version':2 if direct else 1,'host':host,'metadata':metadata,'inventory':inventory.pin(),'sources':source}
             name='selection-'+uuid.uuid4().hex+'.json'
             session._create(group.path/name,value,parent_fd=group.fd)
             history=stack.enter_context(private.Snapshot(group,name))
@@ -89,14 +99,14 @@ def select_channel(root,host,correlation_id,receipt_sha256):
                 if published is not None:published.guard()
                 if _sources()!=source or _json(history.body)!=value:raise SelectionUnknown()
             guard()
-            if _metadata(channel.route_options(root,host,correlation_id,receipt_sha256),correlation_id,receipt_sha256)!=metadata:raise SelectionUnknown()
+            if _metadata(provider.route_options(root,host,correlation_id,receipt_sha256),correlation_id,receipt_sha256)!=metadata:raise SelectionUnknown()
             guard()
             pointer={'version':1,'history':name,'pin':history.pin()}
             _replace(group,pointer,current)
             published=stack.enter_context(private.Snapshot(group,'current.json'))
             if _json(published.body)!=pointer:raise SelectionUnknown()
             guard()
-            if _metadata(channel.route_options(root,host,correlation_id,receipt_sha256),correlation_id,receipt_sha256)!=metadata:raise SelectionUnknown()
+            if _metadata(provider.route_options(root,host,correlation_id,receipt_sha256),correlation_id,receipt_sha256)!=metadata:raise SelectionUnknown()
             guard()
             return {'state':'selected','host':host,'correlationId':correlation_id,'receiptSha256':receipt_sha256}
     except channel.ChannelUnknown as failure:
@@ -123,11 +133,14 @@ def selected_route_options(root,host,config=None):
             with private.Snapshot(group,pointer['history']) as history:
                 if history.pin()!=pointer['pin']:raise SelectionUnknown()
                 value=_json(history.body)
-                if not isinstance(value,dict) or set(value)!={'version','host','metadata','inventory','sources'} or type(value['version']) is not int or value['version']!=1 or value['host']!=host or value['inventory']!=inventory.pin() or value['sources']!=_sources():raise SelectionUnknown()
+                if not isinstance(value,dict) or set(value)!={'version','host','metadata','inventory','sources'} or type(value['version']) is not int or value['version'] not in (1,2) or value['host']!=host or value['inventory']!=inventory.pin() or value['sources']!=_sources():raise SelectionUnknown()
                 if config is not None and asdict(config)!=asdict(transport.load_config(root)):raise SelectionUnknown()
                 corr=value['metadata']['correlationId'];receipt=value['metadata']['receiptSha256'];channel._corr(corr)
                 if not isinstance(receipt,str) or re.fullmatch('[0-9a-f]{64}',receipt) is None:raise SelectionUnknown()
-                metadata=_metadata(channel.route_options(root,host,corr,receipt),corr,receipt)
+                direct=value['version']==2
+                if direct!=(value['metadata'].get('transportMode')=='direct'):raise SelectionUnknown()
+                provider=direct_channel if direct else channel
+                metadata=_metadata(provider.route_options(root,host,corr,receipt),corr,receipt)
                 if metadata!=value['metadata']:raise SelectionUnknown()
                 presented.guard();inventory.guard();lock.guard();current.guard();history.guard()
                 if value['sources']!=_sources():raise SelectionUnknown()

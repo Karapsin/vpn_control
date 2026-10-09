@@ -300,9 +300,9 @@ def _public(state='unknown',**fields):
     return {'state':state,'nativeActionAllowed':False,'replayAllowed':False,**fields}
 def _corr(value):
     if not isinstance(value,str) or re.fullmatch('[0-9a-f]{32}',value) is None:raise ValueError('correlation')
-def _journal(root,create):
+def _journal(root,create,direct=False):
     group=root/'.rag_index';session._directory(group)
-    path=group/'ssh-fresh-nested-channel'
+    path=group/('ssh-direct-nested-channel' if direct else 'ssh-fresh-nested-channel')
     if create:
         try:path.mkdir(mode=0o700)
         except FileExistsError:pass
@@ -362,7 +362,7 @@ def _ended_0be3_intent(value,current,prior_id):
     return json.dumps(value,sort_keys=True)==json.dumps(expected,sort_keys=True)
 
 
-def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inventory_diagnostic=None):
+def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inventory_diagnostic=None,*,direct=False):
     phase='input'
     try:
         if host!=HOST:return _public()
@@ -378,20 +378,31 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             gateway=transport.connection_host(config,target.gateway)
             if gateway.password is not None:return _public(reason='outer_prompt_unavailable')
             phase='channel_journal'
-            source_sha=_source();journal=_journal(root,prepare)
+            source_sha=_source();journal=_journal(root,prepare,direct)
             channel_dir=stack.enter_context(private.Directory(journal))
             path=journal/(correlation_id+'.intent.json')
-            phase='outer_receipt'
-            ready_journal=session._journal(root,host,False)
-            _,ready_pin=session._read(ready_journal/'ready.json');outer_receipt=session._sha(session._json(ready_pin))
-            phase='outer_reuse'
-            options=session.reuse_only_options(root,host,outer_receipt)
-            prefix,endpoint=session._outer_prefix(config,gateway)
-            if prefix[1:3]!=['-F','/dev/null'] or options[2:]!=['-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false']:return _public()
+            if direct:
+                from . import ssh_direct_nested_channel as direct_channel
+                direct_guard=stack.enter_context(direct_channel.Guard(root))
+                outer_receipt=direct_guard.authority_sha
+                prefix,endpoint=direct_channel.outer_prefix(config,gateway)
+                options=['-S','none','-o','ControlMaster=no','-o','ControlPersist=no']
+            else:
+                phase='outer_receipt'
+                ready_journal=session._journal(root,host,False)
+                _,ready_pin=session._read(ready_journal/'ready.json');outer_receipt=session._sha(session._json(ready_pin))
+                phase='outer_reuse'
+                options=session.reuse_only_options(root,host,outer_receipt)
+                prefix,endpoint=session._outer_prefix(config,gateway)
+                if prefix[1:3]!=['-F','/dev/null'] or options[2:]!=['-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false']:return _public()
             phase='intent'
             intent={'version':1,'host':host,'correlationId':correlation_id,'sourceSha256':source_sha,
                     'remoteSourceSha256':hashlib.sha256(_REMOTE.encode()).hexdigest(),'inventory':config_source.pin(),
                     'outerReceiptSha256':outer_receipt,'expectedUid':EXPECTED_UID,'expectedBoot':EXPECTED_BOOT}
+            if direct:
+                intent['transportMode']='direct'
+                intent['outerAuthoritySha256']=intent.pop('outerReceiptSha256')
+                intent['directSourcePins']=direct_guard.source_pins
             existing=os.path.lexists(path)
             action='status'
             if prepare and not existing:
@@ -405,13 +416,17 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                     if set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'} or ended['state']!='ended' or ended['correlationId']!=prior_id:return _public()
                     old_intent=stack.enter_context(private.Snapshot(channel_dir,name))
                     old_value=json.loads(old_intent.body,object_pairs_hook=transport._reject_duplicate_keys)
-                    if ended['intentSha256']!=old_intent.digest or old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) or old_value.get('inventory')!=config_source.pin():return _public()
+                    if ended['intentSha256']!=old_intent.digest or old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) or (not direct and old_value.get('inventory')!=config_source.pin()):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9A and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9A):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9527 and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9527):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_012:
                         if not _ended_012_intent(old_value,intent,prior_id) or not isinstance(ended['gatewayBoot'],str) or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None:return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_0BE3:
                         if not _ended_0be3_intent(old_value,intent,prior_id) or type(ended['gatewayBoot'])is not str or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None:return _public()
+                    if direct:
+                        prior_expected={**intent,'correlationId':prior_id,'inventory':old_value.get('inventory'),'outerAuthoritySha256':old_value.get('outerAuthoritySha256')}
+                        pin=old_value.get('inventory');binding=old_value.get('outerAuthoritySha256')
+                        if json.dumps(old_value,sort_keys=True)!=json.dumps(prior_expected,sort_keys=True) or type(pin)is not dict or set(pin)!={'generation','size','sha256'} or type(pin['generation'])is not list or len(pin['generation'])!=9 or any(type(x)is not int for x in pin['generation']) or type(pin['size'])is not int or pin['size']<=0 or type(pin['sha256'])is not str or re.fullmatch('[0-9a-f]{64}',pin['sha256'])is None or type(binding)is not str or re.fullmatch('[0-9a-f]{64}',binding)is None:return _public()
                     if ended['receiptSha256'] is not None:
                         old_ready=stack.enter_context(private.Snapshot(channel_dir,prior_id+'.ready.json'))
                         old_result=json.loads(old_ready.body,object_pairs_hook=transport._reject_duplicate_keys)
@@ -428,18 +443,20 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             held=stack.enter_context(private.Snapshot(channel_dir,path.name));actual=json.loads(held.body,object_pairs_hook=transport._reject_duplicate_keys)
             # The launch outer receipt remains historical. A positively admitted
             # successor outer can observe the same channel without replaying it.
-            original_outer=actual.get('outerReceiptSha256')
+            binding_key='outerAuthoritySha256' if direct else 'outerReceiptSha256'
+            original_outer=actual.get(binding_key)
             if not isinstance(original_outer,str) or re.fullmatch('[0-9a-f]{64}',original_outer) is None:return _public()
-            expected={**intent,'outerReceiptSha256':original_outer}
-            if actual!=expected:return _public(reason='intent_binding_changed')
+            expected={**intent,binding_key:original_outer}
+            if actual!=expected or (direct and original_outer!=outer_receipt):return _public(reason='intent_binding_changed')
             def guard():
                 presented.guard();ownership.guard();config_source.guard();held.guard();channel_dir.guard()
                 if _source()!=source_sha or asdict(transport.load_config(root))!=asdict(config):raise ValueError('source_or_config_changed')
-                session.verify_reuse(root,host,outer_receipt)
+                if direct:direct_guard.guard()
+                else:session.verify_reuse(root,host,outer_receipt)
             phase='transport'
             guard()
             argv=[*prefix,*options,'-T','-o','ClearAllForwardings=yes','-o','PermitLocalCommand=no','-o','UpdateHostKeys=no',endpoint,
-                  shlex.join(('python3','-I','-B','-c',_REMOTE,correlation_id,action,str(target.remote_config_file or ''),target.remote_host_alias,source_sha))]
+                  shlex.join(('python3','-I','-B','-c',('exec('+repr(_REMOTE)+')') if direct else _REMOTE,correlation_id,action,str(target.remote_config_file or ''),target.remote_host_alias,source_sha))]
             payload=json.dumps({'passphrase':target.password} if action=='prepare' else {}).encode()
             capture=_collect(argv,payload,35)
             # Raw retention is inside all held custody, followed by a final guard.
@@ -490,6 +507,7 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             ready=stack.enter_context(private.Snapshot(channel_dir,receipt_path.name))
             if json.loads(ready.body,object_pairs_hook=transport._reject_duplicate_keys)!=receipt:return _public()
             guard();ready.guard()
+            if direct:return _public('ready',correlationId=correlation_id,receiptSha256=ready.digest,outerAuthoritySha256=outer_receipt)
             return _public('ready',correlationId=correlation_id,receiptSha256=ready.digest,outerReceiptSha256=outer_receipt)
     except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError) as failure:
         if phase=='inventory' and _private_inventory_diagnostic is not None:

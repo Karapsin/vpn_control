@@ -731,14 +731,197 @@ def _selected_modules(receipt,selected):
         selected['adapter']._module(selected[name],receipt['files'][path]['sha256'],functions)
 
 
+_JDK_FILES=('bin/java','release','lib/libjli.so','lib/server/libjvm.so','lib/libjava.so','lib/modules')
+
+_JDK_ADAPTER="def external_file(path,limit):\n check=_COMPONENT_JDK_SOURCE_CHECK;pin=_COMPONENT_JDK_SOURCE_CHECK_PIN\n if type(pin)is not tuple or len(pin)!=2 or check is not pin[0]or type(check)is not type(external_file)or check.__code__ is not pin[1]:raise ValueError(\"component_guard_jdk_check_source_changed\")\n check()\n return _COMPONENT_JDK_SOURCE_CONTEXT.external_file(path,limit)\n"
+
+def _jdk_source_context(backend):
+    def fail(value,code):
+        if not value:raise ValueError(code)
+    external=backend['EXTERNAL'];selected=copy.deepcopy(external['selectedJdk'])
+    fail(type(selected)is dict and selected.get('state')=='observed' and selected.get('alias')in ('jdk17','jdk21') and
+        tuple(external['jdkFiles'])==_JDK_FILES and set(selected['files'])==set(_JDK_FILES) and
+        selected['root']==external['candidates'][selected['alias']], 'component_guard_jdk_fixed_roles_required')
+    original_namespace={name:backend[name]for name in ('os','pathlib','stat','hashlib','re')}
+    original_namespace['EXTERNAL']=copy.deepcopy({name:external[name]for name in ('candidates','jdkFiles','selectedJdk')})
+    for name in ('fp','parent_fds','guard_parents','close_parents','external_file','external_jdk','external_jdk_guard'):
+        original=backend[name]
+        fail(isinstance(original,types.FunctionType) and original.__globals__ is backend,'component_guard_jdk_original_backend_required')
+        original_namespace[name]=types.FunctionType(original.__code__,original_namespace,name,original.__defaults__,original.__closure__)
+        original_namespace[name].__kwdefaults__=original.__kwdefaults__
+    original_namespace['external_jdk_guard']()
+    os=backend['os'];fp=backend['fp']
+    records=[(selected['root']+'/'+name,selected['files'][name],268435456 if name=='lib/modules'else 67108864)for name in _JDK_FILES]
+    # Private ownership ledgers survive removal of the public diagnostic rows.
+    held_rows=[];held_fds=[];closed_state=[False];six_complete=[False]
+    def close_held_context(context):
+        if closed_state[0]:return
+        closed_state[0]=True
+        for fd in reversed(held_fds):
+            try:os.close(fd)
+            except OSError as error:context.cleanupErrors.append(type(error).__name__)
+        context.closed=True
+    class JdkSourceContext:
+        def __init__(self,records):
+            self.rows={};self.closed=False;self.fullBodyPasses=0;self.cleanupErrors=[]
+            self.backend=backend;self.selected=copy.deepcopy(selected);self.original_namespace=original_namespace
+            self._component_jdk_cleanup=close_held_context
+            self.fp_code=fp.__code__;self.parent_codes={name:backend[name].__code__ for name in ('parent_fds','guard_parents','close_parents')}
+            self.original_function_pins={name:(original_namespace[name],original_namespace[name].__code__)for name in ('fp','parent_fds','guard_parents','close_parents','external_file','external_jdk','external_jdk_guard')}
+            try:
+                for path,expected,limit in records:
+                    path=Path(path);fail(path.is_absolute() and str(path)not in self.rows,'immutable_role_invalid')
+                    fail(type(expected)is dict and set(expected)=={'generation','sha256','bytesRead','hashScope'} and
+                        expected['hashScope']=='full' and type(expected['generation'])is list and
+                        len(expected['generation'])==9 and all(type(v)is int for v in expected['generation']) and
+                        type(expected['sha256'])is str and re.fullmatch('[0-9a-f]{64}',expected['sha256']) and
+                        expected['bytesRead']==expected['generation'][2],'immutable_fact_invalid')
+                    chain=[]
+                    parent=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held_fds.append(parent)
+                    chain.append((Path('/'),parent,fp(os.fstat(parent))))
+                    for part in path.parent.parts[1:]:
+                        parent=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);held_fds.append(parent)
+                        chain.append((chain[-1][0]/part,parent,fp(os.fstat(parent))))
+                    fd=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent);held_fds.append(fd)
+                    generation=fp(os.fstat(fd))
+                    fail(stat.S_ISREG(generation[5])and generation[8]==1 and
+                        generation==expected['generation'] and type(limit)is int and
+                        0<generation[2]<=limit,'immutable_opening_unknown')
+                    row={'path':path,'fd':fd,'chain':chain,'generation':generation,'limit':limit,
+                        'fact':{**expected,'generation':list(expected['generation'])},'smallRaw':None}
+                    self.rows[str(path)]=row;held_rows.append((str(path),row))
+                    digest,small=self._body(row)
+                    fail(digest==expected['sha256'],'immutable_body_changed')
+                    row['smallRaw']=small
+                    self.guard()
+                six_complete[0]=True;self.guard()
+            except BaseException:
+                close_held_context(self)
+                raise
+
+        def _body(self,row):
+            os.lseek(row['fd'],0,os.SEEK_SET);digest=hashlib.sha256();count=0
+            small=bytearray() if row['generation'][2]<=262144 else None
+            while chunk:=os.read(row['fd'],65536):
+                count+=len(chunk);fail(count<=row['limit'],'immutable_body_bound');digest.update(chunk)
+                if small is not None:small.extend(chunk)
+            fail(count==row['generation'][2] and fp(os.fstat(row['fd']))==row['generation'],'immutable_body_changed')
+            self.fullBodyPasses+=1
+            return digest.hexdigest(),bytes(small)if small is not None else None
+
+        def guard(self):
+            fail(not self.closed,'immutable_context_closed')
+            fail(type(self.rows)is dict and len(self.rows)==len(held_rows) and
+                (not six_complete[0]or len(held_rows)==len(_JDK_FILES)) and
+                all(self.rows.get(path)is row for path,row in held_rows),'component_guard_jdk_population_changed')
+            fail(backend.get('EXTERNAL',{}).get('selectedJdk')==self.selected and backend.get('fp')is fp and fp.__code__ is self.fp_code and all(backend[name].__code__ is code for name,code in self.parent_codes.items()),'component_guard_jdk_context_changed')
+            fail(all(self.original_namespace.get(name)is function and function.__code__ is code and function.__globals__ is self.original_namespace for name,(function,code)in self.original_function_pins.items()) and self.original_namespace['EXTERNAL']['selectedJdk']==self.selected,'component_guard_jdk_original_namespace_changed')
+            for unused,row in held_rows:
+                for path,fd,generation in row['chain']:
+                    fail(fp(os.fstat(fd))==generation and fp(os.stat(path,follow_symlinks=False))==generation,
+                        'immutable_parent_changed')
+            for unused,row in held_rows:
+                fail(fp(os.fstat(row['fd']))==row['generation'] and
+                    fp(os.stat(row['path'].name,dir_fd=row['chain'][-1][1],follow_symlinks=False))==row['generation'],
+                    'immutable_named_changed')
+
+        def external_file(self,path,limit):
+            self.guard();row=self.rows.get(str(path))
+            fail(row is not None and type(limit)is int and row['generation'][2]<=limit,'immutable_role_invalid')
+            fact={**row['fact'],'generation':list(row['fact']['generation'])};raw=row['smallRaw']if str(path).endswith('/release')else b''
+            fail(raw is not None,'immutable_release_unbounded')
+            self.guard();return fact,raw
+
+        def closing(self):
+            self.guard()
+            for unused,row in held_rows:
+                digest,small=self._body(row)
+                fail(digest==row['fact']['sha256'] and small==row['smallRaw'],'immutable_body_changed')
+            self.original_namespace['external_jdk_guard']()
+            self.guard()
+
+        def close(self):
+            close_held_context(self)
+
+    return JdkSourceContext(records)
+
+def _jdk_close_source_context(context):
+    # Source-owned cleanup is separate from a mutable instance close method.
+    expected=next(code for code in _jdk_source_context.__code__.co_consts if isinstance(code,types.CodeType)and code.co_name=='close_held_context')
+    cleanup=context._component_jdk_cleanup
+    if not isinstance(cleanup,types.FunctionType)or cleanup.__globals__ is not globals()or cleanup.__code__!=expected:
+        raise ValueError('component_guard_jdk_cleanup_source_changed')
+    cleanup(context)
+
+def _jdk_context_code_guard(context,backend):
+    constants=_jdk_source_context.__code__.co_consts
+    class_code=next(code for code in constants if isinstance(code,types.CodeType)and code.co_name=='JdkSourceContext')
+    fail_code=next(code for code in constants if isinstance(code,types.CodeType)and code.co_name=='fail')
+    cleanup_code=next(code for code in constants if isinstance(code,types.CodeType)and code.co_name=='close_held_context')
+    if type(context).__qualname__!='_jdk_source_context.<locals>.JdkSourceContext' or context.backend is not backend:
+        raise ValueError('component_guard_jdk_context_required')
+    for code in class_code.co_consts:
+        if not isinstance(code,types.CodeType):continue
+        method=type(context).__dict__.get(code.co_name)
+        if code.co_name in vars(context)or not isinstance(method,types.FunctionType)or method.__globals__ is not globals()or method.__code__!=code:
+            raise ValueError('component_guard_jdk_context_source_changed')
+        cells=dict(zip(method.__code__.co_freevars,(cell.cell_contents for cell in method.__closure__ or ())))
+        for name,value in cells.items():
+            if name=='fail':
+                if not isinstance(value,types.FunctionType)or value.__globals__ is not globals()or value.__code__!=fail_code:
+                    raise ValueError('component_guard_jdk_context_source_changed')
+            elif name=='close_held_context':
+                if value is not context._component_jdk_cleanup or not isinstance(value,types.FunctionType)or value.__globals__ is not globals()or value.__code__!=cleanup_code:
+                    raise ValueError('component_guard_jdk_cleanup_source_changed')
+            elif ((name=='backend'and value is not backend)or(name=='os'and value is not backend['os'])or
+                  (name=='fp'and value is not backend['fp'])or(name=='original_namespace'and value is not context.original_namespace)or
+                  (name=='selected'and value!=context.selected)):
+                raise ValueError('component_guard_jdk_context_source_changed')
+    check=backend.get('_COMPONENT_JDK_SOURCE_CHECK')
+    expected_check=next(code for code in _jdk_bind_source_context.__code__.co_consts if isinstance(code,types.CodeType)and code.co_name=='source_check')
+    if not isinstance(check,types.FunctionType)or check.__globals__ is not globals()or check.__code__!=expected_check:
+        raise ValueError('component_guard_jdk_check_source_changed')
+    cells=dict(zip(check.__code__.co_freevars,(cell.cell_contents for cell in check.__closure__ or ())))
+    if (cells.get('context')is not context or cells.get('backend')is not backend or
+        cells.get('guard_function')is not _jdk_context_code_guard or cells.get('guard_code')is not _jdk_context_code_guard.__code__):
+        raise ValueError('component_guard_jdk_check_source_changed')
+    pin=backend.get('_COMPONENT_JDK_SOURCE_CHECK_PIN')
+    if type(pin)is not tuple or len(pin)!=2 or pin[0]is not check or pin[1]is not check.__code__:
+        raise ValueError('component_guard_jdk_check_source_changed')
+    context.guard()
+
+def _jdk_bind_source_context(backend,device,adapter):
+    if any(name in backend for name in ('_COMPONENT_JDK_SOURCE_CONTEXT','_COMPONENT_JDK_SOURCE_CHECK','_COMPONENT_JDK_SOURCE_CHECK_PIN')):
+        raise ValueError('component_guard_jdk_context_already_bound')
+    context=_jdk_source_context(backend)
+    guard_function=_jdk_context_code_guard;guard_code=guard_function.__code__
+    def source_check():
+        if guard_function is not globals().get('_jdk_context_code_guard')or guard_function.__code__ is not guard_code:
+            raise ValueError('component_guard_jdk_check_source_changed')
+        guard_function(context,backend)
+    try:
+        isolated={};exec(compile(adapter.production_imports(device)+_JDK_ADAPTER,'<guard-fixed-jdk-adapter>','exec',dont_inherit=True),isolated)
+        backend['_COMPONENT_JDK_SOURCE_CONTEXT']=context;backend['_COMPONENT_JDK_SOURCE_CHECK']=source_check
+        backend['_COMPONENT_JDK_SOURCE_CHECK_PIN']=(source_check,source_check.__code__)
+        backend['external_file']=types.FunctionType(isolated['external_file'].__code__,backend,'external_file')
+        _jdk_context_code_guard(context,backend)
+        return context
+    except BaseException:
+        _jdk_close_source_context(context)
+        raise
+
 def _guard_backend(selected,backend,device):
     """Authenticate fixed getter/transport functions, never caller callbacks."""
     transport=selected['transport'];reader=transport.readonly
+    jdk_context=backend.get('_COMPONENT_JDK_SOURCE_CONTEXT')
+    if jdk_context is not None:_jdk_context_code_guard(jdk_context,backend)
     sources=[(transport.REMOTE+'\n'+transport._bounded_source(),
               ('component_command','command_binary','command_request','command_host_identity','command_host_guard','command_bounded')),
              (reader.getter_source._GETTER.replace('__GETTER__',repr({})),('getter_stage',)),
              (reader.getter_source.coldboot._BOOT.replace('__LAUNCH__',repr({})),('child_identity','session_guest','qemu_fact')),
-             (reader.proven._REMOTE.replace('__EXTERNAL__',repr({})),('external_file','external_jdk','external_jdk_guard'))]
+             (reader.proven._REMOTE.replace('__EXTERNAL__',repr({})),
+              ('external_jdk','external_jdk_guard') if jdk_context is not None else ('external_file','external_jdk','external_jdk_guard'))]
+    if jdk_context is not None:sources.append((_JDK_ADAPTER,('external_file',)))
     # Match the command factory's normalized AST and imported module context.
     # Python 3.14 optimizes imported-module attributes during compilation.
     context=selected['adapter'].production_imports(device)
@@ -1709,7 +1892,17 @@ _PRODUCT_SHA='d32f719a08db57e5d40ce2bf77e0d7c5b42de557'
 
 class BaselineGuard(CurrentGuard):
     """Fixed read-only phase: owns evidence only, grants no installer lease."""
-    def __init__(self,receipt,selected_modules,backend,request):
+    def __init__(self,receipt,selected_modules,backend,request,*,jdk_source_reuse=False):
+        if type(jdk_source_reuse)is not bool:raise ValueError('component_guard_jdk_fixed_scope_required')
+        self.jdk_source_context=None
+        try:self._prepare(receipt,selected_modules,backend,request,jdk_source_reuse)
+        except BaseException:
+            if self.jdk_source_context is not None:
+                try:_jdk_close_source_context(self.jdk_source_context)
+                except BaseException as cleanup_error:self.jdk_source_context.cleanupErrors.append(type(cleanup_error).__name__)
+            raise
+
+    def _prepare(self,receipt,selected_modules,backend,request,jdk_source_reuse):
         if (type(request)is not dict or set(request)!=_BASELINE_KEYS or
             request['host']!='archlinux' or request['device'] not in ('android-api29','android-api35') or
             request['sourceSha']!=_PRODUCT_SHA or type(request['expectedAvd'])is not str or
@@ -1727,6 +1920,9 @@ class BaselineGuard(CurrentGuard):
         if backend['LAUNCH']['intent']['reservation']!=request['reservation']:
             raise ValueError('component_baseline_reservation_changed')
         self.function_pins=_guard_backend(selected_modules,backend,self.context_device)
+        if jdk_source_reuse:
+            self.jdk_source_context=_jdk_bind_source_context(backend,self.context_device,selected_modules['adapter'])
+            self.function_pins=_guard_backend(selected_modules,backend,self.context_device)
         self.request=copy.deepcopy(request);self.phase='baseline-read-only';self.sequence=0;self.expected=None;self.fixture_assets_raw=None
         self.owner=request['expectedOwner'];self.revision=request['expectedRevision']
         backend['command_request'](['status'],self.owner,self.revision,'baseline')
@@ -1747,6 +1943,24 @@ class BaselineGuard(CurrentGuard):
         self._evidence('current-admission',{'facts':self.expected,'stage':self.stage,'host':self.host,
             'owner':self.owner,'revision':self.revision,'installedPackageDump':package})
         self.admission_pin=_read(output/'component-guard-current-admission.json',True)[1]
+
+    def finish_jdk_source_context(self):
+        context=self.jdk_source_context
+        if context is None:return
+        failure=None
+        try:
+            if self.backend.get('_COMPONENT_JDK_SOURCE_CONTEXT')is not context:
+                raise ValueError('component_guard_jdk_context_changed')
+            _jdk_context_code_guard(context,self.backend)
+            context.closing()
+        except BaseException as error:failure=error
+        finally:
+            try:_jdk_close_source_context(context)
+            except BaseException as cleanup_error:
+                if failure is None:failure=cleanup_error
+                else:context.cleanupErrors.append(type(cleanup_error).__name__)
+        if failure is not None:raise failure
+        if context.cleanupErrors:raise ValueError('component_guard_jdk_cleanup_unknown')
 
     def _task_guard(self):
         load(self.receipt)

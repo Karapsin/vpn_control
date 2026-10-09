@@ -95,6 +95,26 @@ controls retain their platform skips; they do not prove Windows native behavior.
 
 `ssh_workflow(action="connection-channel-prepare", host="archlinux", identity={"correlationId":"<canonical UUID>"})` creates one isolated configured two-hop connection channel. `connection-channel-status` accepts the same identity and only observes it. `connection-channel-ensure` accepts the identity plus an optional exact `receiptSha256`; it explicitly renews only after positive channel end. These connection-only actions accept no command, path, transfer or device fields. They preserve unknown correlations, return finite phases, hide private route options and never replay application jobs. Current selection publication integration and native equivalence remain pending. A channel UNKNOWN never authorizes another launch: preserve its correlation and observe or diagnose that same channel. Snapshot refusal is not an authentication failure. Use the fresh `mcp_tool.sh ssh-workflow <action> --host archlinux --identity-file <local JSON>` fallback while the running server has cached predecessor code.
 
+`connection-direct-channel-prepare` explicitly creates a fresh configured gateway
+connection and one owned inner channel when historical outer-session authority
+cannot be reused. It uses a separate create-only journal and never adopts or
+rewrites old session history. Its identity is the same canonical UUID shape;
+`connection-direct-channel-status` observes that original correlation, and
+`connection-direct-channel-select` additionally requires the actual returned
+`receiptSha256`. Selection binds current complete inventory, credentials, keys
+and source, then lets normal managed workflows reuse only that owned inner socket.
+These POSIX coordinator actions accept no arbitrary command, transfer or device.
+Unsupported coordinators return finite UNKNOWN before private admission.
+
+Prepare, select and the admitted workflow must execute promptly: the existing
+inner master expires after60 idle seconds. Preauthor the complete flow before
+preparing it. A lost or UNKNOWN observation requires status on the same original
+correlation; it does not authorize a second producer. After positively observed
+end, a new explicit correlation may create a new channel. Selection and builders
+refuse expired channels without automatic fallback. Native MCP equivalence remains
+a separate acceptance gate; local fixture and Windows-like import checks do not
+prove actual Windows installation or connection recovery.
+
 ### Receipt-bound channel keeper
 
 The three keeper actions use `host="archlinux"` and reject command, path,
