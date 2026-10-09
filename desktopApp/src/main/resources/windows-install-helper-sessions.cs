@@ -516,6 +516,12 @@ internal sealed class OriginalUserSessionAdapter : VpnInstallHelperRoles.Origina
     VpnInstallHelperRoles.Receipt lastObservedReceipt;
     bool installAttempted;
     bool disposed;
+    bool preparedDisposed;
+    readonly List<IDisposable> returnPins=new List<IDisposable>();
+    SafeFileHandle returnMachineDirectory;
+    FileStream returnGate;
+    bool returnGateLocked;
+    bool returnReservationLocked;
 
     // Same-assembly fixture seam. Production construction always uses admitted
     // process/file authority; no request, environment value, or external argument
@@ -593,7 +599,17 @@ internal sealed class OriginalUserSessionAdapter : VpnInstallHelperRoles.Origina
     }
 
     public void RelaunchOriginalOwner() {
+        // SUCCEEDED can be observed before the coordinator clears pending and releases
+        // its exclusive installation lock. Receipt completion alone cannot admit the
+        // returned process. Wait using the existing finite return deadline, retaining
+        // the authenticated shared gate lease through the single launch.
+        while (!TryAcquireReturnAdmission()) {
+            if (ReturnDeadlineReached) throw new IOException("OUTCOME_UNKNOWN");
+            Pause();
+        }
         if (fixture!=null) { fixture.RelaunchOriginalOwner(); return; }
+        VerifyReturnGate();
+        if (!ReturnGateIsClear(ReadReturnGate())) throw new IOException("CONFLICT");
         // The admitted owner process is intentionally gone before INSTALLING; the
         // retained caller token is the original-user authority for this relaunch.
         if (admission.Caller.User==null || !String.Equals(admission.Caller.User.Value,admission.Owner.Principal,StringComparison.Ordinal))
@@ -605,9 +621,101 @@ internal sealed class OriginalUserSessionAdapter : VpnInstallHelperRoles.Origina
         using (Process process=Process.Start(launch)) { if (process==null) throw new IOException("RUNTIME_FAILED"); }
     }
 
+    bool TryAcquireReturnAdmission() {
+        if (disposed) throw new ObjectDisposedException("original-user return");
+        if (fixture!=null) return fixture.TryAcquireReturnAdmission();
+        if (returnGate==null) OpenReturnGate();
+        VerifyReturnGate();
+        // The coordinator releases byte 0 and byte 16 separately. Retain both
+        // shared ranges before reading all 17 bytes, and exclude a new installer
+        // reservation while the returned process is being launched.
+        if (!returnReservationLocked) {
+            if (!VpnInstallNative.TryLock(returnGate.SafeFileHandle,16,false)) return false;
+            returnReservationLocked=true;
+        }
+        if (!returnGateLocked) {
+            if (!VpnInstallNative.TryLock(returnGate.SafeFileHandle,0,false)) {
+                ReleaseReturnGateLock(); return false;
+            }
+            returnGateLocked=true;
+        }
+        bool clear;
+        try { clear=ReturnGateIsClear(ReadReturnGate()); }
+        catch { ReleaseReturnGateLock(); throw; }
+        if (!clear) ReleaseReturnGateLock();
+        return clear;
+    }
+
+    void OpenReturnGate() {
+        // Derive the exact installation gate from the already admitted launcher;
+        // neither a caller nor a receipt supplies a new path or storage authority.
+        string launcherDirectory=Path.GetDirectoryName(admission.Request.Launcher);
+        if (String.IsNullOrEmpty(launcherDirectory)) throw new IOException("CONFLICT");
+        SafeFileHandle installation=VpnInstallNative.OpenDirectory(launcherDirectory);
+        returnPins.Add(installation);
+        VpnInstallNative.Inspect(installation,true,false,admission.Owner.Principal);
+        string id=VpnInstallNative.InstallationId(installation);
+        string programData=VpnInstallNative.ProgramData();
+        SafeFileHandle root=VpnInstallNative.OpenDirectory(programData);
+        returnPins.Add(root);
+        try { VpnInstallNative.Inspect(root,true,true,null); }
+        catch { returnPins.Add(VpnInstallNative.PinNonEmptyAncestor(root,null)); }
+        string machine=Path.Combine(programData,"vpn-control-install-jobs");
+        returnMachineDirectory=VpnInstallNative.OpenDirectory(machine);
+        returnPins.Add(returnMachineDirectory);
+        VpnInstallNative.InspectLinkedAncestor(root,returnMachineDirectory,null);
+        VpnInstallNative.Inspect(returnMachineDirectory,true,false,null);
+        returnGate=VpnInstallNative.OpenGate(Path.Combine(machine,"gate-"+id),false);
+        returnPins.Add(returnGate);
+        VerifyReturnGate();
+    }
+
+    void VerifyReturnGate() {
+        VpnInstallNative.InspectLinkedAncestor(returnMachineDirectory,returnGate.SafeFileHandle,null);
+        VpnInstallNative.Inspect(returnGate.SafeFileHandle,false,false,null);
+    }
+    byte[] ReadReturnGate() {
+        returnGate.Position=0;
+        return ReadBounded(returnGate,17);
+    }
+    internal static bool ReturnGateIsClear(byte[] bytes) {
+        if (bytes==null || bytes.Length!=17) throw new IOException("CONFLICT");
+        for (int index=0;index<bytes.Length;index++) {
+            if (index==8) { if (bytes[index]>1) throw new IOException("CONFLICT"); }
+            else if (bytes[index]!=0) throw new IOException("CONFLICT");
+        }
+        return bytes[8]==0;
+    }
+    void ReleaseReturnGateLock() {
+        Exception failure=null;
+        if (returnGateLocked) {
+            try { VpnInstallNative.Unlock(returnGate.SafeFileHandle,0); returnGateLocked=false; }
+            catch (Exception error) { failure=error; }
+        }
+        if (returnReservationLocked) {
+            try { VpnInstallNative.Unlock(returnGate.SafeFileHandle,16); returnReservationLocked=false; }
+            catch (Exception error) { if (failure==null) failure=error; }
+        }
+        if (failure!=null) throw new IOException("PERSISTENCE_FAILED",failure);
+    }
+
     public void Dispose() {
         if (disposed) return;
-        if (fixture==null) prepared.Dispose(); else fixture.Dispose();
+        Exception failure=null;
+        try { ReleaseReturnGateLock(); } catch (Exception error) { failure=error; }
+        // Failed unlock retains the exact locked handle for cleanup retry. Close
+        // every other independent resource even when another disposal fails.
+        if (!returnGateLocked && !returnReservationLocked) {
+            for (int index=returnPins.Count-1;index>=0;index--) {
+                try { returnPins[index].Dispose(); returnPins.RemoveAt(index); }
+                catch (Exception error) { if (failure==null) failure=error; }
+            }
+        }
+        if (!preparedDisposed) {
+            try { if (fixture==null) prepared.Dispose(); else fixture.Dispose(); preparedDisposed=true; }
+            catch (Exception error) { if (failure==null) failure=error; }
+        }
+        if (failure!=null) throw new IOException("PERSISTENCE_FAILED",failure);
         disposed=true;
     }
 
@@ -691,6 +799,7 @@ internal interface OriginalUserSessionAdapterFacilities : IDisposable {
     VpnInstallHelperRoles.Receipt ReadProtectedReceipt();
     uint InstallVerifiedPackage();
     void PublishNativeResult(uint exitCode);
+    bool TryAcquireReturnAdmission();
     void RelaunchOriginalOwner();
 }
 

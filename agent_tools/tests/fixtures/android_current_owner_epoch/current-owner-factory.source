@@ -1,0 +1,22 @@
+"""Explicit current dependency epoch for the unchanged owner constructor.
+
+This derives a private host namespace only. The full original native template,
+request validation and source/stage checks are unchanged. No caller pin or
+assertion can select the dependency epoch.
+"""
+import ast,hashlib
+OWNER='06daf9b5d00dccd6095b95c2a1af0d310c2519224fe6a79d428c7392592107ea'
+OLD_BUNDLE='6d2ff26ae551d1d7c3b2b7ba7428b02fdd1e28e91beb760a4a4ee12de7738a85'
+BUNDLE='c6e2218fb927ed2107f7a234e9c2a94ea41da78a178032a904c190bd0ee9d92c'
+COMMAND='cd241219e689ae6fd925ccfb05ae140d86ac0d4818cdcc0de84043b01617a367'
+def derive(owner_raw,bundle_raw,command_raw):
+ for raw,expected in ((owner_raw,OWNER),(bundle_raw,BUNDLE),(command_raw,COMMAND)):
+  if type(raw)is not bytes or hashlib.sha256(raw).hexdigest()!=expected:raise ValueError('current_owner_factory_source_changed')
+ tree=ast.parse(owner_raw);before=ast.dump(tree,include_attributes=False)
+ rows=[n for n in tree.body if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)and n.targets[0].id=='BUNDLE_SHA']
+ if len(rows)!=1 or ast.literal_eval(rows[0].value)!=OLD_BUNDLE:raise ValueError('current_owner_factory_epoch_changed')
+ rows[0].value=ast.Constant(BUNDLE);ast.fix_missing_locations(tree)
+ source=ast.unparse(tree)+'\n'
+ inverse=ast.parse(source);pin=next(n for n in inverse.body if isinstance(n,ast.Assign)and any(isinstance(v,ast.Name)and v.id=='BUNDLE_SHA'for v in n.targets));pin.value=ast.Constant(OLD_BUNDLE)
+ if ast.dump(inverse,include_attributes=False)!=before:raise ValueError('current_owner_factory_inverse_changed')
+ return {'source':source,'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),'originalOwnerSourceSha256':OWNER,'originalDependencySha256':OLD_BUNDLE,'currentDependencySha256':BUNDLE,'inverseVerified':True,'nativeTemplateUnchanged':True}

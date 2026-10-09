@@ -8,6 +8,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve installer collection diagnostics, cleanup failures and original transport facts after publication or source-check failures.
 - Improve native acceptance batch diagnostics and Windows/Android failure regression coverage.
 - Preserve numbered collector evidence and include shared acceptance gates.
+- Wait for Windows update admission cleanup before returning the original user app.
+- Restore explicit Android installer resume after confirmation or Activity state is lost.
+- Cover current Android owner factory source binding with portable causal regressions.
 
 ## 2.2.4 - 2026-10-08
 

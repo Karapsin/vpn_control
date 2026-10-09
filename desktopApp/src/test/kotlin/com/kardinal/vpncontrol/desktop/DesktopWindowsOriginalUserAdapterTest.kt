@@ -13,6 +13,18 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class DesktopWindowsOriginalUserAdapterTest {
+    @Test fun successfulReceiptWaitsForPendingClearAndExclusiveGateRelease() =
+        runFixture("SuccessfulReceiptWaitsForCoordinatorGateRelease", "SUCCESS_WAITED_FOR_GATE_RELEASE")
+
+    @Test fun blockedReturnPreservesTheNativeResultWithoutReplayingMsi() =
+        runFixture("UnreleasedReturnGateRetainsUnknownWithoutAnotherMsi", "UNRELEASED_GATE_UNKNOWN_NO_REPLAY")
+
+    @Test fun returnGateRequiresExactSizeAndReservedBytes() =
+        runFixture("ReturnGateBytesRequireExactProtectedSchema", "RETURN_GATE_SCHEMA_STRICT")
+
+    @Test fun rejectedReturnAdmissionNeverLaunchesTheOwner() =
+        runFixture("RejectedReturnAdmissionNeverRelaunches", "UNTRUSTED_RETURN_ADMISSION_REJECTED")
+
     @Test fun acknowledgementLossRetainsTheAttemptAndNeverReplaysMsi() = runFixture("AcknowledgementLossDoesNotReplayMsi", "ACK_LOSS_NO_REPLAY")
 
     @Test fun wrongReceiptCorrelationIsRejectedBeforeAnyMsiInvocation() = runFixture("WrongCorrelationIsRejectedBeforeMsi", "FOREIGN_RECEIPT_REJECTED")

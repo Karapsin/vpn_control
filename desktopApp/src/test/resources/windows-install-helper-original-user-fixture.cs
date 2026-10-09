@@ -17,6 +17,8 @@ public static class OriginalUserAdapterFixtures {
         internal int NativeCalls, ResultCalls, Relaunches, Disposals, Pauses, PauseLimit=-1;
         internal long ClockMillis, ReturnDeadlineMillis=-1;
         internal bool ResultAckLost;
+        internal bool ExerciseReturnGate, AdvanceReturnGate=true, RejectReturnAdmission;
+        internal int ReturnGateStage, ReturnAdmissionChecks;
         internal Session(params VpnInstallHelperRoles.Receipt[] source) { receipts=new Queue<VpnInstallHelperRoles.Receipt>(source); }
         public string JobId { get { return Job; } }
         public void PublishReady() { }
@@ -28,6 +30,7 @@ public static class OriginalUserAdapterFixtures {
         public bool ReturnDeadlineReached { get { return ReturnDeadlineMillis>=0 ? ClockMillis>=ReturnDeadlineMillis : receipts.Count==0; } }
         public void Pause() {
             Pauses++; ClockMillis+=100;
+            if (ExerciseReturnGate && AdvanceReturnGate && ReturnGateStage<2) ReturnGateStage++;
             if (PauseLimit>=0 && Pauses>PauseLimit) throw new IOException("PAUSE_CAP");
         }
         public uint InstallVerifiedPackage() {
@@ -38,7 +41,15 @@ public static class OriginalUserAdapterFixtures {
             ResultCalls++;
             if (ResultAckLost) throw new IOException("Private result acknowledgement lost");
         }
-        public void RelaunchOriginalOwner() { Relaunches++; }
+        public bool TryAcquireReturnAdmission() {
+            ReturnAdmissionChecks++;
+            if (RejectReturnAdmission) throw new IOException("CONFLICT");
+            return !ExerciseReturnGate || ReturnGateStage==2;
+        }
+        public void RelaunchOriginalOwner() {
+            if (ExerciseReturnGate && ReturnGateStage!=2) throw new IOException("BUSY");
+            Relaunches++;
+        }
         public void Dispose() { Disposals++; }
     }
 
@@ -49,6 +60,64 @@ public static class OriginalUserAdapterFixtures {
         try { VpnInstallHelperRoles.RunOriginalUser(session); }
         catch (VpnInstallHelperRoles.WorkerFailure error) { return error; }
         throw new Exception("Expected retained original-user failure");
+    }
+
+    public static string SuccessfulReceiptWaitsForCoordinatorGateRelease() {
+        Session session=new Session(Receipt(Job,3,VpnInstallHelperRoles.Phase.Installing),
+            Receipt(Job,4,VpnInstallHelperRoles.Phase.Succeeded));
+        session.ExerciseReturnGate=true; session.ReturnDeadlineMillis=500; session.PauseLimit=2;
+        using (OriginalUserSessionAdapter adapter=new OriginalUserSessionAdapter(session)) {
+            if (VpnInstallHelperRoles.RunOriginalUser(adapter)!=0) throw new Exception("Return did not finish");
+            // The two scheduled pauses are pending-clear followed by exclusive-lock release.
+            // Process startup would return BUSY until BOTH events have happened.
+            if (session.Pauses!=2 || session.ReturnAdmissionChecks!=3 || session.ReturnGateStage!=2 ||
+                session.NativeCalls!=1 || session.ResultCalls!=1 || session.Relaunches!=1)
+                throw new Exception("Returned owner raced coordinator cleanup or replayed native install");
+        }
+        if (session.Disposals!=1) throw new Exception("Return lease was not released exactly once");
+        return "SUCCESS_WAITED_FOR_GATE_RELEASE";
+    }
+
+    public static string UnreleasedReturnGateRetainsUnknownWithoutAnotherMsi() {
+        Session session=new Session(Receipt(Job,3,VpnInstallHelperRoles.Phase.Installing),
+            Receipt(Job,4,VpnInstallHelperRoles.Phase.Succeeded));
+        session.ExerciseReturnGate=true; session.AdvanceReturnGate=false; session.ReturnDeadlineMillis=300;
+        using (OriginalUserSessionAdapter adapter=new OriginalUserSessionAdapter(session)) {
+            VpnInstallHelperRoles.WorkerFailure failure=Failure(adapter);
+            if (failure.Message!="OUTCOME_UNKNOWN" || !failure.InstallerStarted || failure.NativeExitCode!=0 ||
+                session.NativeCalls!=1 || session.ResultCalls!=1 || session.Relaunches!=0 || session.Pauses!=3)
+                throw new Exception("Blocked return invented a successful relaunch or lost native result");
+        }
+        return "UNRELEASED_GATE_UNKNOWN_NO_REPLAY";
+    }
+
+    public static string RejectedReturnAdmissionNeverRelaunches() {
+        Session session=new Session(Receipt(Job,3,VpnInstallHelperRoles.Phase.Installing),
+            Receipt(Job,4,VpnInstallHelperRoles.Phase.Succeeded));
+        session.RejectReturnAdmission=true; session.ReturnDeadlineMillis=500;
+        using (OriginalUserSessionAdapter adapter=new OriginalUserSessionAdapter(session)) {
+            VpnInstallHelperRoles.WorkerFailure failure=Failure(adapter);
+            if (!failure.InstallerStarted || failure.NativeExitCode!=0 || session.NativeCalls!=1 ||
+                session.ResultCalls!=1 || session.Relaunches!=0 || session.Pauses!=0)
+                throw new Exception("Untrusted gate was treated as transient or launched an owner");
+        }
+        return "UNTRUSTED_RETURN_ADMISSION_REJECTED";
+    }
+
+    public static string ReturnGateBytesRequireExactProtectedSchema() {
+        if (!OriginalUserSessionAdapter.ReturnGateIsClear(new byte[17])) throw new Exception("Clear gate refused");
+        byte[] pending=new byte[17]; pending[8]=1;
+        if (OriginalUserSessionAdapter.ReturnGateIsClear(pending)) throw new Exception("Pending gate admitted return");
+        List<byte[]> invalid=new List<byte[]> { null,new byte[0],new byte[16],new byte[18] };
+        for (int index=0;index<17;index++) {
+            byte[] changed=new byte[17]; changed[index]=(byte)(index==8 ? 2 : 1); invalid.Add(changed);
+        }
+        foreach (byte[] record in invalid) {
+            bool rejected=false;
+            try { OriginalUserSessionAdapter.ReturnGateIsClear(record); } catch (IOException) { rejected=true; }
+            if (!rejected) throw new Exception("Malformed protected gate admitted return");
+        }
+        return "RETURN_GATE_SCHEMA_STRICT";
     }
 
     public static string AcknowledgementLossDoesNotReplayMsi() {

@@ -5,11 +5,76 @@ import com.kardinal.vpncontrol.model.*
 import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AndroidUpdateInstallControlTest {
+    @Test fun coldCommittingReceiptOffersGuiResumeAndRecommitsOnlyItsOriginalSession() = runTest {
+        val f = Fixture(backgroundScope)
+        val initial = AndroidInstallSessionReceipt(
+            "b2d876f3-194c-4e8c-893e-e482a66c6f50", "6e4905fb-d713-4dd5-a7fb-136cc12c56b5",
+            17, "2.2.0", 20, "a".repeat(64), 100, AppInstallSessionPhase.COMMITTING,
+            confirmation = null, signers = setOf("b".repeat(64)), createdAt = 0)
+        val loaded = AndroidInstallReceiptRecovery.load(listOf("${initial.id}.json")) { initial }
+        assertFalse(loaded.unavailable)
+        val writes = mutableListOf<AndroidInstallSessionReceipt>()
+        val lifecycle = AndroidInstallSessionLifecycle(loaded.receipts.single(), writes::add) {
+            f.engine.installSessionChanged(androidInstallSessionStatus(it))
+        }
+        f.engine.installSessionChanged(androidInstallSessionStatus(lifecycle.snapshot()))
+        assertNull(f.engine.checkedStatus())
+        assertNull(f.engine.reserveInstallation())
+        // The existing dialog gates its explicit install button on this production status.
+        assertTrue("Cold committed session must expose explicit GUI resume", requireNotNull(f.state.installSession).resumable)
+        val changes = kotlinx.coroutines.flow.MutableStateFlow(0)
+        val commits = mutableListOf<Int>()
+        var confirmation: Any? = null
+        var newSessions = 0
+        var launches = 0
+        var retained = false
+        val recovery = AndroidInstallConfirmationRecovery(lifecycle, { confirmation }, {
+            assertEquals(initial.id, it.id)
+            assertEquals(initial.sessionId, it.sessionId)
+            assertEquals(initial.sha256, it.sha256)
+            assertEquals(initial.signers, it.signers)
+        }, {
+            assertFalse(lifecycle.canAbandon())
+            commits += it.sessionId
+        }, { ready -> changes.first { ready() }; Unit })
+        val install = AndroidUpdateInstallControl(f.engine, f.interactions, recover = {
+            object : AndroidUpdateInstallControl.Pinned {
+                override val version = initial.version
+                override suspend fun verify() { assertEquals(initial.sessionId, lifecycle.snapshot().sessionId) }
+                override suspend fun prepareDispatch() { recovery.prepare() }
+                override fun snapshot() = AndroidUpdateInstallControl.PinnedState(androidInstallSessionStatus(lifecycle.snapshot()))
+                override fun dispatch(launcher: (android.content.Intent) -> Unit) { launches++; lifecycle.handedOff() }
+                override fun release(handedOff: Boolean) { retained = !lifecycle.canAbandon() }
+            }
+        }, pin = { newSessions++; error("Recovery must not create another session") })
+        val work = async { install.execute("cold-committed-resume") { true } }
+        runCurrent()
+        val token = requireNotNull(f.interactions.tokenFor("cold-committed-resume"))
+        val session = requireNotNull(f.interactions.attach(token, "owner", null))
+        val dispatch = async { install.dispatch(token, session) {} }
+        runCurrent()
+        assertEquals(listOf(initial.sessionId), commits)
+        assertFalse(dispatch.isCompleted)
+        assertEquals(initial, lifecycle.snapshot())
+        confirmation = Any()
+        assertTrue(lifecycle.callback(initial.sessionId, initial.nonce, AppInstallSessionPhase.AWAITING_CONFIRMATION, "filter"))
+        changes.value++
+        assertTrue(dispatch.await())
+        assertEquals(ControlCode.OK, work.await().code)
+        assertEquals(0, newSessions)
+        assertEquals(1, launches)
+        assertEquals(listOf(initial.sessionId), commits)
+        assertTrue(retained)
+        assertEquals(initial.sessionId, lifecycle.snapshot().sessionId)
+        assertEquals(AppInstallSessionPhase.HANDED_OFF, lifecycle.snapshot().phase)
+    }
+
     @Test fun foreignInteractionSessionCannotPrepareOrCommitPackageInstallation() = runTest {
         val f = Fixture(backgroundScope)
         var preparations = 0

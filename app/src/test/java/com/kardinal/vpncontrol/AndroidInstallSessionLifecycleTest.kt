@@ -4,6 +4,21 @@ import org.junit.Test
 import org.junit.Assert.*
 
 class AndroidInstallSessionLifecycleTest {
+    @Test fun explicitResumeDependsOnRecoverablePhaseEvenWhenConfirmationWasLost() {
+        val recoverable = setOf(AndroidInstallSessionPhase.STAGED, AndroidInstallSessionPhase.COMMITTING,
+            AndroidInstallSessionPhase.AWAITING_CONFIRMATION, AndroidInstallSessionPhase.HANDED_OFF)
+        for (phase in recoverable + AndroidInstallSessionPhase.entries) {
+            for (confirmation in listOf(null, "retained-confirmation-filter")) {
+                val before = receipt().copy(phase = phase, confirmation = confirmation)
+                val status = androidInstallSessionStatus(before)
+                assertEquals("$phase / confirmation=$confirmation", phase in recoverable, status.resumable)
+                assertEquals(before.id, status.receiptId)
+                assertEquals(before.version, status.version)
+                assertEquals(phase, status.phase)
+            }
+        }
+    }
+
     @Test fun stagingJournalPrecedesCreationAndCannotCommitIncompleteBytes() {
         val writes = mutableListOf<AndroidInstallSessionReceipt>()
         val lifecycle = AndroidInstallSessionLifecycle(receipt().copy(sessionId = -1,

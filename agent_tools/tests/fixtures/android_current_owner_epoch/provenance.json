@@ -1,0 +1,35 @@
+{
+  "cause": "Pure owner factory retained prior current-bundle pin 3c while authentic current bundle was c6. Only its current BUNDLE constant changed; original OLD_BUNDLE 6d retained.",
+  "constructorOrNativeCalls": 0,
+  "dataOnlyInputs": {
+    "bundle.source": {
+      "bytes": 121600,
+      "importedOrExecuted": false,
+      "publicSourcePath": "agent_tools/android_installer_component_bundle.py",
+      "sha256": "c6e2218fb927ed2107f7a234e9c2a94ea41da78a178032a904c190bd0ee9d92c"
+    },
+    "command.source": {
+      "bytes": 10947,
+      "importedOrExecuted": false,
+      "publicSourcePath": "agent_tools/android_component_command_transport.py",
+      "sha256": "cd241219e689ae6fd925ccfb05ae140d86ac0d4818cdcc0de84043b01617a367"
+    },
+    "owner.source": {
+      "bytes": 18347,
+      "importedOrExecuted": false,
+      "publicSourcePath": "agent_tools/android_api35_current_owner_admission.py",
+      "sha256": "06daf9b5d00dccd6095b95c2a1af0d310c2519224fe6a79d428c7392592107ea"
+    }
+  },
+  "kind": "frozen-public-current-owner-dependency-epoch-causal-fixture",
+  "privateInputs": false,
+  "publicHistoricalRegressionPacketSha256": "7ca5c18737c155a178c9bc3cb2f80342621d5152637a8b48d9bf00799238d7b1",
+  "pureDerivationSource": {
+    "fixedSha256": "8ed8e128df1da814507b1efcce9fb31594dbec57493ab65fa03e22d27642d4a2",
+    "fixture": "current-owner-factory.source",
+    "onlyFix": "BUNDLE constant 3c1af97148814d573912b05f6fe2c8c34b989e5788b7e09a11e24a59722ce4ef -> c6e2218fb927ed2107f7a234e9c2a94ea41da78a178032a904c190bd0ee9d92c",
+    "preservedBeforeSha256": "4d7bac00c489d548210d7e5e124dff04430f6ba9b80ebca568291bbaec07d30a"
+  },
+  "returnedOwnerSourceExecuted": false,
+  "schema": 1
+}

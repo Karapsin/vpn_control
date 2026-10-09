@@ -1,5 +1,40 @@
 # Parity Failure-to-Regression Ledger
 
+
+## Product return/resume and current-owner source binding — 2026-10-09
+
+This batch preserves authentic unfixed inputs and isolated execution evidence.
+Canonical focused checks and fresh prepush are separate gates. No native update,
+lease cleanup, original UNKNOWN recovery or final acceptance is claimed here.
+
+| Failure class | Causal evidence and narrow change | Routine coverage | Remaining gate |
+| --- | --- | --- | --- |
+| Windows return races coordinator gate cleanup | Actual before adapter observes SUCCEEDED before exclusive installation/reservation locks clear; the returned startup exits BUSY. Retain shared admission over both existing gate bytes, strict gate/ancestor validation and pending=false through one original-user launch under the existing deadline. Eight adapter and24 unchanged role controls pass afterward. | Four new delayed-cleanup, deadline, untrusted-gate and strict-schema cases join DesktopWindowsOriginalUserAdapterTest and its same-assembly fixture. Native Windows test requirements and macOS skips stay explicit. | Installed same-source pair, delayed actual coordinator cleanup, exact ordinary-user return, authenticated ready acknowledgement and equivalent MCP proof. |
+| Android lost confirmation hides explicit GUI resume | Production COMMITTING/null-confirmation projection and cold-owner GUI action produce exactly two failures among31 authentic Kotlin/JUnit cases. Explicit resumability follows the existing four recoverable lifecycle states; terminal, UNKNOWN and PREPARING stay false. Real recovery recommits the retained session once with zero new-session pin calls. | AndroidInstallSessionLifecycleTest and AndroidUpdateInstallControlTest exercise the production projection, loaded receipt, recovery, control and interactions. | API29/API35 packaged Activity/process loss, independent GUI resume, confirmation redelivery, exact-session recovery and cleanup. |
+| Android current-owner factory retains obsolete bundle pin | Authentic pure factory with old pin fails one binding control. A derived successor changes only the admitted current bundle literal; all four real factory controls pass. Historical sources and old bundle bytes remain distinct. | test_android_current_owner_epoch.py and five immutable public fixtures join routine unittest discovery; constructors/native payloads are not invoked. | Current source-bound owner assembly and complete direct/MCP native flow. |
+
+Windows diagnostics75438 and70040 establish a different listener PID and exact
+parent/child OS generations. The diagnostic's exact CIM/OS comparison prevents
+its token observation because CIM loses timestamp precision. A separate source
+successor retains original timestamps and uses exact OS generation for two token
+reads; source/local causal coverage is retained in the owning packet. It does
+not substitute an arbitrary PID or weaken the original recovery guard. Native
+token/session proof and routine promotion of the operative tool repair remain
+open; originald9 is UNKNOWN and unreplayed.
+
+Android original65467 preserves collection-loop timeout1201.197seconds, caller1,
+SSH0/dualEOF and local source/publication closure. Remote child return−9 and
+unknown start ticks do not prove descendant disposition or guest restoration.
+The failing collection step still requires measured bounded diagnosis before any
+fullfacts retry. Calibration, local parser/source GREEN and ended SSH do not prove
+current facts or installer/retirement authority.
+
+Product evidence packets: `.runtime/windows-return-gate-fix-40180292-094a-4a8e-9fef-504223faebc4/`,
+`.runtime/android-gui-install-resume-fix-ds94sxde/` and
+`.runtime/android-current-proof-readonly-a23/owner-epoch-portable-46191377-2d6c-4c77-adbc-f884103ecf04/`.
+The replaced ledger is preserved in
+`.runtime/root-parity-integration-fa689a61-ea3a-4f73-92a2-209b7ecf3f5d/`.
+
 ## Collector begin compatibility and shared gate coverage — 2026-10-09
 
 Original managed prepush61229 preserves6054 tests with one failure, one error and

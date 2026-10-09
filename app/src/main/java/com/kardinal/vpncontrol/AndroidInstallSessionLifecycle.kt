@@ -19,6 +19,11 @@ internal data class AndroidInstallSessionReceipt(
         AndroidInstallSessionPhase.FAILED, AndroidInstallSessionPhase.CANCELLED)
 }
 
+/** GUI status for the same journaled session recovered by explicit installation. */
+internal fun androidInstallSessionStatus(value: AndroidInstallSessionReceipt) = AppInstallSessionStatus(value.id, value.phase,
+    value.version, value.phase in setOf(AndroidInstallSessionPhase.STAGED, AndroidInstallSessionPhase.COMMITTING,
+        AndroidInstallSessionPhase.AWAITING_CONFIRMATION, AndroidInstallSessionPhase.HANDED_OFF))
+
 /** Persist before publishing transitions. A verified installed APK can recover a lost OS callback. */
 internal class AndroidInstallSessionLifecycle(
     initial: AndroidInstallSessionReceipt,

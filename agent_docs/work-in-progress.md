@@ -35,61 +35,45 @@ GREEN or diagnostic success does not close a product acceptance scenario.
 
 ## Current acceptance status — 2026-10-09
 
-Delivered source remains `a2617120c8706edc0cbd815f41f404a9f5bb8186`, product2.2.4.
-The previous checkpoint passed all15 managed prepush checks and was pushed to dev.
-The current coherent tool/regression and worker-autonomy changes are working content.
-Original prepush61229 finished with6054 tests, one failure, one error and170 skips;
-the retained completion receipt is `.rag_index/check-runs/cd297050-c829-473f-a517-d546a1e74dec/receipt.json`.
-Both failures came from new begin records bypassing existing collector evidence
-schemas. Their unchanged tests fail before and pass after the reviewed producer
-repair; its39 collector,21 physical and56 legacy checks pass with one expected
-Linux-root skip on macOS. Shared acceptance reporting now includes both shared
-gates and all22 requirements. These fixes were integrated only after Windows,
-Android and candidate validation holders positively closed. Canonical affected
-checks, a fresh complete prepush and the next dev checkpoint remain pending.
-Required five-workflow CI stays deferred to final delivery as requested.
+Checkpoint `3eb2254c31ebe8eba8e47d50fa092230f2f3cd16` delivered the reviewed
+collector, Android physical-batch, public source regression and Windows CLI alias
+changes on dev, product2.2.4. Its final-content managed prepush67721 passed all15
+commands:6058 agent tests,170 explicit skips, and the complete requested Gradle
+selection. The earlier61229 failure remains preserved. Required five-workflow CI
+is deferred to final delivery as requested.
 
-Windows's reviewed active-owner sharing repair is source/local evidence only.
-Its public task fits the unchanged16384-byte frame at16380 bytes after lossless
-compression and removal of authenticated unused helper members. Native sharing
-controls and update execution remain pending. A LOCAL source check correctly
-refused one stale alias-test pin; the operator owns its narrow reviewed successor.
-Android725a passed genuine LOCAL preparation and closed all5203 descriptors; its
-next native scope is one calibration and physical epoch, excluding lease and
-installer actions. Both operators must bind the new working fingerprint before
-fresh execution; prior ece preparations remain evidence for their own source.
-
-The native audit still records0 final passed,2 historical and20 open groups. Its217
-case occurrences overlap. The249 visual pairs have243 valid tracked baselines;
-Locations Add/Edit baselines are missing on Linux, Windows and macOS. Engineering
-and diagnostic evidence retain their original source identities and do not close
-final-source native/MCP or visual acceptance.
+Root integrated the next coherent product/regression batch only after original
+producer96489 reached terminal0/dualEOF/source closing and one same-correlation
+status confirmed ended. Its owner145, pipeline94, SDK17 and660 capture files
+closed. Both native borrowers and all local canonical/source/postmortem holders
+closed; Android guest effects and remote descendants remain UNKNOWN.
 
 | Slice | Exclusive owner and environment | Verified progress | Next gate |
 | --- | --- | --- | --- |
-| Integration and delivery | root; tracked files, metadata, Gradle and Git | Reviewed Android batch/legacy fixtures, public read-only causal controls and Windows alias routine candidate integrated after positive source quiescence. Isolated public-copy affected checks pass21/21; prior combined84 run retained its real schema failure and two corrected copy omissions. Worker-autonomy documentation remains included. | Finish metadata and canonical focused checks; publish honest working fingerprint; fresh content-bound complete prepush before coherent dev delivery. |
-| Shared SSH | windows_operator; sole Pi/Arch producer | Original490c tool67731 reached terminal0/dual EOF/source closure. After140.54seconds of real silence, one same-correlation status returned ENDED. All145 owner,94 runtime and658 capture rows closed; native borrowers and protected/source holders closed. | Fresh source-bound producer after final root content; no timeout-based restart, unsupported force-close or UNKNOWN replay. |
-| Windows | windows_operator; sole assigned guest | Current6645 native HTTPS200/manifest match passed. Fresh09081 all-nine construction passed LOCAL; actual1020-second budget guard refused native submission. Original6815 remains UNKNOWN. Its Cli/Clear-Item alias collision has authentic RED/GREEN coverage; three public routine controls and two exact Windows CI selectors are integrated. Native f614 recovery failed before quit: distinct ordinary precondition observation proves lock ReadAllText sharing violation0x80070020, with principal/CLI/ancestors/process/birth checks passing. Independent VM census admits no separate guest. | Preserve all original correlations; causal sharing regression and existing active-lock ownership procedure, fresh guarded normal-quit recovery, then public update/UAC/verify/relaunch/recovery/cleanup and matching MCP cases. |
-| Android API35 | android_api35_operator; emulator5682 only | Original47b5 full-facts entry timed out UNKNOWN. Bounded original-record observation consumed only final records3771/3772 plus admission, not the full catalogue3794 or an enclosing phase. Canonical batch successor replaces incompatible utility ABI assumptions, adds bounded durable command timing and retains owner/source guards. Twenty affected controls plus unchanged baseline test pass in isolated public copy; portable read-only regression promotion is integrated. | Freeze actual canonical graph/fingerprint, genuine LOCAL and fresh sufficient route admission; same genuine baseline instance then profile4 calibration and one physical batch epoch. No full-facts/DEX/retirement replay or installer authority from calibration; complete direct native cases then MCP reruns. |
-| Linux/macOS and final matrix | preparation workers; root owns local Mac | Linux33-case plus17 shared-document preparation and historical engineering artifacts remain preserved. No eligible final-source package set or additional native result is registered. | Windows/Android first, then Linux/macOS; freeze final source/version and build package pairs once, complete native/MCP/visual proof, then one final exact-SHA five-workflow CI verification. |
+| Integration and delivery | root; tracked files, metadata, Gradle and Git | Three reviewed patches integrate Windows original-user return admission, Android cold-owner GUI install resume, and four portable current-owner factory controls. Authentic isolated RED/GREEN evidence is retained. | Canonical focused checks, metadata, new content-bound complete prepush and coherent dev checkpoint. Publish the new frozen fingerprint before further native admission. |
+| Windows | windows_operator; sole assigned guest and Pi/Arch route | Native listener diagnostic75438 proves exactly one loopback listener PID5360 while the recovery expected launcher7468. Native lineage70040 proves stable child5360→parent7468, exact installed CLI bytes and OS births; CIM timestamps lose precision and token/session facts remain UNKNOWN. Originald9 recovery remains UNKNOWN/unreplayed; no installer was submitted. | OS-bound child token/session proof, retained launcher/application identity, guarded normal quit and both exits; source-matched base/target packages, complete public update/UAC/installed-byte/return/recovery/cleanup and MCP equivalence. |
+| Windows product return | root integration; source/test owners returned their paths | Actual same-assembly regression reproduced premature return while coordinator gate cleanup was delayed. Eight adapter controls and24 unchanged role controls passed after retained shared return admission. | Canonical tests and packaged proof of delayed cleanup, exactly one ordinary-user return and authenticated ready acknowledgement; local helper fixtures are component evidence. |
+| Android API35 | android_api35_operator; emulator5682 only | Genuine same-instance calibration/physical epoch passed in32.183seconds. Subsequent fullfacts original65467/SSH81442 ended with collection-loop timeout1201.197seconds; facts/guest effects/restoration remain UNKNOWN. All500 local held leaves and5384 descriptors closed. No replay or cleanup authority follows. | Isolate the original slow step with bounded durable phase/command evidence and causal coverage before another fullfacts attempt; then current proof, exact lease/stage admission, cleanup and full direct/MCP scenarios. |
+| Android product resume | root integration; source/test owners returned their paths | Authentic COMMITTING/no-confirmation projection and cold-owner GUI tests failed before the fix. All31 isolated Kotlin/JUnit cases passed after explicit resume for STAGED, COMMITTING, AWAITING_CONFIRMATION and HANDED_OFF; original-session recommit does not create a duplicate. | Canonical unit tests, new source-bound APKs and API29/API35 Activity/process-loss, independent GUI resume, exact-session recovery and cleanup. |
+| Linux/macOS and final matrix | preparation workers; root owns local Mac | Historical package and native evidence remain preserved. No final-source package set or additional final native result is registered. | Windows/Android first, then Linux/macOS; freeze final source/version, build compatible pairs, complete native/MCP/visual proof, then one final exact-SHA five-workflow CI verification. |
 
-The replaced17:24 opening is preserved at
-`.runtime/root-android-integration-check-c98b719a-47a7-4326-ba59-0665b4a423e0/work-in-progress.before-integration.md`.
-Its earlier16:26 beforeimage remains at
-`.runtime/root-autonomy-final-wording-92a5734c-931b-445c-8b0e-010cd3953675/work-in-progress.before.md`.
-Original working fingerprint2d16 remains attached to490c and its borrowers; new
-source cannot relabel those receipts or engineering packages.
+The current exact-source acceptance overview records22 unmet requirements and217
+overlapping case occurrences. The audit retains0 final passed,2 historical and20
+open groups. The249 visual pairs have243 valid tracked baselines; Locations
+Add/Edit baselines are missing on Linux, Windows and macOS. Engineering artifacts,
+unit tests and diagnostic receipts do not close final-source native acceptance.
 
-Immutable evidence: `windows-490c-terminal-public/public.json`,
-`windows-current6645-tls-observed-public/public.json`,
-`windows-fresh09081-local-public/public.json`,
-`windows-nine-6815-unknown-public/public.json`,
-`windows-ordinary-precondition-public/public.json`, and
-`windows-parallel-readonly-inventory-490c/public.json`.
-Android original-record and timeout closeouts remain under
-`.runtime/android-current-proof-readonly-a23/`. Root integration/red/green evidence
-is under `.runtime/root-android-integration-check-c98b719a-47a7-4326-ba59-0665b4a423e0/`.
-Full source/native acceptance is incomplete. No release is authorized.
+Immutable closeouts: `windows-5caa-terminal-public/public.json` (a8ed68bf),
+`windows-ipc-listener-public-fa13ff414f044681949c0821ab2eb65e/public.json` (783a8bf),
+and `windows-ipc-process-public-3f6a5d41b9cf4e9db55a5067d13f9541/public.json` (0467624e).
+Android original fullfacts closeout is retained under
+`.runtime/android-current-proof-readonly-a23/facts-entry-7fa3ae57-351c-4e4c-b50d-d0a368c7f5ec/`
+with hashc6bddd42. Product RED/GREEN packets are retained under
+`.runtime/windows-return-gate-fix-40180292-094a-4a8e-9fef-504223faebc4/` and
+`.runtime/android-gui-install-resume-fix-ds94sxde/`. Root integration evidence is
+`.runtime/root-parity-integration-fa689a61-ea3a-4f73-92a2-209b7ecf3f5d/`.
+The replaced opening is preserved in that root integration evidence directory. Original correlations, source fingerprints and package identities remain
+attached to their own evidence; no historical UNKNOWN is relabelled.
 
 ## Previous acceptance status — 2026-10-08,22:24 Moscow
 

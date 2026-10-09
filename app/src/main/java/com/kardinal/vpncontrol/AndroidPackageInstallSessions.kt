@@ -388,9 +388,7 @@ internal class AndroidPackageInstallSessions private constructor(private val con
             hex(digest.digest())
         }
         private fun origin(id: String): Uri = Uri.parse("vpn-control-install-source://$id")
-        private fun uiStatus(value: AndroidInstallSessionReceipt) = AppInstallSessionStatus(value.id, value.phase,
-            value.version, value.phase == AndroidInstallSessionPhase.STAGED ||
-                value.confirmation != null && !value.terminal)
+        private fun uiStatus(value: AndroidInstallSessionReceipt) = androidInstallSessionStatus(value)
         private fun publicReceipt(value: AndroidInstallSessionReceipt): Map<String, com.kardinal.vpncontrol.model.ControlValue> =
             mapOf("installReceiptId" to com.kardinal.vpncontrol.model.ControlValue.Text(value.id),
                 "installSessionId" to com.kardinal.vpncontrol.model.ControlValue.IntegerValue(value.sessionId.toLong()),
