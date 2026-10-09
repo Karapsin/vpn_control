@@ -68,6 +68,29 @@ operator may batch independent read-only observations. Retain original handles,
 raw evidence and cleanup ownership, and preserve unknown outcomes without replay.
 MCP remains the repository startup and delivery entry point.
 
+### Installer collection diagnostics
+
+`android_installer_asset_collection` retains bounded schema-2 terminal diagnostics
+alongside the original streams. Unobserved process birth and signal facts remain
+null; diagnostics confer no admission, replay or native acceptance authority.
+The collector attempts both stream publications, stream closes, the exit journal
+and directory sync even when an earlier cleanup step fails. Primary failures and
+finite secondary cleanup stages remain separate.
+
+`android_installer_direct_transport` preserves the original local process,
+stream hashes, EOF and return code when post-collection source checks or result
+publication fail. A validated original remote PID is retained where observed.
+These UNKNOWN receipts do not authorize another submission. The direct module
+and collector primitive are not the MCP `android-installer-dispatch-*` route;
+complete direct native proof and explicit route integration remain required.
+
+Focused coverage is in `test_android_installer_asset_collection`,
+`test_android_installer_terminal_diagnostic`,
+`test_android_installer_collect_closeout` and
+`test_android_installer_direct_postcollection`. Ordinary agent-tool discovery,
+managed prepush and Fast Checks include these modules. POSIX-only diagnostic
+controls retain their platform skips; they do not prove Windows native behavior.
+
 ## MCP Tools
 
 `ssh_workflow(action="connection-channel-prepare", host="archlinux", identity={"correlationId":"<canonical UUID>"})` creates one isolated configured two-hop connection channel. `connection-channel-status` accepts the same identity and only observes it. `connection-channel-ensure` accepts the identity plus an optional exact `receiptSha256`; it explicitly renews only after positive channel end. These connection-only actions accept no command, path, transfer or device fields. They preserve unknown correlations, return finite phases, hide private route options and never replay application jobs. Current selection publication integration and native equivalence remain pending. A channel UNKNOWN never authorizes another launch: preserve its correlation and observe or diagnose that same channel. Snapshot refusal is not an authentication failure. Use the fresh `mcp_tool.sh ssh-workflow <action> --host archlinux --identity-file <local JSON>` fallback while the running server has cached predecessor code.

@@ -732,6 +732,15 @@ def submission_shape(value,corr,program_sha):
     return json.loads(canonical(value))
 
 
+def _postcollection_unknown(corr,child,out,err,eof,reason,error,*,original_remote_pid=None,secondary_error=None):
+    """Diagnostic facts of the returned original tuple; no custody/admission claim."""
+    result={'state':'unknown','correlationId':corr,'localPid':child.pid,'reason':reason,'exceptionClass':type(error).__name__,'replayAllowed':False,'nativeAcceptance':False,
+            'localTransport':{'returncode':child.returncode,'stdoutBytes':len(out),'stdoutSha256':sha(out),'stderrBytes':len(err),'stderrSha256':sha(err),'eof':dict(eof)}}
+    if original_remote_pid is not None:result['originalRemotePid']=original_remote_pid
+    if secondary_error is not None:result['secondaryExceptionClass']=type(secondary_error).__name__
+    return result
+
+
 def start(root,corr,credential=None):
     """ONE future operator submission. No credential source is read here."""
     corr=correlation(corr);capsule,intent,program=prepared_program(root,corr)
@@ -749,8 +758,20 @@ def start(root,corr,credential=None):
     if reason or err or child.poll()!=0 or not all(eof.values()):return {'state':'unknown','correlationId':corr,'localPid':child.pid,'replayAllowed':False}
     accepted=json.loads(out)
     accepted=submission_shape(accepted,worker_corr,sha(program))
-    write_once(capsule,'accepted.json',canonical({'schema':1,'correlationId':corr,'remote':accepted,'sourcePacketSha256':sha(canonical(intent['packet'])),'replayAllowed':False}))
-    _source_guard(root,intent['sources'])
+    # The original accepted fact survives diagnostic publication/closing loss.
+    # Still attempt source closing after a refused journal; neither failure
+    # authorizes replay or turns the original submission into acceptance.
+    post_error=None;post_reason=None;secondary_error=None
+    try:
+        write_once(capsule,'accepted.json',canonical({'schema':1,'correlationId':corr,'remote':accepted,'sourcePacketSha256':sha(canonical(intent['packet'])),'replayAllowed':False}))
+    except (OSError,ValueError) as error:
+        post_error=error;post_reason='direct_accepted_journal_publication_failed'
+    try:_source_guard(root,intent['sources'])
+    except (OSError,ValueError) as error:
+        if post_error is None:post_error=error;post_reason='direct_postcollection_source_unknown'
+        else:secondary_error=error
+    if post_error is not None:
+        return _postcollection_unknown(corr,child,out,err,eof,post_reason,post_error,original_remote_pid=accepted['pid'],secondary_error=secondary_error)
     return {'state':'submitted','correlationId':corr,'localPid':child.pid,'originalRemotePid':accepted['pid'],'replayAllowed':False,'nativeAcceptance':False}
 
 
@@ -769,7 +790,9 @@ def observe(root,corr,accepted,custody,action='status',credential=None):
     role='observe-'+action+'-'+str(len(list(capsule.glob('observe-*-dispatch.json')))).zfill(4)
     _source_guard(root,intent['sources']);frame=(b''if credential is None else credential+b'\n')+framed_program(source)
     child,out,err,eof,reason=_transport_capture(capsule,argv,frame,role,root,intent['sources'],sha(source))
-    _source_guard(root,intent['sources'])
+    try:_source_guard(root,intent['sources'])
+    except (OSError,ValueError) as error:
+        return _postcollection_unknown(corr,child,out,err,eof,'direct_postcollection_source_unknown',error)
     if reason or err or child.poll()!=0 or not all(eof.values()):return {'state':'unknown','correlationId':corr,'localPid':child.pid,'replayAllowed':False}
     return json.loads(out)
 
@@ -825,7 +848,9 @@ def status(root,corr,credential=None):
     argv=fixed_ssh_argv(root,_observer_frame_reader(source))
     role='status-'+str(len(list(capsule.glob('status-*-dispatch.json')))).zfill(4)
     child,out,err,eof,reason=_transport_capture(capsule,argv,(b''if credential is None else credential+b'\n')+framed_program(source),role,root,intent['sources'],sha(source))
-    _source_guard(root,intent['sources'])
+    try:_source_guard(root,intent['sources'])
+    except (OSError,ValueError) as error:
+        return _postcollection_unknown(corr,child,out,err,eof,'direct_postcollection_source_unknown',error)
     if reason or err or child.poll()!=0 or not all(eof.values()):return {'state':'unknown','correlationId':corr,'replayAllowed':False}
     result=json.loads(out)
     require(type(result)is dict and set(result)=={'state','supervisor','actorAccepted','actorCustody','collector','raw','replayAllowed'}and result['state']=='original-observed'and result['replayAllowed']is False,'direct_status_unknown')
@@ -833,11 +858,19 @@ def status(root,corr,credential=None):
     require(result['actorCustody']is not None,'direct_original_custody_missing')
     original={'schema':1,'workerSha256':sha(program),'accepted':result['actorAccepted'],'custody':result['actorCustody']}
     path=capsule/'actor-original.json'
-    if os.path.lexists(path):require(equal(json.loads(snapshot(path,65536,True)[0]),original),'direct_original_accepted_changed')
-    else:write_once(capsule,'actor-original.json',canonical(original))
+    try:
+        if os.path.lexists(path):require(equal(json.loads(snapshot(path,65536,True)[0]),original),'direct_original_accepted_changed')
+        else:write_once(capsule,'actor-original.json',canonical(original))
+    except (OSError,ValueError) as error:
+        secondary_error=None
+        try:_source_guard(root,intent['sources'])
+        except (OSError,ValueError) as closing_error:secondary_error=closing_error
+        return _postcollection_unknown(corr,child,out,err,eof,'direct_original_actor_publication_failed',error,secondary_error=secondary_error)
     observed=observe(root,corr,result['actorAccepted'],result['actorCustody'],'status',credential)
     projection=project_original_capture(corr,intent,result)
-    _source_guard(root,intent['sources'])
+    try:_source_guard(root,intent['sources'])
+    except (OSError,ValueError) as error:
+        return _postcollection_unknown(corr,child,out,err,eof,'direct_postcollection_source_unknown',error)
     return {'state':observed.get('state','unknown'),'journal':observed,'collector':result['collector'],'raw':result['raw'],'component':projection,'nativeAcceptance':False,'replayAllowed':False}
 
 

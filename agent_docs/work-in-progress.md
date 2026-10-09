@@ -33,7 +33,31 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-08,22:24 Moscow
+## Current acceptance status — 2026-10-09,14:17 Moscow
+
+Delivered source is `a23ea3853afc632797d770ec255d35494aa1dc64`, product2.2.4.
+Root integrated the reviewed seven-file collector/direct receipt promotion
+from `.runtime/parity-tool-promotion-plan-a23/promotion.json`. Original source and
+causal receipts remain immutable. All 49 focused promotion methods pass; the 49
+existing transport/publication methods pass with one Linux-only UID continuity
+skip on macOS. Managed metadata, fresh prepush and coherent dev delivery are
+pending; the prior a23 prepush cannot
+validate these edits. Required five-workflow CI remains deferred to final delivery.
+
+| Slice | Exclusive owner and environment | Current evidence | Next gate |
+| --- | --- | --- | --- |
+| Integration and delivery | root; tracked files, metadata, Gradle and Git | Seven reviewed collector/direct files integrated after all old holders closed. Routine coverage retains truthful UNKNOWN and original transport facts. | Integrated checks, metadata, fresh prepush and explicit dev checkpoint. No new MCP registration is claimed. |
+| Shared SSH | windows_operator; sole Pi/Arch producer | Original88db producer12794 and same-correlation status54725 ended successfully;145 source,94 runtime and658 capture records closed, all borrowers/holders released. Public lifecycle is `windows-keeper-88db-terminal-public/public.json`. | Fresh source enrollment and complete caller preparation before another admitted connection. Prior UNKNOWN records are unchanged. |
+| Windows | windows_operator; sole assigned guest | Native3ef diagnostic exited0 and verified current server/task/owner/files. HTTPS remains unproved; retained certificate expired. Two local reader-runner refusals closed all available holders and retain original receipts. No public app update submitted. | Finish whole-runner controls and fresh distinct credential caller; retain current2089 disposition separately. Then direct update/failure/recovery/relaunch/cleanup and MCP equivalence. |
+| Android API35 | android_api35_operator; emulator5682 only | Corrected emitter returned finite native48 facts; remote/SSH exit0, parent exit1 and semantic UNKNOWN `component_guard_owned_process_changed`. Full streams/local source closure retained; failing field and guest restoration remain unproved. Original lease and fixtures are preserved. | Narrow direct read-only comparison of the fixed historical getter identities; finish finite catch diagnostics, then genuine fresh admission and remaining native/MCP cases. |
+| Linux/macOS and final matrix | source preparation workers; root owns local Mac | Historical evidence remains attributed to its source. Final packages, native groups and249 visual pairs remain open. | Windows/Android first, then Linux/macOS; freeze final source, source-bound packages, native/MCP acceptance, visual review and one exact-SHA CI check. |
+
+The engineering package cohorts keep their original source/version identities.
+The frozen Windows HTTPS/cleanup and Android diagnostic proposals remain ignored
+source/local work until their genuine caller and native gates pass. No account
+recreation, old-job replay, original-lease release or release publication is implied.
+
+## Previous acceptance status — 2026-10-08,22:24 Moscow
 
 This tool and regression checkpoint starts from delivered development source
 `ed0dd1981dd4586d884f34cc3daba92b82c90610`. Its completed17 keeper controls and

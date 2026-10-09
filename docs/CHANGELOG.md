@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Preserve installer collection diagnostics, cleanup failures and original transport facts after publication or source-check failures.
+
 ## 2.2.4 - 2026-10-08
 
 - Keep receipt-bound SSH close compatible with the reviewed transport and test production source pins.

@@ -183,20 +183,34 @@ class IntentBoundary(unittest.TestCase):
 
 
 
-# Routine readiness regressions: immutable original collector control reconstructed
-# from its authenticated source, independent of current production collector().
+# Readiness regression lanes: an authenticated immutable collect beforeimage for
+# the historical high-FD RED, and a separate current pre-selector equivalence.
 import ast,base64,hashlib,math,select,stat,time
 try:
  import resource
 except ImportError:
  resource=None
-def historical_collector():
+def current_preselector_collector():
     if hashlib.sha256(operator.COLLECTOR_SOURCE.encode()).hexdigest()!=operator.COLLECTOR_SOURCE_SHA256:
         raise ValueError('asset_operator_collector_source_changed')
     tree=ast.parse(operator.COLLECTOR_SOURCE)
     namespace=dict(ast=ast,base64=base64,hashlib=hashlib,json=json,math=math,os=os,select=select,stat=stat,subprocess=subprocess,time=time,Path=Path)
-    exec(compile(tree,'<authenticated-historical-asset-collector>','exec',dont_inherit=True),namespace)
+    exec(compile(tree,'<authenticated-current-preselector-asset-collector>','exec',dont_inherit=True),namespace)
     namespace['_original_collect_source']=ast.get_source_segment(operator.COLLECTOR_SOURCE,next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='collect'))
+    return namespace
+
+def historical_collector():
+    # Use only the authenticated immutable baseline for the explicitly historical
+    # high-FD RED. Current selector equivalence has its own helper below.
+    from agent_tools.tests.fixtures import android_terminal_diagnostic as history
+    source=history.HISTORICAL_COLLECT_SOURCE
+    if (history.HISTORICAL_COLLECT_ORIGIN_SHA256!='8b461c2c2d3a24cb6d83a64c93099d4ed3328e3b396637a81e846f13ce66c4d0'
+            or history.HISTORICAL_COLLECT_SHA256!='360e50fa0d333b3ea4b863f81e61a620b29a0ebd12b9ce5604c1ec9372507703'
+            or hashlib.sha256(source.encode()).hexdigest()!=history.HISTORICAL_COLLECT_SHA256):
+        raise ValueError('historical_asset_collect_beforeimage_changed')
+    namespace=current_preselector_collector()
+    exec(compile(source,'<authenticated-immutable-baseline-asset-collect>','exec',dont_inherit=True),namespace)
+    namespace['_original_collect_source']=source
     return namespace
 
 class Readiness(unittest.TestCase):
@@ -249,9 +263,9 @@ class Readiness(unittest.TestCase):
   self.assertTrue(all(x.get_map()is None for x in instances))
   with self.assertRaisesRegex(ValueError,'exceptional_not_supported'):operator._select_ready([],[],[r],0)
  def test_only_readiness_callees_change_budgets_and_caps_exact(self):
-  base=operator.collector();old=historical_collector()
+  base=operator.collector();old=current_preselector_collector()
   self.assertEqual(operator.assets.sha(operator.COLLECTOR_SOURCE.encode()),operator.COLLECTOR_SOURCE_SHA256)
-  self.assertEqual(base['_historical_collect_source'],old['_original_collect_source'])
+  self.assertEqual(base['_embedded_collect_source'],old['_original_collect_source'])
   self.assertEqual(base['_original_collect_source'].replace('_select_ready(','select.select('),old['_original_collect_source'])
   self.assertIn('time.monotonic()+1250',base['_original_collect_source'])
   for name in ['REMOTE','ROOT_BOOT','STREAM_LIMIT','CHUNK']:self.assertEqual(base[name],old[name])

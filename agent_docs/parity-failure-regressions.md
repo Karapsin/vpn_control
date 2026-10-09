@@ -1,5 +1,25 @@
 # Parity Failure-to-Regression Ledger
 
+## Collector and post-collection receipt preservation — 2026-10-09
+
+The seven-file promotion starts from `a23ea3853afc632797d770ec255d35494aa1dc64`.
+Its independent 36 collector/diagnostic methods and 13 direct-caller methods passed
+before integration. All 49 methods pass against the integrated canonical files;
+49 existing transport/publication methods also pass with one honest Linux-only
+UID continuity skip on macOS. Fresh content-bound prepush remains required.
+The reviewed map is `.runtime/parity-tool-promotion-plan-a23/promotion.json`.
+
+| Failure class | Authentic causal evidence and repair | Routine coverage | Remaining gate |
+| --- | --- | --- | --- |
+| Collector cleanup stops after first publication failure | Original `collect` reproduced skipped stderr/exit/sync work with five failing methods and one unchanged pass. Attempt every declared cleanup stage while preserving primary failure, original return code and finite secondary facts; seven final methods pass. | `test_android_installer_collect_closeout.py`, plus existing asset collection tests. | Current native collection and matching public tool route; no historical cause recovered. |
+| Remote terminal diagnostic omission | Retained historical frame and exact bounded receiver controls cover timeout branch, elapsed time, original PID and unknown birth/signal facts. Schema2 diagnostics preserve UNKNOWN and original streams; schema1 remains supported. | Ten methods in `test_android_installer_terminal_diagnostic.py`. Historical controls use the immutable fixture rather than current embedded source. | Current native/MCP acceptance; POSIX-only skips remain explicit. |
+| Post-collection source or journal failure drops the original tuple | Authentic canonical `start`, `observe` and `status` produced ten causal subfailures before repair; thirteen methods pass afterward. Keep local PID, raw stream sizes/hashes, EOF, return code and primary/secondary error types, with validated remote PID where observed. | `test_android_installer_direct_postcollection.py`; existing transport/result-publication controls remain in discovery. | Complete direct scenarios, genuine owner binding, MCP registration/recovery/source enrollment and equivalent native reruns. |
+
+The current Windows reader-runner refusals, outer cleanup repair and Android
+emitter/identity diagnostics remain separate source/local or partial native work.
+They are not enrolled by this promotion and do not close update acceptance.
+Preserve their original receipts, unknown outcomes and source identities.
+
 ## Routine export, compiler, diagnostics and closing coverage — 2026-10-08
 
 This checkpoint promotes reviewed source/local controls; it does not close native
