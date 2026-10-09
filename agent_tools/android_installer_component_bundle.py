@@ -422,54 +422,113 @@ _PROPERTIES=(('sdk','ro.build.version.sdk'),('abi','ro.product.cpu.abi'),
 # each; the remaining 256 bytes per frame and 128-byte envelope are fixed.
 _PHYSICAL_FRAME_LIMIT=16384
 _PHYSICAL_BATCH_LIMIT=10*(4*((16384+2)//3)+4+256)+128
-_PHYSICAL_ABI = r'''set -eu
-test "$(id -u)" = 2000
-test -f /system/bin/toybox && test ! -L /system/bin/toybox
-test -f /system/bin/mksh && test ! -L /system/bin/mksh
-tg=$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /system/bin/toybox)
-sg=$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /system/bin/mksh)
-th=$(/system/bin/toybox sha256sum /system/bin/toybox)
-sh=$(/system/bin/toybox sha256sum /system/bin/mksh)
-test "$(/system/bin/toybox stat -c '%u:%g:%a' /system/bin/toybox)" = '0:2000:755' || test "$(/system/bin/toybox stat -c '%u:%g:%a' /system/bin/toybox)" = '0:0:755'
-test "$(printf 'a\nb\n' | /system/bin/toybox base64 -w 0)" = 'YQpiCg=='
-exec 4</system/build.prop
-test "$(/system/bin/toybox stat -L -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /proc/$$/fd/4)" = "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /system/build.prop)"
-/system/bin/toybox sha256sum /proc/self/fd/4 4>&4 >/dev/null
-exec 4<&-
-set +e
-/system/bin/toybox timeout -s KILL 1 /system/bin/toybox sleep 2
-rc=$?
-set -e
-test "$rc" = 124 || exit 91
-limit=$( (ulimit -f 32; /system/bin/toybox cat /proc/self/limits) )
-test "$(printf '%s\n' "$limit" | /system/bin/toybox grep -E '^Max file size[[:space:]]+16384[[:space:]]+16384[[:space:]]+bytes[[:space:]]*$')" != ''
-test "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /system/bin/toybox)" = "$tg"
-test "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /system/bin/mksh)" = "$sg"
-test "$(/system/bin/toybox sha256sum /system/bin/toybox)" = "$th"
-test "$(/system/bin/toybox sha256sum /system/bin/mksh)" = "$sh"
-printf 'PHYSICAL-ABI-1\n'
-printf '%s\n%s\n' "$th" "$sh"
-cat /proc/sys/kernel/random/boot_id
-printf 'FILE-LIMIT 16384\n'
-'''
+_PHYSICAL_ABI = 'component-physical-batch-profile4.v1/source-sha256:0fa6510875119ca3da6a5097d484a0c3e8b384b547512ca375411a59bdd22598'
+
+_PROFILE4_PROGRAM = 'set -eu\nprintf \'PHYSICAL-READONLY-4\\n\'\nuid=$(id -u);printf \'UID %s\\n\' "$uid"\nshellmap=$(/system/bin/toybox readlink /proc/$$/exe)\nutilitymap=$(/system/bin/toybox readlink /proc/self/exe)\nprintf \'SHELL %s\\nUTILITY %s\\n\' "$shellmap" "$utilitymap"\nng=$(/system/bin/toybox stat -c \'%d:%i:%f:%u:%g:%h:%s:%y:%z\' /system/bin/sh)\nprintf \'NAMED-SH-GENERATION %s\\n\' "$ng"\nif test -L /system/bin/sh; then\n link=$(/system/bin/toybox readlink /system/bin/sh);kind=symlink\nelse\n link=NONE;kind=regular\nfi\nprintf \'SH-KIND %s\\nSH-TARGET %s\\n\' "$kind" "$link"\nprintf \'KSH-VERSION \'\nprintf \'%s\' "${KSH_VERSION-}" | /system/bin/toybox base64 -w 0\nprintf \'\\n\'\nprintf \'PRINCIPAL \'; /system/bin/toybox id\nboot=$(cat /proc/sys/kernel/random/boot_id);printf \'BOOT %s\\n\' "$boot"\nprintf \'INHERITED-LIMITS \'; /system/bin/toybox base64 -w 0 /proc/$$/limits;printf \'\\n\'\ntest "$uid" = 2000\ntest "$utilitymap" = /system/bin/toybox\ncase "$shellmap" in /system/bin/sh|/system/bin/mksh) ;; *) exit 91;; esac\ncase "$kind:$link:$shellmap" in regular:NONE:/system/bin/sh|symlink:mksh:/system/bin/mksh|symlink:/system/bin/mksh:/system/bin/mksh) ;; *) exit 92;; esac\ncase "${KSH_VERSION-}" in \'@(#)MIRBSD KSH R\'[0-9]*\' \'*) ;; *) exit 93;; esac\ntest -f "$shellmap" && test ! -L "$shellmap"\ntest -f /system/bin/toybox && test ! -L /system/bin/toybox\nfor binary in "$shellmap" /system/bin/toybox; do\n principal=$(/system/bin/toybox stat -c \'%u:%g:%a:%h\' "$binary")\n case "$principal" in 0:0:755:1|0:2000:755:1) ;; *) exit 94;; esac\ndone\nsg=$(/system/bin/toybox stat -c \'%d:%i:%f:%u:%g:%h:%s:%y:%z\' "$shellmap")\ntg=$(/system/bin/toybox stat -c \'%d:%i:%f:%u:%g:%h:%s:%y:%z\' /system/bin/toybox)\nshellhash=$(/system/bin/toybox sha256sum "$shellmap");toyhash=$(/system/bin/toybox sha256sum /system/bin/toybox)\nprintf \'SHELL-GENERATION %s\\nTOYBOX-GENERATION %s\\nSHELL-HASH %s\\nTOYBOX-HASH %s\\n\' "$sg" "$tg" "$shellhash" "$toyhash"\ntest "$(printf \'a\\nb\\n\' | /system/bin/toybox base64 -w 0)" = \'YQpiCg==\'\nexec 4</system/bin/toybox\nexec 5</system/bin/toybox\nbg=$(/system/bin/toybox stat -c \'%d:%i:%f:%u:%g:%h:%s:%y:%z\' /system/bin/toybox)\ntest "$bg" = "$tg"\nexpected=$(/system/bin/toybox sha256sum /system/bin/toybox);expected=${expected%% *}\ntest "$expected" = "${toyhash%% *}"\nfor fd in 4 5; do\n test "$(/system/bin/toybox stat -L -c \'%d:%i:%f:%u:%g:%h:%s:%y:%z\' /proc/$$/fd/$fd)" = "$bg"\ndone\nh4=$(/system/bin/toybox sha256sum /proc/self/fd/4 4>&4);h4=${h4%% *}\nh5=$(/system/bin/toybox sha256sum /proc/self/fd/5 5>&5);h5=${h5%% *}\nexec 4<&-;exec 5<&-\nprintf \'FD4 %s\\nFD5 %s\\n\' "$h4" "$h5"\ntest "$h4" = "$expected" && test "$h5" = "$expected"\ntest "$(/system/bin/toybox stat -c \'%d:%i:%f:%u:%g:%h:%s:%y:%z\' /system/bin/toybox)" = "$bg"\nbefore=$(/system/bin/toybox cat /proc/uptime);set -- $before;before=$1\nset +e\nwd=$(/system/bin/toybox timeout -s KILL 1 "$shellmap" -c __WD_CHILD__)\nrc=$?\nset -e\nafter=$(/system/bin/toybox cat /proc/uptime);set -- $after;after=$1\nprintf \'%s\\nWATCHDOG %s\\nWATCHDOG-TIME %s %s\\n\' "$wd" "$rc" "$before" "$after"\ntest "$rc" = 137 || exit 95\nset -- $wd;test "$#" = 5;test "$1" = WATCHDOG-CHILD;test "$2" = __WD_CORR__;pid=$3;ticks=$4;test "$5" = 2000\ncase "$pid:$ticks" in *[!0-9:]*|:*|*:) exit 96;; esac;test "$pid" -gt 0;test "$ticks" -gt 0\nset +e\npost=$(/system/bin/toybox stat -L -c \'%d:%i:%f:%u:%g:%h:%s:%y:%z\' /proc/$pid 2>&1);postrc=$?\nset -e\nprintf \'WATCHDOG-POST %s \' "$postrc";printf \'%s\' "$post" | /system/bin/toybox base64 -w 0;printf \'\\n\'\ntest "$postrc" = 1\ntest "$post" = "stat: \'/proc/$pid\': No such file or directory"\nlimit=$( (ulimit -f 32; /system/bin/toybox cat /proc/self/limits) )\nprintf \'LIMIT-PROOF \';printf \'%s\' "$limit" | /system/bin/toybox base64 -w 0;printf \'\\n\'\ntest "$(printf \'%s\\n\' "$limit" | /system/bin/toybox grep -E \'^Max file size[[:space:]]+16384[[:space:]]+16384[[:space:]]+bytes[[:space:]]*$\')" != \'\'\ntest "$(/system/bin/toybox stat -c \'%d:%i:%f:%u:%g:%h:%s:%y:%z\' "$shellmap")" = "$sg"\ntest "$(/system/bin/toybox stat -c \'%d:%i:%f:%u:%g:%h:%s:%y:%z\' /system/bin/toybox)" = "$tg"\ntest "$(/system/bin/toybox stat -c \'%d:%i:%f:%u:%g:%h:%s:%y:%z\' /system/bin/sh)" = "$ng"\ntest "$(/system/bin/toybox sha256sum "$shellmap")" = "$shellhash"\ntest "$(/system/bin/toybox sha256sum /system/bin/toybox)" = "$toyhash"\ntest "$(/system/bin/toybox readlink /proc/$$/exe)" = "$shellmap"\ntest "$(cat /proc/sys/kernel/random/boot_id)" = "$boot"\nprintf \'EOF READONLY-4 COMPLETE\\n\'\n'
+
+_PROFILE4_CHILD = 'set -eu\nuid=$(/system/bin/toybox id -u);test "$uid" = 2000\nline=$(/system/bin/toybox cat /proc/$$/stat)\ncase "$line" in "$$ ("*") "*) ;; *) exit 96;; esac\nrest=${line##*) };set -- $rest;test "$#" -ge 20;shift 19;ticks=$1\ncase "$ticks" in \'\'|*[!0-9]*) exit 96;; esac;test "$ticks" -gt 0\nprintf \'WATCHDOG-CHILD __WD_CORR__ %s %s %s\\n\' "$$" "$ticks" "$uid"\nexec /system/bin/toybox sleep 2\n'
+
+def _profile4_source(correlation):
+    """One fixed readonly command, positively bound to a canonical UUID."""
+    if type(correlation) is not str or str(uuid.UUID(correlation)) != correlation:
+        raise ValueError('abi_packet_identity_changed')
+    child = _PROFILE4_CHILD.replace('__WD_CORR__', correlation)
+    return _PROFILE4_PROGRAM.replace('__WD_CHILD__', shlex.quote(child)).replace('__WD_CORR__', correlation)
+
+def _profile4_parse(raw, correlation, expected_boot):
+    """Strict bounded ABI facts only, with no native/product authority."""
+    if type(correlation) is not str or type(expected_boot) is not str or re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', correlation) is None or (re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', expected_boot) is None):
+        raise ValueError('abi_packet_identity_changed')
+    if type(raw) is not str or len(raw.encode()) > 16384 or (not raw.endswith('\n')):
+        raise ValueError('abi_packet_reply_unknown')
+    lines = raw.splitlines()
+    keys = ('PHYSICAL-READONLY-4', 'UID', 'SHELL', 'UTILITY', 'NAMED-SH-GENERATION', 'SH-KIND', 'SH-TARGET', 'KSH-VERSION', 'PRINCIPAL', 'BOOT', 'INHERITED-LIMITS', 'SHELL-GENERATION', 'TOYBOX-GENERATION', 'SHELL-HASH', 'TOYBOX-HASH', 'FD4', 'FD5', 'WATCHDOG-CHILD', 'WATCHDOG', 'WATCHDOG-TIME', 'WATCHDOG-POST', 'LIMIT-PROOF', 'EOF')
+    if len(lines) != len(keys) or lines[0] != keys[0] or lines[-1] != 'EOF READONLY-4 COMPLETE':
+        raise ValueError('abi_packet_reply_unknown')
+    values = {}
+    for line, key in zip(lines[1:], keys[1:]):
+        if not line.startswith(key + ' '):
+            raise ValueError('abi_packet_reply_unknown')
+        values[key] = line[len(key) + 1:]
+    shell = values['SHELL']
+    if values['UID'] != '2000' or shell not in ('/system/bin/sh', '/system/bin/mksh') or values['UTILITY'] != '/system/bin/toybox':
+        raise ValueError('abi_packet_mapping_unknown')
+    if (values['SH-KIND'], values['SH-TARGET'], shell) not in (('regular', 'NONE', '/system/bin/sh'), ('symlink', 'mksh', '/system/bin/mksh'), ('symlink', '/system/bin/mksh', '/system/bin/mksh')):
+        raise ValueError('abi_packet_mapping_unknown')
+    import stat
+    for key in ('NAMED-SH-GENERATION', 'SHELL-GENERATION', 'TOYBOX-GENERATION'):
+        generation = values[key]
+        if re.fullmatch('[0-9]+:[1-9][0-9]*:[0-9a-f]+:0:(?:0|2000):1:[0-9]+:[^\\n]+:[^\\n]+', generation) is None:
+            raise ValueError('abi_packet_generation_unknown')
+        mode = int(generation.split(':')[2], 16)
+        link = key == 'NAMED-SH-GENERATION' and values['SH-KIND'] == 'symlink'
+        if (not stat.S_ISLNK(mode) if link else not stat.S_ISREG(mode)) or (not link and stat.S_IMODE(mode) != 493):
+            raise ValueError('abi_packet_generation_unknown')
+
+    def decode(key, limit):
+        try:
+            value = base64.b64decode(values[key], validate=True)
+        except Exception:
+            raise ValueError('abi_packet_reply_unknown') from None
+        if len(value) > limit or base64.b64encode(value).decode() != values[key]:
+            raise ValueError('abi_packet_reply_unknown')
+        return value
+    version = decode('KSH-VERSION', 512)
+    if re.fullmatch(b'@\\(#\\)MIRBSD KSH R[0-9]+ [ -~]{1,256}', version) is None:
+        raise ValueError('abi_packet_shell_family_unknown')
+    if re.fullmatch('uid=2000\\([^\\n()]+\\) gid=2000\\([^\\n()]+\\)(?: groups=[^\\n]+)?', values['PRINCIPAL']) is None:
+        raise ValueError('abi_packet_principal_unknown')
+    if re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', values['BOOT']) is None or values['BOOT'] != expected_boot:
+        raise ValueError('abi_packet_boot_unknown')
+    inherited = decode('INHERITED-LIMITS', 8192)
+    limit_proof = decode('LIMIT-PROOF', 8192)
+    if len(re.findall(b'^Max file size\\s+(?:[0-9]+|unlimited)\\s+(?:[0-9]+|unlimited)\\s+bytes\\s*$', inherited, re.M)) != 1 or len(re.findall(b'^Max file size\\s+16384\\s+16384\\s+bytes\\s*$', limit_proof, re.M)) != 1:
+        raise ValueError('abi_packet_limits_unknown')
+    for key, path in (('SHELL-HASH', shell), ('TOYBOX-HASH', '/system/bin/toybox')):
+        if re.fullmatch('[0-9a-f]{64}  ' + re.escape(path), values[key]) is None:
+            raise ValueError('abi_packet_hash_unknown')
+    if values['WATCHDOG'] != '137' or re.fullmatch('[0-9a-f]{64}', values['FD4']) is None or values['FD5'] != values['FD4'] or (values['FD4'] != values['TOYBOX-HASH'][:64]):
+        raise ValueError('abi_packet_capability_unknown')
+    child = re.fullmatch(re.escape(correlation) + ' ([1-9][0-9]*) ([1-9][0-9]*) 2000', values['WATCHDOG-CHILD'])
+    if child is None:
+        raise ValueError('abi_packet_watchdog_child_unknown')
+    times = re.fullmatch('([0-9]+\\.[0-9]+) ([0-9]+\\.[0-9]+)', values['WATCHDOG-TIME'])
+    if times is None:
+        raise ValueError('abi_packet_watchdog_time_unknown')
+    from decimal import Decimal
+    elapsed = Decimal(times[2]) - Decimal(times[1])
+    if not Decimal('0.75') <= elapsed <= Decimal('1.75'):
+        raise ValueError('abi_packet_watchdog_time_unknown')
+    post = values['WATCHDOG-POST'].split(' ')
+    if len(post) != 2 or post[0] != '1':
+        raise ValueError('abi_packet_watchdog_child_unknown')
+    try:
+        absence = base64.b64decode(post[1], validate=True)
+    except Exception:
+        raise ValueError('abi_packet_watchdog_child_unknown') from None
+    if base64.b64encode(absence).decode() != post[1] or absence != ("stat: '/proc/" + child[1] + "': No such file or directory").encode():
+        raise ValueError('abi_packet_watchdog_child_unknown')
+    return {'kind': 'utility-abi-only', 'profileVersion': 4, 'shellPath': shell, 'shellSha256': values['SHELL-HASH'][:64], 'toyboxSha256': values['TOYBOX-HASH'][:64], 'fdSha256': values['FD4'], 'utilityGenerations': {k: values[k] for k in ('NAMED-SH-GENERATION', 'SHELL-GENERATION', 'TOYBOX-GENERATION')}, 'guestBootId': values['BOOT'], 'family': 'mksh-capability-checked', 'shellVersion': version.decode(), 'fileLimit': 16384, 'watchdogExit': 137, 'watchdogChildPid': int(child[1]), 'watchdogChildStartTicks': int(child[2]), 'watchdogElapsedSeconds': str(elapsed), 'watchdogChildAbsent': True, 'ownerAdmission': False, 'runtimeAdmission': False, 'batchEnabled': False, 'overflowWriteProven': False, 'nativeAcceptance': False}
 
 
-def _physical_abi_parse(raw):
-    if type(raw)is not str or len(raw.encode())>16384:
-        raise ValueError('component_guard_batch_abi_unknown')
-    lines=raw.splitlines()
-    if len(lines)!=5 or lines[0]!='PHYSICAL-ABI-1' or lines[4]!='FILE-LIMIT 16384':
-        raise ValueError('component_guard_batch_abi_unknown')
-    hashes=[]
-    for line,path in zip(lines[1:3],('/system/bin/toybox','/system/bin/mksh')):
-        if re.fullmatch('[0-9a-f]{64}  '+re.escape(path),line)is None:
-            raise ValueError('component_guard_batch_abi_unknown')
-        hashes.append(line[:64])
-    if re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',lines[3])is None:
-        raise ValueError('component_guard_batch_abi_unknown')
-    return {'toyboxSha256':hashes[0],'mkshSha256':hashes[1],'guestBootId':lines[3],
-            'watchdogExit':124,'stepSeconds':20,'frameLimit':16384,'fileLimit':16384,
-            'failedPrivateStreamBytesMaximum':32768}
+def _physical_abi_parse(raw, correlation, expected_boot):
+    """Distinct batch utility admission; exact alpha-derived profile4 parser."""
+    proof = _profile4_parse(raw, correlation, expected_boot)
+    lines = raw.splitlines()
+    return {
+        'protocol': 'component-physical-batch-profile4.v1',
+        'profileSourceSha256': '0fa6510875119ca3da6a5097d484a0c3e8b384b547512ca375411a59bdd22598',
+        'calibrationRaw': raw, 'calibrationCorrelationId': correlation,
+        'proof': proof, 'shellPath': proof['shellPath'],
+        'shellSha256': proof['shellSha256'], 'toyboxSha256': proof['toyboxSha256'],
+        'guestBootId': proof['guestBootId'],
+        'utilityGenerations': copy.deepcopy(proof['utilityGenerations']),
+        'namedShellKind': lines[5].removeprefix('SH-KIND '),
+        'namedShellTarget': lines[6].removeprefix('SH-TARGET '),
+        'shellVersion': proof['shellVersion'],
+        'watchdogExit': 137, 'stepSeconds': 20, 'frameLimit': 16384,
+        'fileLimit': 16384, 'failedPrivateStreamBytesMaximum': 32768,
+    }
 
 
 def _physical_batch_source(correlation,abi):
@@ -479,18 +538,32 @@ def _physical_batch_source(correlation,abi):
     model. It does not promise protection from a concurrent authorized UID2000
     writer before directory acquisition. Descriptor/name closure starts at cd.
     """
-    if str(uuid.UUID(correlation))!=correlation or abi!=_physical_abi_parse(
-            'PHYSICAL-ABI-1\n'+abi.get('toyboxSha256','')+'  /system/bin/toybox\n'+
-            abi.get('mkshSha256','')+'  /system/bin/mksh\n'+abi.get('guestBootId','')+'\nFILE-LIMIT 16384\n'):
+    if (str(uuid.UUID(correlation)) != correlation or type(abi) is not dict or
+            abi != _physical_abi_parse(abi.get('calibrationRaw'), abi.get('calibrationCorrelationId'), abi.get('guestBootId'))):
         raise ValueError('component_guard_batch_abi_unknown')
     opening='''set -eu
 umask 077
-test "$(id -u)" = 2000
-test "$(cat /proc/sys/kernel/random/boot_id)" = BOOT
-test "$(/system/bin/toybox sha256sum /system/bin/toybox)" = TOYHASH
-test "$(/system/bin/toybox sha256sum /system/bin/mksh)" = SHHASH
-p=PATH
-mkdir "$p"
+test "$(/system/bin/toybox id -u)" = 2000
+guard_utilities() {
+ test "$(/system/bin/toybox cat /proc/sys/kernel/random/boot_id)" = BOOT
+ test "$(/system/bin/toybox readlink /proc/$$/exe)" = SHELLPATH
+ test "$(/system/bin/toybox readlink /proc/self/exe)" = /system/bin/toybox
+ test -f SHELLPATH && test ! -L SHELLPATH
+ test -f /system/bin/toybox && test ! -L /system/bin/toybox
+ case SHKIND in
+  regular) test ! -L /system/bin/sh;;
+  symlink) test -L /system/bin/sh && test "$(/system/bin/toybox readlink /system/bin/sh)" = SHTARGET;;
+  *) exit 91;;
+ esac
+ test "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /system/bin/sh)" = NAMEDGEN
+ test "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' SHELLPATH)" = SHELLGEN
+ test "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /system/bin/toybox)" = TOYGEN
+ test "$(/system/bin/toybox sha256sum /system/bin/toybox)" = TOYHASH
+ test "$(/system/bin/toybox sha256sum SHELLPATH)" = SHHASH
+}
+guard_utilities
+p=__VC_SPOOL__
+/system/bin/toybox mkdir "$p"
 test ! -L "$p"
 cd "$p"
 parent=$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g' .)
@@ -537,26 +610,33 @@ run() {
 }
 printf 'PHYSICAL-1 CORRELATION\n'
 '''
-    opening=opening.replace('BOOT',shlex.quote(abi['guestBootId'])).replace('TOYHASH',shlex.quote(abi['toyboxSha256']+'  /system/bin/toybox')).replace('SHHASH',shlex.quote(abi['mkshSha256']+'  /system/bin/mksh')).replace('PATH',shlex.quote('/data/local/tmp/vpn-control-physical-'+correlation)).replace('CORRELATION',correlation)
+    opening=opening.replace('BOOT',shlex.quote(abi['guestBootId'])).replace('TOYHASH',shlex.quote(abi['toyboxSha256']+'  /system/bin/toybox')).replace('SHHASH',shlex.quote(abi['shellSha256']+'  '+abi['shellPath'])).replace('__VC_SPOOL__',shlex.quote('/data/local/tmp/vpn-control-physical-'+correlation)).replace('CORRELATION',correlation)
+    opening = (opening.replace('SHELLPATH', shlex.quote(abi['shellPath']))
+        .replace('SHKIND', shlex.quote(abi['namedShellKind']))
+        .replace('SHTARGET', shlex.quote(abi['namedShellTarget']))
+        .replace('NAMEDGEN', shlex.quote(abi['utilityGenerations']['NAMED-SH-GENERATION']))
+        .replace('SHELLGEN', shlex.quote(abi['utilityGenerations']['SHELL-GENERATION']))
+        .replace('TOYGEN', shlex.quote(abi['utilityGenerations']['TOYBOX-GENERATION'])))
     lines=[]
-    commands=[['getprop',prop] for _,prop in _PROPERTIES]+[['id','-u'],['cat','/proc/sys/kernel/random/boot_id'],['/system/bin/sh','-c',_PROCESS_READ],['pm','path','com.kardinal.vpncontrol']]
+    commands=[['/system/bin/getprop',prop] for _,prop in _PROPERTIES]+[['/system/bin/toybox','id','-u'],['/system/bin/toybox','cat','/proc/sys/kernel/random/boot_id'],['/system/bin/sh','-c',_PROCESS_READ.replace('pidof ', '/system/bin/toybox pidof ').replace('cat ', '/system/bin/toybox cat ')],['/system/bin/pm','path','com.kardinal.vpncontrol']]
     for n,words in enumerate(commands,1):lines.append('run '+str(n)+' '+' '.join(shlex.quote(word) for word in words))
-    lines.append('''package=$(cat 9.o)
+    lines.append('''package=$(/system/bin/toybox cat 9.o)
 case "$package" in package:/data/app/*/base.apk) ;; *) exit 92;; esac
 package=${package#package:}
 case "$package" in *[!-A-Za-z0-9_./+~=]*) exit 92;; esac
 case "/$package/" in */../*) exit 92;; esac
 run 10 /system/bin/toybox sha256sum "$package"
 guard_parent
-test "$(find . -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 20
+test "$(/system/bin/toybox find . -mindepth 1 -maxdepth 1 -type f | /system/bin/toybox wc -l)" -eq 20
 for n in 1 2 3 4 5 6 7 8 9 10; do
  guard_parent; guard_file "$n.o"; guard_file "$n.e"
  case "$n" in GENERATION_CHECK esac
- rm "$n.o" "$n.e"
+ /system/bin/toybox rm "$n.o" "$n.e"
 done
 guard_parent
 cd /data/local/tmp
-rmdir "$p"
+/system/bin/toybox rmdir "$p"
+guard_utilities
 printf 'EOF CORRELATION CLEANED\n'
 '''.replace('CORRELATION',correlation))
     result=opening+'\n'.join(lines)
@@ -905,19 +985,92 @@ class CurrentGuard:
         self.sequence+=1
         self._evidence('read-%05d'%self.sequence,value)
 
-    def _adb(self,words):
-        b=self.backend;command_records=b['GETTER_RECORDS'];isolated={};result=None;stage=copy.deepcopy(self.stage);stage=copy.deepcopy(self.stage)
-        b['GETTER_RECORDS']=isolated
+    def _adb(self, words):
+        import time
+        def clock():
+            value = time.monotonic()
+            if type(value) not in (int, float) or not 0 < value < float('inf'):
+                raise ValueError('component_guard_read_clock_unknown')
+            return value
+        begin_sequence = getattr(self, 'read_begin_sequence', 0)
+        if (type(begin_sequence) is not int or not 0 <= begin_sequence < 8192
+                or type(self.sequence) is not int or self.sequence < 0):
+            raise ValueError('component_guard_read_begin_bound')
+        ordinal = begin_sequence + 1
+        started = clock()
+        begin = {'scope': 'component-read', 'ordinal': ordinal, 'phase': self.phase,
+                 'wordsSha256': hashlib.sha256(_raw(words)).hexdigest(),
+                 'startedMonotonic': started, 'commandDeadlineSeconds': 20,
+                 'carrierLimit': 16384}
+        if len(_raw(begin)) > 1024:
+            raise ValueError('component_guard_read_begin_bound')
+        if isinstance(self, BaselineGuard):
+            binding = copy.deepcopy(self.request)
+        else:
+            evidence_args = types.SimpleNamespace(intent=self.intent, output=self.args.output)
+            binding = self.modules['lifecycle'].reply_binding(evidence_args)
+        envelope = {
+            'schema': 1, 'kind': 'android-installer-component-read-begin',
+            'binding': binding, 'record': begin, 'componentRuntime': 'EXTERNAL_JDK',
+            'phase': self.phase, 'installerLeaseGranted': False,
+            'nativeActionAllowed': False, 'replayAllowed': False, 'productAcceptance': False}
+        expected_begin = _raw(envelope)
+        if len(expected_begin) > 4096:
+            raise ValueError('component_guard_read_begin_bound')
+        # Use the same virtual evidence writer as final reads. Baseline and
+        # owner-admission collectors pin its existing schema and numbered catalog.
+        before_names = set(os.listdir(self.args.output))
+        previous_sequence = self.sequence
+        try:
+            self._capture(begin)
+        except BaseException:
+            self.sequence = previous_sequence
+            raise
+        after_names = set(os.listdir(self.args.output))
+        added_names = after_names - before_names
+        if not before_names <= after_names or len(added_names) != 1:
+            raise ValueError('component_guard_read_begin_changed')
+        begin_raw = _read(self.args.output/added_names.pop(), True)[0]
+        if len(begin_raw) > 4096:
+            raise ValueError('component_guard_read_begin_bound')
+        if json.loads(begin_raw).get('record') != begin:
+            raise ValueError('component_guard_read_begin_changed')
+        self.read_begin_sequence = ordinal
+        b = self.backend; previous = b['GETTER_RECORDS']; isolated = {}; result = None
+        failure = None; failures = []; ended = None; elapsed = None
+        b['GETTER_RECORDS'] = isolated
         try:
             b['command_host_guard']()
-            launch=b['LAUNCH']
-            result=b['command_binary'](Path(launch['adbPath']),launch['adbFacts']['generation'],
-                ['-s',self.args.serial,*words],launch['environment'],limit=16384,timeout=20)
-            return result
+            launch = b['LAUNCH']
+            result = b['command_binary'](Path(launch['adbPath']), launch['adbFacts']['generation'],
+                ['-s', self.args.serial, *words], launch['environment'], limit=16384, timeout=20)
+        except BaseException as exc:
+            failure = exc; failures.append(('transport', exc))
         finally:
-            b['GETTER_RECORDS']=command_records
-            self._capture({'words':words,'result':result,
-                           'captures':isolated.get('captures',[])})
+            b['GETTER_RECORDS'] = previous
+            try:
+                ended = clock()
+                if ended < started:
+                    raise ValueError('component_guard_read_clock_unknown')
+                elapsed = ended - started
+            except BaseException as exc:
+                ended = None; elapsed = None
+                failures.append(('timing', exc))
+                if failure is None: failure = exc
+            try:
+                self._capture({'words': words, 'result': result,
+                    'captures': isolated.get('captures', []),
+                    'startedMonotonic': started, 'endedMonotonic': ended,
+                    'elapsedSeconds': elapsed,
+                    'primaryExceptionClass': type(failure).__name__ if failure is not None else None})
+            except BaseException as exc:
+                failures.append(('capture', exc))
+                if failure is None: failure = exc
+        self.read_failures = [{'phase': phase, 'type': type(exc).__name__,
+            'errno': exc.errno if isinstance(exc, OSError) and type(exc.errno) is int else None}
+            for phase, exc in failures]
+        if failure is not None: raise failure
+        return result
 
     def _text(self,words):
         value=self._adb(words)
@@ -927,28 +1080,50 @@ class CurrentGuard:
         return value['stdoutRaw'].strip()
 
     def enable_physical_batch(self):
-        """Explicit fixture-effect admission, never enabled by baseline callers.
+        """Explicit separate fixture admission after this same genuine admission.
 
-        The fixed harmless calibration is source/boot/app-process bound. Native
-        approval and actual Android ABI evidence are still required by callers;
-        local protocol tests grant no such authority.
+        Utility profile4 remains diagnostic, with batchEnabled=False. Its
+        authentic source is alpha-derived above; the original importer is exact.
+        Native batch authorization remains a caller prerequisite.
         """
-        facts=self._physical()
-        self._evidence('batch-abi-attempt',{'facts':facts,'sourceSha256':hashlib.sha256(_PHYSICAL_ABI.encode()).hexdigest(),
-            'fixtureEffects':'future private shell-UID2000 spool only','productEffectsAllowed':False})
-        raw=self._text(['shell','-T','/system/bin/sh -c '+shlex.quote(_PHYSICAL_ABI)])
-        abi=_physical_abi_parse(raw)
-        if abi['guestBootId']!=facts['guestBootId']:
-            raise ValueError('component_guard_batch_abi_unknown')
-        if self._physical()!=facts:raise ValueError('component_guard_batch_abi_changed')
-        # Calibration grants utility ABI only, never cached product facts.
-        self._evidence('batch-abi',{'abi':abi,'calibrationFacts':facts,
-            'sourceSha256':hashlib.sha256(_PHYSICAL_ABI.encode()).hexdigest(),
-            'temporalBoundary':'one continuously held executable and parent closure per epoch',
-            'nativeAcceptance':False})
-        path=self.args.output/'component-guard-batch-abi.json'
-        raw,pin=_read(path,True)
-        self.batch_admission={'path':path,'pin':pin,'raw':raw,'abi':abi,'facts':facts}
+        if (type(self) not in (CurrentGuard, BaselineGuard) or self.expected is None
+                or not hasattr(self, 'admission_pin')
+                or _read(self.args.output/'component-guard-current-admission.json', True)[1] != self.admission_pin):
+            raise ValueError('component_guard_batch_current_admission_required')
+        admitted = json.loads(_read(self.args.output/'component-guard-current-admission.json', True)[0])['record']
+        if any(admitted.get(key) != expected for key, expected in (
+                ('facts', self.expected), ('stage', self.stage), ('host', self.host),
+                ('owner', self.owner), ('revision', self.revision))):
+            raise ValueError('component_guard_batch_current_admission_required')
+        facts = self._physical()
+        correlation = str(uuid.uuid4())
+        source = _profile4_source(correlation)
+        self._evidence('batch-abi-attempt', {
+            'facts': facts, 'sourceSha256': hashlib.sha256(_PHYSICAL_ABI.encode()).hexdigest(),
+            'profileSourceSha256': '0fa6510875119ca3da6a5097d484a0c3e8b384b547512ca375411a59bdd22598',
+            'calibrationSourceSha256': hashlib.sha256(source.encode()).hexdigest(),
+            'calibrationCorrelationId': correlation,
+            'fixtureEffects': 'future private shell-UID2000 spool only',
+            'productEffectsAllowed': False})
+        result = self._adb(['shell', '-T', '/system/bin/sh -c '+shlex.quote(source)])
+        if (type(result) is not dict or type(result.get('returncode')) is not int
+                or result['returncode'] != 0 or type(result.get('stdoutRaw')) is not str
+                or result.get('stderrRaw') != ''):
+            raise ValueError('component_guard_guest_read_unknown')
+        abi = _physical_abi_parse(result['stdoutRaw'], correlation, facts['guestBootId'])
+        if self._physical() != facts:
+            raise ValueError('component_guard_batch_abi_changed')
+        if _read(self.args.output/'component-guard-current-admission.json', True)[1] != self.admission_pin:
+            raise ValueError('component_guard_batch_current_admission_required')
+        self._evidence('batch-abi', {
+            'abi': abi, 'calibrationFacts': facts,
+            'sourceSha256': hashlib.sha256(_PHYSICAL_ABI.encode()).hexdigest(),
+            'calibrationSourceSha256': hashlib.sha256(source.encode()).hexdigest(),
+            'temporalBoundary': 'one continuously held executable and parent closure per epoch',
+            'nativeAcceptance': False})
+        path = self.args.output/'component-guard-batch-abi.json'
+        raw, pin = _read(path, True)
+        self.batch_admission = {'path': path, 'pin': pin, 'raw': raw, 'abi': abi, 'facts': facts}
 
     def _batch_reads(self):
         if getattr(self,'batch_uncertain',False):
@@ -959,17 +1134,22 @@ class CurrentGuard:
         value=json.loads(admitted['raw'])['record']
         if value['abi']!=admitted['abi'] or value['calibrationFacts']!=admitted['facts'] or value['sourceSha256']!=hashlib.sha256(_PHYSICAL_ABI.encode()).hexdigest():
             raise ValueError('component_guard_batch_abi_changed')
+        import time
+        started = time.monotonic()
+        if type(started) not in (int, float) or not 0 < started < float('inf'):
+            raise ValueError('component_guard_read_clock_unknown')
         correlation=str(uuid.uuid4())
         self.batch_sequence=correlation
         source=_physical_batch_source(correlation,admitted['abi'])
         self._evidence('batch-epoch-'+correlation,{'correlationId':correlation,
             'abiAdmissionPin':admitted['pin'],'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),
+            'startedMonotonic':started,'stepSeconds':20,'totalSeconds':200,
             'replayAllowed':False,'outcome':'unknown-until-complete-current-physical-validation'})
         self.batch_uncertain=True
         b=self.backend;previous=b['GETTER_RECORDS'];isolated={};result=None
         words=['shell','-T','/system/bin/sh -c '+shlex.quote(source)]
         b['GETTER_RECORDS']=isolated
-        failure=None;failures=[]
+        failure=None;failures=[];ended=None;elapsed=None
         try:
             b['command_host_guard']()
             launch=b['LAUNCH']
@@ -980,10 +1160,21 @@ class CurrentGuard:
         finally:
             b['GETTER_RECORDS']=previous
             try:
+                ended = time.monotonic()
+                if type(ended) not in (int, float) or not started <= ended < float('inf'):
+                    raise ValueError('component_guard_read_clock_unknown')
+                elapsed = ended - started
+            except BaseException as exc:
+                ended = None; elapsed = None
+                failures.append(('timing',exc))
+                if failure is None:failure=exc
+            try:
                 self._capture({'kind':'physical-batch-transport','correlationId':correlation,
                     'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),'words':words,
                     'result':result,'captures':isolated.get('captures',[]),
                     'stepSeconds':20,'totalSeconds':200,'carrierLimit':_PHYSICAL_BATCH_LIMIT,
+                    'startedMonotonic':started,'endedMonotonic':ended,'elapsedSeconds':elapsed,
+                    'primaryExceptionClass':type(failure).__name__ if failure is not None else None,
                     'temporalBoundary':'one continuously held executable and parent closure',
                     'fixtureEffects':'private acquired shell-UID2000 directory/exclusive files/owned cleanup'})
             except BaseException as exc:
@@ -1562,12 +1753,19 @@ class BaselineGuard(CurrentGuard):
         if self.backend['LAUNCH']['intent']['reservation']!=self.request['reservation']:
             raise ValueError('component_baseline_reservation_changed')
 
-    def _evidence(self,name,value):
-        _write(self.args.output/('component-guard-'+name+'.json'),_raw({
-            'schema':1,'kind':'android-installer-component-baseline-read','phase':self.phase,
-            'binding':self.request,'record':copy.deepcopy(value),'componentRuntime':'EXTERNAL_JDK',
-            'installerLeaseGranted':False,'guestMutationPerformed':False,
-            'installedLauncherAccepted':False,'bundledRuntimeAccepted':False,'replayAllowed':False}))
+    def _evidence(self, name, value):
+        batch = (name.startswith('batch-epoch-') or name.startswith('batch-complete-')
+                 or value.get('kind') in ('physical-batch-transport', 'physical-batch-logical-observations'))
+        cleaned = (name.startswith('batch-complete-')
+                   or value.get('kind') == 'physical-batch-logical-observations')
+        effects = ({'guestFixtureEffects': 'private acquired UID2000 spool observed-cleaned' if cleaned
+                    else 'private acquired UID2000 spool possible'} if batch else {})
+        _write(self.args.output/('component-guard-'+name+'.json'), _raw({
+            'schema': 1, 'kind': 'android-installer-component-baseline-read', 'phase': self.phase,
+            'binding': self.request, 'record': copy.deepcopy(value), 'componentRuntime': 'EXTERNAL_JDK',
+            'installerLeaseGranted': False, 'guestMutationPerformed': (True if cleaned else None) if batch else False,
+            'installedLauncherAccepted': False, 'bundledRuntimeAccepted': False, 'replayAllowed': False,
+            **effects}))
 
 
 def baseline_read_only(receipt,backend,request):

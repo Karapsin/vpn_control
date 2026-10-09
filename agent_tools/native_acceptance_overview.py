@@ -407,6 +407,12 @@ def acceptance_status(matrix: Mapping[str, Any], request: Mapping[str, Any],
     source = matrix.get("currentSourceSHA")
     if not isinstance(source, str) or not _SHA.fullmatch(source) or request.get("sourceSha", source) != source:
         raise ValueError("Acceptance status source must be the current exact Git SHA.")
+    rows = matrix.get("requirements")
+    if not isinstance(rows, list):
+        raise ValueError("Acceptance matrix requirements are unavailable.")
+    if any(not isinstance(row, Mapping) or
+           row.get("platform") not in (*_PLATFORMS, "cross-platform") for row in rows):
+        raise ValueError("Acceptance matrix requirement platform is unsupported or missing.")
     correlations = request.get("correlations", [])
     if not isinstance(correlations, list) or len(correlations) > 4:
         raise ValueError("Acceptance correlations must be a bounded list.")
@@ -503,9 +509,6 @@ def acceptance_status(matrix: Mapping[str, Any], request: Mapping[str, Any],
                 observed_correlations.setdefault(platform, []).append(value)
             elif platform in owner_requests and "evidenceScope" in value:
                 observed_owners[platform] = value
-    rows = matrix.get("requirements")
-    if not isinstance(rows, list):
-        raise ValueError("Acceptance matrix requirements are unavailable.")
     result = []
     for platform in _PLATFORMS:
         selected = [row for row in rows if isinstance(row, Mapping) and row.get("platform") == platform]
@@ -556,8 +559,21 @@ def acceptance_status(matrix: Mapping[str, Any], request: Mapping[str, Any],
                        "ownerSourceBinding": "verified-current-source-correlation"
                            if platform == "android" and observed and owner else "unknown",
                        "unmetGates": unmet})
+    # Shared requirements keep their own matrix status and case occurrences;
+    # they do not establish any platform package, owner or correlation evidence.
+    shared = [row for row in rows if row["platform"] == "cross-platform"]
+    shared_gates = [{"requirementId": row.get("requirementId"), "platform": "cross-platform",
+                     "status": row.get("status"), "missingCount": len(row.get("missingScenarios", [])),
+                     "missingScenarios": list(row.get("missingScenarios", [])),
+                     "nextFixedCommand": row.get("nextFixedCommand")} for row in shared]
     return {"state": "observed", "sourceSha": source, "matrixGate": matrix.get("gate"),
-            "platforms": result, "nativeActionAllowed": False, "productAction": False}
+            "platforms": result, "sharedGates": shared_gates,
+            "requirementCount": len(rows),
+            "unmetGateCount": sum(row.get("status") != "passed" for row in rows),
+            "missingScenarioCount": sum(len(row.get("missingScenarios", [])) for row in rows),
+            "sharedUnmetGateCount": sum(row.get("status") != "passed" for row in shared),
+            "sharedMissingScenarioCount": sum(gate["missingCount"] for gate in shared_gates),
+            "nativeActionAllowed": False, "productAction": False}
 
 
 def batch_preflight(request: Mapping[str, Any], dispatch: Callable[[str, dict[str, Any]], Mapping[str, Any]]) -> dict[str, Any]:

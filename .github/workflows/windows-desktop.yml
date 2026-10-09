@@ -225,6 +225,8 @@ jobs:
           agent_tools.tests.test_windows_cp117_server_read_binding.PublisherSuccessorStageTests.test_actual_native_full_body_parser
           agent_tools.tests.test_windows_secondary_ordinary_read.NativeAccountGuardTests
           agent_tools.tests.test_windows_cp117_public_update_flow.PublicPostConsentCoordinatorTests.test_actual_native_five_argument_consumer_and_complete_script_parser
+          agent_tools.tests.test_windows_cp117_public_update_flow.PublicCliAliasBindingTests.test_actual_public_function_and_fourteen_call_projection_is_exact
+          agent_tools.tests.test_windows_cp117_public_update_flow.PublicCliAliasBindingTests.test_actual_builtin_alias_red_then_successor_function_green
           agent_tools.tests.test_windows_secondary_ordinary_read.NativeWin32ClassificationTests.test_actual_hresult_red_typed_native_code_green
           agent_tools.tests.test_windows_secondary_ordinary_read.NativeRecordCreationTests.test_actual_default_inheritance_red_protected_constructor_green
           agent_tools.tests.test_windows_secondary_ordinary_read.NativeCleanupReaderLifetimeTests.test_actual_old_reader_closed_fixed_reader_survives_markdelete

@@ -1,0 +1,97 @@
+"""Pure fixed source selection for one separately admitted identity observation.
+
+Only nine unchanged read functions are emitted. No retained programme is
+executed, and no native, source holder, original authority or route is opened.
+The owning caller must authenticate every supplied full byte body and retain
+its original descriptor population through consumption and closing.
+"""
+import ast
+import hashlib
+import json
+
+SOURCE_PINS = {
+    'coldboot': 'e80f7c833ca5dbf817afadb7c4fe896d6ddb6e1a792fcc2759311fcf996b0957',
+    'census': '0d4ac9875ef793d8d1ebfe613f5c89557e1ac027d8fbbc6ff6ab084fc6f57e4d',
+    'owner': '3588b0abd238cd594df0bad1cb0bb1b296c5ade4a9330b47f1f66abcd4a6462c',
+    'retained': '3367f498d3a1cb20f733fc7d6333e68bd4b42df09eab9d2ff5a3065cd959dffb',
+}
+READS = {
+    'census': ('fp', 'parent_fds', 'guard_parents', 'close_parents', 'boot', 'ticks'),
+    'coldboot': ('child_identity', 'qemu_fact', 'session_guest'),
+}
+
+
+def assignment(tree, name):
+    rows = [node.value for node in tree.body if isinstance(node, ast.Assign)
+            and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == name]
+    if len(rows) != 1:
+        raise ValueError('identity_fixed_source_assignment')
+    return ast.literal_eval(rows[0])
+
+
+def emit(coldboot_raw, census_raw, owner_raw, retained_raw, body_raw):
+    inputs = dict(coldboot=coldboot_raw, census=census_raw,
+                  owner=owner_raw, retained=retained_raw)
+    for name, raw in inputs.items():
+        if type(raw) is not bytes or hashlib.sha256(raw).hexdigest() != SOURCE_PINS[name]:
+            raise ValueError('identity_fixed_source_changed')
+    if type(body_raw) is not bytes or len(body_raw) > 65536:
+        raise ValueError('identity_body_source_invalid')
+    templates = {
+        'census': assignment(ast.parse(census_raw), '_CENSUS'),
+        'coldboot': assignment(ast.parse(coldboot_raw), '_BOOT'),
+    }
+    expected = assignment(ast.parse(owner_raw), 'FIXED_GENERATION')
+    launch = assignment(ast.parse(retained_raw), 'LAUNCH')
+    getter = assignment(ast.parse(retained_raw), 'GETTER')
+    if getter['generation'] != expected:
+        raise ValueError('identity_retained_expected_binding_changed')
+    subset = {key: launch[key] for key in ('qemuPath', 'avd', 'port')}
+    if (type(subset['qemuPath']) is not str or not subset['qemuPath'].startswith('/')
+            or '..' in subset['qemuPath'].split('/')
+            or subset['avd'] != expected['device']['bootAvd']
+            or type(subset['port']) is not int or subset['port'] != 5682):
+        raise ValueError('identity_retained_launch_binding_changed')
+    source = ('import hashlib,json,os,pathlib,re,stat,sys,time\n'
+              'PROC=pathlib.Path("/proc")\n'
+              'LAUNCH=' + repr(subset) + '\n'
+              'EXPECTED=' + repr(expected) + '\n'
+              'IDENTITY_CUTOFF=time.monotonic()+50\n'
+              'IDENTITY_PRINCIPAL=(os.getuid(),os.geteuid(),os.getgid(),os.getegid(),tuple(sorted(os.getgroups())))\n'
+              'if IDENTITY_PRINCIPAL[:4]!=(1000,1000,1000,1000) or len(IDENTITY_PRINCIPAL[4])>64:raise ValueError("identity_uid_unknown")\n')
+    audit = []
+    for name in ('census', 'coldboot'):
+        template = templates[name]
+        tree = ast.parse(template)
+        for function in READS[name]:
+            nodes = [node for node in tree.body
+                     if isinstance(node, ast.FunctionDef) and node.name == function]
+            if len(nodes) != 1:
+                raise ValueError('identity_fixed_read_symbol_changed')
+            text = ast.get_source_segment(template, nodes[0])
+            source += text + '\n\n'
+            audit.append({'name': function, 'source': name,
+                          'sourceSha256': hashlib.sha256(text.encode()).hexdigest(),
+                          'astSha256': hashlib.sha256(ast.dump(nodes[0], include_attributes=False).encode()).hexdigest()})
+    source += body_raw.decode('utf-8', 'strict') + '\n'
+    source += ('IDENTITY_VALUE=identity_diagnostic_run()\n'
+               'if (os.getuid(),os.geteuid(),os.getgid(),os.getegid(),tuple(sorted(os.getgroups())))!=IDENTITY_PRINCIPAL:raise ValueError("identity_uid_changed")\n'
+               'IDENTITY_WIRE=(json.dumps(IDENTITY_VALUE,sort_keys=True,separators=(",",":"),allow_nan=False)+"\\n").encode("utf-8")\n'
+               'if len(IDENTITY_WIRE)>4096:raise ValueError("identity_finite_output_limit")\n'
+               'sys.stdout.write(IDENTITY_WIRE.decode("utf-8"));sys.stdout.flush()\n')
+    result = source.encode()
+    if len(result) > 65536:
+        raise ValueError('identity_readonly_programme_limit')
+    emitted = ast.parse(result)
+    for row in audit:
+        node = next(node for node in emitted.body
+                    if isinstance(node, ast.FunctionDef) and node.name == row['name'])
+        if hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest() != row['astSha256']:
+            raise ValueError('identity_read_function_inverse_changed')
+    compile(result, '<fixed-api35-identity-readonly>', 'exec', dont_inherit=True)
+    return result, {'functions': audit, 'functionsUnchanged': True,
+                    'expectedGenerationOwner': 'canonical-api35-fixed-e3e97',
+                    'retainedProgrammeExecuted': False, 'retainedFieldsSelected': ['qemuPath', 'avd', 'port'],
+                    'nativeSubmitted': False, 'nativeActionAllowed': False,
+                    'replayAllowed': False, 'originalOutcome': 'unknown'}

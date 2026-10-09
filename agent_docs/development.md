@@ -101,6 +101,13 @@ checks remain unchanged; reduced coverage is not an efficiency measure.
   process/job identities, receipts, ownership and remaining cleanup first. Reject
   incomplete scaffolds and routine tool errors as completion; the owner resolves
   them or explicitly hands off unfinished work before another writer starts.
+- Workers may make reversible quick fixes and run assigned checks within explicit
+  file and environment ownership without coordinator micro-approval. Preserve
+  original failures and relevant unfixed beforeimages first. Once the flow works,
+  report encountered failure types, causes and proposed coverage, then complete
+  every TEST-001 causal RED/GREEN regression and routine-suite wiring before
+  integration, push or completion. Existing scope, runtime authorization, unknown-
+  outcome non-replay and source/artifact provenance gates remain binding.
 - Run the portable Python capability manifest through release hygiene before a
   push. New platform failures extend executable absent-module/API probes; do not
   add a source-text rule requiring APIs that a test never executes. Keep the real
@@ -234,11 +241,12 @@ After the final non-documentation edit, call `version_bump` once with a concise 
 - `force_release` may roll fewer than 10 notes only while carrying out an explicit release command.
 - Android version code and the update build number append an internal zero component before base-20 encoding so they remain newer than legacy builds. Every displayed and packaged product version remains exactly canonical; do not restore commit-count or platform-specific versions.
 
-Follow `TEST-001` in `contracts.md` for every distinct failure type found during VM, emulator, native/package, manual, visual, or integration testing. Before fixing the implementation:
+Follow `TEST-001` in `contracts.md` for every distinct failure type found during VM, emulator, native/package, manual, visual, or integration testing:
 
-1. Reduce the failure to the quickest deterministic unit, component, constrained-heap, or fixture-contract reproducer that exercises the cause.
-2. Run it against the unfixed behavior and retain the failing evidence. After the fix, retain the passing result and add the test to the routine suite identified in `test-matrix.md`.
-3. Record the failure-to-test mapping and exact commands in the task evidence/WIP, including OS-only gaps. Keep and rerun the original native scenario on the fixed artifact; a host regression does not replace native verification.
+1. Before editing, preserve the original failing outcome, exact source/artifacts and action identities, bounded redacted diagnostics, relevant unfixed source/file beforeimages, and cleanup or uncertainty state within authorized ownership.
+2. A worker may implement and test a reversible quick fix within explicitly owned files and environments without coordinator micro-approval. After the flow works, report the finite list of encountered failure types, known or unresolved causes, and proposed regression coverage. Scope, runtime-interruption authorization, unknown-outcome non-replay, and source/artifact provenance gates still apply.
+3. Implement the quickest deterministic unit, component, constrained-heap, or fixture-contract regression that exercises each distinct cause. Run the same test against the preserved unfixed implementation for actual RED and against the fix for GREEN; if constructed after the fix works, obtain RED in an isolated owned copy without reverting shared or live native state. Retain both outcomes and add the test to the routine suite identified in `test-matrix.md` before integration, push, or completion. Proposed coverage alone does not satisfy the requirement.
+4. Record the failure-to-test mapping and exact commands in the task evidence/WIP, including OS-only gaps. Keep and rerun the original native scenario on the fixed artifact; a host regression does not replace native verification.
 
 Apply the same approach to reproducible harness and infrastructure defects with script or workflow-contract tests. Do not count an opt-in native test skipped by ordinary host checks as the required quick regression.
 

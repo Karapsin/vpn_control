@@ -1,5 +1,39 @@
 # Parity Failure-to-Regression Ledger
 
+## Collector begin compatibility and shared gate coverage — 2026-10-09
+
+Original managed prepush61229 preserves6054 tests with one failure, one error and
+170 skips. Its original completion receipt is
+`.rag_index/check-runs/cd297050-c829-473f-a517-d546a1e74dec/receipt.json`;
+the public summary is `.runtime/root-prepush-failure-df76574f-6461-4ab0-91c2-c9e2fb517e6e/public.json`.
+Neither that failure nor local candidate GREEN closes native acceptance.
+
+| Failure class | Causal evidence and repair | Routine coverage | Remaining gate |
+| --- | --- | --- | --- |
+| New begin files violate authenticated collector catalogs | The unchanged actual child collector and owner inventory reproduce one failure and one error. Publish begin through the existing virtual numbered evidence writer before child launch, then verify its actual record and full file pin. A separate begin counter preserves8192 commands and4096-byte envelopes; consumer511/2001 caps, schemas, source/request binding and final capture/timing remain unchanged. Both exact tests pass after repair; frozen candidate409f30b7 and manifest88d28792 preserve all earlier failures and mixed-copy source refusals. | Unchanged `test_android_component_retirement_collectors.py` plus21 `test_android_physical_batch_successor.py` controls, including actual owner subclass publication, pre-child durability, collisions and independent counter ceiling. | Canonical affected checks, fresh prepush, native calibration/collectors and matching MCP acceptance. |
+| Acceptance overview drops shared requirements | Actual public status projects20 platform requirements while omitting `final-dev-ci` and `document-persistence-transfer`. Preserve four platform evidence projections and add separate shared gates and aggregate counts for all22 requirements; refuse unsupported platforms before observers. Same real manifest/public-function fixture fails before and passes after. | Three new `AcceptanceSharedGateProjectionTests`,13 unchanged overview tests and11 unchanged route checks pass. Frozen patch23cf4530 and manifestd6ad3fb3 retain source-only scope. | Recheck the canonical read-only route; shared gates still require their own actual evidence. |
+
+The earlier20:25 timing and subclass controls below remain historical evidence.
+Their initial standalone begin-file schema was superseded by the compatible
+numbered producer above; the original native UNKNOWN outcomes remain unchanged.
+
+## Batch utility admission and public causal regression promotion — 2026-10-09
+
+Root integrates these reviewed candidates only after original490c/67731 reached
+positive terminal0 and same-correlation ENDED with all borrowers closed. Original
+UNKNOWN outcomes, raw streams and historical source fixtures are preserved.
+Local controls are not native/MCP product acceptance; fresh canonical checks and
+content-bound prepush remain required for this working cohort.
+
+| Failure class | Causal repair and retained evidence | Routine coverage | Native/MCP gate |
+| --- | --- | --- | --- |
+| Android batch utility ABI assumes a missing mksh pathname, unreadable build.prop and timeout124 | Strict actual profile4 probes shell/utility generations, inherited FDs, watchdog137 and child absence. Distinct same-instance batch admission preserves utility-only authority flags, limits, current owner/source and temporal guards. Old protocol refusals and declared generated-shell drift controls remain. | `test_android_physical_batch_successor.py` and migrated `test_android_installer_component_bundle.py`; portable parser/planner controls remain active on Windows, actual POSIX writer/shell controls have explicit capability gates. | Genuine baseline, fresh calibration and one batch epoch still required; historical47b5/be98 effects remain UNKNOWN. |
+| Android spool placeholder rewrites the shell pathname | Actual generated source failed before its shell binding; a unique spool sentinel and fixed utility paths restore the intended command graph. Real local file/parent/shell/utility drift controls refuse incomplete replies. | New physical-batch controls execute the generated shell on declared TempFS seams, preserving unchanged caps and explicit non-native scope. | Actual Android utility and cleanup proof remains required. |
+| New timing begin record conflicts with subclass evidence and baseline envelope | Authentic OwnerAdmissionGuard evidence override previously gave the wrong record path; independent create-only bounded begin publication preserves virtual capture. Combined84 tests additionally found missing baseline phase; unchanged same baseline test fails before and passes after actual phase plus installerLeaseGranted:false. Root RED log hash e1e313 and phase2 GREEN log17b123 remain preserved. | Actual canonical subclass evidence-only control, durable begin collision/size/counter refusal, primary failure retention, finite timing and unchanged full baseline test. | Native timing identifies progress only; no lease, product or replay authority follows. |
+| Proc-path ticks shadowing, UID/principal admission, NUL transport and joined descriptor cleanup | Exact public historical source fixtures preserve the old failures. Pure source assembly and real owned POSIX FD controls preserve alpha inverses, NUL refusal, inherited dictionary/process sources and attempt-all cleanup. Native Linux UID1000/UID0 identity read remains separate from mocked portable controls. | Fourteen `test_android_installer_readonly_source_assembly.py` controls; no ignored/native dependency. | Original Linux cross-principal proof and native Android/public tool equivalence remain required. |
+| PowerShell Cli resolves to builtin Clear-Item alias | Actual initial-status dispatch fails before the intended function. Rename only the exact authenticated function and fourteen calls to Invoke-Cp117PublicCli, retaining argument ASTs, alias and full inverse. Source-only authentic graph controls produce real binding RED then first-guard GREEN; seven declared carrier refusals exercise full helper APIs. Existing intended test functions use explicit Function resolution; all36 historical gzip assets remain unchanged. | Three `PublicCliAliasBindingTests`; exact Windows package CI selects the actual graph and real Windows PowerShell resolution controls. Pure carrier test runs routine discovery. | Helper integration alone does not wire the operative caller or close original6815. Complete fresh direct update and equivalent MCP route remain required. |
+| Windows running-app lock read fails before recovery status | Distinct ordinary native e5c observation proves ReadAllText sharing violation HRESULT0x80070020; preceding principal, CLI hash, ancestors, exact process and birth pass. Originalf614 remains UNKNOWN and no quit was submitted. | Causal sharing/active-owner repair is owned by windows_operator; not claimed routine-complete by the alias controls. | Preserve guard; prove existing active-lock ownership procedure and fresh guarded recovery before update. |
+
 ## Collector and post-collection receipt preservation — 2026-10-09
 
 The seven-file promotion starts from `a23ea3853afc632797d770ec255d35494aa1dc64`.

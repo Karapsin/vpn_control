@@ -177,5 +177,79 @@ class ArtifactIndexCustodyTests(unittest.TestCase):
         self.assertEqual(before, self.path.read_bytes())
 
 
+class AcceptanceSharedGateProjectionTests(unittest.TestCase):
+    def matrix(self):
+        from agent_tools import native_acceptance_matrix
+        source="a"*40
+        # Only the tracked public manifest and its real pure row producer are
+        # used. No receipts, registry, owner or native environment is opened.
+        requirements=native_acceptance_matrix.load_requirements()
+        return {"currentSourceSHA":source,"gate":"open","requirements":[
+            native_acceptance_matrix._row(requirement,[],source)
+            for requirement in requirements.values()]}
+
+    def test_actual_public_status_accounts_for_every_manifest_gate_and_shared_case(self):
+        from collections import Counter
+        matrix=self.matrix()
+        result=overview.acceptance_status(matrix,{}, {"matches":[],"records":{}})
+        projected=[gate for platform in result["platforms"] for gate in platform["unmetGates"]]
+        projected+=result.get("sharedGates",[])
+        self.assertEqual(Counter(row["requirementId"] for row in matrix["requirements"]),
+                         Counter(row["requirementId"] for row in projected))
+        shared=[row for row in matrix["requirements"] if row["platform"]=="cross-platform"]
+        self.assertEqual({"final-dev-ci","document-persistence-transfer"},
+                         {gate["requirementId"] for gate in result["sharedGates"]})
+        self.assertEqual(len(matrix["requirements"]),result["requirementCount"])
+        self.assertEqual(len(matrix["requirements"]),result["unmetGateCount"])
+        self.assertEqual(sum(len(row["missingScenarios"]) for row in matrix["requirements"]),
+                         result["missingScenarioCount"])
+        self.assertEqual(len(shared),result["sharedUnmetGateCount"])
+        self.assertEqual(22,result["sharedMissingScenarioCount"])
+        for original,gate in zip(shared,result["sharedGates"]):
+            self.assertEqual("cross-platform",gate["platform"])
+            self.assertEqual(original["status"],gate["status"])
+            self.assertEqual(original["missingScenarios"],gate["missingScenarios"])
+            self.assertEqual(len(original["missingScenarios"]),gate["missingCount"])
+            self.assertEqual(original["nextFixedCommand"],gate["nextFixedCommand"])
+        self.assertFalse(result["nativeActionAllowed"])
+        self.assertFalse(result["productAction"])
+
+    def test_shared_status_counts_do_not_assign_shared_evidence_to_a_platform(self):
+        matrix=self.matrix();shared=[row for row in matrix["requirements"] if row["platform"]=="cross-platform"]
+        identifier="sha256-"+"f"*64
+        shared[0].update(status="passed",missingScenarios=[],originalSourceSHA=matrix["currentSourceSHA"],
+                         immutableArtifactIDs=[identifier])
+        shared[1].update(status="unknown")
+        matrix["requirements"][0].update(status="passed",missingScenarios=[])
+        result=overview.acceptance_status(matrix,{}, {"matches":[],"records":{}})
+        self.assertEqual(["passed","unknown"],[row["status"] for row in result["sharedGates"]])
+        self.assertEqual(len(matrix["requirements"])-2,result["unmetGateCount"])
+        self.assertEqual(1,result["sharedUnmetGateCount"])
+        self.assertEqual(17,result["sharedMissingScenarioCount"])
+        self.assertEqual(sum(len(row["missingScenarios"]) for row in matrix["requirements"]),
+                         result["missingScenarioCount"])
+        self.assertEqual("open",result["matrixGate"])
+        for platform in result["platforms"]:
+            self.assertEqual([],platform["artifactHashes"])
+            self.assertEqual("unknown",platform["ownerEvidence"])
+            self.assertEqual("unknown",platform["correlationEvidence"])
+        for gate in result["sharedGates"]:
+            self.assertNotIn("artifactHashes",gate)
+            self.assertNotIn("ownerOrGuest",gate)
+            self.assertNotIn("activeCorrelationId",gate)
+        self.assertFalse(result["nativeActionAllowed"])
+
+    def test_unknown_or_missing_row_platform_refuses_before_owner_observation(self):
+        request={"ownerProbes":[{"platform":"linux","action":"linux-owner-public-quit-status",
+                  "inputs":{"correlationId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}}]}
+        for invalid in ({"platform":"unsupported"},{},None):
+            with self.subTest(row=invalid):
+                matrix=self.matrix();matrix["requirements"].append(invalid)
+                def observer(item):
+                    self.fail("invalid requirement dispatched an owner observation")
+                with self.assertRaisesRegex(ValueError,"requirement platform"):
+                    overview.acceptance_status(matrix,request,owner_observer=observer)
+
+
 if __name__ == "__main__":
     unittest.main()

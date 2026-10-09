@@ -1255,7 +1255,14 @@ current reviewed matrix rows into one
 Android/Linux/Windows/macOS view with the exact source SHA, hashes from
 reviewed current receipts and the exact-source artifact index, unmet gate
 counts and next fixed command. Registry-only hashes are labelled
-`registered-unverified`. The view rehashes current-source local package/APK/DMG
+`registered-unverified`. Top-level `sharedGates` projects every cross-platform
+requirement, including passed gates, with its matrix status, missing scenarios
+and next fixed command. `requirementCount`, `unmetGateCount` and
+`missingScenarioCount` include both platform and shared rows; scenario counts
+are occurrences across requirements. `sharedUnmetGateCount` and
+`sharedMissingScenarioCount` expose the shared subset without assigning package,
+owner or correlation evidence to a platform. Unknown requirement platforms are
+rejected before observer calls. The view rehashes current-source local package/APK/DMG
 bytes within a 1 GiB total read limit and labels matches
 `verified-local-bytes`; this verifies local files, not their installed state
 or matrix review. Large inputs beyond the limit remain registered only.

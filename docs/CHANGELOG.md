@@ -6,6 +6,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Preserve installer collection diagnostics, cleanup failures and original transport facts after publication or source-check failures.
+- Improve native acceptance batch diagnostics and Windows/Android failure regression coverage.
+- Preserve numbered collector evidence and include shared acceptance gates.
 
 ## 2.2.4 - 2026-10-08
 

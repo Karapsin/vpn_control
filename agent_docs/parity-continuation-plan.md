@@ -207,7 +207,13 @@ Each worker brief must contain:
 4. Current source/artifact IDs, scenario/job identities and evidence location.
 5. Environment, permission and cleanup boundaries.
 6. Fast regression and native commands/gates, including expected skips.
-7. Instruction to fix a causal failure and improve MCP before repeating it.
+7. Authority to make reversible quick fixes and run assigned checks within owned
+   files/environments without coordinator micro-approval, preserving original
+   failures and relevant unfixed beforeimages first. After the flow works, report
+   encountered failures, causes and proposed coverage, then complete causal
+   RED/GREEN regressions, routine-suite wiring and related MCP improvement before
+   integration, push or completion. Existing scope/runtime/provenance/non-replay
+   gates remain binding.
 8. A compact handoff: changes, tests/counts/skips, evidence hashes, unresolved
    cases, process/job state and next safe action. “Scaffold added” or “tool
    returned successfully” is not completion of a native outcome.
@@ -483,10 +489,18 @@ codec/registry tests and scripts for routing evidence/private publication.
 
 ## 12. Native acceptance: direct proof, parallel ownership and MCP equivalence
 
-For each distinct integration/native/fixture failure, TEST-001 already requires a
-quick causal regression and a related MCP improvement. A repeated class must
-trigger explicit workflow repair before another expensive attempt. Track
-`failure class → cause → quick RED → fix → GREEN → routine suite → MCP action → native rerun`.
+For each distinct integration/native/fixture failure, TEST-001 requires an
+implemented quick causal regression and a related MCP improvement before
+integration, push or completion. Workers may first make and test reversible
+quick fixes within explicit file/environment ownership without coordinator
+micro-approval, preserving original failure evidence and relevant unfixed
+beforeimages before editing. After the flow works, report the finite encountered
+failure types, known or unresolved causes, and proposed coverage. Then implement
+each regression and obtain actual unfixed RED from an isolated owned copy of
+the preserved source, fixed GREEN and routine-suite wiring; proposals alone do
+not close the failure. A repeated class still requires workflow repair before
+another expensive attempt. Track
+`failure + unfixed beforeimage → owned fix works → failure/cause/coverage report → causal RED/GREEN → routine suite + MCP action → native rerun`.
 
 Apply `TEST-002` on Windows, Android, Linux and macOS: first get each complete
 required scenario working directly through SSH, CLI, ADB or native tools outside
@@ -504,16 +518,22 @@ recovery operations in one guest; use separate verified guests or isolated state
 for concurrent effects. Batch independent read-only observations under the sole
 guest operator. Resource limits and unknown outcomes remain binding.
 
-1. Save the failing command outcome, exact source/artifacts, request/job identity,
-   bounded redacted diagnostics and cleanup/uncertainty state. Distinguish product,
-   fixture, transport, environment and test-portability defects.
+1. Before editing, save the failing command outcome, exact source/artifacts,
+   request/job identity, relevant unfixed source/file beforeimages, bounded
+   redacted diagnostics and cleanup/uncertainty state within authorized ownership.
+   Distinguish product, fixture, transport, environment and test-portability defects.
 2. Inspect `parity-failure-regressions.md` and native failure receipts under
    `.rag_index/native-failures`. Repeated identical evidence is deduplicated;
    counts alone do not prove the same root cause.
-3. Reproduce the application-controlled cause deterministically before fixing.
-   Compilation errors, source-text assertions and mocks that assume the desired
-   result are not causal RED evidence. Use actual fake transports/processes,
-   persisted schemas, descriptor/ACL logic or constrained heaps as appropriate.
+3. Make and test a reversible owned quick fix, then report encountered failures,
+   known or unresolved causes and proposed coverage once the flow works. Implement
+   a deterministic regression for each application-controlled cause and run the
+   same test against isolated preserved unfixed source for RED and fixed source
+   for GREEN before integration, push or completion. Compilation errors, source-
+   text assertions and mocks that assume the desired result are not causal RED
+   evidence. Use actual fake transports/processes, persisted schemas, descriptor/
+   ACL logic or constrained heaps as appropriate. Never revert shared/live native
+   state for RED; scope, runtime authorization, provenance and non-replay gates apply.
 4. Extend the existing narrow tool when it owns the failure. Add a new fixed
    typed MCP action only if no existing action can express the safe operation.
    Prefer strict admission, bounded observation, exact diagnostic or guarded

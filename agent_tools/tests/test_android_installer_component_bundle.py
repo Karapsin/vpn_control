@@ -3,6 +3,7 @@ import ast
 import base64
 import copy
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,7 @@ import unittest
 from unittest import mock
 from agent_tools import android_installer_component_bundle as bundle
 from agent_tools import android_component_command_transport as command
+from agent_tools.tests.test_android_physical_readonly_abi import canonical_reply as physical_readonly_reply
 
 ROOT=Path(__file__).resolve().parents[2]
 OWNER='6373d143-1372-4835-a89b-baafb0959b9f'
@@ -99,18 +101,19 @@ class BundleTests(unittest.TestCase):
                 with self.assertRaises(ValueError):bundle._physical_batch_parse(changed,CORRELATION)
 
     def test_batch_abi_requires_complete_fixed_hash_and_boot_evidence(self):
-        raw='PHYSICAL-ABI-1\n'+'a'*64+'  /system/bin/toybox\n'+'b'*64+'  /system/bin/mksh\n28b8f9af-efbb-44da-9836-0237cb714df9\nFILE-LIMIT 16384\n'
-        abi=bundle._physical_abi_parse(raw)
+        boot='28b8f9af-efbb-44da-9836-0237cb714df9'
+        raw=physical_readonly_reply(CORRELATION,boot)
+        abi=bundle._physical_abi_parse(raw,CORRELATION,boot)
         self.assertEqual(20,abi['stepSeconds'])
-        for changed in (raw+'extra\n',raw.replace('/system/bin/toybox','/caller/tool'),raw.replace('PHYSICAL-ABI-1','ERROR'),raw.replace('28b8f9af','foreign')):
-            with self.assertRaises(ValueError):bundle._physical_abi_parse(changed)
+        for changed in (raw+'extra\n',raw.replace('/system/bin/toybox','/caller/tool'),raw.replace('PHYSICAL-READONLY-4','ERROR'),raw.replace('28b8f9af','foreign')):
+            with self.assertRaises(ValueError):bundle._physical_abi_parse(changed,CORRELATION,boot)
 
     def test_batch_calibration_refusal_precedes_any_batch_spool_dispatch(self):
         selected,backend,args,state_path,log,_,_=self.fixture()
         guard=bundle.CurrentGuard(self.receipt,selected,backend,args)
         state=json.loads(state_path.read_bytes());state['batchAbiRaw']='UNSUPPORTED';state_path.write_text(json.dumps(state))
         log.write_text('')
-        with self.assertRaisesRegex(ValueError,'batch_abi_unknown'):guard.enable_physical_batch()
+        with self.assertRaisesRegex(ValueError,'abi_packet_reply_unknown'):guard.enable_physical_batch()
         rows=[json.loads(line) for line in log.read_text().splitlines()]
         self.assertEqual(11,len(rows));self.assertFalse(hasattr(guard,'batch_admission'))
         self.assertFalse(any('PHYSICAL-1 ' in ' '.join(row) for row in rows))
@@ -166,7 +169,7 @@ class BundleTests(unittest.TestCase):
         if transport_failure:self.assertEqual('getter_binary_changed',str(failure.exception))
         elif capture_failure:self.assertIs(faults['capture'],failure.exception)
         else:self.assertIsInstance(failure.exception,ValueError)
-        files=sorted(args.output.glob('component-guard-read-*.json'))
+        files=sorted(args.output.glob('component-guard-read-[0-9][0-9][0-9][0-9][0-9].json'))
         raw=json.loads(files[-1].read_bytes())['record']
         self.assertEqual('physical-batch-transport',raw['kind'])
         if not transport_failure:self.assertTrue(raw['result']['stdoutRaw'].startswith('PHYSICAL-1 '))
@@ -199,22 +202,32 @@ class BundleTests(unittest.TestCase):
         helpers=self.root/'guest-bin';helpers.mkdir(mode=0o700)
         apk=self.root/'guest-base.apk';apk.write_bytes(b'actual inert package bytes')
         boot=self.root/'guest-boot';boot.write_text('28b8f9af-efbb-44da-9836-0237cb714df9\n')
-        mksh=self.root/'guest-mksh';mksh.write_bytes(b'inert immutable shell identity')
+        mksh=self.root/'guest-shell';shutil.copyfile('/bin/sh',mksh);mksh.chmod(0o755)
         # The complete generated shell executes unchanged. Only fixed Android
         # utility protocols, system paths and UID/GID observations are mapped;
         # private directory/file syscalls, descriptor generations, watchdog,
         # stdout/stderr, capture, guards and cleanup execute on real TempFS.
-        actor='''import sys,os,stat,hashlib,base64,subprocess,pathlib
+        actor='''import sys,os,stat,hashlib,base64,subprocess,pathlib,shutil
 a=sys.argv[1:];op=a.pop(0)
 if op=='stat':
  follow=False
  if a[0]=='-L':follow=True;a.pop(0)
  assert a.pop(0)=='-c';fmt=a.pop(0);p=a.pop(0);s=os.fstat(int(p.rsplit('/',1)[1])) if p.startswith('/dev/fd/') else os.stat(p,follow_symlinks=follow)
- fields={'%d':str(s.st_dev),'%i':str(s.st_ino),'%f':format(s.st_mode,'x'),'%u':'2000','%g':'2000','%h':str(s.st_nlink),'%s':str(s.st_size),'%y':str(s.st_mtime_ns),'%z':str(s.st_ctime_ns),'%a':format(stat.S_IMODE(s.st_mode),'o')}
+ fields={'%d':str(s.st_dev),'%i':str(s.st_ino),'%f':format(s.st_mode,'x'),'%u':'0' if p in (SHELL,TOY) else '2000','%g':'2000','%h':str(s.st_nlink),'%s':str(s.st_size),'%y':str(s.st_mtime_ns),'%z':str(s.st_ctime_ns),'%a':format(stat.S_IMODE(s.st_mode),'o')}
  for k,v in fields.items():fmt=fmt.replace(k,v)
  print(fmt)
 elif op=='sha256sum':
  p=a[0] if a else '-';raw=sys.stdin.buffer.read() if p=='-' else pathlib.Path(APK if p=='/data/app/owned/base.apk' else p).read_bytes();print(hashlib.sha256(raw).hexdigest()+'  '+p)
+elif op=='readlink':
+ p=a[0]
+ if p=='/proc/self/exe':print(TOY)
+ elif p.startswith('/proc/') and p.endswith('/exe'):print(SHELL)
+ else:print(os.readlink(p))
+elif op in ('id','getprop','pm','pidof','cat'):
+ raise SystemExit(subprocess.run([str(pathlib.Path(TOY).parent/op),*a]).returncode)
+elif op in ('mkdir','find','wc','rm','rmdir'):
+ resolved=shutil.which(op,path=os.defpath);assert resolved
+ raise SystemExit(subprocess.run([resolved,*a]).returncode)
 elif op=='base64':
  assert a[:2]==['-w','0'];p=pathlib.Path(a[2]);sys.stdout.buffer.write(base64.b64encode(p.read_bytes()));sys.stdout.buffer.flush()
  if p.name=='1.o' and os.environ.get('DRIFT')=='file':p.chmod(0o644)
@@ -229,7 +242,7 @@ elif op=='timeout':
  except subprocess.TimeoutExpired:raise SystemExit(124)
 else:raise SystemExit(94)
 '''
-        toy=helpers/'toybox';toy.write_text('#!'+sys.executable+'\nAPK='+repr(str(apk))+'\n'+actor);toy.chmod(0o700)
+        toy=helpers/'toybox';toy.write_text('#!'+sys.executable+'\nAPK='+repr(str(apk))+'\nSHELL='+repr(str(mksh))+'\nTOY='+repr(str(toy))+'\n'+actor);toy.chmod(0o755)
         simple={
             'id':"print('2000')",
             'getprop':"import sys;print({'ro.build.version.sdk':'35','ro.product.cpu.abi':'x86_64','ro.kernel.qemu.avd_name':'fixture','ro.boot.qemu.avd_name':'fixture','sys.boot_completed':'1'}[sys.argv[1]])",
@@ -239,21 +252,31 @@ else:raise SystemExit(94)
         }
         for name,body in simple.items():
             p=helpers/name;p.write_text('#!'+sys.executable+'\n'+body+'\n');p.chmod(0o700)
-        abi=bundle._physical_abi_parse('PHYSICAL-ABI-1\n'+hashlib.sha256(toy.read_bytes()).hexdigest()+'  /system/bin/toybox\n'+hashlib.sha256(mksh.read_bytes()).hexdigest()+'  /system/bin/mksh\n'+boot.read_text()+'FILE-LIMIT 16384\n')
+        def utility_generation(path):
+            value=path.stat()
+            return ':'.join(str(x) for x in (value.st_dev,value.st_ino,format(value.st_mode,'x'),0,2000,value.st_nlink,value.st_size,value.st_mtime_ns,value.st_ctime_ns))
+        abi_raw=physical_readonly_reply(CORRELATION,boot.read_text().strip())
+        frozen_generation=abi_raw.splitlines()[4].removeprefix('NAMED-SH-GENERATION ')
+        for key,path in (('NAMED-SH-GENERATION',mksh),('SHELL-GENERATION',mksh),('TOYBOX-GENERATION',toy)):
+            abi_raw=abi_raw.replace(key+' '+frozen_generation,key+' '+utility_generation(path))
+        toy_sha=hashlib.sha256(toy.read_bytes()).hexdigest();shell_sha=hashlib.sha256(mksh.read_bytes()).hexdigest()
+        abi_raw=abi_raw.replace('SHELL-HASH '+'a'*64,'SHELL-HASH '+shell_sha).replace('TOYBOX-HASH '+'a'*64,'TOYBOX-HASH '+toy_sha)
+        abi_raw=abi_raw.replace('FD4 '+'a'*64,'FD4 '+toy_sha).replace('FD5 '+'a'*64,'FD5 '+toy_sha)
+        abi=bundle._physical_abi_parse(abi_raw,CORRELATION,boot.read_text().strip())
         source=bundle._physical_batch_source(CORRELATION,abi)
         # Mechanical host fixture spellings only, explicitly not native ABI.
-        source=source.replace('/system/bin/toybox',str(toy)).replace('/system/bin/mksh',str(mksh)).replace('/system/bin/sh','/bin/sh').replace('/data/local/tmp',str(guest)).replace('/proc/sys/kernel/random/boot_id',str(boot))
+        source=source.replace('/system/bin/toybox',str(toy)).replace('/system/bin/mksh',str(mksh)).replace('/system/bin/sh',str(mksh)).replace('/system/bin/getprop',str(helpers/'getprop')).replace('/system/bin/pm',str(helpers/'pm')).replace('/data/local/tmp',str(guest)).replace('/proc/sys/kernel/random/boot_id',str(boot))
         if not Path('/proc/self/fd').exists():
             source=source.replace('/proc/$$/fd/','/dev/fd/')
         env={'PATH':str(helpers)+':'+os.defpath}
-        child=subprocess.run(['/bin/sh','-c',source],env=env,capture_output=True,timeout=30)
+        child=subprocess.run([str(mksh),'-c',source],env=env,capture_output=True,timeout=30)
         self.assertEqual(0,child.returncode,child.stderr.decode()[-6000:])
         rows=bundle._physical_batch_parse(child.stdout.decode(),CORRELATION)
         self.assertEqual(10,len(rows));self.assertEqual('35\n',rows[0]['stdoutRaw'])
         self.assertEqual(hashlib.sha256(apk.read_bytes()).hexdigest()+'  /data/app/owned/base.apk\n',rows[-1]['stdoutRaw'])
         self.assertEqual([],list(guest.iterdir()))
         for drift in ('file','parent'):
-            child=subprocess.run(['/bin/sh','-c',source],env={**env,'DRIFT':drift},capture_output=True,timeout=30)
+            child=subprocess.run([str(mksh),'-c',source],env={**env,'DRIFT':drift},capture_output=True,timeout=30)
             self.assertNotEqual(0,child.returncode)
             self.assertIn(b'FRAME\t1\t',child.stdout)
             self.assertNotIn(b' CLEANED\n',child.stdout)
@@ -489,8 +512,9 @@ if 'shell' in args or 'exec-out' in args:
  if len(words)==1 and words[0].startswith('/system/bin/sh -c '):
   # Explicit external Android protocol seam. These rows do not prove mksh,
   # toybox, RLIMIT units, filesystem cleanup or native batch acceptance.
-  if 'PHYSICAL-ABI-1' in words[0]:
-   print(state.get('batchAbiRaw','PHYSICAL-ABI-1\\n'+'a'*64+'  /system/bin/toybox\\n'+'b'*64+'  /system/bin/mksh\\n'+state['boot']+'\\nFILE-LIMIT 16384'),end='\\n');sys.exit(0)
+  if 'PHYSICAL-READONLY-4' in words[0]:
+   correlation=re.search(r'WATCHDOG-CHILD ([0-9a-f-]{36})',words[0])[1]
+   sys.stdout.write(state.get('batchAbiRaw',canonical_reply(correlation,state['boot'])));sys.exit(0)
   correlation=re.search(r'PHYSICAL-1 ([0-9a-f-]{36})',words[0])[1]
   processes=state.get('processCensus',''.join(name+'\\t'+str(pid)+'\\t'+str(pid)+' ('+name+') '+' '.join(['S']+['0']*18+[str(state['ticks'])])+'\\n' for pid,name in [(11,'adbd'),(22,'zygote64')]))
   values=[state['sdk'],state['abi'],state['avd'],state['avd'],'1',state['uid'],state['boot'],processes,'package:/data/app/owned/base.apk',hashlib.sha256(pathlib.Path(BASE).read_bytes()).hexdigest()+'  /data/app/owned/base.apk']
@@ -517,7 +541,7 @@ else:
  elif args[-2:]==['updates','status']:data={'phase':'idle','activeOperationId':None,'installPhase':None,'installReceipt':None}
  print(json.dumps({'ok':True,'code':'OK','final':True,'controllerId':state['owner'],'configurationRevision':state['revision'],'data':data}))
 '''
-        program='#!'+sys.executable+'\nSTATE='+repr(str(state_path))+'\nLOG='+repr(str(call_log))+'\nBASE='+repr(str(base))+'\n'+body
+        program='#!'+sys.executable+'\nSTATE='+repr(str(state_path))+'\nLOG='+repr(str(call_log))+'\nBASE='+repr(str(base))+'\n'+inspect.getsource(physical_readonly_reply)+'\n'+body
         adb=self.root/'adb';adb.write_text(program);adb.chmod(0o700)
         jdk=self.root/'jdk';(jdk/'bin').mkdir(parents=True)
         java=jdk/'bin/java';java.write_text(program);java.chmod(0o700)

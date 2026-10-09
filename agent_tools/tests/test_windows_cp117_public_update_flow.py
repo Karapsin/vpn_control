@@ -146,7 +146,7 @@ class PublicChildRetentionTests(unittest.TestCase):
             with tempfile.TemporaryDirectory()as directory:
                 root=directory.replace("'","''")
                 script="$ErrorActionPreference='Stop';$root='"+root+"';$state='PUBLIC';$cli='PUBLIC';$deadline=[Diagnostics.Stopwatch]::StartNew();$phase='source-fixture';$sequence=0;$controller=$null;$revision=$null\nAdd-Type -TypeDefinition @'\n"+capture+"\n'@\n"+definitions+r'''
-$failure=$null;try{$null=Cli 'status' 'status'}catch{$failure=$_.Exception.Message}
+$failure=$null;try{$null=& ${function:Cli} 'status' 'status'}catch{$failure=$_.Exception.Message}
 if($null -eq $failure){throw 'FAILURE_NOT_PRESERVED'}
 [Console]::WriteLine('EXPECTED_FAILURE_RETAINED')
 '''
@@ -178,6 +178,9 @@ class PublicOperationTerminalTests(unittest.TestCase):
         old_loop=old_loop.replace(old_invocation,'$op=NextEnvelope').replace('Start-Sleep -Seconds 2','')
         current=gzip.decompress(base64.b64decode(PUBLIC_RETENTION_CURRENT_GZIP,validate=True)).decode()
         await_function=current[current.index('function AwaitOperation'):current.index('try{\n PublicPrincipal',current.index('function AwaitOperation'))]
+        # The retained function is historical; explicitly select the test stub.
+        self.assertEqual(await_function.count('$read=Cli '),1)
+        await_function=await_function.replace('$read=Cli ', '$read=& ${function:Cli} ')
         producer=r'''
 $script:polls=0;$id='11111111-1111-4111-8111-111111111111';$controller='22222222-2222-4222-8222-222222222222';$requestId='33333333-3333-4333-8333-333333333333'
 function NextEnvelope{
@@ -1479,3 +1482,92 @@ class PublicTerminalSourceCustodyTests(unittest.TestCase):
                             with self.assertRaisesRegex(ValueError,'^public-terminal-source-closing$'):held.close_generation()
                     self.assertEqual(seam,[True]);self.assertFalse(target.exists())
                 finally:held.close()
+
+
+class PublicCliAliasBindingTests(unittest.TestCase):
+    def graph(self):
+        from pathlib import Path
+        path=Path(__file__).with_name('fixtures')/'windows_cp117_public_cli_alias.json'
+        value=json.loads(path.read_text(encoding='utf-8'))
+        self.assertEqual(value['schemaVersion'],1)
+        self.assertEqual(value['sourceTaskSha256'],'37ec43937ba78adfc19f5b0952223a17b518bdbe6909b745cabfcda43092c9ad')
+        self.assertEqual(value['sourceAstSha256'],'eae6b28cc9f3cac8f304fa7a15917c72b2fb2073dd8ef7295051aeed13a0b3e0')
+        return value['function']['source'],tuple(row['source'] for row in value['calls'])
+
+    def test_actual_public_function_and_fourteen_call_projection_is_exact(self):
+        import hashlib
+        from agent_tools import windows_cp117_public_cli_binding as binding
+        function,calls=self.graph()
+        self.assertEqual(hashlib.sha256(function.encode()).hexdigest(),binding.FUNCTION_BEFORE_SHA)
+        self.assertEqual(calls,binding.CALLS)
+        self.assertEqual(len(calls),14)
+        renamed,successors=binding.derive_graph(function,calls)
+        self.assertEqual(renamed.replace('function '+binding.NEW+'(', 'function Cli(',1),function)
+        self.assertEqual(tuple('Cli'+call[len(binding.NEW):] for call in successors),calls)
+        self.assertEqual(successors[1],"Invoke-Cp117PublicCli 'initial-status' 'status'")
+        self.assertIn('$info=[Diagnostics.ProcessStartInfo]::new($cli,',renamed)
+        self.assertNotIn('Remove-Alias',renamed)
+        for bad_function,bad_calls in ((function+'\n',calls),(function.replace(' PublicPrincipal',' $null=$true',1),calls),(function,calls[:-1]),(function,calls[:1]+("Cli 'initial-status' 'quit'",)+calls[2:])):
+            with self.subTest(function=bad_function[:20],calls=len(bad_calls)):
+                with self.assertRaises(ValueError):binding.derive_graph(bad_function,bad_calls)
+
+    def test_declared_synthetic_carrier_derivation_inverse_and_seven_refusals(self):
+        from agent_tools import windows_cp117_public_cli_binding as binding
+        function,calls=self.graph()
+        # This declared source-only carrier reuses exact authentic AST extents
+        # and delimiters. It is neither a whole native task nor executable PS.
+        carrier=function+'\nfunction Ok(){}\n'+'\n'.join(call+suffix for call,suffix in zip(calls,binding.CALL_SUFFIXES))+'\n'
+        self.assertEqual(len(binding._slots(carrier,binding.OLD,binding.FUNCTION_BEFORE_SHA)),15)
+        successor=binding.derive(carrier)
+        self.assertEqual(binding.inverse(successor),carrier)
+        self.assertEqual(len(binding._slots(successor,binding.NEW,binding.FUNCTION_AFTER_SHA)),15)
+        self.assertEqual(successor.replace(binding.NEW,binding.OLD),carrier)
+        self.assertIn('$info=[Diagnostics.ProcessStartInfo]::new($cli,',successor)
+        variants=(
+            carrier.replace(' PublicPrincipal\n $cp117LaunchingIdentity',' $null=$true\n $cp117LaunchingIdentity',1),
+            carrier.replace("Cli 'initial-status' 'status'","Cli 'initial-status' 'quit'",1),
+            carrier.replace("Cli 'initial-status' 'status'","Cli 'initial-status' 'status' 120",1),
+            carrier+"\nCli 'extra' 'status'\n",
+            carrier+'\n# Invoke-Cp117PublicCli\n',
+            successor,
+            None,
+        )
+        self.assertEqual(len(variants),7)
+        for index,foreign in enumerate(variants):
+            with self.subTest(refusal=index):
+                with self.assertRaises(ValueError):binding.derive(foreign)
+
+    def test_actual_builtin_alias_red_then_successor_function_green(self):
+        import shutil,tempfile
+        from pathlib import Path
+        from agent_tools import windows_cp117_public_cli_binding as binding
+        # Windows always uses the same Windows PowerShell family as the producer.
+        # Other hosts run the portable command-resolution control when available.
+        shell=shutil.which('powershell.exe' if os.name=='nt' else 'pwsh')
+        if shell is None:
+            if os.name=='nt':self.fail('Windows PowerShell prerequisite is missing')
+            self.skipTest('portable PowerShell unavailable; real alias dispatch runs in Windows package CI')
+        function,calls=self.graph()
+        renamed,successors=binding.derive_graph(function,calls)
+        control=Path(__file__).with_name('fixtures')/'windows_cp117_public_cli_alias.ps1'
+        with tempfile.TemporaryDirectory() as directory:
+            before=Path(directory,'before.ps1');after=Path(directory,'after.ps1')
+            # Exact authentic AST extents form a source-only projection. The full
+            # native task is never replayed; only its function and calls are parsed.
+            before.write_text('# Public AST projection\n'+function+'\n'+'\n'.join(calls)+'\n',encoding='utf-8')
+            after.write_text('# Public AST projection\n'+renamed+'\n'+'\n'.join(successors)+'\n',encoding='utf-8')
+            result=subprocess.run([shell,'-NoLogo','-NoProfile','-NonInteractive','-File',str(control),'-BeforeFile',str(before),'-AfterFile',str(after)],capture_output=True,text=True,timeout=20)
+        self.assertEqual(result.returncode,0,result.stderr)
+        value=json.loads(result.stdout)
+        self.assertEqual(value['commandResolution']['definition'],'Clear-Item')
+        self.assertEqual(value['commandResolution']['type'],'Alias')
+        self.assertEqual(value['old']['type'],'System.Management.Automation.ParameterBindingException')
+        self.assertEqual(value['old']['fullyQualifiedErrorId'],'PositionalParameterNotFound,Microsoft.PowerShell.Commands.ClearItemCommand')
+        self.assertIs(value['old']['functionReached'],False)
+        self.assertEqual(value['new']['functionReachedCount'],14)
+        self.assertEqual(value['new']['calls'][1]['binding'],{'name':'initial-status','command':'status','seconds':15})
+        self.assertEqual(tuple(row['call'] for row in value['new']['calls']),successors)
+        self.assertIs(value['argumentsUnchanged'],True)
+        self.assertIs(value['aliasPreserved'],True)
+        self.assertIs(value['processCreated'],False)
+        self.assertIs(value['nativeAdmission'],False)

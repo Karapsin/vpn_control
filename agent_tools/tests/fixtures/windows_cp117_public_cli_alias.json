@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "sourceTaskSha256": "37ec43937ba78adfc19f5b0952223a17b518bdbe6909b745cabfcda43092c9ad",
+  "sourceAstSha256": "eae6b28cc9f3cac8f304fa7a15917c72b2fb2073dd8ef7295051aeed13a0b3e0",
+  "function": {
+    "start": 17388,
+    "source": "function Cli([string]$name,[string]$command,[int]$seconds=15){\n PublicPrincipal\n $cp117LaunchingIdentity=[Security.Principal.WindowsIdentity]::GetCurrent();$cp117LaunchingSession=(Get-Process -Id $PID).SessionId\n if($deadline.Elapsed.TotalSeconds -gt 600){throw 'PUBLIC_FLOW_BUDGET'}\n if($name -notmatch '^[a-z0-9-]{1,40}$' -or $seconds -notin @(15,120) -or $command -notmatch '^(status|quit|settings show|subscriptions list|routing show|locations list|ssh key status|updates (status|check)|--async updates (download|install)|operations status [0-9a-f-]{36})$'){throw 'PUBLIC_COMMAND_CATALOGUE'}\n $script:sequence++;if($script:sequence -gt 640){throw 'PUBLIC_CALL_COUNT'};$prefix=$name+'-'+$script:sequence\n $ownerArguments='';if($null -ne $script:controller){if($script:controller -notmatch '^[0-9a-f-]{36}$' -or $script:revision -lt 0){throw 'PUBLIC_OWNER_ARGUMENT'};$ownerArguments=' --controller-id '+$script:controller+' --if-revision '+$script:revision}\n $info=[Diagnostics.ProcessStartInfo]::new($cli,'--state-dir \"'+$state+'\" --json --timeout-seconds '+$seconds+$ownerArguments+' '+$command);$info.UseShellExecute=$false;$info.CreateNoWindow=$true;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true\n $child=[Diagnostics.Process]::new();$child.StartInfo=$info;$started=$false;$out=$null;$err=$null;$birth=$null;$completed=$false;$exit=$null;$outFile=$null;$errFile=$null;$childFile=$null;$collectionFile=$null;$errorFile=$null\n try{\n  $outFile=OpenRaw ($prefix+'.stdout.private');$errFile=OpenRaw ($prefix+'.stderr.private');$childFile=OpenRaw ($prefix+'.child.json');$collectionFile=OpenRaw ($prefix+'.collection.json');$errorFile=OpenRaw ($prefix+'.error.json')\n  if(-not $child.Start()){throw 'PUBLIC_CHILD_START'};$started=$true;$script:activePublicChild=$child;$script:activePublicChildRecord=$prefix;$script:activePublicChildBirth=$null\n  $out=[Cp117StdinCapture]::new($child.StandardOutput.BaseStream,16384);$err=[Cp117StdinCapture]::new($child.StandardError.BaseStream,16384)\n  $birth=$child.StartTime.ToUniversalTime().ToFileTimeUtc().ToString();$script:activePublicChildBirth=$birth\n  JsonHeld $childFile @{pid=$child.Id;birth=$birth;phase=$phase;command=$command;securityScope='launching-task';launchingPrincipalSid=$cp117LaunchingIdentity.User.Value;launchingSessionId=$cp117LaunchingSession;launchingTaskRunLevel='Limited';childTokenObserved=$false;tokenLimited=$null}\n  $completed=$child.WaitForExit(($seconds+5)*1000)\n  if($completed){$exit=[int]$child.ExitCode;$outJoined=$out.Join(2000);$errJoined=$err.Join(2000)}\n  [byte[]]$stdout=@($out.Snapshot());[byte[]]$stderr=@($err.Snapshot())\n  WriteHeld $outFile $stdout;WriteHeld $errFile $stderr\n  JsonHeld $collectionFile @{pid=$child.Id;birth=$birth;completed=$completed;exitCode=$exit;stdoutEof=$out.Eof;stderrEof=$err.Eof;stdoutOverflow=$out.Overflow;stderrOverflow=$err.Overflow;stdoutError=$out.Error;stderrError=$err.Error;stdoutBytes=$stdout.Length;stderrBytes=$stderr.Length}\n  if(-not $completed -or -not $outJoined -or -not $errJoined -or -not $out.Eof -or -not $err.Eof -or $out.Overflow -or $err.Overflow -or $null -ne $out.Error -or $null -ne $err.Error){throw 'PUBLIC_CHILD_UNKNOWN'}\n  $value=ConvertFrom-Json -InputObject ([Text.UTF8Encoding]::new($false,$true).GetString($stdout))\n  if(($value.schemaVersion -isnot [int] -and $value.schemaVersion -isnot [long]) -or $value.schemaVersion -ne 1 -or $value.ok -isnot [bool] -or $value.final -isnot [bool] -or ($value.configurationRevision -isnot [int] -and $value.configurationRevision -isnot [long]) -or $value.configurationRevision -lt 0 -or $stderr.Length -ne 0){throw 'PUBLIC_ENVELOPE'}\n  $notReady=($name -in @('initial-status','post-status') -and $command -ceq 'status' -and $value.ok -eq $false -and $value.final -eq $true -and $value.code -cin @('UNAVAILABLE','NOT_FOUND') -and $null -eq $value.controllerId -and $exit -ne 0)\n  if(-not $notReady -and $value.controllerId -notmatch '^[0-9a-f-]{36}$'){throw 'PUBLIC_ENVELOPE_OWNER'}\n  return [pscustomobject]@{notReady=$notReady;value=$value;exitCode=$exit;record=$prefix}\n }catch{\n  $primary=$_\n  if($started){\n   try{if($null -eq $out){$out=[Cp117StdinCapture]::new($child.StandardOutput.BaseStream,16384)}}catch{}\n   try{if($null -eq $err){$err=[Cp117StdinCapture]::new($child.StandardError.BaseStream,16384)}}catch{}\n   try{$completed=$child.WaitForExit(0);if($completed){$exit=[int]$child.ExitCode;if($null -ne $out){$null=$out.Join(1000)};if($null -ne $err){$null=$err.Join(1000)}}}catch{}\n   try{if($null -ne $out){WriteHeld $outFile ([byte[]]@($out.Snapshot()))}}catch{}\n   try{if($null -ne $err){WriteHeld $errFile ([byte[]]@($err.Snapshot()))}}catch{}\n   try{JsonHeld $childFile @{pid=$child.Id;birth=$birth;phase=$phase;command=$command;identityKnown=($null -ne $birth);outcome='unknown'}}catch{}\n   try{JsonHeld $collectionFile @{pid=$child.Id;birth=$birth;completed=$completed;exitCode=$exit;stdoutEof=$(if($null -ne $out){$out.Eof}else{$false});stderrEof=$(if($null -ne $err){$err.Eof}else{$false});stdoutCaptureKnown=($null -ne $out);stderrCaptureKnown=($null -ne $err);outcome='unknown';replayAllowed=$false}}catch{}\n  }\n  try{JsonHeld $errorFile @{phase=$phase;pid=$(if($started){$child.Id}else{$null});birth=$birth;completed=$completed;exitCode=$exit;exceptionType=$primary.Exception.GetType().FullName;hresult=$primary.Exception.HResult;outcome='unknown';replayAllowed=$false}}catch{}\n  throw $primary\n }finally{foreach($file in @($outFile,$errFile,$childFile,$collectionFile,$errorFile)){if($null -ne $file){$file.Dispose()}};if($completed){$child.Dispose()}}\n\n}",
+    "end": 22979
+  },
+  "calls": [
+    {
+      "nameStart": 25633,
+      "start": 25633,
+      "nameEnd": 25636,
+      "source": "Cli ($name+'-status') ('operations status '+$id)",
+      "end": 25681
+    },
+    {
+      "nameStart": 28180,
+      "start": 28180,
+      "nameEnd": 28183,
+      "source": "Cli 'initial-status' 'status'",
+      "end": 28209
+    },
+    {
+      "nameStart": 28944,
+      "start": 28944,
+      "nameEnd": 28947,
+      "source": "Cli ($entry[0]+'-before') $entry[1]",
+      "end": 28979
+    },
+    {
+      "nameStart": 29119,
+      "start": 29119,
+      "nameEnd": 29122,
+      "source": "Cli 'check' 'updates check' 120",
+      "end": 29150
+    },
+    {
+      "nameStart": 29209,
+      "start": 29209,
+      "nameEnd": 29212,
+      "source": "Cli 'available' 'updates status'",
+      "end": 29241
+    },
+    {
+      "nameStart": 29606,
+      "start": 29606,
+      "nameEnd": 29609,
+      "source": "Cli 'download' '--async updates download'",
+      "end": 29647
+    },
+    {
+      "nameStart": 29737,
+      "start": 29737,
+      "nameEnd": 29740,
+      "source": "Cli 'ready' 'updates status'",
+      "end": 29765
+    },
+    {
+      "nameStart": 30113,
+      "start": 30113,
+      "nameEnd": 30116,
+      "source": "Cli 'preinstall-status' 'status'",
+      "end": 30145
+    },
+    {
+      "nameStart": 30165,
+      "start": 30165,
+      "nameEnd": 30168,
+      "source": "Cli 'install' '--async updates install' 120",
+      "end": 30208
+    },
+    {
+      "nameStart": 30977,
+      "start": 30977,
+      "nameEnd": 30980,
+      "source": "Cli 'install-progress' ('operations status '+$installRequest.value.operationId)",
+      "end": 31056
+    },
+    {
+      "nameStart": 32290,
+      "start": 32290,
+      "nameEnd": 32293,
+      "source": "Cli 'post-status' 'status'",
+      "end": 32316
+    },
+    {
+      "nameStart": 33074,
+      "start": 33074,
+      "nameEnd": 33077,
+      "source": "Cli 'recovered-status' 'updates status'",
+      "end": 33113
+    },
+    {
+      "nameStart": 44678,
+      "start": 44678,
+      "nameEnd": 44681,
+      "source": "Cli ($entry[0]+'-after') $entry[1]",
+      "end": 44712
+    },
+    {
+      "nameStart": 44989,
+      "start": 44989,
+      "nameEnd": 44992,
+      "source": "Cli 'quit' 'quit'",
+      "end": 45006
+    }
+  ]
+}

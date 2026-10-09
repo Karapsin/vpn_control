@@ -33,29 +33,63 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-09,14:17 Moscow
+## Current acceptance status — 2026-10-09
 
-Delivered source is `a23ea3853afc632797d770ec255d35494aa1dc64`, product2.2.4.
-Root integrated the reviewed seven-file collector/direct receipt promotion
-from `.runtime/parity-tool-promotion-plan-a23/promotion.json`. Original source and
-causal receipts remain immutable. All 49 focused promotion methods pass; the 49
-existing transport/publication methods pass with one Linux-only UID continuity
-skip on macOS. Managed metadata, fresh prepush and coherent dev delivery are
-pending; the prior a23 prepush cannot
-validate these edits. Required five-workflow CI remains deferred to final delivery.
+Delivered source remains `a2617120c8706edc0cbd815f41f404a9f5bb8186`, product2.2.4.
+The previous checkpoint passed all15 managed prepush checks and was pushed to dev.
+The current coherent tool/regression and worker-autonomy changes are working content.
+Original prepush61229 finished with6054 tests, one failure, one error and170 skips;
+the retained completion receipt is `.rag_index/check-runs/cd297050-c829-473f-a517-d546a1e74dec/receipt.json`.
+Both failures came from new begin records bypassing existing collector evidence
+schemas. Their unchanged tests fail before and pass after the reviewed producer
+repair; its39 collector,21 physical and56 legacy checks pass with one expected
+Linux-root skip on macOS. Shared acceptance reporting now includes both shared
+gates and all22 requirements. These fixes were integrated only after Windows,
+Android and candidate validation holders positively closed. Canonical affected
+checks, a fresh complete prepush and the next dev checkpoint remain pending.
+Required five-workflow CI stays deferred to final delivery as requested.
 
-| Slice | Exclusive owner and environment | Current evidence | Next gate |
+Windows's reviewed active-owner sharing repair is source/local evidence only.
+Its public task fits the unchanged16384-byte frame at16380 bytes after lossless
+compression and removal of authenticated unused helper members. Native sharing
+controls and update execution remain pending. A LOCAL source check correctly
+refused one stale alias-test pin; the operator owns its narrow reviewed successor.
+Android725a passed genuine LOCAL preparation and closed all5203 descriptors; its
+next native scope is one calibration and physical epoch, excluding lease and
+installer actions. Both operators must bind the new working fingerprint before
+fresh execution; prior ece preparations remain evidence for their own source.
+
+The native audit still records0 final passed,2 historical and20 open groups. Its217
+case occurrences overlap. The249 visual pairs have243 valid tracked baselines;
+Locations Add/Edit baselines are missing on Linux, Windows and macOS. Engineering
+and diagnostic evidence retain their original source identities and do not close
+final-source native/MCP or visual acceptance.
+
+| Slice | Exclusive owner and environment | Verified progress | Next gate |
 | --- | --- | --- | --- |
-| Integration and delivery | root; tracked files, metadata, Gradle and Git | Seven reviewed collector/direct files integrated after all old holders closed. Routine coverage retains truthful UNKNOWN and original transport facts. | Integrated checks, metadata, fresh prepush and explicit dev checkpoint. No new MCP registration is claimed. |
-| Shared SSH | windows_operator; sole Pi/Arch producer | Original88db producer12794 and same-correlation status54725 ended successfully;145 source,94 runtime and658 capture records closed, all borrowers/holders released. Public lifecycle is `windows-keeper-88db-terminal-public/public.json`. | Fresh source enrollment and complete caller preparation before another admitted connection. Prior UNKNOWN records are unchanged. |
-| Windows | windows_operator; sole assigned guest | Native3ef diagnostic exited0 and verified current server/task/owner/files. HTTPS remains unproved; retained certificate expired. Two local reader-runner refusals closed all available holders and retain original receipts. No public app update submitted. | Finish whole-runner controls and fresh distinct credential caller; retain current2089 disposition separately. Then direct update/failure/recovery/relaunch/cleanup and MCP equivalence. |
-| Android API35 | android_api35_operator; emulator5682 only | Corrected emitter returned finite native48 facts; remote/SSH exit0, parent exit1 and semantic UNKNOWN `component_guard_owned_process_changed`. Full streams/local source closure retained; failing field and guest restoration remain unproved. Original lease and fixtures are preserved. | Narrow direct read-only comparison of the fixed historical getter identities; finish finite catch diagnostics, then genuine fresh admission and remaining native/MCP cases. |
-| Linux/macOS and final matrix | source preparation workers; root owns local Mac | Historical evidence remains attributed to its source. Final packages, native groups and249 visual pairs remain open. | Windows/Android first, then Linux/macOS; freeze final source, source-bound packages, native/MCP acceptance, visual review and one exact-SHA CI check. |
+| Integration and delivery | root; tracked files, metadata, Gradle and Git | Reviewed Android batch/legacy fixtures, public read-only causal controls and Windows alias routine candidate integrated after positive source quiescence. Isolated public-copy affected checks pass21/21; prior combined84 run retained its real schema failure and two corrected copy omissions. Worker-autonomy documentation remains included. | Finish metadata and canonical focused checks; publish honest working fingerprint; fresh content-bound complete prepush before coherent dev delivery. |
+| Shared SSH | windows_operator; sole Pi/Arch producer | Original490c tool67731 reached terminal0/dual EOF/source closure. After140.54seconds of real silence, one same-correlation status returned ENDED. All145 owner,94 runtime and658 capture rows closed; native borrowers and protected/source holders closed. | Fresh source-bound producer after final root content; no timeout-based restart, unsupported force-close or UNKNOWN replay. |
+| Windows | windows_operator; sole assigned guest | Current6645 native HTTPS200/manifest match passed. Fresh09081 all-nine construction passed LOCAL; actual1020-second budget guard refused native submission. Original6815 remains UNKNOWN. Its Cli/Clear-Item alias collision has authentic RED/GREEN coverage; three public routine controls and two exact Windows CI selectors are integrated. Native f614 recovery failed before quit: distinct ordinary precondition observation proves lock ReadAllText sharing violation0x80070020, with principal/CLI/ancestors/process/birth checks passing. Independent VM census admits no separate guest. | Preserve all original correlations; causal sharing regression and existing active-lock ownership procedure, fresh guarded normal-quit recovery, then public update/UAC/verify/relaunch/recovery/cleanup and matching MCP cases. |
+| Android API35 | android_api35_operator; emulator5682 only | Original47b5 full-facts entry timed out UNKNOWN. Bounded original-record observation consumed only final records3771/3772 plus admission, not the full catalogue3794 or an enclosing phase. Canonical batch successor replaces incompatible utility ABI assumptions, adds bounded durable command timing and retains owner/source guards. Twenty affected controls plus unchanged baseline test pass in isolated public copy; portable read-only regression promotion is integrated. | Freeze actual canonical graph/fingerprint, genuine LOCAL and fresh sufficient route admission; same genuine baseline instance then profile4 calibration and one physical batch epoch. No full-facts/DEX/retirement replay or installer authority from calibration; complete direct native cases then MCP reruns. |
+| Linux/macOS and final matrix | preparation workers; root owns local Mac | Linux33-case plus17 shared-document preparation and historical engineering artifacts remain preserved. No eligible final-source package set or additional native result is registered. | Windows/Android first, then Linux/macOS; freeze final source/version and build package pairs once, complete native/MCP/visual proof, then one final exact-SHA five-workflow CI verification. |
 
-The engineering package cohorts keep their original source/version identities.
-The frozen Windows HTTPS/cleanup and Android diagnostic proposals remain ignored
-source/local work until their genuine caller and native gates pass. No account
-recreation, old-job replay, original-lease release or release publication is implied.
+The replaced17:24 opening is preserved at
+`.runtime/root-android-integration-check-c98b719a-47a7-4326-ba59-0665b4a423e0/work-in-progress.before-integration.md`.
+Its earlier16:26 beforeimage remains at
+`.runtime/root-autonomy-final-wording-92a5734c-931b-445c-8b0e-010cd3953675/work-in-progress.before.md`.
+Original working fingerprint2d16 remains attached to490c and its borrowers; new
+source cannot relabel those receipts or engineering packages.
+
+Immutable evidence: `windows-490c-terminal-public/public.json`,
+`windows-current6645-tls-observed-public/public.json`,
+`windows-fresh09081-local-public/public.json`,
+`windows-nine-6815-unknown-public/public.json`,
+`windows-ordinary-precondition-public/public.json`, and
+`windows-parallel-readonly-inventory-490c/public.json`.
+Android original-record and timeout closeouts remain under
+`.runtime/android-current-proof-readonly-a23/`. Root integration/red/green evidence
+is under `.runtime/root-android-integration-check-c98b719a-47a7-4326-ba59-0665b4a423e0/`.
+Full source/native acceptance is incomplete. No release is authorized.
 
 ## Previous acceptance status — 2026-10-08,22:24 Moscow
 
