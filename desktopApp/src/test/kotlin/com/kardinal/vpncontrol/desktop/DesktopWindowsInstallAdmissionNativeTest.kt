@@ -8,6 +8,37 @@ import org.junit.Assume.assumeTrue
 import kotlin.test.*
 
 class DesktopWindowsInstallAdmissionNativeTest {
+    @Test fun nativeReservationLockBlocksFullGateReadButLeavesExactApplicationPrefixReadable() {
+        assumeTrue("Requires Windows Win32 byte-range lock semantics", Platform.isWindows())
+        val path = Files.createTempFile("admission-reservation-gate-", ".bin")
+        val payload = ByteArray(17).apply { this[8] = 1; this[16] = 127 }
+        Files.write(path, payload)
+        val native = JnaWindowsInstallAdmission()
+        try {
+            val reader = native.openGate(path.toString())
+            try {
+                assertTrue(native.lockShared(reader))
+                FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE).use { writer ->
+                    writer.tryLock(16, 1, false).use { reservation ->
+                        assertNotNull(reservation, "Inert coordinator must own only [16,17)")
+                        assertEquals(17L, native.inspect(reader).size)
+                        assertEquals(33, assertFailsWith<WindowsInstallNativeFailure> {
+                            native.readGate(reader)
+                        }.code)
+                        assertContentEquals(payload.copyOfRange(0, 16), native.readGatePrefix(reader))
+                        assertNull(writer.tryLock(0, 1, false), "Control retains shared admission byte0")
+                        native.unlockShared(reader)
+                        writer.tryLock(0, 1, false).use { replacement ->
+                            assertNotNull(replacement)
+                            assertFalse(native.lockShared(reader), "Exclusive replacement still bars control")
+                        }
+                    }
+                }
+                assertContentEquals(payload, native.readGate(reader))
+            } finally { native.close(reader) }
+        } finally { Files.delete(path) }
+    }
+
     @Test fun defaultProgramDataAllowsMissingGateForBothPackagedLauncherNamesWithoutWrites() {
         assumeTrue(Platform.isWindows())
         val root = Files.createTempDirectory("admission-legacy-東京")

@@ -14,7 +14,7 @@ import com.sun.jna.win32.W32APIOptions
 import java.io.ByteArrayOutputStream
 
 /** Lazy bindings: constructing a backend or running fake-native tests never loads Windows DLLs. */
-internal class JnaWindowsInstallNative : WindowsInstallNative {
+internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInputNative {
     private val kernel by lazy { check(Platform.isWindows()); Native.load("kernel32", Kernel32::class.java, W32APIOptions.UNICODE_OPTIONS) }
     private val advapi by lazy { check(Platform.isWindows()); Native.load("advapi32", Advapi32::class.java, W32APIOptions.UNICODE_OPTIONS) }
     private val extraKernel by lazy { check(Platform.isWindows()); Native.load("kernel32", ExtraKernel::class.java) }
@@ -179,6 +179,29 @@ internal class JnaWindowsInstallNative : WindowsInstallNative {
         val flags = IntByReference()
         checked(extraKernel.GetVolumeInformationByHandleW(handle(handle), null, 0, null, null, flags, null, 0))
         requireWindowsPrivateExport(flags.value, inspect(handle), owner)
+    }
+
+    /** Exact original-user input: one retained read/delete capability, never a second path open. */
+    override fun openDeniedInput(path: String): WindowsInstallNative.Handle = openPrivateCorrelation(path)
+
+    override fun deniedInputIdentity(handle: WindowsInstallNative.Handle): String = Memory(24).use { info ->
+        checked(kernel.GetFileInformationByHandleEx(handle(handle), 18, info, WinDef.DWORD(24))) // FileIdInfo
+        info.getByteArray(0, 24).joinToString("") { "%02x".format(it) }
+    }
+
+    override fun deniedInputCanonicalPath(handle: WindowsInstallNative.Handle): String = retainedExportDirectory(handle)
+
+    override fun deniedInputPersistentAcl(handle: WindowsInstallNative.Handle): Boolean {
+        val flags = IntByReference()
+        checked(extraKernel.GetVolumeInformationByHandleW(handle(handle), null, 0, null, null, flags, null, 0))
+        return flags.value and 8 != 0
+    }
+
+    override fun readDeniedInputChunk(handle: WindowsInstallNative.Handle, offset: Long, bytes: ByteArray, count: Int): Int =
+        readExportChunk(handle, offset, bytes, count)
+
+    override fun deniedInputChildren(path: String): List<String> = java.nio.file.Files.newDirectoryStream(java.nio.file.Path.of(path)).use {
+        it.asSequence().take(3).map { entry -> entry.fileName.toString() }.toList()
     }
 
     /** Existing correlation: read and delete the same pinned object without competing writers/deleters. */

@@ -41,7 +41,17 @@ def forbidden(*args, **kwargs):
 class FixtureOS:
     """Real owned TempFS descriptors, explicitly synthetic UID/GID0 metadata."""
 
-    def __init__(self):
+    def __init__(self, owned_root):
+        # Shared ancestors are outside this synthetic fixture's owned TempFS.
+        # Keep their declared volatile directory metadata consistent, while
+        # inode/device/type/mode and every owned directory/file remain live.
+        volatile = ('st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_nlink')
+        self.external_directory_view = {}
+        for parent in owned_root.parents:
+            info = parent.stat()
+            self.external_directory_view[(info.st_dev, info.st_ino)] = {
+                name: getattr(info, name) for name in volatile
+            }
         self.live = set()
         self.opens = self.close_attempts = self.read_bytes = 0
 
@@ -50,10 +60,12 @@ class FixtureOS:
             return forbidden
         return getattr(os, name)
 
-    @staticmethod
-    def view(info):
+    def view(self, info):
         names = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink')
-        return types.SimpleNamespace(**{name: getattr(info, name) for name in names}, st_uid=0, st_gid=0)
+        values = {name: getattr(info, name) for name in names}
+        if stat.S_ISDIR(info.st_mode):
+            values.update(self.external_directory_view.get((info.st_dev, info.st_ino), {}))
+        return types.SimpleNamespace(**values, st_uid=0, st_gid=0)
 
     def open(self, *args, **kwargs):
         fd = os.open(*args, **kwargs)
@@ -111,7 +123,7 @@ class JoinFixture(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b'JAVA_VERSION="17.0.9"\n' if name == 'release' else b'own-fixture-' + str(index).encode())
             path.chmod(448 if name == 'bin/java' else 384)
-        self.os = FixtureOS()
+        self.os = FixtureOS(self.root)
         self.backend = {}
         imports = SELECTED['adapter'].production_imports('api35')
         transport = SELECTED['transport']
@@ -289,6 +301,54 @@ class JoinFixture(unittest.TestCase):
         finally:
             original.__code__ = code
             del context.external_file
+
+
+    def test_shared_temp_parent_churn_preserves_declared_fixture_view(self):
+        original = self.os.fstat
+        parent = self.root.parent.stat()
+        identity = (parent.st_dev, parent.st_ino)
+        sibling = []
+        def interleave(fd):
+            info = original(fd)
+            actual = os.fstat(fd)
+            if (actual.st_dev, actual.st_ino) == identity and not sibling:
+                sibling.append(tempfile.TemporaryDirectory(prefix='jdk-source-sibling-control-', dir=self.root.parent))
+                after = self.root.parent.stat()
+                self.assertTrue(any(getattr(parent, name) != getattr(after, name) for name in
+                    ('st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_nlink')))
+            return info
+        self.os.fstat = interleave
+        try:
+            context = self.bind()
+            context.closing()
+            self.assertEqual(len(sibling), 1)
+        finally:
+            self.os.fstat = original
+            if self.context is not None:
+                self.context.close()
+            for item in sibling:
+                item.cleanup()
+
+    def test_owned_fixture_directory_churn_still_refuses(self):
+        context = self.bind()
+        child = self.root / 'owned-directory-change'
+        child.mkdir()
+        try:
+            with self.assertRaisesRegex(ValueError, 'immutable_parent_changed'):
+                context.guard()
+        finally:
+            context.close()
+            child.rmdir()
+
+    def test_owned_jdk_role_byte_change_still_refuses(self):
+        context = self.bind()
+        path = self.jdk / 'lib/libjava.so'
+        path.write_bytes(path.read_bytes() + b'-changed')
+        try:
+            with self.assertRaisesRegex(ValueError, 'immutable_named_changed'):
+                context.guard()
+        finally:
+            context.close()
 
 if __name__ == '__main__':
     unittest.main()

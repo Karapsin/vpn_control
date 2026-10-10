@@ -21,7 +21,26 @@ python3 scripts/check_contract_docs.py
 python3 scripts/test_android_instrumentation_signatures.py
 ```
 
+## Windows update admission and denied input controls
+
+Ordinary `:desktopApp:test` discovers `DesktopWindowsDeniedInputCleanupTest`,
+including real journal capacity, native-error authority, same-owner service
+maintenance, exact object/byte disposal, close-debt retry and actual preparation
+admission. Its explicit syscall model does not replace native UAC/NTFS cleanup.
+`DesktopWindowsInstallAdmissionTest` covers the locked reservation-byte fallback;
+`DesktopWindowsInstallAdmissionNativeTest` checks actual Win32 ranges on an inert
+owned file. The native test skips explicitly outside Windows. Preserve complete
+installed update, ready acknowledgement, original-user return, denial, cold-owner
+recovery and equivalent MCP scenarios as separate acceptance gates.
+
 ## Native orchestration regressions
+
+`test_android_installer_jdk_source_context.py` runs in ordinary agent-tool
+discovery, managed prepush and Fast Checks. Its synthetic-principal descriptor
+fixture stabilizes only external ancestors' volatile directory metadata; actual
+owned-directory and JDK-role mutations must still fail. POSIX descriptor cases
+skip explicitly when the required APIs are absent. These local controls do not
+establish native Linux JDK or Android update/cleanup authority.
 
 Release hygiene first checks tracked and untracked source whitespace with
 `scripts/check_source_whitespace.py` and its temporary-repository regressions.

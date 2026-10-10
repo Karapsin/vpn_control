@@ -5,6 +5,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Stabilize external ancestor metadata in the synthetic JDK fixture while preserving owned-source mutation checks.
+
+## 2.2.5 - 2026-10-10
+
 - Preserve installer collection diagnostics, cleanup failures and original transport facts after publication or source-check failures.
 - Improve native acceptance batch diagnostics and Windows/Android failure regression coverage.
 - Preserve numbered collector evidence and include shared acceptance gates.
@@ -14,6 +18,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Make fresh nested SSH channels explicitly selectable and keep POSIX Android evidence tests out of Windows packaging.
 - Reuse pinned immutable Android JDK preparation and align SSH close admission with the reviewed transport.
 - Join verified Windows owner receipt identities before network probe admission.
+- Fix Windows update ready acknowledgement under the installer reservation lock and retain exact denied-input cleanup ownership.
 
 ## 2.2.4 - 2026-10-08
 

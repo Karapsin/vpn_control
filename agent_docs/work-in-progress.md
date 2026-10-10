@@ -33,7 +33,87 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-10,02:43 Moscow
+## Current acceptance status — 2026-10-10,09:27 Moscow
+
+Delivered HEAD and origin/dev remain `22e9b3b058b103060bb5bb8ebcc80ee759f40d8c`,
+product2.2.4. The intentional local Windows product checkpoint is product2.2.5:
+pending-control reservation reads and exact native-denial input ownership, with
+one test-only Android JDK fixture repair. Root owns all17 changed paths, host
+Gradle, metadata and delivery. The full four-platform goal remains incomplete.
+Final exact-SHA five-workflow verification remains deferred as requested.
+
+The previous final prepush failed in agent-tool discovery:6093 tests, one error,
+170 explicit skips,1897.111s. Its original external-ancestor metadata delta and
+churn actor were not retained. A deterministic owned sibling-directory creation
+reproduces the exact `census_ancestry_changed` error. Only the synthetic fixture's
+external volatile-directory view is stabilized; production guard bytes remain
+unchanged. The integrated canonical module passes15 tests in1.334s, including
+owned directory and JDK-role mutation refusal. Fresh final metadata/prepush and
+managed checkpoint delivery remain required; the failed receipt is not reused.
+
+| Slice | Exclusive owner | Established evidence and next gate |
+| --- | --- | --- |
+| Windows installed update | windows_secondary_operator; secondary nativeAMD64 guest | Source274320's two granted2.2.3/2.2.4 attempts ended FAILED/RUNTIME_FAILED; old owner and installed bytes remain unchanged, runtime OFF. The local fix has1223 desktop test passes/107 explicit native skips plus causal and inert Win32 range evidence. After delivery, build same-source2.2.4/2.2.5 packages and prove complete installed update/automatic ordinary-user return directly, then equivalent MCP acceptance. |
+| Windows denied-input recovery | root canonical integration; windows_denial_cleanup owns sealed ignored proposal | Existing warm cleanup is in the checkpoint. Cold-owner packet5 passes45 actual portable controls; packet4's five production branches reproduce seven behavioral failures, and the additional fixture-host-policy branch reproduces one failure. Production packet5 bytes equal packet4. Proposal remains outside canonical source until the first corrected normal update; native UAC/NTFS/cold-owner/resource gates remain open. |
+| Android API35 | android_api35_operator; original emulator/lease and ignored captures | Original reader27169 is terminal1, SSH23162 terminal0. Remote4162854 ended−9 after the authenticated1201.052s collection timeout. The finite wire records opening-current-proof/component_release_global_deadline and failed remote original closing; semantic proof, effects and restoration remain UNKNOWN, with no replay or lease-release authority. SDK76327 exited0 with local source/cleanup closure; actual same4ccf ENDED09:26:09 and all worker holders closed permit this source edit. Diagnose existing timing evidence offline before another expensive reader. |
+| Shared route and source | root scheduling; one Pi/Arch operator at a time | Android source/shared route was explicitly handed back after actual terminal processes and same-correlation ENDED. No accepted current test child remains. Windows old product owner2344/launcher8064 remains intentionally alive/OFF; historical UNKNOWN jobs and inputs are preserved. Freeze the new checkpoint for final prepush and then grant the Windows operator fresh source/route authority. |
+| Windows fixture producer | windows_secondary_operator; ignored offline handoff | Existing windows-desktop.yml build-only dispatch produces immutable packages without guest effects. Its MCP dispatch wrapper additionally requires fixed CP117 admission and cannot be used under secondary-only authority. Use the supported direct build-only workflow with durable original correlation and exact source/artifact checks; preserve native admission and add equivalent narrow MCP integration after direct proof. |
+| Remaining full plan | root and platform owners | Complete Windows/Android direct and MCP scenarios, Linux/macOS, owner lifecycle/broker/documents, all required current visual scenes, acceptance-matrix reconciliation and final exact-SHA five-workflow gate. Engineering artifacts retain original source and signer provenance. |
+
+Current repair evidence:
+`.runtime/jdk-source-context-prepush-repair/report.json` (SHA3269e76a),
+with preserved beforeimages, measured causal RED and15-test GREEN.
+The failed final gate is retained in
+`.runtime/root-parity-continuation-22e9/windows-product-checkpoint/prepush-2.2.5-failed.json`.
+Cold-owner root review:
+`.runtime/windows-denial-cold-owner-proposal/root-checks/packet5-root-review.json`
+(SHA983d71e4). Actual same-correlation route end:
+`.runtime/android-phase-records-sdk-owned-7b7aee5c-6aab-4403-893b-5864b3465ded/same-correlation-ended-final.json`
+(SHA7b20efe6). Offline build-only producer handoff:
+`.runtime/windows-secondary-acceptance/fixed-pair-producer-offline-daf2db9f-de6b-4586-b83b-26616b09fbe5/producer-handoff.json`
+(SHA6fb96857). These source/local/closure receipts do not establish successful
+native update acceptance. No release is authorized.
+Android immutable closeout is
+`.runtime/android-phase-records-sdk-owned-7b7aee5c-6aab-4403-893b-5864b3465ded/proof-current-closeout.json`
+(SHA460c5e11); local holder closure does not repair remote original closing.
+
+## Historical acceptance status — 2026-10-10,08:18 Moscow
+
+Delivered HEAD and origin/dev are `22e9b3b058b103060bb5bb8ebcc80ee759f40d8c`,
+product2.2.4. Its prepush passed all15 commands, including6093 agent tests;
+final exact-SHA five-workflow verification remains deferred as requested.
+The current intentional desktop bucket repairs Windows pending-control admission
+and exact denied-input cleanup. MCP focused `:desktopApp:test` passes 1223
+tests with107 explicit skips, zero failures/errors; final metadata and fresh
+prepush remain required. Root owns canonical integration, host Gradle,
+metadata and delivery. The full four-platform goal remains incomplete.
+
+| Slice | Exclusive owner | Established evidence and next gate |
+| --- | --- | --- |
+| Windows installed update | windows_secondary_operator; secondary nativeAMD64 guest | Source274320 same-source2.2.3/2.2.4 pair was built and inspected. Ordinary filtered-admin owner2.2.3, HTTPS update check/download and target cache passed. Two granted updates ended FAILED/RUNTIME_FAILED before the owner exited; installed baseline bytes remain unchanged and runtime OFF. No successful MSI replacement, return or cleanup acceptance. |
+| Windows control admission | root integration; four desktop admission/JNA/test paths | Actual inert Win32 handles prove exclusive byte16 blocks the full17-byte read with error33 while the strict16-byte prefix succeeds. Actual Kotlin causal control fails BUSY on preserved code and passes with guarded fallback;21 portable tests pass and four Windows-only tests explicitly skip on macOS. Four files are integrated locally into ordinary desktop test discovery. Canonical full checks, fixed packages and installed rerun remain required. |
+| Windows denied-input cleanup | windows_denial_cleanup; ignored sealed candidates; root owns Gradle | Packet3 is integrated:19 actual portable controls pass, and the same controls reproduce three original plus six reviewed assertion failures on preserved branches, zero errors/skips. Independent packet2 review and root final carrier-delta review are clear. Native cancellation/NTFS cleanup, cold-owner durable denial proof and retained-resource acceptance remain open. A separate ignored cold-owner candidate is assigned; existing native/manual retirement evidence is not product cleanup. |
+| Android API35 | android_api35_operator; owned ignored diagnostics | Bounded native timing reader completed in0.077212s with full raw/holder closure. Last ADB wrapper took0.0079803s and exited0, but531 extra catalogue names keep the original fullfacts result UNKNOWN. The earlier1155.48s cause is not established. SDK finished normally and same-correlation ENDED was observed; route is free. Finite offline catalogue diagnosis precedes fresh admitted native update scenarios. |
+| Shared native route | root scheduling; one Pi/Arch operator at a time | Windows route8761ee38 and Android SDK a5abc22d are positively ENDED; current owned test holders are zero. Old Windows product owner2344/launcher8064 remains intentionally running with runtime OFF. Historical UNKNOWN actions are unreplayed. |
+| Remaining plan | root and platform owners | Complete Windows/Android native scenarios directly then through MCP; finish Linux/macOS, owner lifecycle/broker/docs, all current visual scenes, matrix reconciliation and final exact-SHA CI. Existing engineering artifacts retain their original source and signer provenance. |
+
+Current causal admission evidence:
+`.runtime/windows-gate-read-proposal/root-causal-review.json`
+(SHA35a082b3); native failure review:
+`.runtime/windows-secondary-acceptance/bound-install-range-causal-review-952bfdc3-5d56-46be-90af-ac089891b16b/report.json`
+(SHA958a1a84). Windows route/holder handoff:
+`.runtime/windows-secondary-acceptance/finite-off-route-handoff-b96b28cd-930a-45b0-a186-76bed1212f3d/ended-handoff.json`.
+Android native closeout:
+`.runtime/android-phase-records-sdk-owned-f3ecb47c-5b61-4a8e-aea7-f1d708452bb6/baseline-tail-timing-closeout.json`
+(SHAab59a574). Cleanup causal execution and integration are recorded in
+`.runtime/windows-denial-cleanup-proposal/root-checks/packet3-root-integration.json`
+(SHAc30a815b). Earlier compiler/fixture failures and stale XML remain retained;
+only fresh three/six assertion RED and19-test GREEN count as causal evidence.
+Native next-pair sequence is sealed in
+`.runtime/windows-secondary-acceptance/next-fixed-pair-offline-handoff-c8158e5b-d6f7-4fca-95ce-c2451bee8666/sequence.json`
+(SHA6c3d6728). No release is authorized.
+
+## Historical acceptance status — 2026-10-10,02:43 Moscow
 
 Checkpoint `2743200799f6fb73f38d60d38b2f21afc838d310` is pushed to dev,
 product2.2.4. Its content-bound prepush passed all15 commands, including6090

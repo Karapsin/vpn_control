@@ -1,5 +1,34 @@
 # Parity Failure-to-Regression Ledger
 
+## Synthetic JDK fixture external-parent churn — 2026-10-10
+
+Final prepush for the local Windows checkpoint failed after6093 agent tests:
+`JoinFixture.test_adapter_returns_copies_and_original_closing_reads_files`
+raised `census_ancestry_changed` in the authentic external-JDK ancestry guard.
+The original actor and exact native metadata delta are unavailable, not inferred.
+A deterministic create-only sibling-directory control reproduces the same error
+between the external-parent pin and readback. Actual changed fields are size,
+mtime, ctime and link count; device/inode/type/mode/UID/GID remain unchanged.
+
+The test-only repair gives outside-owned-tree ancestors a consistent synthetic
+volatile-metadata view keyed by exact device/inode. Actual device/inode/type/mode
+and all owned directory/file facts remain live. Pre-existing synthetic UID/GID0
+is not native Linux authority. Production source guards are byte-unchanged.
+The original control produces one causal error; all15 successor controls pass,
+including shared-parent churn and genuine owned-directory/JDK-file refusals.
+Root's integrated canonical module also passes15 tests, zero failures/errors/skips.
+Ordinary agent-tool discovery, managed prepush and Fast Checks include the module:
+`python3 -m unittest agent_tools.tests.test_android_installer_jdk_source_context`.
+
+Evidence: `.runtime/jdk-source-context-prepush-repair/report.json`
+(SHA3269e76a), candidatecfc20322, original7bec4a93, private beforeimages and
+measured RED/GREEN logs. Full failed prepush is retained in
+`.runtime/root-parity-continuation-22e9/windows-product-checkpoint/prepush-2.2.5-failed.json`.
+Source integration waited for original Android reader/SDK terminal outcomes and
+actual same4ccf ENDED; original semantic UNKNOWN and lease history remain intact.
+This repairs the routine MCP validation fixture; it does not prove native JDK,
+Android cleanup/update, Windows replacement or final-source acceptance.
+
 ## Windows verified owner receipt call order — 2026-10-10
 
 Independent preparation review found a deterministic admission failure before
@@ -2943,3 +2972,78 @@ snapshots, original device lock, source/stage binding and all four fenced fresh
 checks remain required before release. Source/local compatibility does not close
 Android cleanup or update acceptance. Direct scenarios, canonical helper native
 equivalence, final packages, visuals and exact-SHA CI remain open.
+
+## Windows pending-control reservation range — 2026-10-10
+
+The source274320 pair's two actual granted updates retained their exact request,
+operation and protected-job identities. The second attempt used an already-bound
+public status poll and still ended FAILED/RUNTIME_FAILED: the old owner remained
+alive/OFF and never received a handoff-ready acknowledgement. The coordinator
+held the existing exclusive reservation byte16 while JNA read all17 gate bytes;
+Win32 rejected the overlapping read with native33 before controller dispatch.
+
+The preserved original entry plus the same mechanical range-lock control actually
+fails BUSY. The guarded fix retains shared byte0, trusted physical17-byte gate,
+ACL/ancestor pins and full-payload validation; only pending control after native33
+may read a validated16-byte prefix with pending byte8=1. It cannot admit ordinary
+startup, an exclusive byte0 lock, unsafe metadata, malformed/inaccessible prefix,
+or a different native error. The new controls join ordinary desktop test discovery.
+Actual GREEN runs pass19 admission and two control-only startup tests; four native
+Windows cases skip explicitly on macOS. The independent actual Win32 inert file
+control observes full17/error33, prefix16/success, final1/error33 and unlocked
+full17/success, then closes both handles and deletes only its owned fixture file.
+
+Evidence: `.runtime/windows-gate-read-proposal/root-causal-review.json`
+(SHA35a082b3), with preserved source/test beforeimages and RED/GREEN XML.
+Native attempt review: `.runtime/windows-secondary-acceptance/bound-install-range-causal-review-952bfdc3-5d56-46be-90af-ac089891b16b/report.json`
+(SHA958a1a84). These controls prove the causal read/dispatch decision and OS range
+semantics. Fixed installed MSI replacement, original-user return, receipt cleanup
+and equivalent MCP acceptance are still required; the old failed operations must
+not be replayed. The first unbound fixture poll is a separate causal fixture fault,
+not the cause of the second already-bound failure. Original fixture beforeimages,
+retirement evidence and uncertain read outcomes remain preserved.
+
+## Windows exact native denial input cleanup — 2026-10-10
+
+Actual native1223 no-start denial left a verified request, retained131MB package
+and local cancellation history while creating no protected coordinator job.
+Manual exact-beforeimage retirement was fixture housekeeping, not product cleanup.
+The production service previously wired only macOS no-start cleanup and skipped
+same-controller maintenance unconditionally. Terminal pruning could lose retained
+input bindings; capacity after staging and failed-close ownership/retry defects
+were established in review. An admission exception could retain native resources
+before returning its helper lease, outside the local pins list.
+
+The new Windows ordinary-owner path requires the original numeric1223 witness,
+exact current-controller/request/operation/job/workspace binding, definitive local
+NOT_STARTED cancellation, protected job and receipt absence, no pending worker,
+original native object identities, strict parent/ACL/sharing/volume checks and
+request/package byte hashes. It deletes only exact admitted objects, preserves
+terminal cancellation, reports cleanup failure separately and retries cleanup
+without installer/helper replay. Early and final journal capacity checks precede
+staging; new close debt blocks preparation and remains owned independently of
+cached per-record cleanup success. Admission failure carriers preserve their
+original cause while transferring failed closes to owner maintenance.
+
+Actual causal runs use the same production behavioral test class and mechanical
+syscall state model. Three preserved original branches fail three assertions;
+six reviewed branches fail six assertions, with zero errors/skips. All19 controls
+pass with packet3, including actual prepare admission, unchanged journal conflict,
+partial deletion/identity replacement, foreign child, close retry and exact denial
+code rejection. Ordinary `:desktopApp:test` discovers the new class. Full records:
+`.runtime/windows-denial-cleanup-proposal/root-checks/packet3-root-integration.json`
+(SHAc30a815b), preserved source/seals1..3 and fresh RED/GREEN XML/logs.
+
+Earlier packet1 compiler errors and packet2 fixture failures are not causal RED.
+The fixture used a duplicate UUID and injected only two failed closes where three
+exhaustive close attempts occurred; guards were preserved when setup was repaired.
+Initial RED overlay compilation also exposed stale incremental symbols. Its old
+19-test XML is not fresh RED evidence. Nonincremental reruns generated the exact
+three/six fresh assertion failures used above; all original logs remain retained.
+
+The portable model proves application decisions, not ShellExecute/NTFS/MSI behavior.
+Fixed-package public denial and cleanup, cold-owner durable1223 proof/recovery,
+retained-byte/resource admission and equivalent MCP cases remain open. Cold present
+inputs without authoritative original proof are retained with failed cleanup;
+256 entries per workspace is only a count bound. Never relabel historical manually
+moved input bytes or replay the original denied/granted operations as acceptance.

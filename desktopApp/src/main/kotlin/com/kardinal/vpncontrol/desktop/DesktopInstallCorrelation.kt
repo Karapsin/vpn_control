@@ -42,6 +42,7 @@ internal class DesktopInstallCorrelationJournal(
     workspace: Path,
     private val terminalHistoryLimit: Int = 32,
     private val readBoundReceipt: ((DesktopInstallCorrelationRecord) -> DesktopInstallJobReceipt)? = null,
+    private val canPruneTerminal: (DesktopInstallCorrelationRecovery) -> Boolean = { true },
     private val readProtectedReceipt: (String) -> DesktopInstallJobReceipt = { job ->
         DesktopInstallJobStore.production().open(job).use { it.read() }
     },
@@ -128,13 +129,17 @@ internal class DesktopInstallCorrelationJournal(
     fun recoverAll(): List<DesktopInstallCorrelationRecovery> = records().map(::inspect)
 
     /** Must run before staging or launching: previous identities are queried, never replayed. */
-    fun requireNew(correlation: DesktopInstallCorrelation) {
+    @Synchronized fun requireNew(correlation: DesktopInstallCorrelation) {
         val previous = recoverAll()
         require(previous.none { it.binding?.correlation?.let { old ->
             old.controllerId == correlation.controllerId &&
                 (old.requestId == correlation.requestId || old.operationId == correlation.operationId)
         } == true }) { ControlCode.CONFLICT.name }
         check(previous.none { it.blocksInstallation }) { ControlCode.BUSY.name }
+        // Capacity belongs to admission: never stage an unbound package at the record limit.
+        // record() repeats this under the same monitor to cover concurrent journal publication.
+        pruneTerminals(records())
+        require(records().size < MAX_RECORDS) { ControlCode.BUSY.name }
     }
 
     private fun inspect(binding: DesktopInstallCorrelationRecord): DesktopInstallCorrelationRecovery {
@@ -152,7 +157,10 @@ internal class DesktopInstallCorrelationJournal(
     }
 
     private fun pruneTerminals(existing: List<DesktopInstallCorrelationRecord>) {
-        val terminal = existing.filter { !inspect(it).blocksInstallation }
+        val terminal = existing.filter { binding ->
+            val recovered = inspect(binding)
+            !recovered.blocksInstallation && canPruneTerminal(recovered)
+        }
             .sortedBy { Files.getLastModifiedTime(path(it), NOFOLLOW_LINKS).toMillis() }
         terminal.take((terminal.size - terminalHistoryLimit).coerceAtLeast(0)).forEach { binding ->
             // Remove only the verified journal entry, never the protected receipt or job.

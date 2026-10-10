@@ -61,6 +61,7 @@ internal class JnaWindowsInstallAdmission : WindowsAdmissionNative {
         throw WindowsInstallNativeFailure(error)
     }
     override fun readGate(handle: WindowsInstallNative.Handle) = files.read(handle, 18)
+    override fun readGatePrefix(handle: WindowsInstallNative.Handle) = files.read(handle, 16)
     override fun unlockShared(handle: WindowsInstallNative.Handle) {
         checked(extra.UnlockFileEx(files.retainedHandle(handle), 0, 1, 0, WinBase.OVERLAPPED()))
     }

@@ -177,12 +177,13 @@ internal class DesktopUpdateService(
     private val macInstallerFactory: (Path) -> DesktopMacInstallAdapter = { DesktopMacInstaller(it) },
     private val linuxOsReleaseReader: () -> String = { Files.readString(Path.of("/etc/os-release")) },
     private val linuxCommandExists: ((String) -> Boolean)? = null,
+    private val windowsInstallerFactory: (Path) -> DesktopWindowsInstaller = { DesktopWindowsInstaller(it) },
     private val probeResponseFactory: ((HttpRequest) -> CompletableFuture<HttpResponse<InputStream>>)? = null,
 ) {
     private var preparedPackage: Path? = null
     private var installerCancelFile: Path? = null
     @Volatile private var checkedUpdate: DesktopUpdateCheck? = null
-    private val windowsInstaller by lazy { DesktopWindowsInstaller(workspaceDirectory) }
+    private val windowsInstaller by lazy { windowsInstallerFactory(workspaceDirectory) }
     private val linuxInstaller by lazy { linuxInstallerFactory(workspaceDirectory) }
     private val macInstaller by lazy { macInstallerFactory(workspaceDirectory) }
     private val operationMutex = kotlinx.coroutines.sync.Mutex()
@@ -250,7 +251,11 @@ internal class DesktopUpdateService(
         }
 
     private val installInputCleanup by lazy { DesktopInstallInputCleanup(::readInstallCorrelations, ::releaseInstallInputs,
-        releaseNotStarted = if (osName.startsWith("Mac", true)) ::releaseMacNotStartedInstallInputs else null) }
+        releaseNotStarted = when {
+            osName.startsWith("Windows", true) -> ::releaseWindowsNotStartedInstallInputs
+            osName.startsWith("Mac", true) -> ::releaseMacNotStartedInstallInputs
+            else -> null
+        }).also { it.releaseCurrentOwnerNotStarted = osName.startsWith("Windows", true) } }
 
     private fun readInstallCorrelations(): Result<List<DesktopInstallCorrelationRecovery>> = when {
         osName.startsWith("Windows", true) -> windowsInstaller.recoverCorrelations()
@@ -263,6 +268,12 @@ internal class DesktopUpdateService(
     suspend fun reconcileTerminalInstallInputs(ownerId: String): Result<Unit> = withContext(Dispatchers.IO) {
         if (!operationMutex.tryLock()) return@withContext Result.success(Unit)
         try {
+            // Holder debt can be created by pruning after a record was already cleanupCode=OK.
+            // Retry it independently of the per-record completion cache.
+            if (osName.startsWith("Windows", true)) {
+                val closed = windowsInstaller.reconcileInputHolders()
+                if (closed.isFailure) return@withContext closed
+            }
             if (osName.startsWith("Mac", true)) {
                 val reconciled = macInstaller.reconcileLateAuthorization(ownerId)
                 if (reconciled.isFailure) return@withContext reconciled
@@ -317,7 +328,10 @@ internal class DesktopUpdateService(
         }
     }
 
-    /** Only the macOS adapter may dispose a journal-verified no-worker input. */
+    private fun releaseWindowsNotStartedInstallInputs(record: DesktopInstallCorrelationRecovery): Result<Unit> =
+        windowsInstaller.releaseNotStarted(record)
+
+    /** The macOS adapter retains its distinct journal-verified no-worker disposal policy. */
     private fun releaseMacNotStartedInstallInputs(record: DesktopInstallCorrelationRecovery): Result<Unit> = runCatching {
         check(osName.startsWith("Mac", true))
         macInstaller.releaseNotStarted(record).getOrThrow()

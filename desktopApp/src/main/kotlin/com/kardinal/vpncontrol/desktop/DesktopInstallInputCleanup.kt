@@ -9,6 +9,10 @@ internal class DesktopInstallInputCleanup(
     private val release: (DesktopInstallCorrelation, DesktopInstallJobReceipt) -> Result<Unit>,
     private val releaseNotStarted: ((DesktopInstallCorrelationRecovery) -> Result<Unit>)? = null,
 ) {
+    /** Only the Windows adapter opts in after exact native no-worker denial and holder release. */
+    var releaseCurrentOwnerNotStarted: Boolean = false
+        internal set
+
     private data class Outcome(val receipt: DesktopInstallJobReceipt?, val notStartedCode: ControlCode?)
     private fun outcome(record: DesktopInstallCorrelationRecovery) = Outcome(record.receipt,
         record.code.takeIf { record.notStarted && record.receipt == null })
@@ -24,7 +28,8 @@ internal class DesktopInstallInputCleanup(
         for (record in records) {
             val binding = record.binding ?: continue
             val receipt = record.receipt
-            if (binding.correlation.controllerId == ownerId) continue
+            if (binding.correlation.controllerId == ownerId && !(releaseCurrentOwnerNotStarted &&
+                    record.notStarted && receipt == null && record.code == ControlCode.CANCELLED)) continue
             if (receipt != null) {
                 if (!receipt.phase.terminal) continue
             } else if (!record.notStarted || releaseNotStarted == null || record.code !in setOf(

@@ -162,7 +162,19 @@ internal object DesktopWindowsInstallAdmission {
             WindowsInstallTrust.verify(info, WindowsInstallTrust.Kind.STATUS)
             require(info.size == 17L) { "Malformed installation gate" }
             val bytes = try { native.readGate(retainedGate) }
-            catch (error: WindowsInstallNativeFailure) { if (error.code == 33) error("BUSY"); throw error }
+            catch (error: WindowsInstallNativeFailure) {
+                if (error.code != 33) throw error
+                check(allowPendingControl) { "BUSY" }
+                // The coordinator exclusively reserves byte16. It is not mutable application
+                // payload: validate only the prefix without fabricating the unread byte.
+                val prefix = native.readGatePrefix(retainedGate)
+                require(prefix.size == 16 && prefix.indices.all {
+                    if (it == 8) prefix[it] in 0..1 else prefix[it] == 0.toByte()
+                }) { "Malformed installation gate prefix" }
+                check(prefix[8] == 1.toByte()) { "BUSY" }
+                onPendingControl()
+                return retainedLease()
+            }
             require(bytes.size == 17 && bytes.indices.all { if (it == 8) bytes[it] in 0..1 else bytes[it] == 0.toByte() }) { "Malformed installation gate" }
             // Control-only clients retain the same shared lock and all strict witnesses.
             // They cannot enter once the installer holds the exclusive replacement lock.
@@ -195,6 +207,8 @@ internal interface WindowsAdmissionNative {
     fun children(path: String): List<String>
     fun lockShared(handle: WindowsInstallNative.Handle): Boolean
     fun readGate(handle: WindowsInstallNative.Handle): ByteArray
+    /** Reads only application bytes [0,16); byte16 is the coordinator reservation. */
+    fun readGatePrefix(handle: WindowsInstallNative.Handle): ByteArray = throw WindowsInstallNativeFailure(33)
     fun unlockShared(handle: WindowsInstallNative.Handle)
     fun close(handle: WindowsInstallNative.Handle)
 }
