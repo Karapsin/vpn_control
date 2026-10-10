@@ -8,6 +8,7 @@ import com.kardinal.vpncontrol.data.RemoteSourceResolver
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 
 internal class AndroidProfileActionsService(
+    private val renameDraft: AndroidSubscriptionRenameDraftControl,
     private val controller: MainController,
     private val stateProvider: () -> MainUiState,
     private val effectSink: AndroidControllerEffectSink,
@@ -47,23 +48,21 @@ internal class AndroidProfileActionsService(
     }
 
     fun showProfileHistoryRenameDialog(source: String) {
-        val normalized = source.trim()
-        val currentName = stateProvider().profileHistoryNames[normalized]
-            ?.takeIf { it.isNotBlank() }
-            ?: sourcePreviewTitle(normalized)
-                .orEmpty()
-        controller.showProfileHistoryRenameDialog(normalized, currentName)
+        renameDraft.open(source)
     }
 
     fun closeProfileHistoryRenameDialog() {
+        renameDraft.close()
         controller.closeProfileHistoryRenameDialog()
     }
 
     fun onProfileHistoryRenameDraftChanged(value: String) {
+        renameDraft.edited()
         controller.onProfileHistoryRenameDraftChanged(value)
     }
 
     fun onProfileHistoryRenameUrlDraftChanged(value: String) {
+        renameDraft.edited()
         controller.onProfileHistoryRenameUrlDraftChanged(value)
     }
 
@@ -111,6 +110,6 @@ internal class AndroidProfileActionsService(
     }
 
     fun saveProfileHistoryRename() {
-        launchMutation { effectSink.handleWithinMutation(controller.saveProfileHistoryRename(validateProfileSource)) }
+        renameDraft.save()
     }
 }

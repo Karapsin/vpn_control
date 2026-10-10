@@ -176,7 +176,7 @@ def emit_identity(coldboot_raw, census_raw, owner_raw, retained_raw, body_raw):
 PINS = {
     'coldboot': 'e80f7c833ca5dbf817afadb7c4fe896d6ddb6e1a792fcc2759311fcf996b0957',
     'census': '0d4ac9875ef793d8d1ebfe613f5c89557e1ac027d8fbbc6ff6ab084fc6f57e4d',
-    'collector': 'da4eee30d1aef47d553b6217680967c4e3ced67235596f129f454ad6abe79503',
+    'collector': 'c98a75ed08a1af0f1d5dfe47d15a01e7f02d6e359f6392bbc77f24e79375b6c5',
 }
 
 def literal(raw, symbol):

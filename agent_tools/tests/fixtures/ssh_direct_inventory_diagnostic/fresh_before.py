@@ -363,7 +363,6 @@ def _ended_0be3_intent(value,current,prior_id):
 
 
 _REVIEWED_ENDED_DIRECT_PROVIDER='b957d4b6bf37ca0c603f09f7df757284a56f042706533159fb5427c1b89fdafc'
-_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER='f569a8b606d207b4d5a5623cc580216a595f2826ed93ebca5f2ab38cb1a55663'
 
 def _ended_direct_intent_matches(previous,current):
     """Strict finite v1 bridge; the caller retains terminal and ready custody."""
@@ -374,17 +373,11 @@ def _ended_direct_intent_matches(previous,current):
     if type(old)is not dict or type(new)is not dict or set(old)!=set(direct_channel._SOURCE_NAMES) or set(new)!=set(old):return False
     if any(type(x)is not str or re.fullmatch('[0-9a-f]{64}',x)is None for x in [*old.values(),*new.values()]):return False
     if current.get('sourceSha256')!=_source() or new.get('ssh_fresh_nested_channel.py')!=current['sourceSha256']:return False
-    if previous.get('sourceSha256') not in (_source(),_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER) or old.get('ssh_fresh_nested_channel.py')!=previous['sourceSha256']:return False
+    if previous.get('sourceSha256') not in (_source(),_REVIEWED_ENDED_DIRECT_PROVIDER) or old.get('ssh_fresh_nested_channel.py')!=previous['sourceSha256']:return False
     normalized=dict(old);normalized['ssh_fresh_nested_channel.py']=new['ssh_fresh_nested_channel.py']
     if old.get('mcp_server.py')!=new.get('mcp_server.py'):
         if old.get('mcp_server.py')!='6ca7b4050ee5ca6977ff3948ad22b78350d49007c557ba603b9ab2a6558dc014' or new.get('mcp_server.py')!='5707593229d5fa3c331998a0f6bbc2bae1ca4dff3a94fd4f5f5c8064e07a14d7':return False
         normalized['mcp_server.py']=new['mcp_server.py']
-    if old.get('ssh_direct_nested_channel.py')!=new.get('ssh_direct_nested_channel.py'):
-        if (previous.get('sourceSha256') not in (_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER)
-                or old.get('ssh_direct_nested_channel.py')!='99c6ce89cda8431936220be31ea0b6c989b78668d1a155b71cbb98d85c23ce0f'
-                or new.get('ssh_direct_nested_channel.py')!='5b82a0a63fbd2fbc44aa4203c76060ede36236a11cdc8399e186bf7c69cc2ff3'
-                or hashlib.sha256(Path(direct_channel.__file__).read_bytes()).hexdigest()!=new['ssh_direct_nested_channel.py']):return False
-        normalized['ssh_direct_nested_channel.py']=new['ssh_direct_nested_channel.py']
     if normalized!=new:return False
     return json.dumps({**previous,'sourceSha256':current['sourceSha256'],'directSourcePins':new},sort_keys=True)==json.dumps(current,sort_keys=True)
 
@@ -442,7 +435,7 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                     if set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'} or ended['state']!='ended' or ended['correlationId']!=prior_id:return _public()
                     old_intent=stack.enter_context(private.Snapshot(channel_dir,name))
                     old_value=json.loads(old_intent.body,object_pairs_hook=transport._reject_duplicate_keys)
-                    if ended['intentSha256']!=old_intent.digest or (old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) and not (direct and old_value.get('sourceSha256') in (_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER))) or (not direct and old_value.get('inventory')!=config_source.pin()):return _public()
+                    if ended['intentSha256']!=old_intent.digest or (old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) and not (direct and old_value.get('sourceSha256')==_REVIEWED_ENDED_DIRECT_PROVIDER)) or (not direct and old_value.get('inventory')!=config_source.pin()):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9A and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9A):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9527 and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9527):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_012:

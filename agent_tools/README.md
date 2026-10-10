@@ -85,6 +85,13 @@ The collector attempts both stream publications, stream closes, the exit journal
 and directory sync even when an earlier cleanup step fails. Primary failures and
 finite secondary cleanup stages remain separate.
 
+`collector(deadline_seconds=...)` accepts a keyword-only exact integer from1 to
+1250 seconds. The default1250 frame remains unchanged. A shorter admitted local
+diagnostic uses the same value for its execution deadline and retained
+`handle.json` metadata; booleans, floats, strings and out-of-range values fail
+before process creation or publication. This parameter grants no route, guest,
+installer or replay authority and does not extend remote/source-receive limits.
+
 `android_installer_direct_transport` preserves the original local process,
 stream hashes, EOF and return code when post-collection source checks or result
 publication fail. A validated original remote PID is retained where observed.
@@ -122,6 +129,17 @@ before a new intent or SSH child. A terminal record cannot erase its READY recei
 reference. Historical files are never rewritten. Other future source transitions
 remain refused pending separately reviewed coverage; this is not a general
 source migration or native connection acceptance result.
+
+DIRECT status forwards the existing private inventory diagnostic callback without
+changing the public result, raw capture or route options. Retained consumers may
+record the bounded sanitized inventory classification separately; publication
+failure does not promote UNKNOWN to readiness. An observed local inventory refusal
+does not establish an SSH authentication or network fault. Historical91655 retains
+its unobserved underlying cause even though later local acquisition succeeded.
+The finite reviewed predecessor bridge covers the exact callback-only DIRECT
+source transition and preceding provider; all other pins and terminal/READY custody
+checks remain required. New routine tests guard POSIX fixture imports before Windows
+discovery skips and retain the actual unsupported-module discovery regression.
 
 Prepare, select and the admitted workflow must execute promptly: the existing
 inner master expires after60 idle seconds. Preauthor the complete flow before

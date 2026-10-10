@@ -519,6 +519,27 @@ class RoutineSourceTests(unittest.TestCase):
         OBSERVATIONS.append(dict(mockUid1000AdmissionRefused=True,
             actualLinuxPermissionExperiment=False, canonicalReaderInvocation=False))
 
+    def test_bridge_collector_full_source_pin_refuses_foreign_bytes(self):
+        # A valid current source must reach both genuine bridge entry points.
+        # These foreign modules retain the embedded transport templates; only
+        # the fixed full-module pin may distinguish them from admitted bytes.
+        programme, bootstrap, _ = assembly.emit_control(
+            RAW['coldboot'], RAW['census'], RAW['collector'], OWN_CONTROL, sha(OWN_CONTROL))
+        assembly.receiver_source(RAW['collector'], programme, bootstrap)
+        changed_default = RAW['collector'].replace(
+            b'def collector(*,deadline_seconds=1250):',
+            b'def collector(*,deadline_seconds=1249):', 1)
+        self.assertNotEqual(changed_default, RAW['collector'])
+        for foreign in (RAW['collector'] + b'\n', changed_default):
+            with self.subTest(hash=sha(foreign)):
+                self.assertEqual(assembly.literal(foreign, 'COLLECTOR_SOURCE'),
+                                 assembly.literal(RAW['collector'], 'COLLECTOR_SOURCE'))
+                with self.assertRaisesRegex(ValueError, '^control_authentic_source_changed$'):
+                    assembly.emit_control(RAW['coldboot'], RAW['census'], foreign,
+                                          OWN_CONTROL, sha(OWN_CONTROL))
+                with self.assertRaisesRegex(ValueError, '^control_authentic_source_changed$'):
+                    assembly.receiver_source(foreign, programme, bootstrap)
+
     def test_bridge_exact_root_and_remote_inverse_harmless_emission(self):
         ns = namespace('bridge')
         fixture = SourceFixture(dict(coldboot=RAW['coldboot'], census=RAW['census'],

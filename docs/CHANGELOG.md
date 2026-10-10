@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.6 - 2026-10-10
 
 - Stabilize external ancestor metadata in the synthetic JDK fixture while preserving owned-source mutation checks.
 - Stream Android getter verification without retaining file bodies while preserving failure diagnostics and descriptor cleanup.
@@ -13,6 +13,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Release the confirmed Windows installer return gate before waiting for the original user app, retaining uncertain outcomes and separate return/cleanup verification.
 - Keep historical Windows package inputs exact and refuse managed checks from a stale MCP runner before publishing validation receipts.
 - Align desktop GUI input allocation errors with CLI and preserve completed DIRECT connection history custody.
+- Preserve Android live connections when saving mode through the settings owner and bind diagnostic deadlines to retained receipts.
+- Route Android GUI drafts, connection and diagnostics through guarded owners; preserve exact retries and bounded DIRECT inventory diagnostics.
 
 ## 2.2.5 - 2026-10-10
 

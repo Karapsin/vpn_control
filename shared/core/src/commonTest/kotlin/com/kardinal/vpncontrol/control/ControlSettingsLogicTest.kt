@@ -139,6 +139,35 @@ class ControlSettingsLogicTest {
         assertEquals(ControlSettingsLogic.writableKeys - "autostart", ControlSettingsLogic.inspect(PersistedState()).keys)
     }
 
+    @Test
+    fun explicitAutomaticDnsSaveAcknowledgesLegacyNoticeButUnrelatedPatchKeepsIt() {
+        val legacy = PersistedState(dnsSettings = com.kardinal.vpncontrol.model.DnsSettings(
+            legacyRawAddress = "192.0.2.53"))
+        val saved = assertIs<ControlSettingsPlan.Configuration>(ControlSettingsLogic.plan(
+            legacy, mapOf("dns.mode" to text("automatic"), "dns.endpoint" to text("")),
+            ControlPlatform.ANDROID, false))
+        assertEquals("", saved.state.dnsSettings.legacyRawAddress)
+        val unrelated = assertIs<ControlSettingsPlan.Configuration>(ControlSettingsLogic.plan(
+            legacy, mapOf("language" to text("en")), ControlPlatform.ANDROID, false))
+        assertEquals("192.0.2.53", unrelated.state.dnsSettings.legacyRawAddress)
+    }
+
+    @Test
+    fun explicitCustomDnsAcknowledgementRemainsIndependentOfGroupOrder() {
+        val legacy = PersistedState(dnsSettings = com.kardinal.vpncontrol.model.DnsSettings(
+            legacyRawAddress = "192.0.2.53"))
+        for ((mode, endpoint) in listOf("custom-doh" to "https://dns.example.test",
+            "custom-dot" to "tls://dns.example.test")) {
+            val patch = linkedMapOf("dns.mode" to text(mode), "dns.endpoint" to text(endpoint))
+            val forward = assertIs<ControlSettingsPlan.Configuration>(ControlSettingsLogic.plan(
+                legacy, patch, ControlPlatform.ANDROID, false))
+            val reverse = assertIs<ControlSettingsPlan.Configuration>(ControlSettingsLogic.plan(
+                legacy, patch.entries.reversed().associate { it.toPair() }, ControlPlatform.ANDROID, false))
+            assertEquals(forward, reverse)
+            assertEquals("", forward.state.dnsSettings.legacyRawAddress)
+        }
+    }
+
     private fun configuration(patch: Map<String, ControlValue>) = assertIs<ControlSettingsPlan.Configuration>(
         ControlSettingsLogic.plan(PersistedState(), patch, ControlPlatform.LINUX, false))
     private fun text(value: String) = ControlValue.Text(value)

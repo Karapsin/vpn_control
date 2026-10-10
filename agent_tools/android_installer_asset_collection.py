@@ -28,7 +28,9 @@ def _select_ready(readers,writers,exceptional,timeout):
   ready=lambda values,event:[value for value in values if events.get(value if type(value)is int else value.fileno(),0)&event]
   return ready(readers,selectors.EVENT_READ),ready(writers,selectors.EVENT_WRITE),[]
 
-def collector():
+def collector(*,deadline_seconds=1250):
+    if type(deadline_seconds)is not int or not 1<=deadline_seconds<=1250:
+        raise ValueError('asset_collector_deadline_unknown')
     if hashlib.sha256(COLLECTOR_SOURCE.encode()).hexdigest()!=COLLECTOR_SOURCE_SHA256:
         raise ValueError('asset_operator_collector_source_changed')
     tree=ast.parse(COLLECTOR_SOURCE)
@@ -42,6 +44,23 @@ def collector():
         if isinstance(node,ast.Call)and isinstance(node.func,ast.Name)and node.func.id=='_select_ready':
             node.func=ast.Attribute(value=ast.Name(id='select',ctx=ast.Load()),attr='select',ctx=ast.Load())
     if ast.dump(before)!=ast.dump(reverse):raise ValueError('asset_collector_readiness_semantics_changed')
+    if deadline_seconds!=1250:
+        # Bind execution and its durable handle to the same admitted deadline.
+        # The authenticated default frame and every other literal stay exact.
+        boundaries=(('        deadline=time.monotonic()+1250\n','        deadline=time.monotonic()+'+str(deadline_seconds)+'\n'),
+                    ("capture.create('handle.json',encoded({'pid':process.pid,'started':time.time(),'deadlineSeconds':1250}))",
+                     "capture.create('handle.json',encoded({'pid':process.pid,'started':time.time(),'deadlineSeconds':"+str(deadline_seconds)+"}))"))
+        bounded=changed
+        for old,new in boundaries:
+            if bounded.count(old)!=1:raise ValueError('asset_collector_deadline_shape_changed')
+            bounded=bounded.replace(old,new)
+        restored=bounded
+        for old,new in boundaries:
+            if restored.count(new)!=1:raise ValueError('asset_collector_deadline_shape_changed')
+            restored=restored.replace(new,old)
+        if restored!=changed or ast.dump(ast.parse(restored))!=ast.dump(ast.parse(changed)):
+            raise ValueError('asset_collector_deadline_semantics_changed')
+        changed=bounded
     namespace['_select_ready']=_select_ready
     exec(compile(changed,'<canonical-asset-selector-collector>','exec',dont_inherit=True),namespace)
     # This is the currently authenticated embedded pre-selector frame.

@@ -21,7 +21,81 @@ python3 scripts/check_contract_docs.py
 python3 scripts/test_android_instrumentation_signatures.py
 ```
 
-## Completed DIRECT connection history
+## Android owner drafts and collector deadline
+
+`test_ssh_direct_inventory_diagnostic` and
+`test_ssh_direct_ended_inventory_successor` join ordinary agent-tool discovery.
+Run them with DIRECT/fresh channel, completed-source transition, selection,
+MCP-route and transport modules: the integrated set passes152 checks without skips.
+Run `scripts/test_python_platform_contracts.py` and
+`scripts/check_python_platform_contracts.py` for the manifested absent-module
+discovery and repository-package probe path. Actual Windows discovery retains
+explicit Unix skips; local controls do not establish native route acceptance.
+
+Refresh/validation owner drafts and DNS queued-save controls are in
+`AndroidSettingsActionsServiceTest`. Six original stale-save assertions and four
+intermediate lifetime assertions precede88 passing checks; nine additional actual
+queued-save/response-loss assertions fail on that predecessor and pass in the
+97-test successor. Run settings actions/control, SSH drafts, configuration store
+and shared `ControlSettingsLogicTest` together, then compile the final canonical
+ViewModel joins. Exact unresolved-request retention is scoped to the same opening;
+these controls do not prove cross-reopen recovery or Android native timing.
+
+`AndroidConnectionActionsServiceTest`, `AndroidDiagnosticsActionsServiceTest` and
+`AndroidDiagnosticsReportShareTest` exercise typed owner admission, operation history,
+exact-request response recovery, frontend cancellation, redacted failure reporting
+and exact completed-report sharing. Four authentic original assertion failures and
+two prepared sharing-boundary cancellation failures precede19 isolated passing tests,
+zero skips/errors, plus app compilation. Run these selectors with the other affected
+app suites after the final ViewModel joins. Native consent, runtime and sharing
+acceptance remain separate requirements; these tests declare their Android OS seams.
+
+DNS draft coverage in `AndroidSettingsActionsServiceTest`,
+`AndroidSettingsControlTest`, `AndroidSshSettingsDraftTest`,
+`AndroidConfigurationStoreTest` and shared `ControlSettingsLogicTest` exercises
+real configuration snapshots, owner mutation leases, persisted revision guards,
+lost-response retry and asynchronous frontend lifetime. Three original stale-save
+and five old-candidate lifetime assertions fail on their preserved beforeimages;
+73 isolated checks pass without skips, plus Android compilation. The shared DNS
+patch clears the legacy migration notice only for an explicit DNS group.
+
+`AndroidProfileActionsServiceTest` exercises the real subscription owner,
+production storage/serializer and stable rendered subscription identity. It
+covers CLI conflict, deleted/recreated targets, owner replacement, persistence,
+busy state, exact-request retry and actual queued/deferred close/edit/open races.
+Two original stale-target assertions, six lifetime assertions and one pending-open
+feedback assertion fail on preserved sources; all26 successor checks pass without
+skips, plus Android compilation. Ordinary app tests/prepush/Fast Checks discover
+both draft suites. Run the affected app selectors and shared settings selector,
+then Android compile after the final ViewModel joins. Actual installed GUI/CLI
+and matching MCP cases remain separate gates on both supported API levels.
+
+`AndroidSettingsActionsServiceTest` and `AndroidSettingsControlTest` cover GUI
+mode saves through the real typed owner, unchanged live runtime, pending/revert,
+busy/revision conflicts, failed persistence and truthful post-commit uncertainty.
+Run `:app:testDebugUnitTest` with those two selectors and
+`:app:compileDebugKotlin`. Ordinary app tests/prepush/Fast Checks discover them.
+Preserved original mode behavior fails two runtime stop-count assertions; the
+reviewed candidate passes31 tests without skips. Actual GUI save during live A,
+pending B and explicit restart remain native gates.
+
+`test_android_installer_asset_collection` discovers24 controls, including five
+deadline API checks: unchanged default, consistent execution/handle limit,
+strict refusal before effects, finite range and complete source inverse. The
+metadata defect's genuine prior RED remains separately recorded; unsupported
+new API errors are not causal RED. Owned pipe/directory controls retain explicit
+capability skips on unsupported hosts. Prepush/Fast Checks discover the module;
+the next DIRECT native caller must use this API and preserve its actual handle.
+
+`test_android_installer_readonly_source_assembly` also discovers17 controls.
+The current full collector module hash must be pinned explicitly: genuine
+emission failed with the old pin, while the new behavioral regression rejects
+foreign full-module bytes through both bridge entry points. Default embedded
+templates and generated default CodeType remain unchanged. Combined canonical
+collector/bridge discovery passes41 checks with zero skips. Full agent discovery
+and the remaining prepush commands must run again after all final edits.
+
+## Completed DIRECT connection history controls
 
 `test_ssh_direct_ended_source_transition` runs22 controls through ordinary
 agent-tool discovery, prepush and Fast Checks. It exercises the complete provider

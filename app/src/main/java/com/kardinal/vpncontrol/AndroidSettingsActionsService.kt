@@ -12,6 +12,10 @@ internal class AndroidSettingsActionsService(
     private val effectSink: AndroidControllerEffectSink,
     private val launch: (suspend () -> Unit) -> Unit,
     private val stopConnection: suspend () -> Result<Unit>,
+    private val commitAppMode: suspend (AppMode) -> com.kardinal.vpncontrol.model.ControlResult,
+    private val dnsDraft: AndroidDnsDraftControl,
+    private val refreshDraft: AndroidSettingsDraftControl,
+    private val validationDraft: AndroidSettingsDraftControl,
     private val updateStatus: suspend (String) -> Unit,
     private val updateSessionStatsEnabled: suspend (Boolean) -> Unit,
     private val updateLiveTrafficStatsEnabled: suspend (Boolean) -> Unit,
@@ -27,7 +31,32 @@ internal class AndroidSettingsActionsService(
     private val sshDraft: AndroidSshDraftControl? = null,
 ) {
     fun toggleDnsDialog() {
-        controller.toggleDnsDialog()
+        if (controller.currentState().showDnsDialog || dnsDraft.isOpenOrOpening) {
+            dnsDraft.close()
+            controller.update { it.copy(showDnsDialog = false) }
+        } else {
+            // Reserve this opening before the asynchronous frontend launch.
+            val opening = dnsDraft.beginOpen()
+            launch {
+                val settings = try {
+                    dnsDraft.open(opening) ?: return@launch
+                } catch (_: OutOfMemoryError) {
+                    if (dnsDraft.isCurrent(opening)) {
+                        dnsDraft.close()
+                        updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName)
+                    }
+                    return@launch
+                } catch (_: Exception) {
+                    if (dnsDraft.isCurrent(opening)) {
+                        dnsDraft.close()
+                        updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName)
+                    }
+                    return@launch
+                }
+                controller.update { it.copy(showDnsDialog = true, dnsModeDraft = settings.mode,
+                    customDnsEndpointDraft = settings.endpoint) }
+            }
+        }
     }
 
     fun toggleHomeSshRouteDialog() {
@@ -205,11 +234,49 @@ internal class AndroidSettingsActionsService(
     }
 
     fun toggleRefreshPolicyDialog() {
-        controller.toggleRefreshPolicyDialog()
+        if (controller.currentState().showRefreshPolicyDialog || refreshDraft.isOpenOrOpening) {
+            refreshDraft.close()
+            controller.update { it.copy(showRefreshPolicyDialog = false) }
+        } else {
+            val opening = refreshDraft.beginOpen()
+            launch {
+                val settings = try { refreshDraft.open(opening) ?: return@launch }
+                catch (_: OutOfMemoryError) {
+                    if (refreshDraft.isCurrent(opening)) { refreshDraft.close(); updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName) }
+                    return@launch
+                } catch (_: Exception) {
+                    if (refreshDraft.isCurrent(opening)) { refreshDraft.close(); updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName) }
+                    return@launch
+                }
+                controller.update { it.copy(showRefreshPolicyDialog = true, subscriptionRefreshPolicyDraft = settings.subscriptionRefreshPolicy,
+                    subscriptionRefreshCustomHoursDraft = com.kardinal.vpncontrol.model.formatSubscriptionRefreshHoursInput(settings.subscriptionRefreshCustomHours),
+                    findBestAfterSubscriptionRefreshDraft = settings.findBestAfterSubscriptionRefresh) }
+            }
+        }
     }
 
     fun toggleValidationSettingsDialog() {
-        controller.toggleValidationSettingsDialog()
+        if (controller.currentState().showValidationSettingsDialog || validationDraft.isOpenOrOpening) {
+            validationDraft.close()
+            controller.update { it.copy(showValidationSettingsDialog = false) }
+        } else {
+            val opening = validationDraft.beginOpen()
+            launch {
+                val settings = try { validationDraft.open(opening) ?: return@launch }
+                catch (_: OutOfMemoryError) {
+                    if (validationDraft.isCurrent(opening)) { validationDraft.close(); updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName) }
+                    return@launch
+                } catch (_: Exception) {
+                    if (validationDraft.isCurrent(opening)) { validationDraft.close(); updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName) }
+                    return@launch
+                }
+                controller.update { it.copy(showValidationSettingsDialog = true, validationTestUrlDraft = settings.validationSettings.testUrl,
+                    validationBatchSizeDraft = settings.validationSettings.batchSize.toString(),
+                    validationSubscriptionRefreshConcurrencyDraft = settings.validationSettings.subscriptionRefreshConcurrency.toString(),
+                    validationRetryCountDraft = settings.validationSettings.retryCount.toString(),
+                    validationActiveVerificationWindowSizeDraft = settings.validationSettings.activeVerificationWindowSize.toString()) }
+            }
+        }
     }
 
     fun toggleLanguageDialog() {
@@ -221,74 +288,187 @@ internal class AndroidSettingsActionsService(
     }
 
     fun setAppMode(value: AppMode) {
-        launchMutation mutation@{
-            val state = controller.currentState()
-            if (state.appMode == value) return@mutation
-            if (state.isVpnRunning) {
-                val stopResult = stopConnection()
-                if (stopResult.isFailure) {
-                    updateStatus(
-                        stopResult.exceptionOrNull()?.message
-                            ?: ConnectionStatusMessages.connectionStopFailed(state.appMode),
-                    )
-                    return@mutation
-                }
-                controller.update { it.copy(isVpnRunning = false) }
+        // The owner admits and persists this proposal; a live runtime keeps its configuration.
+        launch {
+            val result = try {
+                commitAppMode(value)
+            } catch (_: OutOfMemoryError) {
+                updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName)
+                return@launch
+            } catch (_: Exception) {
+                updateStatus(com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN.wireName)
+                return@launch
             }
-            effectSink.handleWithinMutation(controller.setAppMode(value))
+            val committed = result.ok || result.data["configurationCommitted"] ==
+                com.kardinal.vpncontrol.model.ControlValue.BooleanValue(true)
+            if (committed) controller.update {
+                it.copy(appMode = value, showAppModeDialog = if (result.ok) false else it.showAppModeDialog)
+            }
+            if (!result.ok) {
+                updateStatus(result.code.wireName)
+                return@launch
+            }
+            updateStatus(com.kardinal.vpncontrol.model.RoutingStatusMessages.connectionModeSet(value))
         }
     }
-
     fun onDnsDraftChanged(value: String) {
+        dnsDraft.changed()
         controller.onDnsDraftChanged(value)
     }
 
     fun onDnsModeChanged(mode: DnsMode) {
+        dnsDraft.changed()
         controller.onDnsModeChanged(mode)
     }
 
     fun onSubscriptionRefreshPolicyDraftChanged(policy: SubscriptionRefreshPolicy) {
+        refreshDraft.changed()
         controller.onSubscriptionRefreshPolicyDraftChanged(policy)
     }
 
     fun onFindBestAfterSubscriptionRefreshDraftChanged(enabled: Boolean) {
+        refreshDraft.changed()
         controller.onFindBestAfterSubscriptionRefreshDraftChanged(enabled)
     }
 
     fun onSubscriptionRefreshCustomHoursDraftChanged(value: String) {
+        refreshDraft.changed()
         controller.onSubscriptionRefreshCustomHoursDraftChanged(value)
     }
 
     fun onValidationTestUrlDraftChanged(value: String) {
+        validationDraft.changed()
         controller.onValidationTestUrlDraftChanged(value)
     }
 
     fun onValidationBatchSizeDraftChanged(value: String) {
+        validationDraft.changed()
         controller.onValidationBatchSizeDraftChanged(value)
     }
 
     fun onValidationSubscriptionRefreshConcurrencyDraftChanged(value: String) {
+        validationDraft.changed()
         controller.onValidationSubscriptionRefreshConcurrencyDraftChanged(value)
     }
 
     fun onValidationRetryCountDraftChanged(value: String) {
+        validationDraft.changed()
         controller.onValidationRetryCountDraftChanged(value)
     }
 
     fun onValidationActiveVerificationWindowSizeDraftChanged(value: String) {
+        validationDraft.changed()
         controller.onValidationActiveVerificationWindowSizeDraftChanged(value)
     }
 
     fun saveSubscriptionRefreshPolicy() {
-        launchMutation { effectSink.handleWithinMutation(controller.saveSubscriptionRefreshPolicy()) }
+        val token = refreshDraft.capture()
+        val resolution = MainCommandLogic.resolveSubscriptionRefreshPolicySave(controller.currentState())
+        val plan = resolution.getOrNull()
+        if (plan == null) {
+            launch { if (refreshDraft.isCurrent(token)) updateStatus(
+                resolution.exceptionOrNull()?.message ?: SettingsStatusMessages.refreshSettingsSaveFailed()) }
+            return
+        }
+        saveSettingsDraft(refreshDraft, token, mapOf(
+            "refresh.policy" to com.kardinal.vpncontrol.model.ControlValue.Text(when (plan.policy) {
+                SubscriptionRefreshPolicy.OFF -> "off"
+                SubscriptionRefreshPolicy.EVERY_HOUR -> "every-hour"
+                SubscriptionRefreshPolicy.CUSTOM -> "custom"
+            }),
+            "refresh.custom-hours" to com.kardinal.vpncontrol.model.ControlValue.DecimalValue(plan.resolvedHours),
+            "refresh.find-best-after-refresh" to com.kardinal.vpncontrol.model.ControlValue.BooleanValue(plan.findBestAfterRefresh),
+        ), plan.statusMessage) { controller.update { it.copy(showRefreshPolicyDialog = false) } }
     }
 
     fun saveValidationSettings() {
-        launchMutation { effectSink.handleWithinMutation(controller.saveValidationSettings()) }
+        val token = validationDraft.capture()
+        val plan = MainDraftLogic.resolveValidationSettingsSave(controller.currentState())
+        saveSettingsDraft(validationDraft, token, mapOf(
+            "validation.test-url" to com.kardinal.vpncontrol.model.ControlValue.Text(plan.settings.testUrl),
+            "validation.batch-size" to com.kardinal.vpncontrol.model.ControlValue.IntegerValue(plan.settings.batchSize.toLong()),
+            "validation.subscription-refresh-concurrency" to com.kardinal.vpncontrol.model.ControlValue.IntegerValue(plan.settings.subscriptionRefreshConcurrency.toLong()),
+            "validation.retry-count" to com.kardinal.vpncontrol.model.ControlValue.IntegerValue(plan.settings.retryCount.toLong()),
+            "validation.active-verification-window-size" to com.kardinal.vpncontrol.model.ControlValue.IntegerValue(plan.settings.activeVerificationWindowSize.toLong()),
+        ), plan.statusMessage) { controller.update { it.copy(showValidationSettingsDialog = false) } }
+    }
+
+    private fun saveSettingsDraft(
+        draft: AndroidSettingsDraftControl,
+        token: AndroidSettingsDraftControl.Token,
+        patch: Map<String, com.kardinal.vpncontrol.model.ControlValue>,
+        statusMessage: String,
+        closeDialog: () -> Unit,
+    ) {
+        val attempt = try { draft.prepareSave(patch) }
+        catch (_: OutOfMemoryError) {
+            launch { if (draft.isCurrent(token)) updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName) }
+            return
+        } catch (_: Exception) {
+            launch { if (draft.isCurrent(token)) updateStatus(com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN.wireName) }
+            return
+        }
+        launch {
+            if (!draft.isCurrent(attempt)) return@launch
+            val result = try { draft.save(attempt) }
+            catch (_: OutOfMemoryError) {
+                if (draft.isCurrent(attempt)) updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName)
+                return@launch
+            } catch (_: Exception) {
+                if (draft.isCurrent(attempt)) updateStatus(com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN.wireName)
+                return@launch
+            }
+            if (!draft.isCurrent(attempt)) return@launch
+            if (result.code != com.kardinal.vpncontrol.model.ControlCode.OK) {
+                updateStatus(result.code.wireName)
+                return@launch
+            }
+            if (!draft.complete(attempt)) return@launch
+            closeDialog()
+            updateStatus(statusMessage)
+        }
     }
 
     fun saveDns() {
-        launchMutation { effectSink.handleWithinMutation(controller.saveDns()) }
+        // Capture the clicked draft before launch; the typed owner owns the command lifetime.
+        val token = dnsDraft.capture()
+        val plan = MainDraftLogic.resolveDnsSave(controller.currentState()).getOrNull()
+        if (plan == null) {
+            launch {
+                if (dnsDraft.isCurrent(token)) updateStatus(SettingsStatusMessages.customDnsEndpointInvalid())
+            }
+            return
+        }
+        val attempt = try {
+            dnsDraft.prepareSave(plan.settings)
+        } catch (_: OutOfMemoryError) {
+            launch { if (dnsDraft.isCurrent(token)) updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName) }
+            return
+        } catch (_: Exception) {
+            launch { if (dnsDraft.isCurrent(token)) updateStatus(com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN.wireName) }
+            return
+        }
+        launch {
+            if (!dnsDraft.isCurrent(attempt)) return@launch
+            val result = try {
+                dnsDraft.save(attempt)
+            } catch (_: OutOfMemoryError) {
+                if (dnsDraft.isCurrent(attempt)) updateStatus(com.kardinal.vpncontrol.model.ControlCode.UNAVAILABLE.wireName)
+                return@launch
+            } catch (_: Exception) {
+                // Explicit retry retains the request; stale frontend completions never clear a newer draft.
+                if (dnsDraft.isCurrent(attempt)) updateStatus(com.kardinal.vpncontrol.model.ControlCode.OUTCOME_UNKNOWN.wireName)
+                return@launch
+            }
+            if (!dnsDraft.isCurrent(attempt)) return@launch
+            if (result.code != com.kardinal.vpncontrol.model.ControlCode.OK) {
+                updateStatus(result.code.wireName)
+                return@launch
+            }
+            if (!dnsDraft.complete(attempt)) return@launch
+            controller.update { it.copy(showDnsDialog = false) }
+            updateStatus(plan.statusMessage)
+        }
     }
 
     fun postStatus(message: String) {

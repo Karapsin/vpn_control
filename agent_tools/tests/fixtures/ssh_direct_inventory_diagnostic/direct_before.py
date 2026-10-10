@@ -89,10 +89,10 @@ def prepare(root,host,correlation_id,*,_private_capture=None):
     return channel._operate(root,host,correlation_id,True,_private_capture,direct=True)
 
 
-def status(root,host,correlation_id,*,_private_capture=None,_private_inventory_diagnostic=None):
+def status(root,host,correlation_id,*,_private_capture=None):
     if not coordinator_capable():return _unsupported()
     session,channel,_Held=_dependencies()
-    return channel._operate(root,host,correlation_id,False,_private_capture,_private_inventory_diagnostic,direct=True)
+    return channel._operate(root,host,correlation_id,False,_private_capture,direct=True)
 
 
 def route_options(root,host,correlation_id,receipt_sha256):

@@ -33,7 +33,83 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-10,20:37 Moscow
+## Current acceptance status — 2026-10-10,23:24 Moscow
+
+Delivered HEAD/origin/dev remain ed0ca9dd, product2.2.5. Root integrated the reviewed
+Android owner fixes into the intentional uncommitted product/tool bucket. Fresh
+canonical focused app tests/compile on original handle92945 are terminal PASS:
+594 tests, zero failures/errors/skips, and Kotlin compilation succeeded. Failed prepush91147
+is terminal and cannot be reused. Final metadata, complete prepush and a coherent
+checkpoint remain required; final exact-SHA five-workflow CI stays deferred.
+
+| Slice | Owner and actual state | Remaining gate |
+| --- | --- | --- |
+| Android product | Root integrated mode, DNS, subscription rename, refresh/validation, connection and diagnostics required owner ports. Draft successor97 and connection/diagnostics19 isolated checks pass without skips; subscription26 also passed. | Fresh canonical checks; API29/API35 installed GUI/CLI and matching MCP acceptance. |
+| Android native/tool | Original91655 remains a pre-effect local inventory refusal with underlying cause UNKNOWN. Fresh local acquisition passed. DIRECT diagnostic forwarding, exact ended-history bridge and portable discovery fixes are integrated. Canonical combined SSH152 and platform-contract12 checks pass; the executable manifest passes. | Honest changed-source enrollment, fresh SDK/resource admission and one authorized native proof. No original result is promoted or replayed. |
+| Windows | Sole secondary operator retains guest/route/SDK ownership. Root verified the full112-leaf backup/handback packet. Seven native return-gate cases passed; original normal update/return/input cleanup remain open. All prior SDK holders closed and route ENDED. | Next coherent source epoch, fresh admission, preserved base recovery, normal update and matching MCP checks. Cleanup wiring/PS5.1 coverage remain separate review gates. |
+| Full plan | Matrix remains0passed/2historical/20open. Linux/macOS, documents, lifecycle/broker, visuals and final exact-SHA workflows retain their scope. | Complete each original requirement; no release is authorized. |
+
+Root integration receipts under `.runtime/root-parity-continuation-22e9/`:
+`connection-diagnostics-root-integration-4eb4de3a-b52b-493a-a17b-ef9e524a858f/receipt.json`
+and `refresh-validation-root-integration-6de8bb7c-9274-4198-8e44-40e1274bb640/receipt.json`.
+DIRECT integration: `inventory-root-integration-fa96d901-5143-4690-97d9-08f718faa292/receipt.json`.
+Root verified exact proposed bodies, forward patches and original/final XML counts.
+Each candidate's historical build overlay remains identified separately from the
+later canonical joins. Protected Android bodies remain owner-only.
+
+## Historical acceptance status — 2026-10-10,22:47 Moscow
+
+Delivered HEAD/origin/dev remain ed0ca9dd, product2.2.5. The current Android
+product/tool bucket is uncommitted. Prepush91147 is terminal failed:6155 agent
+tests, one error,170 skips; the stale collector bridge pin rejected authentic
+current source. Only the first four commands ran. Its receipt cannot validate
+the current contents. The reviewed pin repair passes17 controls; combined
+canonical collector/bridge discovery passes41 with zero skips. Fresh complete
+prepush and version metadata remain required. Final five-workflow CI stays
+deferred until final delivery; no release is authorized.
+
+| Slice | Exclusive owner/environment | Verified state and remaining gate |
+| --- | --- | --- |
+| Windows | windows_secondary_operator; secondary AMD64 guest/route | Seven native return-gate cases passed; both MSI and six PE metadata observations completed. Engineering files are unsigned, not trusted-signature evidence. Full original209-file image,24 state files, five retained inputs and two protected job files are preserved. Baseline13252 refused before SSH/MSI submission; later same-builder62485 passed. Old2.2.5 remains installed; normal update/automatic return/input cleanup are open. Original1649 return remains FAILED and cleanup UNKNOWN. |
+| Windows/source handback | Windows sole operator | SDK86438 completed normally, same b753 route is ENDED and all six owned SDK actors and holders are closed. New native/route work needs the next coordinated source epoch and fresh admission. Cleanup tool wiring is under source review; no generic deletion is authorized. |
+| Android native proof | android_api35_operator; owned API35/protected programme | Original91655 refused before collector/SSH in local private-config inventory acquisition. Underlying original cause is UNKNOWN. Fresh canonical local inventory passed without route/native effects; sanitized diagnostic propagation is an isolated source proposal. No full proof or installer acceptance is inferred. |
+| Android product integration | root; canonical owner/draft ports | Mode and DNS owner fixes are integrated. DNS has3 authentic stale-save RED assertions plus5 lifetime RED assertions, then73 isolated GREEN and app compile. Subscription rename has2 original stale-target RED,6 lifetime RED and1 queued-opening feedback RED, then26 GREEN and app compile; its exact three paths and root-owned ViewModel join are integrated. Native GUI/CLI races and matching MCP acceptance remain open. |
+| Remaining Android owner gaps | windows_update_assembly; isolated refresh/validation candidate and sole host Gradle lane; android_integration_review; isolated connection/diagnostics candidate | Required typed-owner ports and causal coverage are being implemented. Root owns all canonical integration and ViewModel joins. One local Gradle invocation at a time; no native or route ownership is delegated to these source workers. |
+| Full plan | root | Latest actual matrix remains0passed/2historical/20open. Remaining API29/API35, Windows/Linux/macOS native/MCP, documents, lifecycle/broker, visuals and exact-final-SHA workflows retain their full scope. |
+
+Public evidence: Windows handback
+`.runtime/windows-secondary-acceptance/baseline-preserved-sdk-finish-2307d644-e2c5-405b-9557-44c31a050e42/handoff.json`
+(SHAd3c451e7); DNS final manifestee6a520b under
+`.runtime/windows-journal-binder-review/android-dns-draft-lifetime-candidate-7c3b2284-a245-4386-b60c-383b66af27b2/`;
+subscription successor manifest584cedd2 under
+`.runtime/windows-journal-binder-review/android-subscription-draft-successor-1e608c60-0ee7-45d5-af8b-2386fbc98362/`.
+Root integration receipts `dns-bridge-root-integration-e59cdff2-32dd-4a9e-b211-b9d5aeddb1fe.json`
+and `subscription-root-integration-fa5bbca6-4629-4df4-95f2-158e4f2ed365/receipt.json`
+are under `.runtime/root-parity-continuation-22e9/`. Protected Android bodies
+remain owner-only; packages and historical evidence retain their original source.
+
+## Historical acceptance status — 2026-10-10,21:48 Moscow
+
+Delivered HEAD/origin/dev are ed0ca9dd, product2.2.5. Its fresh prepush passed all15
+commands, including6150 agent tests/170 platform skips and the full mapped
+Gradle checks. Final five-workflow CI remains deferred until final delivery.
+The new Android-only product/collector bucket invalidates that receipt for new
+contents. No package or native evidence is relabelled and no release is authorized.
+
+| Slice | Exclusive owner/environment | Actual state and next gate |
+| --- | --- | --- |
+| Windows | windows_secondary_operator; secondary AMD64 guest/route/SDK | Exact portable.NETSDK10.0.400 archive is fully downloaded/hash-verified; isolated Limited-user seven-case task is prepared, not run. Prior PowerShell compiler rejection and failed automatic return1649 remain preserved. Next seven native cases, signatures, scoped baseline recovery and full normal update/return/cleanup. Existing845f package pair is engineering evidence. |
+| Android native proof | android_api35_operator; owned API35/source programme | Actual bounded Baseline+JDK-close completes26.88s with source closing/cleanup complete. Original full proof/restoration remains UNKNOWN. New ed0/8c full-proof preparation12960 is terminal0 with all source holders closed; native grant is still pending fresh source enrollment and a new Windows-owned SDK session. Root reads public summaries only. |
+| Android mode/collector integration | root; five canonical paths plus maintainer docs/metadata; host Gradle | Reviewed typed-owner mode fix integrated after2 genuine runtime RED assertions→31 isolated GREEN; canonical mode/settings checks and Kotlin compile PASS. Collector deadline API integrated after5 focused GREEN, canonical24 checks PASS. Native GUI pending mode and API-backed diagnostic/MCP equivalence remain required. |
+| Independent Android draft review | windows_update_assembly; new ignored candidate/public source only | Review next reachable opening epoch/revision gap from57-operation audit; no canonical writer, native/route/SDK or Gradle ownership. |
+| Full plan | root | Matrix0passed/2historical/20open remains incomplete. All remaining platform native/MCP, documents, lifecycle/broker, visuals and final exact-SHA workflows remain gates. |
+
+Root verified54 mode packet leaves,21 public source pins and13 collector packet
+leaves before integration. Source holders were explicitly handed back by both
+native operators; unchanged WindowsC# and SDK pins will be rebound to the actual
+new fingerprint. Historical evidence below remains intact.
+
+## Historical acceptance status — 2026-10-10,20:37 Moscow
 
 Delivered HEAD/origin/dev are845f896f, product2.2.5. That checkpoint passed all15
 fresh-process prepush commands, including6128 agent-tool tests with170 skips,

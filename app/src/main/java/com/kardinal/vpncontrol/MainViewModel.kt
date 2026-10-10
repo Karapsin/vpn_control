@@ -50,6 +50,12 @@ class MainViewModel internal constructor(
         launchMutation = ::launchMutationOrReportBusy,
     )
     private val profileActions = AndroidProfileActionsService(
+        renameDraft = AndroidSubscriptionRenameDraftControl(
+            controller, { _uiState.value }, commands::launch,
+            owner.storage::configurationSnapshot, owner.settingsControl::execute,
+            repository::updateStatus,
+            { source -> com.kardinal.vpncontrol.data.RemoteSourceResolver.preview(source)?.title },
+        ),
         controller = controller,
         stateProvider = { _uiState.value },
         effectSink = controllerEffectHandler,
@@ -74,8 +80,11 @@ class MainViewModel internal constructor(
     )
     private val connectionActions = AndroidConnectionActionsService(
         controller = controller,
-        connectionLifecycle = connectionLifecycle,
-        launchTrackedBusyOperation = ::launchTrackedBusyOperation,
+        observation = { owner.runtimeObserver.state.value },
+        launch = commands::launch,
+        snapshot = owner.storage::configurationSnapshot,
+        execute = owner.settingsControl::execute,
+        updateStatus = repository::updateStatus,
     )
     private val locationActions = AndroidLocationActionsService(
         guarded = AndroidGuiLocationActions(controller, { _uiState.value }, commands::launch,
@@ -118,6 +127,19 @@ class MainViewModel internal constructor(
         effectSink = controllerEffectHandler,
         launch = commands::launch,
         stopConnection = vpnManager::stop,
+        dnsDraft = AndroidDnsDraftControl(owner.storage::configurationSnapshot, owner.settingsControl::execute),
+        refreshDraft = AndroidSettingsDraftControl(owner.storage::configurationSnapshot, owner.settingsControl::execute),
+        validationDraft = AndroidSettingsDraftControl(owner.storage::configurationSnapshot, owner.settingsControl::execute),
+        commitAppMode = { mode ->
+            val captured = owner.storage.configurationSnapshot()
+            owner.settingsControl.execute(com.kardinal.vpncontrol.model.ControlRequest(
+                java.util.UUID.randomUUID().toString(), com.kardinal.vpncontrol.model.ControlCommand(
+                    com.kardinal.vpncontrol.model.ControlOperationId.SETTINGS_SET,
+                    mapOf("key" to com.kardinal.vpncontrol.model.ControlValue.Text("mode"),
+                        "value" to com.kardinal.vpncontrol.model.ControlValue.Text(
+                            if (mode == AppMode.VPN) "vpn" else "proxy-only"))),
+                controllerId = captured.controllerId, ifRevision = captured.revision))
+        },
         updateStatus = repository::updateStatus,
         updateSessionStatsEnabled = repository::updateSessionStatsEnabled,
         updateLiveTrafficStatsEnabled = repository::updateLiveTrafficStatsEnabled,
@@ -134,7 +156,9 @@ class MainViewModel internal constructor(
         launch = commands::launch,
         setBusy = ::setBusy,
         updateStatus = repository::updateStatus,
-        exportAndShare = diagnosticsExporter::exportAndShare,
+        snapshot = owner.storage::configurationSnapshot,
+        execute = owner.settingsControl::execute,
+        shareReport = diagnosticsExporter::shareCompletedReport,
     )
     private val updateActions = owner.updateActions
     private val routingExport = AndroidRoutingExportControl(com.kardinal.vpncontrol.data.AndroidConfigurationEpoch.id,

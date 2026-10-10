@@ -38,6 +38,10 @@ IMPORT_PROBES = (
 )
 METHOD_PROBES = (
     TestMethodProbe(
+        "agent_tools.tests.test_ssh_direct_inventory_diagnostic",
+        ("PortableInventoryImportTests.test_unsupported_import_and_discovery_skip_before_posix_dependencies",),
+    ),
+    TestMethodProbe(
         "test_macos_vm_resource_monitor",
         (
             "MonitorTest.test_transient_warning_does_not_stop_owned_vm",
@@ -288,7 +292,9 @@ def probe_import(path: Path, unavailable_modules: tuple[str, ...]) -> subprocess
 def probe_test_methods(probe: TestMethodProbe) -> subprocess.CompletedProcess[str]:
     methods = json.dumps(list(probe.methods))
     program = f'''import importlib
+import sys
 import unittest
+sys.path.insert(0, {str(ROOT)!r})
 module = importlib.import_module({probe.module!r})
 suite = unittest.TestLoader().loadTestsFromNames({methods}, module)
 result = unittest.TextTestRunner(verbosity=1).run(suite)

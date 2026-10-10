@@ -10,8 +10,6 @@ import com.kardinal.vpncontrol.model.AppMode
 import com.kardinal.vpncontrol.model.PersistedState
 import java.io.File
 import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -33,12 +31,8 @@ class DiagnosticsExporter(
             runCatching {
                 DiagnosticsLogger.append(context, "Preparing diagnostics export")
                 val state = storage.snapshot()
-                val exportDir = RuntimeFiles.diagnosticsExportDir(context).apply { mkdirs() }
-                val timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
-                .withZone(ZoneId.systemDefault())
-                .format(Instant.now())
-                val exportFile = File(exportDir, "vpn-control-diagnostics-$timestamp.txt")
-                exportFile.writeText(buildDiagnostics(state))
+                val exportFile = com.kardinal.vpncontrol.writeAndroidDiagnosticsReport(
+                    RuntimeFiles.diagnosticsExportDir(context), buildDiagnostics(state))
                 DiagnosticsLogger.append(context, "Diagnostics bundle written to ${exportFile.name}")
                 exportFile
             }.getOrThrow()
@@ -49,6 +43,21 @@ class DiagnosticsExporter(
         DiagnosticsLogger.append(context, "Diagnostics exported to ${exportFile.name}")
         exportFile
     }
+
+    /** GUI presentation consumes the exact typed owner's completed report. */
+    internal suspend fun shareCompletedReport(report: String): Result<File> =
+        com.kardinal.vpncontrol.shareCompletedAndroidDiagnosticsReport(report,
+            writeReport = { content -> withContext(Dispatchers.IO) {
+                DiagnosticsLogger.append(context, "Preparing diagnostics export")
+                com.kardinal.vpncontrol.writeAndroidDiagnosticsReport(
+                    RuntimeFiles.diagnosticsExportDir(context), content).also {
+                    DiagnosticsLogger.append(context, "Diagnostics bundle written to ${it.name}")
+                }
+            } },
+            openShare = { file ->
+                withContext(Dispatchers.Main) { share(file) }
+                DiagnosticsLogger.append(context, "Diagnostics exported to ${file.name}")
+            })
 
     private fun share(file: File) {
         val uri = FileProvider.getUriForFile(

@@ -131,7 +131,8 @@ object ControlSettingsLogic {
         }
         // Validate groups after all fields are applied: JSON object order must not matter.
         if (patch.keys.any { it.startsWith("dns.") }) {
-            val dns = SecureDnsEndpointParser.normalize(proposed.dnsSettings).getOrNull()
+            // Explicit DNS writes acknowledge the legacy raw-DNS migration notice.
+            val dns = SecureDnsEndpointParser.normalize(proposed.dnsSettings.copy(legacyRawAddress = "")).getOrNull()
                 ?: return ControlSettingsPlan.Rejected(ControlCode.INVALID_ARGUMENT, "dns.endpoint")
             proposed = proposed.copy(dnsSettings = dns)
         }

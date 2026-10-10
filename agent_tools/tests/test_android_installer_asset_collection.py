@@ -270,4 +270,117 @@ class Readiness(unittest.TestCase):
   self.assertIn('time.monotonic()+1250',base['_original_collect_source'])
   for name in ['REMOTE','ROOT_BOOT','STREAM_LIMIT','CHUNK']:self.assertEqual(base[name],old[name])
 
+
+class _DeadlineCapture:
+ """Create-only real owned files; no process/configuration authority."""
+ def __init__(self,path):
+  self.path=path
+  self.fd=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+  self.created=[]
+ def create(self,name,raw):
+  fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=self.fd)
+  try:
+   at=0
+   while at<len(raw):
+    count=os.write(fd,raw[at:])
+    if count<=0:raise ValueError('deadline_fixture_short_write')
+    at+=count
+   os.fsync(fd)
+  finally:os.close(fd)
+  self.created.append(name)
+  return {'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+ def close(self):os.close(self.fd)
+
+class _DeadlinePipeProcess:
+ """Inert Popen result backed by genuine owned pipes, never a child launch."""
+ def __init__(self):
+  self.input_fd,input_writer=os.pipe()
+  output_reader,output_writer=os.pipe()
+  error_reader,error_writer=os.pipe()
+  try:os.write(output_writer,b'PUBLIC_OUT')
+  finally:os.close(output_writer);os.close(error_writer)
+  self.stdin=os.fdopen(input_writer,'wb',buffering=0)
+  self.stdout=os.fdopen(output_reader,'rb',buffering=0)
+  self.stderr=os.fdopen(error_reader,'rb',buffering=0)
+  self.owned_fds=(self.input_fd,input_writer,output_reader,error_reader)
+  self.pid=424242
+  self.returncode=0
+  self.wait_timeouts=[]
+ def poll(self):return self.returncode
+ def wait(self,timeout):self.wait_timeouts.append(timeout);return self.returncode
+ def kill(self):raise AssertionError('completed inert process must not be killed')
+ def close(self):
+  for stream in (self.stdin,self.stdout,self.stderr):
+   if not stream.closed:stream.close()
+  os.close(self.input_fd)
+
+class DeadlineApi(unittest.TestCase):
+ def pipe_capability(self):
+  if not all(hasattr(os,name)for name in ('O_DIRECTORY','O_NOFOLLOW','set_blocking')):
+   self.skipTest('genuine owned pipe/directory descriptor capability unavailable')
+  reader,writer=os.pipe()
+  try:
+   try:ready=operator._select_ready([], [writer], [], 0)
+   except (OSError,ValueError):self.skipTest('genuine pipe readiness capability unavailable')
+   if ready[1]!=[writer]:self.skipTest('genuine pipe writable readiness unavailable')
+  finally:os.close(writer);os.close(reader)
+ def exercise(self,deadline,default=False):
+  self.pipe_capability()
+  base=operator.collector()if default else operator.collector(deadline_seconds=deadline)
+  from types import SimpleNamespace
+  with tempfile.TemporaryDirectory(prefix='collector-deadline-local-')as temp:
+   root=Path(temp).resolve();capture=_DeadlineCapture(root);process=_DeadlinePipeProcess()
+   popen=mock.Mock(return_value=process)
+   base['subprocess']=SimpleNamespace(Popen=popen,PIPE=subprocess.PIPE)
+   base['time']=SimpleNamespace(monotonic=lambda:100.0,time=lambda:200.0)
+   try:
+    raw=base['collect']({'argv':['declared-never-executed-child'],'capture':capture,'source':b'OWNED_SOURCE'},b'')
+    self.assertEqual(b'PUBLIC_OUT',raw)
+    popen.assert_called_once()
+    handle=json.loads((root/'handle.json').read_bytes())
+    self.assertIs(type(handle['deadlineSeconds']),int)
+    self.assertEqual(deadline,handle['deadlineSeconds'])
+    self.assertEqual([deadline],process.wait_timeouts)
+    self.assertEqual(b'OWNED_SOURCE',os.read(process.input_fd,65536))
+    self.assertEqual({'failure':None,'returncode':0},json.loads((root/'exit.json').read_bytes()))
+    self.assertEqual(0,json.loads((root/'stderr-manifest.json').read_bytes())['bytes'])
+    self.assertTrue(all(stream.closed for stream in (process.stdin,process.stdout,process.stderr)))
+   finally:process.close();capture.close()
+   for fd in (*process.owned_fds,capture.fd):
+    with self.assertRaises(OSError):os.fstat(fd)
+ def test_default_execution_and_retained_handle_share1250(self):
+  self.exercise(1250,default=True)
+ def test_short_execution_and_retained_handle_share60(self):
+  self.exercise(60)
+ def test_invalid_deadlines_refuse_before_process_or_capture(self):
+  values=(False,True,None,0,-1,1251,60.0,float('nan'),float('inf'),'60')
+  with mock.patch.object(subprocess,'Popen',side_effect=AssertionError('invalid deadline must not launch'))as child,\
+       mock.patch.object(operator.os,'open',side_effect=AssertionError('invalid deadline must not publish'))as publication:
+   for value in values:
+    with self.subTest(value=value),self.assertRaisesRegex(ValueError,'^asset_collector_deadline_unknown$'):
+     operator.collector(deadline_seconds=value)
+  self.assertEqual(0,child.call_count);self.assertEqual(0,publication.call_count)
+ def test_deadline_is_keyword_only_and_finite_integer_range(self):
+  with self.assertRaises(TypeError):operator.collector(60)
+  for value in (1,5,60,1250):
+   with self.subTest(value=value):
+    base=operator.collector(deadline_seconds=value)
+    self.assertIn('        deadline=time.monotonic()+'+str(value)+'\n',base['_original_collect_source'])
+    self.assertIn("'deadlineSeconds':"+str(value)+'}))',base['_original_collect_source'])
+ def test_default_frame_and_nondefault_full_inverse_preserve_templates_caps(self):
+  default=operator.collector();short=operator.collector(deadline_seconds=60)
+  embedded=ast.get_source_segment(operator.COLLECTOR_SOURCE,next(n for n in ast.parse(operator.COLLECTOR_SOURCE).body if isinstance(n,ast.FunctionDef)and n.name=='collect'))
+  expected=embedded.replace('select.select(','_select_ready(')
+  self.assertEqual(expected,default['_original_collect_source'])
+  self.assertEqual(operator.COLLECTOR_SOURCE_SHA256,hashlib.sha256(operator.COLLECTOR_SOURCE.encode()).hexdigest())
+  restored=short['_original_collect_source'].replace('        deadline=time.monotonic()+60\n','        deadline=time.monotonic()+1250\n').replace("'deadlineSeconds':60}))","'deadlineSeconds':1250}))")
+  self.assertEqual(expected,restored)
+  self.assertEqual(ast.dump(ast.parse(expected)),ast.dump(ast.parse(restored)))
+  rebuilt=dict(default)
+  exec(compile(expected,'<canonical-asset-selector-collector>','exec',dont_inherit=True),rebuilt)
+  self.assertEqual(default['collect'].__code__,rebuilt['collect'].__code__)
+  for name in ('_embedded_collect_source','_historical_collect_source','ROOT_BOOT','REMOTE','STREAM_LIMIT','CHUNK'):
+   self.assertEqual(default[name],short[name])
+  self.assertEqual(201326592,short['STREAM_LIMIT']);self.assertEqual(524288,short['CHUNK'])
+
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -1,5 +1,176 @@
 # Parity Failure-to-Regression Ledger
 
+## DIRECT inventory diagnostics and portable discovery — 2026-10-10
+
+Original Android91655 refused during local private-config inventory acquisition
+before SSH or collector submission. Its underlying cause remains UNKNOWN; a fresh
+local acquisition passed. The retained DIRECT consumer lost the existing sanitized
+inventory callback. One authentic missing-config assertion fails on the original
+whole retained builder; an unsupported new-keyword error is separate API evidence,
+not diagnostic-loss RED. A second genuine assertion reproduces the exact ended-history
+source transition refusing the callback-only DIRECT update. Their14 local controls
+pass after forwarding the callback and adding the finite reviewed predecessor bridge.
+Default route/raw bytes, every other source pin and terminal/READY custody remain
+checked. No original history is rewritten or native outcome promoted.
+
+Root review found eager Unix fixture imports before the new tests' Windows skip.
+The preserved module actually fails discovery with unavailable fcntl; the corrected
+module guards dependency imports, runs ten ordinary tests and skips nine Unix cases
+in the isolated unsupported-platform control. Stdlib bootstrap imports are accounted
+separately. The executable capability manifest includes that actual control. Its
+existing method executor also lacked the repository package import path: the same
+routine manifest-loop assertion fails on the preserved executor and passes after
+adding the root import path. All12 platform-contract tests and the complete manifest
+pass. Combined canonical DIRECT/fresh/history/selection/MCP-route/transport checks
+pass152 tests without skips. Ordinary discovery, prepush and Fast Checks retain them.
+
+Evidence: original public manifestc07de8af under
+`.runtime/android-e9ceb-timeout-diagnosis/inventory-propagation-072ffc78-3884-477a-8365-cf6b88ff2a99/`;
+portable successor manifestcc674258 under
+`.runtime/android-e9ceb-timeout-diagnosis/inventory-portability-successor-e8cf8f81-f0c7-4684-a700-ff0df255e59d/`.
+Root integration receipt `inventory-root-integration-fa96d901-5143-4690-97d9-08f718faa292/receipt.json`
+and executor causal logs are under `.runtime/root-parity-continuation-22e9/`.
+Fresh native source enrollment/admission, original Android proof and matching MCP
+acceptance remain required; these source-only controls confer no replay authority.
+
+## Android refresh/validation and queued settings saves — 2026-10-10
+
+Refresh and validation GUI saves previously bypassed the opening owner/revision.
+Their preserved original sources produce six stale-owner/revision/persistence
+assertion failures; an intermediate draft implementation produces four genuine
+late-completion lifetime failures. That reviewed predecessor passes88 isolated
+tests. Root review then identified queued-save invalidation and changed-input
+retry after response loss in refresh, validation and DNS. Nine additional assertions
+fail on the preserved predecessor: six closed/edited queued saves actually enter
+the owner and commit, and three changed-input retries submit a second request after
+the first request committed but its response was lost.
+
+The integrated successor rechecks the frontend attempt before owner execution.
+Within the same opening, an unresolved response pins the exact request: changed
+input reports UNKNOWN without dispatch, while an explicit unchanged retry recovers
+the retained result without a second transaction. Close/reopen creates a new local
+draft and captures a fresh snapshot; no automatic replay or persistent frontend
+draft recovery is claimed. All97 isolated tests pass without skips/errors, plus
+app compilation. These controls use real owner/jobs/ledger and DataStore on temporary
+files; Android scheduling, runtime and WorkManager seams remain explicit.
+
+Evidence: final manifest380dd2a4 and report472a94d1 under
+`.runtime/windows-journal-binder-review/android-draft-queued-uncertain-successor-fc85c377-cfc1-475c-90ce-7fbb720cea20/`.
+The runner used its preserved ViewModel overlay; root integrated four exact paths
+and the two required ViewModel owner ports afterward. Fresh canonical compilation
+and full prepush remain required. Ordinary app unit discovery runs all nine controls;
+API29/API35 GUI queue, response-loss and matching MCP cases remain native gates.
+
+## Android connection and diagnostics owner actions — 2026-10-10
+
+The authentic GUI OFF and diagnostics callbacks performed effects without entering
+the queryable owner ledger. Diagnostics also published private exception text and
+converted cancellation into a failure status. Four assertions fail on the preserved
+original services after successful compilation. The cancellation assertion concerns
+the published status; it does not establish a busy-cleanup failure in that original
+fixture. A separate prepared sharing boundary produced two cancellation assertion
+failures before its correction. Setup failures and the first candidate's incorrectly
+constructed runtime-uncertainty fixture are preserved separately, not causal RED.
+
+The integrated callbacks require typed owner ports and retain the exact request
+after a lost response or cancelled frontend wait. Connection admission uses observed
+runtime state and committed owner/revision; it takes no nested mutation lease.
+Diagnostics sharing consumes the completed owner's exact report through the existing
+exporter chooser, without collecting a second report. Existing report redaction and
+exportText remain unchanged. Cancellation propagates and frontend busy clears in
+finally. All19 isolated tests pass with zero skips/errors, and app compilation passes.
+The tests use production serializer/DataStore, owner ledger, jobs and runtime receipts,
+with declared consent/native/share seams and real temporary UTF-8 file writes.
+
+Evidence: manifest32a13d03 and report6a3e5ad0 under
+`.runtime/windows-journal-binder-review/android-gui-owner-actions-candidate-6b8860a9-6424-46f8-aaff-cf63a97fe03b/`.
+Root verified the patches and original/final XML counts before integrating eight
+source/test paths plus the ViewModel join. Ordinary app unit discovery and Fast Checks
+run these regressions. Installed GUI/CLI consent, runtime lifetime and diagnostics
+sharing, matching MCP retests and final delivery checks remain required.
+
+## Android DNS and subscription draft ownership — 2026-10-10
+
+DNS GUI saves lacked an opening owner epoch/revision and could overwrite CLI
+changes. A shared automatic-DNS update also retained a legacy migration notice.
+The authentic original sources produce three compiled assertion failures. The
+first candidate additionally produces five genuine asynchronous lifetime
+failures: close/reopen/edit and late opening responses affect newer input.
+The integrated successor captures opening/request identity before launch,
+routes saves through the typed owner and suppresses stale frontend projections.
+Explicit unchanged retry retains the accepted request; changed unknown input
+does not replay it. The real owner/jobs/storage tests and shared settings checks
+pass73 tests, zero skips, plus app compilation. Original failures and all phase
+sources remain under the DNS candidate leaf named in work-in-progress.md.
+
+Subscription rename previously wrote by URL without the opening revision or
+stable rendered ID. The authentic service overwrites a CLI name and a deleted/
+recreated replacement in two actual RED assertions. Six further candidate RED
+assertions establish late opening/error and accepted result feedback leaking into
+newer drafts; a seventh establishes queued validation publishing after an opening
+appears within the same generation. The integrated required owner port captures
+stable ID/epoch/revision and guards feedback by opening identity, generation and
+edits. Final26 checks pass without skips and compile succeeds. They use production
+AndroidSettingsControl, mutation jobs, ProfileStorage and serializer/DataStore;
+only Android directories, known stopped native observation and scheduling/response
+boundaries are seams. Existing app unit discovery/prepush/Fast Checks runs these
+tests. Native nondebuggable GUI/CLI and equivalent MCP scenarios remain open.
+
+Evidence: subscription successor manifest584cedd2 at
+`.runtime/windows-journal-binder-review/android-subscription-draft-successor-1e608c60-0ee7-45d5-af8b-2386fbc98362/manifest.json`;
+its nine-case failure-regression-ledger retains original assertions and all six
+terminal command phases. DNS final manifestee6a520b is at
+`.runtime/windows-journal-binder-review/android-dns-draft-lifetime-candidate-7c3b2284-a245-4386-b60c-383b66af27b2/final-manifest.json`.
+Canonical combined Gradle/prepush after integration remains a delivery gate.
+
+## Collector bridge full-module pin — 2026-10-10
+
+Prepush91147 completed6155 agent tests with one error and170 explicit platform
+skips, stopping before the remaining tier. The bridge still pinned collector
+da4eee30 after the reviewed deadline API changed the full module to c98a75ed.
+Genuine emission and the new regression fail on that preserved old pin. The
+one-literal repair passes17 focused controls; combined canonical collector/bridge
+discovery passes41, zero skips. Altered full-module bytes are refused through both
+entry points even when embedded templates are unchanged. Historical templates and
+default CodeType bytes remain equal. Ordinary agent discovery/prepush/Fast Checks
+runs the regression. The failed tier and old successful receipts cannot validate
+the integrated source; a fresh full tier remains required.
+
+Evidence: `.runtime/windows-journal-binder-review/collector-bridge-pin-repair-487ce7cf-9dad-4356-98c4-403051489f05/report.json`
+and original prepush capsule
+`.runtime/root-parity-continuation-22e9/android-mode-collector-prepush-07ce.json`.
+
+## Android live mode save and retained deadline — 2026-10-10
+
+The57-operation source audit found a reachable GUI mode save stopped the live
+connection before persistence, contrary to STATE-005. CLI settings already used
+the typed settings owner. The preserved original service compiles and fails two
+actual stop-count assertions; the owner-backed candidate passes31 unit tests
+with zero skips and Kotlin compilation. Root reviewed54 packet artifacts and21
+public source dependencies, then integrated the exact three proposed paths.
+The owner admits/persists the save, preserving active A and committed pending B;
+busy, stale revision, persistence failure and post-commit unknown state remain
+truthful. Native GUI callbacks, persistence and explicit restart are still open.
+
+The bounded Android Baseline diagnostic actually completed in26.88 seconds but
+its retained local handle claimed1250 seconds while execution used60. Original
+execution/receipt evidence is unchanged. The diagnostic adapter has one genuine
+metadata RED followed by two GREEN controls; canonical API-before errors are
+separate unsupported-keyword evidence. The new keyword-only collector deadline
+validates an exact integer1..1250 before effects and couples execution/handle
+metadata. Five API controls pass; full focused canonical discovery passes24.
+Default/template bytes and remote limits remain unchanged. Direct native use of
+the API and matching MCP scenario acceptance remain required.
+
+Evidence: ignored `android-mode-pending-candidate-c879f615-2583-4a8a-9d19-e7e0ac3d2128`
+under `.runtime/windows-journal-binder-review/`; deadline packets
+`retained-deadline-causal-10fdc8d3-1748-4ce3-997e-3a38cbc06327` and
+`collector-deadline-api-f8abc13d-60fb-459a-832e-9e1ee90fe7c4` under
+`.runtime/android-e9ceb-timeout-diagnosis/`. Root review
+`android-mode-collector-root-review-b33eea65-8971-4c8a-a963-fba6dcc9b5bb.json`
+under `.runtime/root-parity-continuation-22e9/` binds88 reviewed public leaves;
+protected programme/proof/credential bodies were not read.
+
 ## Completed DIRECT source history and READY custody — 2026-10-10
 
 SDK11015/11016 ended with failure before intent creation or SSH launch. The actual
