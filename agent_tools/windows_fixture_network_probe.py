@@ -737,9 +737,10 @@ def _current_binding(root: Path, request: Mapping[str, Any]) -> dict[str, Any]:
         os.close(lock)
     binding = _exact_binding(root, request, live, descriptor, pair, (socket, pid, ticks, sid))
     owner = owner_network.verified_owner_jvm_receipt(root, request["leaseId"])
+    if isinstance(owner, Mapping):
+        binding["ownerNetworkCorrelationId"] = owner.get("ownerNetworkCorrelationId")
+        binding["ownerLaunchReceiptSha256"] = owner.get("ownerLaunchReceiptSha256")
     _require_owner_jvm_receipt(request, binding, owner)
-    binding["ownerNetworkCorrelationId"] = owner["ownerNetworkCorrelationId"]
-    binding["ownerLaunchReceiptSha256"] = owner["ownerLaunchReceiptSha256"]
     return binding
 
 

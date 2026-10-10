@@ -352,3 +352,119 @@ class NetworkProbeTest(unittest.TestCase):
                 self.assertEqual(probe.start(root, REQUEST)["replayAllowed"], False)
                 admission.assert_not_called()
             self.assertEqual(probe.status(root, {"probeCorrelationId": CORR})["state"], "unknown")
+
+
+class CurrentBindingAdmissionTest(unittest.TestCase):
+    def owner_fixture(self):
+        # Reuse the real launch adapter's terminal validator and existing
+        # source-only fixture; this is not native owner/transport admission.
+        from agent_tools.tests import test_windows_fixture_owner_network as fixture
+        old, binding = fixture.REQUEST, fixture.BINDING
+        controller = "99999999-9999-4999-8999-999999999999"
+        record = {"schemaVersion": 1, "correlationId": old["ownerNetworkCorrelationId"],
+                  "oldOwnerPid": old["ownerPid"], "oldOwnerStartedAtUtc": old["ownerStartedAtUtc"],
+                  "oldControllerId": old["controllerId"], "newOwnerPid": 5321,
+                  "newOwnerStartedAtUtc": "2026-09-29T10:00:00Z", "newControllerId": controller,
+                  "originalSid": fixture.SID, "sessionId": 1, "limited": True,
+                  "cliSha256": binding["baseCliSha256"], "proxyHost": "127.0.0.1",
+                  "proxyPort": binding["serverPort"], "trustStoreSha256": binding["trustStoreSha256"],
+                  "runtimeOff": True, "launchSource": "limited-task-process-environment"}
+        observed = {"schemaVersion": 1, "correlationId": old["ownerNetworkCorrelationId"],
+                    "record": record, "taskState": "AbsentCleaned", "taskExitCode": 0,
+                    "cleanupProofSha256": "9" * 64, "ownerPid": record["newOwnerPid"],
+                    "ownerStartedAtUtc": record["newOwnerStartedAtUtc"], "controllerId": controller,
+                    "originalSid": fixture.SID, "sessionId": 1, "activeProcessCount": 0}
+        owner = owner_network._validate_terminal(old, binding, observed, fixture.PROVENANCE)
+        request = {**REQUEST, "probeCorrelationId": "88888888-8888-4888-8888-888888888888",
+                   "ownerPid": owner["ownerPid"],
+                   "ownerStartedAtUtc": owner["ownerStartedAtUtc"], "controllerId": owner["controllerId"]}
+        return request, owner
+
+    def providers(self, root, request, owner, receipt):
+        # Redirect only inventory/native providers. _current_binding,
+        # _exact_binding, _campaign_identity and the strict validator are real.
+        from contextlib import ExitStack
+        guest = ("windows-cp117", owner["socketPath"], owner["qemuPid"],
+                 owner["startTicks"], owner["originalSid"])
+        pair = {key: BINDING[key] for key in
+                ("targetVersion", "targetMsiSha256", "targetMsiSize", "baseCliSha256")}
+        live = {**{key: request[key] for key in
+                   ("leaseId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId",
+                    "targetMsiArtifactId", "stageCorrelationId", "serverCorrelationId")},
+                **{key: owner[key] for key in ("socketPath", "qemuPid", "startTicks", "liveReceiptSha256")},
+                **{key: BINDING[key] for key in ("serverInstanceId", "manifestSha256",
+                   "manifestBuildNumber", "peerCertificateSha256")},
+                **pair, "serverReady": True, "serverPort": owner["ownerJvmProxyPort"]}
+        trusted = {"peerCertificateSha256": live["peerCertificateSha256"],
+                   "trustStoreSha256": owner["ownerJvmTrustStoreSha256"],
+                   "provisionId": BINDING["credentialProvisionId"]}
+        campaign = {"identity": probe.base._campaign_identity(
+                        {**request, "correlationId": request["leaseId"]}, guest),
+                    "server": "live", "credentials": "ready", "state": "active", "role": None}
+        stack = ExitStack()
+        for subject, name, kwargs in (
+            (probe.base, "_descriptor", {"return_value": (object(), object(), guest)}),
+            (probe.public, "_admit_pair", {"return_value": pair}),
+            (probe.server, "verified_live_receipt", {"return_value": live}),
+            (probe.credentials, "verified_descriptor", {"return_value": trusted}),
+            (probe.lease, "_locked", {"side_effect": lambda *_: (root, os.open(os.devnull, os.O_RDONLY))}),
+            (probe.lease, "_active", {"return_value": campaign}),
+            (probe.base, "_campaign_remote", {"return_value": object()}),
+            (probe.lease, "_remote_confirm", {"return_value": True}),
+            (probe.stage, "status", {"return_value": {"state": "staged-not-server-ready"}}),
+            (probe.owner_network, "verified_owner_jvm_receipt", {"return_value": receipt}),
+            (probe.base, "_remote", {"side_effect": AssertionError("no native dispatch")}),
+        ):
+            stack.enter_context(patch.object(subject, name, **kwargs))
+        return stack
+
+    def test_public_start_joins_actual_owner_receipt_before_strict_binding_validation(self):
+        request, owner = self.owner_fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with self.providers(root, request, owner, owner), \
+                 patch.object(probe, "_submit_candidate", return_value={"state": "inert-boundary"}) as submit:
+                self.assertEqual("inert-boundary", probe.start(root, request)["state"])
+                actual_root, actual_request, binding, trust = submit.call_args.args
+                self.assertEqual(root.resolve(), actual_root)
+                self.assertEqual(request, actual_request)
+                self.assertEqual(owner["ownerNetworkCorrelationId"], binding["ownerNetworkCorrelationId"])
+                self.assertEqual(owner["ownerLaunchReceiptSha256"], binding["ownerLaunchReceiptSha256"])
+                self.assertEqual(owner["ownerPid"], binding["ownerPid"])
+                self.assertEqual(probe._ROOT + r"\mcp-update-credentials-" + STAGE + r"\fixture-trust.p12", trust)
+                self.assertEqual(1, submit.call_count)
+                self.assertIsNone(probe._read_intent(root, request["probeCorrelationId"]))
+
+    def test_missing_bad_or_mismatched_verified_owner_refuses_before_intent_or_submission(self):
+        request, owner = self.owner_fixture()
+        invalid = [None, {}, {key: value for key, value in owner.items() if key != "ownerNetworkCorrelationId"},
+                   {key: value for key, value in owner.items() if key != "ownerLaunchReceiptSha256"}]
+        invalid.extend({**owner, field: value} for field, value in (
+            ("ownerNetworkCorrelationId", request["probeCorrelationId"]), ("ownerNetworkCorrelationId", "not-a-uuid"),
+            ("ownerLaunchReceiptSha256", "short"), ("ownerJvmNetworkVerified", True),
+            ("ownerPid", owner["ownerPid"] + 1), ("ownerJvmPid", owner["ownerJvmPid"] + 1),
+            ("ownerStartedAtUtc", "2026-09-29T11:00:00Z"),
+            ("ownerJvmStartedAtUtc", "2026-09-29T11:00:00Z"), ("controllerId", LEASE),
+            ("sourceSha", "0" * 40), ("fixtureReceiptArtifactId", "sha256-" + "0" * 64),
+            ("targetMsiArtifactId", "sha256-" + "0" * 64), ("originalSid", "S-1-5-18"),
+            ("socketPath", "/foreign/cp117.sock"), ("qemuPid", owner["qemuPid"] + 1),
+            ("startTicks", owner["startTicks"] + 1), ("ownerJvmProxyPort", 1),
+            ("ownerJvmTrustStoreSha256", "0" * 64), ("liveReceiptSha256", "0" * 64)))
+        for index, receipt in enumerate(invalid):
+            with self.subTest(index=index), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                with self.providers(root, request, owner, receipt), patch.object(probe, "_submit_candidate") as submit:
+                    with self.assertRaises(probe.WindowsFixtureNetworkProbeError):
+                        probe.start(root, request)
+                    submit.assert_not_called()
+                    self.assertIsNone(probe._read_intent(root, request["probeCorrelationId"]))
+
+    def test_request_cannot_author_launch_receipt_fields(self):
+        request, owner = self.owner_fixture()
+        for field in ("ownerNetworkCorrelationId", "ownerLaunchReceiptSha256"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp, \
+                 patch.object(probe, "_current_binding") as binding, patch.object(probe, "_submit_candidate") as submit:
+                with self.assertRaises(probe.WindowsFixtureNetworkProbeError):
+                    probe.start(tmp, {**request, field: owner[field]})
+                binding.assert_not_called()
+                submit.assert_not_called()

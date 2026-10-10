@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Cover current Android owner factory source binding with portable causal regressions.
 - Make fresh nested SSH channels explicitly selectable and keep POSIX Android evidence tests out of Windows packaging.
 - Reuse pinned immutable Android JDK preparation and align SSH close admission with the reviewed transport.
+- Join verified Windows owner receipt identities before network probe admission.
 
 ## 2.2.4 - 2026-10-08
 

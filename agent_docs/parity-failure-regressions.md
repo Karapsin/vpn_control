@@ -1,5 +1,31 @@
 # Parity Failure-to-Regression Ledger
 
+## Windows verified owner receipt call order — 2026-10-10
+
+Independent preparation review found a deterministic admission failure before
+the next native network probe: public `start` called the real current binding
+and strict owner validator before joining two fields from the separately
+verified owner launch receipt. The preserved original and the new canonical
+test both fail with `KeyError: ownerNetworkCorrelationId`. Join only those two
+verified fields before the unchanged validator. Missing, malformed, mismatched
+and caller-authored receipts still refuse before intent or submission.
+
+The canonical probe and owner suites pass30 tests with zero skips, including
+23 invalid verified-receipt cases and two caller-authored-field refusals. Three
+new tests live in the existing discovery module; the original tests remain an
+exact byte prefix. Production changes are restricted to that one binding block.
+Evidence and beforeimages: `.runtime/windows-network-binding-fix/report.json`
+(SHAc236beee), `root-canonical-red.stderr`, `root-canonical-green.stderr` and
+`root-integration-review.json` (SHAaa2238b0). Independent review is clear.
+This is a composition regression, not native owner or transport acceptance.
+
+Native preparation must explicitly launch an ordinary-user owner after base
+installation; public status does not create one. The existing owner-network
+workflow then replaces that admitted OFF owner with scoped JVM settings.
+Use its newly observed PID, birth and controller for the network probe, which
+must earn its own fresh server-event receipt before target/public admission.
+Historical fixed-version owner relaunch evidence cannot authorize a new pair.
+
 ## SSH close dependency enrollment and Android JDK caller — 2026-10-10
 
 The complete managed prepush2749 preserved32 failing events in the existing

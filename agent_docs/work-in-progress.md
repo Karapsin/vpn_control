@@ -33,7 +33,32 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-10,02:00 Moscow
+## Current acceptance status — 2026-10-10,02:43 Moscow
+
+Checkpoint `2743200799f6fb73f38d60d38b2f21afc838d310` is pushed to dev,
+product2.2.4. Its content-bound prepush passed all15 commands, including6090
+agent tests with170 explicit skips and the requested Gradle selection. Exact-SHA
+CI remains deferred to the final delivery. The goal is incomplete.
+
+| Slice | Exclusive owner | Current evidence and next gate |
+| --- | --- | --- |
+| Windows MSI pair | windows_operator; sole Pi/Arch/Windows operator | Fresh correlation4f12258b-fa45-4636-827c-20909d75ae72 submitted exact-source274320 pair2.2.3/2.2.4 once; hosted run38005503009 is in progress. Dispatch and source closure passed; same connection positively ended. Await accepted artifacts before installation. |
+| Windows native preparation | windows_operator; owned ignored handoff and launch recipe | Explicit ordinary-user launch, owner-network replacement identities and fresh network receipt ordering are now documented. No installer started. Accepted pair and current guest/owner/server admission remain required. |
+| Network receipt repair | root; probe, existing test module, ledger and metadata only | Canonical public-start regression reproduced the missing-field KeyError before repair. Exact one-block fix and30 focused tests pass, zero skips; independent review clear. Final metadata and fresh prepush remain required. |
+| Android connection infrastructure | windows_operator; owned direct SDK candidate | Genuine FIRST_READY under the real1800-second keeper, normal owned finish, same-correlation ENDED and all229 held descriptors closed. Two actual causal controls and three hermetic controls pass. This proves infrastructure only; full native collector remains unsubmitted. |
+| Android source and MCP integration review | android_api35_operator; ignored read-only report only | Genuine LOCAL source5194 passed with original terminal0 and all holders closed. Direct keeper integration review is source-only; canonical default/legacy selection and complete fixed source inventories must be preserved. Fresh source-bound native admission remains required. |
+| Remaining acceptance | root with platform owners | Windows/Android native product scenarios, then Linux/macOS, visuals, matrix reconciliation and final five-workflow exact-SHA verification remain open. Engineering artifacts retain original provenance. |
+
+Delivery evidence:
+`.runtime/root-parity-integration-fa689a61-ea3a-4f73-92a2-209b7ecf3f5d/combined-tooling-delivery-evidence.json`
+(SHA7c1144b9). Windows dispatch:
+`.runtime/parity-evidence/windows-mcp-pair-2931a2deb178456991a8db2e8cb297f8/public.json`
+(SHA9aa76fc1). Direct keeper proof:
+`.runtime/android-direct-provider-keeper-842a/infrastructure-closeout.json`
+(SHA528282de). Network regression evidence is indexed in the failure ledger.
+No historical unknown operation or consumed correlation was replayed.
+
+## Historical acceptance status — 2026-10-10,02:00 Moscow
 
 Delivered HEAD and origin/dev remain `68397817fabf1eef9a06e79958649240ed59645a`,
 product2.2.4. The next intentional tooling checkpoint spans the reviewed direct
