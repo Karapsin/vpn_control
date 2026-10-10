@@ -124,10 +124,11 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(0o600,Path(result['path']).stat().st_mode&0o777)
 
     def test_current_binding_and_source_refusal_precedes_large_child(self):
-        self.assertEqual(40,len(bundle.FILES));self.assertEqual(40,len(set(bundle.FILES)))
+        self.assertEqual(41,len(bundle.FILES));self.assertEqual(41,len(set(bundle.FILES)))
+        self.assertIn('agent_tools/android_api35_coldboot_product_observation.py',bundle.FILES)
         self.assertEqual(bundle.FILES,_fixture_catalogue(bundle.FILES))
         historical=tuple(name for name in bundle.FILES if name not in EXTRA)
-        self.assertEqual(37,len(historical));self.assertEqual(set(bundle.FILES),set(_fixture_catalogue(historical)))
+        self.assertEqual(38,len(historical));self.assertEqual(set(bundle.FILES),set(_fixture_catalogue(historical)))
         backend,request,_,log=self.fixture()
         request['device']='android-api35'
         with self.assertRaises(ValueError):backup.create(self.case.receipt,backend,request)
@@ -206,7 +207,7 @@ class BackupTests(unittest.TestCase):
         backend['LAUNCH'].update(device='api35',port=5682);backend['EXTERNAL']['serial']='emulator-5682'
         path=self.case.root/'proc/18/cmdline';path.write_bytes(path.read_bytes().replace(b'5684',b'5682'))
         selected=bundle.modules(self.case.receipt);transport=selected['transport'];reader=transport.readonly
-        raw_sources=(transport.REMOTE+transport._bounded_source(),reader.getter_source._GETTER.replace('__GETTER__',repr({})),
+        raw_sources=(transport.REMOTE+transport._bounded_source(),selected['getter_api35']._GETTER.replace('__GETTER__',repr({})),
                      reader.getter_source.coldboot._BOOT.replace('__LAUNCH__',repr({})),reader.proven._REMOTE.replace('__EXTERNAL__',repr({})))
         names={'component_command','command_binary','command_request','command_host_identity','command_host_guard','command_bounded',
                'getter_stage','child_identity','session_guest','qemu_fact','external_file','external_jdk','external_jdk_guard'}

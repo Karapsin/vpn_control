@@ -291,7 +291,8 @@ else:raise SystemExit(94)
         backend,request,_,log=helper.fixture()
         # Real production FILES and importer, with only the process limit/UID
         # OS assembly seam from the standalone helper fixture.
-        self.assertEqual(40,len(bundle.FILES))
+        self.assertEqual(41,len(bundle.FILES))
+        self.assertIn('agent_tools/android_api35_coldboot_product_observation.py',bundle.FILES)
         if os.getuid()!=0:
             with self.assertRaisesRegex(ValueError,'routing_backup_root_required'):
                 bundle.routing_backup(self.receipt,backend,request)
@@ -765,7 +766,65 @@ else:
         args.intent_file.write_text(json.dumps(intent))
         lease=self.root/'android-native-device-android-api29.lease';value=json.loads(lease.read_bytes());value['device']='android-api35'
         lease.unlink();lease=self.root/'android-native-device-android-api35.lease';lease.write_text(json.dumps(value));lease.chmod(0o600)
+        self.actual_factory_functions(backend,'api35')
         return selected,backend,args,state_path,log,stage,jdk
+
+
+    def test_fixed_device_getter_sources_pass_complete_contexts(self):
+        selected,backend,*_=self.fixture()
+        self.actual_factory_functions(backend,'api29')
+        bundle._selected_modules(self.receipt,selected)
+        bundle._guard_backend(selected,backend,'api29')
+        self.actual_factory_functions(backend,'api35')
+        bundle._selected_modules(self.receipt,selected)
+        try:bundle._guard_backend(selected,backend,'api35')
+        except ValueError as error:self.fail('actual complete API35 factory refused: '+str(error))
+
+    def test_fixed_device_getter_rejects_foreign_device_function(self):
+        selected,backend,*_=self.fixture()
+        self.actual_factory_functions(backend,'api35')
+        analog=selected['transport'].readonly.getter_source._GETTER.replace('__GETTER__',repr({}))
+        node=next(node for node in ast.parse(analog).body if isinstance(node,ast.FunctionDef)and node.name=='getter_stage')
+        code=compile(selected['adapter'].production_imports('api35')+ast.unparse(ast.Module(body=[node],type_ignores=[])), '<foreign-api29-getter>', 'exec',dont_inherit=True)
+        function=next(value for value in code.co_consts if isinstance(value,types.CodeType)and value.co_name=='getter_stage')
+        backend['getter_stage']=types.FunctionType(function,backend)
+        with self.assertRaisesRegex(ValueError,'fixed_backend_required:getter_stage'):
+            bundle._guard_backend(selected,backend,'api35')
+
+    def test_fixed_device_getter_rejects_unauthorized_function(self):
+        selected,backend,*_=self.fixture()
+        self.actual_factory_functions(backend,'api35')
+        code=compile('def getter_stage():return {}','<unauthorized-getter>','exec',dont_inherit=True)
+        function=next(value for value in code.co_consts if isinstance(value,types.CodeType))
+        backend['getter_stage']=types.FunctionType(function,backend)
+        with self.assertRaisesRegex(ValueError,'fixed_backend_required:getter_stage'):
+            bundle._guard_backend(selected,backend,'api35')
+
+    def test_fixed_device_getter_rejects_unstaged_module(self):
+        selected,_,*_=self.fixture()
+        source=selected.get('getter_api35')
+        self.assertIsNotNone(source)
+        foreign=types.ModuleType('unstaged_getter');foreign.__dict__.update(source.__dict__)
+        foreign.__file__=str(self.root/'outside-getter.py');selected['getter_api35']=foreign
+        with self.assertRaisesRegex(ValueError,'component_guard_unstaged_module'):
+            bundle._selected_modules(self.receipt,selected)
+
+    def test_fixed_device_getter_rejects_foreign_module_globals(self):
+        selected,_,*_=self.fixture()
+        source=selected.get('getter_api35')
+        self.assertIsNotNone(source)
+        foreign=types.ModuleType('foreign_getter_globals');foreign.__dict__.update(source.__dict__)
+        selected['getter_api35']=foreign
+        with self.assertRaisesRegex(ValueError,'installer_adapter_hook_changed'):
+            bundle._selected_modules(self.receipt,selected)
+
+    def test_fixed_device_getter_rejects_mutated_template(self):
+        selected,_,*_=self.fixture()
+        source=selected.get('getter_api35')
+        self.assertIsNotNone(source)
+        source._GETTER+='\ndef arbitrary_replacement():return 1\n'
+        with self.assertRaisesRegex(ValueError,'component_guard_getter_source_changed'):
+            bundle._selected_modules(self.receipt,selected)
 
     def test_actual_both_complete_factory_contexts_current_guard_and_lifecycle(self):
         # Both actual full programs authenticate all thirteen real function bodies.

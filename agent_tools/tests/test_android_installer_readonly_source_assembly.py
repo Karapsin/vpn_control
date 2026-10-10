@@ -448,6 +448,33 @@ class RoutineSourceTests(unittest.TestCase):
         finally:
             fixture.close()
 
+    def test_current_owner_identity_matches_authenticated_pre_streaming_emission(self):
+        old_owner=(ASSETS/'owner-api35-before-streaming.source').read_bytes()
+        self.assertEqual(sha(old_owner),'3588b0abd238cd594df0bad1cb0bb1b296c5ade4a9330b47f1f66abcd4a6462c')
+        expected=assembly.assignment(ast.parse(old_owner),'FIXED_GENERATION')
+        self.assertEqual(expected,assembly.assignment(ast.parse(RAW['owner']),'FIXED_GENERATION'))
+        retained=('LAUNCH='+repr(dict(qemuPath='/own-synthetic-uninvoked-qemu',
+            avd=expected['device']['bootAvd'],port=5682))+'\nGETTER='+repr(dict(generation=expected))+'\n').encode()
+        legacy=vars(assembly).copy()
+        legacy['SOURCE_PINS']=dict(assembly.SOURCE_PINS,owner=sha(old_owner),retained=sha(retained))
+        old_emit=types.FunctionType(assembly.emit_identity.__code__,legacy)
+        before=old_emit(RAW['coldboot'],RAW['census'],old_owner,retained,OWN_BODY)
+        current=vars(assembly).copy()
+        current['SOURCE_PINS']=dict(assembly.SOURCE_PINS,retained=sha(retained))
+        current_emit=types.FunctionType(assembly.emit_identity.__code__,current)
+        after=current_emit(RAW['coldboot'],RAW['census'],RAW['owner'],retained,OWN_BODY)
+        self.assertEqual(before,after)
+
+    def test_current_owner_source_byte_and_generation_mutations_refuse(self):
+        expected=assembly.assignment(ast.parse(RAW['owner']),'FIXED_GENERATION')
+        retained=('LAUNCH='+repr(dict(qemuPath='/own-synthetic-uninvoked-qemu',
+            avd=expected['device']['bootAvd'],port=5682))+'\nGETTER='+repr(dict(generation=expected))+'\n').encode()
+        scope=vars(assembly).copy();scope['SOURCE_PINS']=dict(assembly.SOURCE_PINS,retained=sha(retained))
+        emit=types.FunctionType(assembly.emit_identity.__code__,scope)
+        for foreign in (RAW['owner']+b'\n',RAW['owner'].replace(b"'sdk': '35'",b"'sdk': '29'",1)):
+            with self.subTest(hash=sha(foreign)),self.assertRaisesRegex(ValueError,'identity_fixed_source_changed'):
+                emit(RAW['coldboot'],RAW['census'],foreign,retained,OWN_BODY)
+
     def test_identity_exact_byte_and_ast_inverse(self):
         current = RAW['identity'].decode()
         self.assertEqual(current.count(ROOT_INSERT), 1)

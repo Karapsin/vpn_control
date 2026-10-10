@@ -18,7 +18,7 @@ class AdmissionTests(unittest.TestCase):
   self.selected,self.backend,self.args,self.state,self.log,_,_=self.helper.api35_fixture()
   context=self.selected['adapter'].production_imports('api35')
   transport=self.selected['transport'];reader=transport.readonly
-  fragments=[transport.REMOTE+'\n'+transport._bounded_source(),reader.getter_source._GETTER.replace('__GETTER__','{}'),reader.getter_source.coldboot._BOOT.replace('__LAUNCH__','{}'),reader.proven._REMOTE.replace('__EXTERNAL__','{}')]
+  fragments=[transport.REMOTE+'\n'+transport._bounded_source(),self.selected['getter_api35']._GETTER.replace('__GETTER__','{}'),reader.getter_source.coldboot._BOOT.replace('__LAUNCH__','{}'),reader.proven._REMOTE.replace('__EXTERNAL__','{}')]
   names={'component_command','command_binary','command_request','command_host_identity','command_host_guard','command_bounded','getter_stage','child_identity','session_guest','qemu_fact','external_file','external_jdk','external_jdk_guard'}
   code=compile(context+'\n'+ast.unparse(ast.Module(body=[n for fragment in fragments for n in ast.parse(fragment).body if isinstance(n,ast.FunctionDef) and n.name in names],type_ignores=[])),'<actual-api35-fixed-readers>','exec',dont_inherit=True)
   for value in code.co_consts:

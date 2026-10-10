@@ -21,7 +21,7 @@ class ActualApi35(phase.InstallerPhaseGuardTests):
         self.selected, self.backend, self.args, self.state_path, self.log, _, _ = self.fixture.api35_fixture()
         t = self.selected['transport']
         r = t.readonly
-        sources = [t.REMOTE + t._bounded_source(), r.getter_source._GETTER.replace('__GETTER__', repr({})), r.getter_source.coldboot._BOOT.replace('__LAUNCH__', repr({})), r.proven._REMOTE.replace('__EXTERNAL__', repr({}))]
+        sources = [t.REMOTE + t._bounded_source(), self.selected['getter_api35']._GETTER.replace('__GETTER__', repr({})), r.getter_source.coldboot._BOOT.replace('__LAUNCH__', repr({})), r.proven._REMOTE.replace('__EXTERNAL__', repr({}))]
         names = {'component_command', 'command_binary', 'command_request', 'command_host_identity', 'command_host_guard', 'command_bounded', 'getter_stage', 'child_identity', 'session_guest', 'qemu_fact', 'external_file', 'external_jdk', 'external_jdk_guard'}
         nodes = [n for source in sources for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name in names]
         code = compile(self.selected['adapter'].production_imports('api35') + ast.unparse(ast.Module(body=nodes, type_ignores=[])), '<canonical-api35-composition>', 'exec', dont_inherit=True)

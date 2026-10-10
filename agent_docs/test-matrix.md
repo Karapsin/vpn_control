@@ -35,6 +35,45 @@ recovery and equivalent MCP scenarios as separate acceptance gates.
 
 ## Native orchestration regressions
 
+`test_android_api35_getter_streaming.py` runs in ordinary agent-tool discovery,
+managed prepush and Fast Checks. Seven real owned-file controls cover full-byte
+hashing without retained bodies, bounds, mutation refusal, parent cleanup and
+the actual public diagnostic/alias wrapper composition. UID and unrelated alias
+fixtures are synthetic; native Android proof and update acceptance remain open.
+POSIX descriptor cases skip explicitly when required APIs are absent.
+
+`test_android_installer_component_bundle.py` also discovers six device-getter
+join controls: complete API29/API35 contexts pass, while foreign-device code,
+unauthorized functions, unstaged modules, foreign globals and altered templates
+refuse. Run these with the three complete-context selectors and the streaming
+module after a getter change. Bundle constructor green does not establish native
+Android state restoration, installation or MCP scenario acceptance.
+
+Getter changes also require the complete outer-transport and JDK-source-context
+modules, plus `test_android_installer_readonly_source_assembly.py`. The latter
+retains the authentic old owner fixture and compares old/current identity
+emission, while source-byte and generation mutations still refuse. These tests
+run in ordinary agent-tool discovery and Fast Checks. Generated native backend
+binders are separate consumers and must select the same authenticated device
+template; unit success does not close their native proof.
+
+`test_android_native_backend_binding.py` runs six routine controls over the
+complete emitted binder and the same strict API35 guard, with actual staged
+public source and owned files. Authentic before/after fixtures retain the native
+consumer failure; foreign functions/globals/modules/templates still refuse and
+API29 remains unchanged. Run both its module and pattern-restricted discovery
+after binder edits to verify exactly six controls, without importing the helper
+fixture's tests into discovery. POSIX cases skip honestly on other systems.
+Owner-admission, routing-backup and packaged-reader tests must also use their
+authentic current or historical catalogue, rather than rebasing old receipts.
+
+`test_android_avd_launch_recovery.py` is another complete factory consumer.
+Its API35 selection must use the staged authenticated getter while preserving
+all13 backend names and28 profiled checks. Run its complete module after getter
+changes; ordinary agent-tool discovery and Fast Checks already include it.
+Historical command source remains intact. This consumer check does not establish
+native timeout recovery, remote process closure or update acceptance.
+
 `test_android_installer_jdk_source_context.py` runs in ordinary agent-tool
 discovery, managed prepush and Fast Checks. Its synthetic-principal descriptor
 fixture stabilizes only external ancestors' volatile directory metadata; actual

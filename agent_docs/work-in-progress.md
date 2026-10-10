@@ -33,7 +33,154 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-10,09:27 Moscow
+## Current acceptance status — 2026-10-10,14:00 Moscow
+
+Delivered HEAD/origin/dev remain `cbee6e6e1b1a888e6c47964fe3c6418fd11420ef`,
+product2.2.5. Root owns the coherent Android tool/test compatibility bucket and
+metadata; retained packages keep their original cbee provenance. Full parity is
+incomplete. Both native operators have released source holders, permitting the
+final reviewed test repair. Freeze a new source fingerprint after final metadata;
+no native command may use the superseded daaf epoch.
+
+| Slice | Exclusive owner/environment | Actual evidence and next gate |
+| --- | --- | --- |
+| Windows normal update | windows_secondary_operator; secondary Windows guest and shared SSH route | Fourth request042e is terminalCANCELLED130/NOT_STARTED, installed=false/cleanupOK; strict input refused before sending any keys after a fresh screenshot showed the prompt absent. Root verifies103 evidence bodies and opens both actual screenshots. Four normal attempts have not proved installation. Prearmed prompt chain has17 local passes/68 sealed leaves; fifthf386 remains unsubmitted pending new source binding and fresh guest/owner/cache/resource checks. |
+| Windows prompt cause | source review by windows_denial_cleanup; no native ownership | No application-controlled44s timer found in the public CLI launch path. Readiness deadlines begin after elevation launch returns. Screenshot interval and public cancellation do not identify a native error or cause. Keep the native cause UNKNOWN; the faster guarded input chain is not a successful update. |
+| Shared SDK | Windows producer; Android borrower handed back | Original SDK2812 is terminal0, sourceClosing/cleanupComplete true; all six original actors positively absent and samee8bc route positively ENDED. Root verifies all eight handback bodies. No post-terminal finish marker or original replay. |
+| Android current proof | android_api35_operator; source-only timeout diagnosis | Genuine fresh enrollment verifies525 source/archive pairs. Actual proof74498/SSH1896 ends at collector watchdog1205.008s: child return−9, zero stdout/stderr, remote original closing/inner stage/restoration UNKNOWN. Local1067 holders close and525 pairs recheck; no installer, lease release, retirement or replay. Worker prepares a bounded diagnostic; another opaque full attempt is not admitted. |
+| Final compatibility repair | root; one additional test path | Fresh prepush1745 ran6117 tests: zero assertions failed, one stale getter fixture error,170 skips. Complete streams are retained. Reviewed AVD factory test now selects authenticated API35 getter code while preserving13 backends,28 stage checks and guards. Actual isolated same test ERROR→PASS/full module23PASS; root canonical module23PASS/6.123s, zero skips. Fresh full prepush remains required. |
+| Remaining plan/delivery | root and platform owners | Matrix remains0passed/2historical/20open. DIRECT→MCP cases, Linux/macOS, broker/documents/owner lifecycle, visuals and final exact-SHA five workflows remain open. No valid current prepush receipt; final CI deferred to final delivery as requested. No release authorized. |
+
+Evidence: `.runtime/windows-secondary-acceptance/android-sdk-e8bc-source-handback.json`
+(SHAbee6cd48); `.runtime/root-parity-continuation-22e9/windows-fourth-root-review.json`
+(SHAfa60edf8); `.runtime/windows-secondary-acceptance/prompt-chain-repair/manifest.json`
+(SHA1e5d8e87); `.runtime/windows-prompt-cancellation-source-review/sources.json`
+(SHA06e1cef1). Android closeout under
+`.runtime/android-fresh-source-enrollment/6f06b0bc-3da4-4554-9a97-0600be378ac3/`
+(SHA634e59ca). Fresh failed prepush result:
+`.runtime/root-parity-continuation-22e9/prepush-daaf-full-result.json` (SHAb74a5b72);
+complete raw check output under `.rag_index/check-runs/f00caa83-c626-4816-83d3-eb5b23a798fb/`.
+Final one-file proposal: `.runtime/android-final-getter-consumer-proposal/manifest.json`
+(SHA1a2141f0). Previous source epochs and timestamped sections remain historical.
+
+## Historical acceptance status — 2026-10-10,13:07 Moscow
+
+Delivered HEAD/origin/dev remain `cbee6e6e1b1a888e6c47964fe3c6418fd11420ef`,
+product2.2.5. The goal is incomplete. The old dirty-source fingerprint0c411 is
+historical: both native operators released their holders before root integrated
+the reviewed Android compatibility and routine binder controls. Retained packages keep cbee provenance.
+No native command is authorized from that old source handoff.
+
+| Slice | Exclusive owner | Evidence and next gate |
+| --- | --- | --- |
+| Windows normal update | windows_secondary_operator; sole secondary guest operator | Three distinct requests955/12af/d90 are terminalCANCELLED130/NOT_STARTED, installed=false and cleanupOK. Original ordinary filtered-admin owner9600→8716/controllera1fb remains OFF; cached2.2.5 target is ready. Actual successful update, expanded prompt, original-user return and remaining role/lifecycle scenarios are open. |
+| Windows input | windows_secondary_operator; isolated regression proposal by windows_update_assembly | Actual PS/2 mouse is relative-only; absolute input returns no-handler. The proposed USB controller was definitively refused because pcie.0 does not support hotplug; no device was added. Existing keyboard controls visibly open Start and a fresh Escape closes it. ACK alone is not a UI-effect proof. Root verifies42 cancellation and43 input evidence leaves; administrator-prompt input remains unproved. |
+| Shared SDK and route | Windows producer; Android borrower; root review | SDK original44647 and Android original9861/SSH47025 are terminal. SDK cleanup/sourceClosing pass, all six SDK actors are absent, and same243fc586 is positively ENDED. Root verifies all eight handback leaves. Source/native holders are released; no original operation is replayed. |
+| Android current proof | android_api35_operator; ignored successor assembly | Actual remote collector exits0 in0.562s, but currentProofComplete=false/kernelResult=null. Its generated binder selected API29 code for API35. One expression now selects the receipt-authenticated API35 module; unchanged strict guard and all13 functions pass six causal controls. Root integrates public before/after fixtures and six routine tests: canonical module6PASS/3.754s and discovery6PASS/3.937s, no skips. Fresh complete source enrollment and a distinct native proof remain required. |
+| Android compatibility | root integration; acceptance_review sealed follow-up | Canonical outer/JDK/readonly46PASS; owner/routing/packaged modules and bundle backup give53PASS/one genuine platform skip across retained runs. An initial root command also contained one nonexistent selector; its loader error is preserved and the correct selector passed separately. Four additional test-only repairs select authentic API35 code, assert the reviewed41-leaf catalogue, and construct genuine historical40-leaf receipts. Historical sources and all refusals remain strict. Root verifies1194 follow-up and15 routine-proposal leaves. |
+| Delivery gates | root | Full prepush original4918 failed:6109 tests,14 failures,21 errors,170 skips. Only the first three commands passed; remaining tier commands did not run. The live cached MCP response lacks complete retained failure output. Use the documented fresh-process CLI for final checks and retain complete streams. No valid prepush or final exact-SHA CI success is claimed. |
+| Full plan | root and platform owners | Actual matrix is0 passed/2 historical/20 open. Windows/Android DIRECT→MCP, Linux/macOS, broker/documents/owner lifecycle, visuals and final five-workflow gate remain required. |
+
+Evidence: `.runtime/root-parity-continuation-22e9/windows-third-input-root-review.json`
+(SHAb104d20c); `.runtime/windows-secondary-acceptance/android-sdk-243fc586-source-handback.json`
+(SHAbec9c41c); Android `native-proof-closeout.json` under
+`.runtime/android-fresh-source-enrollment/8ad38af2-5b9b-49b9-a2c8-2b681433129e/`
+(SHA5418399e). Compatibility proposal reportSHA2c2bb204 and manifestSHA2d672de2
+remain under `.runtime/android-getter-consumer-compatibility/`.
+Follow-up manifestSHA3e550812 is under
+`.runtime/android-getter-consumer-compatibility-followup/`; routine manifestSHA6dda5b14
+is under `.runtime/android-native-binder-routine-proposal/e87fd99c-9b8a-41f1-a387-d6b3cbe6df1d/`.
+Earlier timestamped sections remain historical.
+
+## Historical acceptance status — 2026-10-10,11:40 Moscow
+
+Delivered HEAD/origin/dev remain `cbee6e6e1b1a888e6c47964fe3c6418fd11420ef`,
+product2.2.5. Root's coherent dirty tool bucket contains Android getter streaming,
+its seven controls, the strict device-specific bundle join and six additional
+controls, failure/test documentation, this ledger and changelog metadata.
+Root's exact canonical targeted run passes18 tests in47.327s with no failures,
+errors or skips; final prepush and delivery of this bucket remain required.
+Retained product packages keep their actual cbee provenance. Full parity and
+the final exact-SHA five-workflow gate remain incomplete.
+
+| Slice | Exclusive owner | Current evidence and next gate |
+| --- | --- | --- |
+| Windows installed baseline/cache | windows_secondary_operator; sole secondary guest operator | Actual2.2.4 MSIexit0 and209 installed-file hashes verified. Public download verifies exact2.2.5/131142004B/d6651eff target; pinned fixture events prove the served bytes. Original Limited filtered-admin owner9600→8716/controllera1fb8763 remains OFF. This does not prove a genuine non-admin requester. |
+| Windows first normal attempt | windows_secondary_operator | One accepted requesta9fd3eb7/operatione09ea305/job95517fa6 received noYes. Same operation is now terminalCANCELLED130/NOT_STARTED, installed=false/cleanupOK; physical input absence verified. Preserve journal/history and all older inputs. Next: pre-author fresh mouse-details/Yes helpers, admit a distinct normal scenario and prove installation plus automatic original-user return. |
+| Source and route | root scheduling | Original same-operation reads and cleanup are terminal0; original fixture PIDs/listener absent. Latest54c589ab is actuallyENDED (SHAbf84323e); all source/SSH/statusholders closed. Explicit handback permits the Android join. Freeze the next source epoch before the next Windows native grant. |
+| Android factory repair | root canonical integration; android_api35_operator proposal owner | Original87-test compatibility run had three fixed-backend errors. Measured cause was API35 compared with API29 getter. Receipt-authenticated device selection repairs it without changing comparator or historical pins. Exact canonical18-test run passes; original native1201.052s timeout/restoration remains UNKNOWN. Fresh source enrollment/genuine native proof required. |
+| Windows MCP preparation | root; windows_update_assembly offline proposal | Root verifies64 leaves of frozen11-path proposal476cc and independently passes QGA7+TLS3 controls. Real Mac PowerShell polling controls passed separately; Windows5.1/native equivalence remains open. Secondary admission has a concrete missing owned-record seam; preserve fixedCP117 guards. Integrate proven procedures after DIRECT success, not authored receipts. |
+| Windows remaining batches | root; offline audit by windows_denial_cleanup | Nine-group audit separates same-account guest batches from genuine standard-user/distinct-admin/foreignSID cases. Existing owned accounts may suffice; no extraVM inherently required. Cold cleanup proposal remains frozen until normal success. Installer, VPN, reboot and recovery effects serialize. |
+| Remaining full plan | root and platform owners | Complete all Windows/Android DIRECT→MCP scenarios, Linux/macOS, broker/owner lifecycle/documents, current visuals, evidence reconciliation and final exact-SHA delivery. Actual matrix remains0passed/2historical/20open. |
+
+Windows sealed cancellation handoff:
+`.runtime/windows-secondary-acceptance/fixed-normal-cancelled-95517fa6-handoff.json`
+(SHA9f1e5218). Android canonical test receipt:
+`.runtime/root-parity-continuation-22e9/android-join-canonical-e0add15d-c5ac-46af-9f7e-a8ef2b6ee4a9/result.json`.
+MCP root review SHA30d4bffe; local UI review SHA7b9250d6. Remaining Windows audit:
+`.runtime/windows-remaining-acceptance-audit/README.md` (SHA4acee57c).
+Prompt expansion/refusal, UTF8 task authoring and mismatched task collection are
+preserved failure classes with pending coverage, not completed tool fixes.
+Earlier timestamped sections remain historical.
+
+## Historical acceptance status — 2026-10-10,10:40 Moscow
+
+Delivered HEAD/origin/dev remain `cbee6e6e1b1a888e6c47964fe3c6418fd11420ef`,
+product2.2.5. Root owns a new coherent tool integration bucket: the Android
+getter streaming helper, seven discovery controls, failure/test documentation,
+this ledger and changelog metadata. Product package bytes remain frozen to cbee;
+tool edits do not relabel retained engineering artifacts as final-source proof.
+The full four-platform goal and final exact-SHA CI remain incomplete.
+
+| Slice | Exclusive owner | Current evidence and next gate |
+| --- | --- | --- |
+| Windows corrected pair | windows_secondary_operator; sole secondary guest operator | Hosted run38033356122 succeeded for exact cbee, artifact11662978763. Both209-file images and eight guest-staged files match accepted full hashes. Native MSI metadata proves x64/base2.2.4/target2.2.5/shared UpgradeCode. All eight report NotSigned; no trusted signer or global trust change. Root verifies ten sealed native evidence leaves. Next: fresh admission, one complete DIRECT update and automatic original-user return. |
+| Windows existing state | windows_secondary_operator | Installed2.2.3/per-user scope2, old controller0e08c612 and OFF owner remain unchanged. Staging created only eight private files. No quit/install/server/app launch or protected cleanup occurred. State2, retained a2be inputs and all three original failed/cancelled operations remain preserved. |
+| Source and route | root scheduling | Original stage39172/SSH77965 and closure13409/SSH78541 are terminal0/sourceclosed; owned query actors absent. Both stagingb8f7164f and latest closure696576e3 are actually ENDED. All worker holders closed and explicit handback permits this integration. Freeze current source before the next Windows effect grant. |
+| Android optimization | root canonical integration; android_api35_operator sealed proposal | Final manifest622ac020 seals90 independently verified leaves. Root runs seven discovery tests successfully. Streaming preserves full hashes, generation checks and authentic first-failure diagnostics; wrapped local timing9.226→7.419s is not native gain. Preserve original1201.052s timeout/failed remote closing as UNKNOWN. Fresh source enrollment and genuine native proof remain required. |
+| Remaining full plan | root and platform owners | Complete Windows/Android DIRECT→MCP scenarios, denied/cold-owner recovery, Linux/macOS, broker/owner lifecycle/documents, current visual scenes, matrix reconciliation and final exact-SHA delivery gate. Historical matrix remains0 passed/2 historical/20 open. |
+
+Current native staging handoff:
+`.runtime/windows-secondary-acceptance/fixed-pair-cbee-native-staging-signing-handoff.json`
+(SHA0d8d33d9); original same-route closeout SHA92311299. Android root review:
+`.runtime/root-parity-continuation-22e9/android-successor-813d-root-review.json`
+(SHAa513885e). These receipts prove scoped preparation/local checks; no installed
+update acceptance is claimed. Earlier timestamped sections remain historical.
+
+## Historical acceptance status — 2026-10-10,10:20 Moscow
+
+Delivered HEAD and origin/dev are `cbee6e6e1b1a888e6c47964fe3c6418fd11420ef`,
+product2.2.5. Managed checkpoint delivery passed all15 prepush commands at the
+unchanged fingerprint `2f4eb98ad7785053ff747148d193c0dd3854486c906832e603cbe9d4593fbc4f`.
+Agent discovery ran6096 tests with170 explicit skips and no failures/errors.
+The worktree was clean at push and actual remote dev matched that SHA. Final
+exact-SHA five-workflow verification remains deferred as requested; no release.
+Root owns this ledger and the next coherent integration bucket.
+
+| Slice | Exclusive owner | Established evidence and next gate |
+| --- | --- | --- |
+| Corrected Windows packages | windows_secondary_operator; hosted producer and ignored journal | DIRECT correlation62d1bc52-b820-4496-80c2-dbe751bd2bf0 submitted once; run38033356122 positively matches cbee6e6e. Base2.2.4 and target2.2.5 contain the delivered fix. Follow the same accepted run, collect once, verify full artifacts and actual native signing before installation. Do not substitute fixedCP117 MCP dispatch or relabel source. |
+| Windows secondary guest | windows_secondary_operator; assigned nativeAMD64 guest | Fresh read-only census/public query passes: expected QEMU3726886, console Limited parityagent/session1, old8064→2344/controller0e08c612/revision0, installed2.2.3 and runtime OFF. Previous three failed/cancelled operations remain terminal; no helper/MSI/consent/runtime. Arch has151.8GB and guest52.5GB free. No quit/install/trust/server/staging effects occurred. Repeat admission after artifacts arrive, then prove one complete DIRECT installed update and original-user return before MCP integration/retest. |
+| Shared route/source | root scheduling; one Pi/Arch operator at a time | All three new Windows read-only calls are terminal0 with source closure. Same3a756485-09d3-44e7-826f-e026c422591a is positively ENDED, own query actors absent and holders zero; explicit handback permits scoped source work. Windows producer/workflows/packaging/verifier dependencies remain frozen while its hosted build runs. |
+| Android API35 | android_api35_operator; ignored proposals; root canonical integration | The previous native current-proof/restoration remains UNKNOWN after the original1201.052s timeout and failed remote original closing. Local SDK/reader holders are closed. Offline streaming measures the same44 getter passes/153 files/~9.30GB full hashes; first bare-caller timing9.996→7.803s is local only. Root caught portable discovery import and leaf-close leak; causal fixes passed. Actual alias/diagnostic wrapper equivalence and final reseal are required before adopting the two-file tool/test change and freshly enrolling source before a genuine constructor. No lease-release or installer authority. |
+| Windows denied-input recovery | root; sealed ignored packet5 | Warm cleanup is delivered; cold-owner proposal has45 actual portable passes and causal branch evidence. It remains outside canonical source until the first corrected normal update. Native UAC/NTFS/cold-owner/resource gates remain open. |
+| Remaining full plan | root and platform owners | Complete Windows/Android DIRECT→MCP acceptance, Linux/macOS, broker/owner lifecycle/documents, required current visual scenes, matrix reconciliation and final exact-SHA CI. Matrix remains0 passed/2 historical/20 open; partial and engineering evidence remains scoped. |
+
+Delivery proof:
+`.runtime/root-parity-continuation-22e9/windows-product-checkpoint/checkpoint-cbee6e6e-pushed.json`
+(SHAa14b727a); actual complete gate:
+`jdk-fixture-integration/prepush-final-terminal.json` under that checkpoint directory.
+Producer root review:
+`.runtime/windows-secondary-acceptance/direct-fixed-pair-v3-root-review.json`
+(SHA67e3811e; script2edc5062, six controls GREEN).
+Fresh guest/source/route closeout:
+`.runtime/windows-secondary-acceptance/checkpoint-cbee-readonly-preflight-ended.json`
+(SHA1b5b9951;16 sealed evidence leaves verified by root).
+These receipts prove delivery/preparation, not successful update acceptance.
+All historical failed/UNKNOWN operations, original packages and protected inputs
+remain preserved. The earlier timestamped sections below are historical.
+
+## Historical acceptance status — 2026-10-10,09:27 Moscow
 
 Delivered HEAD and origin/dev remain `22e9b3b058b103060bb5bb8ebcc80ee759f40d8c`,
 product2.2.4. The intentional local Windows product checkpoint is product2.2.5:

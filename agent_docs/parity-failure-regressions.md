@@ -1,5 +1,170 @@
 # Parity Failure-to-Regression Ledger
 
+## Final AVD factory consumer and bounded native timeout — 2026-10-10
+
+Fresh-process prepush1745 retains complete output for6117 tests: zero assertion
+failures, one error and170 platform skips. The remaining error is
+`FixedReaderAccumulationTests.test_genuine_api35_factory_keeps_thirteen_backends_and_28_stage_checks`:
+the historical command prefix compiles a stale getter before the strict API35
+guard. Authentic isolated beforeimage gives that exact getter_stage error; the
+reviewed test selects only the authenticated staged API35 getter code with its
+production import context. Other12 functions, exact13-name equality,28 profiled
+calls, profile restoration and forbidden-command checks remain. Same test PASS,
+full candidate module23PASS/no skips; full byte inverse and foreign-source
+refusals verified. Root integrates the exact one-file candidate. This is a test
+consumer repair; production source guards are unchanged. Routine unittest
+discovery/Fast Checks already enroll this module; root canonical module23PASS
+in6.123s, no skips. Fresh prepush remains a separate delivery gate.
+
+Beforeimage/proposal: `.runtime/android-final-getter-consumer-proposal/manifest.json`
+(SHA1a2141f0); root integration receipt:
+`.runtime/root-parity-continuation-22e9/final-getter-fixture-integrated.json`.
+Original full prepush result SHAb74a5b72 and complete raw output under
+`.rag_index/check-runs/f00caa83-c626-4816-83d3-eb5b23a798fb/` remain failed evidence.
+
+The distinct Android native proof74498/e9ceb reaches the existing1205.008s
+collector watchdog with child return−9, no stream bytes and ValueError
+`baseline_remote_collection_timeout`. Source transfer length/hash was verified
+before child launch; the inner stage, remote original closing and restoration
+remain UNKNOWN. Local source closure does not prove remote descendant cleanup.
+This measured timeout is not attributed to the now-repaired getter consumer.
+No further full attempt, installer, lease release or original replay is admitted
+without a bounded diagnosis identifying the missing observation/actual cause.
+Current source-only diagnostic work has not yet closed this failure or native
+acceptance. Closeout SHA634e59ca under the6f06 fresh-enrollment directory.
+
+## Android getter consumers and generated binder — 2026-10-10
+
+Full prepush original4918 failed after6109 tests:14 failures,21 errors and170
+skips. The cached MCP result retained only a bounded tail, including five
+outer-transport getter errors; the complete original failure list is unavailable.
+Its receipt is invalid and the remaining prepush commands did not run.
+
+Actual isolated outer tests reproduce15 tests/five errors before repair. Four
+JDK consumers omit the selected API35 module; two readonly assembly cases retain
+the old owner source pin. The reviewed five-path repair uses the authentic
+API35 template in test consumers and changes only the current owner pin in the
+readonly production assembler. The full fixed generation and all other pins
+remain unchanged. Preserve the authentic old owner as a `.source` fixture;
+old/current identity programme and audit bytes compare equal. Mutation and
+foreign-source refusals remain strict. Candidate30 consumer, six strict-device
+and16 readonly tests pass, without skips. Root independently verifies41 proposal
+leaves and repeats four identity controls successfully. Root's integrated
+canonical outer/JDK/readonly run passes46 tests in77.244s, no failures/errors/skips.
+Complete fresh-process prepush remains required. Its focused receipt is
+`.runtime/root-parity-continuation-22e9/compatibility-integrated-terminal.json`.
+
+The subsequent original Android native proof9861/SSH47025 is terminal but
+currentProofComplete=false. Its remote programme binder still chooses
+`reader.getter_source._GETTER` (API29) for an API35 backend; the unchanged strict
+guard returns `component_guard_fixed_backend_required:getter_stage`. This is a
+separate generated consumer, not evidence that the guard should be weakened.
+Remote collector exit0/elapsed0.562s and successful source closing do not prove
+native acceptance or restoration. The one-expression binder repair has actual
+same-test RED/one failure then GREEN/six passes with unchanged strict guards.
+Root integrates the two authentic public binder fixtures and six controls in
+`test_android_native_backend_binding.py`; module6PASS/3.754s and discovery6PASS/3.937s,
+no skips. The corrected owned binder still requires fresh enrollment/native proof;
+no original replay, installer or lease release is authorized.
+
+Beforeimages/controls: `.runtime/android-getter-consumer-compatibility/`
+(reportSHA2c2bb204, manifestSHA2d672de2). Native original closeoutSHA5418399e is
+under `.runtime/android-fresh-source-enrollment/8ad38af2-5b9b-49b9-a2c8-2b681433129e/`.
+Four additional test-only repairs select API35 in owner/routing fixtures, assert
+the actual41-leaf catalogue and prepare the historical reader's genuine40-leaf
+receipt/context. Current guard rejection remains in that historical test.
+Root verifies all1194 follow-up leaves. Canonical real selections produce53 passes
+and one genuine platform skip across retained runs. The first root command also
+contained a nonexistent additional selector, yielding a separate loader error;
+the correct selector passed in18.571s. Preserve that invocation error separately.
+Receipts: `.runtime/root-parity-continuation-22e9/compatibility-followup-integrated-terminal.json`;
+follow-up manifestSHA3e550812; routine proposal manifestSHA6dda5b14.
+
+## Android device-specific getter factory join — 2026-10-10
+
+The first canonical compatibility run after streaming ran87 tests with three
+errors, no failures and one explicit skip. All three errors were
+`component_guard_fixed_backend_required:getter_stage`: the fixed bundle guard
+compared API35's changed streaming getter with API29's unchanged getter.
+The actual isolated and complete API35 code objects were equal; this was not a
+compiler-context fault. Original terminal receipt: `.runtime/root-parity-continuation-22e9/android-streaming-canonical-compatibility-terminal.json`
+(SHAef8109bf).
+
+The bundle now stages and authenticates the fixed API35 module and its literal
+getter template before selecting it for API35. API29 retains its own getter.
+Module path, source hash, hook globals, function code and complete import-context
+checks remain strict. The same positive control gives actual unfixed RED and
+fixed GREEN; foreign-device functions, unauthorized functions, unstaged modules,
+foreign globals and mutated templates still refuse. Six new discovery tests live
+in `test_android_installer_component_bundle.py`. Root's exact canonical targeted
+run passes18 tests in47.327s, zero failures/errors/skips, including the three
+original failing selectors, context refusal controls and seven streaming tests.
+
+Proposal and beforeimages: `.runtime/android-getter-factory-join-repair/cc966150-900d-4fd1-8467-e5cd9056a750/`
+(manifest SHAccce50bd). Canonical receipt:
+`.runtime/root-parity-continuation-22e9/android-join-canonical-e0add15d-c5ac-46af-9f7e-a8ef2b6ee4a9/result.json`.
+This repairs the existing native/MCP bundle constructor; fresh honest source
+enrollment, genuine native proof and equivalent MCP acceptance remain open.
+
+## Windows prompt and observer faults — 2026-10-10
+
+The first cbee2.2.4→2.2.5 normal-update attempt accepted one public request but
+received no Yes grant. Its exact operatione09ea305/job95517fa6 later returned
+CANCELLED/exit130, NOT_STARTED, installed=false and cleanupCode=OK. Limited-user
+readback confirms its input absent; original owner9600→8716 and runtime OFF remain.
+The fixture server and latest54c589ab route are positively ended. This is scoped
+cancellation/cleanup evidence, not successful normal-update acceptance.
+
+Distinct owned observer faults and remaining coverage:
+
+- Alt+D did not expand the prompt: compact and subsequent PNG/PPM bytes are
+  identical. Mechanism remains unresolved; pre-author the mouse-details path.
+- The mouse helper refused its full-frame guard before input. Its exact refusal
+  frame was not published, so disappearing prompt versus incidental pixels is
+  unresolved. Preserve the refusal; stale screenshots never authorize input.
+- An observer task used UTF8 for PowerShell EncodedCommand, producing task exit1
+  and no output files. The preserved emitter is repaired to UTF16LE. Actual
+  local PowerShell with the same harmless body gives UTF8 REDexit1/no output
+  and UTF16LE GREENexit0/exact marker; routine integration remains pending.
+- Taskc32 authoring retained a945 collector path, projecting UNKNOWN despite the
+  actual task completing. Exactc32 files were collected without replay. Routine
+  producer/collector identity coverage remains pending.
+
+Sealed handoff: `.runtime/windows-secondary-acceptance/fixed-normal-cancelled-95517fa6-handoff.json`
+(SHA9f1e5218,14 pinned leaves). Original fault beforeimages remain there and in
+the linked owned directories. No observer/MCP integration or failure-class
+completion is claimed until causal controls and equivalent native reruns pass.
+Encoding behavior receipt:
+`.runtime/windows-secondary-acceptance/task-encoding-actual-pwsh-control/report.json`
+(SHA2c374e86). Local PowerShell does not substitute for the native Windows case.
+
+## Android getter streaming and diagnostic retention — 2026-10-10
+
+The API35 original current-proof run exceeded its1201.052s collection deadline;
+remote original closing failed and semantic proof/restoration remain UNKNOWN.
+Offline measurements of the actual wrapped caller identify44 getter passes over
+153 files, hashing9.30GB while unnecessarily retaining discarded file bodies.
+This is a measured local cost, not proof of the native timeout's sole cause.
+
+Only `getter_stage` now streams discarded bodies, retaining full hashes, size,
+mode, file/ancestor generations, limits and the existing diagnostic wrapper.
+Historical raw readers, alias guards and custody code remain unchanged. Review
+also reproduced an unconditional discovery-entry failure, eight leaked parent
+descriptors after a leaf-close exception, and lost first-failure diagnostics.
+Their preserved beforeimages produce RED; guarded discovery, nested parent
+cleanup and authenticated wrapper reuse produce GREEN. The seven portable
+controls use actual public source ASTs and real owned files with an explicit
+synthetic UID seam. They join ordinary agent-tool discovery and Fast Checks in
+`test_android_api35_getter_streaming.py`; absent POSIX APIs skip explicitly.
+
+Evidence: `successor-813d5ec6-443d-4ec5-851a-7019bf564f99/` under
+`.runtime/android-current-fullfacts-diagnosis/proof-hotpath-offline-73ff1e6d-a259-4878-af4a-7dcee4752b40/`.
+Manifest SHA622ac020; root independently verifies all90 leaves and seven tests.
+Wrapped local timing9.226→7.419s preserves all bytes/results/alias population;
+native gain is unproven. Fresh source enrollment, genuine current-proof and
+complete Android DIRECT→MCP update acceptance remain required. Historical raw
+reader sequential-close limitations and all original UNKNOWN outcomes remain.
+
 ## Synthetic JDK fixture external-parent churn — 2026-10-10
 
 Final prepush for the local Windows checkpoint failed after6093 agent tests:

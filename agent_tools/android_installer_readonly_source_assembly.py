@@ -86,7 +86,7 @@ from agent_tools import android_installer_direct_transport as direct
 SOURCE_PINS = {
     'coldboot': 'e80f7c833ca5dbf817afadb7c4fe896d6ddb6e1a792fcc2759311fcf996b0957',
     'census': '0d4ac9875ef793d8d1ebfe613f5c89557e1ac027d8fbbc6ff6ab084fc6f57e4d',
-    'owner': '3588b0abd238cd594df0bad1cb0bb1b296c5ade4a9330b47f1f66abcd4a6462c',
+    'owner': '7906f3fae29cc50a014b8090e9a4c224b44b65311975b917d897ca87f853e4b4',
     'retained': '3367f498d3a1cb20f733fc7d6333e68bd4b42df09eab9d2ff5a3065cd959dffb',
 }
 

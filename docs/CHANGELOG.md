@@ -6,6 +6,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Stabilize external ancestor metadata in the synthetic JDK fixture while preserving owned-source mutation checks.
+- Stream Android getter verification without retaining file bodies while preserving failure diagnostics and descriptor cleanup.
+- Authenticate each Android device's staged getter source in the installer bundle guard.
+- Keep Android getter consumers and generated backend bindings aligned with authenticated device sources while preserving historical receipts.
+- Keep the AVD factory regression aligned with the authenticated API35 getter.
 
 ## 2.2.5 - 2026-10-10
 

@@ -79,67 +79,25 @@ def getter_apk():
  return parts[0]
 
 def getter_stage():
+ directory=ROOT/('android-cli-stage-'+GETTER['stageId']);pins={}
+ for name in ('intent.json','receipt.json'):
+  item=read_fixed(directory/name,262144);raw=item.pop('raw')
+  if item['hashScope']!='full' or item['generation'][6:9]!=[1000,1000,1] or stat.S_IMODE(item['generation'][5])!=0o600:raise ValueError('getter_stage_control_unsafe')
+  value=json.loads(raw);pins[name]=item
+  if value.get('manifestSha256')!=GETTER['manifestSha256'] or value.get('rpmSha256')!=GETTER['rpmSha256']:raise ValueError('getter_stage_binding_changed')
+  if name=='intent.json' and value.get('manifest')!=GETTER['manifest']:raise ValueError('getter_stage_manifest_changed')
+  if name=='receipt.json' and (value.get('state')!='published' or value.get('cliPath')!=GETTER['cli']):raise ValueError('getter_stage_unpublished')
+ tree=directory/'tree';observed=tree_facts(tree);manifest=GETTER['manifest'];expected={'.',*[item['path'] for item in manifest['directories']],*[item['path'] for item in manifest['files']]}
+ if set(observed)!=expected:raise ValueError('getter_stage_inventory_changed')
+ for item in manifest['directories']:
+  fact=observed[item['path']]
+  if fact['kind']!='directory' or stat.S_IMODE(fact['generation'][5])!=item['mode']:raise ValueError('getter_stage_directory_changed')
+ for item in manifest['files']:
+  fact=read_fixed(tree/item['path'],268435456);fact.pop('raw')
+  if fact['hashScope']!='full' or fact['sha256']!=item['sha256'] or fact['generation'][2]!=item['size'] or stat.S_IMODE(fact['generation'][5])!=item['mode'] or fact['generation']!=observed[item['path']]['generation']:raise ValueError('getter_stage_file_changed')
+  pins[item['path']]=fact
+ return pins
 
-    def hash_file(path, limit):
-        chain, name = parent_fds(path)
-        fd = None
-        try:
-            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=chain[-1]['fd'])
-            before = os.fstat(fd)
-            if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
-                raise ValueError('census_file_type')
-            count = min(before.st_size, limit)
-            digest = hashlib.sha256()
-            seen = 0
-            while seen < count:
-                part = os.read(fd, min(count - seen, 65536))
-                if not part:
-                    break
-                seen += len(part)
-                digest.update(part)
-            if seen != count or fp(before) != fp(os.fstat(fd)) or fp(before) != fp(os.stat(name, dir_fd=chain[-1]['fd'], follow_symlinks=False)):
-                raise ValueError('census_file_changed')
-            guard_parents(chain)
-            return {'generation': fp(before), 'bytesRead': seen, 'sha256': digest.hexdigest(), 'hashScope': 'full' if seen == before.st_size else 'prefix'}
-        finally:
-            try:
-                if fd is not None:
-                    os.close(fd)
-            finally:
-                close_parents(chain)
-    if 'wrap_reader' in globals():
-        hash_file = wrap_reader(hash_file, 'read_fixed')
-    directory = ROOT / ('android-cli-stage-' + GETTER['stageId'])
-    pins = {}
-    for name in ('intent.json', 'receipt.json'):
-        item = read_fixed(directory / name, 262144)
-        raw = item.pop('raw')
-        if item['hashScope'] != 'full' or item['generation'][6:9] != [1000, 1000, 1] or stat.S_IMODE(item['generation'][5]) != 0o600:
-            raise ValueError('getter_stage_control_unsafe')
-        value = json.loads(raw)
-        pins[name] = item
-        if value.get('manifestSha256') != GETTER['manifestSha256'] or value.get('rpmSha256') != GETTER['rpmSha256']:
-            raise ValueError('getter_stage_binding_changed')
-        if name == 'intent.json' and value.get('manifest') != GETTER['manifest']:
-            raise ValueError('getter_stage_manifest_changed')
-        if name == 'receipt.json' and (value.get('state') != 'published' or value.get('cliPath') != GETTER['cli']):
-            raise ValueError('getter_stage_unpublished')
-    tree = directory / 'tree'
-    observed = tree_facts(tree)
-    manifest = GETTER['manifest']
-    expected = {'.', *[item['path'] for item in manifest['directories']], *[item['path'] for item in manifest['files']]}
-    if set(observed) != expected:
-        raise ValueError('getter_stage_inventory_changed')
-    for item in manifest['directories']:
-        fact = observed[item['path']]
-        if fact['kind'] != 'directory' or stat.S_IMODE(fact['generation'][5]) != item['mode']:
-            raise ValueError('getter_stage_directory_changed')
-    for item in manifest['files']:
-        fact = hash_file(tree / item['path'], 268435456)
-        if fact['hashScope'] != 'full' or fact['sha256'] != item['sha256'] or fact['generation'][2] != item['size'] or (stat.S_IMODE(fact['generation'][5]) != item['mode']) or (fact['generation'] != observed[item['path']]['generation']):
-            raise ValueError('getter_stage_file_changed')
-        pins[item['path']] = fact
-    return pins
 def getter_cli(words,owner=None):
  if words not in (['status'],['operations','list'],['routing','show']):raise ValueError('getter_readonly_command_required')
  cli=pathlib.Path(GETTER['cli']);fact=read_fixed(cli,1048576);fact.pop('raw')

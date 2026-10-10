@@ -1,0 +1,17 @@
+import ast
+def component_bind_backend_context():
+ # Derive the exact canonical compiler context before authenticating backend.
+ _component_transport=COMPONENT_MODULES['transport']
+ _component_reader=_component_transport.readonly
+ _component_sources=[(_component_transport.REMOTE+'\n'+_component_transport._bounded_source(),('component_command','command_binary','command_request','command_host_identity','command_host_guard','command_bounded')),(_component_reader.getter_source._GETTER.replace('__GETTER__',repr({})),('getter_stage',)),(_component_reader.getter_source.coldboot._BOOT.replace('__LAUNCH__',repr({})),('child_identity','session_guest','qemu_fact')),(_component_reader.proven._REMOTE.replace('__EXTERNAL__',repr({})),('external_file','external_jdk','external_jdk_guard'))]
+ _component_context=COMPONENT_MODULES['adapter'].production_imports('api35')
+ for _raw,_names in _component_sources:
+  _tree=ast.parse(_raw)
+  for _name in _names:
+   _nodes=[n for n in _tree.body if isinstance(n,ast.FunctionDef) and n.name==_name]
+   if len(_nodes)!=1:raise ValueError('component_guard_fixed_source_changed')
+   _isolated={}
+   exec(compile(_component_context+ast.unparse(ast.Module(body=_nodes,type_ignores=[])),'<guard-fixed-function>','exec',dont_inherit=True),_isolated)
+   _original=_isolated[_name]
+   globals()[_name]=types.FunctionType(_original.__code__,globals(),_name,_original.__defaults__,_original.__closure__)
+   globals()[_name].__kwdefaults__=_original.__kwdefaults__

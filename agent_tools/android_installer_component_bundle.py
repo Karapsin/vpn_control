@@ -23,6 +23,7 @@ import uuid
 
 FILES = (
     'agent_tools/android_admission_readback.py',
+    'agent_tools/android_api35_coldboot_product_observation.py',
     'agent_tools/android_api29_current_owner_observation.py',
     'agent_tools/android_api29_current_permission_observation.py',
     'agent_tools/android_api29_external_java_observation.py',
@@ -320,6 +321,7 @@ def modules(receipt):
         get(name)
     return {'adapter':get('agent_tools.android_installer_component_adapter'),
             'transport':get('agent_tools.android_component_command_transport'),
+            'getter_api35':get('agent_tools.android_api35_coldboot_product_observation'),
             'lifecycle':get('scripts.android_installer_lifecycle'),'tls':get('scripts.android_no_update_tls_preflight')}
 
 
@@ -707,6 +709,7 @@ def _context_device(backend,device,api,avd,serial,cli,package):
 def _selected_modules(receipt,selected):
     expected={'adapter':'agent_tools/android_installer_component_adapter.py',
               'transport':'agent_tools/android_component_command_transport.py',
+              'getter_api35':'agent_tools/android_api35_coldboot_product_observation.py',
               'lifecycle':'scripts/android_installer_lifecycle.py',
               'tls':'scripts/android_no_update_tls_preflight.py'}
     load(receipt)
@@ -726,7 +729,15 @@ def _selected_modules(receipt,selected):
             raise ValueError('component_guard_context_source_changed')
     imports=next(ast.literal_eval(node.value) for node in adapter_tree.body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=='_PRODUCTION_IMPORTS' for target in node.targets))
     if adapter._PRODUCTION_IMPORTS!=imports:raise ValueError('component_guard_context_source_changed')
-    for name,functions in [('lifecycle',('invoke','main','write_cli_evidence','reply_binding')),('tls',('verify_public_baseline','public_no_update_probe','public_cli_argv','public_cli_environment'))]:
+    getter=selected['getter_api35'];getter_path=Path(receipt['directory'])/expected['getter_api35']
+    getter_raw,_=_read(getter_path,True)
+    getter_templates=[ast.literal_eval(node.value) for node in ast.parse(getter_raw).body
+        if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=='_GETTER' for target in node.targets)]
+    if len(getter_templates)!=1 or type(getter._GETTER)is not str or getter._GETTER!=getter_templates[0]:
+        raise ValueError('component_guard_getter_source_changed')
+    for name,functions in [('getter_api35',('prepare','validate_readonly','prepare_existing_readonly','guard_prepared','ssh_carrier')),
+                           ('lifecycle',('invoke','main','write_cli_evidence','reply_binding')),
+                           ('tls',('verify_public_baseline','public_no_update_probe','public_cli_argv','public_cli_environment'))]:
         path=expected[name]
         selected['adapter']._module(selected[name],receipt['files'][path]['sha256'],functions)
 
@@ -913,11 +924,12 @@ def _jdk_bind_source_context(backend,device,adapter):
 def _guard_backend(selected,backend,device):
     """Authenticate fixed getter/transport functions, never caller callbacks."""
     transport=selected['transport'];reader=transport.readonly
+    getter=selected['getter_api35'] if device=='api35' else reader.getter_source
     jdk_context=backend.get('_COMPONENT_JDK_SOURCE_CONTEXT')
     if jdk_context is not None:_jdk_context_code_guard(jdk_context,backend)
     sources=[(transport.REMOTE+'\n'+transport._bounded_source(),
               ('component_command','command_binary','command_request','command_host_identity','command_host_guard','command_bounded')),
-             (reader.getter_source._GETTER.replace('__GETTER__',repr({})),('getter_stage',)),
+             (getter._GETTER.replace('__GETTER__',repr({})),('getter_stage',)),
              (reader.getter_source.coldboot._BOOT.replace('__LAUNCH__',repr({})),('child_identity','session_guest','qemu_fact')),
              (reader.proven._REMOTE.replace('__EXTERNAL__',repr({})),
               ('external_jdk','external_jdk_guard') if jdk_context is not None else ('external_file','external_jdk','external_jdk_guard'))]
@@ -989,7 +1001,7 @@ class CurrentGuard:
     Post-install drift remains unknown and requires a separate resumed admission.
     """
     def __init__(self, receipt, selected_modules, backend, args):
-        if set(selected_modules)!={'adapter','transport','lifecycle','tls'}:
+        if set(selected_modules)!={'adapter','transport','getter_api35','lifecycle','tls'}:
             raise ValueError('component_guard_modules_required')
         self.receipt=copy.deepcopy(receipt);self.modules=selected_modules
         _selected_modules(self.receipt,selected_modules)

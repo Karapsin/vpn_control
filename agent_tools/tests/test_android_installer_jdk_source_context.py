@@ -107,7 +107,8 @@ def setup_sources():
     namespace = {'ast': ast, 'readonly': reader}
     exec(compile(definition(source('android_component_command_transport.py'), '_bounded_source'), '<authentic-public-bounded-generator>', 'exec'), namespace)
     transport._bounded_source = namespace['_bounded_source']
-    return ({'adapter': adapter, 'transport': transport}, census)
+    getter_api35 = types.SimpleNamespace(_GETTER=literal(source('android_api35_coldboot_product_observation.py'), '_GETTER'))
+    return ({'adapter': adapter, 'transport': transport, 'getter_api35': getter_api35}, census)
 SELECTED, CENSUS = setup_sources()
 
 @unittest.skipUnless(all((hasattr(os, name) for name in ('O_DIRECTORY', 'O_NOFOLLOW', 'O_NONBLOCK'))), 'requires POSIX descriptor custody primitives')
@@ -127,7 +128,7 @@ class JoinFixture(unittest.TestCase):
         self.backend = {}
         imports = SELECTED['adapter'].production_imports('api35')
         transport = SELECTED['transport']
-        sources = [(transport.REMOTE + '\n' + transport._bounded_source(), ('component_command', 'command_binary', 'command_request', 'command_host_identity', 'command_host_guard', 'command_bounded')), (transport.readonly.getter_source._GETTER.replace('__GETTER__', repr({})), ('getter_stage',)), (transport.readonly.getter_source.coldboot._BOOT.replace('__LAUNCH__', repr({})), ('child_identity', 'session_guest', 'qemu_fact')), (transport.readonly.proven._REMOTE.replace('__EXTERNAL__', repr({})), ('external_file', 'external_jdk', 'external_jdk_guard')), (CENSUS, ('fp', 'parent_fds', 'guard_parents', 'close_parents'))]
+        sources = [(transport.REMOTE + '\n' + transport._bounded_source(), ('component_command', 'command_binary', 'command_request', 'command_host_identity', 'command_host_guard', 'command_bounded')), (SELECTED['getter_api35']._GETTER.replace('__GETTER__', repr({})), ('getter_stage',)), (transport.readonly.getter_source.coldboot._BOOT.replace('__LAUNCH__', repr({})), ('child_identity', 'session_guest', 'qemu_fact')), (transport.readonly.proven._REMOTE.replace('__EXTERNAL__', repr({})), ('external_file', 'external_jdk', 'external_jdk_guard')), (CENSUS, ('fp', 'parent_fds', 'guard_parents', 'close_parents'))]
         for raw, names in sources:
             for name in names:
                 exec(compile(imports + definition(raw, name), '<guard-fixed-function>', 'exec', dont_inherit=True), self.backend)

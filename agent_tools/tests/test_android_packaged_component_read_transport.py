@@ -165,23 +165,45 @@ class GuardianTests(unittest.TestCase):
                 raise ValueError('historical_bundle_source_changed')
             # Actual historical guard namespace over a fresh real staged tree;
             # no current production SHA anchor is overridden.
+            original_receipt=case.receipt
+            original_selected=selected
+            bundle=historical_source.load(historical,transport.BUNDLE_SHA)
             origin=case.source_root/'agent_tools/android_installer_component_bundle.py'
             origin.write_bytes(raw)
-            receipt=current_bundle.prepare(case.source_root,case.root/'historical-stage',
-                current_bundle.reviewed_tree(case.source_root)['treeSha256'])
-            bundle=historical_source.load(Path(receipt['directory'])/'agent_tools/android_installer_component_bundle.py',transport.BUNDLE_SHA)
+            # Keep the authenticated historical catalogue; current staging has
+            # a separately admitted API35 getter leaf and is not its receipt.
+            receipt=bundle.prepare(case.source_root,case.root/'historical-stage',
+                bundle.reviewed_tree(case.source_root)['treeSha256'])
             case.receipt=receipt
-            selected=current_bundle.modules(receipt)
+            selected=bundle.modules(receipt)
             request={'host':'archlinux','device':'android-api35','correlationId':guard_tests.CORRELATION,
                 'sourceSha':bundle._PRODUCT_SHA,'expectedOwner':guard_tests.OWNER,'expectedRevision':0,
                 'expectedAvd':'owned-fixture','expectedApi':35,'packageSha256':backend['GETTER']['packageSha256'],
                 'reservation':copy.deepcopy(backend['LAUNCH']['intent']['reservation'])}
-            current_guard=current_bundle.BaselineGuard(case.receipt,selected,backend,
+            current_guard=current_bundle.BaselineGuard(original_receipt,original_selected,backend,
                 {**request,'correlationId':'33333333-3333-4333-8333-333333333333'})
             before_current=log.read_bytes()
             with self.assertRaisesRegex(ValueError,'guard_source_changed'):
                 transport.prepare(current_guard,REQUEST['correlationId'])
             self.assertEqual(before_current,log.read_bytes())
+            # Compile the actual historical producer functions in their own
+            # API35 import context; preserve the historical generic getter.
+            reader=selected['transport'].readonly
+            fragments=(selected['transport'].REMOTE+'\n'+selected['transport']._bounded_source(),
+                reader.getter_source._GETTER.replace('__GETTER__',repr({})),
+                reader.getter_source.coldboot._BOOT.replace('__LAUNCH__',repr({})),
+                reader.proven._REMOTE.replace('__EXTERNAL__',repr({})))
+            names={'component_command','command_binary','command_request','command_host_identity',
+                'command_host_guard','command_bounded','getter_stage','child_identity','session_guest',
+                'qemu_fact','external_file','external_jdk','external_jdk_guard'}
+            nodes=[node for fragment in fragments for node in ast.parse(fragment).body
+                if isinstance(node,ast.FunctionDef) and node.name in names]
+            compiled=compile(selected['adapter'].production_imports('api35')+ast.unparse(ast.Module(body=nodes,type_ignores=[])),
+                '<authenticated-historical-api35-functions>','exec',dont_inherit=True)
+            for value in compiled.co_consts:
+                if isinstance(value,types.CodeType) and value.co_name in names:
+                    previous=backend[value.co_name]
+                    backend[value.co_name]=types.FunctionType(value,backend,argdefs=previous.__defaults__)
             guard=bundle.BaselineGuard(case.receipt,selected,backend,request)
             before=log.read_bytes()
             prepared=transport.prepare(guard,REQUEST['correlationId'])

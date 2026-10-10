@@ -284,12 +284,24 @@ class FixedReaderAccumulationTests(unittest.TestCase):
             actual,_=command.prepare(history.root,owned,'android-api35')
             code=compile(command.namespace_source(actual),'<complete-existing-api35-factory>',
                          'exec',dont_inherit=True)
+            # The historical command prefix retains its getter. Bind the one
+            # API35 stage function from the authenticated component selection.
+            bundle._selected_modules(f.receipt,selected)
+            staged=ast.parse(selected['getter_api35']._GETTER.replace('__GETTER__',repr({})))
+            stage=next(node for node in staged.body
+                       if isinstance(node,ast.FunctionDef) and node.name=='getter_stage')
+            staged_code=compile(selected['adapter'].production_imports('api35')+
+                                ast.unparse(ast.Module(body=[stage],type_ignores=[])),
+                                '<staged-api35-getter>','exec',dont_inherit=True)
+            stage_code=next(value for value in staged_code.co_consts
+                            if isinstance(value,types.CodeType) and value.co_name=='getter_stage')
             names={'component_command','command_binary','command_request','command_host_identity',
                    'command_host_guard','command_bounded','getter_stage','child_identity',
                    'session_guest','qemu_fact','external_file','external_jdk','external_jdk_guard'}
             found=set()
             for value in code.co_consts:
                 if isinstance(value,types.CodeType) and value.co_name in names:
+                    if value.co_name=='getter_stage':value=stage_code
                     backend[value.co_name]=types.FunctionType(value,backend,
                                                              argdefs=backend[value.co_name].__defaults__)
                     found.add(value.co_name)
