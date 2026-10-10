@@ -21,6 +21,34 @@ python3 scripts/check_contract_docs.py
 python3 scripts/test_android_instrumentation_signatures.py
 ```
 
+## Completed DIRECT connection history
+
+`test_ssh_direct_ended_source_transition` runs22 controls through ordinary
+agent-tool discovery, prepush and Fast Checks. It exercises the complete provider
+with actual historical/current source bytes and private owned files: same-source
+completion, the finite reviewed predecessor transition, and20 refusal cases for
+source populations, terminal intent and READY custody. Run it with
+`test_ssh_direct_nested_channel`, `test_ssh_fresh_nested_channel`,
+`test_ssh_channel_selection`, `test_ssh_channel_mcp_routes` and
+`test_ssh_transport`. Remote kernel replies are an inert declared seam; these
+controls do not establish native SSH recovery, SDK admission or Windows update
+acceptance. Unsupported POSIX coordinators retain22 explicit skips. Future
+unreviewed provider/MCP transitions remain refused.
+
+## Desktop input acquisition failure parity
+
+`DesktopInputResultTest` runs through ordinary `:desktopApp:test` discovery and
+Fast Checks. It covers allocation failure before location/routing owner admission,
+SSH input failure without constructing an action, silent picker cancellation,
+unchanged successful input/controller/revision, and the actual CLI request builder.
+Run it with `DesktopTextTransferTest`, `DesktopCliJsonTest`,
+`DesktopFrontendSshKeyImportTest`, `DesktopLocationCliEndToEndTest`,
+`DesktopRoutingCliEndToEndTest` and
+`DesktopLargeControlTransportTest.cliRoutingImportAndGuiSnapshotKeepLargeCommittedResults`.
+Controlled allocation exceptions exercise the original callback decisions; they
+do not prove real heap exhaustion, native picker/clipboard behavior or dialog
+rendering. Preserve those native GUI acceptance gates.
+
 ## Windows update admission and denied input controls
 
 Ordinary `:desktopApp:test` discovers `DesktopWindowsDeniedInputCleanupTest`,

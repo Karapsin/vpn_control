@@ -1,5 +1,67 @@
 # Parity Failure-to-Regression Ledger
 
+## Completed DIRECT source history and READY custody — 2026-10-10
+
+SDK11015/11016 ended with failure before intent creation or SSH launch. The actual
+155 historical DIRECT intents had authentic ended records, but the provider
+compared their predecessor MCP source pins with current pins. This was a local
+history admission defect, not an observed network or authentication failure.
+Original histories and the census remain unchanged.
+
+The complete provider now admits only the reviewed predecessor provider/MCP
+pair while retaining exact other14 source pins, typed intent fields and original
+terminal/READY custody. Original source gives1 runtime failure among22 controls;
+the final candidate passes22 with zero errors/skips. Review also found that the
+intermediate candidate admitted an erased terminal receipt reference despite an
+existing READY record. That candidate separately gives1 runtime RED; the final
+candidate refuses it. All controls are enrolled by ordinary agent-tool discovery,
+prepush and Fast Checks. Actual local children and owned private files are used;
+remote kernel replies are explicitly inert. Modeled unsupported coordinators
+skip22 without POSIX acquisition, which is not Windows native evidence.
+
+Evidence: census5bca4fd7 under
+`.runtime/windows-secondary-acceptance/sdk-2c69-local-refusal-census-e45fb79d-b0b0-46ad-a9c2-af30cffa5521/`;
+final proposal manifest190edf30 under
+`.runtime/windows-secondary-acceptance/direct-ended-provider-v3-0f882b80-3277-4c10-9fde-3ffbcfef05e9/`.
+Root reviewed30 pinned leaves and integrated the exact four target afterimages.
+Historical source gzip fixtures retain authentic full public bytes and verified
+digests. Generic future source compatibility remains debt; actual managed
+prepare/status/select, SDK and Windows native scenarios still require fresh proof.
+
+Canonical focused discovery passes137 tests with zero skips after using the
+repository interpreter and the documented DYLD_INSERT_LIBRARIES removal. Root's
+first direct invocation omitted that removal: injected diagnostics corrupted
+effective-route protocol reads, producing6 failures/76 errors. Preserve both
+original captures under `.runtime/root-parity-continuation-22e9/`:
+`focused-connection-96b59ba5-6460-482b-8db7-9196ff4290e9/` and
+`focused-connection-sanitized-edd50c05-563d-4933-9e74-3e591a047596/`.
+This repeats the existing launcher-environment class; current MCP launcher
+removal and `test_mcp_launcher_environment` remain the routine prevention.
+
+## Desktop GUI input allocation failure classification — 2026-10-10
+
+A source audit found that the reachable location/routing import callback and
+SSH key input fold classified every acquisition failure as INVALID_ARGUMENT.
+The CLI already classified OutOfMemoryError as UNAVAILABLE. This was a source
+audit discovery, not a newly observed native heap failure.
+
+Preserved original callback/fold bodies, compiled with the same two regression
+selectors in an isolated exact845f tree, fail at runtime with expected
+UNAVAILABLE/actual INVALID_ARGUMENT. Compilation succeeded; both failures are
+AssertionErrors, with no skips. The four-file successor shares the allocation
+classifier with the actual CLI, delegates successful input to the existing owner
+command/action and keeps cancellation silent. The same selectors and focused
+adjacent tests pass19 tests, zero failures/errors/skips. All other acquisition
+failures retain INVALID_ARGUMENT. `DesktopInputResultTest` is enrolled by ordinary
+desktop discovery and Fast Checks; native picker/clipboard/dialog and real heap
+exhaustion remain separate acceptance.
+
+Evidence: `.runtime/windows-journal-binder-review/gui-input-isolated-8b81d93f-bf70-4472-8096-f6cd6b846ecd/manifest.json`
+(SHAb85df8a3), original two-test XML SHA1f8edaf1, six-case GREEN XML SHAbe11699d,
+and root `gui-input-causal-root-review-1e4f6b33-42c7-4daf-a534-3f2473512260.json`
+under `.runtime/root-parity-continuation-22e9/`. Root verifies37 output files and
+252508742 bytes. The production/test afterimages match the reviewed proposal.
+
 ## Historical package inputs and stale check daemon — 2026-10-10
 
 Prepush5383 ran6117 tests in1927.844s, with5 failures,92 errors and166 skips.

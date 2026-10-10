@@ -114,6 +114,15 @@ and source, then lets normal managed workflows reuse only that owned inner socke
 These POSIX coordinator actions accept no arbitrary command, transfer or device.
 Unsupported coordinators return finite UNKNOWN before private admission.
 
+Completed DIRECT history retains its original source and receipts. A finite
+reviewed predecessor bridge permits the known provider/MCP transition only after
+authentic terminal intent and READY custody checks; all other source pins and
+typed intent fields must match. Missing, live, unknown or altered history refuses
+before a new intent or SSH child. A terminal record cannot erase its READY receipt
+reference. Historical files are never rewritten. Other future source transitions
+remain refused pending separately reviewed coverage; this is not a general
+source migration or native connection acceptance result.
+
 Prepare, select and the admitted workflow must execute promptly: the existing
 inner master expires after60 idle seconds. Preauthor the complete flow before
 preparing it. A lost or UNKNOWN observation requires status on the same original

@@ -33,7 +33,33 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-10,19:13 Moscow
+## Current acceptance status — 2026-10-10,20:37 Moscow
+
+Delivered HEAD/origin/dev are845f896f, product2.2.5. That checkpoint passed all15
+fresh-process prepush commands, including6128 agent-tool tests with170 skips,
+before its managed checkpoint push. Final five-workflow CI remains deferred to
+final delivery. Current canonical changes start the next coherent bucket; the
+old prepush does not validate these changed contents. No release is authorized.
+
+| Slice | Authoritative state and next gate |
+| --- | --- |
+| Windows fixed packages | Exact845f/correlation90f48 hostedrun38069631096 succeeded. Single artifact11677045599 collection is terminal0. Root verifies both209-file complete images and12 metadata/package pins for same-source2.2.4→2.2.5 pair. Native signing, seven Windows return fixtures and normal automatic-return/input-cleanup acceptance remain open. Preserve original1649 failed return and all inputs/history. Packages retain845f engineering provenance after the GUI product edit. |
+| Desktop GUI input parity | Root integrated four reviewed files after isolated original callbacks gave2 runtime RED assertions and the candidate passed19 tests/zero skips. Allocation failure now matches CLI UNAVAILABLE; success/cancellation and original owner/revision remain. Native picker/clipboard/dialog and real exhaustion are unproved. |
+| Connection tooling | OriginalSDK11015/11016 is terminal1 with source closing/cleanup complete. Directprepare2c69 refused before intent/SSH creation because155 authentically ended histories retained predecessor MCP source pins. No authentication failure was observed. Root integrated the exact four-path complete-provider proposal: original1RED among22 controls, final22GREEN, plus separate intermediate-candidate erased-READY-reference RED. Canonical focused discovery passes137 tests/zero skips with the documented sanitized environment; fresh full prepush remains pending. Generic future source-version compatibility remains explicit debt. |
+| Android | Genuine local preparation69515/PID12342 passes in12.12s, source closing true, holders0/FD3→3; namespace omission has1RED→13GREEN. Programme remains private and unsubmitted. Actual45s Baseline constructor/JDK-close needs honest successor enrollment after this bucket and fresh SDK admission. Original proof/restoration/descendants remain UNKNOWN. |
+| Ownership and full plan | All Windows collection/route/SDK and Android source holders have handed back. Root owns canonical integration, local Gradle, metadata and delivery; Windows operator owns the secondary guest/route/SDK and Android operator owns its API35 programme. Latest actual matrix remains0passed/2historical/20open. All DIRECT→matching MCP, API29, Linux/macOS, broker/lifecycle/documents/visuals and final exact-SHA workflows remain required. |
+
+Evidence: Windows pair handoff5f7a18af at
+`.runtime/windows-secondary-acceptance/fixed-return-pair-845f-handoff-44106427-5927-4980-9c1a-4df34648edd3/handoff.json`;
+root complete-image review `windows-fixed-pair-root-review-ef5240d5-d9a6-43a8-a516-0bc42b75ec94.json`
+under `.runtime/root-parity-continuation-22e9/`. GUI causal manifestb85df8a3 is
+under `.runtime/windows-journal-binder-review/gui-input-isolated-8b81d93f-bf70-4472-8096-f6cd6b846ecd/`.
+Android public ready reportab65c004 and closeout3d671801 are under
+`.runtime/android-e9ceb-timeout-diagnosis/bounded-baseline-localjoin-e5edb820-1885-4685-b117-8f5c8856f201/`;
+root reads public reports/metadata only. Prior source epochs and receipts remain
+historical; no package or acceptance evidence is relabelled.
+
+## Historical acceptance status — 2026-10-10,19:13 Moscow
 
 HEAD/origin/dev remain929da434, product2.2.5. The reviewed Windows return fix and
 its status guidance are not yet delivered. Full prepush5383 is terminal failed:

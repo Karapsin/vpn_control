@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep the AVD factory regression aligned with the authenticated API35 getter.
 - Release the confirmed Windows installer return gate before waiting for the original user app, retaining uncertain outcomes and separate return/cleanup verification.
 - Keep historical Windows package inputs exact and refuse managed checks from a stale MCP runner before publishing validation receipts.
+- Align desktop GUI input allocation errors with CLI and preserve completed DIRECT connection history custody.
 
 ## 2.2.5 - 2026-10-10
 

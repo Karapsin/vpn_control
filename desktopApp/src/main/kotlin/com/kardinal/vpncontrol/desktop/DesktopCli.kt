@@ -175,7 +175,7 @@ internal object DesktopCli {
             invocation.client.ifRevision != null && invocation.operation !in DesktopControlSupport.revisionGuardOperations)
             return fail(ControlCode.UNSUPPORTED)
         val request = com.kardinal.vpncontrol.control.ControlCliRequestBuilder.build(invocation, requestId, readInput, readQrImage)
-            .getOrElse { return fail(if (it is OutOfMemoryError) ControlCode.UNAVAILABLE else ControlCode.INVALID_ARGUMENT) }
+            .getOrElse { return fail(desktopInputFailureCode(it)) }
         if (request.command.operation in DesktopControlMutations.operations && DesktopControlMutations.command(request.command) == null)
             return fail(ControlCode.INVALID_ARGUMENT)
         val submit = DesktopCliCommand.ControlSubmit(request, invocation.client.timeoutSeconds)

@@ -362,6 +362,25 @@ def _ended_0be3_intent(value,current,prior_id):
     return json.dumps(value,sort_keys=True)==json.dumps(expected,sort_keys=True)
 
 
+_REVIEWED_ENDED_DIRECT_PROVIDER='b957d4b6bf37ca0c603f09f7df757284a56f042706533159fb5427c1b89fdafc'
+
+def _ended_direct_intent_matches(previous,current):
+    """Strict finite v1 bridge; the caller retains terminal and ready custody."""
+    if type(previous)is not dict or type(current)is not dict or set(previous)!=set(current):return False
+    if json.dumps(previous,sort_keys=True)==json.dumps(current,sort_keys=True):return True
+    from . import ssh_direct_nested_channel as direct_channel
+    old=previous.get('directSourcePins');new=current.get('directSourcePins')
+    if type(old)is not dict or type(new)is not dict or set(old)!=set(direct_channel._SOURCE_NAMES) or set(new)!=set(old):return False
+    if any(type(x)is not str or re.fullmatch('[0-9a-f]{64}',x)is None for x in [*old.values(),*new.values()]):return False
+    if current.get('sourceSha256')!=_source() or new.get('ssh_fresh_nested_channel.py')!=current['sourceSha256']:return False
+    if previous.get('sourceSha256') not in (_source(),_REVIEWED_ENDED_DIRECT_PROVIDER) or old.get('ssh_fresh_nested_channel.py')!=previous['sourceSha256']:return False
+    normalized=dict(old);normalized['ssh_fresh_nested_channel.py']=new['ssh_fresh_nested_channel.py']
+    if old.get('mcp_server.py')!=new.get('mcp_server.py'):
+        if old.get('mcp_server.py')!='6ca7b4050ee5ca6977ff3948ad22b78350d49007c557ba603b9ab2a6558dc014' or new.get('mcp_server.py')!='5707593229d5fa3c331998a0f6bbc2bae1ca4dff3a94fd4f5f5c8064e07a14d7':return False
+        normalized['mcp_server.py']=new['mcp_server.py']
+    if normalized!=new:return False
+    return json.dumps({**previous,'sourceSha256':current['sourceSha256'],'directSourcePins':new},sort_keys=True)==json.dumps(current,sort_keys=True)
+
 def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inventory_diagnostic=None,*,direct=False):
     phase='input'
     try:
@@ -416,7 +435,7 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                     if set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'} or ended['state']!='ended' or ended['correlationId']!=prior_id:return _public()
                     old_intent=stack.enter_context(private.Snapshot(channel_dir,name))
                     old_value=json.loads(old_intent.body,object_pairs_hook=transport._reject_duplicate_keys)
-                    if ended['intentSha256']!=old_intent.digest or old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) or (not direct and old_value.get('inventory')!=config_source.pin()):return _public()
+                    if ended['intentSha256']!=old_intent.digest or (old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) and not (direct and old_value.get('sourceSha256')==_REVIEWED_ENDED_DIRECT_PROVIDER)) or (not direct and old_value.get('inventory')!=config_source.pin()):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9A and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9A):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9527 and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9527):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_012:
@@ -426,12 +445,13 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                     if direct:
                         prior_expected={**intent,'correlationId':prior_id,'inventory':old_value.get('inventory'),'outerAuthoritySha256':old_value.get('outerAuthoritySha256')}
                         pin=old_value.get('inventory');binding=old_value.get('outerAuthoritySha256')
-                        if json.dumps(old_value,sort_keys=True)!=json.dumps(prior_expected,sort_keys=True) or type(pin)is not dict or set(pin)!={'generation','size','sha256'} or type(pin['generation'])is not list or len(pin['generation'])!=9 or any(type(x)is not int for x in pin['generation']) or type(pin['size'])is not int or pin['size']<=0 or type(pin['sha256'])is not str or re.fullmatch('[0-9a-f]{64}',pin['sha256'])is None or type(binding)is not str or re.fullmatch('[0-9a-f]{64}',binding)is None:return _public()
+                        if not _ended_direct_intent_matches(old_value,prior_expected) or type(pin)is not dict or set(pin)!={'generation','size','sha256'} or type(pin['generation'])is not list or len(pin['generation'])!=9 or any(type(x)is not int for x in pin['generation']) or type(pin['size'])is not int or pin['size']<=0 or type(pin['sha256'])is not str or re.fullmatch('[0-9a-f]{64}',pin['sha256'])is None or type(binding)is not str or re.fullmatch('[0-9a-f]{64}',binding)is None:return _public()
+                    if direct and ended['receiptSha256'] is None and (old_value.get('directSourcePins')!=intent['directSourcePins'] or os.path.lexists(journal/(prior_id+'.ready.json'))):return _public()
                     if ended['receiptSha256'] is not None:
                         old_ready=stack.enter_context(private.Snapshot(channel_dir,prior_id+'.ready.json'))
                         old_result=json.loads(old_ready.body,object_pairs_hook=transport._reject_duplicate_keys)
                         if ended['receiptSha256']!=old_ready.digest or ended['gatewayBoot']!=old_result['result']['master']['gatewayBoot']:return _public()
-                        if old_value.get('sourceSha256') in (_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3):
+                        if direct or old_value.get('sourceSha256') in (_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3):
                             if type(old_result)is not dict or set(old_result)!={'intent','result'} or json.dumps(old_result['intent'],sort_keys=True)!=json.dumps(old_intent.pin(),sort_keys=True):return _public()
                             prior=old_result['result']
                             if (type(prior)is not dict or set(prior)!={'state','correlationId','master','arch','controlPath'} or prior['state']!='ready' or prior['correlationId']!=prior_id or prior['controlPath']!='/tmp/vpn-channel-'+prior_id+'/m' or json.dumps(prior['arch'],sort_keys=True)!=json.dumps({'uid':EXPECTED_UID,'boot':EXPECTED_BOOT},sort_keys=True) or not _master_shape(prior['master'])):return _public()

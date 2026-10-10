@@ -540,8 +540,7 @@ internal fun DesktopVpnControlApp(
         }
     }
     fun importContent(operation: ControlOperationId, content: Result<String?>) {
-        content.fold(onSuccess = { text -> if (text != null) guardedAction(ControlCommand(operation,
-            mapOf("input" to ControlValue.Text(text)))) }, onFailure = { dnsOpenFailure = ControlCode.INVALID_ARGUMENT })
+        desktopImportContent(operation, content, ::guardedAction) { dnsOpenFailure = it }
     }
     fun exportContent(operation: ControlOperationId, clipboard: Boolean, title: String, filename: String) {
         coroutineScope.launch {
@@ -816,11 +815,11 @@ internal fun DesktopVpnControlApp(
             if (!sshKeyImporting) {
                 val capturedSnapshot = ownerFrame
                 val revision = capturedSnapshot.configurationRevision
-                val action = sshKeyImport ?: DesktopTextTransfer.openTextFile(
-                    windowProvider(), appStrings.get(UiText.IMPORT_PRIVATE_KEY),
-                ).fold(onSuccess = { content -> content?.let {
-                    DesktopSshKeyImportAction(capturedSnapshot.controllerId, revision, it)
-                } }, onFailure = { dnsOpenFailure = com.kardinal.vpncontrol.model.ControlCode.INVALID_ARGUMENT; null })
+                val action = sshKeyImport ?: desktopSshKeyInput(
+                    DesktopTextTransfer.openTextFile(windowProvider(), appStrings.get(UiText.IMPORT_PRIVATE_KEY)),
+                    capturedSnapshot.controllerId, revision,
+                    onFailure = { dnsOpenFailure = it },
+                )
                 if (action != null) {
                 sshKeyImport = action
                 sshKeyImporting = true
