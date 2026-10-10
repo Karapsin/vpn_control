@@ -33,6 +33,32 @@ owned file. The native test skips explicitly outside Windows. Preserve complete
 installed update, ready acknowledgement, original-user return, denial, cold-owner
 recovery and equivalent MCP scenarios as separate acceptance gates.
 
+`DesktopWindowsCoordinatorAdapterTest` includes three return-lease controls:
+terminal gate release before exact-child reconciliation, five uncertain
+publication/result/pending-clear cases retaining gates and witnesses, and
+independent cleanup preserving the first failure. The fixture compiles complete
+production adapter/role classes and uses real semaphores and retained files for
+external facilities. Ordinary desktop tests discover these Windows-only cases;
+they skip explicitly on other hosts. Local C# fixture success does not prove
+Win32 range unlocking, MSI execution or packaged automatic app return.
+`test_windows_msi_public_scenario` also checks that a bound successful protected
+receipt retains the separate target/return/cleanup verification requirements,
+without promoting unbound receipts or authorizing replay.
+
+`test_windows_cp117_historical_package_source` binds the inert historical factory
+to its original public-module source, including exact bytes, pair guards, source
+drift refusal and reference restoration. Current public MCP bindings remain
+unchanged. Run it with the six CP117 historical factory consumer modules after
+changing their current dependencies; source generation is not native admission.
+
+`test_managed_checks_source_freshness` covers stale/missing check-runner source
+before inspection/lease/dry-run, unchanged content after touch, changes between
+commands and final-command drift blocking receipt publication. It runs in normal
+agent-tool discovery, managed prepush and Fast Checks. Pair it with
+`test_mcp_server`, `test_managed_check_lease`, `test_check_output_retention` and
+`test_mcp_check_failure_output` for check-runner changes. It does not prove atomic
+publication or native filesystem authority.
+
 ## Native orchestration regressions
 
 `test_android_api35_getter_streaming.py` runs in ordinary agent-tool discovery,

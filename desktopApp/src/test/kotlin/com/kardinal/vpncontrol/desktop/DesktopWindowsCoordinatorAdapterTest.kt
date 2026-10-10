@@ -31,6 +31,15 @@ class DesktopWindowsCoordinatorAdapterTest {
     @Test fun actualAdapterReceiptBoundaryUsesMonotonicSequences() =
         runFixture("ActualAdapterReceiptWriterKeepsMonotonicSequence", "COORDINATOR_RECEIPT_SEQUENCE_MONOTONIC")
 
+    @Test fun terminalReturnLeaseReleasesGateBeforeExactChildWait() =
+        runFixture("TerminalReturnLeaseReleasesGateBeforeChildWait", "TERMINAL_RETURN_GATE_BEFORE_CHILD_OK")
+
+    @Test fun uncertainPublicationOrPendingClearRetainsGateAndExactChildWitness() =
+        runFixture("UnknownReturnLeaseRetainsGateAndExactWitnesses", "UNKNOWN_RETURN_GATE_WITNESSES_RETAINED_OK")
+
+    @Test fun returnLeaseCleanupAttemptsEveryStageAndPreservesFirstFailure() =
+        runFixture("ReturnLeaseCleanupAttemptsEveryStageAndKeepsFirstFailure", "RETURN_LEASE_INDEPENDENT_CLEANUP_OK")
+
     private fun runFixture(operation: String, expected: String) {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
         val directory = Files.createTempDirectory("vpn-install-coordinator-adapter-")

@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import unittest
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import historical_current_package
 
 from agent_tools import windows_cp117_base_source_refresh as refresh
 
@@ -733,6 +734,10 @@ PUBLIC_BUILDERS_UAC_GZIP='H4sIAAAAAAAC/+09a3PbOJLf9SsYrvdEJpKilx+Rwtl4HHvi28T2Ws
 PUBLIC_BUILDERS_CLEANUP_RED_GZIP='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'
 
 class PublicConcreteBuilderTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.enterContext(historical_current_package())
+
     def context(self):
         import base64,gzip,hashlib
         from types import ModuleType
@@ -1365,6 +1370,10 @@ class PublicHistoricalCompositionBindingTests(unittest.TestCase):
 PUBLIC_HISTORICAL_STRICT_EQUAL_SOURCE = 'def _server_strict_equal(a,b):\n if type(a)is not type(b):return False\n if type(a)is dict:return set(a)==set(b)and all(_server_strict_equal(a[k],b[k])for k in a)\n if type(a)is list:return len(a)==len(b)and all(_server_strict_equal(x,y)for x,y in zip(a,b))\n return a==b'
 
 class PublicCurrentFactorySuccessorTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.enterContext(historical_current_package())
+
     def test_actual_historical_refusal_and_explicit_current_producer(self):
         from agent_tools.tests.test_windows_cp117_recovered_login import ScreenTests
         record=ScreenTests().record()
@@ -1445,6 +1454,10 @@ class PublicCurrentTestSuccessorTests(unittest.TestCase):
         with self.assertRaises(ValueError):ns['verify_current_test_successor'](old,new,sha(old),sha(new),())
 
 class PublicCurrentContextWholeEntryTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.enterContext(historical_current_package())
+
     def test_actual_prepare_and_all_six_builders_no_guest_child(self):
         from agent_tools.tests.fixtures.windows_cp117_public_context.whole_entry import exercise
         value=exercise();self.assertEqual(value['builders'],6);self.assertIs(value['nativeAdmission'],False);self.assertIs(value['guestSubmissionAttempted'],False)
@@ -1455,6 +1468,10 @@ class PublicCurrentContextWholeEntryTests(unittest.TestCase):
 
 @unittest.skipIf(os.name=='nt','actual POSIX participating FD/named closure')
 class PublicTerminalSourceCustodyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.enterContext(historical_current_package())
+
     def test_actual_context_late_parent_unlink_old_red_current_refusal(self):
         from agent_tools.tests.fixtures.windows_cp117_public_context.whole_entry import exercise
         old=exercise(late_unlink=True,old_closure=True);self.assertIs(old['namedExists'],False);self.assertEqual(old['seam'],['after-parent-lstat'])

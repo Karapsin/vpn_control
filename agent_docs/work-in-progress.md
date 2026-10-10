@@ -33,7 +33,89 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-10,14:00 Moscow
+## Current acceptance status — 2026-10-10,19:13 Moscow
+
+HEAD/origin/dev remain929da434, product2.2.5. The reviewed Windows return fix and
+its status guidance are not yet delivered. Full prepush5383 is terminal failed:
+6117 tests/1927.844s,5 failures,92 errors,166 skips. The cached daemon returned
+only bounded output; preserve that response and use the current fresh-process
+MCP CLI for the next full tier. The goal remains incomplete; final five-workflow
+CI is deferred to final delivery and no release is authorized.
+
+| Slice | Authoritative state and next action |
+| --- | --- |
+| Windows update | Original1649 still has protected Succeeded/OK and complete209-file target2.2.5, but automatic return failed and input cleanup is unverified. Product return-gate fix has focused desktop/C# evidence; native fixed-package rerun is open. Sole Windows operator confirms no outstanding local handles and last route ENDED. Build new same-source2.2.4→2.2.5 pair after clean checkpoint, retain old history/inputs and perform only scoped admitted baseline recovery. |
+| Historical test inputs | Actual package guard expects public-module5e60d94f but current guidance module is5b440831. Exact historical public bytes equal the actual HEAD beforeimage. Test contexts bind only that input and restore references; current producer/precise guards remain. Five new controls pass; six affected consumer modules pass353tests/78 platform skips. Omitted original errors are not assumed resolved until fresh full discovery. |
+| Managed checks | Four loaded runner/dependency source digests now refuse stale/missing code before inspection/lease/dry-run, between commands and before receipt construction. Actual old controls5FAIL/1PASS→fixed6PASS; combined MCP/lease checks51PASS, adjacent retention/failure-output/historical checks20PASS. Independent source review CLEAR. Trusted fresh startup/sequential-check limits remain; old daemon requires fresh CLI/restart. |
+| Android | Bounded Baseline constructor diagnostic is sealed, unsubmitted:4 causal RED→9 GREEN and22 source inverses. Stops before batch/custody/proof/install, with45s child/50remote/60collection limits and explicit unknown descendant/cleanup facts. Await current checkpoint/source enrollment and fresh Windows-owned SDK borrow. Original20-minute timeout and restoration remain UNKNOWN. |
+| Full plan | Latest actual matrix0passed/2historical/20open. Windows/Android DIRECT→matching MCP, API29, Linux/macOS, broker, owner lifecycle, documents, visuals and final exact-SHA five workflows remain open. Native operators have handed back; root owns final metadata, fresh full prepush, scoped checkpoint and next source/artifact grants. |
+
+Evidence: bounded prepush response and causal check-runner beforeimage/RED/GREEN
+under `.runtime/root-parity-continuation-22e9/`; independent source review
+`check-source-review-9c43e0dd-992a-4f4a-8abd-f2bdeb136056/review.json` (SHA9ef9783f).
+Windows fixture source repair and complete353-test logs are owned by
+windows_update_assembly under `.runtime/windows-journal-binder-review/`.
+Android bounded candidate ready report under
+`.runtime/android-e9ceb-timeout-diagnosis/bounded-baseline-bcb4d7b0-c159-4807-b75c-3ee7eeb1895c/`
+(SHA21f144da). Previous timestamps/source epochs remain historical.
+
+## Historical acceptance status — 2026-10-10,18:23 Moscow
+
+The Windows return correction is a reviewed three-path product/test change on
+dev929da434, product2.2.5, awaiting fresh version metadata/prepush/checkpoint.
+Existing packages remain cbee engineering artifacts. The full plan is incomplete;
+final exact-SHA five-workflow verification stays deferred until final delivery.
+
+| Slice | Exclusive owner/environment | Verified progress and next action |
+| --- | --- | --- |
+| Windows original1649 | windows_secondary_operator; secondary AMD64 guest | Succeeded/OK sequence4 and complete209-file target2.2.5/Context2/original SID verified. Fresh postdeadline native read proves exact helpers6416/5864 absent and no returned app/MSI/runtime actors. Automatic return failed. Input cleanup remains unverified; last Limited read found inputs present. Preserve original history and inputs; no replay/manual return. |
+| Windows return fix | windows_update_assembly three-path change; root integration/Gradle | Terminal-only return gate release precedes exact-child reconciliation while retaining witnesses. Authentic complete-class controls old2FAIL→fixed7casesPASS; independent current-source review CLEAR; managed desktop suite1226 tests/110 platform skips/zero failures. Nine coordinator cases skip on Mac. Build a new same-source pair, recover only the identified disposable-guest installation baseline, then genuine normal DIRECT and matching MCP return/cleanup. |
+| Windows MCP/tooling | root; sole operator retains ignored debt/evidence | Existing public status now supplies read-only target/return/input verification guidance after bound Succeeded/OK;19 routine tests pass. Secondary adapter/bounded journal/codec/observer cleanup integration and equivalent native scenarios remain open. Typed uint32 context variable caused a separate input-read error; native corrected read remains unproved. |
+| Android | android_api35_operator; owned diagnosis/API35 | Public local progress packet has11 passing controls after two authentic buffering/closing RED cases; routing six-versus-five argument correction has1RED→3GREEN. Original1205s native timeout/inner stage/restoration remain UNKNOWN. Prepare a bounded diagnostic through authentic Baseline construction before guest mutation, with fresh source/SDK admission; no opaque full retry. |
+| Delivery/full plan | root | Metadata and fresh full prepush/checkpoint next. Matching packages, complete Windows/Android DIRECT→MCP, API29, Linux/macOS, lifecycle/broker/documents, visual scenes, matrix reconciliation and final CI remain required. No release authorized. |
+
+Windows public postdeadline handoff is
+`.runtime/windows-secondary-acceptance/same-1649-postdeadline-handback-a8c782e9-9e24-49cb-95eb-78f2a240792e/handoff.json`
+(SHA68a14038). Product fix packet is
+`.runtime/windows-journal-binder-review/return-gate-ordering/manifest.json`
+(SHA25795f08). Root verifies65 packet leaves and exact canonical afterimages;
+full target handoff58 leaves verified separately (SHA31320214). Android public
+summary is `.runtime/android-e9ceb-timeout-diagnosis/progress-successor-4c93ec0f-85e2-466a-8b00-8553c1653464/final-report.json`
+(SHA6c7c3889); protected programme/proof bodies remain owner-only. Both native
+operators handed back all source/route holders; same988 route is authoritatively
+ENDED. Historical evidence is preserved and cannot be relabelled as the new SHA.
+
+## Historical acceptance status — 2026-10-10,17:53 Moscow
+
+Delivered HEAD/origin/dev are `929da43418bca0ac4764901024faf2a309b96267`,
+product2.2.5. Retained engineering packages keep their original cbee provenance.
+The full parity goal remains incomplete. The source freeze has ended after both
+native operators explicitly handed back their local holders, original SDK15570
+ended with successful cleanup, same9b7 connection status reported ENDED, and root
+independently observed all six original SDK actors absent. Existing source epoch
+4d134 and its successful prepush are historical once this continuation is edited;
+final content requires a fresh prepush and final exact-SHA CI.
+
+| Slice | Exclusive owner/environment | Actual evidence and next gate |
+| --- | --- | --- |
+| Windows normal1649 | windows_secondary_operator; secondary AMD64 guest and route producer | Actual guarded compact/focused/expanded UAC approval; exact jobf6fa5077 has protected Succeeded/OK sequence4 and MSI has exited. Target CLI bytes are present. Two exact helpers remain live; full209-file target, automatic ordinary-user return and cleanup are unproved. No install/key replay or manual relaunch. |
+| Windows restart correction | windows_update_assembly; installer sessions and adjacent CoordinatorAdapter test | Source unchanged from packaged cbee shows a circular wait: bootstrap reconciles the user helper before coordinator disposal releases the return gate; user helper needs that gate to restart and exit. Implement terminal-confirmed gate release before reconciliation, retain exact witnesses and unknown-install protection, and prove causal RED/GREEN before rebuilding and native retest. |
+| Windows test tooling | reviewed ignored proposals; root owns eventual shared MCP integration | Eight actual directory-reader controls prove expected original refusal, corrected read, unchanged strict leaf policy and foreign-owner/principal refusals; fixture absent and cleanup empty. Bounded reader, command codec, PS5.1 fixture and observer BrokenPipe debts remain mapped for routine regressions and MCP integration after complete DIRECT success. |
+| Android current proof | android_api35_operator; API35 and owned diagnosis | Original84084/main6696 ends1; SSH6982 ends0. Remote1060656 times out in collection_loop after1205.007819s and ends−9 with zero inner streams. Semantic proof, inner stage, restoration, descendants and old lease remain UNKNOWN. Local physical cleanup is complete; no next opaque retry or native mutation. Add bounded durable progress around actual awaited steps. |
+| Delivery and remaining plan | root | Coherent installer/test/doc bucket is now open; root owns docs, metadata, Gradle and delivery. Matrix groups, remaining DIRECT→MCP cases, API29, Linux/macOS, broker/documents/lifecycle, visuals and final five-workflow exact-SHA gate remain open. Final CI remains deferred as requested; no release authorized. |
+
+Evidence: root directory controls review
+`.runtime/root-parity-continuation-22e9/windows-14cf-native-directory-root-review.json`
+(SHAdaeab5f2); actual prompt review `windows-1649-prompt-root-review.json`
+(SHAabcd687d) in the same root directory. Windows131-leaf handoff is
+`.runtime/windows-secondary-acceptance/normal-1649-succeeded-return-blocked-65429628-57d8-47b2-9466-6cc363341a0b/handoff.json`
+(SHA537710dc). Android closeout is
+`.runtime/android-e9ceb-timeout-diagnosis/proof-caller-ca00afc1-4663-46b0-8487-4010ffb2c5bd/native-9b7-closeout.json`
+(SHAa6c3fb76). SDK closing records are under
+`.runtime/windows-secondary-acceptance/sdk-9b7-closing-b1372f97-b69e-463c-8506-a0d899984d40/`
+(same status SHAb2f1cc4d). Historical results and raw originals remain intact.
+
+## Historical acceptance status — 2026-10-10,14:00 Moscow
 
 Delivered HEAD/origin/dev remain `cbee6e6e1b1a888e6c47964fe3c6418fd11420ef`,
 product2.2.5. Root owns the coherent Android tool/test compatibility bucket and

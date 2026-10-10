@@ -117,14 +117,21 @@ internal sealed class CoordinatorOriginalUserBootstrapLease : IDisposable {
     }
     public void Dispose() {
         if (disposed) return;
-        Exception failure=null;
-        // Successful construction is the no-termination fence: RunCoordinator
-        // may have published INSTALLING or invoked MSI before it returns.
-        try { child.ReconcileAfterAdmission(); } catch (Exception error) { failure=error; }
-        try { child.Dispose(); } catch (Exception error) { if (failure==null) failure=error; }
-        try { coordinator.Dispose(); } catch (Exception error) { if (failure==null) failure=error; }
+        Exception failure=ReconcileAndDispose(child,coordinator);
         disposed=true;
         if (failure!=null) throw new IOException("OUTCOME_UNKNOWN",failure);
+    }
+    // Shared disposal boundary; same-assembly tests may supply only retained
+    // child observations and an adapter with no MSI/launch/token authority.
+    internal static Exception ReconcileAndDispose(CoordinatorOriginalUserChild child,CoordinatorSessionAdapter coordinator) {
+        Exception failure=null;
+        // Release only terminal-cleared gate ranges before waiting for return.
+        // The exact child and all coordinator/input witnesses remain retained.
+        try { coordinator.ReleaseTerminalReturnGate(); } catch (Exception error) { failure=error; }
+        try { child.ReconcileAfterAdmission(); } catch (Exception error) { if (failure==null) failure=error; }
+        try { child.Dispose(); } catch (Exception error) { if (failure==null) failure=error; }
+        try { coordinator.Dispose(); } catch (Exception error) { if (failure==null) failure=error; }
+        return failure;
     }
 }
 
@@ -207,6 +214,7 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
     FileStream gate, cancel;
     SafeFileHandle programDataDirectory, programDataWitness, machineDirectory, jobDirectory;
     bool reserved, exclusive;
+    bool terminalPublished, terminalGateReleaseReady;
     VpnInstallHelperRoles.PreinstallStage preinstallStage=VpnInstallHelperRoles.PreinstallStage.None;
     bool preinstallIdentityFailure;
     bool disposed;
@@ -283,15 +291,25 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
         receiptWriter=new CoordinatorReceiptWriter(JobId,jobDirectory,new NativeCoordinatorReceiptPublisher());
     }
     public void Publish(VpnInstallHelperRoles.Phase phase,string code) {
-        if (fixture!=null) { if (fixtureReceiptWriter!=null) fixtureReceiptWriter.Publish(phase,code); else fixture.Publish(phase,code); return; }
-        if (jobDirectory==null) throw new IOException("CONFLICT");
-        if (receiptWriter==null) receiptWriter=new CoordinatorReceiptWriter(JobId,jobDirectory,new NativeCoordinatorReceiptPublisher());
-        receiptWriter.Publish(phase,code);
+        if (fixture!=null) { if (fixtureReceiptWriter!=null) fixtureReceiptWriter.Publish(phase,code); else fixture.Publish(phase,code); }
+        else {
+            if (jobDirectory==null) throw new IOException("CONFLICT");
+            if (receiptWriter==null) receiptWriter=new CoordinatorReceiptWriter(JobId,jobDirectory,new NativeCoordinatorReceiptPublisher());
+            receiptWriter.Publish(phase,code);
+        }
+        // An uncertain publication must not release a live installation gate.
+        if (phase==VpnInstallHelperRoles.Phase.Succeeded || phase==VpnInstallHelperRoles.Phase.Failed ||
+            phase==VpnInstallHelperRoles.Phase.Cancelled) terminalPublished=true;
     }
     public void SetPending(bool value) {
-        if (fixture!=null) { fixture.SetPending(value); return; }
-        if (gate==null) throw new IOException("CONFLICT");
-        gate.Position=8; gate.WriteByte(value ? (byte)1 : (byte)0); gate.Flush(true);
+        if (value) terminalGateReleaseReady=false;
+        if (fixture!=null) fixture.SetPending(value);
+        else {
+            if (gate==null) throw new IOException("CONFLICT");
+            gate.Position=8; gate.WriteByte(value ? (byte)1 : (byte)0); gate.Flush(true);
+        }
+        // Set this only after both terminal acknowledgement and pending flush.
+        terminalGateReleaseReady=!value && terminalPublished;
     }
     public bool CancellationRequested { get {
         if (fixture!=null) return fixture.CancellationRequested;
@@ -426,6 +444,18 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
             wait.Pause();
         }
     }
+    internal void ReleaseTerminalReturnGate() {
+        if (disposed || !terminalGateReleaseReady) return;
+        if (fixture!=null) {
+            CoordinatorTerminalReturnGateFacilities returnGate=fixture as CoordinatorTerminalReturnGateFacilities;
+            if (returnGate!=null) returnGate.ReleaseTerminalReturnGate();
+            return;
+        }
+        Exception failure=null;
+        try { if (exclusive) { VpnInstallNative.Unlock(gate.SafeFileHandle,0); exclusive=false; } } catch (Exception error) { failure=error; }
+        try { if (reserved) { VpnInstallNative.Unlock(gate.SafeFileHandle,16); reserved=false; } } catch (Exception error) { if (failure==null) failure=error; }
+        if (failure!=null) throw new IOException("PERSISTENCE_FAILED",failure);
+    }
     public void Dispose() {
         if (disposed) return;
         if (fixture!=null) { fixture.Dispose(); disposed=true; return; }
@@ -461,6 +491,12 @@ internal interface CoordinatorSessionAdapterFacilities : IDisposable {
     bool TryInstallationReady();
     uint? ReadNativeResult();
     void Pause();
+}
+
+// Same-assembly inert gate seam. It carries no request, token, path, installer
+// or launch authority; native production always releases its own exact ranges.
+internal interface CoordinatorTerminalReturnGateFacilities {
+    void ReleaseTerminalReturnGate();
 }
 
 // The writer is the sole receipt publication boundary used by the production

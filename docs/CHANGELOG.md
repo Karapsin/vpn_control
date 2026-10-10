@@ -10,6 +10,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Authenticate each Android device's staged getter source in the installer bundle guard.
 - Keep Android getter consumers and generated backend bindings aligned with authenticated device sources while preserving historical receipts.
 - Keep the AVD factory regression aligned with the authenticated API35 getter.
+- Release the confirmed Windows installer return gate before waiting for the original user app, retaining uncertain outcomes and separate return/cleanup verification.
+- Keep historical Windows package inputs exact and refuse managed checks from a stale MCP runner before publishing validation receipts.
 
 ## 2.2.5 - 2026-10-10
 

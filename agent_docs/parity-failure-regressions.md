@@ -1,5 +1,78 @@
 # Parity Failure-to-Regression Ledger
 
+## Historical package inputs and stale check daemon — 2026-10-10
+
+Prepush5383 ran6117 tests in1927.844s, with5 failures,92 errors and166 skips.
+Its cached MCP implementation returned bounded streams without complete-output
+capsules. The original bounded response is retained under
+`.runtime/root-parity-continuation-22e9/prepush-5383-bounded-result.json`; omitted
+failures are not reconstructed or assumed to share a cause.
+
+The first actual publisher failure expected `stage-complete-command-cap` but
+received `package-fixed-source`. Exact guard inspection established that the
+historical installed factory expected public-module SHA5e60d94f while reading
+the changed current status module5b440831. The return C# change was not this
+guard's input. The test-only context now authenticates the exact historical
+public source and binds it only for the existing historical factory lifetime.
+Actual old body generation refuses; fixed generation and five source/pair/drift/
+reference/current-producer controls pass. Four explicit-current test classes also
+scope only their historical public input, preserving the actual current producer
+and precise source pin. All original source/pair guards and current public
+bindings remain intact. The six consumer modules pass353 tests with78 genuine
+platform skips; fresh full prepush remains open. No native package admission
+follows from these controls.
+
+The related MCP check-runner repair binds its four loaded source dependencies
+and refuses changed/unavailable code before inspection/lease/dry-run, between
+commands and before receipt construction. Actual unguarded entrypoints give
+five failing controls and one passing touch control; fixed six controls pass.
+The combined MCP/lease/source-freshness set passes51 tests. Ordinary unittest
+discovery and Fast Checks enroll the new module. This assumes trusted fresh
+startup and provides sequential change detection, not atomic publication or
+authenticated Python compile-byte loading. Use the fresh-process CLI while the
+live daemon predates the guard. Causal beforeimage and complete RED/GREEN streams:
+`.runtime/root-parity-continuation-22e9/managed-check-source-freshness-9e3f0b12/`.
+
+## Windows terminal gate and original-user return — 2026-10-10
+
+Original normal1649/request73825/operation93fb/jobf6fa reached protected
+Succeeded/OK sequence4. Native readback verified all209 target files,
+200348663 bytes, version2.2.5, original SID and MSI Context2. The app did not
+return: coordinator reconciliation waited for the exact user child before
+releasing gate ranges0/16, while that child needed those ranges to return and
+exit. Both helpers later exited naturally; this is failed return evidence,
+not complete update acceptance. Original inputs and histories are preserved.
+
+The fix releases only the terminal return ranges after confirmed receipt
+publication and successful pending clear, then reconciles the exact child and
+disposes child/coordinator independently. Owner/input/process witnesses remain
+retained through reconciliation; live or uncertain installation retains its gate.
+Actual complete-class C# controls reproduce two old entrypoint failures and five
+passing UNKNOWN cases; the fixed three entrypoints pass all seven cases, with
+zero skips or stderr. Facilities use real semaphores/FileStreams with inert
+native authority. `DesktopWindowsCoordinatorAdapterTest` enrolls three routine
+selectors; macOS focused desktop checks pass1226 tests with110 platform skips,
+including all9 native coordinator selectors. Actual Win32/package return remains
+a separate native gate.
+
+Related MCP status guidance now lists installed-target, original-user-return and
+input-cleanup verification after an already bound Succeeded/OK receipt. The
+actual old status selector lacks this guidance (RED); the full19-test successor
+module passes, including foreign bindings, non-success receipts and collect
+without installed verification. This diagnostic neither identifies a return
+failure from the receipt alone nor submits a mutation. Ordinary agent-tool
+discovery and Fast Checks enroll the same module. Complete DIRECT success and
+equivalent secondary-guest MCP retest remain open.
+
+Evidence: `.runtime/windows-journal-binder-review/return-gate-ordering/manifest.json`
+(SHA25795f08; root verifies65 leaves and three canonical afterimages), root
+`windows-terminal-return-fix-root-review.json` under
+`.runtime/root-parity-continuation-22e9/`, and postdeadline handoff
+`.runtime/windows-secondary-acceptance/same-1649-postdeadline-handback-a8c782e9-9e24-49cb-95eb-78f2a240792e/handoff.json`
+(SHA68a14038). Packages retain cbee provenance; fixed packages require the new
+checkpoint. The typed PowerShell context-variable observer error is separate
+tooling debt; it does not explain the product circular wait or prove input cleanup.
+
 ## Final AVD factory consumer and bounded native timeout — 2026-10-10
 
 Fresh-process prepush1745 retains complete output for6117 tests: zero assertion

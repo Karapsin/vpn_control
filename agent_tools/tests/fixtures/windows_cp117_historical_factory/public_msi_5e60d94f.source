@@ -828,12 +828,6 @@ def _status_result(raw: bytes | None, correlation: str, intent: dict[str, Any]) 
             return unknown
         result["protected"] = {"phase": protected["phase"], "code": protected["code"], "sequence": protected["sequence"]}
         result["phase"] = "protected-terminal" if protected["phase"] in {"Succeeded", "Failed", "Cancelled"} else "awaiting-uac-or-installer"
-        if protected["phase"] == "Succeeded" and protected["code"] == "OK":
-            # Native installation can finish while the original user helper is
-            # still waiting to return. Observe the same job; never relaunch or
-            # replay an update to manufacture acceptance from this receipt.
-            result["remainingVerification"] = ["installed-target", "original-user-return", "input-cleanup"]
-            result["nextAction"] = "verify-installed-target-original-user-return-and-input-cleanup"
     return result
 
 

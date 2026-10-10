@@ -344,7 +344,17 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
                  "protected": {"version": 1, "jobId": JOB, "phase": "Succeeded", "code": "OK", "sequence": 4}}
         self.assertEqual("unknown", scenario._status_result(json.dumps(value).encode(), correlation, intent)["state"])
         value["originalSid"] = intent["expectedSid"]
-        self.assertEqual("protected-terminal", scenario._status_result(json.dumps(value).encode(), correlation, intent)["phase"])
+        terminal = scenario._status_result(json.dumps(value).encode(), correlation, intent)
+        self.assertEqual("protected-terminal", terminal["phase"])
+        self.assertEqual("verify-installed-target-original-user-return-and-input-cleanup", terminal["nextAction"])
+        self.assertEqual(["installed-target", "original-user-return", "input-cleanup"], terminal["remainingVerification"])
+        self.assertFalse(terminal["replayAllowed"])
+        # A native success receipt supplies no ordinary-owner or cleanup proof.
+        with patch.object(scenario, "status", return_value=terminal):
+            collected = scenario.collect(Path("."), {})
+        self.assertTrue(collected["collected"])
+        self.assertFalse(collected["installedVerified"])
+        self.assertEqual(terminal["remainingVerification"], collected["remainingVerification"])
         recovered = {**value, "observedControllerId": "55555555-5555-4555-8555-555555555555",
                      "observedOriginControllerId": correlation,
                      "observedOriginRequestId": value["requestId"]}
@@ -358,7 +368,12 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
                        {"observedCode": "arbitrary"}, {"observedFinal": "false"},
                        {"taskStage": "REQUEST"}, {"requestCode": "ARBITRARY_CODE"}):
             bad = {**value, **change}
-            self.assertEqual("public-request-observed", scenario._status_result(json.dumps(bad).encode(), correlation, intent)["phase"])
+            unbound = scenario._status_result(json.dumps(bad).encode(), correlation, intent)
+            self.assertEqual("public-request-observed", unbound["phase"])
+            self.assertNotIn("remainingVerification", unbound)
+        for phase, code in (("Installing", "OK"), ("Failed", "RUNTIME_FAILED"), ("Cancelled", "CANCELLED"), ("Succeeded", "RUNTIME_FAILED")):
+            different = {**value, "protected": {**value["protected"], "phase": phase, "code": code}}
+            self.assertNotIn("remainingVerification", scenario._status_result(json.dumps(different).encode(), correlation, intent))
         self.assertIn(" --async ", scenario._public_task(correlation, {
             "targetVersion": "2.2.0", "baseCliSha256": "a" * 64,
             "targetMsiSha256": "c" * 64, "targetMsiSize": 1,

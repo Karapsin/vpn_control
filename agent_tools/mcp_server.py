@@ -33,6 +33,19 @@ local_build_environment = importlib.import_module(
 managed_check_lease = importlib.import_module(f"{__package__ or 'agent_tools'}.managed_check_lease")
 check_output_retention = importlib.import_module(f"{__package__ or 'agent_tools'}.check_output_retention")
 
+# A daemon can outlive edits to the check runner or its imported dependencies.
+# Bind the loaded implementation, rather than treating current disk bytes as
+# proof that this process is executing them.
+_CHECK_RUNNER_SOURCE_DIGESTS = {
+    path: hashlib.sha256(path.read_bytes()).hexdigest()
+    for path in (
+        Path(__file__).resolve(),
+        Path(local_build_environment.__file__).resolve(),
+        Path(managed_check_lease.__file__).resolve(),
+        Path(check_output_retention.__file__).resolve(),
+    )
+}
+
 try:  # The repository tests intentionally run without the optional MCP package.
     from mcp.server.fastmcp import FastMCP
 except ImportError:  # pragma: no cover - covered by launcher/integration smoke checks.
@@ -388,6 +401,9 @@ def run_checks(
     """Run focused checks or the complete pre-push validation tier."""
     if level not in {"focused", "prepush"}:
         return _error("run_checks", "level must be 'focused' or 'prepush'")
+    source_error = _check_runner_source_error()
+    if source_error:
+        return source_error
     selected_area = _infer_area("validation", None if area == "auto" else area, _changed_paths())
     commands = _commands_for(selected_area, level)
     if dry_run:
@@ -405,11 +421,34 @@ def run_checks(
         return _error("run_checks", str(error), blockers=[{"phase": "check-lease", "state": error.state}])
 
 
+def _check_runner_source_error(**extra: Any) -> dict[str, Any] | None:
+    for path, loaded_digest in _CHECK_RUNNER_SOURCE_DIGESTS.items():
+        try:
+            current_digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            state = "source-unavailable"
+        else:
+            if current_digest == loaded_digest:
+                continue
+            state = "changed-after-load"
+        return _error(
+            "run_checks",
+            "Loaded check runner source is unavailable or changed; use the fresh-process "
+            "agent_tools/mcp_tool.sh run-checks route or restart MCP.",
+            blockers=[{"phase": "check-source", "state": state}],
+            **extra,
+        )
+    return None
+
+
 def _run_check_commands(selected_area: str, level: str, commands: list[list[str]]) -> dict[str, Any]:
     checked_fingerprint = _snapshot_fingerprint() if level == "prepush" else None
     results = []
     output_fingerprint = checked_fingerprint or hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     for index, command in enumerate(commands):
+        source_error = _check_runner_source_error(command_results=results)
+        if source_error:
+            return source_error
         def capture(returncode, stdout, stderr):
             return check_output_retention.retain_completed_output(
                 REPO_ROOT, label=f"{level}-{index}", returncode=returncode,
@@ -424,6 +463,9 @@ def _run_check_commands(selected_area: str, level: str, commands: list[list[str]
                 command_results=results,
             )
 
+    source_error = _check_runner_source_error(command_results=results)
+    if source_error:
+        return source_error
     receipt = None
     if level == "prepush":
         if _snapshot_fingerprint() != checked_fingerprint:

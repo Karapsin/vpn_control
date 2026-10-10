@@ -49,6 +49,14 @@ Pre-push captures source content before and after checks and refuses to publish
 a new receipt when content changes during validation. Freeze edits, wait for the
 current run to exit, then run a fresh pre-push tier.
 
+Managed checks also compare the loaded runner, build-environment, checkout-lease
+and output-retention source digests with current files before inspection or a
+dry-run plan, between commands and before receipt construction. Changed or
+unreadable source refuses the check with a finite `check-source` blocker. Use
+`./agent_tools/mcp_tool.sh run-checks --level prepush` or restart MCP. An older
+daemon cannot acquire this guard retroactively. The hashes assume trusted fresh
+startup; they detect changes and do not make receipt publication atomic.
+
 `prepare_start` deliberately blocks when a fetch fails, branches diverge, a dirty branch other than `dev` would need switching, or a dirty behind-`dev` worktree would need pulling. Resolve the reported condition explicitly and rerun it.
 
 ## Native Acceptance Execution
@@ -1948,6 +1956,10 @@ optional timeout, and observe that durable intent without submission. Unknown
 submission is not permission to retry. A collected protected terminal result
 does not assert installation, target bytes, relaunch or cleanup; those need
 independent native proof before an acceptance receipt.
+An authenticated `Succeeded/OK` receipt includes `remainingVerification` for
+installed target files, original-user return and input cleanup, with a read-only
+`nextAction` to verify those facts on the same job. It does not diagnose a return
+failure or authorize manual relaunch, cleanup or another install request.
 
 Darwin `admit-plan` accepts historical nonzero swap only with a caller-supplied
 `measurement.platform="darwin"` and exactly two `samples`. Each sample has

@@ -20,14 +20,32 @@ INSTALLED_SOURCE = SOURCE.with_name('installed_fa5f054e.source')
 INSTALLED_SHA256 = 'fa5f054ecb6166ab09a29faaccbe3ce960cb864af764762b71e518a2716b531d'
 _INSTALLED = historical_source.load(INSTALLED_SOURCE, INSTALLED_SHA256)
 
+PUBLIC_SOURCE = SOURCE.with_name('public_msi_5e60d94f.source')
+PUBLIC_SHA256 = '5e60d94fe2b020957694b21611b9bb5b4789c20830597589b42d32e8dafeeb78'
+_PUBLIC = historical_source.load(PUBLIC_SOURCE, PUBLIC_SHA256)
+
 def installed():
     return historical_source.verify(_INSTALLED, INSTALLED_SOURCE, INSTALLED_SHA256)
+
+def public():
+    return historical_source.verify(_PUBLIC, PUBLIC_SOURCE, PUBLIC_SHA256)
 
 def diagnostic():
     return historical_source.verify(_DIAGNOSTIC, DIAGNOSTIC_SOURCE, DIAGNOSTIC_SHA256)
 
 def provider():
     return historical_source.load(SOURCE, SHA256)
+
+
+@contextmanager
+def historical_current_package():
+    """Keep the explicit current producer with its historical public input."""
+    from agent_tools import windows_cp117_installed_base_observe as current_installed
+    historical_public = public()
+    if current_installed.PUBLIC_SHA != PUBLIC_SHA256:
+        raise ValueError('historical_package_public_pin')
+    with patch.object(current_installed, 'public', historical_public):
+        yield current_installed
 
 
 @contextmanager
@@ -38,10 +56,12 @@ def historical_factories():
     old = provider()
     precise = diagnostic()
     historical_installed = installed()
+    historical_public = public()
     with ExitStack() as stack:
         for module in (current_diagnostic, precise, current_installed, historical_installed, refresh):
             stack.enter_context(patch.object(module, 'flow', old))
         stack.enter_context(patch.object(historical_installed, 'precise', precise))
+        stack.enter_context(patch.object(historical_installed, 'public', historical_public))
         stack.enter_context(patch.object(refresh, 'installed', historical_installed))
         yield old
 
