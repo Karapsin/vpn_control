@@ -1,5 +1,112 @@
 # Parity Failure-to-Regression Ledger
 
+## Windows successful update inputs and AOT compatibility — 2026-10-11
+
+The one admitted engineering2.2.4→2.2.5 update reached protected success and
+returned the ordinary original-user app owner with runtime OFF. Its five private
+installer inputs remained while public cleanupCode reported OK. The actual old
+Installer path produces two assertion failures: completed inputs remain, and
+present legacy inputs incorrectly report successful cleanup. The ignored
+C#/Kotlin repair binds the fixed five original objects to protected immutable
+custody, preserves successful MSI outcome and return when cleanup fails, and
+refuses legacy or uncertain present inputs. Root independently verified the
+final-model candidate's77 JVM tests with zero failures/errors/skips. Eight
+managed cleanup/retention cases pass; native Windows syscalls remain modeled.
+
+The first candidate's portable compiler accepted its dynamic enum enumeration,
+but the actual pinned10.0.400 AOT analyzer rejected
+`Enum.GetValues(Type)` with IL3050. Root identified this packaging risk during
+source review, then required the real compile before any repair. Original
+session49858/PID39139 exited1 with the authentic analyzer diagnostic and full
+source closing. Two unrelated injected AppleSharpener startup stderr lines also
+became MSBuild errors; these are preserved separately from IL3050. The fixed
+five-leaf successor and routine analyzer coverage preserve this causal failure.
+
+Evidence: original update/public projection manifest a2c4ecfd and the root draft
+review b111c846 under `.runtime/root-parity-continuation-22e9/`; original JVM RED,
+close-fault model failure and77-test GREEN remain under
+`.runtime/windows-product-input-cleanup-proposal-a23/`. The actual compiler
+failure is retained in `aot-analyzer-run-5e5b408e-45bc-4ad0-a5a8-254cb7722b6d/`
+within that proposal. The final fixed five-slot mapping passed the same pinned
+AOT analyzer with zero warnings/errors. The added routine method now enables
+that analyzer with strict warnings for its eight managed cases, using the
+existing NuGet pattern; earlier fixture defaults stay unchanged. Refreshed eight
+managed cases pass. The final routine JVM method compiles but explicitly
+skips on macOS. Root integrated all twelve exact afterimages after reviewing942
+public source/evidence leaves (integration5eb9fda9, manifest3ca7acba, patch6ef8e93a).
+Fresh canonical prepush and delivery remain open. A source-bound base/target pair, actual Win32/MSI cleanup,
+visible GUI return and complete DIRECT/MCP retesting remain required.
+
+## Windows admitted caller and evidence-reader failures — 2026-10-11
+
+Six observed fixture failures retain their original sources and correlations:
+compact versus hyphenated UUID identity; a protected public filename refusing
+after intent publication; an empty command acknowledgement mistaken for status;
+post-approval FINISHstdin BrokenPipe; an existing display exceeding the gzip
+transfer cap; and a first-exited bootstrap row mistaken for the actual ordinary
+task result. Authentic preserved caller fragments produce21 assertion failures;
+the repaired23 controls pass. Transfer tests use real pipes and bytes; owner and
+command observations use real PowerShell with an inert file-backed CLI. These
+controls never resubmit an update or claim native approval or installation.
+
+Root review found that the new public projection read and rehashed the complete
+file before applying its262144-byte limit, and accepted floating-point image
+counters. The authentic predecessor produces ten further assertion failures,
+without setup errors. The integrated source owner checks size before reading,
+retains a monotonically stronger optional cap across cached reads and final
+rehash, and bounds concurrent-growth reads to cap plus one sentinel byte.
+Oversize initial and pre-rehash files now cause zero additional read syscalls.
+Exact integer counters are required. Default reads and the four-tuple/generation9
+interfaces remain compatible. The canonical combined suite passes59 tests:
+35 recent controls and24 existing source-closure controls, with zero skips.
+
+Routine mapping: unittest discovery, Fast Checks and agent prepush retain the
+new module; Windows Desktop Package includes it in its PowerShell causal list.
+Local PowerShell7.5.4 does not replace the Windows5.1/native gate. POSIX-only
+source/pipe controls explicitly skip on unsupported hosts. Matching native and
+MCP scenarios remain required. The projection always denies native action,
+replay and whole acceptance authority; the actual retained five inputs remain
+a cleanup gap even though public history reports cleanupCodeOK.
+
+Evidence: immutable predecessor manifest9a106815 and successor manifest1506bdf7,
+patch34e053f7, under `.runtime/windows-fixture-recent-successor-1a3fa9f0-bea1-4f67-b93b-b3afec8e9d7d/`.
+The successor records all real read syscall counts and225 closed projection
+descriptors. Root independently verified56 bodies and closed76 source/ancestor
+descriptors in review36d38013. Supplemental actual caller fixes remain preserved
+for enrollment in the next admitted native/MCP flow; snapshot tests alone do not
+prove that orchestration integration.
+
+## Windows PowerShell sum, progress and manifest arrays — 2026-10-11
+
+The reviewed public fixture generator now supplies the typed Hashtable sum oracle
+and a bounded progress-only CLIXML classifier. Original native PowerShell5.1
+paired evidence retains119 causal RED and195 GREEN observations, including
+owned cleanup. Error, warning, mixed, malformed and oversized stderr stays
+refused; the raw stream is preserved. This classification is never process,
+approval, installer or replay authority.
+
+Original baseline installation84557 completed MSI0, but its readback failed
+BASE_EXPECTED_COUNT because PowerShell5.1 wrapped the parsed array as one item.
+The exact correction decodes first, then wraps the result. Read-only original50314
+observed1→209, verified the full200349547-byte image and kept the failed original
+result intact. The routine test verifies all209 real TempFS hashes, including
+last-row size/hash refusal, wrong counts and extra files. Local PowerShell7.5.4
+uses its real NoEnumerate cmdlet only to model5.1 output shape; its unchanged
+default behavior is separately recorded as compatible209/209.
+
+Canonical WindowsHashtableSumTest has four local passes and two actual
+Windows5.1 skips. Fast Checks retains the script paths and Windows Desktop
+Package executes the complete class after requiring native powershell.exe.
+The distinct live SCM AccessDenied case remains unresolved: the service exited
+before the admitted successor ran. Complete normal-update cleanup and MCP
+equivalence remain separate gates.
+
+Evidence: immutable routine manifest e31c23ed and patch270d6480 under
+`.runtime/windows-journal-binder-review/sum-progress-array-routine-successor-471b27a3-4f4f-461f-a2d7-c1a2fd6acf14/`;
+root current-source integration b5fbab93 under
+`.runtime/root-parity-continuation-22e9/`. Historical canonical beforeimage pins
+remain unchanged; current merged workflow bodies are authenticated separately.
+
 ## DIRECT inventory diagnostics and portable discovery — 2026-10-10
 
 Original Android91655 refused during local private-config inventory acquisition

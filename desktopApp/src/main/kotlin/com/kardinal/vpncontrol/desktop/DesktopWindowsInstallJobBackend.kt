@@ -89,11 +89,21 @@ internal class DesktopWindowsInstallJobBackend(
         }
     }
 
-    private inner class Directory(val path: String, val pins: List<Pin>) : DesktopInstallJobBackend.Directory {
+    private inner class Directory(val path: String, val pins: List<Pin>) : WindowsInputCustodyDirectory {
         private var closed = false
         private fun ready() { check(!closed) }
         private fun child(name: String) = "$path\\$name"
         private fun retain() = pins.map(Pin::retain)
+        @Synchronized override fun inputCustodyNativeId(): String {
+            ready()
+            WindowsInstallTrust.verify(native.inspect(pins.last().handle), WindowsInstallTrust.Kind.DIRECTORY)
+            return (native as WindowsDeniedInputNative).deniedInputIdentity(pins.last().handle)
+        }
+        @Synchronized override fun openInputCustody(): DesktopInstallJobBackend.File {
+            ready()
+            return file(DesktopWindowsInputCustody.NAME, WindowsInstallNative.PINNED_READ,
+                cancel = false, immutable = true)
+        }
         @Synchronized override fun createJob(jobId: String): DesktopInstallJobBackend.Directory {
             ready(); require(DesktopInstallJobNames.validJob(jobId))
             native.createDirectory(child(jobId), WindowsInstallTrust.directorySddl, allowExisting = false)
@@ -119,13 +129,13 @@ internal class DesktopWindowsInstallJobBackend(
                 cancel = name == DesktopInstallJobNames.CANCEL, cancelWrite = if (write) 1 else null)
         }
         private fun file(name: String, access: Int, create: Boolean = false, sddl: String? = null,
-            cancel: Boolean, clientPrincipal: String? = null, cancelWrite: Int? = null): File {
-            val handle = native.open(child(name), access, shareDelete = !cancel, createSddl = if (create) requireNotNull(sddl) else null)
+            cancel: Boolean, clientPrincipal: String? = null, cancelWrite: Int? = null, immutable: Boolean = false): File {
+            val handle = native.open(child(name), access, shareDelete = !cancel && !immutable, createSddl = if (create) requireNotNull(sddl) else null)
             try {
                 val info = native.inspect(handle)
                 WindowsInstallTrust.verify(info, if (cancel) WindowsInstallTrust.Kind.CANCEL else WindowsInstallTrust.Kind.STATUS, clientPrincipal)
                 if (cancel && !create) require(info.size == 1L) { "Invalid cancellation file" }
-                return File(handle, retain(), cancel, access == WindowsInstallNative.READ_WRITE, cancelWrite)
+                return File(handle, retain(), cancel, access == WindowsInstallNative.READ_WRITE, cancelWrite, immutable)
             } catch (error: Throwable) { native.close(handle); throw error }
         }
         @Synchronized override fun replaceFile(tempName: String, targetName: String) {
@@ -150,7 +160,7 @@ internal class DesktopWindowsInstallJobBackend(
     }
 
     private inner class File(val handle: WindowsInstallNative.Handle, val pins: List<Pin>,
-        val cancel: Boolean, val writable: Boolean, val cancelWrite: Int?) : DesktopInstallJobBackend.File {
+        val cancel: Boolean, val writable: Boolean, val cancelWrite: Int?, val immutable: Boolean = false) : DesktopInstallJobBackend.File {
         private var closed = false
         @Synchronized override fun readBounded(maxBytes: Int): ByteArray {
             check(!closed); require(maxBytes in 0..1_048_576)
@@ -159,7 +169,7 @@ internal class DesktopWindowsInstallJobBackend(
             // POSIX receipt replacement unlinks the old object while readers retain
             // it. Only that read-only status capability may observe zero links;
             // new opens, writers, cancellation and multiple links stay forbidden.
-            val policyInfo = if (!cancel && !writable && info.links == 0) info.copy(links = 1) else info
+            val policyInfo = if (!cancel && !writable && !immutable && info.links == 0) info.copy(links = 1) else info
             WindowsInstallTrust.verify(policyInfo, if (cancel) WindowsInstallTrust.Kind.CANCEL else WindowsInstallTrust.Kind.STATUS)
             require(info.size <= maxBytes && (!cancel || info.size == 1L)) { "Installer file exceeds bound" }
             val bytes = native.read(handle, maxBytes + 1)

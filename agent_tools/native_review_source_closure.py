@@ -66,13 +66,24 @@ def _pin(value):
     return tuple(gen), _sha(value['sha256'])
 
 
-def _read_all(fd):
+def _read_all(fd, max_bytes=None):
+    if max_bytes is not None:
+        if type(max_bytes) is not int or max_bytes < 1:
+            raise ValueError('Source byte bound requires a positive exact integer')
+        if os.fstat(fd).st_size > max_bytes:
+            raise ValueError('Source byte bound exceeded')
     os.lseek(fd, 0, os.SEEK_SET)
     chunks = []
+    total = 0
     while True:
-        chunk = os.read(fd, 1024 * 1024)
+        requested = (1024 * 1024 if max_bytes is None else
+                     min(1024 * 1024, max_bytes + 1 - total))
+        chunk = os.read(fd, requested)
         if not chunk:
             return b''.join(chunks)
+        total += len(chunk)
+        if max_bytes is not None and total > max_bytes:
+            raise ValueError('Source byte bound exceeded')
         chunks.append(chunk)
 
 
@@ -91,6 +102,7 @@ class _Held:
         self.fds = []
         self.parents = {}
         self.files = {}
+        self.bounds = {}
 
     def directory(self, path):
         if path in self.parents:
@@ -108,13 +120,22 @@ class _Held:
         self.parents[path] = fd, _structural(info)
         return fd
 
-    def read(self, path, digest, gen=None):
+    def read(self, path, digest, gen=None, *, max_bytes=None):
+        if max_bytes is not None and (type(max_bytes) is not int or max_bytes < 1):
+            raise ValueError('Source byte bound requires a positive exact integer')
         path = _path(path)
         digest = _sha(digest)
         if path in self.files:
             entry = self.files[path]
             if entry[2] != digest or (gen is not None and entry[1] != gen):
                 raise ValueError('Conflicting artifact pins')
+            previous = self.bounds.get(path)
+            bound = previous if max_bytes is None else (
+                max_bytes if previous is None else min(previous, max_bytes))
+            if bound is not None:
+                if len(entry[3]) > bound or os.fstat(entry[0]).st_size > bound:
+                    raise ValueError('Source byte bound exceeded')
+                self.bounds[path] = bound
             return entry[3]
         parent, name = os.path.split(path)
         fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
@@ -126,10 +147,12 @@ class _Held:
             raise ValueError('Artifact requires regular/current UID/single link')
         if gen is not None and actual != gen:
             raise ValueError('Source generation drift')
-        raw = _read_all(fd)
+        raw = _read_all(fd) if max_bytes is None else _read_all(fd, max_bytes)
         if hashlib.sha256(raw).hexdigest() != digest or generation(os.fstat(fd)) != actual:
             raise ValueError('Artifact bytes/generation drift')
         self.files[path] = fd, actual, digest, raw
+        if max_bytes is not None:
+            self.bounds[path] = max_bytes
         return raw
 
     def json(self, path, digest):
@@ -140,8 +163,10 @@ class _Held:
 
     def finish(self):
         # Rehash all retained file descriptors only after every artifact read.
-        for fd, gen, digest, _ in self.files.values():
-            if hashlib.sha256(_read_all(fd)).hexdigest() != digest:
+        for path, (fd, gen, digest, _) in self.files.items():
+            bound = self.bounds.get(path)
+            raw = _read_all(fd) if bound is None else _read_all(fd, bound)
+            if hashlib.sha256(raw).hexdigest() != digest:
                 raise ValueError('Final source SHA drift')
         self.final_identity_pass()
 

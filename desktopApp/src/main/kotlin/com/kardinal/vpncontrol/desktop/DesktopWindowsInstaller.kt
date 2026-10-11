@@ -17,6 +17,7 @@ internal class DesktopWindowsInstaller(
     private val workspaceDirectory: Path = DesktopWorkspacePaths.root(),
     correlationsOverride: DesktopInstallCorrelationJournal? = null,
     deniedInputCleanupOverride: DesktopWindowsDeniedInputCleanup? = null,
+    completedInputCleanupOverride: DesktopWindowsCompletedInputCleanup? = null,
     private val retainHelper: () -> DesktopWindowsInstallHelperLease = { DesktopWindowsInstallHelperAdmission.retain() },
     private val inputLocalAppData: (() -> String)? = null,
 ) {
@@ -24,7 +25,8 @@ internal class DesktopWindowsInstaller(
     private var pending: DesktopPreparedInstall? = null
     private val protectedInspectionHolders = mutableListOf<AutoCloseable>()
     private val correlations: DesktopInstallCorrelationJournal by lazy { correlationsOverride ?: DesktopInstallCorrelationJournal(workspaceDirectory,
-        canPruneTerminal = { record -> !record.notStarted || deniedInputCleanup.inputAbsent(requireNotNull(record.binding)) }) }
+        canPruneTerminal = { record -> if (record.notStarted) deniedInputCleanup.inputAbsent(requireNotNull(record.binding))
+            else completedInputCleanup.inputAbsent(requireNotNull(record.binding)) }) }
     private val deniedInputCleanup: DesktopWindowsDeniedInputCleanup by lazy { deniedInputCleanupOverride ?: DesktopWindowsDeniedInputCleanup(
         localAppData() + "\\vpn-control-install-inputs", workspaceDirectory.toAbsolutePath().normalize().toString(),
         JnaWindowsInstallNative(), JnaWindowsInstallAdmission(),
@@ -34,12 +36,17 @@ internal class DesktopWindowsInstaller(
             requireProtectedJobAbsent(binding.jobId)
         }, hasPending = { pending != null }) }
 
+    private val completedInputCleanup: DesktopWindowsCompletedInputCleanup by lazy { completedInputCleanupOverride ?:
+        DesktopWindowsCompletedInputCleanup({ localAppData() + "\\vpn-control-install-inputs" }, JnaWindowsInstallNative(),
+            JnaWindowsInstallAdmission(), read = { binding -> correlations.recover(binding.correlation) }, hasPending = { pending != null }) }
+
     fun releaseNotStarted(record: DesktopInstallCorrelationRecovery): Result<Unit> = deniedInputCleanup.release(record)
 
     fun reconcileInputHolders(): Result<Unit> {
         val protectedClose = closeWindowsDeniedInputHolders(protectedInspectionHolders)
         val inputClose = deniedInputCleanup.reconcileHolders()
-        return protectedClose.fold({ inputClose }, { Result.failure(it) })
+        val completedClose = completedInputCleanup.reconcileHolders()
+        return protectedClose.fold({ inputClose.fold({ completedClose }, { Result.failure(it) }) }, { Result.failure(it) })
     }
 
     private fun requireProtectedJobAbsent(jobId: String) {
@@ -75,6 +82,7 @@ internal class DesktopWindowsInstaller(
         require(recovered.binding?.jobId == receipt.jobId && recovered.receipt == receipt)
         pending?.let { require(it.jobId == receipt.jobId); it.close() }
         pending = null
+        completedInputCleanup.release(recovered).getOrThrow()
     }
 
     suspend fun prepare(packageFile: Path, asset: UpdateAsset, launcher: String,
@@ -82,7 +90,7 @@ internal class DesktopWindowsInstaller(
         frontend: DesktopFrontendProcessIdentity? = null,
         onCancellationConfirmed: () -> Unit = {},
     ): Result<DesktopPreparedInstall> = withContext(Dispatchers.IO) {
-        if (pending != null || protectedInspectionHolders.isNotEmpty() || deniedInputCleanup.blocksPreparation()) return@withContext Result.failure(IllegalStateException("BUSY"))
+        if (pending != null || protectedInspectionHolders.isNotEmpty() || deniedInputCleanup.blocksPreparation() || completedInputCleanup.blocksPreparation()) return@withContext Result.failure(IllegalStateException("BUSY"))
         val native = JnaWindowsInstallNative()
         val nativeHandles = DesktopWindowsDeniedInputHandles(native)
         val pinnedNative = nativeHandles.native
@@ -95,7 +103,7 @@ internal class DesktopWindowsInstaller(
         var deniedNativeCode: Int? = null
         try {
             correlations.requireNew(correlation)
-            check(protectedInspectionHolders.isEmpty() && !deniedInputCleanup.blocksPreparation()) { "PERSISTENCE_FAILED" }
+            check(protectedInspectionHolders.isEmpty() && !deniedInputCleanup.blocksPreparation() && !completedInputCleanup.blocksPreparation()) { "PERSISTENCE_FAILED" }
             val helper = retainHelper()
             pins += helper
             val sid = helper.owner.sid
@@ -106,7 +114,7 @@ internal class DesktopWindowsInstaller(
             // The final race-safe capacity check and durable identity also precede staging.
             val binding = correlations.record(correlation, jobId)
             recordedJobId = jobId
-            check(protectedInspectionHolders.isEmpty() && !deniedInputCleanup.blocksPreparation()) { "PERSISTENCE_FAILED" }
+            check(protectedInspectionHolders.isEmpty() && !deniedInputCleanup.blocksPreparation() && !completedInputCleanup.blocksPreparation()) { "PERSISTENCE_FAILED" }
             val local = inputLocalAppData?.invoke() ?: localAppData()
             pins += DesktopWindowsTransferPins.open(local, sid, pinnedNative)
             val inputRoot = "$local\\vpn-control-install-inputs"
@@ -194,7 +202,7 @@ internal class DesktopWindowsInstaller(
             // proves this attempt did not create a coordinator; an uncertain reply is never replayed.
             deniedWitness = DesktopWindowsDeniedInputWitness(binding, request, inputRootIdentity, inputIdentity,
                 requestIdentity, packageIdentity, DesktopWindowsDeniedInputCleanup.sha(requestBytes))
-            check(protectedInspectionHolders.isEmpty() && !deniedInputCleanup.blocksPreparation()) { "PERSISTENCE_FAILED" }
+            check(protectedInspectionHolders.isEmpty() && !deniedInputCleanup.blocksPreparation() && !completedInputCleanup.blocksPreparation()) { "PERSISTENCE_FAILED" }
             pending = prepared
             launched = true
             coordinatorAttempted = true

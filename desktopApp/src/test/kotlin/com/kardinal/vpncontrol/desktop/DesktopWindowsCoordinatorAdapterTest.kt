@@ -40,33 +40,50 @@ class DesktopWindowsCoordinatorAdapterTest {
     @Test fun returnLeaseCleanupAttemptsEveryStageAndPreservesFirstFailure() =
         runFixture("ReturnLeaseCleanupAttemptsEveryStageAndKeepsFirstFailure", "RETURN_LEASE_INDEPENDENT_CLEANUP_OK")
 
-    private fun runFixture(operation: String, expected: String) {
+    @Test fun completedInputCleanupAndRetentionKeepKnownOutcomeAndExactCustody() =
+        runFixture("Run", "COMPLETED_INPUT_CLEANUP_AND_RETENTION_OK", "CompletedInputCleanupRoutineFixtures", 8, true)
+
+    private fun runFixture(
+        operation: String,
+        expected: String,
+        fixtureClass: String = "CoordinatorAdapterFixtures",
+        expectedCases: Int = 0,
+        enableAotAnalyzer: Boolean = false,
+    ) {
         assumeTrue(System.getProperty("os.name").startsWith("Windows", true))
         val directory = Files.createTempDirectory("vpn-install-coordinator-adapter-")
         listOf(
             "windows-install-native.cs", "windows-install-helper-inventory.cs", "windows-install-helper-protocol.cs", "windows-install-helper-roles.cs",
             "windows-install-helper-msi.cs", "windows-install-helper-sessions.cs", "windows-install-original-user-launch.cs",
             "windows-install-helper-coordinator-adapter-fixture.cs",
-        ).forEach { name -> javaClass.getResourceAsStream("/$name")!!.use { Files.copy(it, directory.resolve(name)) } }
+        ).let { names ->
+            if (expectedCases == 0) names else names + "windows-install-helper-completed-input-fixture.cs"
+        }.forEach { name -> javaClass.getResourceAsStream("/$name")!!.use { Files.copy(it, directory.resolve(name)) } }
         var retainEvidence = false
         try {
             val pin = Files.readAllBytes(Path.of(System.getProperty("vpnControl.test.nativeGlobalJson", "native/windows/global.json")))
             val sdk = Json.parseToJsonElement(pin.decodeToString()).jsonObject["sdk"]!!.jsonObject
             assertEquals("disable", sdk["rollForward"]!!.jsonPrimitive.content)
             Files.write(directory.resolve("global.json"), pin)
-            Files.writeString(directory.resolve("NuGet.Config"), "<configuration><packageSources><clear /></packageSources></configuration>")
-            Files.writeString(directory.resolve("CoordinatorAdapterProbe.csproj"), """
+            Files.writeString(directory.resolve("NuGet.Config"),
+                if (enableAotAnalyzer) "<configuration><packageSources><clear /><add key=\"nuget.org\" value=\"https://api.nuget.org/v3/index.json\" protocolVersion=\"3\" /></packageSources></configuration>"
+                else "<configuration><packageSources><clear /></packageSources></configuration>")
+            val fixtureProject = """
                 <Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>
                   <TargetFramework>net10.0-windows</TargetFramework><OutputType>Exe</OutputType>
                   <StartupObject>CoordinatorAdapterProbe</StartupObject><UseAppHost>false</UseAppHost>
                   <InvariantGlobalization>true</InvariantGlobalization><Nullable>disable</Nullable>
                   <ImplicitUsings>disable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
                 </PropertyGroup></Project>
-            """.trimIndent())
+            """.trimIndent()
+            Files.writeString(directory.resolve("CoordinatorAdapterProbe.csproj"),
+                if (enableAotAnalyzer) fixtureProject.replace("<TreatWarningsAsErrors>true</TreatWarningsAsErrors>",
+                    "<TreatWarningsAsErrors>true</TreatWarningsAsErrors><EnableAotAnalyzer>true</EnableAotAnalyzer>")
+                else fixtureProject)
             Files.writeString(directory.resolve("ProbeMain.cs"), """
                 using System;
                 internal static class CoordinatorAdapterProbe {
-                  public static void Main() { Console.WriteLine(CoordinatorAdapterFixtures.$operation()); }
+                  public static void Main() { Console.WriteLine($fixtureClass.$operation()); }
                 }
             """.trimIndent())
             val dotnet = System.getenv("VPN_CONTROL_TEST_DOTNET") ?: "dotnet.exe"
@@ -93,7 +110,9 @@ class DesktopWindowsCoordinatorAdapterTest {
             }
             assertEquals(sdk["version"]!!.jsonPrimitive.content, run("sdk", listOf("--version")).trim())
             run("build", listOf("build", "CoordinatorAdapterProbe.csproj", "--configuration", "Release", "--disable-build-servers", "-p:UseSharedCompilation=false"))
-            assertTrue(run("probe", listOf(directory.resolve("bin/Release/net10.0-windows/CoordinatorAdapterProbe.dll").toString())).contains(expected))
+            val result = run("probe", listOf(directory.resolve("bin/Release/net10.0-windows/CoordinatorAdapterProbe.dll").toString()))
+            assertTrue(result.contains(expected), result)
+            if (expectedCases != 0) assertEquals(expectedCases, result.lineSequence().count { it.startsWith("CASE:") }, result)
         } finally { if (!retainEvidence) directory.toFile().deleteRecursively() }
     }
 }

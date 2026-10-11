@@ -318,3 +318,57 @@ def check(root: Path | str, request: Mapping[str, Any], dispatcher: Dispatch) ->
     return {"scenarioId": scenario, "host": asked["host"], "environment": asked["environment"],
             "phase": "before-fixture-preparation" if scenario == "linux-scheduled-refresh" else "current",
             "ready": ready, "requirements": requirements}
+
+
+def read_only_return_projection(path, expected_sha256, expected_identity):
+    """Observe one public closed stream; never grant native or replay authority."""
+    from . import native_review_source_closure as closure
+    flags = {"nativeActionAllowed": False, "productAcceptance": False,
+             "scenarioComplete": False, "replayAllowed": False}
+    keys = {"controllerId", "originControllerId", "originRequestId", "jobId", "operationId"}
+    source_closed = False
+    try:
+        if (os.name != "posix" or type(expected_identity) is not dict
+                or set(expected_identity) != keys
+                or any(type(v) is not str or not v for v in expected_identity.values())):
+            raise ValueError("projection_identity")
+        held = closure._Held()
+        try:
+            raw = held.read(str(path), expected_sha256, max_bytes=262143)
+            if not 0 < len(raw) < 262144:
+                raise ValueError("projection_stream_bound")
+            # Complete the real same-fd/name/body/ancestor closure before parsing.
+            held.finish()
+            source_closed = True
+        finally:
+            held.close()
+        rows = [json.loads(line, object_pairs_hook=closure._pairs) for line in raw.splitlines()]
+        matches = [row for row in rows if type(row) is dict
+                   and row.get("state") == "ORDINARY_STATUS_RESULT_OBSERVED"]
+        if len(matches) != 1:
+            raise ValueError("projection_semantic_row")
+        result = matches[0]["result"]
+        if (type(result) is not dict
+                or result.get("state") != "ACTUAL_AUTOMATIC_RETURN_FULL209_CONTEXT2_OFF_OBSERVED"
+                or type(result.get("imageFiles")) is not int
+                or result.get("imageFiles") != 209
+                or type(result.get("imageBytes")) is not int
+                or result.get("imageBytes") != 200349547
+                or result.get("manualReturn") is not False
+                or result.get("controllerId") != expected_identity["controllerId"]):
+            raise ValueError("projection_result")
+        history = result.get("matchingHistory")
+        if (type(history) is not list or len(history) != 1 or type(history[0]) is not dict
+                or any(history[0].get(k) != expected_identity[k] for k in keys - {"controllerId"})):
+            raise ValueError("projection_original_identity")
+        present = result.get("inputPresent")
+        code = history[0].get("cleanupCode")
+        cleanup = ("gap" if present is True else
+                   "observed-absent" if present is False and code == "OK" else "unknown")
+        return {"state": "observed", "result": result, "sourceClosed": True,
+                "streamSha256": expected_sha256, "inputPresent": present,
+                "cleanupCode": code, "cleanupState": cleanup, **flags}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"state": "unknown", "reason": "projection_unavailable",
+                "sourceClosed": source_closed, "inputPresent": None,
+                "cleanupCode": None, "cleanupState": "unknown", **flags}

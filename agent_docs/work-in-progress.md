@@ -33,7 +33,59 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-10,23:24 Moscow
+## Current acceptance status — 2026-10-11
+
+Delivered HEAD/origin/dev are `9c98ce2b5307983b1d361567693ca8f975f8bbdf`,
+product2.2.6. The twenty-three dirty canonical paths are the reviewed Windows
+fixture/evidence-reader and PowerShell routine-check bucket, twelve Windows
+product/test cleanup paths, documentation and changelog. The five reader/fixture paths match their sealed proposal;59 focused
+tests pass without failures/errors/skips. Four local PowerShell controls pass;
+two native Windows5.1 controls explicitly skip locally. The previous prepush
+receipt is invalid. The twelve product/test paths now exactly match the reviewed
+final proposal. Fresh complete prepush and a coherent checkpoint remain required.
+Final five-workflow CI remains deferred until final delivery; no release is authorized.
+
+| Slice | Exclusive owner and verified state | Remaining gate |
+| --- | --- | --- |
+| Windows native | The secondary operator completed the one admitted engineering2.2.4→2.2.5 update. Original16446 submitted the public job once; same-job59422 observed MSI0 and protected success. Original51231 verified the complete209-file target, automatic original-user app-owner return and runtime OFF. All route/SDK actors are positively closed. Five installer inputs remain despite public cleanupCodeOK. | Actual product cleanup repair; same-source packages, fresh native admission and complete DIRECT/MCP acceptance. No consumed install or baseline recovery may be replayed. The display capture proves the desktop only; visible app UI remains unproved. |
+| Windows product | windows_update_assembly handed back the sealed twelve-path C#/Kotlin cleanup fix; root integrated its exact afterimages. Actual77-test JVM GREEN and the original two assertion failures are preserved. Eight refreshed managed helper cases pass. The new routine JVM method compiles and explicitly skips on macOS; its Windows execution gate remains. The actual pinned AOT analyzer found IL3050, then passed with zero warnings/errors after fixed five-leaf mapping. All local worker processes and descriptors are closed; root owns the free Gradle lane. | Fresh canonical prepush/delivery, new source-bound base/target packages, real Win32/MSI cleanup and complete DIRECT/MCP acceptance. No managed test establishes native cleanup; other terminal-state cleanup remains unresolved. |
+| Android proof | android_api35_operator handed back the sealed provisional public full read-only profile/caller packet. Root verified163 public source/archive pairs without protected original reads. Current controls are19 plus actual factory/import qualification; SDK24 retains predecessor attribution. Root caught an unresolved canonical API dependency; it is excluded and the actual DIRECT caller now uses its authenticated owned adapter. The completed JDK cost diagnostic remains separate from full proof. Ordinary caps and all interior guards remain; the rejected weakened-guard proposal stays historical. No new LOCAL or native operation is admitted. | Coherent source epoch enrollment after this checkpoint, genuine LOCAL preparation, fresh SDK/resource admission, API29/API35 native scenarios and equivalent MCP runs. |
+| Fixture/evidence tools | Root owns canonical integration; windows_fixture_regressions handed back immutable source-only packets. Bounded initial, cached and final reads plus strict integer counters pass actual syscall controls and24 compatibility checks. The reviewed SUM/progress/array generator and routine Windows wiring are also integrated: four local checks pass; two actual Windows5.1 checks are skipped locally. | Fresh prepush/delivery, actual Windows5.1 controls, and corresponding complete native/MCP scenarios. Supplemental caller fixes must reach admitted callers before retesting. |
+| Full plan | Full22-group acceptance remains incomplete; Linux/macOS, lifecycle, documents, visuals and final exact-SHA workflows retain their scope. | Complete the original continuation plan; component evidence is not whole-scenario acceptance. |
+
+Evidence: fixture successor manifest1506bdf7 under
+`.runtime/windows-fixture-recent-successor-1a3fa9f0-bea1-4f67-b93b-b3afec8e9d7d/`;
+root source review36d38013 under `.runtime/root-parity-continuation-22e9/`.
+The corrected Windows automatic-return public packet is
+`.runtime/windows-secondary-acceptance/engineering-baseline-current-a726e244-90a2-4734-ac7d-1cfcbdafb07a/automatic-return-corrected-public-371e5e09-fba5-42d9-93cd-1dab644712e0/manifest.json`
+(a2c4ecfd). The original stream/source join receipts remain separate; no historical
+body, source attribution or failed result is rewritten.
+
+Windows draft review: `.runtime/root-parity-continuation-22e9/windows-product-draft-root-review-4d0224da-0e26-4d1d-a64a-ee43a591691a.json`
+(b111c846) verifies twelve source bodies, current canonical beforeimages,
+patch7d0c4519 and actual77-test XML. The earlier failed close-fault model run is
+preserved separately; the corrected fault targets the retained DELETE close,
+with product bytes and assertions unchanged. The original compiler failure is
+original49858/PID39139 under
+`.runtime/windows-product-input-cleanup-proposal-a23/aot-analyzer-run-5e5b408e-45bc-4ad0-a5a8-254cb7722b6d/`.
+Original49858/PID39139 is terminal failed. Successor39637 is terminal successful;
+the fixed helper mapping now has routine analyzer coverage. Final same-selector
+Gradle19618/PID39953 is terminal successful with its explicit macOS skip.
+Canonical integration receipt5eb9fda9 verifies942 public source/evidence leaves,
+the final manifest3ca7acba, patch6ef8e93a and all twelve afterimages. These
+process identities remain historical evidence, never replay authority.
+
+Android provisional manifest14171b6d and public closeout efa94660 are under
+`.runtime/android-e9ceb-timeout-diagnosis/complete-readonly-profile-6939f818-2de3-4027-8c6f-36a6d86e1e74/public-provisional-packet-e08d87d9-43dc-4d99-b5b4-16c858d6323c/`.
+Root public review ee8d61f0 closed358 descriptors. The old9c/d41 source declarations
+are provisional; no genuine LOCAL, SDK or native execution is proved by this packet.
+The canonical collector remains unchanged and the superseded unresolved import
+patch must not be applied. A generic Arch probe refused the explicitly selected
+ENDED channel; this is not an SSH authentication diagnosis or authority to replay it.
+The cached MCP server rejected changed tool source; use the documented fresh-process
+MCP CLI route until refresh. No new native channel is admitted yet.
+
+## Historical acceptance status — 2026-10-10,23:24 Moscow
 
 Delivered HEAD/origin/dev remain ed0ca9dd, product2.2.5. Root integrated the reviewed
 Android owner fixes into the intentional uncommitted product/tool bucket. Fresh

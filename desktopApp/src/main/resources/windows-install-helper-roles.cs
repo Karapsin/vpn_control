@@ -70,6 +70,16 @@ internal static class VpnInstallHelperRoles {
         void RelaunchOriginalOwner(); // Fixed admitted launcher, original workspace argument, original token.
     }
 
+    // Internal native completion path; never selected by argv or a receipt boolean.
+    internal interface OriginalUserCompletedInputSession {
+        void CompleteInputCleanup();
+        void RetainInputCleanupFailure();
+    }
+    internal interface CoordinatorCompletedInputSession {
+        void PrepareInputCustody(uint observedNativeExit);
+        void RetainInputCustodyFailure();
+    }
+
     internal sealed class WorkerFailure : IOException {
         internal readonly bool InstallerStarted;
         internal readonly uint? NativeExitCode;
@@ -117,6 +127,18 @@ internal static class VpnInstallHelperRoles {
                 if (receipt.State==Phase.Cancelled) throw new IOException("CONFLICT");
                 if (receipt.State==Phase.Succeeded) {
                     if (nativeExit!=0 && nativeExit!=3010) throw new IOException("CONFLICT");
+                    OriginalUserCompletedInputSession completed=session as OriginalUserCompletedInputSession;
+                    if (completed!=null) {
+                        try { completed.CompleteInputCleanup(); }
+                        catch (Exception failure) {
+                            try { completed.RetainInputCleanupFailure(); }
+                            catch (Exception) {
+                                // Secondary retention is diagnostic only; keep the actual cleanup cause.
+                                try { failure.Data["vpn.install.cleanupRetentionUncertain"]=true; } catch { }
+                            }
+                        }
+                    }
+                    // Cleanup failure cannot replace known MSI success or suppress original-user return.
                     session.RelaunchOriginalOwner();
                     return 0;
                 }
@@ -208,6 +230,18 @@ internal static class VpnInstallHelperRoles {
             for (;;) {
                 uint? result=session.ReadNativeResult();
                 if (result.HasValue) {
+                    if (result==0 || result==3010) {
+                        CoordinatorCompletedInputSession completed=session as CoordinatorCompletedInputSession;
+                        if (completed!=null) {
+                            try { completed.PrepareInputCustody(result.Value); }
+                            catch (Exception failure) {
+                                try { completed.RetainInputCustodyFailure(); }
+                                catch (Exception) {
+                                    try { failure.Data["vpn.install.custodyRetentionUncertain"]=true; } catch { }
+                                }
+                            }
+                        }
+                    }
                     terminalPublicationAttempted=true;
                     session.Publish(result==0 || result==3010 ? Phase.Succeeded : Phase.Failed,
                         result==0 || result==3010 ? "OK" : "RUNTIME_FAILED");

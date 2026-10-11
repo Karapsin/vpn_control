@@ -3,6 +3,12 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Bound Windows return evidence reads and retain causal controls for admitted fixture failures.
+- Keep Windows PowerShell sum, progress and manifest-array regressions in routine package checks.
+- Clean successful Windows update inputs through protected original-object custody and keep cleanup failures separate from installation results.
+
 ## 2.2.6 - 2026-10-10
 
 - Stabilize external ancestor metadata in the synthetic JDK fixture while preserving owned-source mutation checks.

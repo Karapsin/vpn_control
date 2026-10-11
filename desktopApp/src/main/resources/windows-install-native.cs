@@ -319,6 +319,45 @@ public static class VpnInstallNative {
         try { return Marshal.PtrToStringUni(result); } finally { CoTaskMemFree(result); }
     }
 
+    // Fixed original-user cleanup capabilities; no new command or caller path authority.
+    [DllImport("kernel32.dll",SetLastError=true)] static extern bool SetFileInformationByHandle(SafeFileHandle file,int kind,byte[] info,uint length);
+    internal static string InputObjectIdentity(SafeFileHandle h,bool directory) { return ObjectIdentity(h,directory).Replace("-","").ToLowerInvariant(); }
+    internal static string InputCanonicalPath(SafeFileHandle h) { return FinalPath(h); }
+    internal static SafeFileHandle OpenInputDelete(string path) {
+        SafeFileHandle h=CreateFileW(path,0x00130081,1,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
+        if(h.IsInvalid){int e=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(e);}return h;
+    }
+    internal static SafeFileHandle OpenInputNamedMetadata(string path) {
+        SafeFileHandle h=CreateFileW(path,ReadControl|ReadAttributes,7,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
+        if(h.IsInvalid){int e=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(e);}return h;
+    }
+    internal static void DeleteInputHandle(SafeFileHandle h) {
+        if(h==null || h.IsClosed || h.IsInvalid)throw new IOException("CONFLICT");
+        if(!SetFileInformationByHandle(h,4,new byte[]{1},1))throw new Win32Exception(Marshal.GetLastWin32Error());
+    }
+    internal static void CloseInputDeleteHandle(SafeFileHandle h) {
+        if(h==null || h.IsClosed || h.IsInvalid)return;
+        if(!CloseHandle(h.DangerousGetHandle()))throw new Win32Exception(Marshal.GetLastWin32Error());
+        h.SetHandleAsInvalid();h.Dispose();
+    }
+    internal static void InspectPrivateInput(SafeFileHandle h,bool directory,string principal) {
+        Inspect(h,directory,false,principal); // disk, nofollow, persistent ACL, single-link file.
+        IntPtr owner,group,dacl,sacl,descriptor;uint error=GetSecurityInfo(h,1,5,out owner,out group,out dacl,out sacl,out descriptor);
+        if(error!=0)throw new Win32Exception((int)error);
+        try {
+            int size=checked((int)GetSecurityDescriptorLength(descriptor));if(size<=0 || size>1048576)throw new IOException("PERMISSION_DENIED");
+            byte[] bytes=new byte[size];Marshal.Copy(descriptor,bytes,0,size);RawSecurityDescriptor security=new RawSecurityDescriptor(bytes,0);
+            if(security.Owner.Value!=principal || security.DiscretionaryAcl==null || security.DiscretionaryAcl.Count==0 ||
+                (security.ControlFlags&ControlFlags.DiscretionaryAclProtected)==0)throw new IOException("PERMISSION_DENIED");
+            foreach(GenericAce generic in security.DiscretionaryAcl) {
+                CommonAce ace=generic as CommonAce;
+                if(ace==null || (ace.AceType!=AceType.AccessAllowed && ace.AceType!=AceType.AccessDenied) || ((int)ace.AceFlags&~31)!=0)throw new IOException("PERMISSION_DENIED");
+                if(ace.AceType==AceType.AccessDenied || ace.SecurityIdentifier.Value==principal)continue;
+                if(!Trusted(ace.SecurityIdentifier.Value) || (unchecked((uint)ace.AccessMask)&~0xA01200A9u)!=0)throw new IOException("PERMISSION_DENIED");
+            }
+        } finally {LocalFree(descriptor);}
+    }
+
     public static SafeFileHandle OpenDirectory(string path) {
         // Metadata-only handles do NOT prevent deletion despite a missing FILE_SHARE_DELETE.
         // FILE_LIST_DIRECTORY/FILE_READ_DATA activates the sharing guarantees used by pins.

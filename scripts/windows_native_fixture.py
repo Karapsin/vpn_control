@@ -292,3 +292,58 @@ function Invoke-VpnFixtureNativeProcess {
     }
 }
 '''
+
+
+def fixture_progress_only_stderr() -> str:
+    """Emit the bounded fixture-only progress classifier; retain raw stderr separately.
+
+    This is data classification, not process/result authority. The caller must
+    still bind exact exit code, stdout, principal, source and capture custody.
+    """
+    return r'''function Test-VpnFixtureProgressOnlyStderr {
+ param([AllowEmptyCollection()][byte[]]$Bytes)
+ if($null -eq $Bytes){return $false}
+ if($Bytes.Length -eq 0){return $true}
+ if($Bytes.Length -gt 8192){return $false}
+ $reader=$null;$inputReader=$null
+ try{
+  $text=([Text.UTF8Encoding]::new($false,$true)).GetString($Bytes)
+  if(-not $text.StartsWith('#< CLIXML',[StringComparison]::Ordinal) -or $text.Contains('<!DOCTYPE') -or $text.Contains('<!ENTITY')){return $false}
+  $body=$text.Substring(9).TrimStart([char[]]"`r`n")
+  $settings=[Xml.XmlReaderSettings]::new();$settings.DtdProcessing=[Xml.DtdProcessing]::Prohibit;$settings.XmlResolver=$null;$settings.MaxCharactersInDocument=8192
+  $inputReader=[IO.StringReader]::new($body);$reader=[Xml.XmlReader]::Create($inputReader,$settings)
+  $doc=[Xml.XmlDocument]::new();$doc.XmlResolver=$null;$doc.PreserveWhitespace=$true;$doc.Load($reader)
+  $ns='http://schemas.microsoft.com/powershell/2004/04';$xmlns='http://www.w3.org/2000/xmlns/'
+  $root=$doc.DocumentElement
+  if($null -eq $root -or $root.LocalName -cne 'Objs' -or $root.NamespaceURI -cne $ns){return $false}
+  $attrs=@($root.Attributes|Where-Object {$_.NamespaceURI -cne $xmlns})
+  if($attrs.Count -ne 1 -or $attrs[0].Name -cne 'Version' -or $attrs[0].Value -cne '1.1.0.1'){return $false}
+  foreach($n in $doc.ChildNodes){if($n -ne $root -and $n.NodeType -notin @([Xml.XmlNodeType]::Whitespace,[Xml.XmlNodeType]::SignificantWhitespace)){return $false}}
+  $entries=@($root.ChildNodes|Where-Object {$_.NodeType -eq [Xml.XmlNodeType]::Element})
+  if($entries.Count -lt 1 -or $entries.Count -gt 32){return $false}
+  foreach($n in $root.ChildNodes){if($n.NodeType -ne [Xml.XmlNodeType]::Element -and ($n.NodeType -notin @([Xml.XmlNodeType]::Text,[Xml.XmlNodeType]::Whitespace,[Xml.XmlNodeType]::SignificantWhitespace) -or -not [string]::IsNullOrWhiteSpace($n.Value))){return $false}}
+  foreach($entry in $entries){
+   $attrs=@($entry.Attributes|Where-Object {$_.NamespaceURI -cne $xmlns})
+   if($entry.LocalName -cne 'Obj' -or $entry.NamespaceURI -cne $ns -or $attrs.Count -ne 2 -or @($attrs|Where-Object {$_.Name -cnotin @('S','RefId')}).Count -ne 0 -or $entry.GetAttribute('S') -cne 'progress' -or $entry.GetAttribute('RefId') -cnotmatch '\A[0-9]{1,8}\z'){return $false}
+  }
+  $pending=[Collections.Generic.Stack[object]]::new();$pending.Push(@{node=$root;depth=0});$count=0
+  while($pending.Count -gt 0){
+   $item=$pending.Pop();$n=$item.node;$count++
+   if($count -gt 256 -or $item.depth -gt 16 -or $n.NamespaceURI -cne $ns){return $false}
+   if($n.HasAttribute('S') -and $n.GetAttribute('S') -cne 'progress'){return $false}
+   if(@($n.Attributes|Where-Object {$_.NamespaceURI.Length -ne 0 -and $_.NamespaceURI -cne $xmlns}).Count -ne 0){return $false}
+   foreach($child in $n.ChildNodes){
+    if($child.NodeType -eq [Xml.XmlNodeType]::Element){$pending.Push(@{node=$child;depth=$item.depth+1})}
+    elseif($child.NodeType -notin @([Xml.XmlNodeType]::Text,[Xml.XmlNodeType]::Whitespace,[Xml.XmlNodeType]::SignificantWhitespace)){return $false}
+   }
+  }
+  return $true
+ }catch{return $false}
+ finally{try{if($null -ne $reader){$reader.Dispose()}}finally{if($null -ne $inputReader){$inputReader.Dispose()}}}
+}
+'''
+
+
+def fixture_hashtable_sum_after_oracle() -> str:
+    """Emit the exact paired SUM AFTER predicate used after owned raw capture."""
+    return "if($case -eq 'after' -and ($r.ExitCode -ne 0 -or $stdout.Trim() -cne '500' -or -not (Test-VpnFixtureProgressOnlyStderr -Bytes ([IO.File]::ReadAllBytes($err))))){throw 'TYPED_AFTER_NOT_GREEN'}"

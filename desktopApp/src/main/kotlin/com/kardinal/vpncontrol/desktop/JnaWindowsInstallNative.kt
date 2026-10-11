@@ -9,12 +9,13 @@ import com.sun.jna.platform.win32.*
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.ptr.LongByReference
 import com.sun.jna.ptr.PointerByReference
+import com.sun.jna.ptr.ShortByReference
 import com.sun.jna.win32.StdCallLibrary
 import com.sun.jna.win32.W32APIOptions
 import java.io.ByteArrayOutputStream
 
 /** Lazy bindings: constructing a backend or running fake-native tests never loads Windows DLLs. */
-internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInputNative {
+internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInputNative, WindowsCompletedInputNative {
     private val kernel by lazy { check(Platform.isWindows()); Native.load("kernel32", Kernel32::class.java, W32APIOptions.UNICODE_OPTIONS) }
     private val advapi by lazy { check(Platform.isWindows()); Native.load("advapi32", Advapi32::class.java, W32APIOptions.UNICODE_OPTIONS) }
     private val extraKernel by lazy { check(Platform.isWindows()); Native.load("kernel32", ExtraKernel::class.java) }
@@ -204,6 +205,54 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
         it.asSequence().take(3).map { entry -> entry.fileName.toString() }.toList()
     }
 
+    override fun completedInputChildren(path: String): List<String> = java.nio.file.Files.newDirectoryStream(java.nio.file.Path.of(path)).use {
+        it.asSequence().take(6).map { entry -> entry.fileName.toString() }.toList()
+    }
+
+    override fun completedInputProtectedDacl(handle: WindowsInstallNative.Handle): Boolean {
+        val descriptor = PointerByReference()
+        val code = advapi.GetSecurityInfo(handle(handle), 1, 4, null, null, null, null, descriptor)
+        if (code != 0) throw WindowsInstallNativeFailure(code)
+        return try {
+            val control = ShortByReference(); val revision = IntByReference()
+            checked(extraSecurity.GetSecurityDescriptorControl(descriptor.value, control, revision))
+            control.value.toInt() and 0x1000 != 0 // SE_DACL_PROTECTED
+        } finally { kernel.LocalFree(descriptor.value) }
+    }
+
+    override fun openInputActor(pid: Long): WindowsCompletedInputActor {
+        require(pid in 1..0xffff_ffffL)
+        val process = kernel.OpenProcess(0x00101000, false, pid.toInt()) // SYNCHRONIZE | QUERY_LIMITED_INFORMATION
+        if (process == null || process.pointer == null) {
+            val code = kernel.GetLastError()
+            if (code != 87) throw WindowsInstallNativeFailure(code)
+            // Inputs exclude PID zero. Only a precise invalid/nonexistent process ID settles absence.
+            return object : WindowsCompletedInputActor {
+                override fun requireOriginalClosed(creationFileTime: Long) { require(creationFileTime > 0) }
+                override fun close() = Unit
+            }
+        }
+        // Return ownership immediately. Later read/wait failures cannot orphan the process handle.
+        return object : WindowsCompletedInputActor {
+            private var closed = false
+            override fun requireOriginalClosed(creationFileTime: Long) {
+                check(!closed); require(creationFileTime > 0)
+                val creation = WinBase.FILETIME(); val exit = WinBase.FILETIME()
+                val kern = WinBase.FILETIME(); val user = WinBase.FILETIME()
+                checked(kernel.GetProcessTimes(process, creation, exit, kern, user))
+                val observed = (creation.dwHighDateTime.toLong() shl 32) or (creation.dwLowDateTime.toLong() and 0xffff_ffffL)
+                require(observed > 0) { "OUTCOME_UNKNOWN" }
+                if (observed == creationFileTime) when (kernel.WaitForSingleObject(process, 0)) {
+                    0 -> Unit
+                    258 -> error("OUTCOME_UNKNOWN")
+                    else -> throw WindowsInstallNativeFailure(kernel.GetLastError())
+                }
+                // A reused PID with a distinct native birth is never terminated.
+            }
+            override fun close() { if (!closed) { checked(kernel.CloseHandle(process)); closed = true } }
+        }
+    }
+
     /** Existing correlation: read and delete the same pinned object without competing writers/deleters. */
     internal fun openPrivateCorrelation(path: String): WindowsInstallNative.Handle {
         val value = kernel.CreateFile(path, 0x00130081, 1, null, 3, 0x02200000, null)
@@ -291,6 +340,7 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
         fun GetFinalPathNameByHandleW(handle: WinNT.HANDLE, path: CharArray, size: Int, flags: Int): Int
     }
     private interface ExtraSecurity : StdCallLibrary {
+        fun GetSecurityDescriptorControl(descriptor: Pointer, control: ShortByReference, revision: IntByReference): Boolean
         fun ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl: WString, revision: Int,
             descriptor: PointerByReference, size: IntByReference?): Boolean
     }

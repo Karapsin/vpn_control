@@ -36,6 +36,8 @@ on:
       - "gradlew.bat"
       - "scripts/prepare_sing_box_desktop_runtime.ps1"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/windows_native_fixture.py"
+      - "scripts/test_windows_native_fixture.py"
       - "scripts/prepare_desktop_update_fixture.py"
       - "scripts/test_windows_fixture_stage_acl.py"
       - "scripts/version_metadata.py"
@@ -183,6 +185,9 @@ jobs:
       - name: Require native Windows PowerShell for causal guards
         run: python -c "import os, shutil; assert os.name == 'nt' and shutil.which('powershell.exe'), 'Native Windows PowerShell is required'"
 
+      - name: Verify Windows PowerShell5.1 Hashtable sum and progress oracle
+        run: python scripts/test_windows_native_fixture.py WindowsHashtableSumTest
+
       - name: Verify CP117 PowerShell causal guards
         shell: pwsh
         run: >-
@@ -191,6 +196,7 @@ jobs:
           agent_tools.tests.test_windows_cp117_c32_absence.C32AbsenceTests.test_windows_trigger_guard_accepts_only_empty_or_single_null
           agent_tools.tests.test_windows_cp117_c32_absence.C32AbsenceTests.test_windows_result_decoder_accepts_only_utf8_with_optional_bom
           agent_tools.tests.test_windows_cp117_source_campaign.SourceCampaignTests.test_actual_powershell_task_runtime_census_precedes_uninstall
+          agent_tools.tests.test_windows_recent_fixture_failures
           agent_tools.tests.test_windows_terminal_prefix_execution
           agent_tools.tests.test_windows_secure_layout_source_execution
           agent_tools.tests.test_windows_secure_input_failure_execution

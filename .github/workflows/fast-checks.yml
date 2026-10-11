@@ -45,6 +45,8 @@ on:
       - "scripts/test_linux_scheduled_refresh_scenario.py"
       - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/windows_native_fixture.py"
+      - "scripts/test_windows_native_fixture.py"
       - "scripts/native_fixture_qemu_assets.py"
       - "scripts/test_native_fixture_qemu_assets.py"
       - "scripts/check_workflow_syntax.py"

@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Threading;
@@ -198,7 +200,7 @@ internal sealed class VpnInstallHelperNativeSessions : VpnInstallHelperSessionFa
 // Coordinator state is intentionally separated from OriginalUserSessionAdapter:
 // it owns only protected state and retained identity witnesses, never an MSI
 // adapter, package handle, command line, or relaunch authority.
-internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.CoordinatorSession, IDisposable {
+internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.CoordinatorSession, VpnInstallHelperRoles.CoordinatorCompletedInputSession, IDisposable {
     readonly CoordinatorSessionAdapterFacilities fixture;
     readonly OwnerInputAdmission admission;
     // Same-assembly test seam for a unique, direct child of the real ProgramData
@@ -215,6 +217,10 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
     SafeFileHandle programDataDirectory, programDataWitness, machineDirectory, jobDirectory;
     bool reserved, exclusive;
     bool terminalPublished, terminalGateReleaseReady;
+    VpnInstallHelperProtocol.WorkerReady admittedReady;
+    uint? observedNativeResult;
+    NativeInputCustodySource inputCustodySource;
+    bool inputCustodyFailed { get; set; }
     VpnInstallHelperRoles.PreinstallStage preinstallStage=VpnInstallHelperRoles.PreinstallStage.None;
     bool preinstallIdentityFailure;
     bool disposed;
@@ -360,8 +366,16 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
     public uint? ReadNativeResult() {
         if (fixture!=null) return fixture.ReadNativeResult();
         byte[] record=admission.ReadPrivateLeaf("worker-result.json",true);
-        return record==null ? (uint?)null : VpnInstallHelperProtocol.ParseWorkerResult(record,JobId);
+        observedNativeResult=record==null ? (uint?)null : VpnInstallHelperProtocol.ParseWorkerResult(record,JobId);
+        return observedNativeResult;
     }
+    public void PrepareInputCustody(uint result) {
+        if(fixture!=null) { var f=fixture as VpnInstallHelperRoles.CoordinatorCompletedInputSession;if(f!=null)f.PrepareInputCustody(result);return; }
+        if(!observedNativeResult.HasValue || observedNativeResult.Value!=result || (result!=0 && result!=3010) || inputCustodySource!=null)throw new IOException("CONFLICT");
+        inputCustodySource=new NativeInputCustodySource(admission,machineDirectory,jobDirectory,workerGeneration,coordinatorGeneration,admittedReady,result);
+        InputCustodyWriter.CaptureAndPublish(inputCustodySource);
+    }
+    public void RetainInputCustodyFailure() { inputCustodyFailed=true; }
     public void Pause() { if (fixture==null) Thread.Sleep(100); else fixture.Pause(); }
     string OpenProtectedMachineDirectory() {
         if (machineDirectory!=null) return testMachineDirectory==null ?
@@ -390,6 +404,7 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
         if (ready.JobId!=JobId || ready.PrincipalSid!=admission.Owner.Principal) throw new IOException("CONFLICT");
         if (originalUserChild!=null && (ready.Pid!=originalUserChild.ProcessId || ready.CreationFileTime!=originalUserChild.CreationFileTime ||
             !String.Equals(ready.PrincipalSid,originalUserChild.PrincipalSid,StringComparison.Ordinal))) throw new IOException("CONFLICT");
+        admittedReady=ready;
         worker=new VpnInstallNative.ProcessPin(ready.Pid);
         workerGeneration=new VpnInstallNative.ProcessImagePin(ready.Pid);
         coordinatorGeneration=new VpnInstallNative.ProcessImagePin((uint)Process.GetCurrentProcess().Id);
@@ -452,7 +467,13 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
             return;
         }
         Exception failure=null;
-        try { if (exclusive) { VpnInstallNative.Unlock(gate.SafeFileHandle,0); exclusive=false; } } catch (Exception error) { failure=error; }
+        // Only input pins are handed off after actual ready/result capture and terminal+pending acknowledgement.
+        // A release failure stays owned; it cannot suppress known-success return gate release.
+        if(observedNativeResult.HasValue && (observedNativeResult.Value==0 || observedNativeResult.Value==3010)) {
+            try { if(inputCustodySource!=null)inputCustodySource.Dispose(); } catch(Exception error) { failure=error;inputCustodyFailed=true; }
+            try { admission.ReleaseCompletedInputPins(); } catch(Exception error) { if(failure==null)failure=error;inputCustodyFailed=true; }
+        }
+        try { if (exclusive) { VpnInstallNative.Unlock(gate.SafeFileHandle,0); exclusive=false; } } catch (Exception error) { if(failure==null)failure=error; }
         try { if (reserved) { VpnInstallNative.Unlock(gate.SafeFileHandle,16); reserved=false; } } catch (Exception error) { if (failure==null) failure=error; }
         if (failure!=null) throw new IOException("PERSISTENCE_FAILED",failure);
     }
@@ -463,7 +484,7 @@ internal sealed class CoordinatorSessionAdapter : VpnInstallHelperRoles.Coordina
         try { if (exclusive) { VpnInstallNative.Unlock(gate.SafeFileHandle,0); exclusive=false; } } catch (Exception error) { failure=error; }
         try { if (reserved) { VpnInstallNative.Unlock(gate.SafeFileHandle,16); reserved=false; } } catch (Exception error) { if (failure==null) failure=error; }
         IDisposable[] resources={ cancel,jobDirectory,machineDirectory,programDataWitness,programDataDirectory,gate,
-            workerGeneration,coordinatorGeneration,worker,frontend,installation };
+            workerGeneration,coordinatorGeneration,worker,frontend,installation,inputCustodySource };
         for (int index=0;index<resources.Length;index++) try { if (resources[index]!=null) resources[index].Dispose(); }
             catch (Exception error) { if (failure==null) failure=error; }
         if (failure!=null) throw new IOException("PERSISTENCE_FAILED",failure);
@@ -541,7 +562,7 @@ internal sealed class CoordinatorReceiptWriter {
 // Production implementation of the retained original-user role.  All paths are
 // derived from an admitted request and fixed roots; argv selects neither a package
 // nor a receipt.  The admission remains owned by the caller on an uncertain result.
-internal sealed class OriginalUserSessionAdapter : VpnInstallHelperRoles.OriginalUserSession, IDisposable {
+internal sealed class OriginalUserSessionAdapter : VpnInstallHelperRoles.OriginalUserSession, VpnInstallHelperRoles.OriginalUserCompletedInputSession, IDisposable {
     const int PollMilliseconds=100;
     readonly OwnerInputAdmission admission;
     readonly string inputDirectory, receiptPath;
@@ -553,6 +574,10 @@ internal sealed class OriginalUserSessionAdapter : VpnInstallHelperRoles.Origina
     bool installAttempted;
     bool disposed;
     bool preparedDisposed;
+    uint? completedNativeExit;
+    Exception completedInputFailure;
+    bool completedInputCleanupFailed { get; set; }
+    readonly VpnInstallCompletedInputCleanup.Debt completedInputDebt=new VpnInstallCompletedInputCleanup.Debt();
     readonly List<IDisposable> returnPins=new List<IDisposable>();
     SafeFileHandle returnMachineDirectory;
     FileStream returnGate;
@@ -626,13 +651,47 @@ internal sealed class OriginalUserSessionAdapter : VpnInstallHelperRoles.Origina
         // resource boundary too: recovery is observation only, never MSI replay.
         if (installAttempted) throw new IOException("OUTCOME_UNKNOWN");
         installAttempted=true;
-        return fixture==null ? prepared.Install() : fixture.InstallVerifiedPackage();
+        completedNativeExit=fixture==null ? prepared.Install() : fixture.InstallVerifiedPackage();
+        return completedNativeExit.Value;
     }
     public void PublishNativeResult(uint exitCode) {
         if (fixture!=null) { fixture.PublishNativeResult(exitCode); return; }
         VpnInstallNative.PublishPrivateRecord(Path.Combine(inputDirectory,"worker-result.json"),admission.Owner.Principal,
             VpnInstallHelperProtocol.EncodeWorkerResult(JobId,exitCode));
     }
+
+    public void CompleteInputCleanup() {
+        try {
+            if(!completedNativeExit.HasValue || (completedNativeExit.Value!=0 && completedNativeExit.Value!=3010) ||
+                lastObservedReceipt==null || lastObservedReceipt.State!=VpnInstallHelperRoles.Phase.Succeeded)throw new IOException("OUTCOME_UNKNOWN");
+            // Wait for the unchanged exact shared return gate before releasing any input capability.
+            while(!TryAcquireReturnAdmission()){if(ReturnDeadlineReached)throw new IOException("OUTCOME_UNKNOWN");Pause();}
+            if(fixture!=null) { var f=fixture as VpnInstallHelperRoles.OriginalUserCompletedInputSession;if(f!=null)f.CompleteInputCleanup();return; }
+            VerifyReturnGate();if(!ReturnGateIsClear(ReadReturnGate()))throw new IOException("CONFLICT");
+            SafeFileHandle protectedJob=VpnInstallNative.OpenDirectory(Path.Combine(VpnInstallNative.ProgramData(),"vpn-control-install-jobs",JobId));
+            returnPins.Add(protectedJob);VpnInstallNative.InspectLinkedAncestor(returnMachineDirectory,protectedJob,null);VpnInstallNative.Inspect(protectedJob,true,false,null);
+            // Validate the protected capability against original admitted handles before handing them off.
+            InputCustodyRecord captured=InputCustodyContract.Parse(NativeCompletedInputFacilities.ReadProtectedLeaf(protectedJob,InputCustodyContract.ProtectedLeaf,InputCustodyContract.MaximumBytes));
+            if(captured.Provenance.JobId!=JobId || captured.Provenance.PrincipalSid!=admission.Request.PrincipalSid ||
+                captured.InputRootNativeId!=admission.OriginalInputRootId || captured.InputJobNativeId!=admission.OriginalInputJobId ||
+                captured.Leaf(InputCustodyLeaf.Request).NativeId!=admission.OriginalRequestId ||
+                captured.Leaf(InputCustodyLeaf.Request).Sha256!=NativeInputCustodySource.Digest(admission.OriginalRequestStream))throw new IOException("CONFLICT");
+            if(!preparedDisposed){prepared.Dispose();preparedDisposed=true;}
+            admission.ReleaseCompletedInputPins();
+            using(NativeCompletedInputFacilities inputs=new NativeCompletedInputFacilities(admission,returnMachineDirectory,protectedJob,lastObservedReceipt,ReadReceipt,
+                ()=>{VerifyReturnGate();if(!returnGateLocked || !returnReservationLocked || !ReturnGateIsClear(ReadReturnGate()))throw new IOException("CONFLICT");})) {
+                InputCustodyRecord c=inputs.Custody;InputCustodyContract.RequireSame(captured,c);
+                VpnInstallCompletedInputCleanup.Leaf[] leaves=new VpnInstallCompletedInputCleanup.Leaf[5];
+                InputCustodyLeaf[] slots={InputCustodyLeaf.Package,InputCustodyLeaf.Request,InputCustodyLeaf.Commit,InputCustodyLeaf.WorkerReady,InputCustodyLeaf.WorkerResult};
+                for(int i=0;i<leaves.Length;i++) {
+                    InputCustodyFile f=c.Leaf(slots[i]);if(f.Name!=VpnInstallCompletedInputCleanup.Leaves[i])throw new IOException("CONFLICT");
+                    leaves[i]=new VpnInstallCompletedInputCleanup.Leaf(f.Name,f.NativeId,f.Size,f.Sha256);
+                }
+                VpnInstallCompletedInputCleanup.Release(inputs,c.InputRootNativeId,c.InputJobNativeId,leaves,completedInputDebt);
+            }
+        } catch(Exception error) { completedInputFailure=completedInputFailure ?? error;throw; }
+    }
+    public void RetainInputCleanupFailure(){completedInputCleanupFailed=true;}
 
     public void RelaunchOriginalOwner() {
         // SUCCEEDED can be observed before the coordinator clears pending and releases
@@ -738,7 +797,8 @@ internal sealed class OriginalUserSessionAdapter : VpnInstallHelperRoles.Origina
     public void Dispose() {
         if (disposed) return;
         Exception failure=null;
-        try { ReleaseReturnGateLock(); } catch (Exception error) { failure=error; }
+        try { completedInputDebt.CloseAll(); } catch(Exception error) { failure=error; }
+        try { ReleaseReturnGateLock(); } catch (Exception error) { if(failure==null)failure=error; }
         // Failed unlock retains the exact locked handle for cleanup retry. Close
         // every other independent resource even when another disposal fails.
         if (!returnGateLocked && !returnReservationLocked) {
@@ -850,6 +910,9 @@ internal sealed class OwnerInputAdmission : IDisposable {
     internal readonly WindowsIdentity Caller;
     internal VpnInstallHelperProtocol.Request Request { get; private set; }
     internal SafeFileHandle InputDirectory { get; private set; }
+    internal SafeFileHandle InputRoot { get; private set; }
+    internal FileStream OriginalRequestStream { get; private set; }
+    internal string OriginalInputRootId,OriginalInputJobId,OriginalRequestId;
     // The exact local root whose ancestry was retained during request admission.
     // Production records Owner.LocalAppData(); the same-assembly fixture supplies
     // an owned equivalent. Later private leaves must never resolve a fresh path.
@@ -912,17 +975,17 @@ internal sealed class OwnerInputAdmission : IDisposable {
             SafeFileHandle localDirectory=PinDirectoryPath(local,Owner.Principal);
             SafeFileHandle inputRoot=OpenPinnedDirectory(localDirectory,
                 Path.Combine(local,"vpn-control-install-inputs"),Owner.Principal,true);
-            retained.Add(inputRoot);
+            retained.Add(inputRoot);InputRoot=inputRoot;OriginalInputRootId=VpnInstallNative.InputObjectIdentity(inputRoot,true);
             SafeFileHandle input=OpenPinnedDirectory(inputRoot,
                 Path.Combine(local,"vpn-control-install-inputs",invocation.JobId),Owner.Principal,false);
             retained.Add(input);
-            InputDirectory=input;
+            InputDirectory=input;OriginalInputJobId=VpnInstallNative.InputObjectIdentity(input,true);
             requestHandle=VpnInstallNative.OpenRead(Path.Combine(local,"vpn-control-install-inputs",invocation.JobId,"request.json"),false);
             VpnInstallNative.InspectLinkedAncestor(input,requestHandle,Owner.Principal);
             VpnInstallNative.Inspect(requestHandle,false,false,Owner.Principal);
             FileStream requestStream=new FileStream(requestHandle,FileAccess.Read,1,false);
             requestHandle=null;
-            retained.Add(requestStream);
+            retained.Add(requestStream);OriginalRequestStream=requestStream;OriginalRequestId=VpnInstallNative.InputObjectIdentity(requestStream.SafeFileHandle,false);
             Request=VpnInstallHelperProtocol.ParseRequest(ReadBounded(requestStream,65536));
             admittedLocalDirectory=local;
             // The stream remains retained after parsing. A later leaf replacement cannot
@@ -1040,6 +1103,11 @@ internal sealed class OwnerInputAdmission : IDisposable {
         if (Owner.Exited) throw new IOException("CONFLICT");
     }
 
+    internal string FixedInputRootPath(){if(String.IsNullOrEmpty(admittedLocalDirectory))throw new IOException("CONFLICT");return Path.Combine(admittedLocalDirectory,"vpn-control-install-inputs");}
+    internal string FixedInputPath(string leaf){if(leaf!="request.json" && leaf!="package.msi" && leaf!="commit.json" && leaf!="worker-ready.json" && leaf!="worker-result.json")throw new IOException("INVALID_ARGUMENT");return Path.Combine(FixedInputRootPath(),Request.JobId,leaf);}
+    internal SafeFileHandle PinCleanupLocalAncestor(){return PinDirectoryPath(admittedLocalDirectory,Request.PrincipalSid);}
+    internal void ReleaseCompletedInputPins(){ReleaseRetainedFrom(3);InputRoot=null;InputDirectory=null;OriginalRequestStream=null;}
+
     void ReleaseRetainedFrom(int start) {
         Exception failure=null;
         for (int index=retained.Count-1;index>=start;index--) {
@@ -1059,4 +1127,503 @@ internal sealed class OwnerInputAdmission : IDisposable {
         closed=retained.Count==0;
         if (failure!=null) throw new IOException("PERSISTENCE_FAILED",failure);
     }
+}
+// Isolated candidate core. Native adapters supply only authenticated fixed-job facilities.
+// Tests model Windows identity/ACL/DeleteDisposition syscalls, with real files and streams.
+
+internal static class VpnInstallCompletedInputCleanup {
+    internal static readonly string[] Leaves={"package.msi","request.json","commit.json","worker-ready.json","worker-result.json"};
+    internal sealed class Leaf {
+        internal readonly string Name,Identity,Digest;
+        internal readonly long Size;
+        internal Leaf(string name,string identity,long size,string digest) {
+            if (Array.IndexOf(Leaves,name)<0 || identity==null || identity.Length!=48 || size<1 || digest==null || digest.Length!=64)
+                throw new IOException("INVALID_ARGUMENT");
+            foreach (char c in identity+digest) if (!((c>='0' && c<='9') || (c>='a' && c<='f'))) throw new IOException("INVALID_ARGUMENT");
+            Name=name; Identity=identity; Size=size; Digest=digest;
+        }
+    }
+    internal interface Handle : IDisposable { }
+    // The fixed native implementation derives roots from the original admission/current owner,
+    // and reads custody only from the retained protected job. No path/command is an input here.
+    internal interface Facilities {
+        void RevalidateTerminalCustodyAndActors();
+        Handle OpenRoot(); // null only precise native missing child under held admitted ancestry.
+        Handle OpenJob(Handle root);
+        Handle OpenLeaf(Handle job,string fixedLeaf);
+        void Verify(Handle handle,Handle parent,string expectedIdentity,bool directory);
+        string[] Children(Handle job); // at most 5+1; no recursive enumeration.
+        void VerifyFullBytes(Handle file,Leaf expected);
+        void Delete(Handle handle); // actual retained FILE_DISPOSITION_INFO capability.
+    }
+    internal sealed class Debt {
+        internal readonly List<Handle> Handles=new List<Handle>();
+        internal void CloseAll() {
+            Exception first=null;
+            for (int i=Handles.Count-1;i>=0;i--) try { Handles[i].Dispose(); Handles.RemoveAt(i); }
+                catch (Exception e) { if(first==null)first=e; }
+            if(first!=null)throw new IOException("PERSISTENCE_FAILED",first);
+        }
+    }
+    internal static void Release(Facilities native,string rootIdentity,string jobIdentity,Leaf[] leaves,Debt debt) {
+        if(native==null || debt==null || leaves==null || leaves.Length!=Leaves.Length)throw new IOException("INVALID_ARGUMENT");
+        for(int i=0;i<leaves.Length;i++)if(leaves[i]==null || leaves[i].Name!=Leaves[i])throw new IOException("CONFLICT");
+        // Retry only owned closing debt first; failure cannot authorize another deletion attempt.
+        debt.CloseAll();
+        Exception primary=null;
+        try { ReleaseHeld(native,rootIdentity,jobIdentity,leaves,debt); }
+        catch(Exception e) { primary=e; }
+        finally {
+            try { debt.CloseAll(); }
+            catch(Exception e) { if(primary==null)primary=e; }
+        }
+        if(primary!=null)throw new IOException("PERSISTENCE_FAILED",primary);
+    }
+    static void ReleaseHeld(Facilities native,string rootIdentity,string jobIdentity,Leaf[] leaves,Debt debt) {
+            native.RevalidateTerminalCustodyAndActors();
+            Handle root=native.OpenRoot();
+            if(root==null)return;
+            debt.Handles.Add(root); native.Verify(root,null,rootIdentity,true);
+            Handle job=native.OpenJob(root);
+            if(job==null)return;
+            debt.Handles.Add(job); native.Verify(job,root,jobIdentity,true);
+            string[] names=native.Children(job);
+            if(names==null || names.Length>Leaves.Length)throw new IOException("CONFLICT");
+            HashSet<string> unique=new HashSet<string>(StringComparer.Ordinal);
+            foreach(string name in names)if(Array.IndexOf(Leaves,name)<0 || !unique.Add(name))throw new IOException("CONFLICT");
+            Handle[] held=new Handle[Leaves.Length];
+            for(int i=0;i<Leaves.Length;i++) {
+                Handle h=native.OpenLeaf(job,Leaves[i]);
+                // Immutable native object IDs make precise missing slots safe on cold/partial retry;
+                // a same-digest replacement is still refused when it is present.
+                if(h==null)continue;
+                held[i]=h; debt.Handles.Add(h);
+                native.Verify(h,job,leaves[i].Identity,false);
+                native.VerifyFullBytes(h,leaves[i]);
+            }
+            native.RevalidateTerminalCustodyAndActors();
+            native.Verify(root,null,rootIdentity,true); native.Verify(job,root,jobIdentity,true);
+            for(int i=0;i<held.Length;i++)if(held[i]!=null) {
+                native.Verify(held[i],job,leaves[i].Identity,false);
+                native.VerifyFullBytes(held[i],leaves[i]);
+            }
+            // Every fixed object is admitted before the first effect. No tree/path deletion.
+            for(int i=0;i<held.Length;i++)if(held[i]!=null) {
+                native.Delete(held[i]); held[i].Dispose(); debt.Handles.Remove(held[i]);
+            }
+            native.Delete(job); job.Dispose(); debt.Handles.Remove(job);
+            // Closed delete handles must be followed by precise named absence. Replacement or
+            // inaccessible path is failure, even if the preceding disposition returned success.
+            Handle remains=native.OpenJob(root);
+            if(remains!=null) { debt.Handles.Add(remains); throw new IOException("CONFLICT"); }
+            native.RevalidateTerminalCustodyAndActors();
+    }
+}
+// PROPOSAL: data-only custody schema plus a same-assembly admitted-handle writer seam.
+// Parsing this record does not admit cleanup, native actor closure, a terminal receipt,
+// or installation replay. Production must bind the source to fixed native adapters.
+
+internal enum InputCustodyLeaf { Request, Package, Commit, WorkerReady, WorkerResult }
+internal enum InputCustodyActor { Worker, Coordinator }
+
+internal sealed class InputCustodyProvenance {
+    internal readonly string JobId, PrincipalSid, WorkspaceSha256;
+    internal InputCustodyProvenance(string job,string sid,string workspace) {
+        VpnInstallHelperProtocol.Job(job); VpnInstallHelperProtocol.Sid(sid); VpnInstallHelperProtocol.Digest(workspace);
+        JobId=job; PrincipalSid=sid; WorkspaceSha256=workspace;
+    }
+    public override string ToString() { return "Install custody provenance (private identity)"; }
+}
+internal sealed class InputCustodyProcess {
+    internal readonly uint Pid;
+    internal readonly long CreationFileTime;
+    internal readonly string HelperSha256;
+    internal InputCustodyProcess(uint pid,long birth,string helper) {
+        if (pid==0 || birth<=0) throw InputCustodyContract.Invalid();
+        VpnInstallHelperProtocol.Digest(helper);
+        Pid=pid; CreationFileTime=birth; HelperSha256=helper;
+    }
+    public override string ToString() { return "Install custody process (private identity)"; }
+}
+internal sealed class InputCustodyFile {
+    internal readonly InputCustodyLeaf Slot;
+    internal readonly string NativeId, Sha256;
+    internal readonly long Size;
+    internal string Name { get { return InputCustodyContract.LeafName(Slot); } }
+    internal InputCustodyFile(InputCustodyLeaf slot,string identity,long size,string digest) {
+        InputCustodyContract.LeafName(slot); InputCustodyContract.NativeId(identity);
+        VpnInstallHelperProtocol.Digest(digest);
+        if (size<=0) throw InputCustodyContract.Invalid();
+        Slot=slot; NativeId=identity; Size=size; Sha256=digest;
+    }
+    public override string ToString() { return "Install custody file (private identity)"; }
+}
+internal sealed class InputCustodyRecord {
+    internal readonly InputCustodyProvenance Provenance;
+    internal readonly string InputRootNativeId, InputJobNativeId, ProtectedMachineNativeId, ProtectedJobNativeId;
+    internal readonly InputCustodyProcess Worker, Coordinator;
+    readonly InputCustodyFile[] leaves;
+    internal InputCustodyRecord(InputCustodyProvenance provenance,string inputRoot,string inputJob,
+        string machine,string protectedJob,InputCustodyProcess worker,InputCustodyProcess coordinator,
+        InputCustodyFile[] originals) {
+        if (provenance==null || worker==null || coordinator==null || originals==null || originals.Length!=5)
+            throw InputCustodyContract.Invalid();
+        if (worker.Pid==coordinator.Pid || worker.HelperSha256!=coordinator.HelperSha256) throw InputCustodyContract.Invalid();
+        HashSet<string> identities=new HashSet<string>(StringComparer.Ordinal);
+        foreach (string id in new string[] { inputRoot,inputJob,machine,protectedJob }) {
+            InputCustodyContract.NativeId(id); if (!identities.Add(id)) throw InputCustodyContract.Invalid();
+        }
+        leaves=(InputCustodyFile[])originals.Clone();
+        for (int index=0;index<5;index++) {
+            if (leaves[index]==null || leaves[index].Slot!=(InputCustodyLeaf)index ||
+                !identities.Add(leaves[index].NativeId)) throw InputCustodyContract.Invalid();
+        }
+        Provenance=provenance; InputRootNativeId=inputRoot; InputJobNativeId=inputJob;
+        ProtectedMachineNativeId=machine; ProtectedJobNativeId=protectedJob; Worker=worker; Coordinator=coordinator;
+    }
+    internal InputCustodyFile Leaf(InputCustodyLeaf slot) {
+        InputCustodyContract.LeafName(slot); return leaves[(int)slot];
+    }
+    public override string ToString() { return "Install input custody (data only)"; }
+}
+
+internal static class InputCustodyContract {
+    internal const int MaximumBytes=4096;
+    internal const string ProtectedLeaf="input-custody.json";
+    internal const string ProtectedAcl="O:BAG:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;GR;;;BU)";
+    static readonly string[] Names={"request.json","package.msi","commit.json","worker-ready.json","worker-result.json"};
+    static readonly string[] BaseFields={"version","jobId","principalSid","workspaceSha256","inputRootNativeId",
+        "inputJobNativeId","protectedMachineNativeId","protectedJobNativeId","workerPid","workerCreationFileTime",
+        "workerHelperSha256","coordinatorPid","coordinatorCreationFileTime","coordinatorHelperSha256"};
+    internal static IOException Invalid() { return new IOException("INVALID_INPUT_CUSTODY"); }
+    internal static string LeafName(InputCustodyLeaf slot) {
+        int index=(int)slot; if (index<0 || index>=5) throw Invalid(); return Names[index];
+    }
+    internal static void NativeId(string value) {
+        if (value==null || value.Length!=48) throw Invalid();
+        bool nonzero=false;
+        foreach (char item in value) {
+            if (!((item>='0' && item<='9') || (item>='a' && item<='f'))) throw Invalid();
+            if (item!='0') nonzero=true;
+        }
+        if (!nonzero) throw Invalid();
+    }
+    static string[] Fields() {
+        List<string> fields=new List<string>(BaseFields);
+        foreach (string name in Names) { fields.Add(name+".nativeId"); fields.Add(name+".size"); fields.Add(name+".sha256"); }
+        return fields.ToArray(); // Exactly 29; the authentic flat parser refuses >32.
+    }
+    internal static InputCustodyRecord Parse(byte[] bytes) {
+        Dictionary<string,object> record=VpnInstallHelperProtocol.Record(bytes,MaximumBytes);
+        VpnInstallHelperProtocol.Fields(record,Fields());
+        if (VpnInstallHelperProtocol.Integer(record,"version")!=1) throw Invalid();
+        InputCustodyProvenance provenance=new InputCustodyProvenance(Text(record,"jobId"),Text(record,"principalSid"),Text(record,"workspaceSha256"));
+        InputCustodyProcess worker=Process(record,"worker"), coordinator=Process(record,"coordinator");
+        InputCustodyFile[] leaves=new InputCustodyFile[5];
+        for (int index=0;index<5;index++) {
+            string name=Names[index];
+            leaves[index]=new InputCustodyFile((InputCustodyLeaf)index,Text(record,name+".nativeId"),
+                VpnInstallHelperProtocol.Integer(record,name+".size"),Text(record,name+".sha256"));
+        }
+        return new InputCustodyRecord(provenance,Text(record,"inputRootNativeId"),Text(record,"inputJobNativeId"),
+            Text(record,"protectedMachineNativeId"),Text(record,"protectedJobNativeId"),worker,coordinator,leaves);
+    }
+    static string Text(Dictionary<string,object> record,string key) { return VpnInstallHelperProtocol.Text(record,key); }
+    static InputCustodyProcess Process(Dictionary<string,object> record,string prefix) {
+        long pid=VpnInstallHelperProtocol.Integer(record,prefix+"Pid");
+        if (pid<=0 || pid>UInt32.MaxValue) throw Invalid();
+        return new InputCustodyProcess((uint)pid,VpnInstallHelperProtocol.Integer(record,prefix+"CreationFileTime"),
+            Text(record,prefix+"HelperSha256"));
+    }
+    internal static byte[] Encode(InputCustodyRecord record) {
+        if (record==null) throw Invalid();
+        StringBuilder json=new StringBuilder("{\"version\":1");
+        Add(json,"jobId",record.Provenance.JobId); Add(json,"principalSid",record.Provenance.PrincipalSid);
+        Add(json,"workspaceSha256",record.Provenance.WorkspaceSha256); Add(json,"inputRootNativeId",record.InputRootNativeId);
+        Add(json,"inputJobNativeId",record.InputJobNativeId); Add(json,"protectedMachineNativeId",record.ProtectedMachineNativeId);
+        Add(json,"protectedJobNativeId",record.ProtectedJobNativeId); AddProcess(json,"worker",record.Worker); AddProcess(json,"coordinator",record.Coordinator);
+        for (int index=0;index<5;index++) {
+            InputCustodyFile leaf=record.Leaf((InputCustodyLeaf)index);
+            Add(json,leaf.Name+".nativeId",leaf.NativeId); Add(json,leaf.Name+".size",leaf.Size); Add(json,leaf.Name+".sha256",leaf.Sha256);
+        }
+        byte[] bytes=new UTF8Encoding(false,true).GetBytes(json.Append('}').ToString());
+        Parse(bytes); // Fixed canonical fields/ASCII grammars; still data-only.
+        return bytes;
+    }
+    static void Add(StringBuilder json,string key,string value) { json.Append(",\"").Append(key).Append("\":\"").Append(value).Append('"'); }
+    static void Add(StringBuilder json,string key,long value) { json.Append(",\"").Append(key).Append("\":").Append(value.ToString(CultureInfo.InvariantCulture)); }
+    static void AddProcess(StringBuilder json,string prefix,InputCustodyProcess process) {
+        Add(json,prefix+"Pid",process.Pid); Add(json,prefix+"CreationFileTime",process.CreationFileTime); Add(json,prefix+"HelperSha256",process.HelperSha256);
+    }
+    internal static void RequireSame(InputCustodyRecord expected,InputCustodyRecord observed) {
+        if (expected==null || observed==null) throw Invalid();
+        byte[] first=Encode(expected),second=Encode(observed);
+        if (first.Length!=second.Length) throw Invalid();
+        for (int index=0;index<first.Length;index++) if (first[index]!=second[index]) throw Invalid();
+    }
+}
+
+// Same-assembly only: production binds this interface to the admitted session and
+// fixed native methods. No request/argv/parser object implements it. Tests model
+// ACL/token/native IDs explicitly; the interface is NOT a native admission proof.
+internal interface IAdmittedInputCustodyNativeSource {
+    SafeFileHandle InputRoot { get; }
+    SafeFileHandle InputJob { get; }
+    SafeFileHandle ProtectedMachine { get; }
+    SafeFileHandle ProtectedJob { get; }
+    InputCustodyProvenance ReadOriginalProvenance();
+    InputCustodyProcess ReadOriginalProcess(InputCustodyActor actor);
+    FileStream RetainedOriginalLeaf(InputCustodyLeaf leaf);
+    string DirectoryNativeId(SafeFileHandle retainedDirectory);
+    string FileNativeId(SafeFileHandle retainedFile);
+    void RequireOriginalAdmission(); // token, source, fixed path/ACL/ancestry/share and original actor generations
+    void RequireOriginalLeaf(InputCustodyLeaf leaf,SafeFileHandle retainedFile); // actual original identity and admitted private ancestry
+    uint ReadObservedSuccessfulNativeExit(); // actual native MSI outcome; not worker-result data alone
+    void PublishCustodyNoReplace(SafeFileHandle protectedJob,string fixedLeaf,string fixedAcl,byte[] bytes);
+    byte[] ReadPublishedCustodyRetained(SafeFileHandle protectedJob); // actual inspected protected object, bounded to 4096
+}
+internal sealed class InputCustodyPublicationUncertainException : IOException {
+    internal InputCustodyPublicationUncertainException(Exception cause) : base("INPUT_CUSTODY_PUBLICATION_UNCERTAIN",cause) { }
+}
+internal static class InputCustodyWriter {
+    static void Handle(SafeFileHandle file) {
+        if (file==null || file.IsInvalid || file.IsClosed) throw InputCustodyContract.Invalid();
+    }
+    static string Digest(FileStream file) {
+        file.Position=0;
+        using (SHA256 digest=SHA256.Create()) {
+            string result=BitConverter.ToString(digest.ComputeHash(file)).Replace("-","").ToLowerInvariant();
+            file.Position=0; return result;
+        }
+    }
+    static byte[] Small(FileStream file) {
+        if (file.Length<=0 || file.Length>65536) throw InputCustodyContract.Invalid();
+        byte[] bytes=new byte[checked((int)file.Length)]; file.Position=0;
+        int at=0;
+        while (at<bytes.Length) { int count=file.Read(bytes,at,bytes.Length-at); if (count==0) throw InputCustodyContract.Invalid(); at+=count; }
+        if (file.ReadByte()!=-1) throw InputCustodyContract.Invalid(); file.Position=0; return bytes;
+    }
+    // Only admitted handles/native adapter enter this API. There is no Publish(record),
+    // caller path, authority boolean, success flag, or deletion operation.
+    internal static InputCustodyRecord CaptureAndPublish(IAdmittedInputCustodyNativeSource source) {
+        if (source==null) throw InputCustodyContract.Invalid();
+        source.RequireOriginalAdmission();
+        SafeFileHandle[] directories={source.InputRoot,source.InputJob,source.ProtectedMachine,source.ProtectedJob};
+        string[] ids=new string[4];
+        for (int index=0;index<4;index++) { Handle(directories[index]); ids[index]=source.DirectoryNativeId(directories[index]); }
+        InputCustodyProvenance provenance=source.ReadOriginalProvenance();
+        InputCustodyProcess worker=source.ReadOriginalProcess(InputCustodyActor.Worker), coordinator=source.ReadOriginalProcess(InputCustodyActor.Coordinator);
+        InputCustodyFile[] leaves=new InputCustodyFile[5]; FileStream[] streams=new FileStream[5]; byte[][] small=new byte[5][];
+        for (int index=0;index<5;index++) {
+            InputCustodyLeaf slot=(InputCustodyLeaf)index; FileStream file=source.RetainedOriginalLeaf(slot);
+            if (file==null || !file.CanRead || !file.CanSeek) throw InputCustodyContract.Invalid();
+            Handle(file.SafeFileHandle); source.RequireOriginalLeaf(slot,file.SafeFileHandle);
+            string identity=source.FileNativeId(file.SafeFileHandle); long size=file.Length; string digest=Digest(file);
+            if (slot!=InputCustodyLeaf.Package) small[index]=Small(file);
+            if (file.Length!=size || source.FileNativeId(file.SafeFileHandle)!=identity) throw InputCustodyContract.Invalid();
+            source.RequireOriginalLeaf(slot,file.SafeFileHandle);
+            leaves[index]=new InputCustodyFile(slot,identity,size,digest); streams[index]=file;
+        }
+        InputCustodyRecord record=new InputCustodyRecord(provenance,ids[0],ids[1],ids[2],ids[3],worker,coordinator,leaves);
+        VpnInstallHelperProtocol.Request request=VpnInstallHelperProtocol.ParseRequest(small[(int)InputCustodyLeaf.Request]);
+        InputCustodyFile package=record.Leaf(InputCustodyLeaf.Package);
+        if (request.JobId!=provenance.JobId || request.PrincipalSid!=provenance.PrincipalSid ||
+            request.PackageSha256!=package.Sha256 || request.PackageSize!=package.Size) throw InputCustodyContract.Invalid();
+        VpnInstallHelperProtocol.IsCommit(small[(int)InputCustodyLeaf.Commit],provenance.JobId);
+        VpnInstallHelperProtocol.WorkerReady ready=VpnInstallHelperProtocol.ParseWorkerReady(small[(int)InputCustodyLeaf.WorkerReady]);
+        if (ready.JobId!=provenance.JobId || ready.PrincipalSid!=provenance.PrincipalSid || ready.Pid!=worker.Pid ||
+            ready.CreationFileTime!=worker.CreationFileTime || ready.HelperSha256!=worker.HelperSha256) throw InputCustodyContract.Invalid();
+        uint exit=VpnInstallHelperProtocol.ParseWorkerResult(small[(int)InputCustodyLeaf.WorkerResult],provenance.JobId);
+        if ((exit!=0 && exit!=3010) || source.ReadObservedSuccessfulNativeExit()!=exit) throw InputCustodyContract.Invalid();
+        source.RequireOriginalAdmission();
+        for (int index=0;index<4;index++) if (source.DirectoryNativeId(directories[index])!=ids[index]) throw InputCustodyContract.Invalid();
+        InputCustodyProvenance closingProvenance=source.ReadOriginalProvenance();
+        if (closingProvenance==null || closingProvenance.JobId!=provenance.JobId || closingProvenance.PrincipalSid!=provenance.PrincipalSid ||
+            closingProvenance.WorkspaceSha256!=provenance.WorkspaceSha256) throw InputCustodyContract.Invalid();
+        RequireProcess(worker,source.ReadOriginalProcess(InputCustodyActor.Worker)); RequireProcess(coordinator,source.ReadOriginalProcess(InputCustodyActor.Coordinator));
+        for (int index=0;index<5;index++) {
+            source.RequireOriginalLeaf((InputCustodyLeaf)index,streams[index].SafeFileHandle);
+            if (source.FileNativeId(streams[index].SafeFileHandle)!=leaves[index].NativeId || streams[index].Length!=leaves[index].Size)
+                throw InputCustodyContract.Invalid();
+        }
+        byte[] bytes=InputCustodyContract.Encode(record);
+        try {
+            source.PublishCustodyNoReplace(directories[3],InputCustodyContract.ProtectedLeaf,InputCustodyContract.ProtectedAcl,bytes);
+            InputCustodyContract.RequireSame(record,InputCustodyContract.Parse(source.ReadPublishedCustodyRetained(directories[3])));
+            source.RequireOriginalAdmission();
+        } catch (Exception error) { throw new InputCustodyPublicationUncertainException(error); }
+        return record; // No native cleanup/terminal/closure authority is returned.
+    }
+    static void RequireProcess(InputCustodyProcess first,InputCustodyProcess second) {
+        if (second==null || first.Pid!=second.Pid || first.CreationFileTime!=second.CreationFileTime || first.HelperSha256!=second.HelperSha256)
+            throw InputCustodyContract.Invalid();
+    }
+}
+// Native-only same-assembly adapters. No new argv role, path, command or privilege request.
+
+internal sealed class NativeInputCustodySource : IAdmittedInputCustodyNativeSource,IDisposable {
+    readonly OwnerInputAdmission admission;
+    readonly SafeFileHandle machine,job;
+    readonly VpnInstallNative.ProcessImagePin worker,coordinator;
+    readonly VpnInstallHelperProtocol.WorkerReady ready;
+    readonly uint observedResult;
+    readonly FileStream[] files=new FileStream[5];
+    readonly List<FileStream> owned=new List<FileStream>();
+    internal NativeInputCustodySource(OwnerInputAdmission admitted,SafeFileHandle retainedMachine,SafeFileHandle retainedJob,
+        VpnInstallNative.ProcessImagePin retainedWorker,VpnInstallNative.ProcessImagePin retainedCoordinator,
+        VpnInstallHelperProtocol.WorkerReady originalReady,uint acceptedResult) {
+        admission=admitted;machine=retainedMachine;job=retainedJob;worker=retainedWorker;coordinator=retainedCoordinator;ready=originalReady;observedResult=acceptedResult;
+        RequireOriginalAdmission();
+        try {
+            for(int i=0;i<files.Length;i++) {
+                InputCustodyLeaf slot=(InputCustodyLeaf)i;
+                if(slot==InputCustodyLeaf.Request)files[i]=admission.OriginalRequestStream;
+                else {
+                    SafeFileHandle h=VpnInstallNative.OpenRead(admission.FixedInputPath(InputCustodyContract.LeafName(slot)),false);
+                    try { RequireOriginalLeaf(slot,h);files[i]=new FileStream(h,FileAccess.Read,8192,false);h=null;owned.Add(files[i]); }
+                    finally { if(h!=null)h.Dispose(); }
+                }
+            }
+        } catch { try{Dispose();}catch{} throw; }
+    }
+    public SafeFileHandle InputRoot{get{return admission.InputRoot;}}
+    public SafeFileHandle InputJob{get{return admission.InputDirectory;}}
+    public SafeFileHandle ProtectedMachine{get{return machine;}}
+    public SafeFileHandle ProtectedJob{get{return job;}}
+    public InputCustodyProvenance ReadOriginalProvenance(){return new InputCustodyProvenance(admission.Request.JobId,admission.Request.PrincipalSid,
+        Digest(new UTF8Encoding(false,true).GetBytes(admission.Request.StateDirectory)));}
+    public InputCustodyProcess ReadOriginalProcess(InputCustodyActor actor) {
+        VpnInstallNative.ProcessImageObservation p=(actor==InputCustodyActor.Worker?worker:coordinator).Observe();
+        if(p.KernelOnly || (actor==InputCustodyActor.Worker && (p.Pid!=ready.Pid || p.CreationFileTime!=ready.CreationFileTime)))throw new IOException("CONFLICT");
+        using(SafeFileHandle h=VpnInstallNative.OpenRead(p.Image,false)) {
+            VpnInstallNative.Inspect(h,false,false,admission.Request.PrincipalSid);
+            using(FileStream s=new FileStream(h,FileAccess.Read,8192,false)) {
+                string hash=Digest(s);if(hash!=ready.HelperSha256)throw new IOException("CONFLICT");
+                return new InputCustodyProcess(p.Pid,p.CreationFileTime,hash);
+            }
+        }
+    }
+    public FileStream RetainedOriginalLeaf(InputCustodyLeaf slot){return files[(int)slot];}
+    public string DirectoryNativeId(SafeFileHandle h){return VpnInstallNative.InputObjectIdentity(h,true);}
+    public string FileNativeId(SafeFileHandle h){return VpnInstallNative.InputObjectIdentity(h,false);}
+    public void RequireOriginalAdmission() {
+        if(admission==null || ready==null || admission.Request==null || (observedResult!=0 && observedResult!=3010) ||
+            ready.JobId!=admission.Request.JobId || ready.PrincipalSid!=admission.Request.PrincipalSid)throw new IOException("CONFLICT");
+        VpnInstallNative.InspectPrivateInput(InputRoot,true,ready.PrincipalSid);
+        VpnInstallNative.InspectPrivateInput(InputJob,true,ready.PrincipalSid);
+        VpnInstallNative.InspectLinkedAncestor(InputRoot,InputJob,ready.PrincipalSid);
+        if(DirectoryNativeId(InputRoot)!=admission.OriginalInputRootId || DirectoryNativeId(InputJob)!=admission.OriginalInputJobId)throw new IOException("CONFLICT");
+        VpnInstallNative.Inspect(machine,true,false,null);VpnInstallNative.Inspect(job,true,false,null);
+        VpnInstallNative.InspectLinkedAncestor(machine,job,null);
+    }
+    public void RequireOriginalLeaf(InputCustodyLeaf slot,SafeFileHandle h) {
+        VpnInstallNative.InspectPrivateInput(h,false,ready.PrincipalSid);VpnInstallNative.InspectLinkedAncestor(InputJob,h,ready.PrincipalSid);
+        if(VpnInstallNative.InputCanonicalPath(h)!=VpnInstallNative.InputCanonicalPath(InputJob).TrimEnd('\\')+"\\"+InputCustodyContract.LeafName(slot))throw new IOException("CONFLICT");
+        if(slot==InputCustodyLeaf.Request && FileNativeId(h)!=admission.OriginalRequestId)throw new IOException("CONFLICT");
+    }
+    public uint ReadObservedSuccessfulNativeExit(){return observedResult;}
+    public void PublishCustodyNoReplace(SafeFileHandle retained,string leaf,string acl,byte[] bytes) {
+        if(!Object.ReferenceEquals(retained,job) || leaf!=InputCustodyContract.ProtectedLeaf || acl!=InputCustodyContract.ProtectedAcl)throw new IOException("CONFLICT");
+        using(FileStream output=VpnInstallNative.CreateProtectedChild(job,leaf,acl,bytes)){}
+    }
+    public byte[] ReadPublishedCustodyRetained(SafeFileHandle retained) {
+        if(!Object.ReferenceEquals(retained,job))throw new IOException("CONFLICT");
+        return NativeCompletedInputFacilities.ReadProtectedLeaf(job,InputCustodyContract.ProtectedLeaf,InputCustodyContract.MaximumBytes);
+    }
+    public void Dispose() {
+        Exception first=null;for(int i=owned.Count-1;i>=0;i--)try{owned[i].Dispose();owned.RemoveAt(i);}catch(Exception e){if(first==null)first=e;}
+        if(first!=null)throw new IOException("PERSISTENCE_FAILED",first);
+    }
+    internal static string Digest(byte[] bytes){using(SHA256 h=SHA256.Create())return BitConverter.ToString(h.ComputeHash(bytes)).Replace("-","").ToLowerInvariant();}
+    internal static string Digest(FileStream s){s.Position=0;using(SHA256 h=SHA256.Create()){string d=BitConverter.ToString(h.ComputeHash(s)).Replace("-","").ToLowerInvariant();s.Position=0;return d;}}
+}
+
+internal sealed class NativeCompletedInputFacilities : VpnInstallCompletedInputCleanup.Facilities,IDisposable {
+    readonly OwnerInputAdmission admission;
+    readonly SafeFileHandle machine,job;
+    readonly InputCustodyRecord custody;
+    readonly byte[] encoded;
+    readonly VpnInstallHelperRoles.Receipt terminal;
+    readonly Func<VpnInstallHelperRoles.Receipt> readReceipt;
+    readonly Action requireReturnAdmission;
+    readonly SafeFileHandle ancestor;
+    internal NativeCompletedInputFacilities(OwnerInputAdmission admitted,SafeFileHandle retainedMachine,SafeFileHandle retainedJob,
+        VpnInstallHelperRoles.Receipt actualTerminal,Func<VpnInstallHelperRoles.Receipt> receipt,Action retainedReturnAdmission) {
+        admission=admitted;machine=retainedMachine;job=retainedJob;terminal=actualTerminal;readReceipt=receipt;requireReturnAdmission=retainedReturnAdmission;
+        encoded=ReadProtectedLeaf(job,InputCustodyContract.ProtectedLeaf,InputCustodyContract.MaximumBytes);
+        custody=InputCustodyContract.Parse(encoded);
+        if(custody.Provenance.JobId!=admission.Request.JobId || custody.Provenance.PrincipalSid!=admission.Request.PrincipalSid ||
+            custody.Provenance.WorkspaceSha256!=NativeInputCustodySource.Digest(new UTF8Encoding(false,true).GetBytes(admission.Request.StateDirectory)))throw new IOException("CONFLICT");
+        RevalidateTerminalCustodyAndActors();
+        ancestor=admission.PinCleanupLocalAncestor();
+    }
+    internal InputCustodyRecord Custody{get{return custody;}}
+    public void RevalidateTerminalCustodyAndActors() {
+        if(terminal==null || terminal.State!=VpnInstallHelperRoles.Phase.Succeeded || terminal.JobId!=admission.Request.JobId || !terminal.Same(readReceipt()))throw new IOException("OUTCOME_UNKNOWN");
+        if(admission.Caller.User==null || admission.Caller.User.Value!=custody.Provenance.PrincipalSid)throw new IOException("PERMISSION_DENIED");
+        requireReturnAdmission();
+        using(VpnInstallNative.ProcessImagePin self=new VpnInstallNative.ProcessImagePin((uint)System.Diagnostics.Process.GetCurrentProcess().Id)) {
+            VpnInstallNative.ProcessImageObservation p=self.Observe();
+            if(p.KernelOnly || p.Pid!=custody.Worker.Pid || p.CreationFileTime!=custody.Worker.CreationFileTime)throw new IOException("CONFLICT");
+            using(SafeFileHandle h=VpnInstallNative.OpenRead(p.Image,false))using(FileStream s=new FileStream(h,FileAccess.Read,8192,false))
+                if(NativeInputCustodySource.Digest(s)!=custody.Worker.HelperSha256)throw new IOException("CONFLICT");
+        }
+        VpnInstallNative.Inspect(machine,true,false,null);VpnInstallNative.Inspect(job,true,false,null);VpnInstallNative.InspectLinkedAncestor(machine,job,null);
+        if(VpnInstallNative.InputObjectIdentity(machine,true)!=custody.ProtectedMachineNativeId || VpnInstallNative.InputObjectIdentity(job,true)!=custody.ProtectedJobNativeId)throw new IOException("CONFLICT");
+        byte[] again=ReadProtectedLeaf(job,InputCustodyContract.ProtectedLeaf,InputCustodyContract.MaximumBytes);
+        if(again.Length!=encoded.Length)throw new IOException("CONFLICT");for(int i=0;i<again.Length;i++)if(again[i]!=encoded[i])throw new IOException("CONFLICT");
+    }
+    sealed class Held : VpnInstallCompletedInputCleanup.Handle {
+        internal readonly SafeFileHandle Native;
+        internal Held(SafeFileHandle h){Native=h;}
+        public void Dispose(){VpnInstallNative.CloseInputDeleteHandle(Native);}
+    }
+    Held Open(string fixedPath) {
+        try{return new Held(VpnInstallNative.OpenInputDelete(fixedPath));}
+        catch(Win32Exception e){if(e.NativeErrorCode==2 || e.NativeErrorCode==3)return null;throw;}
+    }
+    public VpnInstallCompletedInputCleanup.Handle OpenRoot() {
+        Held h=Open(admission.FixedInputRootPath());
+        if(h!=null)try{VpnInstallNative.InspectLinkedAncestor(ancestor,h.Native,admission.Request.PrincipalSid);}catch{h.Dispose();throw;}
+        return h;
+    }
+    public VpnInstallCompletedInputCleanup.Handle OpenJob(VpnInstallCompletedInputCleanup.Handle root){return Open(VpnInstallNative.InputCanonicalPath(((Held)root).Native).TrimEnd('\\')+"\\"+custody.Provenance.JobId);}
+    public VpnInstallCompletedInputCleanup.Handle OpenLeaf(VpnInstallCompletedInputCleanup.Handle input,string leaf) {
+        if(Array.IndexOf(VpnInstallCompletedInputCleanup.Leaves,leaf)<0)throw new IOException("INVALID_ARGUMENT");
+        return Open(VpnInstallNative.InputCanonicalPath(((Held)input).Native).TrimEnd('\\')+"\\"+leaf);
+    }
+    public void Verify(VpnInstallCompletedInputCleanup.Handle h,VpnInstallCompletedInputCleanup.Handle parent,string identity,bool directory) {
+        SafeFileHandle f=((Held)h).Native;VpnInstallNative.InspectPrivateInput(f,directory,admission.Request.PrincipalSid);
+        if(VpnInstallNative.InputObjectIdentity(f,directory)!=identity)throw new IOException("CONFLICT");
+        if(parent!=null)VpnInstallNative.InspectLinkedAncestor(((Held)parent).Native,f,admission.Request.PrincipalSid);
+        using(SafeFileHandle named=VpnInstallNative.OpenInputNamedMetadata(VpnInstallNative.InputCanonicalPath(f))) {
+            if(VpnInstallNative.InputObjectIdentity(named,directory)!=identity)throw new IOException("CONFLICT");
+        }
+    }
+    public string[] Children(VpnInstallCompletedInputCleanup.Handle input) {
+        List<string> names=new List<string>();foreach(string path in Directory.EnumerateFileSystemEntries(VpnInstallNative.InputCanonicalPath(((Held)input).Native))) {
+            names.Add(Path.GetFileName(path));if(names.Count>5)break;
+        }return names.ToArray();
+    }
+    public void VerifyFullBytes(VpnInstallCompletedInputCleanup.Handle h,VpnInstallCompletedInputCleanup.Leaf expected) {
+        SafeFileHandle f=((Held)h).Native;
+        using(SafeFileHandle borrowed=new SafeFileHandle(f.DangerousGetHandle(),false))
+        using(FileStream s=new FileStream(borrowed,FileAccess.Read,8192,false)) {
+            if(s.Length!=expected.Size || NativeInputCustodySource.Digest(s)!=expected.Digest || s.Length!=expected.Size)throw new IOException("CONFLICT");
+        }
+    }
+    public void Delete(VpnInstallCompletedInputCleanup.Handle h){VpnInstallNative.DeleteInputHandle(((Held)h).Native);}
+    internal static byte[] ReadProtectedLeaf(SafeFileHandle directory,string fixedLeaf,int max) {
+        if(fixedLeaf!=InputCustodyContract.ProtectedLeaf || max!=InputCustodyContract.MaximumBytes)throw new IOException("INVALID_ARGUMENT");
+        VpnInstallNative.Inspect(directory,true,false,null);
+        using(SafeFileHandle h=VpnInstallNative.OpenRead(VpnInstallNative.InputCanonicalPath(directory).TrimEnd('\\')+"\\"+fixedLeaf,false)) {
+            VpnInstallNative.InspectLinkedAncestor(directory,h,null);VpnInstallNative.Inspect(h,false,false,null);
+            using(FileStream s=new FileStream(h,FileAccess.Read,4096,false)) {
+                if(s.Length<1 || s.Length>max)throw new IOException("INVALID_ARGUMENT");byte[] b=new byte[(int)s.Length];int offset=0;
+                while(offset<b.Length){int n=s.Read(b,offset,b.Length-offset);if(n<=0)throw new IOException("UNAVAILABLE");offset+=n;}
+                if(s.ReadByte()!=-1)throw new IOException("INVALID_ARGUMENT");return b;
+            }
+        }
+    }
+    public void Dispose(){} // Ancestry is owned by admission; protected job/machine by the session.
 }
