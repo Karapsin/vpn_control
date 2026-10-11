@@ -117,11 +117,76 @@ class DesktopMacBootSessionRecoveryTest {
         try {
             DesktopMacBootSessionRecord.publish(input, job, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
             val chmod = ProcessBuilder("/bin/chmod", "+a", "everyone allow write", token.toString()).start()
-            assertTrue(chmod.waitFor(10, java.util.concurrent.TimeUnit.SECONDS))
-            assertEquals(0, chmod.exitValue())
+            requireFixtureCommandSuccess(chmod)
             assertEquals(PosixFilePermissions.fromString("rw-------"), Files.getPosixFilePermissions(token))
             assertFails { DesktopMacBootSessionRecord.belongsToPreviousBoot(input, job) { "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" } }
         } finally { input.parent.toFile().deleteRecursively() }
+    }
+
+    @Test fun timedOutAclFixtureCommandFailsAndReapsItsOwnChild() {
+        org.junit.Assume.assumeTrue("Darwin fixture command", Platform.isMac())
+        // An owned cat blocks on our open stdin; it performs no ACL or product operation.
+        val child = ProcessBuilder("/bin/cat").start()
+        val waits = mutableListOf<Pair<Long, java.util.concurrent.TimeUnit>>()
+        try {
+            val failure = assertFails {
+                requireFixtureCommandSuccess(child) { process, timeout, unit ->
+                    assertTrue(process === child)
+                    waits += timeout to unit
+                    // Only the inert-child regression substitutes a fast wait.
+                    process.waitFor(100, java.util.concurrent.TimeUnit.MILLISECONDS)
+                }
+            }
+            assertTrue(failure is AssertionError)
+            assertEquals(listOf(10L to java.util.concurrent.TimeUnit.SECONDS), waits)
+            assertFalse(child.isAlive, "Timed-out fixture child must be reaped before token cleanup")
+        } finally {
+            // The preserved-original RED also closes its deliberately leaked owned child.
+            if (child.isAlive) child.destroyForcibly()
+            assertTrue(child.waitFor(10, java.util.concurrent.TimeUnit.SECONDS))
+            child.inputStream.close()
+            child.errorStream.close()
+            child.outputStream.close()
+        }
+    }
+
+    @Test fun nonzeroAclFixtureCommandCannotCountAsSuccess() {
+        org.junit.Assume.assumeTrue("Darwin fixture command", Platform.isMac())
+        val child = ProcessBuilder("/usr/bin/false").start()
+        try {
+            val failure = assertFails { requireFixtureCommandSuccess(child) }
+            assertTrue(failure is AssertionError)
+            assertFalse(child.isAlive)
+            assertEquals(1, child.exitValue())
+        } finally {
+            if (child.isAlive) child.destroyForcibly()
+            assertTrue(child.waitFor(10, java.util.concurrent.TimeUnit.SECONDS))
+            child.inputStream.close()
+            child.errorStream.close()
+            child.outputStream.close()
+        }
+    }
+
+    private fun requireFixtureCommandSuccess(
+        command: Process,
+        waitFor: (Process, Long, java.util.concurrent.TimeUnit) -> Boolean = { process, timeout, unit ->
+            process.waitFor(timeout, unit)
+        },
+    ) {
+        try {
+            assertTrue(waitFor(command, 10, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(0, command.exitValue())
+        } finally {
+            try {
+                if (command.isAlive) command.destroyForcibly()
+                assertTrue(command.waitFor(10, java.util.concurrent.TimeUnit.SECONDS),
+                    "Fixture child must terminate before its token is deleted")
+            } finally {
+                command.inputStream.close()
+                command.errorStream.close()
+                command.outputStream.close()
+            }
+        }
     }
 
     @Test fun linkedInputCannotSupplyPriorBootProof() {

@@ -5,6 +5,13 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Keep local parser recovery fixture bytes portable across Windows newline handling.
+- Isolate local SSH parser fixtures and enroll portable build timing checks.
+- Make SSH dead-socket and build timing test fixtures independent of host defaults.
+- Reap timed-out macOS ACL test helpers before deleting their fixture files.
+
+## 2.2.7 - 2026-10-11
+
 - Bound Windows return evidence reads and retain causal controls for admitted fixture failures.
 - Keep Windows PowerShell sum, progress and manifest-array regressions in routine package checks.
 - Clean successful Windows update inputs through protected original-object custody and keep cleanup failures separate from installation results.
@@ -13,6 +20,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep desktop update progress in memory instead of repeatedly rewriting the durable workspace.
 - Preserve manifest-pinned Windows acceptance fixtures during native Git checkout.
 - Preserve independent Windows held and named file generations in acceptance harness checks.
+- Preserve completed DIRECT history across the reviewed closure-source transition and guard source mode handoff.
+- Bound local OpenSSH parser timeout retries while preserving original child evidence and semantic failures.
 
 ## 2.2.6 - 2026-10-10
 

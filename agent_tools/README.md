@@ -57,6 +57,19 @@ unreadable source refuses the check with a finite `check-source` blocker. Use
 daemon cannot acquire this guard retroactively. The hashes assume trusted fresh
 startup; they detect changes and do not make receipt publication atomic.
 
+The actual OpenSSH option-parser unit tests use `openssh_option_probe` for
+config-free local `ssh -G` queries only. It keeps the five-second per-attempt
+deadline, permits two attempts only on `TimeoutExpired`, retains the original
+exceptions/partial streams, and waits for the original owned parser to be reaped
+before a successor. Exhausted timeouts and nonzero/semantic failures still fail.
+The helper rejects connections, remote payloads and executable configuration
+hooks. It is not used to retry SSH transport or native mutations. Qualified
+macOS stacks locate one Session parser stall in default service-name lookup
+awaiting Directory Services; the host latency trigger remains unknown. Actual
+parser fixtures use documentation numeric endpoints before real argv constructors
+and explicit original ports, retaining assertions and real `ssh -G` execution.
+The declared service-boundary regression does not claim remote SSH/auth repaired.
+
 `prepare_start` deliberately blocks when a fetch fails, branches diverge, a dirty branch other than `dev` would need switching, or a dirty behind-`dev` worktree would need pulling. Resolve the reported condition explicitly and rerun it.
 
 ## Native Acceptance Execution
@@ -129,6 +142,20 @@ before a new intent or SSH child. A terminal record cannot erase its READY recei
 reference. Historical files are never rewritten. Other future source transitions
 remain refused pending separately reviewed coverage; this is not a general
 source migration or native connection acceptance result.
+
+The closure-source bridge permits only the reviewed2a384a to0fac47 bounds
+extension, with the actual current closure image hash checked. Its b1a provider
+predecessor may change only provider self-source plus that closure pin; it cannot
+combine the older MCP transition. The prior b957/f569 bridges retain their existing
+reviewed deltas. All other source, typed intent and terminal/READY custody checks
+remain required. Public historical source fixtures and complete private-TempFS
+provider regressions run through ordinary agent-tool discovery.
+
+Set final source-leaf modes before any retained reader opens them. Finish full
+hash, descriptor generation and named-path closure and close all readers before
+immutable handoff. Changing permissions while readers remain held is source
+drift even when bytes and SHA are unchanged. Fresh owned output directories
+must retain the writable mode required by their schema; do not seal them early.
 
 DIRECT status forwards the existing private inventory diagnostic callback without
 changing the public result, raw capture or route options. Retained consumers may
@@ -1661,7 +1688,7 @@ existing read-only status call. It never authorizes a start or cleanup.
 **Build phase timing.** `build-timing-report` reads immutable private phase
 receipts and takes exactly `{sourceSha, pipelineId, runId, receipts:
 [{path, sha256}]}`. `sourceSha` must equal checked-out HEAD; `runId` is a
-canonical UUID. Each path must be a regular owner-only mode-0600 JSON file
+canonical UUID. Each repository-relative path must name a regular owner-only mode-0600 JSON file
 directly under the owner-only mode-0700
 `.rag_index/build-timings/` directory. The file's SHA-256 must match the
 request. Each JSON record has exactly `schemaVersion: 1`, `sourceSha`,

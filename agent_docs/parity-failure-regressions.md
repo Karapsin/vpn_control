@@ -1,5 +1,197 @@
 # Parity Failure-to-Regression Ledger
 
+## macOS boot-token fixture command timeout — 2026-10-11
+
+Prepush84808 passed6260 agent tests/170 existing skips and subsequent tooling
+checks, then desktop1267/one failure/111 skips. The actual failure is
+`macAclGrantOnBootTokenCannotTerminalizeAJob` line120: disposable chmod did not
+finish at its10-second wait. The ACL rejection assertion was never reached.
+Original complete Gradle capsule `a6de445b-d7b3-447a-9063-7a15a4d6aee8`, XML
+SHA0d25c299 and authentic test beforeimage are preserved under
+`.runtime/root-parity-continuation-22e9/prepush-umask-dead-socket-20261011T164816Z*`.
+
+The unchanged isolated test passes genuinely in0.047 seconds; the worker's own
+same-command native ACL diagnostic finishes0 in0.0074 seconds, leaves0600 and
+reads back the actual everyone-write grant. No historical same-generation stack
+is available; OS timeout cause remains UNKNOWN and earlier SSH service lookup
+stacks do not establish this cause. Production ACL rejection is not shown faulty.
+Original wait failure lacks owned-child termination/reaping before file cleanup;
+the reviewed test-only helper now kills/waits/reaps and closes streams before
+token deletion. Authentic old wait/exit decisions fail the real inert-child
+isAlive assertion (one causal failure/zero errors/skips in0.125 seconds); the same
+regression and full candidate class pass14 tests/zero failures/errors/skips. The
+real everyone-write ACL, mode0600 and product rejection assertions remain. Only
+the inert regression substitutes100ms for the requested10-second wait; actual
+chmod retains10 seconds, timeout stays failure, and nonzero cannot count as success.
+No historical OS fault is simulated or claimed fixed. Two earlier isolated-overlay
+compilation errors are preserved as setup failures, not causal RED. Evidence:
+`.runtime/mac-acl-fixture-diagnosis-1640a1f3-0af1-4e2a-b829-454b4c297dd3/`.
+The two new controls join ordinary `:desktopApp:test` and Fast Checks with explicit
+Darwin skips elsewhere. Preserve the real ACL case and fresh full validation
+before delivery; this does not prove macOS native update acceptance.
+
+## Full-tier local fixture failures — 2026-10-11
+
+Prepush77829 retained6259 tests/170 existing skips with one ERROR and one FAIL;
+complete capsule `3e47b09c-1ff7-4735-a045-1a55b84f6a7a` stderr55906 bytes/SHA
+`e6eafe0ca272a9ee5c46f7bb65bc37236a44bc66d51ed2b069812c30465b54c2`.
+Corrected parser tests passed. Original complete streams and finite failure are
+preserved separately from successors; no native acceptance is inferred.
+
+- Timing unsafe-directory fixture: inherited077 changes mkdir0755 to0700, so
+  the negative input becomes safe. Explicit owned-fixture chmod0755 restores the
+  intended input. The actual standalone suite produces authentic077 RED/022 PASS,
+  then fixed7 PASS under both masks; the extended entrypoint regression and14
+  affected agent checks pass. Child-only umask plus same-PID exec retains actual
+  script execution, unrelated cwd and absent PYTHONPATH; Windows keeps its direct
+  branch and prior skips. Production permission validation is unchanged. Evidence:
+  `.runtime/timing-umask-regression-712d2835-28b6-46b8-8dd2-23d86ee26a78/`.
+- Local SSH dead-socket fixture: original actual `-O check` exceeds3 seconds;
+  isolated exact original passes. Historical blocking cause remains UNKNOWN.
+  Source-supported named/default-service dependency is removed with numeric
+  endpoint and explicit former port22. Authentic full-method dependency replay
+  RED becomes GREEN using a real owned child and genuine Unix socket refusal;
+  the original3-second request, no-retry semantics and classification assertions
+  remain. Actual installed SSH and17 module checks pass. The seam does not prove
+  the historical timeout's location or reproduce OS RPC latency. Finite audit
+  identifies three direct local parser/mux fixtures; the other two were already
+  corrected. Evidence:
+  `.runtime/ssh-dead-socket-diagnosis-98514f35-3805-43fe-b29f-e83b0ec37afe/`.
+
+Timing7 runs through release hygiene; entrypoint and dead-socket regressions join
+ordinary agent discovery/prepush/Fast Checks. Root reviewed and integrated the
+three affected paths, trimming only an extra EOF blank line. Fresh canonical
+focused and full validation remain required before delivery. Original native
+Windows update, Android qualification and all platform scenarios remain open.
+
+## Local parser service discovery — 2026-10-11
+
+Original prepush12493 ran6257 agent tests/170 skips and failed only the Session
+real OpenSSH parser after both five-second attempts. Complete retained capsule
+`1b6b1fd6-f3b3-43e0-bd6e-c4c3abb254e0` has stderr55616 bytes/SHA
+`b1ae5571091afd92bc4b6b333de15470f07fd544b0679cfcdc6eea6d3a10e781`.
+Both timeout records match the observer's exact query and report empty streams
+with the original children reaped. Qualified samples of both stable generations
+locate `getservbyname("ssh","tcp")` awaiting Directory Services XPC. Installed
+binary offsets and SDK numeric-only flags bind this to address classification,
+even though port2228 is already explicit. The reason for OS RPC latency remains
+unknown; no remote hostname DNS, authentication or Python EOF fault is proved.
+
+Only actual-parser fixtures change to documentation numeric endpoints before
+their original constructors. Session retains2228; two-hop preserves its former
+effective22 explicitly. Original options/assertions/deadlines, named-host tests
+elsewhere and unsafe/nonzero/exhaustion controls remain. Effective-port assertions
+are added. Routine `test_actual_methods_bypass_measured_default_service_lookup_boundary`
+uses authentic full-source method fragments and actual constructors, with a
+declared service-dependency seam in real owned children. Beforemethods produce
+two timeout errors; fixed methods pass. The13 controls and127 affected checks pass,
+with15 existing Windows native skips. Real installed parser checks still run.
+The replay does not reproduce the unknown OS latency trigger or prove transport
+recovery/native acceptance. Original samples, source images and RED/GREEN logs
+remain in `.runtime/ssh-g-exhausted-diagnosis-b0804240-a970-46ad-b77f-70e26b3edacd/`.
+Full validation after canonical integration remains mandatory.
+
+## Timing routine entrypoint — 2026-10-11
+
+Enrolling existing `scripts/test_build_phase_timing.py` in hygiene exposed an
+actual standalone `ModuleNotFoundError: agent_tools` before test execution. The
+prior isolated runner had injected ROOT, hiding this failure. Original root log
+SHA9890be08 and the unchanged script8466-byte/SHA43e1a4ca image remain in
+`.runtime/timing-entrypoint-regression-34270cdd-55f6-4942-8ad1-6903cb735a68/`.
+The normal resolved repository import-root bootstrap fixes the entrypoint without
+changing its seven cases. `BuildPhaseTimingEntrypointTest` invokes the actual
+script from unrelated cwd with PYTHONPATH removed; it fails on the authentic
+predecessor and passes after correction. Existing agent13/timing7 class ASTs are
+unchanged; affected agent14 and standalone7 checks pass. The seven-case suite
+now runs through hygiene/prepush/package CI, and the entrypoint regression joins
+agent discovery/Fast Checks. Existing OS/private ACL mocks are not native proof.
+Root's unrelated unmanaged Java setup error disappears under the existing managed
+environment; no JVM source/behavior changed. Canonical focused141 checks pass
+with15 existing native skips, and complete configured-environment hygiene passes.
+
+## Completed DIRECT closure-source history — 2026-10-11
+
+The Android waiting parent54421/pipeline54422 ended before a new DIRECT intent,
+SSH child or SDK activity. The operator's genuine terminal/READY census found186
+completed historical intents:10 f569,155 b957 and21 b1a provider predecessors.
+All retain closure source2a384a, while current source is0fac47. The sole reviewed
+closure delta is the opt-in max_bytes extension and its read/finish bookkeeping;
+it is not an exceptional-close correction. The original journals remain unchanged.
+This refusal is local source-history admission, not an observed network/auth fault.
+
+The exact bridge now accepts that reviewed closure pair and enrolls the authentic
+b1a provider in both the matcher and outer ENDED selector. The b1a family permits
+only provider self-source plus that closure change; it cannot also inherit the
+older MCP transition. The existing b957/f569 bridges retain their reviewed deltas.
+Current closure image SHA, every other source pin, typed configuration and genuine
+terminal/READY custody remain required. Missing/live/unknown or foreign history
+refuses before a new intent. This is not a general source migration.
+
+The complete real private-TempFS provider controls produce two assertion failures
+against original b1a and24 passes against the reviewed successor, with zero
+errors/skips. Thirteen pure controls also pass; an intermediate overbroad b1a+MCP
+candidate retains one causal negative failure before narrowing. Initial24 errors
+on each provider run were local injected-library setup errors, preserved separately
+and corrected only by env-u DYLD_INSERT_LIBRARIES. Those errors are not causal RED.
+Routine coverage retains the original22 controls and adds the24-case closure
+subclass plus two exact public Git source fixtures. Remote replies are an inert
+declared seam; real native histories, connection recovery and SDK/update acceptance
+still require the original operator's fresh qualification.
+
+The sealed packet is under ignored
+`.runtime/windows-readonly-route-preflight-aa02f2ec-5f3d-4c8a-8d09-a832265da57b/sdk4200-source-planning/direct-ended-closure-enrollment-3da79ec7-850b-4c44-b8ab-854f8c232b8e/`.
+Its handoff SHA isff58ced9; root verified29 public leaves, canonical beforeimages,
+both decompressed fixture hashes and full generation/named/ancestor closure.
+Root review is
+`.runtime/root-parity-continuation-22e9/direct-ended-closure-bridge-root-review-20261011T115400Z.json`.
+No protected historical/private Android body was read by root.
+
+Canonical connection/source-closure discovery passes202 checks with zero skips,
+including46 completed-history controls. The first202-check run had one local
+OpenSSH dead-socket timeout at its existing3-second bound; the identical isolated
+test passed in0.086 seconds and the subsequent complete202-check run passed in
+22.327 seconds. No timeout bound or production behavior was changed; the first
+error remains in the tool transcript and its cause remains unknown. The successful
+canonical run is retained at
+`.runtime/root-parity-continuation-22e9/direct-ended-closure-canonical-focused-20261011T115700Z.log`.
+
+## Held-source mode handoff — 2026-10-11
+
+The Windows base installer completed successfully, but its original local
+source-custody wrapper later failed because prepared source leaves were chmodded
+from0600 to0400 while their original review descriptors remained held. Bytes and
+SHA were unchanged; mode and ctime were not. The native installation result and
+local closing failure are retained separately. The native opening mode is inferred
+from the generator, not asserted as an observed fstat sample.
+
+The correction is procedural: set final leaf modes before opening readers,
+perform full hash/generation/named-path closure, close every reader, then hand off
+immutable input. Fresh output directories must retain their required writable
+mode0700. Do not chmod held sources, weaken generation checks, or replay a consumed
+native operation to repair its local closing evidence.
+
+Two routine SourceClosureTest methods use the unmodified real _Held implementation
+and actual owned files. Mid-review chmod is rejected despite identical SHA; final
+mode before review closes cleanly. Both verify all original descriptors are closed.
+The complete canonical module passes26 tests with zero skips. Root's reviewed
+integration evidence is
+`.runtime/root-parity-continuation-22e9/regression-integration-mode-handoff-fce67596-3033-410b-8b88-4769a7c4a346/`.
+This prevention does not replace current native update acceptance.
+
+## Current Windows cancelled update — 2026-10-11
+
+The original d522 job became final CANCELLED/CLI130 with handoffReady false.
+Its input observer expired at the240-second original-chain deadline and sent zero
+keys. Same-job observation found the original ordinary roles unchanged, no
+helper/MSI/consent/runtime actors, and base2.2.5 still installed. The cancellation
+cause is not established by the observer timeout. Preserve the original request,
+operation, job and distinct final-poll request identities; no install replay is
+authorized by a local timeout. Root's six-leaf public capsule review is
+`.runtime/root-parity-continuation-22e9/windows-cancelled-d522-public-root-review-20261011T113200Z.json`.
+Source-only input deadline diagnosis and causal regression integration remain open.
+The missing guest Python interpreter is a separate CLI test prerequisite;
+portable staging and actual disconnected CLI execution remain pending.
+
 ## Windows held/named timestamp comparison — 2026-10-11
 
 Exact4a5181 Windows pair run38122148673 failed in release hygiene before any
@@ -3832,3 +4024,69 @@ workspace writes and their removal; it does not prove the native heartbeat timeo
 mechanism or solve the separate expired-registration/physical-frontend admission
 chain. Keep the original native scenario and rerun it on correctly attributed
 fixed base and target artifacts before claiming GUI resolution or MCP acceptance.
+
+## Local OpenSSH option parser timeout in full discovery — 2026-10-11
+
+Three complete prepush attempts each ran6245 agent-tool tests with170 skips and
+one error. The first two timed out in the actual Windows two-hop effective-option
+parser; the fresh CLI attempt timed out in the actual connection-session parser.
+Both queries were config-free local `ssh -G`, without a remote connection. Exact
+isolated tests, affected modules and ordered/import diagnostics pass; the host
+stall mechanism remains UNKNOWN. The stale live MCP runner separately omitted
+current output-retention metadata, so use the documented fresh-process CLI
+fallback. Fresh runner metadata does not explain or prevent the parser timeout.
+
+`openssh_option_probe` changes only those two actual-parser tests. It admits a
+strict config-free query, keeps5 seconds per attempt, and retries only
+`TimeoutExpired` once after standard `subprocess.run` has killed and reaped the
+original child. Original exception objects and partial streams are retained;
+two timeouts still fail. Nonzero exits, semantic assertions, executable config
+hooks, remote payloads and connection/control requests are not retried.
+
+Both authentic whole-file beforeimages produced one causal TimeoutExpired ERROR
+on a real owned slow child, with original requested5-second values, partial
+stdout/stderr and terminal child return-9. The declared launcher seam substitutes
+an owned Python child; the regression clock alone is0.3 seconds. The same query
+recovers through the fixed helper after the old child terminates. Eleven routine
+controls include both frozen original actual methods, both integrated successors,
+partial-object/byte retention, exhausted retries, nonzero/semantic failures and
+unsafe-query refusal. Combined focused GREEN ran125 tests, zero errors/failures,
+with15 existing native Windows skips. Ordinary discovery, prepush and Fast Checks
+include `test_openssh_option_probe` and both existing integration modules.
+
+Evidence is in ignored
+`.runtime/ssh-g-suite-diagnosis-ae9724a8-1639-4ff5-9e3d-58191e7ca2a8/retry-sealed-handoff.json`;
+root exact source/beforeimage/result hashes are in
+`.runtime/root-parity-continuation-22e9/openssh-option-probe-root-review-20261011T141500Z.json`.
+The original failed prepush receipts remain preserved. This proves bounded
+local timeout handling, not the OS stall cause, Arch authentication, actual
+network retry safety, or native Windows/Android acceptance.
+
+The subsequent full prepush is also terminal failure:6256 tests,170 skips,
+zero assertion failures and one Session parser TimeoutExpired ERROR after the
+bounded retry,1972.866 seconds. Original source fingerprint
+`d39c5ffeb62de51b9486abe62e4e37032f80853e4c1e5e11553a477a1fab0ffa`
+and complete retained streams are preserved in
+`.runtime/root-parity-continuation-22e9/prepush-parser-checkpoint-20261011T141800Z*`.
+The bounded retry is not a demonstrated fix for the full-suite stall.
+
+## OpenSSH regression fixture newline portability — 2026-10-11
+
+The original SLOW, GOOD and NONZERO child fixtures use text writes. An explicit
+Windows TextIOWrapper newline seam on those unchanged fixtures produces four
+CRLF-versus-LF assertion failures, zero errors/skips. The narrow correction uses
+binary `os.write` for the fixture output. The same actual-child regression passes
+with exact original exception identity, partial streams and retained Base64 bytes;
+it does not normalize captured evidence. The candidate controls pass12 checks,
+and the affected combined set passes126 with15 existing native Windows skips.
+
+The beforeimage, causal RED/GREEN, candidate patch and closed-child handoff are
+under `.runtime/openssh-fixture-newline-2db83f84-bd09-45ec-8648-a6b854a2f2c7/`.
+Root integrated the exact reviewed candidate only after the original full prepush
+terminated. Ordinary agent discovery/prepush/Fast Checks discover the new control.
+This is a deterministic portability seam, not an observed native Windows failure
+or proof of the host parser stall cause. Root's affected canonical set passes198
+tests,15 existing skips and zero errors/failures in20.487 seconds; independent
+source review found no issue. Source/result hashes are in
+`.runtime/root-parity-continuation-22e9/newline-canonical-root-review-20261011T150200Z.json`.
+Full validation remains open.

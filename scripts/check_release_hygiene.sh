@@ -105,6 +105,7 @@ run_check python3 scripts/test_macos_install_worker_target.py
 run_check python3 scripts/test_android_routing_evidence.py
 run_check python3 scripts/test_android_install_visual_inventory.py
 run_check python3 scripts/test_desktop_update_fixture.py
+run_check python3 scripts/test_build_phase_timing.py
 run_check python3 scripts/test_fixture_environment.py
 run_check python3 scripts/test_jpackage_launcher_harness.py
 run_check python3 scripts/test_arch_public_update.py

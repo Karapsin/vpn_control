@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -191,3 +193,31 @@ class NativeBuildTimingTest(unittest.TestCase):
         self.request["receipts"][0]["sha256"] = hashlib.sha256(self.path.read_bytes()).hexdigest()
         with self.assertRaises(ValueError):
             self.report()
+
+
+class BuildPhaseTimingEntrypointTest(unittest.TestCase):
+    def test_standalone_suite_from_unrelated_cwd_without_pythonpath(self):
+        """Exercise the actual routine entrypoint, including all seven cases."""
+        script = Path(__file__).resolve().parents[2] / "scripts/test_build_phase_timing.py"
+        environment = os.environ.copy()
+        environment.pop("PYTHONPATH", None)
+        environment.pop("DYLD_INSERT_LIBRARIES", None)
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        masks = (0o077, 0o022) if os.name == "posix" else (None,)
+        for mask in masks:
+            with self.subTest(umask=None if mask is None else oct(mask)):
+                command = [sys.executable, "-B", str(script)]
+                if mask is not None:
+                    # Set only the owned child's mask, then replace that same
+                    # process with the actual standalone entrypoint. No parent
+                    # umask, import path or test implementation is substituted.
+                    command = [sys.executable, "-B", "-c",
+                               "import os,sys; os.umask(int(sys.argv[1],8)); "
+                               "os.execv(sys.executable,[sys.executable,'-B',sys.argv[2]])",
+                               format(mask, "o"), str(script)]
+                with tempfile.TemporaryDirectory(prefix="vpn-timing-entrypoint-") as directory:
+                    result = subprocess.run(command, cwd=directory, env=environment,
+                                            capture_output=True, text=True, timeout=30)
+                self.assertEqual(0, result.returncode, (result.stdout + result.stderr)[-4000:])
+                self.assertRegex(result.stderr, r"Ran 7 tests\b")
+                self.assertRegex(result.stderr, r"\bOK(?: \(skipped=\d+\))?\s*$")

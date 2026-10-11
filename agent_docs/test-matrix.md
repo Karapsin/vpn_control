@@ -26,7 +26,8 @@ python3 scripts/test_android_instrumentation_signatures.py
 `test_ssh_direct_inventory_diagnostic` and
 `test_ssh_direct_ended_inventory_successor` join ordinary agent-tool discovery.
 Run them with DIRECT/fresh channel, completed-source transition, selection,
-MCP-route and transport modules: the integrated set passes152 checks without skips.
+MCP-route, transport and source-closure modules: the current integrated set passes202
+checks without skips. The earlier152-check receipt remains historical evidence.
 Run `scripts/test_python_platform_contracts.py` and
 `scripts/check_python_platform_contracts.py` for the manifested absent-module
 discovery and repository-package probe path. Actual Windows discovery retains
@@ -95,19 +96,102 @@ templates and generated default CodeType remain unchanged. Combined canonical
 collector/bridge discovery passes41 checks with zero skips. Full agent discovery
 and the remaining prepush commands must run again after all final edits.
 
+## Local OpenSSH option parser controls
+
+`test_openssh_option_probe` joins ordinary agent-tool discovery, prepush and
+Fast Checks. Run it with `test_ssh_connection_session` and
+`test_windows_tertiary_guest_stage`. The two real OpenSSH parser tests retain
+their effective-option assertions. Their shared helper admits only config-free
+`-F /dev/null` queries with `-G` before one destination, and retries only a local
+parser timeout, at most twice with the unchanged five-second limit per attempt.
+The original owned child is killed and reaped by `subprocess.run` before a
+successor; nonzero exits, semantic failures and unsafe queries are not retried.
+Original timeout exceptions and partial streams remain available and retained.
+
+Causal controls use preserved original test methods and real owned child
+processes. Their explicit launcher and shortened test-clock seams exercise the
+same timeout/kill/wait decision without opening SSH connections. Persistent
+timeouts still fail. These controls alone do not establish an original parser's
+stall cause, remote authentication, network recovery or native acceptance.
+
+The fixture-byte regression also uses actual owned children with explicit Windows
+text-newline translation. Binary fixture writes preserve exact timeout partial
+stdout/stderr, success output and nonzero stderr; captured evidence is never
+normalized. The unchanged text fixtures fail four byte assertions under that seam.
+The13-control module remains in ordinary discovery; real Windows execution is a
+separate gate. Bounded retry controls do not waive a failed full-suite parser test.
+
+Qualified macOS stacks identify one Session parser blocked in default service-name
+lookup during named-address classification. The service-boundary control retains
+authentic beforemethods and actual argv constructors. Actual parser fixtures now
+use documentation numeric addresses before construction, preserve effective
+ports2228/22 and assert them. The owned-child replay substitutes only the measured
+service dependency; the OS latency trigger remains unknown. Named-host coverage,
+original refusal/semantic checks and five-second deadlines remain. Real installed
+`ssh -G` tests still run; this does not prove native connection/package acceptance.
+
+`scripts/test_build_phase_timing.py` runs its seven existing cases through release
+hygiene, prepush and package CI. Its resolved repository import root is covered by
+an actual `test_native_build_timing` subprocess from an unrelated cwd with
+PYTHONPATH removed, so an importing harness cannot hide a broken entrypoint.
+Existing Windows OS/ACL mocks do not replace native Windows ACL evidence.
+
+## Held-source mode handoff controls
+
+`test_native_review_source_closure` runs26 checks through ordinary agent-tool
+discovery, prepush and Fast Checks. Its two mode-handoff cases use real owned
+files and the actual _Held implementation: chmod during review refuses despite
+unchanged SHA, while setting final modes before review closes cleanly. Both
+verify descriptor closure. Run this module with the affected DIRECT channel
+controls. These local custody tests do not establish native installation success.
+
+## Local fixture isolation under full discovery
+
+`test_ssh_direct_nested_channel` retains actual installed OpenSSH `-O check` on
+an owned bound/closed Unix socket, unchanged3-second deadline and original
+refusal-versus-authentication assertions. Numeric endpoint and explicit original22
+avoid named/default-service fixture dependencies. Its routine authentic-method
+RED/GREEN replay uses a real child and genuine kernel refusal at a declared
+lookup boundary; it does not establish the historical timeout cause. Run it with
+option-probe, Session and two-hop parser modules. Remote/native acceptance remains
+separate, and unsupported POSIX coordinators retain explicit skips.
+
+`BuildPhaseTimingEntrypointTest` executes the actual seven-case timing script from
+unrelated cwd without PYTHONPATH under child-only077/022 on POSIX; Windows retains
+the direct branch. The intended unsafe directory explicitly chmods0755 after
+owned creation. This covers inherited-umask fixture isolation without weakening
+production permission checks. Timing7 remains enrolled in release hygiene;
+both regressions run through ordinary agent discovery/prepush/Fast Checks.
+
 ## Completed DIRECT connection history controls
 
-`test_ssh_direct_ended_source_transition` runs22 controls through ordinary
-agent-tool discovery, prepush and Fast Checks. It exercises the complete provider
-with actual historical/current source bytes and private owned files: same-source
-completion, the finite reviewed predecessor transition, and20 refusal cases for
-source populations, terminal intent and READY custody. Run it with
+`test_ssh_direct_ended_source_transition` discovers46 controls through ordinary
+agent-tool discovery, prepush and Fast Checks: the original22 and a24-case closure
+subclass retaining those cases plus authentic b1a transition and extra-MCP refusal.
+It exercises the complete provider with actual historical/current source bytes
+and private owned files: same-source completion, finite reviewed predecessor
+transitions, and refusal cases for source populations, terminal intent and READY
+custody. The two public Git fixtures pin the old provider and closure bytes. Run it with
 `test_ssh_direct_nested_channel`, `test_ssh_fresh_nested_channel`,
 `test_ssh_channel_selection`, `test_ssh_channel_mcp_routes` and
 `test_ssh_transport`. Remote kernel replies are an inert declared seam; these
 controls do not establish native SSH recovery, SDK admission or Windows update
-acceptance. Unsupported POSIX coordinators retain22 explicit skips. Future
-unreviewed provider/MCP transitions remain refused.
+acceptance. Unsupported POSIX coordinators retain46 explicit skips. The b1a bridge
+changes only provider self and the exact reviewed closure pair; future unreviewed
+provider/MCP/closure transitions remain refused.
+
+## macOS ACL fixture command lifecycle
+
+`DesktopMacBootSessionRecoveryTest` preserves the real everyone-write grant,
+0600 mode and product boot-token rejection. Its owned command helper retains the
+10-second execution deadline and treats timeout/nonzero exit as failures, while
+killing/waiting/reaping and closing streams before token cleanup. The timed-out
+inert-child regression requests that same10-second deadline and substitutes only
+its own100ms wait; authentic prior decisions fail the orphan assertion. The full
+candidate class passes14 tests without skips on macOS. These controls join normal
+`:desktopApp:test` and Fast Checks; other hosts retain explicit Darwin skips.
+Historical chmod stall cause remains UNKNOWN, and complete native macOS installer
+acceptance remains separate.
 
 ## Desktop input acquisition failure parity
 

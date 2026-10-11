@@ -557,20 +557,23 @@ class FreshGuestBindingTests(unittest.TestCase):
 
 class DirectSshCarrierTests(unittest.TestCase):
     def test_actual_openssh_parser_and_two_hop_option_precedence(self):
-        import subprocess,shlex
+        import shlex
+        from agent_tools.openssh_option_probe import run_option_probe
         ssh=__import__('shutil').which('ssh')
         if ssh is None:self.skipTest('local OpenSSH option parser unavailable')
-        inner=['ssh','-F','/dev/null','-S','/tmp/owned-inner','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile=/tmp/public-known-hosts','archlinux','python3 -c "print(7)"']
-        argv=['ssh','-F','/dev/null','-S','/tmp/owned-outer','-o','ControlMaster=no','-o','ProxyCommand=false','gateway',shlex.join(inner)]
-        bypass=stage.direct_nested_ssh_argv(argv,'/tmp/owned-outer','/tmp/owned-inner','gateway','archlinux')
+        # Numeric endpoints and explicit original default port keep this local
+        # parser independent of macOS Directory Services service-name lookup.
+        inner=['ssh','-F','/dev/null','-p','22','-S','/tmp/owned-inner','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile=/tmp/public-known-hosts','192.0.2.1','python3 -c "print(7)"']
+        argv=['ssh','-F','/dev/null','-p','22','-S','/tmp/owned-outer','-o','ControlMaster=no','-o','ProxyCommand=false','192.0.2.2',shlex.join(inner)]
+        bypass=stage.direct_nested_ssh_argv(argv,'/tmp/owned-outer','/tmp/owned-inner','192.0.2.2','192.0.2.1')
         actual_inner=shlex.split(bypass[-1]);self.assertEqual(actual_inner[-1],inner[-1]);self.assertEqual(bypass[-2],argv[-2])
         for command in [bypass[:-1],actual_inner[:-1]]:
-            result=subprocess.run([ssh,'-G',*command[1:]],capture_output=True,check=True,timeout=5)
+            result=run_option_probe([ssh,'-G',*command[1:]])
             values=dict(line.split(' ',1)for line in result.stdout.decode().splitlines()if ' 'in line)
-            self.assertIn(values.get('controlpath'),(None,'none'));self.assertEqual(values['controlmaster'],'false')
+            self.assertIn(values.get('controlpath'),(None,'none'));self.assertEqual(values['controlmaster'],'false');self.assertEqual(values['port'],'22')
         self.assertIn('StrictHostKeyChecking=yes',actual_inner);self.assertIn('UserKnownHostsFile=/tmp/public-known-hosts',actual_inner)
         self.assertEqual(argv[argv.index('-S')+1],'/tmp/owned-outer')
-        with self.assertRaises(ValueError):stage.direct_nested_ssh_argv(argv,'/foreign','/tmp/owned-inner','gateway','archlinux')
+        with self.assertRaises(ValueError):stage.direct_nested_ssh_argv(argv,'/foreign','/tmp/owned-inner','192.0.2.2','192.0.2.1')
 
     def test_actual_strict_client_constructor_gets_complete_large_bypass_argv(self):
         import os,json,hashlib,sys,subprocess,shlex

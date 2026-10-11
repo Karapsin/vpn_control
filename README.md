@@ -1,8 +1,10 @@
 # VPN Control Install Files
 
-**Version:** `2.2.6`
+**Version:** `2.2.7`
 
-Install files are available from the latest GitHub Release. In an installed app, open the settings menu and choose `Update` to download and install the compatible package.
+Download install files from the [GitHub Actions package workflows](https://github.com/Karapsin/vpn_control/actions). Open the workflow for your platform, choose a successful run, and download its package from `Artifacts`.
+
+In an installed app, open the settings menu and choose `Update` to download and install the compatible published update.
 
 [User documentation](docs/README.md) includes optional features such as [SSH Routing](docs/ssh-routing.md) and the [Linux headless service](docs/linux-headless-service.md).
 
@@ -10,10 +12,10 @@ Artifacts can include `SHA256SUMS.txt` checksum files where the packaging workfl
 
 | Platform | GitHub Location | File To Use |
 | --- | --- | --- |
-| Windows | `Releases` -> latest release | `.msi` or `.exe` |
-| Android | `Releases` -> latest release | `.apk` |
-| Linux | `Releases` -> latest release | `.deb`, `.rpm`, or the Arch update bundle |
-| macOS | `Releases` -> latest release | `.dmg` |
+| Windows | [Windows Desktop Package](https://github.com/Karapsin/vpn_control/actions/workflows/windows-desktop.yml) | `.msi` or `.exe` |
+| Android | [Android Release APK](https://github.com/Karapsin/vpn_control/actions/workflows/android-release.yml) | `.apk` |
+| Linux | [Linux Desktop Package](https://github.com/Karapsin/vpn_control/actions/workflows/linux-desktop.yml) | `.deb`, `.rpm`, or the Arch update bundle |
+| macOS | [macOS Desktop Package](https://github.com/Karapsin/vpn_control/actions/workflows/macos-desktop.yml) | `.dmg` |
 
 ## Windows
 

@@ -134,3 +134,50 @@ for name in NEGATIVE:
     def test(self,name=name):self.negative(name)
     setattr(ProviderEndedHistoryTests,'test_refuses_'+name,test)
 
+
+# Exact public Git bounds-extension predecessor; no actual retained journals.
+OLD_CLOSURE_SHA='2a384af585bd8e2d819510d0268230fbe0aec8245512f4450a589e8d1030ac28'
+CURRENT_CLOSURE_SHA='0fac471b05e0e784913f5508a5d90b279fbc48c96751b83082d1f9c14cef95ae'
+BEFORE_SHA='b1a91629fe22e04a5f347af7047cfe4df8197274b3a7e2b8a1723703014295fd'
+OLD_CLOSURE=historical('native_review_source_closure.before.py.gz',OLD_CLOSURE_SHA)
+B1A_BEFORE=historical('ssh_fresh_nested_channel.closure-provider-before.py.gz',BEFORE_SHA)
+CURRENT_CLOSURE=CURRENT_PROVIDER_SOURCE.with_name('native_review_source_closure.py').read_bytes() if CURRENT_PROVIDER_SOURCE else b''
+
+class ProviderEndedClosureHistoryTests(ProviderEndedHistoryTests):
+    def setUp(self):
+        super().setUp()
+        (self.source / 'native_review_source_closure.py').write_bytes(OLD_CLOSURE)
+
+    def transition(self, **kwargs):
+        (self.source / 'native_review_source_closure.py').write_bytes(CURRENT_CLOSURE)
+        super().transition(**kwargs)
+
+    def seed_b1a(self, *, old_mcp=False):
+        self.provider_path.write_bytes(B1A_BEFORE)
+        if not old_mcp:
+            (self.source / 'mcp_server.py').write_bytes(CURRENT_MCP_SOURCE.read_bytes())
+        self.module = self.load()
+        self.seed()
+
+    def test_actual_b1a_closure_only_transition_preserves_every_saved_byte(self):
+        self.seed_b1a()
+        self.transition()
+        fd_before = len(os.listdir('/dev/fd'))
+        value = self.invoke(corr=self.new)
+        self.assertEqual('ready', value['state'])
+        old = self.row('intent')
+        new = self.row_for(self.new, 'intent')
+        self.assertEqual(old['sourceSha256'], BEFORE_SHA)
+        self.assertEqual(old['directSourcePins']['native_review_source_closure.py'], OLD_CLOSURE_SHA)
+        self.assertEqual(new['directSourcePins']['native_review_source_closure.py'], CURRENT_CLOSURE_SHA)
+        self.assertEqual(new['sourceSha256'], hashlib.sha256(self.provider_path.read_bytes()).hexdigest())
+        self.assertEqual({**old['directSourcePins'], 'ssh_fresh_nested_channel.py': new['sourceSha256'],
+                          'native_review_source_closure.py': CURRENT_CLOSURE_SHA}, new['directSourcePins'])
+        self.assertEqual(self.before, {name: (self.journal/(self.corr+'.'+name+'.json')).read_bytes() for name in self.before})
+        self.assertEqual(fd_before, len(os.listdir('/dev/fd')))
+        self.assert_legacy_unchanged()
+
+    def test_actual_b1a_cannot_add_an_unobserved_mcp_transition(self):
+        self.seed_b1a(old_mcp=True)
+        self.transition()
+        self.refuse()

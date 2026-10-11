@@ -33,7 +33,273 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-11, 11:16 Moscow
+## Current acceptance status — 2026-10-11, macOS fixture cleanup verified
+
+Root owns final metadata, integration, host Gradle, checkpoint push and final CI.
+HEAD/origin/dev remain `41ec8c4364af6904dcec07ee2631d2d821910c64`;21 reviewed
+paths are dirty, including the bounded macOS test fixture correction. Native operators,
+Windows original update inputs and Android SDK4200 remain closed. No native GO
+or consumed d522 replay occurs. The22-group/217-slot acceptance scope remains
+incomplete: zero current-source groups passed, two historical and twenty open.
+
+Prepush84808 is terminal exit1, source fingerprint
+`488eec498255d05c8b6355732cbceaa87d25618037bd0d7dcb7aac76e81f217c`.
+The agent suite passes6260 tests/170 existing skips in1961.146 seconds; hygiene,
+theme, visual-tool and localization commands pass. Gradle then reports desktop
+1267 tests/one failure/111 skips. Actual failing assertion is the10-second wait
+for disposable `/bin/chmod +a` to finish at
+`DesktopMacBootSessionRecoveryTest.kt:120`, before ACL rejection is reached.
+Complete hashes and finite result are preserved under
+`.runtime/root-parity-continuation-22e9/prepush-umask-dead-socket-20261011T164816Z*`;
+Gradle capsule `a6de445b-d7b3-447a-9063-7a15a4d6aee8`, original XML SHA0d25c299
+and authentic test beforeimage remain intact. This is not evidence of an ACL
+validation defect or permission to reuse the failed full receipt.
+
+The unchanged isolated Gradle method genuinely passes one test/zero skips in
+0.047 seconds. The worker's own actual same-command ACL diagnostic finishes0
+in0.0074 seconds and preserves0600 with the intended everyone-write grant.
+No qualified stack captured the historical stall; cause remains UNKNOWN. Source
+shows the original failed wait can leave its owned chmod child alive. Worker
+`ssh_g_suite_failure` owns only an ignored copy of the macOS test and its own
+host TempFS/process diagnostic; root remains sole canonical integrator and
+Gradle operator. The narrow process-lifecycle candidate is integrated after authentic decision
+RED: one genuine child-isAlive assertion fails in0.125 seconds. Candidate GREEN
+passes14 class tests/zero skips/errors/failures, including actual everyone-write
+ACL/0600/product rejection. The helper kills/waits/reaps and closes streams before
+token deletion; timeout and nonzero exit remain failures. Production validation
+and the original10-second command execution deadline remain unchanged. Evidence:
+`.runtime/mac-acl-fixture-diagnosis-1640a1f3-0af1-4e2a-b829-454b4c297dd3/`.
+Two isolated overlay compilation setup errors are preserved separately and are
+not claimed as causal RED. Corrected source/output overlay leaves canonical
+source untouched until reviewed integration. Canonical class check86968 is
+terminal0:14 tests/zero skips/errors/failures, with original real ACL case retained.
+
+Root's full failed-Gradle-command replay5623 is terminal0: the complete shared,
+desktop and Android test/compile/signature command passes. Its authentic macOS
+boot-session class passes12 tests with zero skips/errors/failures. Evidence:
+`.runtime/root-parity-continuation-22e9/gradle-original-after-mac-timeout-20261011*`.
+After canonical validation: finalize docs/version, run fresh full prepush,
+push the coherent checkpoint, admit prepared Windows and Android DIRECT native
+batches, then integrate/equivalently retest with MCP. Final CI remains deferred.
+
+## Historical acceptance status — 2026-10-11, local fixture corrections
+
+HEAD/origin/dev remain `41ec8c4364af6904dcec07ee2631d2d821910c64`.
+Root owns the reviewed20-path tooling checkpoint, final metadata, focused/full
+checks and delivery. Windows/Android native operators and source holders remain
+closed pending fresh clean delivery and admission. No old update request is
+replayed; Windows d522 remains consumed with its native input failure cause UNKNOWN.
+Retained packages keep41ec base2.2.5/target2.2.6 provenance; metadata2.2.7 does not
+relabel them. The matrix remains zero current-source groups passed, two historical
+and twenty open; all22 groups/217 named slots and final exact-SHA CI remain required.
+
+Prepush77829 is terminal exit1:6259 tests/170 existing skips/one ERROR and one FAIL
+in1966.114 seconds, source fingerprint
+`33df91ee45b36e30637c36dc6706bfdf9201eea8e3eb1ca7d1cd2d74db33ffe3`.
+The corrected actual OpenSSH parser cases passed. Complete capsule
+`3e47b09c-1ff7-4735-a045-1a55b84f6a7a` and finite failure receipt remain under
+`.runtime/root-parity-continuation-22e9/prepush-numeric-timing-20261011T160205Z*`.
+This failed run cannot authorize a checkpoint; no full check is currently live.
+
+The timing negative fixture inherited077, turning intended0755 into safe0700.
+Root integrated explicit chmod0755 after owned mkdir and an actual standalone
+entrypoint regression under child-only077/022, preserving the Windows branch,
+unrelated cwd, absent PYTHONPATH and all seven cases. Authentic077 RED and022
+PASS precede fixed7/7 and affected14 checks PASS. Evidence:
+`.runtime/timing-umask-regression-712d2835-28b6-46b8-8dd2-23d86ee26a78/`.
+
+The real local OpenSSH dead-socket test timed out at its unchanged3-second bound.
+Its isolated original replay passed; the historical timeout location remains
+UNKNOWN. Numeric documentation endpoint plus explicit original22 remove the
+fixture's named/default-service dependency without changing classification checks.
+The routine authentic-method dependency replay uses real children and Unix socket
+errors: predecessor RED, successor GREEN, actual installed SSH and17 module checks
+PASS. It does not reproduce the unknown OS latency trigger. Evidence:
+`.runtime/ssh-dead-socket-diagnosis-98514f35-3805-43fe-b29f-e83b0ec37afe/`.
+
+Root verified beforeimages, sealed hashes and integrated only these three paths;
+removed the patch's extra EOF blank line. Production SSH transport, deadlines,
+permission validation and JVM setup are unchanged. Canonical focused checks pass158 tests/15 existing Windows skips/zero failures
+in16.781 seconds. Final metadata, fresh full prepush and clean delivery are next. Independent
+Windows CLI/update and Android qualification resume only with that actual tuple,
+then require complete DIRECT scenarios and equivalent MCP retests.
+
+## Historical acceptance status — 2026-10-11, 18:57 Moscow
+
+HEAD/origin/dev remain `41ec8c4364af6904dcec07ee2631d2d821910c64` pending
+the reviewed19-path tooling checkpoint. Root owns final metadata, prepush and
+delivery. Native holders remain closed; the prepared Windows CLI/update batch
+and parallel Android qualification need fresh admission after clean delivery.
+Packages retain41ec base2.2.5/target2.2.6 provenance; metadata2.2.7 does not relabel
+them. Full parity remains zero current-source groups passed, two historical and
+twenty open, with all22 groups/217 named slots in scope. Final CI is deferred.
+
+Original prepush12493 is terminal exit1:6257 tests/170 existing skips/one Session
+parser ERROR in1976.752 seconds, source fingerprint
+`62c9ef19cb218709508b1fc0408ef05d980a316abca8075ec1127581f8dd6985`.
+Complete local streams and finite failure remain under
+`.runtime/root-parity-continuation-22e9/prepush-parser-newline-20261011T151100Z*`.
+The two original five-second attempts produced no streams and were reaped.
+Qualified same-generation samples locate both real OpenSSH children in
+`getservbyname("ssh","tcp")` awaiting macOS Directory Services during named-address
+classification; installed binary disassembly matches both return PCs. The OS
+latency trigger remains unknown. This is not remote DNS/authentication or a
+Python selector diagnosis. Observer24605 ended0, helpers closed, no target signals.
+
+Root integrated independently reviewed numeric documentation endpoints before
+the actual parser constructors. Session preserves2228; two-hop makes its original
+default22 explicit. Former assertions/options/deadlines and named-host coverage
+elsewhere remain; effective-port assertions are added. Authentic beforemethods
+produce two errors through a declared service-boundary replay; successors pass.
+This does not reproduce the unknown OS latency trigger. The13 controls and127
+affected candidate checks pass,15 existing native Windows skips. Exact evidence:
+`.runtime/ssh-g-exhausted-diagnosis-b0804240-a970-46ad-b77f-70e26b3edacd/`.
+
+Seven existing build-timing tests are now enrolled in hygiene. Actual standalone
+execution exposed a missing import root masked by an earlier worker's runner.
+Resolved-root bootstrap plus an actual unrelated-cwd/PYTHONPATH-absent subprocess
+regression produce original entrypoint RED/new regression1FAIL, then timing7 and
+agent14 GREEN. Evidence: `.runtime/timing-entrypoint-regression-34270cdd-55f6-4942-8ad1-6903cb735a68/`.
+Existing OS/ACL seams are not native Windows proof. Root's separate unmanaged
+Java setup error disappears with the existing managed build environment; no JVM
+behavior changed. The complete configured-environment hygiene now passes.
+
+Canonical focused checks pass141 tests/15 existing skips/zero errors in14.013s:
+`.runtime/root-parity-continuation-22e9/numeric-timing-canonical-focused-20261011T155600Z*`.
+Hygiene receipts use `timing-enrollment-managed-env-hygiene-20261011T155600Z*`.
+Final metadata, fresh full prepush and clean delivery remain required. No guest
+probe, installer request or SDK activity ran. Windows d522 remains consumed and
+causeUNKNOWN; no replay. Native/MCP, visual and final exact-SHA gates remain open.
+
+## Historical acceptance status — 2026-10-11, 17:58 Moscow
+
+HEAD/origin/dev remain `41ec8c4364af6904dcec07ee2631d2d821910c64` until
+checkpoint delivery. Root owns the reviewed tooling/regression checkpoint,
+final version metadata, managed prepush and delivery. All native operators,
+source holders and worker test children are closed. The22-group matrix remains
+zero passed, two historical and twenty open; final five-workflow exact-SHA CI
+is deferred. Retained installed2.2.5 and target2.2.6 packages keep their original
+41ec provenance. This checkpoint's normal metadata roll does not relabel them.
+
+Windows portable Python3.13.16 AMD64 staging is complete: actual signature,
+34-member archive,30 PE images, ordinary principal and unchanged installed image
+were checked. Root verified the finite21-leaf public manifest. No interpreter,
+probe or packaged CLI suite has executed. The ordinary caller correctly refuses
+the dirty checkout. Next: deliver the clean validated checkpoint, freshly enroll
+its actual source tuple, then run the ordinary-token probe and unchanged installed
+2.2.5 CLI component suite. The old H6 server processes/listener are absent;
+admit a fresh server only when native testing is ready. Cancelled d522 remains
+consumed, with causeUNKNOWN and no replay. The sealed next-native batch is under
+`.runtime/windows-next-native-batch-6da16877-8e67-4177-ba47-6e95077fa732/`.
+
+Three complete prepush attempts each ran6245 agent-tool tests with170 skips and
+one local `ssh -G` timeout ERROR. The first two failed the Windows two-hop parser;
+the fresh CLI run failed the Session parser. Exact isolated/ordered/import
+controls pass; the OS stall cause remains UNKNOWN. The live MCP runner also
+omits current completion-output retention metadata. Use fresh
+`agent_tools/mcp_tool.sh run-checks --level prepush`; all three original failures
+are preserved. Fresh runner metadata does not establish the timeout cause.
+
+The bounded parse-only helper and both integrations are independently reviewed.
+Two unchanged5-second attempts retry only TimeoutExpired after the original
+owned child is killed/reaped; original exceptions/partial streams survive,
+exhausted/nonzero/semantic failures still fail, and connections/mutations/config
+hooks are refused. Eleven routine real-child controls include authentic original
+methods and both integrated successors. Both full beforeimages produce causal
+RED; final focused GREEN ran125 tests, zero errors/failures,15 existing native
+Windows skips. Worker edits are frozen and children closed. Root checked13 exact
+public source/beforeimage/result hashes; evidence is in
+`.runtime/root-parity-continuation-22e9/openssh-option-probe-root-review-20261011T141500Z.json`.
+The fresh full prepush is now terminal, not live:6256 tests,170 skips,
+zero assertion failures and one Session parser timeout ERROR after the bounded
+retry. Its source fingerprint is
+`d39c5ffeb62de51b9486abe62e4e37032f80853e4c1e5e11553a477a1fab0ffa`.
+The complete retained local test streams and finite failure are preserved under
+`.runtime/root-parity-continuation-22e9/prepush-parser-checkpoint-20261011T141800Z*`.
+The retry controls pass but have not fixed this full-suite stall. The diagnostic
+worker owns ignored local evidence only; root owns canonical integration and
+checks. No new native action or managed full-tier rerun is active.
+
+Root also integrated the reviewed test-fixture newline correction after that
+run terminated. An explicit Windows text-newline seam gives four exact-byte
+failures on unchanged fixtures; binary writes preserve the raw bytes, without
+normalizing evidence. The candidate controls pass12 tests and the affected
+combined set126, with15 existing native Windows skips. Root's affected canonical
+set passed198 tests,15 existing skips, zero errors/failures in20.487 seconds;
+independent source review found no issue. Exact local source/result hashes are in
+`.runtime/root-parity-continuation-22e9/newline-canonical-root-review-20261011T150200Z.json`.
+Final metadata, successful fresh full prepush and clean delivery remain gates.
+This correction does not explain the parser stall or prove Windows native tests.
+
+The complete continuation-plan audit maps22 groups to217 named scenario slots
+(overlaps intentional): Windows48, Android76, Linux36, macOS35 and shared/final22.
+The ignored ordinal inventory and evidence map are in
+`.runtime/parity-plan-scope-audit-b2824ff8-ed52-43dc-9660-3f7f93d76ec6/`.
+Root read/hash-verified both outputs; this is scope accounting, not native proof.
+In particular, retain both Android APIs'14 installer cases and14 action cases,
+desktop owner-lifecycle rows, document negatives, native reboot/recovery and
+DIRECT-to-MCP retests. The next Windows component/update batch is only the first
+stage. README now points to the required Actions package artifacts; its scoped
+documentation hygiene passed. No release was authorized or performed.
+
+Android native history/source qualification and SDK activity remain unopened.
+The x86 nativeFixture APK pair is prepared, with device ABI/signer and native
+update compatibility unproved. The reviewed DIRECT history bridge preserves
+completed receipts across only its exact closure-source transition. RPM and DMG
+pairs retain41ec provenance; current matching DEB/Arch base pairs are still needed.
+Native updates, full CLI/action/lifecycle scenarios, matching MCP retests,
+four-platform visual review and final CI remain open. A component pass does not
+close any full platform requirement.
+
+## Historical acceptance status — 2026-10-11, 14:58 Moscow
+
+Delivered HEAD/origin/dev are `41ec8c4364af6904dcec07ee2631d2d821910c64`,
+product2.2.6. The full22-group goal remains incomplete: current matrix status is
+zero passed, two historical and twenty open groups, with one retracted record.
+Final exact-SHA five-workflow CI remains deferred until final delivery as requested.
+No release is authorized. Root owns this tooling/regression checkpoint; the sole
+Arch/Windows and native-private Android operator has closed all source holders
+and native activity during canonical integration.
+
+The current Windows2.2.5/2.2.6 pair is source-matched to41ec. The base installation,
+209-file installed image, ordinary owner/GUI identities and public update download
+are verified. GUI observations before and after download do not establish
+continuous responsiveness during RUNNING. The one installation request became
+final CANCELLED/CLI130, handoffReady false; base2.2.5 remains installed. A subsequent
+same-job observation found no helper/MSI/consent/runtime actors and the four
+original ordinary roles unchanged. No approval key was sent. The cancellation
+cause remains unknown; no replacement request has been replayed. Root's finite
+public review is
+`.runtime/root-parity-continuation-22e9/windows-cancelled-d522-public-root-review-20261011T113200Z.json`.
+
+The next independent Windows check uses the unchanged packaged CLI harness.
+The guest has no Python interpreter on PATH. Root prepared the official
+Python3.13.16 AMD64 embeddable ZIP, verified its published SHA and all30 PE images,
+and registered it as an upstream test-toolchain archive without repository-source
+provenance. Isolated guest staging, native signature/principal checks and actual
+CLI execution remain pending; no system package or product installation is implied.
+
+Root built and verified the current x86-only, release-derived Android nativeFixture
+base2.2.5/target2.2.6 pair with the same local signer. Their transfer archive is
+MCP registered and stream verified. They are test packages; installed-device ABI,
+signer compatibility and update acceptance remain unproved. The current Android
+attempt refused before creating a new DIRECT intent or starting SDK activity:
+completed history still names the predecessor closure source. The exact source
+bridge is integrated with authentic public source fixtures. Its complete canonical
+connection/source-closure set passes202 checks with zero skips; the two provider
+classes account for46 controls. The first focused run had one local OpenSSH
+dead-socket timeout; the identical isolated test and subsequent complete set pass.
+That timeout's cause remains unknown and establishes no native authentication fault.
+Historical intents, unknown operations and private evidence are preserved. Fresh
+native history/source qualification remains the sole operator's next gate after
+root version/prepush/delivery; no SDK activity has started.
+
+Linux RPM and macOS DMG pairs for41ec have verified package/transfer provenance.
+Current native acceptance is still open, as are Linux DEB/Arch pair preparation,
+all remaining lifecycle/visual scenarios and matching MCP retests. Package
+preparation does not close a parity group. Detailed historical status follows.
+
+## Historical acceptance status — 2026-10-11, 11:16 Moscow
 
 Delivered HEAD/origin/dev are `4a5181ece7a3a083422afca1e8ff5c653fe52586`,
 product2.2.6. All fifteen managed prepush commands passed for the delivered

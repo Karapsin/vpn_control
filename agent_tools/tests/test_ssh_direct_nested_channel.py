@@ -122,7 +122,8 @@ class DirectChannelTests(unittest.TestCase):
     def test_actual_openssh_dead_socket_cause_is_not_authentication(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=str(Path(tmp)/'m');sock=socket.socket(socket.AF_UNIX);sock.bind(path);sock.close()
-            result=subprocess.run(['ssh','-F','/dev/null','-S',path,'-O','check','unused'],capture_output=True,timeout=3)
+            # Keep the actual local mux check independent of host service lookup.
+            result=subprocess.run(['ssh','-F','/dev/null','-p','22','-S',path,'-O','check','192.0.2.1'],capture_output=True,timeout=3)
             self.assertNotEqual(0,result.returncode);self.assertIn(b'Connection refused',result.stderr);self.assertNotIn(b'Permission denied',result.stderr)
     def test_original_multiline_builder_red_program_escaping_green(self):
         config=transport.load_config(self.root);gateway=transport._route_hosts(config.hosts,'archlinux')[-1]
@@ -161,3 +162,55 @@ class DirectChannelTests(unittest.TestCase):
                 value=server._ssh_workflow_impl('connection-direct-channel-prepare','archlinux',identity=bad)
                 self.assertFalse(value['ok']);self.assertFalse(value['nativeActionAllowed']);self.assertFalse(value['replayAllowed'])
         self.assertEqual(1,sum(c[6]=='prepare' for c in self.calls));self.assertEqual(2,len(retained))
+
+# Authentic beforeimage: 09e0eb1e00646d80b69f854e09f81401a7659c611f56e4bfb223b2475d8e4d05.
+DEAD_SOCKET_ORIGINAL_METHOD = "def test_actual_openssh_dead_socket_cause_is_not_authentication(self):\n        with tempfile.TemporaryDirectory() as tmp:\n            path=str(Path(tmp)/'m');sock=socket.socket(socket.AF_UNIX);sock.bind(path);sock.close()\n            result=subprocess.run(['ssh','-F','/dev/null','-S',path,'-O','check','unused'],capture_output=True,timeout=3)\n            self.assertNotEqual(0,result.returncode);self.assertIn(b'Connection refused',result.stderr);self.assertNotIn(b'Permission denied',result.stderr)"
+DEAD_SOCKET_ORIGINAL_SHA256 = '1bc233d78e4925e5a5c77f240c0278ad6617a5c2683a6e5953de05b2d2f487b6'
+
+# Explicit lookup-boundary replay: real socket/child/timeout, no OS RPC fault claim.
+DEAD_SOCKET_LOOKUP_CHILD = "import ipaddress,os,socket,sys,time\ntry:ipaddress.ip_address(command[-1]);numeric=True\nexcept ValueError:numeric=False\nport=int(command[command.index('-p')+1]) if '-p' in command else 0\nif not numeric or port<=0:time.sleep(30)\n# The GREEN error comes from the genuine closed Unix-domain socket fixture.\npeer=socket.socket(socket.AF_UNIX)\ntry:peer.connect(command[command.index('-S')+1])\nexcept ConnectionRefusedError as error:\n os.write(2,os.strerror(error.errno).encode());sys.exit(255)\nfinally:peer.close()\nsys.exit(0)\n"
+
+
+@unittest.skipUnless(COORDINATOR_CAPABLE, 'same POSIX local mux fixture boundary')
+class DeadSocketFixtureServiceDependencyTests(unittest.TestCase):
+    def replay(self, method):
+        import ipaddress
+        real_run=subprocess.run;real_popen=subprocess.Popen
+        self.children=[];self.commands=[];self.deadlines=[]
+        def spawn(argv, **kw):
+            self.assertEqual(argv[1:3], ['-F','/dev/null'])
+            self.assertEqual(argv[argv.index('-O')+1], 'check')
+            self.assertEqual(Path(argv[argv.index('-S')+1]).name, 'm')
+            self.assertEqual([], self.children, 'this fixture never retries')
+            self.commands.append(tuple(argv))
+            body='command='+repr(tuple(argv))+'\n'+DEAD_SOCKET_LOOKUP_CHILD
+            child=real_popen([sys.executable,'-I','-c',body], **kw)
+            self.children.append(child);return child
+        def run(argv, **kw):
+            self.deadlines.append(kw['timeout']);self.assertTrue(kw['capture_output'])
+            kw['timeout']=0.3  # Only replay timing; actual test still requests3s.
+            return real_run(argv, **kw)
+        try:
+            with mock.patch.object(subprocess,'Popen',side_effect=spawn), mock.patch.object(subprocess,'run',side_effect=run):
+                method(DirectChannelTests())
+        finally:
+            for child in self.children:
+                if child.poll() is None:child.kill()
+                child.communicate(timeout=3)
+            self.assertTrue(all(child.returncode is not None for child in self.children))
+
+    def test_actual_original_dead_socket_method_red_numeric_fixture_green(self):
+        import hashlib
+        self.assertEqual(hashlib.sha256(DEAD_SOCKET_ORIGINAL_METHOD.encode()).hexdigest(), DEAD_SOCKET_ORIGINAL_SHA256)
+        namespace={'tempfile':tempfile,'Path':Path,'socket':socket,'subprocess':subprocess}
+        exec(compile(DEAD_SOCKET_ORIGINAL_METHOD,'authentic original dead-socket test','exec'),namespace)
+        with self.assertRaises(subprocess.TimeoutExpired) as caught:
+            self.replay(namespace['test_actual_openssh_dead_socket_cause_is_not_authentication'])
+        self.assertEqual(self.deadlines,[3]);self.assertEqual(len(self.children),1)
+        self.assertEqual(self.children[0].returncode,-9)
+        self.assertIn(caught.exception.stdout,(None,b''));self.assertIn(caught.exception.stderr,(None,b''))
+        self.assertEqual(self.commands[0][-1],'unused');self.assertNotIn('-p',self.commands[0])
+        self.replay(DirectChannelTests.test_actual_openssh_dead_socket_cause_is_not_authentication)
+        self.assertEqual(self.deadlines,[3]);self.assertEqual(len(self.children),1)
+        self.assertEqual(self.children[0].returncode,255)
+        self.assertEqual(self.commands[0][self.commands[0].index('-p')+1],'22')

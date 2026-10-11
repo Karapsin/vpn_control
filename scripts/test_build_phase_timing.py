@@ -6,6 +6,10 @@ import tempfile
 import unittest
 from unittest import mock
 import subprocess
+import sys
+
+# Standalone routine execution needs the repository package as well as scripts.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from build_phase_timing import PhaseRecorder
 import build_phase_timing
@@ -90,6 +94,7 @@ class PhaseRecorderTest(unittest.TestCase):
                         recorder.finish(phase, "base", start)
             private = root / ".rag_index"
             private.mkdir(mode=0o755)
+            private.chmod(0o755)
             with mock.patch("prepare_desktop_update_fixture.time.monotonic_ns", return_value=200):
                 with self.assertRaisesRegex(ValueError, "directory unsafe"):
                     recorder.finish("gradle", "base", 100)

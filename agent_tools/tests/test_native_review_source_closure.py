@@ -114,6 +114,50 @@ class SourceClosureTest(unittest.TestCase):
                 self.close(obj)
         self.assertEqual(fired, [True])
 
+    def test_chmod_during_held_review_rejected_despite_unchanged_sha(self):
+        os.chmod(self.a, 0o600)
+        raw = self.a.read_bytes()
+        digest = sha(raw)
+        held = closure._Held()
+        try:
+            self.assertEqual(held.read(str(self.a), digest), raw)
+            opening = held.files[str(self.a)][1]
+            os.chmod(self.a, 0o400)
+            self.assertEqual(self.a.read_bytes(), raw)
+            self.assertEqual(sha(self.a.read_bytes()), digest)
+            closing = closure.generation(self.a.stat())
+            self.assertEqual(opening[2] & 0o777, 0o600)
+            self.assertEqual(closing[2] & 0o777, 0o400)
+            self.assertEqual(opening[:2], closing[:2])
+            self.assertEqual(opening[3:8], closing[3:8])
+            with self.assertRaisesRegex(ValueError, 'Final file FD/name generation drift'):
+                held.finish()
+        finally:
+            descriptors = held.fds[:]
+            held.close()
+        for fd in descriptors:
+            with self.assertRaises(OSError):
+                os.fstat(fd)
+
+    def test_final_modes_before_review_handoff_close_cleanly(self):
+        os.chmod(self.a, 0o600)
+        raw = self.a.read_bytes()
+        os.chmod(self.a, 0o400)
+        held = closure._Held()
+        try:
+            self.assertEqual(held.read(str(self.a), sha(raw)), raw)
+            opening = held.files[str(self.a)][1]
+            self.assertEqual(opening[2] & 0o777, 0o400)
+            held.finish()
+            self.assertEqual(closure.generation(self.a.stat()), opening)
+            self.assertEqual(self.a.read_bytes(), raw)
+        finally:
+            descriptors = held.fds[:]
+            held.close()
+        for fd in descriptors:
+            with self.assertRaises(OSError):
+                os.fstat(fd)
+
     def test_reject_ambiguous_schema_malformed_pin_and_unsafe_path(self):
         for obj in ({'files':[], 'pins':{}}, {'pins':{str(self.a):{'generation':[1], 'sha256':'0'*64}}}, {'files':{'../a.py':self.pin(self.a)}}):
             with self.subTest(obj=obj), self.assertRaises(ValueError):

@@ -181,14 +181,18 @@ class SessionTests(unittest.TestCase):
 
     @unittest.skipUnless(Path('/usr/bin/ssh').is_file(),'OpenSSH effective config is unavailable')
     def test_actual_openssh_launch_is_noninteractive_master_not_ask(self):
+        from agent_tools.openssh_option_probe import run_option_probe
+        # Numeric documentation endpoint avoids macOS default-service lookup
+        # during address classification; production launch construction stays real.
+        self.config['hosts']['gateway']['host']='192.0.2.2';self.write_config()
         config,outer,_=s._snapshot(self.root,'archlinux')
         launch=s._launch_argv(config,outer,Path('/tmp/inert-no-connect/m'))
         # -G prints effective options and exits before any network operation.
-        observed=subprocess.run([*launch[:-1],'-G',launch[-1]],stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=5,check=False)
+        observed=run_option_probe([*launch[:-1],'-G',launch[-1]])
         self.assertEqual(observed.returncode,0)
         options=dict(line.split(' ',1) for line in observed.stdout.decode().splitlines() if ' ' in line)
         self.assertEqual(options.get('controlmaster'),'true')
+        self.assertEqual(options.get('port'),'2228')
 
     def test_master_check_pins_pid_generation_and_returns_no_raw_diagnostic(self):
         self.master_patch.stop()
