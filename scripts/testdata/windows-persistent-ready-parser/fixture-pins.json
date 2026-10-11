@@ -1,0 +1,44 @@
+{
+  "files": {
+    "after/bootstrap.preserve.ps1": {
+      "bytes": 10377,
+      "originalSha256": "9ba864a6b95a097955fd3cca812c37f8c7e06e06f2f9c595a670164da1867139",
+      "selection": "complete public source",
+      "sha256": "9ba864a6b95a097955fd3cca812c37f8c7e06e06f2f9c595a670164da1867139"
+    },
+    "after/launcher.py.source": {
+      "bytes": 837,
+      "guardStatements": 6,
+      "originalSha256": "3deca335848fba4f3c34659a7707f8e89ced0b100f0c6b186e691f56f4c7f47d",
+      "selection": "exact sha assignment + pre-Popen guard AST statements + unchanged actual Popen assignment",
+      "sha256": "d7717fbaa2e1b34fc55fc9435a4224c051bd918dcf69c55256e0c874c20788b7"
+    },
+    "before/bootstrap.preserve.ps1": {
+      "bytes": 9453,
+      "originalSha256": "a66cb85ce39a52c2e605ad402d4c7d7d30ca8976476262c5274922788d663755",
+      "selection": "complete public source",
+      "sha256": "a66cb85ce39a52c2e605ad402d4c7d7d30ca8976476262c5274922788d663755"
+    },
+    "before/launcher.py.source": {
+      "bytes": 148,
+      "guardStatements": 0,
+      "originalSha256": "0274807bbe6caaaa39d2ada88a363e4d0202f6289aaaec5f8b86267539471340",
+      "selection": "exact sha assignment + pre-Popen guard AST statements + unchanged actual Popen assignment",
+      "sha256": "cf8ea6996b7dd44433076e10e6c35f39c9ce7d4673c023096dc2df306a997fcd"
+    },
+    "inert-child.py": {
+      "bytes": 258,
+      "originalSha256": "5a67705d9a136414d761d8782b30694d86d5d321ed0cf2a69d6fe7a91015ed6c",
+      "selection": "complete public source",
+      "sha256": "5a67705d9a136414d761d8782b30694d86d5d321ed0cf2a69d6fe7a91015ed6c"
+    },
+    "parser.ps1": {
+      "bytes": 866,
+      "originalSha256": "15f29b6732bf7a02b4e34b2b124661985dab46cdebd5a746e72570e9841bc232",
+      "selection": "complete public control with only explicit UTF8 console output added; executed source selectors unchanged",
+      "sha256": "be4cde2a6d755844691bcd74de7e5168a2df91f453c0d1f466843eba5adfd4e4"
+    }
+  },
+  "schemaVersion": 1,
+  "scope": "Frozen public source fixtures; selected launcher statements execute only with owned inert argv."
+}

@@ -234,7 +234,7 @@ class DesktopAppService internal constructor(
     )
     private val updateService = DesktopUpdateService(
         stateProvider = { state },
-        updateState = ::updateState,
+        updateState = ::updateAppUpdateState,
         updateDirectory = desktopStore.updateDirectory(),
         workspaceDirectory = desktopStore.updateDirectory().toAbsolutePath().parent,
     )
@@ -1009,6 +1009,11 @@ class DesktopAppService internal constructor(
 
     @Synchronized private fun updateState(transform: (MainUiState) -> MainUiState) {
         commitState(transform(state))
+    }
+
+    // App-update progress and installer presentation are not persisted workspace configuration.
+    @Synchronized private fun updateAppUpdateState(transform: (MainUiState) -> MainUiState) {
+        state = transform(state)
     }
 
     @Synchronized internal fun inspectControlSettings(): Map<String, ControlValue> =

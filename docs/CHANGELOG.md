@@ -9,6 +9,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep Windows PowerShell sum, progress and manifest-array regressions in routine package checks.
 - Clean successful Windows update inputs through protected original-object custody and keep cleanup failures separate from installation results.
 - Fix VM census executable identity and Android preparation descriptor cleanup, with causal regression controls.
+- Add causal Windows parser and task-root checks and recognize read-only host tooling in artifact equivalence.
+- Keep desktop update progress in memory instead of repeatedly rewriting the durable workspace.
 
 ## 2.2.6 - 2026-10-10
 

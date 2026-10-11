@@ -52,6 +52,8 @@ on:
       - "scripts/test_windows_package_helpers.ps1"
       - "scripts/test_packaged_cli.py"
       - "scripts/test_packaged_cli_harness.py"
+      - "scripts/testdata/windows-persistent-ready-parser/**"
+      - "scripts/testdata/windows-persistent-taskroot/**"
       - "scripts/windows_task_admission.ps1"
       - "scripts/test_windows_task_admission.py"
       - "scripts/windows_install_admission_diagnostic.py"

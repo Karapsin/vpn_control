@@ -3704,3 +3704,69 @@ retained-byte/resource admission and equivalent MCP cases remain open. Cold pres
 inputs without authoritative original proof are retained with failed cleanup;
 256 entries per workspace is only a count bound. Never relabel historical manually
 moved input bytes or replay the original denied/granted operations as acceptance.
+
+## Windows parser, task-root and artifact classification — 2026-10-11
+
+Three routine methods in `scripts/test_packaged_cli_harness.py` now preserve the
+actual public beforeimages and execute the real PowerShell parser, selected
+launcher guard/Popen boundary, staging root and durable status writer against
+owned inert children and temporary files. They cover malformed bootstrap syntax,
+changed source bytes or generations, false closing receipts, payload mismatch,
+missing persistent-owner parent and mixed task-root tuples. The same assertions
+produced ten failures on the preserved unfixed sources and three passing methods
+on the fixed sources, with zero errors or skips. Parser and child-controller
+processes closed. Earlier fixture-pin repair attempts remain preserved separately.
+
+The fixture families are `scripts/testdata/windows-persistent-ready-parser/` and
+`scripts/testdata/windows-persistent-taskroot/`. Ordinary release hygiene discovers
+the harness; Fast Checks and Windows package PR filters include both families.
+Windows requires its native PowerShell parser. Local PowerShell7.5.4 evidence does
+not prove Windows5.1 or the complete native/MCP installer scenario.
+
+The artifact-equivalence classifier rejected the read-only host observation tool
+and its test because their filenames contain `native`. Two exact-path exceptions
+correct that classification without permitting unknown/product/critical paths,
+mode changes, or broader artifact-cache reuse. The same four controls changed
+from two failures to four passes: the real committed97f3daa-to04933f1f diff and
+product trees were inspected. Two portable methods in
+`agent_tools.tests.test_native_artifact_reuse.NativeArtifactEquivalencePolicyTest`
+are discovered by routine agent tests and Fast Checks. Original artifacts retain
+97f3daa attribution; a classifier result does not establish native acceptance.
+
+Sealed causal packets and root reviews are linked from the current WIP section.
+Canonical focused verification passed45 tests without skips:24 artifact-reuse
+and acceptance-equivalence controls plus21 packaged-harness controls using the
+prepared PowerShell7.5.4 runtime. The final prepush receipt is still required.
+
+## Windows frontend health during download — 2026-10-11
+
+The same physical frontend passed GUI control before check and download, then
+returned UNAVAILABLE during accepted download55d6e42b/op0da95879 and visibly
+reported TIMEOUT. Read-only reconciliation proves the original operation later
+succeeded with the exact target package checksum; it was not replayed. No install
+was submitted after the failed health gate. Unreadable logs remain UNKNOWN.
+
+The actual production callback and real store reproduced the source finding:
+every8KiB progress update entered the synchronized forced workspace writer,
+although `appUpdate` is absent from persisted state. A131109-byte loopback download
+produced17 progress replacements and22 total app-update replacements. The same
+final test failed on the preserved original with expected0 versus actual17;
+READY, package hash/full bytes, configuration, revision and persisted-byte checks
+passed before that assertion. Its fixed run published17 progress updates with0
+workspace writes. Three existing language-persistence, failed-durable-write and
+verified-download controls also passed, with no errors or skips.
+
+`DesktopAppService` now binds only its update-service callback to a synchronized
+state-only publisher. Normal configuration commits, store, download loop,
+installer journals and owner/lease behavior remain unchanged.
+`DesktopAppUpdatePersistenceTest` belongs to ordinary desktop tests, prepush and
+Fast Checks. Reflection supplies external loopback manifest/platform setup while
+retaining the actual constructed service callback; filesystem write outcomes are
+real. An earlier log-ID baseline failure and a pre-AtomicInteger fixture version
+remain preserved and are excluded from the final identical RED/GREEN evidence.
+
+The closed finite packet is linked from current WIP. This proves the unnecessary
+workspace writes and their removal; it does not prove the native heartbeat timeout
+mechanism or solve the separate expired-registration/physical-frontend admission
+chain. Keep the original native scenario and rerun it on correctly attributed
+fixed base and target artifacts before claiming GUI resolution or MCP acceptance.

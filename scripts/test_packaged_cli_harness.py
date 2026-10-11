@@ -3,7 +3,14 @@
 import json
 import io
 import os
+import ast
+import base64
+import hashlib
+import re
+import shutil
 import subprocess
+import sys
+from contextlib import ExitStack
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -240,6 +247,239 @@ class StreamTest(unittest.TestCase):
         self.assertEqual(10, options["timeout"])
         process.send_signal.assert_not_called()
         process.terminate.assert_not_called()
+
+
+_PERSISTENT_OBSERVATIONS = []
+
+
+class _PersistentSourceTest(unittest.TestCase):
+    """Execute selected public sources with a real parser and owned inert children."""
+
+    source_stage = "after"
+    fixture_root = Path(__file__).resolve().parent / "testdata"
+
+    @classmethod
+    def setUpClass(cls):
+        names = ("powershell.exe", "powershell") if os.name == "nt" else ("pwsh",)
+        cls.runner = next((path for name in names if (path := shutil.which(name))), None)
+        if cls.runner is None:
+            if os.name == "nt":
+                raise AssertionError("Windows PowerShell is required for persistent source checks")
+            raise unittest.SkipTest("PowerShell is unavailable on this host")
+
+    @staticmethod
+    def digest(data):
+        return hashlib.sha256(data).hexdigest()
+
+    @staticmethod
+    def generation(value):
+        return [value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid,
+                value.st_nlink, value.st_size, value.st_mtime_ns, value.st_ctime_ns]
+
+    def asset(self, family, name):
+        root = self.fixture_root / family
+        pins = json.loads((root / "fixture-pins.json").read_bytes())["files"]
+        data = (root / name).read_bytes()
+        self.assertEqual(pins[name]["sha256"], self.digest(data))
+        self.assertEqual(pins[name]["bytes"], len(data))
+        return data
+
+    def parse_bound_sources(self, directory, bodies):
+        # All files are created in this test's TempFS. Do not use POSIX-only flags.
+        self.asset("windows-persistent-ready-parser", "parser.ps1")
+        pins = []
+        with ExitStack() as holders:
+            opened = []
+            for name, data in bodies.items():
+                path = directory / name
+                path.write_bytes(data)
+                self.assertFalse(path.is_symlink())
+                stream = holders.enter_context(path.open("rb"))
+                opened.append((path, stream, self.generation(os.fstat(stream.fileno())), self.digest(data)))
+            parsed = subprocess.run([self.runner, "-NoLogo", "-NoProfile", "-NonInteractive", "-File",
+                str(self.fixture_root / "windows-persistent-ready-parser" / "parser.ps1"),
+                "-FixtureRoot", str(directory)], capture_output=True, timeout=20)
+            self.assertEqual(b"", parsed.stderr)
+            result = json.loads(parsed.stdout)
+            self.assertIn(parsed.returncode, (0, 1))
+            errors = [error["errorId"] for row in result["files"] for error in row["errors"]]
+            self.assertEqual(int(bool(errors)), parsed.returncode)
+            for path, stream, opening, digest in opened:
+                stream.seek(0)
+                data = stream.read()
+                self.assertEqual(opening, self.generation(os.fstat(stream.fileno())))
+                self.assertEqual(opening, self.generation(path.lstat()))
+                self.assertEqual(digest, self.digest(data))
+                pins.append({"name": path.name, "generation": opening, "sha256": digest,
+                             "bytes": len(data)})
+        return {"returnCode": parsed.returncode, "pins": pins, "fullClosing": True}, errors, result["PSVersion"]
+
+    def launch_selected(self, family, directory, name):
+        self.asset("windows-persistent-ready-parser", "inert-child.py")
+        before = ast.parse(self.asset(family, "before/launcher.py.source").decode("utf-8"))
+        after = ast.parse(self.asset(family, "after/launcher.py.source").decode("utf-8"))
+        boundary = after.body[-1]
+        self.assertIsInstance(boundary, ast.Assign)
+        self.assertEqual("subprocess.Popen", ast.unparse(boundary.value.func))
+        self.assertEqual(ast.dump(before.body[-1], include_attributes=False),
+                         ast.dump(boundary, include_attributes=False))
+        selected = before if self.source_stage == "before" else after
+        guards = compile(ast.fix_missing_locations(ast.Module(body=selected.body[:-1], type_ignores=[])),
+                         str(self.fixture_root / family / (self.source_stage + "/launcher.py.source")), "exec")
+        popen = compile(ast.fix_missing_locations(ast.Module(body=[boundary], type_ignores=[])),
+                        str(self.fixture_root / family / "after/launcher.py.source"), "exec")
+        marker = directory / "inert-invocation.json"
+        environment = os.environ.copy()
+        environment.pop("DYLD_INSERT_LIBRARIES", None)
+        namespace = {"OUT": directory, "hashlib": hashlib, "json": json, "base64": base64,
+                     "re": re, "subprocess": subprocess, "env": environment,
+                     "argv": [sys.executable, str(self.fixture_root / "windows-persistent-ready-parser" /
+                     "inert-child.py"), str(marker), name, self.source_stage]}
+        refusal = None
+        try:
+            exec(guards, namespace)
+            exec(popen, namespace)
+        except AssertionError:
+            self.assertNotIn("child", namespace)
+            refusal = "AssertionError"
+        if "child" in namespace:
+            with namespace["child"] as child:
+                try:
+                    stdout, stderr = child.communicate(b"", timeout=10)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.communicate()
+                    raise
+                self.assertEqual(0, child.returncode)
+                self.assertEqual(b"", stderr)
+                self.assertTrue(json.loads(stdout)["inertChildInvoked"])
+            self.assertTrue(marker.exists())
+            invoked = json.loads(marker.read_bytes())
+            self.assertIs(invoked["invoked"], True)
+            self.assertEqual([name, self.source_stage], invoked["argv"])
+            self.assertEqual(0, invoked["stdinBytes"])
+        self.assertEqual("child" in namespace, marker.exists())
+        return {"name": name, "stage": self.source_stage, "invocationCount": int(marker.exists()),
+                "blockedBeforePopen": "child" not in namespace, "refusal": refusal}
+
+    def write_inputs(self, directory, bodies, receipt, payload):
+        (directory / "parser-bound-receipt.json").write_text(json.dumps(receipt), encoding="utf-8")
+        (directory / "payload.preserve.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    def payload(self, bodies):
+        return {"bootstrapBase64": base64.b64encode(bodies["bootstrap.preserve.ps1"]).decode("ascii"),
+                "files": [{"sha256": self.digest(bodies["recovery.task.ps1"]),
+                           "base64": base64.b64encode(bodies["recovery.task.ps1"]).decode("ascii")}]}
+
+
+class PersistentReadyParserTest(_PersistentSourceTest):
+    def test_actual_parser_and_bound_sources_block_before_child_launch(self):
+        family = "windows-persistent-ready-parser"
+        cases = [("malformed-original-parser", False), ("fixed-parser-and-bound-sources", True),
+                 ("changed-source-after-parse", False), ("same-bytes-new-generation", False),
+                 ("false-full-closing", False), ("payload-bootstrap-mismatch", False)]
+        with tempfile.TemporaryDirectory(prefix="vpn-parser-routine-") as temp:
+            for name, expected in cases:
+                with self.subTest(case=name):
+                    directory = Path(temp) / name
+                    directory.mkdir()
+                    bootstrap = self.asset(family, ("before" if name == "malformed-original-parser" else
+                                                   "after") + "/bootstrap.preserve.ps1")
+                    bodies = {"recovery.task.ps1": b"Write-Output 'inert source only'\n",
+                              "bootstrap.preserve.ps1": bootstrap,
+                              "bootstrap.preserve.consumer.ps1": b"param([string]$Value)\n$null=$Value\n"}
+                    receipt, errors, version = self.parse_bound_sources(directory, bodies)
+                    self.assertEqual(name == "malformed-original-parser", bool(errors))
+                    if errors:
+                        self.assertIn("UnexpectedToken", errors)
+                    payload = self.payload(bodies)
+                    if name == "changed-source-after-parse":
+                        with (directory / "bootstrap.preserve.ps1").open("ab") as stream:
+                            stream.write(b"\n# changed after the actual parser\n")
+                    elif name == "same-bytes-new-generation":
+                        replacement = directory / "bootstrap.replacement"
+                        replacement.write_bytes(bootstrap)
+                        replacement.replace(directory / "bootstrap.preserve.ps1")
+                        old = next(pin["generation"] for pin in receipt["pins"]
+                                   if pin["name"] == "bootstrap.preserve.ps1")
+                        self.assertNotEqual(old, self.generation((directory / "bootstrap.preserve.ps1").lstat()))
+                        self.assertEqual(self.digest(bootstrap), self.digest((directory / "bootstrap.preserve.ps1").read_bytes()))
+                    elif name == "false-full-closing":
+                        receipt["fullClosing"] = False
+                    elif name == "payload-bootstrap-mismatch":
+                        payload["bootstrapBase64"] = base64.b64encode(b"# different owned source").decode("ascii")
+                    self.write_inputs(directory, bodies, receipt, payload)
+                    observed = self.launch_selected(family, directory, name)
+                    _PERSISTENT_OBSERVATIONS.append(dict(observed, PSVersion=version, parserErrors=errors))
+                    self.assertEqual(int(expected), observed["invocationCount"])
+                    self.assertEqual(not expected, observed["blockedBeforePopen"])
+
+
+class PersistentTaskRootTest(_PersistentSourceTest):
+    def test_actual_staging_and_durable_status_write_share_root(self):
+        family = "windows-persistent-taskroot"
+        old_task = self.asset(family, "before/recovery.task.ps1")
+        old_bootstrap = self.asset(family, "before/bootstrap.preserve.ps1")
+        old_root = re.search(rb"\$root='([^']+)'", old_task).group(1)
+        staged_root = re.search(rb"\$root='([^']+)'", old_bootstrap).group(1)
+        self.assertEqual(self.asset(family, "before-corrected-one-root.task.ps1"),
+                         old_task.replace(old_root, staged_root, 1))
+        self.asset(family, "control-write.ps1")
+        for name in ("after/recovery.task.ps1", "after/bootstrap.preserve.ps1"):
+            self.asset(family, name)
+        for stage, expected in (("before", False), ("corrected", True), (self.source_stage, True)):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory(prefix="vpn-root-write-") as temp:
+                parsed = subprocess.run([self.runner, "-NoLogo", "-NoProfile", "-NonInteractive", "-File",
+                    str(self.fixture_root / family / "control-write.ps1"), "-Stage", stage,
+                    "-WorkRoot", temp], capture_output=True, timeout=20)
+                self.assertEqual(b"", parsed.stderr)
+                observed = json.loads(parsed.stdout)
+                _PERSISTENT_OBSERVATIONS.append(dict(observed, returnCode=parsed.returncode))
+                if not expected:
+                    self.assertEqual(1, parsed.returncode)
+                    self.assertIn("System.IO.DirectoryNotFoundException", observed["errorTypes"])
+                    self.assertFalse(observed["statusWriteSucceeded"])
+                    self.assertFalse(observed["declaredStatusExists"])
+                else:
+                    self.assertEqual(0, parsed.returncode)
+                    self.assertTrue(observed["pass"])
+                    self.assertTrue(observed["statusWriteSucceeded"])
+                    self.assertEqual(observed["mappedTaskRoot"], observed["mappedStagedRoot"])
+
+    def test_actual_root_join_blocks_mixed_sources_before_child(self):
+        family = "windows-persistent-taskroot"
+        cases = [("genuine-old-task-root-mismatch", False), ("genuine-new-coupled-roots", True),
+                 ("foreign-params-root", False), ("mixed-bootstrap-root", False), ("foreign-task-root", False)]
+        with tempfile.TemporaryDirectory(prefix="vpn-root-join-") as temp:
+            for name, expected in cases:
+                with self.subTest(case=name):
+                    directory = Path(temp) / name
+                    directory.mkdir()
+                    task = self.asset(family, ("before" if name == "genuine-old-task-root-mismatch" else
+                                              "after") + "/recovery.task.ps1")
+                    bootstrap = self.asset(family, ("before" if name in ("genuine-old-task-root-mismatch",
+                                                                         "mixed-bootstrap-root") else
+                                                   "after") + "/bootstrap.preserve.ps1")
+                    params = json.loads(self.asset(family, "after/operator-parameters.json"))
+                    if name == "genuine-old-task-root-mismatch":
+                        params["taskRoot"] = re.search(rb"\$root='([^']+)'", bootstrap).group(1).decode("utf-8")
+                    elif name == "foreign-params-root":
+                        params["taskRoot"] = params["taskRoot"].replace(
+                            "persistent-recovery-owner-a0e4e274-f0a7-4346-a4b1-bee9783beb83",
+                            "persistent-recovery-owner-00000000-0000-0000-0000-000000000000")
+                    elif name == "foreign-task-root":
+                        task = task.replace(b"persistent-recovery-owner-a0e4e274-f0a7-4346-a4b1-bee9783beb83",
+                                            b"persistent-recovery-owner-00000000-0000-0000-0000-000000000000", 1)
+                    (directory / "operator-parameters.json").write_text(json.dumps(params), encoding="utf-8")
+                    bodies = {"recovery.task.ps1": task, "bootstrap.preserve.ps1": bootstrap,
+                              "bootstrap.preserve.consumer.ps1": b"param([string]$Value)\n$null=$Value\n"}
+                    receipt, errors, version = self.parse_bound_sources(directory, bodies)
+                    self.assertEqual([], errors)
+                    self.write_inputs(directory, bodies, receipt, self.payload(bodies))
+                    observed = self.launch_selected(family, directory, name)
+                    _PERSISTENT_OBSERVATIONS.append(dict(observed, PSVersion=version))
+                    self.assertEqual(int(expected), observed["invocationCount"])
+                    self.assertEqual(not expected, observed["blockedBeforePopen"])
 
 
 if __name__ == "__main__":

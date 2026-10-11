@@ -672,6 +672,22 @@ arguments/classpaths and exact packaged JARs; host stub results do not establish
 Windows ACL or launcher admission behavior. The public package smoke retains its
 original failure even if the additional diagnostic fails.
 
+`scripts/test_packaged_cli_harness.py` also executes the preserved Windows
+persistent-ready parser and task-root causal fixtures with owned inert children.
+Release hygiene, managed prepush, Fast Checks and Windows packaging discover
+these controls. Native PowerShell is required on Windows; elsewhere the controls
+explicitly skip when `pwsh` is unavailable. Local PowerShell7 execution does not
+replace Windows5.1 or native installer acceptance. The portable exact-path
+artifact-equivalence controls belong to ordinary agent-tool test discovery.
+
+`DesktopAppUpdatePersistenceTest` uses the actual constructed AppService update
+callback, real loopback check/download and workspace store. Its causal assertion
+detects durable workspace replacements from transient update state, while checking
+verified package bytes, progress, READY state, configuration and revision. Ordinary
+desktop tests, managed prepush and Fast Checks discover it without an OS skip.
+Native GUI polling, heartbeat timing and installer return still need platform
+acceptance against the fixed installed baseline and target packages.
+
 `scripts/test_fixture_environment.py` belongs in routine release hygiene alongside
 the desktop update-fixture and Linux VM preparation suites. These checks cover
 effective JDK selection, canonical QEMU arguments, and read-only source extraction;

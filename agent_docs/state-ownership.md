@@ -160,6 +160,11 @@ Desktop currently bypasses some `MainController` actions while its service owns 
 - Settings/rules/diagnostics/lifecycle: settings and autostart orchestration in `DesktopSettingsService`, routing save/import behavior in `DesktopRoutingRulesService`, diagnostics collection/export in `DesktopDiagnosticsService` and `DesktopDiagnosticsExportLogic`, tray behavior in `DesktopTrayController`, and OS autostart entry management in `DesktopAutostartManager`.
 - Updates: manifest/download verification and platform installer authorization in `DesktopUpdateService`; package replacement stays in the external helper so it can wait for a clean app exit.
 
+App-update progress and presentation are transient owner state, excluded from the
+persisted workspace mapper. The app service publishes this state under its monitor
+without rewriting the workspace. Configuration commits and installer journals
+retain their durable paths; progress publication does not replace either.
+
 New cross-platform behavior should still be implemented in shared core first when it can be expressed without desktop IO.
 
 ## SSH Routing Ownership

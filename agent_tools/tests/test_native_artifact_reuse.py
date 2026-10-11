@@ -27,6 +27,38 @@ class NativeArtifactReuseImportTest(unittest.TestCase):
         self.assertTrue(callable(reuse.artifact_reuse_check))
 
 
+class NativeArtifactEquivalencePolicyTest(unittest.TestCase):
+    def test_exact_host_observation_tooling_diff_is_eligible(self) -> None:
+        # The actual97f->04933 committed eight-path diff. Eligibility preserves
+        # original artifact attribution; it does not grant artifact or native authority.
+        expected = {
+            "agent_docs/parity-failure-regressions.md": "docs",
+            "agent_docs/work-in-progress.md": "docs",
+            "agent_tools/android_installer_direct_transport.py": "agent-tool",
+            "agent_tools/native_host_observation.py": "agent-tool",
+            "agent_tools/ssh_tmux_resource_admission.py": "agent-tool",
+            "agent_tools/tests/test_android_installer_direct_dispatch_close.py": "test",
+            "agent_tools/tests/test_native_host_observation.py": "test",
+            "docs/CHANGELOG.md": "docs",
+        }
+        self.assertEqual(expected, {path: reuse._equivalence_class(path) for path in expected})
+
+    def test_exact_exception_preserves_unknown_product_and_critical_refusals(self) -> None:
+        for path in (
+            "", "/agent_tools/native_host_observation.py", "agent_tools/../native_host_observation.py",
+            "agent_tools//native_host_observation.py", "agent_tools/Native_host_observation.py",
+            "agent_tools/native_host_observation_extra.py", "tests/test_native_host_observation.py",
+            "agent_tools/native_artifact_reuse.py", "agent_tools/native_artifact_registry.py",
+            "agent_tools/native_acceptance_matrix.py", "agent_tools/mcp_server.py",
+            "agent_tools/native_acceptance_requirements.json", "scripts/package_windows_desktop.ps1",
+            "desktopApp/src/main/resources/windows-install-helper.cs", "desktopApp/src/main/kotlin/Main.kt",
+            "gradle.properties", "build.gradle.kts", "settings.gradle.kts", ".github/workflows/windows.yml",
+            "agent_tools/runtime_probe.py", "tests/native_package.py", "unknown/source.py",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual("rejected", reuse._equivalence_class(path))
+
+
 @unittest.skipIf(os.name == "nt", "private artifact index requires POSIX admission")
 class NativeArtifactReuseTest(unittest.TestCase):
     def setUp(self) -> None:

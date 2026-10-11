@@ -1,0 +1,13 @@
+sha=lambda b:hashlib.sha256(b).hexdigest()
+parser=json.loads((OUT/'parser-bound-receipt.json').read_bytes())
+assert parser['returnCode']==0 and parser['fullClosing'] is True
+for item in parser['pins']:
+ p=OUT/item['name'];v=p.lstat();assert sha(p.read_bytes())==item['sha256'] and [v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns]==item['generation']
+payload=json.loads((OUT/'payload.preserve.json').read_bytes())
+assert base64.b64decode(payload['bootstrapBase64'])==(OUT/'bootstrap.preserve.ps1').read_bytes()
+assert payload['files'][0]['sha256']==sha((OUT/'recovery.task.ps1').read_bytes()) and base64.b64decode(payload['files'][0]['base64'])==(OUT/'recovery.task.ps1').read_bytes()
+params=json.loads((OUT/'operator-parameters.json').read_bytes())
+task_root=re.search(r"\$root='([^']+)'",(OUT/'recovery.task.ps1').read_text()).group(1)
+bootstrap_root=re.search(r"\$root='([^']+)'",(OUT/'bootstrap.preserve.ps1').read_text()).group(1)
+assert task_root==bootstrap_root==params['taskRoot']
+child=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=env)

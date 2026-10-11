@@ -33,7 +33,55 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-11, after checkpoint 97f3daa
+## Current acceptance status — 2026-10-11, 09:03 Moscow
+
+Delivered HEAD/origin/dev are `04933f1ff3c206cb48164c853f690bffcba6f3fb`,
+product 2.2.6. Its fifteen managed prepush commands passed; agent discovery ran
+6217 tests with 170 explicit skips. Final exact-SHA five-workflow CI remains
+deferred as requested. This checkpoint does not complete parity.
+
+Root now owns an intentional uncommitted desktop-product, tooling,
+regression-fixture, CI-filter and agent-documentation bucket. Reviewed real PowerShell parser and persistent
+task-root controls are integrated into `scripts/test_packaged_cli_harness.py`
+with their preserved beforeimages and narrowly scoped test fixtures. The exact
+host-observation module/test artifact-equivalence exception is also integrated.
+Canonical focused checks passed45 tests without skips:24 artifact-reuse and
+acceptance-equivalence controls plus21 packaged-harness controls using prepared
+PowerShell7.5.4. Documentation hygiene and diff checks passed. Final metadata and
+a fresh complete prepush remain required; previous receipts cannot validate this
+changed working tree.
+
+| Slice | Exclusive owner and verified state | Remaining gate |
+| --- | --- | --- |
+| Windows | windows_update_assembly retains sole Arch SSH and secondary guest ownership. Source holders were released after terminal observations. On engineering source97f3daa, consumed download55d6e42b/op0da95879 succeeded and the131223924-byte target2.2.6 cache matches SHA27270314. Exact persistent owner8172 and frontend8484 remain physically alive. GUI control returned UNAVAILABLE and the same visible frontend shows TIMEOUT. No new install was submitted. | The measured progress-persistence fix and causal regression are integrated; canonical prepush, correctly attributed fixed artifacts, healthy frontend and complete DIRECT/MCP installer, owner and scoped-VPN scenarios remain. Exact heartbeat/monitor cause remains unproved; unreadable logs remain UNKNOWN. |
+| Windows prior installs | Job32349258 is final CANCELLED with definitive NOT_STARTED and cleanupOK. Jobcf4399dd reached authorization and handoff, then failed EXCLUSIVE_ADMISSION/OTHER before MSI; request omitted the frontend pair although the GUI was physically alive. Its four inputs remain retained with cleanupPERSISTENCE_FAILED. | Preserve original identities and inputs. Successful-result cleanup authority does not authorize deleting this failed job's inputs. Test failure/recovery requirements without inventing a successful receipt or replaying either install. |
+| Android | windows_update_assembly owns native/private producer state; its existing source child owns only ignored enrollment code. Genuine LOCAL33029 Prepared549 and public129 source capture are retained. No SDK timer or new native mutation is open. | Complete executable source/custody join, fresh resource and owner admission, then API29/API35 product and matching MCP acceptance. Public129 capture alone does not grant SDK or private-state authority. |
+| Linux/macOS/full plan | Source preparations and historical evidence remain preserved. The22-group audit remains0passed/2historical/20open; no current full-platform acceptance receipt is claimed. | Full original CLI, installer, lifecycle, traffic, visual, documentation and exact-SHA delivery requirements. No release is authorized. |
+
+Public evidence is under ignored
+`.runtime/windows-readonly-route-preflight-aa02f2ec-5f3d-4c8a-8d09-a832265da57b/`:
+`healthy-download-gui-failure-handoff-b3fcca18-57c2-4e25-a79c-9fb19bd58e38/`,
+`parser-taskroot-routine-enrollment/` and
+`artifact-equivalence-source-diagnosis/candidate-47113840-7d79-4942-b61d-c63f1d6f050a/`.
+Root reviews are under `.runtime/root-parity-continuation-22e9/`.
+Original97f3daa packages retain their source attribution. A tooling-equivalence
+classifier pass does not grant cache reuse, native admission or acceptance.
+
+The measured desktop product fix is now integrated in `DesktopAppService`:
+app-update state uses a synchronized state-only publisher instead of the durable
+workspace writer. The actual same131109-byte download produced17 progress writes
+and22 total update writes on the preserved original, then0/0 with the fix while
+still publishing17 progress updates. The identical final regression failed once
+on the original and passed with three existing persistence/download guard tests.
+Configuration, revision, full workspace bytes and verified READY package were
+preserved. `DesktopAppUpdatePersistenceTest` is enrolled in ordinary desktop tests.
+Canonical full prepush and correctly attributed fixed base2.2.5/target2.2.6
+packages remain required; these isolated results do not prove native GUI timing.
+The finite packet is `download-progress-causal-review/candidate-e3b467a0-685a-4a49-b0d3-64a6e1abe28c/`
+under the public evidence root above. Earlier test-baseline and counter versions
+remain preserved separately. Source and isolated Gradle holders are closed.
+
+## Historical acceptance status — 2026-10-11, after checkpoint 97f3daa
 
 Delivered HEAD/origin/dev are `97f3daa73cfff74aef9deeeeffbbe9b30b08a722`,
 product 2.2.6. The reviewed twenty-three-path Windows product/fixture bucket is

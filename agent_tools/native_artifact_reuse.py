@@ -353,6 +353,11 @@ def _equivalence_diff(root: Path, before: str, after: str) -> list[dict[str, str
 def _equivalence_class(path: str) -> str:
     if not path or path.startswith("/") or any(part in {"", ".", ".."} for part in path.split("/")):
         return "rejected"
+    # Fixed read-only host observation is tooling, never a packaged product input.
+    if path == "agent_tools/native_host_observation.py":
+        return "agent-tool"
+    if path == "agent_tools/tests/test_native_host_observation.py":
+        return "test"
     lowered = path.lower()
     if any(word in lowered for word in _FORBIDDEN):
         return "rejected"

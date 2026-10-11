@@ -1,0 +1,62 @@
+{
+  "files": {
+    "after/bootstrap.preserve.ps1": {
+      "bytes": 10434,
+      "originalSha256": "ed40dfd9d012b5f63241488e2d2108c8f870497cf8e0e475bdad9c7aa2e2a4c7",
+      "selection": "complete public source",
+      "sha256": "ed40dfd9d012b5f63241488e2d2108c8f870497cf8e0e475bdad9c7aa2e2a4c7"
+    },
+    "after/launcher.py.source": {
+      "bytes": 1141,
+      "guardStatements": 10,
+      "originalSha256": "42fca84ea9580e35152d09c3e9ff5ba89f5ec69ba26b295779f32ae3859fe61c",
+      "selection": "exact sha assignment + pre-Popen guard AST statements + unchanged actual Popen assignment",
+      "sha256": "095fc955f8f10608e4903ba2810d3529e14e1c316094497d3534669c07eabc42"
+    },
+    "after/operator-parameters.json": {
+      "bytes": 406,
+      "originalSha256": "5704a343db5ba13964dac49c6d3eac7b8f74b71640002733e2c49cf18187a84a",
+      "selection": "complete public source",
+      "sha256": "5704a343db5ba13964dac49c6d3eac7b8f74b71640002733e2c49cf18187a84a"
+    },
+    "after/recovery.task.ps1": {
+      "bytes": 31309,
+      "originalSha256": "36920fa714db513b354ab614b1b1318d972404a39fb6857ca69bdc62ed5f1d06",
+      "selection": "complete public source",
+      "sha256": "36920fa714db513b354ab614b1b1318d972404a39fb6857ca69bdc62ed5f1d06"
+    },
+    "before-corrected-one-root.task.ps1": {
+      "bytes": 31309,
+      "originalSha256": "ca689bf1381255cf259d107f40df9e62875222e6a8c4b259d47cf9ebb362e64b",
+      "selection": "complete public source",
+      "sha256": "ca689bf1381255cf259d107f40df9e62875222e6a8c4b259d47cf9ebb362e64b"
+    },
+    "before/bootstrap.preserve.ps1": {
+      "bytes": 10434,
+      "originalSha256": "c4b4e507bdeb1e99118fb8f82def28029c3e2ace8f946b5ee3826ed228f7ac3d",
+      "selection": "complete public source",
+      "sha256": "c4b4e507bdeb1e99118fb8f82def28029c3e2ace8f946b5ee3826ed228f7ac3d"
+    },
+    "before/launcher.py.source": {
+      "bytes": 837,
+      "guardStatements": 6,
+      "originalSha256": "3deca335848fba4f3c34659a7707f8e89ced0b100f0c6b186e691f56f4c7f47d",
+      "selection": "exact sha assignment + pre-Popen guard AST statements + unchanged actual Popen assignment",
+      "sha256": "d7717fbaa2e1b34fc55fc9435a4224c051bd918dcf69c55256e0c874c20788b7"
+    },
+    "before/recovery.task.ps1": {
+      "bytes": 31246,
+      "originalSha256": "23e7135c47fdc1d23c70001e7996dca28011d0297a6d1f750bc362bacd096022",
+      "selection": "complete public source",
+      "sha256": "23e7135c47fdc1d23c70001e7996dca28011d0297a6d1f750bc362bacd096022"
+    },
+    "control-write.ps1": {
+      "bytes": 4202,
+      "originalSha256": "93f9b3b51869d3c57c0e13d7aa2106ec2c682067ab59df6bb438ecac41b94806",
+      "selection": "complete public control with only explicit UTF8 console output added; executed source selectors unchanged",
+      "sha256": "13a1626bc02de1be2a41a73702ecb711a08ab004358ab3053569295cf9c9471e"
+    }
+  },
+  "schemaVersion": 1,
+  "scope": "Frozen public source fixtures; selected launcher statements execute only with owned inert argv."
+}
