@@ -33,7 +33,49 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-11, 09:03 Moscow
+## Current acceptance status — 2026-10-11, 10:00 Moscow
+
+Delivered HEAD/origin/dev are `a4d7d704ec5f3bcde83ea8146ed5f1828e9b2c5c`,
+product2.2.6. All fifteen managed prepush commands passed; agent discovery ran
+6219 tests with164 explicit skips. The canonical desktop update-persistence
+regression passed with17 progress publications and zero workspace writes. Final
+exact-SHA five-workflow CI remains deferred as requested; parity is incomplete.
+
+The first Windows fixed-source pair build38119298320 failed before packaging:
+Git's Windows LF-to-CRLF checkout changed the new persistent fixture bytes,
+triggering12 asset-hash failures in21 harness tests. All original dispatch and
+log handles closed; no artifact, installer or guest mutation resulted. Root's
+checkout worker owns only `.gitattributes` and the existing real-Git checkout
+regression; root owns documentation, metadata, validation and delivery. The two
+scoped fixture attributes preserve the original bytes and strict guards. The
+same extended regression produced15 failures with the original attributes and
+one passing test with the fix, covering18 fixture checks plus active conversion
+of an unprotected text control. These source/test/docs changes form the next
+coherent checkpoint bucket; fresh metadata and full prepush remain required.
+
+Android run38118983825 succeeded at exacta4d7 and produced artifact11693649254.
+Root independently verified the archive SHA88586093 against GitHub's digest
+and the sole39537235-byte APK SHAa0af645f. Candidate evidence is under
+`.runtime/root-parity-continuation-22e9/android-artifact-a4d7-543c9d36-fd9c-48ec-b0a9-6cd72f830844/`.
+Signer/device admission is not claimed; this artifact retains a4d7 attribution.
+
+windows_update_assembly retains sole Arch/Windows and native-private Android
+ownership. All canonical source holders are closed; final-epoch SDK/LOCAL
+activation is paused until a qualified successor checkpoint. Existing Windows
+owner8172/frontend8484 and prior failed install inputs remain preserved. The
+readiness probe's CLI child principal was not independently authenticated, so
+UNAVAILABLE does not establish product OFF or an authentication defect. No SDK
+timer or new native update is open. Windows/Android complete DIRECT and matching
+MCP scenarios, then Linux/macOS, visuals and final exact-SHA delivery remain open.
+The original22-group scope is unchanged; no release is authorized.
+
+Checkout causal evidence:
+`.runtime/windows-checkout-fix-967e4c0a-da73-419b-b717-0ba296265dab/`.
+Native failure manifest SHA8a72003b and root review SHA4628dc7d are retained
+under the Windows public evidence root and root-continuation directory. Historical
+source, unknown outcomes and failed attempts below remain intact.
+
+## Historical acceptance status — 2026-10-11, 09:03 Moscow
 
 Delivered HEAD/origin/dev are `04933f1ff3c206cb48164c853f690bffcba6f3fb`,
 product 2.2.6. Its fifteen managed prepush commands passed; agent discovery ran

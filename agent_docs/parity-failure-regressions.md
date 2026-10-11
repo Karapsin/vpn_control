@@ -3738,6 +3738,36 @@ Canonical focused verification passed45 tests without skips:24 artifact-reuse
 and acceptance-equivalence controls plus21 packaged-harness controls using the
 prepared PowerShell7.5.4 runtime. The final prepush receipt is still required.
 
+## Windows persistent fixture checkout conversion — 2026-10-11
+
+Windows package run38119298320 at source
+`a4d7d704ec5f3bcde83ea8146ed5f1828e9b2c5c` failed release hygiene before
+runtime preparation or package builds. The packaged CLI harness ran21 tests with
+12 strict asset-hash failures: Git converted LF to CRLF in the two new persistent
+fixture families. Four distinct native-observed hashes exactly match that
+conversion; no fixture parser or child launch was reached in those cases.
+
+Two scoped `.gitattributes` rules now disable text conversion only for
+`scripts/testdata/windows-persistent-ready-parser/**` and
+`scripts/testdata/windows-persistent-taskroot/**`. Original fixture contents,
+manifests, recorded hashes and launcher guards are unchanged. The existing
+`test_historical_fixture_checkout_bytes` routine now exercises actual Git
+`core.autocrlf=true` checkout for all15 manifest-pinned files and three existing
+historical fixtures. An unprotected32-byte LF control actually becomes34 CRLF
+bytes before the fixture assertions, so conversion cannot silently be disabled.
+The identical extended test produced15 failures with the preserved original
+attributes, then passed with the fix. Ordinary agent-test discovery and the
+existing Windows package CI invocation cover this module.
+
+Raw RED/GREEN, old/new attributes, the exact test and fixture inventory remain
+under `.runtime/windows-checkout-fix-967e4c0a-da73-419b-b717-0ba296265dab/`.
+The finite original native failure excerpt and terminal/source bindings remain
+under the Windows public evidence root in
+`fixed-progress-build-a4d7-f24ff473-0255-494e-b559-0d75f5f397d9/terminal-hygiene-failure-a7891015-a5d4-4c52-8153-4654ae6fbf6d/finite-public-delta/`.
+The failed dispatch was not replayed and produced no package or guest effects.
+This regression proves checkout byte preservation; fresh exact-source Windows
+hygiene/package execution and complete native/MCP acceptance remain required.
+
 ## Windows frontend health during download — 2026-10-11
 
 The same physical frontend passed GUI control before check and download, then

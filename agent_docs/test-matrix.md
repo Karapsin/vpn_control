@@ -222,7 +222,9 @@ checks do not replace native package, traffic, installer or visual acceptance.
 
 `agent_tools/tests/test_historical_fixture_checkout_bytes.py` uses real Git with
 Windows line-ending conversion enabled to verify exact historical `.source`
-fixtures retain their recorded bytes. It runs in ordinary discovery and Windows
+fixtures and all fifteen manifest-pinned persistent parser/task-root inputs retain
+their recorded bytes and lengths. An unprotected text control must actually change
+from LF to CRLF. It runs in ordinary discovery and Windows
 package CI; the fixture attributes disable text conversion without changing the
 preserved source or its historical hashes.
 

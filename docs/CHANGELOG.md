@@ -11,6 +11,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Fix VM census executable identity and Android preparation descriptor cleanup, with causal regression controls.
 - Add causal Windows parser and task-root checks and recognize read-only host tooling in artifact equivalence.
 - Keep desktop update progress in memory instead of repeatedly rewriting the durable workspace.
+- Preserve manifest-pinned Windows acceptance fixtures during native Git checkout.
 
 ## 2.2.6 - 2026-10-10
 
