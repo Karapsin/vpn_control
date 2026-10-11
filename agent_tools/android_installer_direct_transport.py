@@ -632,8 +632,15 @@ def _dispatch_hold(path,pin,expected_raw):
         require(bytes(raw)==expected_raw and sha(raw)==pin['sha256'] and equal(parents,pin['parents']),'direct_dispatch_changed')
         held=(path,pin,chain,fd);_dispatch_guard([held]);return held
     except BaseException as exc:
-        if fd is not None:os.close(fd)
-        bundle._close(chain)
+        close_error=None
+        if fd is not None:
+            try:os.close(fd)
+            except BaseException as error:close_error=error
+        for _,ancestor in reversed(chain):
+            try:os.close(ancestor)
+            except BaseException as error:
+                if close_error is None:close_error=error
+        if close_error is not None:raise close_error from exc
         if isinstance(exc,(OSError,ValueError)):raise ValueError('direct_dispatch_changed')from exc
         raise
 

@@ -1,12 +1,91 @@
 # Parity Failure-to-Regression Ledger
 
+## Live Linux VM census — 2026-10-11
+
+The original observer filtered `/proc/<pid>/comm` before reading the executable.
+The live secondary Windows QEMU had comm `7`, so that filter missed it. A separate
+argv-text search falsely identified the Python observer as a QEMU candidate.
+Neither incomplete result authorized a VM restart. Exact executable observation
+subsequently identified the original secondary PID 3726886 / start ticks 21863571
+and five total QEMU processes with 16 GiB of configured memory.
+
+The first exact-executable proposal correctly withheld a complete measurement
+when executable reads failed, but also treated ordinary kernel threads and a
+zombie as unclassified. Actual fixed read-only diagnostics distinguished those
+entries from 42 unreadable user processes. The integrated candidate excludes only
+authoritatively classified, same-generation kernel/zombie entries, keeps live
+user-process uncertainty, and excludes a Python process whose argv mentions QEMU.
+Original comm-filter controls preserve two assertion failures; the subsequent
+exact-executable predecessor preserves two kernel/zombie failures. The final
+seven controls pass without errors or skips. They also cover stale marker/PID
+changes, oversized command lines and ambiguous allocations. Actual fixed
+stdin-only sudo observation completed with five QEMUs and 16 GiB configured
+memory; the authentic unchanged decoder reports OBSERVED and the original
+secondary identity matched, while ready/nativeActionAllowed remain false.
+
+Evidence is preserved under ignored
+`.runtime/windows-readonly-route-preflight-aa02f2ec-5f3d-4c8a-8d09-a832265da57b/`.
+The initial proposal manifest is 99063318 and its incomplete native result is
+retained. Final source manifest dc9e119f and privileged native manifest 80d73576
+were independently reviewed; root receipts are 54b0f18d and a8358973. Routine
+test_native_host_observation discovers the seven controls. The tmux caller's
+one-literal HOST_SHA successor preserves its selected memory/parser functions
+and emitted program byte for byte: two actual stale-pin errors become two passes
+in existing routine methods. Root also reproduced the original source refusal
+and verified the canonical consumer suite. Review receipt 8178da56 binds that
+narrow enrollment; no saved source manifest is edited.
+
+The plain-user MCP observer still reports UNKNOWN when live user executables
+are unreadable. The tmux caller's separate comm-filter census and a scoped
+privileged MCP observer remain open DIRECT/MCP gates. This component correction
+does not prove atomic whole-host inventory, actor exit, installer permission or
+full parity. Historical source bindings are preserved.
+
+## Android preparation closure and exceptional cleanup — 2026-10-11
+
+The unexecuted source freezer had a generator tuple SyntaxError at line61.
+Its original control fails; moving the eighth bootstrap path inside the tuple
+passes compilation of all nine changed/new caller modules without execution.
+A separate nonexistent, unused clone-report metadata row caused an actual
+FileNotFoundError during source preparation. The narrowly corrected inventory
+preserves required dependency reads and missing-required-file refusal: one RED,
+two GREEN. Original packets and beforeimages are immutable; no report is invented.
+
+The current Prepared closure checked the profile, state and profile separately.
+A mutation of the state during the last profile check escaped that composition.
+The authentic original method produces one assertion failure. The successor adds
+one final combined population pass through the existing all-parent/all-leaf
+_dispatch_guard; original before/after profile fences remain. Independent
+CurrentInputs cleanup now attempts each original descriptor and raises the first
+close error after all attempts. Its original leaf/ancestor/multiple-close controls
+produce three assertion failures; the combined ten controls pass with zero skips.
+Real harmless file descriptors are closed before test repair. Initial system
+TempFS /var symlink errors are retained separately from causal assertion failures.
+
+Canonical android_installer_direct_transport._dispatch_hold likewise skipped
+ancestor cleanup if leaf close failed, and bundle cleanup stopped at its first
+ancestor close error. The selected authentic function produces three RED in four
+controls. The narrow fix attempts the leaf and every original reverse ancestor,
+then raises the first cleanup exception with the original admission cause.
+No-error exception normalization, source reading, guards and success remain.
+The new routine module test_android_installer_direct_dispatch_close is discovered
+by agent-tool checks; its four canonical controls pass in0.099s without skips.
+
+Evidence: ignored closure packet qualification23114a82, dispatch qualification
+7d41820b, pending preparation manifesta70be78f and root receiptsa5ea3362/8f8e4cb6
+under `.runtime/android-e9ceb-timeout-diagnosis/` and
+`.runtime/root-parity-continuation-22e9/`. Canonical integrationce3bffaf records the
+exact two changed paths. Genuine protected LOCAL, final source enrollment, native
+full proof and MCP retesting remain required; source-only controls are not product
+acceptance. No protected original body or native operation was executed here.
+
 ## Windows successful update inputs and AOT compatibility — 2026-10-11
 
 The one admitted engineering2.2.4→2.2.5 update reached protected success and
 returned the ordinary original-user app owner with runtime OFF. Its five private
 installer inputs remained while public cleanupCode reported OK. The actual old
 Installer path produces two assertion failures: completed inputs remain, and
-present legacy inputs incorrectly report successful cleanup. The ignored
+present legacy inputs incorrectly report successful cleanup. The reviewed canonical
 C#/Kotlin repair binds the fixed five original objects to protected immutable
 custody, preserves successful MSI outcome and return when cleanup fails, and
 refuses legacy or uncertain present inputs. Root independently verified the
@@ -34,7 +113,7 @@ existing NuGet pattern; earlier fixture defaults stay unchanged. Refreshed eight
 managed cases pass. The final routine JVM method compiles but explicitly
 skips on macOS. Root integrated all twelve exact afterimages after reviewing942
 public source/evidence leaves (integration5eb9fda9, manifest3ca7acba, patch6ef8e93a).
-Fresh canonical prepush and delivery remain open. A source-bound base/target pair, actual Win32/MSI cleanup,
+Canonical prepush passed and the repair was delivered in97f3daa. A source-bound base/target pair, actual Win32/MSI cleanup,
 visible GUI return and complete DIRECT/MCP retesting remain required.
 
 ## Windows admitted caller and evidence-reader failures — 2026-10-11

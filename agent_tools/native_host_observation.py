@@ -38,6 +38,28 @@ def stat(pid):
   tail=raw.rsplit(")",1)[1].split()
   return int(tail[19])
  except (OSError,ValueError,IndexError,UnicodeError): return None
+def kernel_thread(pid,ticks):
+ try:
+  # PF_KTHREAD is a kernel-owned flag, not a mutable comm-name heuristic.
+  # Re-confirm both its marker and generation so a kernel-to-user exec
+  # cannot inherit a marker seen in the earlier stat snapshot.
+  for sample in range(2):
+   raw=open("/proc/%d/stat"%pid,"r",encoding="ascii").read()
+   tail=raw.rsplit(")",1)[1].split()
+   flags=int(tail[6])
+   if flags<0 or not flags&0x00200000 or int(tail[19])!=ticks: return False
+  return True
+ except (OSError,ValueError,IndexError,UnicodeError): return False
+def terminal_zombie(pid,ticks):
+ try:
+  # This excludes only an exact terminal Z state from the memory census.
+  # It is not an exit witness or authorization for any VM action.
+  for sample in range(2):
+   raw=open("/proc/%d/stat"%pid,"r",encoding="ascii").read()
+   tail=raw.rsplit(")",1)[1].split()
+   if tail[0]!="Z" or int(tail[19])!=ticks: return False
+  return True
+ except (OSError,ValueError,IndexError,UnicodeError): return False
 def memory():
  data={}
  try:
@@ -95,18 +117,14 @@ for entry in entries:
  if not entry.isdigit(): continue
  pid=int(entry); ticks=stat(pid)
  if ticks is None: continue
- try:
-  comm=open("/proc/%d/comm"%pid,"r",encoding="ascii").read().strip()
- except (OSError,UnicodeError):
-  if stat(pid) is not None: inventory_complete=False
-  continue
- if not comm.startswith("qemu-system-"): continue
  executable=None; configured=None
  try:
   candidate=os.path.basename(os.readlink("/proc/%d/exe"%pid))
-  if candidate.startswith("qemu-system-"): executable=candidate
-  else: inventory_complete=False
- except (OSError,UnicodeError): inventory_complete=False
+ except (OSError,UnicodeError):
+  if not kernel_thread(pid,ticks) and not terminal_zombie(pid,ticks) and stat(pid) is not None: inventory_complete=False
+  continue
+ if not candidate.startswith("qemu-system-"): continue
+ executable=candidate
  try:
   raw=open("/proc/%d/cmdline"%pid,"rb").read(16385)
   if raw and len(raw)<=16384: configured=parse_memory(raw.rstrip(b"\0").split(b"\0"))

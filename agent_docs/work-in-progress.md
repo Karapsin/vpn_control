@@ -33,57 +33,78 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-11
+## Current acceptance status — 2026-10-11, after checkpoint 97f3daa
 
-Delivered HEAD/origin/dev are `9c98ce2b5307983b1d361567693ca8f975f8bbdf`,
-product2.2.6. The twenty-three dirty canonical paths are the reviewed Windows
-fixture/evidence-reader and PowerShell routine-check bucket, twelve Windows
-product/test cleanup paths, documentation and changelog. The five reader/fixture paths match their sealed proposal;59 focused
-tests pass without failures/errors/skips. Four local PowerShell controls pass;
-two native Windows5.1 controls explicitly skip locally. The previous prepush
-receipt is invalid. The twelve product/test paths now exactly match the reviewed
-final proposal. Fresh complete prepush and a coherent checkpoint remain required.
-Final five-workflow CI remains deferred until final delivery; no release is authorized.
+Delivered HEAD/origin/dev are `97f3daa73cfff74aef9deeeeffbbe9b30b08a722`,
+product 2.2.6. The reviewed twenty-three-path Windows product/fixture bucket is
+committed and pushed. All fifteen managed prepush commands passed for fingerprint
+`1e51db66fef880f018c0c34eb6e84e9e7360ed2a9d8ffcb784762ee70050933a`;
+agent discovery ran 6206 tests with 170 explicit skips. Required exact-SHA CI is
+deferred to final delivery, as requested; this intermediate push is not full parity.
+
+The current intentional tooling bucket contains the narrow Android transport
+exceptional-cleanup fix, Linux VM census correction, their routine controls and
+the tmux caller's one-literal current-source enrollment. Focused canonical checks
+ran 54 tests: 53 passed and one Linux-only native check explicitly skipped on
+macOS. Root owns integration, documentation, version metadata and the next
+complete prepush. These edits invalidate the previous receipt for new work;
+it does not rewrite the delivered checkpoint's validation or package provenance.
+The host-observation correction is integrated after public source review and
+the fixed privileged read-only DIRECT proof. Its initial exact-executable
+candidate found five QEMU processes but correctly
+returned UNKNOWN because normal kernel threads and unreadable user processes
+were not classified. A bounded native diagnosis identified kernel threads,
+one zombie and 42 unreadable user processes. The final candidate distinguishes
+same-generation kernel/zombie entries while preserving uncertainty for unreadable
+live user processes. Its seven causal controls pass without skips. The actual
+privileged DIRECT observation completed with five QEMUs, 16 GiB configured memory,
+the original secondary identity matched and all owned handles closed;
+it does not grant package installation or automatically make the plain-user MCP
+observer complete. The protected tmux resource caller's reviewed pin-only
+successor preserves its emitted memory/parser program byte for byte. Two actual
+stale-pin refusals pass after enrollment, and saved source manifests are unchanged.
+Its own separate comm-filter census still needs DIRECT correction and retesting
+before a complete tmux resource-admission claim.
 
 | Slice | Exclusive owner and verified state | Remaining gate |
 | --- | --- | --- |
-| Windows native | The secondary operator completed the one admitted engineering2.2.4→2.2.5 update. Original16446 submitted the public job once; same-job59422 observed MSI0 and protected success. Original51231 verified the complete209-file target, automatic original-user app-owner return and runtime OFF. All route/SDK actors are positively closed. Five installer inputs remain despite public cleanupCodeOK. | Actual product cleanup repair; same-source packages, fresh native admission and complete DIRECT/MCP acceptance. No consumed install or baseline recovery may be replayed. The display capture proves the desktop only; visible app UI remains unproved. |
-| Windows product | windows_update_assembly handed back the sealed twelve-path C#/Kotlin cleanup fix; root integrated its exact afterimages. Actual77-test JVM GREEN and the original two assertion failures are preserved. Eight refreshed managed helper cases pass. The new routine JVM method compiles and explicitly skips on macOS; its Windows execution gate remains. The actual pinned AOT analyzer found IL3050, then passed with zero warnings/errors after fixed five-leaf mapping. All local worker processes and descriptors are closed; root owns the free Gradle lane. | Fresh canonical prepush/delivery, new source-bound base/target packages, real Win32/MSI cleanup and complete DIRECT/MCP acceptance. No managed test establishes native cleanup; other terminal-state cleanup remains unresolved. |
-| Android proof | android_api35_operator handed back the sealed provisional public full read-only profile/caller packet. Root verified163 public source/archive pairs without protected original reads. Current controls are19 plus actual factory/import qualification; SDK24 retains predecessor attribution. Root caught an unresolved canonical API dependency; it is excluded and the actual DIRECT caller now uses its authenticated owned adapter. The completed JDK cost diagnostic remains separate from full proof. Ordinary caps and all interior guards remain; the rejected weakened-guard proposal stays historical. No new LOCAL or native operation is admitted. | Coherent source epoch enrollment after this checkpoint, genuine LOCAL preparation, fresh SDK/resource admission, API29/API35 native scenarios and equivalent MCP runs. |
-| Fixture/evidence tools | Root owns canonical integration; windows_fixture_regressions handed back immutable source-only packets. Bounded initial, cached and final reads plus strict integer counters pass actual syscall controls and24 compatibility checks. The reviewed SUM/progress/array generator and routine Windows wiring are also integrated: four local checks pass; two actual Windows5.1 checks are skipped locally. | Fresh prepush/delivery, actual Windows5.1 controls, and corresponding complete native/MCP scenarios. Supplemental caller fixes must reach admitted callers before retesting. |
-| Full plan | Full22-group acceptance remains incomplete; Linux/macOS, lifecycle, documents, visuals and final exact-SHA workflows retain their scope. | Complete the original continuation plan; component evidence is not whole-scenario acceptance. |
+| Windows native | windows_update_assembly is the sole remote Windows operator. Corrected exact-executable census positively identified original secondary QEMU3726886/start21863571; an earlier comm filter missed it, and an argv-text candidate was the observer itself. Neither result authorized a restart. Fresh guest2436 and ordinary85048/8072 observations completed on the original boot/SID/session. The operator observed returned3400→6628, controller5fabe9a0/revision0, physical runtime OFF, no pending operations, complete209-file/200349547-byte image and installed2.2.5. The five legacy inputs and protected successful job6a67 remain. | Verify the sanitized public packet and finish only the fresh observation task's cleanup. Old reconnect intent remains UNKNOWN because public status has no such field. Admit same-source base2.2.5/target2.2.6 containing the new helper, fresh public update and full DIRECT/MCP scenarios. No consumed installation, task or baseline recovery may be replayed; visible app UI and other native cases remain open. |
+| Windows product/packages | The twelve exact cleanup afterimages and AOT five-leaf mapping are delivered in 97f3daa. Authentic two-test JVM RED, 77-test GREEN, eight managed helper cases and pinned AOT IL3050 RED/zero-warning GREEN are preserved. The Windows-only routine method compiles and honestly skips on macOS. Immutable Git 97f3daa fixture preparation completed for base 2.2.5 and target 2.2.6. One native AMD64 pair-build workflow was submitted and bound to run 38104575929 / head 97f3daa; the operator observed its immutable pair-build job succeed. Exact artifact collection and verification are running on the original handle. The dirty root copy is excluded. | Observe that same run and verify its exact MSI/helper/full-image artifacts. Then prove Win32 custody/deletion and automatic original-user return, failure/recovery cases and MCP equivalents. No managed test establishes native cleanup; other terminal-state cleanup remains unresolved. |
+| Android preparation | android_api35_operator sealed public successors; root reviewed the original163 source/archive pairs, thirteen freezer delta files, closure/preparation20+51 inputs and sixteen dispatch proposal pins. Actual joined/independent-close controls preserve four RED then ten GREEN; dispatch preserves three RED then four GREEN. Missing unused metadata preserves one RED then two GREEN. Root integrated only the canonical dispatch function plus routine test; no protected original body was read. | Final stable source fingerprint and45-role/full-catalogue enrollment, genuine protected LOCAL with three scheduled JVM calls, Windows-owned fresh4200 producer/input population and full native proof. Original11818 restoration/descendants remain UNKNOWN. API29/API35 and equivalent MCP acceptance remain open. |
+| Fixture/evidence tools | Delivered reader/fixture controls59 pass without skips. Four local PowerShell controls pass; two Windows5.1 controls explicitly skip. Bound reads, strict integer counts, SUM/progress/array controls and routine workflow wiring are preserved. Fresh configured DIRECT SSH diagnostics succeeded; an unavailable explicitly selected ENDED channel and historical source mismatch are not authentication failures. | Corresponding native Windows5.1 and complete native/MCP scenarios. Apply authentic supplemental caller fixes to admitted callers; no snapshot test or source projection grants action or whole acceptance authority. |
+| Full plan | The original22-group scope remains incomplete: Linux/macOS, owner lifecycle, documents, visuals, all remaining Windows/Android cases and final exact-SHA workflows. | Complete the continuation plan. No release, main merge, tag, publisher or runtime upgrade is authorized. |
 
-Evidence: fixture successor manifest1506bdf7 under
-`.runtime/windows-fixture-recent-successor-1a3fa9f0-bea1-4f67-b93b-b3afec8e9d7d/`;
-root source review36d38013 under `.runtime/root-parity-continuation-22e9/`.
-The corrected Windows automatic-return public packet is
-`.runtime/windows-secondary-acceptance/engineering-baseline-current-a726e244-90a2-4734-ac7d-1cfcbdafb07a/automatic-return-corrected-public-371e5e09-fba5-42d9-93cd-1dab644712e0/manifest.json`
-(a2c4ecfd). The original stream/source join receipts remain separate; no historical
-body, source attribution or failed result is rewritten.
+Checkpoint receipt:
+`.runtime/root-parity-continuation-22e9/windows-cleanup-checkpoint-a49c4c69-09f3-46f0-863a-5f7220ef9f8c.json`
+(9b1f20cc). Prepush receipt c915e982 records all fifteen commands and content
+fingerprint 1e51db66. The previous current ledger and all historical links remain
+in Git 97f3daa; immutable native streams, manifests and failed outcomes remain
+untouched. The old automatic-return public manifest remains a2c4ecfd under
+`.runtime/windows-secondary-acceptance/engineering-baseline-current-a726e244-90a2-4734-ac7d-1cfcbdafb07a/automatic-return-corrected-public-371e5e09-fba5-42d9-93cd-1dab644712e0/`.
+Windows product integration5eb9fda9, final manifest3ca7acba and patch6ef8e93a remain
+under their original ignored proposal/root review locations.
 
-Windows draft review: `.runtime/root-parity-continuation-22e9/windows-product-draft-root-review-4d0224da-0e26-4d1d-a64a-ee43a591691a.json`
-(b111c846) verifies twelve source bodies, current canonical beforeimages,
-patch7d0c4519 and actual77-test XML. The earlier failed close-fault model run is
-preserved separately; the corrected fault targets the retained DELETE close,
-with product bytes and assertions unchanged. The original compiler failure is
-original49858/PID39139 under
-`.runtime/windows-product-input-cleanup-proposal-a23/aot-analyzer-run-5e5b408e-45bc-4ad0-a5a8-254cb7722b6d/`.
-Original49858/PID39139 is terminal failed. Successor39637 is terminal successful;
-the fixed helper mapping now has routine analyzer coverage. Final same-selector
-Gradle19618/PID39953 is terminal successful with its explicit macOS skip.
-Canonical integration receipt5eb9fda9 verifies942 public source/evidence leaves,
-the final manifest3ca7acba, patch6ef8e93a and all twelve afterimages. These
-process identities remain historical evidence, never replay authority.
+Android root public receipts under `.runtime/root-parity-continuation-22e9/`:
+freezer delta0ade2d89, closure/preparationa5ea3362, dispatch8f8e4cb6 and canonical
+integration ce3bffaf. Source-only qualification is not genuine LOCAL or native
+acceptance. The pending successor is
+`.runtime/android-e9ceb-timeout-diagnosis/complete-readonly-enrollment-pending-a3329752-03f8-42df-951b-273f1b8c4ae4/`.
+Its prepared commands contain placeholders until actual final source binding;
+there is no already-admitted101-input producer or prior4200 native proof.
+Ordinary1800/1250 caps, every interior guard and all protected custody remain.
+The superseded unresolved canonical collector import must not be applied.
 
-Android provisional manifest14171b6d and public closeout efa94660 are under
-`.runtime/android-e9ceb-timeout-diagnosis/complete-readonly-profile-6939f818-2de3-4027-8c6f-36a6d86e1e74/public-provisional-packet-e08d87d9-43dc-4d99-b5b4-16c858d6323c/`.
-Root public review ee8d61f0 closed358 descriptors. The old9c/d41 source declarations
-are provisional; no genuine LOCAL, SDK or native execution is proved by this packet.
-The canonical collector remains unchanged and the superseded unresolved import
-patch must not be applied. A generic Arch probe refused the explicitly selected
-ENDED channel; this is not an SSH authentication diagnosis or authority to replay it.
-The cached MCP server rejected changed tool source; use the documented fresh-process
-MCP CLI route until refresh. No new native channel is admitted yet.
+Resource correction receipts under `.runtime/root-parity-continuation-22e9/`:
+public source review 54b0f18d, native component review a8358973 and pin-only caller
+review 8178da56. The sealed source successor manifest is dc9e119f; the privileged
+DIRECT manifest is 80d73576. Neither receipt admits an installer or clears the
+separate MCP/native acceptance gates. A fresh matrix read at delivered 97f3daa
+still reports zero passed groups, two historical groups and twenty open groups.
+
+The cached MCP server implementation is stale. Use documented fresh-process
+MCP CLI for repository lifecycle and guarded DIRECT native diagnosis under
+TEST-002; keep original accepted process/job handles. A timeout never authorizes
+resubmission, reboot, cleanup of old tasks or installer replay.
 
 ## Historical acceptance status — 2026-10-10,23:24 Moscow
 

@@ -20,7 +20,7 @@ from . import native_host_observation as host
 from . import vm_workflow
 need=old.need
 MEMORY=8*1024**3
-HOST_SHA='8b8be19083872c0a09841793562edbbdfd3ee0540152da5d0a66b8d5a39043b2'
+HOST_SHA='a6b36ab56709b5c98bfff03f895af6b0f4ea2e8c64b6b158d70166d69d099d12'
 VM_SHA='d0db49f7c4fc67348dd6f7ba9ebb35cfad01f055ffde374858fa36ac02f6711c'
 
 _REMOTE=r'''
