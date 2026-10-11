@@ -295,7 +295,18 @@ class _PersistentSourceTest(unittest.TestCase):
                 path.write_bytes(data)
                 self.assertFalse(path.is_symlink())
                 stream = holders.enter_context(path.open("rb"))
-                opened.append((path, stream, self.generation(os.fstat(stream.fileno())), self.digest(data)))
+                held_opening = self.generation(os.fstat(stream.fileno()))
+                named_opening = self.generation(path.lstat())
+                # Windows may expose change time through fstat and birth time
+                # through lstat. Retain both full generations independently.
+                self.assertEqual(held_opening[:8], named_opening[:8])
+                if os.name != "nt":
+                    self.assertEqual(held_opening, named_opening)
+                opening_data = stream.read()
+                self.assertEqual(data, opening_data)
+                self.assertEqual(self.digest(data), self.digest(opening_data))
+                stream.seek(0)
+                opened.append((path, stream, held_opening, named_opening, self.digest(data)))
             parsed = subprocess.run([self.runner, "-NoLogo", "-NoProfile", "-NonInteractive", "-File",
                 str(self.fixture_root / "windows-persistent-ready-parser" / "parser.ps1"),
                 "-FixtureRoot", str(directory)], capture_output=True, timeout=20)
@@ -304,13 +315,13 @@ class _PersistentSourceTest(unittest.TestCase):
             self.assertIn(parsed.returncode, (0, 1))
             errors = [error["errorId"] for row in result["files"] for error in row["errors"]]
             self.assertEqual(int(bool(errors)), parsed.returncode)
-            for path, stream, opening, digest in opened:
+            for path, stream, held_opening, named_opening, digest in opened:
                 stream.seek(0)
                 data = stream.read()
-                self.assertEqual(opening, self.generation(os.fstat(stream.fileno())))
-                self.assertEqual(opening, self.generation(path.lstat()))
+                self.assertEqual(held_opening, self.generation(os.fstat(stream.fileno())))
+                self.assertEqual(named_opening, self.generation(path.lstat()))
                 self.assertEqual(digest, self.digest(data))
-                pins.append({"name": path.name, "generation": opening, "sha256": digest,
+                pins.append({"name": path.name, "generation": named_opening, "sha256": digest,
                              "bytes": len(data)})
         return {"returnCode": parsed.returncode, "pins": pins, "fullClosing": True}, errors, result["PSVersion"]
 
@@ -370,6 +381,113 @@ class _PersistentSourceTest(unittest.TestCase):
         return {"bootstrapBase64": base64.b64encode(bodies["bootstrap.preserve.ps1"]).decode("ascii"),
                 "files": [{"sha256": self.digest(bodies["recovery.task.ps1"]),
                            "base64": base64.b64encode(bodies["recovery.task.ps1"]).decode("ascii")}]}
+
+
+class PersistentSourceGenerationTest(unittest.TestCase):
+    """Replay the measured Windows stat pair against the real source binder.
+
+    Run 38122148673, SHA 4a5181ece7a3a083422afca1e8ff5c653fe52586,
+    fixed-parser-and-bound-sources: only ctime_ns differs between the APIs.
+    Metadata and parser output are replayed; owned bytes use real file I/O.
+    Windows stat behavior and actual parser acceptance remain native checks.
+    """
+
+    fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+              "st_size", "st_mtime_ns", "st_ctime_ns")
+    held_generation = (17594508763472084922, 3096224745111478, 33206, 0, 0, 1,
+                       35, 1791704588772765200, 1791704588772765200)
+    named_generation = (17594508763472084922, 3096224745111478, 33206, 0, 0, 1,
+                        35, 1791704588772765200, 1791704588771011300)
+
+    def bind(self, *, held_drift=None, named_drift=None, opening_drift=None,
+             content_change=None, windows=True, split_ctime=True):
+        state = {"parsed": False}
+        with tempfile.TemporaryDirectory(prefix="vpn-parser-generation-") as temp:
+            directory = Path(temp)
+            path = directory / "recovery.task.ps1"
+            data = b"Write-Output 'inert source only'\n\n\n"
+            held = list(self.held_generation)
+            named = list(self.named_generation)
+            if not split_ctime:
+                named[-1] = held[-1]
+            if opening_drift is not None:
+                named[opening_drift] += 1
+
+            def fstat(descriptor):
+                values = list(held)
+                if state["parsed"] and held_drift is not None:
+                    values[held_drift] += 1
+                if content_change == "opening":
+                    path.write_bytes(b"x" * len(data))
+                return SimpleNamespace(**dict(zip(self.fields, values)))
+
+            original_lstat = Path.lstat
+
+            def lstat(subject):
+                if subject == path:
+                    values = list(named)
+                    if state["parsed"] and named_drift is not None:
+                        values[named_drift] += 1
+                    return SimpleNamespace(**dict(zip(self.fields, values)))
+                return original_lstat(subject)
+
+            def parse(arguments, **options):
+                self.assertEqual("recorded-parser-boundary", arguments[0])
+                state["parsed"] = True
+                if content_change == "closing":
+                    path.write_bytes(b"x" * len(data))
+                return subprocess.CompletedProcess(arguments, 0,
+                    json.dumps({"files": [{"errors": []}], "PSVersion": "replayed-output"}).encode(), b"")
+
+            binder = _PersistentSourceTest()
+            binder.runner = "recorded-parser-boundary"
+            os_api = SimpleNamespace(name="nt" if windows else "posix", fstat=fstat)
+            with mock.patch(__name__ + ".os", os_api), \
+                    mock.patch.object(Path, "lstat", lstat), \
+                    mock.patch.object(subprocess, "run", side_effect=parse):
+                return binder.parse_bound_sources(directory, {path.name: data})
+
+    def test_windows_ctime_split_preserves_full_named_receipt(self):
+        receipt, errors, _ = self.bind()
+        self.assertEqual([], errors)
+        self.assertIs(receipt["fullClosing"], True)
+        pin = receipt["pins"][0]
+        self.assertEqual(list(self.named_generation), pin["generation"])
+        self.assertEqual(35, pin["bytes"])
+        self.assertEqual(hashlib.sha256(b"Write-Output 'inert source only'\n\n\n").hexdigest(), pin["sha256"])
+
+    def test_every_held_generation_field_remains_authoritative(self):
+        for field in range(len(self.fields)):
+            with self.subTest(field=self.fields[field]):
+                with self.assertRaises(AssertionError):
+                    self.bind(held_drift=field)
+
+    def test_every_named_generation_field_remains_authoritative(self):
+        for field in range(len(self.fields)):
+            with self.subTest(field=self.fields[field]):
+                with self.assertRaises(AssertionError):
+                    self.bind(named_drift=field)
+
+    def test_each_common_opening_identity_and_metadata_field_must_match(self):
+        for field in range(len(self.fields) - 1):
+            with self.subTest(field=self.fields[field]):
+                with self.assertRaises(AssertionError):
+                    self.bind(opening_drift=field)
+
+    def test_same_size_opening_and_closing_content_changes_are_rejected(self):
+        for phase in ("opening", "closing"):
+            with self.subTest(phase=phase):
+                with self.assertRaises(AssertionError):
+                    self.bind(content_change=phase)
+
+    def test_nonwindows_ctime_split_remains_rejected(self):
+        with self.assertRaises(AssertionError):
+            self.bind(windows=False)
+
+    def test_nonwindows_equal_generations_still_bind(self):
+        receipt, errors, _ = self.bind(windows=False, split_ctime=False)
+        self.assertEqual([], errors)
+        self.assertEqual(list(self.held_generation), receipt["pins"][0]["generation"])
 
 
 class PersistentReadyParserTest(_PersistentSourceTest):

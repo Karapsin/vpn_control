@@ -228,6 +228,14 @@ from LF to CRLF. It runs in ordinary discovery and Windows
 package CI; the fixture attributes disable text conversion without changing the
 preserved source or its historical hashes.
 
+`scripts/test_packaged_cli_harness.py` also runs
+`PersistentSourceGenerationTest` in ordinary release hygiene and Windows package
+CI. It replays an exact recorded Windows held/named ctime split against the real
+binder using owned file bytes, while checking all generation fields, content
+changes and strict non-Windows equality. Each API retains its full opening and
+closing baseline. These metadata/parser-output controls do not replace actual
+Windows parser, package or update acceptance.
+
 Windows package CI also executes the actual generated replacement-task ordering
 control from `test_windows_cp117_source_campaign`: a newly active runtime or
 installer must refuse before any counted uninstall. This uses no-effect command

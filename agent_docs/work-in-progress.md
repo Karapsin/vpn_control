@@ -33,7 +33,50 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-11, 10:00 Moscow
+## Current acceptance status — 2026-10-11, 11:16 Moscow
+
+Delivered HEAD/origin/dev are `4a5181ece7a3a083422afca1e8ff5c653fe52586`,
+product2.2.6. All fifteen managed prepush commands passed for the delivered
+checkout correction. Final exact-SHA five-workflow CI remains deferred as
+requested. The full22-group parity goal remains incomplete; no release is authorized.
+
+Fresh Windows native status succeeded under the original ordinary user. Actual
+task4012 and CLI3372 primary tokens were independently verified as session1,
+Limited, not elevated. CLI returned OK, controller2dfd8822, revision0 and runtime
+OFF, with479 stdout bytes and no capture fault. Exact209-file installed-image
+checks passed. The fresh task was removed only after exact source/action/SID,
+terminal result and actor-absence checks; evidence and historical jobs remain.
+All original handles are terminal and all canonical source holders are closed.
+This is engineering installed97f3daa evidence, not corrected-package update
+acceptance or GUI heartbeat health. Root review is
+`.runtime/root-parity-continuation-22e9/windows-ordinary-cli-status-terminal-root-review-20261011T081600Z.json`.
+
+The new Windows pair run38122148673 failed before packaging at release hygiene:
+11 assertions compared held and named Windows ctime values across different
+APIs. No artifact or guest update resulted. The next coherent checkpoint changes
+only the harness generation comparison and its direct routine regressions,
+plus evidence documentation and metadata. It retains complete, separate opening
+and closing generations for each API and exact bytes. The same seven regression
+methods give one measured-vector failure with the original binder and pass with
+the correction; actual Windows exact-source hygiene and package acceptance remain.
+Evidence is retained under
+`.runtime/windows-hygiene-investigation-0b2625aa-fc73-496e-9c89-022844450344/`.
+
+Exact4a Android run38121934253 succeeded. Root verified archive SHA111e0134
+against GitHub's digest and the sole39537235-byte APK SHA7c0c0e4b, then registered
+and stream-verified it through MCP. Evidence is under
+`.runtime/root-parity-continuation-22e9/android-artifact-4a5181-40a0ae8d-c416-4a31-85d7-7f86de5355ca/`.
+Signer, device admission and native update acceptance remain unproved. Native-private
+Android final qualification and SDK activation remain paused through the source
+checkpoint; prior source bindings and unknown outcomes are preserved.
+
+Root owns integration, documentation, version metadata, host Gradle and delivery.
+windows_update_assembly retains sole Arch/Windows and native-private Android
+ownership; windows_checkout_fix owns only the harness integration and focused
+local checks. Windows/Android complete DIRECT and matching MCP scenarios,
+then Linux/macOS, visual, lifecycle and final delivery gates remain open.
+
+## Historical acceptance status — 2026-10-11, 10:00 Moscow
 
 Delivered HEAD/origin/dev are `a4d7d704ec5f3bcde83ea8146ed5f1828e9b2c5c`,
 product2.2.6. All fifteen managed prepush commands passed; agent discovery ran

@@ -1,5 +1,37 @@
 # Parity Failure-to-Regression Ledger
 
+## Windows held/named timestamp comparison — 2026-10-11
+
+Exact4a5181 Windows pair run38122148673 failed in release hygiene before any
+package or guest update:21 harness tests produced11 failures at the comparison
+between file-descriptor and named-path generations. The recorded pairs agree
+on all eight identity/metadata fields but differ in ctime_ns. This is distinct
+from the earlier native Git checkout conversion, whose byte pins remain intact.
+
+The harness now retains complete independent held and named opening generations,
+compares their common eight fields, and requires each complete generation to
+remain unchanged at closing. Outside Windows, full cross-API equality remains
+required. Exact opening bytes and closing hashes are checked; no fixture body,
+source pin, parser admission or native guard is relaxed. Existing receipt pins
+retain the full named generation.
+
+PersistentSourceGenerationTest directly calls the real binder with real owned
+file bytes and one exact recorded Windows metadata pair. Seven routine methods
+produce one causal failure against the original binder and all pass against the
+correction. Controls reject changes to every held/named field, all common opening
+fields, same-size opening/closing content and non-Windows ctime disagreement.
+The preserved broader replay contains all eleven recorded native pairs. Metadata
+and parser output are replayed; native Windows stat/parser acceptance remains a
+fresh exact-source CI and package gate. The runner Python version is unmeasured.
+
+Evidence is under ignored
+`.runtime/windows-hygiene-investigation-0b2625aa-fc73-496e-9c89-022844450344/`;
+commit-ready candidate SHA70f9c105 and raw routine RED/GREEN receipts are retained.
+The finite native failure manifest SHA1b0b9f01 and root review SHA1c04cf21 preserve
+the original failed run without replay. Release hygiene already runs the whole
+scripts/test_packaged_cli_harness.py module, including these interpreter-independent
+regressions, in ordinary checks and Windows package CI.
+
 ## Live Linux VM census — 2026-10-11
 
 The original observer filtered `/proc/<pid>/comm` before reading the executable.

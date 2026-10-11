@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Add causal Windows parser and task-root checks and recognize read-only host tooling in artifact equivalence.
 - Keep desktop update progress in memory instead of repeatedly rewriting the durable workspace.
 - Preserve manifest-pinned Windows acceptance fixtures during native Git checkout.
+- Preserve independent Windows held and named file generations in acceptance harness checks.
 
 ## 2.2.6 - 2026-10-10
 
