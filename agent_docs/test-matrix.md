@@ -22,6 +22,33 @@ python3 scripts/test_android_instrumentation_signatures.py
 python3 scripts/test_windows_qga_powershell_size.py
 ```
 
+## MCP responsiveness and Linux download recovery
+
+Historical CP117 server-factory source comparisons run in
+`agent_tools.tests.test_windows_cp117_server_read_binding`. Keep their exact
+length/hash-bound update-fixture bytes in the existing historical fixture context;
+retain the live Windows ACL function comparison and the unchanged1MiB read bound.
+The `.source` fixture is protected by the existing `-text` rule.
+
+Run `agent_tools.tests.test_mcp_run_checks_responsiveness` with the installed MCP
+SDK: the actual registered callback must answer concurrent planning promptly,
+refuse overlapping execution through the existing lease and keep the original
+worker/lease after caller cancellation. Synchronous CLI/core and public schemas
+remain unchanged. Four controls run through ordinary agent-tool discovery;
+missing optional SDK is an explicit capability skip, not MCP qualification.
+
+Run `agent_tools.tests.test_linux_download_wait_loss` and
+`agent_tools.tests.test_linux_deb_arch_native_driver` after changing Linux update
+or fixture serving. The used package-update route enables exact wait-client
+identity/socket qualification, original-operation recovery and fixed64KiB/12ms
+asset pacing; default responses and manifests stay unpaced, rollback is excluded.
+Cleanup admits both restored locked and independently preserved-password fixture
+baselines; terminal protected success, correlated recovery, restored credentials,
+supported owner quit and absence of process references are still required.
+The26 routine controls include causal endpoint/cleanup tests, socket identity,
+pacing and actual caller wiring. Real Linux proc/PTY/credential behavior and the
+matching final-source MCP installation/recovery/cleanup retake remain native gates.
+
 ## Mac artifact selection and Linux fixture admission
 
 `python3 scripts/test_macos_artifact_upload_selection.py` requires Node.js,

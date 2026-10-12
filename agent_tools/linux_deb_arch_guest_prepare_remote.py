@@ -464,7 +464,8 @@ def guest_prepare(stage: Path, role: str, correlation: str) -> dict[str, Any]:
             str(stage / "scripts/prepare_desktop_update_fixture.py"), "serve",
             "--directory", str(stage / "fixture"), "--certificate", str(certificate),
             "--private-key", str(private_key), "--ready-file", str(state_dir / "ready.json"),
-            "--confirm-owned-disposable-guest"], stdin=subprocess.DEVNULL,
+            "--confirm-owned-disposable-guest",
+            *(["--linux-update-wait-loss"] if role in {"ubuntu-update", "arch-update"} else [])], stdin=subprocess.DEVNULL,
             stdout=output, stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
     ready_path = state_dir / "ready.json"
     for _ in range(100):

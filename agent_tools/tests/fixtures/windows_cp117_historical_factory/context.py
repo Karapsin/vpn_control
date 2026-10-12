@@ -24,6 +24,16 @@ PUBLIC_SOURCE = SOURCE.with_name('public_msi_5e60d94f.source')
 PUBLIC_SHA256 = '5e60d94fe2b020957694b21611b9bb5b4789c20830597589b42d32e8dafeeb78'
 _PUBLIC = historical_source.load(PUBLIC_SOURCE, PUBLIC_SHA256)
 
+
+def historical_update_fixture_source():
+ """Exact 57e server bytes carried by the sealed CP117 factory; never executed."""
+ import hashlib
+ path=Path(__file__).with_name('update_fixture_a6445062.source')
+ raw=path.read_bytes()
+ if len(raw)!=100648 or hashlib.sha256(raw).hexdigest()!='a6445062d5885ca013eae3017b39791b844373fb472d87d8d8c22f67576a3980':
+  raise ValueError('historical_update_fixture_binding_changed')
+ return raw
+
 def installed():
     return historical_source.verify(_INSTALLED, INSTALLED_SOURCE, INSTALLED_SHA256)
 

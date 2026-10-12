@@ -33,7 +33,47 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Continuation evidence snapshot — 2026-10-12, reviewed integration
+## Current acceptance and tool integration — 2026-10-12,19:16 Moscow
+
+Root starts this coherent integration from clean delivered
+`57e49541612c2a2083aee261ab1f9c20c53cafa4`, product2.2.8. Its final prepush
+passed all16 commands, including6331 agent tests/175 explicit skips and no
+failures/errors. That receipt does not validate the new content. Required CI is
+still deferred to one final exact-SHA five-workflow verification, as requested.
+
+The intentional current bucket contains eleven reviewed source/test paths:
+`agent_tools/mcp_server.py`, `agent_tools/tests/test_mcp_run_checks_responsiveness.py`,
+`agent_tools/linux_deb_arch_guest_prepare_remote.py`,
+`agent_tools/linux_deb_arch_native_driver.py`,
+`agent_tools/tests/test_linux_deb_arch_native_driver.py`,
+`agent_tools/tests/test_linux_download_wait_loss.py`,
+`scripts/prepare_desktop_update_fixture.py`, `scripts/test_linux_public_install.py`,
+`agent_tools/tests/test_windows_cp117_server_read_binding.py`,
+`agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py` and
+`agent_tools/tests/fixtures/windows_cp117_historical_factory/update_fixture_a6445062.source`,
+plus root-owned evidence/validation docs and changelog metadata. The patches keep
+check execution responsive and enroll the proven Linux wait-client-loss procedure
+in the existing package-update route with fixed test pacing and guarded cleanup.
+Native operators closed their local source holders before edits. Accepted guest
+state and immutable original observations remain preserved; no native replay or
+runtime interruption follows from this integration. Validation and delivery of
+this new bucket are pending. Original prepush3593 is terminal with6361 tests,
+two historical Windows fixture failures and175 skips. Exact historical Git
+fixture bytes repair those two comparisons; a helper placement follow-up preserves
+the existing1MiB reader bound. Actual causal controls and full52-test module now
+pass with16 native-only skips; fresh prepush must validate all final15 paths.
+
+| Platform | Latest verified evidence | Next required work and owner |
+| --- | --- | --- |
+| Windows | Fresh original baseline task restored engineering41ec2.2.6 to2.2.5: uninstall/install0, actual version/scope and all six original-user token phases match; original workspace/failure evidence preserved. PUBLIC3366-byte proof SHA `01ba7dd3004cb21614c97802dfd46abae5e974a2e2c958d652c130bd824db52a`. Earlier positive public update/GUI return/next-owner cleanup remains separate engineering evidence. | windows_update_assembly: resume fresh ordinary-user admission and the composed GUI update after clean checkpoint; remaining failure, broker, lifecycle, document, visual, final-source and MCP cases remain open. |
+| Linux | Three DIRECT engineering download cases pass: corruption, cancellation and wait-client loss/recovery. Headless proxy has420/420 traffic frames, OFF preserves owner, reconnect succeeds and final quit/cleanup passes; PUBLIC2474-byte proof SHA `63135f92512b44e9b66f656aa0fcfe5ae9b0a91c88a3f8cfd421ab3431f3ffdc`. GUI packages installed and audit clean; first GUI flow is UNKNOWN at a traffic assertion. | linux_readiness: retain exact owner27610/start2624440 and private display actors/W; inspect original failure frame and fresh same-controller status after handback, then recover and finish GUI/DIRECT/MCP/final-source cases. |
+| Android | Corrected native collector reads three historical receipts with stable app/boot tuple; fresh independent OS session captures agree. These do not terminalize original45 or authorize a new lease. | windows_update_assembly: qualify the existing current-owner producer, acquire the independent second authentic history pass and complete authority/restoration joins; native matrix remains open. |
+| macOS | Source upload/signature controls passed; no qualified clean native baseline and insufficient local storage. Legacy unknown job and stopped Tart53 preserved. | macos_readiness: wait for suitable owned storage and genuine baseline/resource admission; native and visual cases remain open. |
+
+The full22-group/217-scenario and249-platform-scene scope remains incomplete.
+No release, main merge, tag, publisher or runtime upgrade is authorized.
+
+## Historical continuation evidence snapshot — 2026-10-12, reviewed integration
 
 Integration starts from `60e925b21274d5502517562c8d9375b24881464f`,
 fingerprint `de599ab40b3546cd8863340d90d9c22620dfe401e38240b50b92e00a6e1340f8`,

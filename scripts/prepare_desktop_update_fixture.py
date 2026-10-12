@@ -1103,7 +1103,7 @@ def read_request_header(request, *, include_probe=False):
     return method, target, hosts[0]
 
 
-def write_resource_response(request, resource, manifest, resources, manifest_body):
+def write_resource_response(request, resource, manifest, resources, manifest_body, *, linux_update_wait_loss=False):
     if resource == "manifest":
         length = len(manifest_body)
         request.sendall(("HTTP/1.1 200 OK\r\nContent-Length: " + str(length) +
@@ -1113,6 +1113,9 @@ def write_resource_response(request, resource, manifest, resources, manifest_bod
     # open file. Production length/hash verification stays active.
     asset = next(value for value in manifest["assets"] if value["fileName"] == resource)
     path = resources[resource]
+    require(not linux_update_wait_loss or (asset.get("platform") == "linux"
+            and asset.get("packageType") in {"deb", "arch-bundle"}),
+            "Wait loss pacing requires a Linux update package asset")
     require(file_hash(path) == asset["sha256"], "Frozen package changed")
     with path.open("rb") as source:
         length = os.fstat(source.fileno()).st_size
@@ -1121,6 +1124,8 @@ def write_resource_response(request, resource, manifest, resources, manifest_bod
                          "\r\nConnection: close\r\n\r\n").encode())
         for chunk in iter(lambda: source.read(65536), b""):
             request.sendall(chunk)
+            if linux_update_wait_loss:
+                time.sleep(0.012)
     return length
 
 
@@ -1543,7 +1548,7 @@ def write_probe_event(events, correlation_id, manifest_body, certificate_sha256,
 
 def serve_connection(request, tls, manifest, resources, manifest_body, emit, *,
                      probe_events_directory=None, certificate_sha256=None,
-                     server_instance_id=None):
+                     server_instance_id=None, linux_update_wait_loss=False):
     """Serve one canonical HTTPS-proxy connection with bounded failure evidence."""
     stage = "connect-admission"
     tunneled = None
@@ -1567,7 +1572,8 @@ def serve_connection(request, tls, manifest, resources, manifest_body, emit, *,
         if resource is None:
             tunneled.sendall(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
             return
-        length = write_resource_response(tunneled, resource, manifest, resources, manifest_body)
+        length = write_resource_response(tunneled, resource, manifest, resources, manifest_body,
+                                         linux_update_wait_loss=linux_update_wait_loss)
         if probe_ids:
             write_probe_event(events, probe_ids[0], manifest_body, certificate_sha256,
                               server_instance_id)
@@ -1584,7 +1590,9 @@ def serve_connection(request, tls, manifest, resources, manifest_body, emit, *,
                 pass
 
 
-def serve(directory, certificate, private_key, ready_file, confirmed):
+def serve(directory, certificate, private_key, ready_file, confirmed, *, linux_update_wait_loss=False):
+    require(not linux_update_wait_loss or platform.system() == "Linux",
+            "Wait loss pacing requires the Linux package-update fixture")
     require(confirmed, "Explicit owned-disposable-guest confirmation required")
     require_fixture_certificate_current(certificate)
     windows = platform.system() == "Windows"
@@ -1638,7 +1646,8 @@ def serve(directory, certificate, private_key, ready_file, confirmed):
             serve_connection(self.request, tls, manifest, resources, body,
                              lambda value: print(json.dumps(value, separators=(",", ":")), flush=True),
                              probe_events_directory=event_root, certificate_sha256=certificate_digest,
-                             server_instance_id=instance_id)
+                             server_instance_id=instance_id,
+                             linux_update_wait_loss=linux_update_wait_loss)
 
     class Server(socketserver.ThreadingTCPServer):
         daemon_threads = True
@@ -1735,6 +1744,7 @@ def main():
     serve_parser.add_argument("--private-key", type=Path, required=True)
     serve_parser.add_argument("--ready-file", type=Path, required=True)
     serve_parser.add_argument("--confirm-owned-disposable-guest", action="store_true")
+    serve_parser.add_argument("--linux-update-wait-loss", action="store_true")
     args = parser.parse_args()
     if args.action == "stage-entrypoint":
         result = stage_fixture_entrypoint(args.source_directory, args.output)
@@ -1772,7 +1782,8 @@ def main():
     elif args.action == "finalize-macos-target-package-recovery":
         result = finalize_macos_target_package_recovery(args.directory, args.confirm_owned_disposable_guest)
     else:
-        serve(args.directory, args.certificate, args.private_key, args.ready_file, args.confirm_owned_disposable_guest)
+        serve(args.directory, args.certificate, args.private_key, args.ready_file, args.confirm_owned_disposable_guest,
+              linux_update_wait_loss=args.linux_update_wait_loss)
         return
     print(json.dumps(result, indent=2))
 

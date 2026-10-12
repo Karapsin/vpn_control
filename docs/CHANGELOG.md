@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Keep MCP checks responsive and recover Linux update clients with guarded cleanup.
+
 ## 2.2.8 - 2026-10-12
 
 - Keep local parser recovery fixture bytes portable across Windows newline handling.

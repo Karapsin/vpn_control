@@ -1,6 +1,66 @@
 # Parity Failure-to-Regression Ledger
 
-## Reviewed Mac artifact and Linux fixture controls — 2026-10-12
+## Reviewed MCP responsiveness and Linux recovery — 2026-10-12
+
+Root integrates these used-tool changes from57e; the fresh post-edit prepush and
+delivery remain pending. The prior57e16-command prepush passed6331 agent tests
+with175 explicit skips and zero failures/errors. All original failures and
+engineering/native provenance remain separate from final-source acceptance.
+
+| Failure class | Actual causal evidence and repair | Routine/native limit |
+| --- | --- | --- |
+| Synchronous MCP check dispatch blocks concurrent observation/cancellation | Actual complete registration with installed SDK1.29.1 and bounded inert runner has three failures before the async wrapper, four passes after, zero skips. Only registration moves synchronous core execution to a worker thread; source validation, managed lease, CLI and schemas remain. | `test_mcp_run_checks_responsiveness` joins discovery. Original long-request delay attribution and native long-operation/shutdown custody remain separate; cancellation never terminalizes the worker. |
+| Linux wait-client endpoint parse assumes a scalar instead of schema1 JSON | Actual private schema1 endpoint requires duplicate-key/type/token/owner/mode checks. Preserved reader has four failures in nine controls; used strict reader passes all nine. Existing update route qualifies only its exact wait child/socket and recovers the same operation, verifies target hash/length and no duplicate download. | `test_linux_download_wait_loss` joins discovery,26 controls. DIRECT engineering wait-loss case is GREEN; final-source MCP package-update retake remains required. |
+| Locked fixture credential baseline cannot request synthetic cleanup | Existing guest preparation requires L/LK while optional password preservation requires P; coupling cleanup admission to that option rejects the actual locked preparation path. Current57e run beforeimage has one causal error in four controls; independent cleanup admission passes all four and six existing L/P/unknown restoration controls. | Same routine module and native driver tests. Cleanup still requires protected success, correlated recovery, exact credential restoration, supported owner quit and independent process-reference absence; unknown restoration retains state. |
+
+Canonical discovery also exposed a rehearsal-only import-path assumption in the
+new cleanup regression: bare `linux_fixture_auth` was unavailable after restoring
+`sys.path`. The actual canonical beforeimage has one ModuleNotFoundError;
+importing the same unchanged helper through the repository `scripts` namespace
+makes the complete44-test focused integration pass. Evidence remains in
+`.runtime/root-linux-routine-import-causal-2b52edaa-b215-4070-95a8-0e2dd5ecb6ac/`.
+The test is discovered normally; no runtime or credential behavior changed.
+
+Source review manifests: dispatch
+`ad63637008f1c932b3524068ba36e871cf2b3a9bd42c997f30ea79a6b4ba3fc5`
+and Linux recovery
+`aa199dc37a0382c1dfe12a48411aa4c2c0d542caa4b1f92bd935695bb7c69d03`.
+Linux isolated routine26 plus existing focused146/three Linux-PTY skips and six
+credential controls pass. These inspected receipts do not validate canonical
+integration or claim native equivalence. Native engineering corruption/cancel/
+wait-loss and420-frame headless receipts retain originald32 package provenance.
+
+## Historical Windows server fixture drift — 2026-10-12
+
+Original post-edit prepush ran6361 tests in1994.256 seconds: two failures,
+175 explicit skips, no errors. Its retained check-run UUID is
+`2e2a175c-3414-40a5-a5b5-3c7d01745454`. Both failures are historical CP117
+server-factory comparisons against the current update-fixture script; the new
+Linux-only pacing option legitimately changed that script. Actual focused
+beforeimage reproduces two failures in0.519 seconds. Genuine Git
+`57e49541612c2a2083aee261ab1f9c20c53cafa4` fixture bytes are preserved as
+`agent_tools/tests/fixtures/windows_cp117_historical_factory/update_fixture_a6445062.source`,
+100648 bytes, SHA256
+`a6445062d5885ca013eae3017b39791b844373fb472d87d8d8c22f67576a3980`.
+Historical whole-source/frame comparisons now use these strict length/hash-bound
+bytes, yielding two passes. The live `windows_acl_receipt` AST and patch hash,
+frame bounds, EOF and negative cases remain checked. The existing fixture
+`-text` rule preserves the historical bytes on Windows.
+
+The first inline helper made the large test file1048744 bytes, exceeding its
+existing1MiB bound. Actual source-pin regression failed before its expected
+readback refusal. Moving the unchanged read-only helper into the existing fixture
+context leaves the test1048303 bytes and changes that same test from failure to
+pass. No production reader limit or historical provider pin changes. The complete
+module now passes52 tests with16 explicit Windows-native skips in5.032 seconds.
+Independent source review is clear. Both causal beforeimages and actual logs are
+retained in
+`.runtime/root-cp117-fixture-history-causal-c99e9317-43b8-4c37-acd8-6b9207f965b9/`.
+The existing module remains in routine discovery; this is fixture validation,
+not native Windows acceptance or a final-source completion claim. Fresh full
+prepush and delivery remain required.
+
+## Historical reviewed Mac artifact and Linux fixture controls — 2026-10-12
 
 Additional integration controls: historical tmux fixtures copied current195ec
 build bytes into an approved874b source family, causing10 failures/34 errors in

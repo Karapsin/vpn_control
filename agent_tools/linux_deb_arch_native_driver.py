@@ -269,6 +269,9 @@ def _update_setup(intent: Mapping[str, Any], stage: Path) -> tuple[list[str], di
     argv = ["python3", "-B", str(harness), "--launcher", "/opt/vpn-control/bin/vpn-control",
             "--expected-target-version", intent["targetVersion"], "--confirm-owned-disposable-vm",
             "--require-same-source-recovery", "--retained-fixture-auth"]
+    if intent["profile"] == "package-update":
+        argv.extend(("--cleanup-synthetic-workspace", "--download-wait-client-loss", "--download-target-bytes", str(package.stat().st_size),
+                     "--download-target-sha256", intent["targetSha256"]))
     if intent["distribution"] == "arch":
         argv.extend(("--arch-source-fixture", str(stage)))
     environment = dict(os.environ)

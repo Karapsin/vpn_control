@@ -155,10 +155,15 @@ class NativeDriverTest(unittest.TestCase):
                                                "productionTrustedInstallSucceeded": True}), stderr="")
         with mock.patch.object(native, "_sha_staged_file", side_effect=["c" * 64, "d" * 64, "e" * 64]), \
              mock.patch.object(native, "_read_small_owned", side_effect=read), \
+             mock.patch.object(Path, "stat", return_value=SimpleNamespace(st_size=12345)), \
              mock.patch.object(Path, "lstat", return_value=SimpleNamespace(st_mode=stat.S_IFDIR | 0o755, st_uid=0)):
             result = native._update(intent, stage, runner)
         self.assertEqual(0, result["exitCode"])
         command, options = observed[0]
+        self.assertIn("--cleanup-synthetic-workspace", command)
+        self.assertIn("--download-wait-client-loss", command)
+        self.assertEqual("12345", command[command.index("--download-target-bytes") + 1])
+        self.assertEqual(intent["targetSha256"], command[command.index("--download-target-sha256") + 1])
         self.assertIn("--retained-fixture-auth", command)
         self.assertIn("--require-same-source-recovery", command)
         self.assertNotIn("--preserve-existing-fixture-password", command)

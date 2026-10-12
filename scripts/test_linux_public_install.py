@@ -8,6 +8,8 @@ must use --retained-fixture-auth; it keeps the private fixture credential out of
 arguments and logs.  Direct local terminal use remains available for a human.
 """
 import argparse
+import base64
+import hashlib
 import errno
 import inspect
 import json
@@ -718,19 +720,208 @@ def close_recovered_fixture_owner(ok, recovery):
     return {"controllerId": controller, "runtimeOff": True, "quitAcknowledged": True}
 
 
+def _unique_endpoint_object(pairs):
+    value={}
+    for key,item in pairs:
+        if key in value:raise ValueError()
+        value[key]=item
+    return value
+def endpoint_port(path,controller):
+    """Read the owned schema1 endpoint; never return or log its token."""
+    fd=-1
+    try:
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        before=os.fstat(fd)
+        if not(stat.S_ISREG(before.st_mode)and before.st_uid==os.geteuid()and before.st_nlink==1 and stat.S_IMODE(before.st_mode)==0o600 and 0<before.st_size<=4096):raise RuntimeError()
+        raw=os.read(fd,4097);value=json.loads(raw,object_pairs_hook=_unique_endpoint_object)
+        fields=('st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns')
+        if tuple(getattr(before,k)for k in fields)!=tuple(getattr(os.fstat(fd),k)for k in fields):raise RuntimeError()
+        if len(raw)!=before.st_size or not isinstance(value,dict)or type(value.get('schemaVersion'))is not int or value.get('schemaVersion')!=1:raise RuntimeError()
+        port=value.get('port');cid=value.get('controllerId');token=value.get('token')
+        if type(port)is not int or not 1<=port<=65535 or cid!=controller or str(uuid.UUID(cid))!=cid:raise RuntimeError()
+        if not isinstance(token,str)or not re.fullmatch(r'[A-Za-z0-9_-]{43}',token)or len(base64.urlsafe_b64decode(token+'='))!=32:raise RuntimeError()
+        if 'documentTransfers'in value and type(value['documentTransfers'])is not bool:raise RuntimeError()
+        return port
+    except Exception:
+        raise RuntimeError('private_endpoint_admission_failed')from None
+    finally:
+        if fd>=0:os.close(fd)
+
+
+def _download_intent(path, value):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        json.dump(value, stream, sort_keys=True)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def _process_birth(pid, proc=Path("/proc")):
+    return int((proc / str(pid) / "stat").read_text().rsplit(")", 1)[1].split()[19])
+
+
+def _wait_client_socket_observation(proc, pid, birth, uid, port, expected_argv):
+    """Read only the exact wait process; credentials never enter the result."""
+    p = proc / str(pid)
+    require(p.stat().st_uid == uid and _process_birth(pid, proc) == birth,
+            "Wait client identity differs")
+    argv = (p / "cmdline").read_bytes().rstrip(b"\0").split(b"\0")
+    expected = [part.encode() for part in expected_argv]
+    require(argv[-len(expected):] == expected, "Wait client argv differs")
+    inodes = set()
+    for fd in (p / "fd").iterdir():
+        try:
+            link = os.readlink(fd)
+        except FileNotFoundError:
+            continue
+        if link.startswith("socket:[") and link.endswith("]"):
+            inodes.add(link[8:-1])
+    require(len(inodes) < 256, "Wait client socket bound exceeded")
+    connected = False
+    for name in ("tcp", "tcp6"):
+        for line in (p / "net" / name).read_text().splitlines()[1:]:
+            fields = line.split()
+            if (len(fields) >= 10 and fields[3] == "01" and fields[9] in inodes
+                    and int(fields[2].rsplit(":", 1)[1], 16) == port):
+                connected = True
+    require(p.stat().st_uid == uid and _process_birth(pid, proc) == birth,
+            "Wait client identity changed")
+    require((p / "cmdline").read_bytes().rstrip(b"\0").split(b"\0")[-len(expected):] == expected,
+            "Wait client argv changed")
+    return {"connectedToOwnedActivationPort": connected, "pid": pid,
+            "startTicks": birth, "uid": uid}
+
+
+_WAIT_CLIENT_PROGRAM = (
+    "import json,os,sys\nfrom pathlib import Path\n"
+    + inspect.getsource(require) + inspect.getsource(_process_birth)
+    + inspect.getsource(_wait_client_socket_observation)
+    + "assert os.geteuid()==0\n"
+      "pid,birth,uid,port=map(int,sys.argv[1:5])\n"
+      "print(json.dumps(_wait_client_socket_observation(Path('/proc'),pid,birth,uid,port,json.loads(sys.argv[5]))))\n"
+)
+
+
+def recover_download_after_wait_client_loss(launcher, workspace, evidence, environment,
+                                           owner, invoke, ok, target_bytes, target_sha256):
+    """Native-proven procedure; preserve one accepted download on uncertainty."""
+    require(type(target_bytes) is int and 0 < target_bytes <= 1_000_000_000
+            and isinstance(target_sha256, str) and re.fullmatch('[0-9a-f]{64}', target_sha256),
+            "Download target identity is invalid")
+    baseline = ok("status")
+    cid = baseline.get("controllerId")
+    require(isinstance(cid, str) and str(uuid.UUID(cid)) == cid
+            and baseline.get("data", {}).get("runtimeRunning") is False,
+            "Download recovery requires a synthetic OFF owner")
+    owner_birth = _process_birth(owner.pid)
+    require(owner.poll() is None, "Download owner exited")
+    code, accepted = invoke("--controller-id", cid, "--async", "updates", "download")
+    op = accepted.get("operationId")
+    require(code == 0 and accepted.get("code") == "ACCEPTED" and accepted.get("final") is False
+            and accepted.get("controllerId") == cid and isinstance(op, str) and str(uuid.UUID(op)) == op,
+            "Download acceptance is unknown; do not retry")
+    _download_intent(evidence / "download-accepted.public.json",
+                     {"controllerId": cid, "operationId": op, "requestId": accepted.get("requestId"),
+                      "replayAllowed": False, "targetBytes": target_bytes, "targetSha256": target_sha256})
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        progress = ok("--controller-id", cid, "updates", "status")["data"]
+        if progress.get("phase") == "downloading" and 0 < progress.get("downloadedBytes", 0) < target_bytes:
+            break
+        time.sleep(0.1)
+    else:
+        raise RuntimeError("In-flight download not observed; retained operation must be recovered without replay")
+    arguments = ["--state-dir", str(workspace), "--json", "--controller-id", cid, "operations", "wait", op]
+    with (evidence / "lost-wait.stdout.private").open("xb") as stdout, \
+            (evidence / "lost-wait.stderr.private").open("xb") as stderr:
+        waiter = subprocess.Popen([str(launcher), *arguments], stdin=subprocess.DEVNULL,
+                                  stdout=stdout, stderr=stderr, env=environment)
+        birth, uid = _process_birth(waiter.pid), os.geteuid()
+        _download_intent(evidence / "lost-wait.handle.public.json",
+                         {"pid": waiter.pid, "startTicks": birth, "uid": uid, "role": "operation-wait-client"})
+        port = endpoint_port(workspace / "activation.port", cid)
+        deadline = time.monotonic() + 8
+        connected = False
+        while waiter.poll() is None and time.monotonic() < deadline:
+            observed = subprocess.run(["sudo", "-n", "python3", "-I", "-B", "-c", _WAIT_CLIENT_PROGRAM,
+                                       str(waiter.pid), str(birth), str(uid), str(port), json.dumps(arguments)],
+                                      capture_output=True, timeout=5, check=False)
+            require(observed.returncode == 0 and not observed.stderr and len(observed.stdout) <= 4096,
+                    "Wait client socket identity is unknown; process retained")
+            socket = json.loads(observed.stdout)
+            require(socket.get("pid") == waiter.pid and socket.get("startTicks") == birth
+                    and socket.get("uid") == uid and type(socket.get("connectedToOwnedActivationPort")) is bool,
+                    "Wait client socket receipt differs")
+            if socket["connectedToOwnedActivationPort"]:
+                connected = True
+                break
+            time.sleep(0.1)
+        require(connected and waiter.poll() is None and owner.poll() is None and waiter.pid != owner.pid,
+                "Exact connected wait client is unavailable; process retained")
+        status = ok("--controller-id", cid, "status")
+        require(status.get("controllerId") == cid and status.get("data", {}).get("runtimeRunning") is False
+                and _process_birth(owner.pid) == owner_birth and owner.poll() is None
+                and _process_birth(waiter.pid) == birth
+                and (Path('/proc') / str(waiter.pid)).stat().st_uid == uid
+                and (Path('/proc') / str(waiter.pid) / 'cmdline').read_bytes().rstrip(b'\0').split(b'\0')[-len(arguments):]
+                    == [part.encode() for part in arguments],
+                "Owner or wait client changed before loss; processes retained")
+        _download_intent(evidence / "lost-wait-termination.intent.public.json",
+                         {"pid": waiter.pid, "startTicks": birth, "uid": uid, "role": "operation-wait-client",
+                          "ownerPid": owner.pid, "ownerStartTicks": owner_birth, "controllerId": cid,
+                          "operationId": op, "signal": "SIGTERM", "runtimeOff": True, "socketConnected": True})
+        waiter.terminate()
+        wait_exit = waiter.wait(timeout=15)
+        require(wait_exit in (-signal.SIGTERM, 128 + signal.SIGTERM), "Wait client terminal exit differs")
+    code, terminal = invoke("--controller-id", cid, "--timeout-seconds", "600", "operations", "wait", op, seconds=630)
+    require(code == 0 and terminal.get("code") == "OK" and terminal.get("final") is True
+            and terminal.get("operationId") == op and terminal.get("controllerId") == cid,
+            "Original download recovery is incomplete; do not retry")
+    ready = ok("--controller-id", cid, "updates", "status")["data"]
+    status = ok("--controller-id", cid, "status")
+    require(ready.get("phase") == "ready" and status.get("controllerId") == cid
+            and status.get("data", {}).get("runtimeRunning") is False
+            and owner.poll() is None and _process_birth(owner.pid) == owner_birth,
+            "Download owner or OFF intent differs after recovery")
+    matches = []
+    for path in workspace.rglob('*'):
+        info = path.lstat()
+        if stat.S_ISREG(info.st_mode) and info.st_size == target_bytes:
+            with path.open('rb') as stream:
+                digest = hashlib.sha256()
+                for chunk in iter(lambda: stream.read(65536), b''):
+                    digest.update(chunk)
+            if digest.hexdigest() == target_sha256:
+                matches.append(path)
+    require(len(matches) == 1, "Recovered download target length/hash differs")
+    operations = ok("--controller-id", cid, "operations", "list")["data"]["operations"]
+    downloads = [item for item in operations if item.get("operation") == "updates.download"]
+    require(len(downloads) == 1 and downloads[0].get("id") == op, "Download was duplicated")
+    result = {"operationId": op, "controllerId": cid, "waitClientPid": waiter.pid,
+              "waitClientStartTicks": birth, "waitClientExit": wait_exit, "socketConnectedBeforeLoss": True,
+              "ownerPid": owner.pid, "ownerStartTicks": owner_birth, "ownerUnaffected": True,
+              "runtimeStayedOff": True, "targetBytesVerified": True, "singleDownloadOperation": True,
+              "downloadTerminalCode": terminal['code'], "downloadTerminalExit": code, "downloadTerminalFinal": True}
+    _download_intent(evidence / "download-recovery.public.json", result)
+    return result
+
+
 def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_deb_dependencies=False,
         arch_source_fixture=None, rpm_source_fixture=None, retained_fixture_auth=False,
-        preserve_existing_fixture_password=False, cleanup_synthetic_workspace_after_success=False):
+        preserve_existing_fixture_password=False, cleanup_synthetic_workspace_after_success=False,
+        download_wait_client_loss=False, download_target_bytes=None, download_target_sha256=None):
     require(confirmed and os.uname().sysname == "Linux" and os.getuid() != 0,
             "Explicit owned-disposable-VM confirmation and non-root Linux user required")
+    require(not download_wait_client_loss or (same_source_recovery and retained_fixture_auth),
+            "Wait client loss requires source-matched retained native fixture admission")
     require_human_terminal(retained_fixture_auth)
     require(not (arch_source_fixture is not None and rpm_source_fixture is not None),
             "Arch and RPM source fixtures are mutually exclusive")
     require(not preserve_existing_fixture_password or retained_fixture_auth,
             "Existing fixture password preservation requires retained fixture authentication")
     require(not cleanup_synthetic_workspace_after_success or
-            (same_source_recovery and retained_fixture_auth and preserve_existing_fixture_password),
-            "Synthetic workspace cleanup requires same-source recovery and restored retained fixture credentials")
+            (same_source_recovery and retained_fixture_auth),
+            "Synthetic workspace cleanup requires same-source recovery and retained fixture credentials")
     if arch_source_fixture is not None:
         # The privileged Arch adapter admits only this fixed installation root.
         # Reject alternate fixture paths before launching any owner or authorization.
@@ -835,7 +1026,12 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
     require(checked.get("available") is True and checked.get("compatible") is True
             and checked.get("availableVersion") == target_version,
             f"No newer trusted matching asset for the specified version/VM architecture: {checked}")
-    ok(*timed_update_command("download", 600), seconds=630)
+    download_recovery = None
+    if download_wait_client_loss:
+        download_recovery = recover_download_after_wait_client_loss(
+            launcher, workspace, evidence, environment, owner, invoke, ok, download_target_bytes, download_target_sha256)
+    else:
+        ok(*timed_update_command("download", 600), seconds=630)
     require(ok("updates", "status")["data"].get("phase") == "ready", "Download did not become verified/ready")
     if retained_fixture_auth:
         exit_code, accepted = invoke_retained_install(
@@ -904,7 +1100,7 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
         dependency_evidence = {"installed": {name: value for name, value in after_packages.items() if name not in before_packages},
                                "changed": {name: [before_packages[name], value] for name, value in after_packages.items()
                                            if name in before_packages and before_packages[name] != value}}
-    result = {"productionTrustedInstallSucceeded": True, "targetVersion": target_version,
+    result = {"downloadWaitClientLoss": download_recovery, "productionTrustedInstallSucceeded": True, "targetVersion": target_version,
               "accepted": accepted, "protectedReceipt": receipt, "replacementRecoveryObservation": recovery,
               "sameSourceRecoveryProven": same_source_recovery, "sourceFingerprint": fixture.get("sourceFingerprint"),
               "freshDependencyEvidence": dependency_evidence, "evidence": str(evidence),
@@ -949,8 +1145,12 @@ if __name__ == "__main__":
                         help="Explicitly restore a pre-existing P-baseline after retained fixture authentication")
     parser.add_argument("--cleanup-synthetic-workspace", action="store_true",
                         help="After terminal protected success/recovery, remove only the owned synthetic workspace")
+    parser.add_argument("--download-wait-client-loss", action="store_true")
+    parser.add_argument("--download-target-bytes", type=int)
+    parser.add_argument("--download-target-sha256")
     args = parser.parse_args()
     run(args.launcher, args.expected_target_version, args.confirm_owned_disposable_vm,
         args.require_same_source_recovery, args.require_fresh_deb_dependencies, args.arch_source_fixture,
         args.rpm_source_fixture, args.retained_fixture_auth, args.preserve_existing_fixture_password,
-        args.cleanup_synthetic_workspace)
+        args.cleanup_synthetic_workspace, args.download_wait_client_loss,
+        args.download_target_bytes, args.download_target_sha256)

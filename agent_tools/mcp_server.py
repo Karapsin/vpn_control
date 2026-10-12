@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import functools
 from datetime import date
 import hashlib
 import importlib
@@ -8637,6 +8639,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     return _json_print(git_workflow(args.action, args.message, args.paths, args.sha))
 
 
+@functools.wraps(run_checks)
+async def _run_checks_mcp(area: str = "auto", level: str = "focused", dry_run: bool = False) -> dict[str, Any]:
+    # The unchanged core owns source validation, command custody and the managed lease.
+    # Cancelling this await never cancels its original check worker.
+    return await asyncio.to_thread(run_checks, area, level, dry_run)
+
+
 MCP_SERVER = None
 if FastMCP is not None:  # pragma: no branch - depends on the optional launcher environment.
     MCP_SERVER = FastMCP("vpn-control-agent-tools", instructions=SERVER_INSTRUCTIONS)
@@ -8644,7 +8653,7 @@ if FastMCP is not None:  # pragma: no branch - depends on the optional launcher 
     MCP_SERVER.tool()(docs)
     MCP_SERVER.tool()(change_impact)
     MCP_SERVER.tool()(workflow_status)
-    MCP_SERVER.tool()(run_checks)
+    MCP_SERVER.tool(name="run_checks")(_run_checks_mcp)
     MCP_SERVER.tool()(version_bump)
     MCP_SERVER.tool()(release_workflow)
     MCP_SERVER.tool()(visual_workflow)
