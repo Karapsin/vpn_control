@@ -22,6 +22,30 @@ python3 scripts/test_android_instrumentation_signatures.py
 python3 scripts/test_windows_qga_powershell_size.py
 ```
 
+## Mac artifact selection and Linux fixture admission
+
+`python3 scripts/test_macos_artifact_upload_selection.py` requires Node.js,
+npm and access to the npm registry for the locked fixture-only `npm ci`.
+The runner creates and removes its own ignored temporary dependency/cache tree;
+there is no repository-root Node project or `node_modules` installation.
+Release hygiene, Fast Checks and the macOS package PR path filters enroll this
+selector. Missing Node/npm fails the prerequisite. Five actual YAML/glob cases
+run on every host; three signed-bundle/codesign cases run on macOS and explicitly
+skip elsewhere. macOS requires `codesign`. The fixtures pin the original resolved
+upload-artifact v4.6.2 glob0.5.0 engine; requalify that pin when the action changes.
+The unchanged success artifact selector must retain hidden sealed bundle members
+with `include-hidden-files: true`; missing hidden metadata and tampering fail.
+
+Run `agent_tools.tests.test_linux_package_fixture_launcher_preflight` and
+`agent_tools.tests.test_linux_recovered_owner_cleanup` through ordinary agent-tool
+unittest discovery after Linux fixture changes. The actual fixed fixture driver
+selects inherited `JAVA_HOME`, then resolved PATH Java, and runs strict jpackage
+preflight before runtime preparation or either package family. The actual cleanup
+path queries the exact recovered controller, proves runtime OFF and requires
+final supported quit before removing its synthetic workspace. Running runtime,
+changed controller and uncertain quit retain the workspace. These inert causal
+controls do not replace installed-package DIRECT and matching MCP acceptance.
+
 ## Windows compressed task and inert preflight
 
 Run `python3 -m unittest agent_tools.tests.test_windows_msi_public_scenario`

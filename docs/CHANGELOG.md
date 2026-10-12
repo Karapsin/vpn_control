@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.8 - 2026-10-12
 
 - Keep local parser recovery fixture bytes portable across Windows newline handling.
 - Isolate local SSH parser fixtures and enroll portable build timing checks.
@@ -13,6 +13,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Guard Windows input observers and retain exact historical MCP transition fixtures.
 - Size Windows input captures for full prompts and refresh the reviewed SSH close dependency.
 - Serialize Windows input source verification and closure while preserving drift refusal.
+- Preserve hidden macOS fixture metadata and guard Linux fixture builds and recovered-owner cleanup with causal checks.
+- Keep historical tmux test sources pinned and make permission-preservation fixtures independent of caller umask.
 
 ## 2.2.7 - 2026-10-11
 

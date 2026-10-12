@@ -20,6 +20,7 @@ from unittest import mock
 from agent_tools import ssh_tmux_session_ssh as adapter
 from agent_tools import ssh_tmux_session as session
 from agent_tools import linux_package_fixture_build as build
+from agent_tools.tests.fixtures.tmux_reviewed_build import reviewed_build_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -75,8 +76,8 @@ class DriverTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir='/tmp'); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name); self.root.chmod(0o700)
         tools = self.root / 'agent_tools'; tools.mkdir()
-        for name in ('linux_package_fixture_build.py', 'ssh_tmux_session.py'):
-            shutil.copyfile(ROOT / 'agent_tools' / name, tools / name)
+        (tools / 'linux_package_fixture_build.py').write_bytes(reviewed_build_bytes())
+        shutil.copyfile(ROOT / 'agent_tools/ssh_tmux_session.py', tools / 'ssh_tmux_session.py')
         key = self.root / 'key'; key.write_bytes(b'private key'); key.chmod(0o600)
         known = self.root / 'known'; known.write_bytes(b'known host'); known.chmod(0o600)
         config = {'schemaVersion': 1, 'hosts': {'archlinux': {'host': 'fixture', 'port': 22, 'user': 'owner',
@@ -155,6 +156,19 @@ class DriverTests(unittest.TestCase):
         count = len(self.remote.calls)
         self.assertEqual('unknown', self.driver.status(self.req)['state'])
         self.assertEqual(count, len(self.remote.calls))
+
+    def test_current_and_future_unreviewed_tools_refuse_before_submission(self):
+        current = (ROOT / 'agent_tools/linux_package_fixture_build.py').read_bytes()
+        future = reviewed_build_bytes() + b'\n# synthetic future unreviewed source\n'
+        path = self.root / 'agent_tools/linux_package_fixture_build.py'
+        for label, raw in (('current', current), ('future', future)):
+            if hashlib.sha256(raw).hexdigest() == session.REVIEWED_BUILD_SHA256:
+                continue
+            with self.subTest(source=label):
+                path.write_bytes(raw)
+                with self.assertRaisesRegex(adapter.AdapterError, 'unreviewed_tool_source'):
+                    self.driver._tools()
+                self.assertEqual([], self.remote.calls)
 
     def test_reviewed_timeout_repair_overlay_passes_exact_tools_gate(self):
         # This specific producer delta has independent causal review 245b9910.

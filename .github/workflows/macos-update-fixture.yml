@@ -101,6 +101,7 @@ jobs:
             ${{ runner.temp }}/vpn-control-macos-update-fixture/target-build.log
             ${{ runner.temp }}/vpn-control-macos-update-fixture/packages/base/**
             ${{ runner.temp }}/vpn-control-macos-update-fixture/packages/target/**
+          include-hidden-files: true
           if-no-files-found: error
 
       - name: Preserve failed build diagnostics

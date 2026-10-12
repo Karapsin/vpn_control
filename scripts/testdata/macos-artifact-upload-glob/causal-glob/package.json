@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@actions/glob": "0.5.0",
+    "yaml": "2.8.1"
+  }
+}

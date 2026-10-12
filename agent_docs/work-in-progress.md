@@ -33,6 +33,49 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
+## Continuation evidence snapshot — 2026-10-12, reviewed integration
+
+Integration starts from `60e925b21274d5502517562c8d9375b24881464f`,
+fingerprint `de599ab40b3546cd8863340d90d9c22620dfe401e38240b50b92e00a6e1340f8`,
+product2.2.7. Root owns the reviewed Mac artifact/routine and Linux fixture/JDK
+preflight/cleanup integration plus these three maintainer-doc updates. The
+16-path ignored rehearsal passed eleven Python controls together. Native operators
+closed their local source holders before canonical edits and preserve accepted
+guest owners, operations and original records. This documents one intentional
+integration bucket; versioning, final prepush and dev delivery remain pending.
+The user requested one final exact-SHA five-workflow verification at the end.
+No release is requested. Earlier snapshots and original failures remain below.
+
+| Platform | Evidence at this snapshot | Remaining gate |
+| --- | --- | --- |
+| Linux | Complete DIRECT engineering d32 DEB2.1.19→2.2.2 install, protected result, same-source recovery, supported OFF quit and synthetic cleanup is GREEN; `4df8a92e33ef768d4b3578afe2114cc40bb5f21238dc1a720bd8c765cfe707e2` authenticates the finite typed observation. Corrupted-download and slow-download cancellation cases also pass. Wait-client-loss remains UNKNOWN: port parsing failed before any signal; its original operation is terminal OK and its wait client naturally absent. The guest owner/workspace remain preserved. Launcher preflight has one causal failure→seven passes; cleanup has one failure→four passes. | Recover the retained third case; use new final-source artifacts and genuine fixed MCP guest admission for matching MCP retests and the remaining36 Linux occurrences. Preserve engineering provenance and old custody. |
+| Android | Native24374 retains a stable current tuple and three physical entries; these are not three logical receipts. Later74353 collector exited1 with a missing-path stat failure; classification and idle disposition remain UNKNOWN. | Diagnose the retained collector record and prove actual original-operation disposition, then the remaining DIRECT/MCP native cases; no reset or replay inferred. |
+| Windows | Native Windows5.1 qualification proves three held payload pins and three denied writer opens. Bootstrap87256/SYSTEM1480 terminated1; the original task ended Ready/LastResult2 with admission-only UNKNOWN, no uninstall/install exit and no MSI process. Native9992 confirms ReadPackage emitted three unwanted COM outputs before each GUID; three void wrappers produce the same scalar GUIDs. | Preserve the original failed task/context. Use a fresh namespace and source binding for baseline restoration, update scenarios and equivalent MCP retests. |
+| macOS | Memory samples pass the8GiB threshold; there is no qualified clean baseline. Stopped Tart53 and legacy465a missing-boot-token installer remain UNKNOWN/preserved. About9GB local disk is insufficient for the conservative80GB fresh-source/cache/growth budget; no suitable mounted volume was found. Mac hidden-artifact source controls pass eight cases, including native codesign/tamper components. | Trusted separate source, disk/resource admission and actual access/dependency/no-pending proofs, then native35 occurrences and58 scene reviews. No boot, installer or host-app termination follows from memory alone. |
+
+Node/npm and locked fixture dependency access are now an explicit release hygiene
+prerequisite; macOS signature cases retain their platform requirement.
+See [test-matrix.md](test-matrix.md) and
+[parity-failure-regressions.md](parity-failure-regressions.md) for selectors,
+causal evidence and native limits. Final-source/MCP acceptance and final CI remain
+open across the task; no completion percentage is assigned.
+
+Validation follow-up,15:55 Moscow: the original MCP full suite returned6329 tests
+in2058.105 seconds, with10 failures,36 errors and175 skips. Its older output
+shape has no current retention metadata and omits most failure identities;
+absence of a current-format lock or receipt did not prove nonexecution. The fresh
+CLI fallback retains complete check output. Its release-hygiene run exposed two
+fixture-mode assumptions under inherited umask077; product permissions were
+preserved correctly. Explicit owned fixture beforeimages now pass all12 controls
+under077 and022. Historical tmux tests also copied the changed current build helper
+into an approved874b catalogue; genuine Git60e build/factory bytes restore the
+fixture without changing production approval constants. The affected slice has
+10 failures/34 errors before and90 passes after, including current/future source
+refusals. Two original full-suite error identities remain unavailable; a fresh
+complete prepush must establish whether they persist. Root includes these nine
+test-only paths in the intentional integration bucket. Native holders stay closed
+until clean delivery. The separate MCP responsiveness proposal remains source-only.
+
 ## Current acceptance status — 2026-10-12, Windows engineering update verified
 
 The full22-group/217-scenario plan remains incomplete. One engineering Windows

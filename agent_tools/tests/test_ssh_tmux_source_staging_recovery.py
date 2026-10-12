@@ -15,6 +15,7 @@ from agent_tools import ssh_tmux_source_staging_recovery as recovery
 from agent_tools import ssh_tmux_session_ssh as old
 from agent_tools import ssh_tmux_session as session
 from agent_tools import linux_package_fixture_build as build
+from agent_tools.tests.fixtures.tmux_reviewed_build import reviewed_tool_sources
 
 
 def remote_program(program, payload, handler):
@@ -31,7 +32,7 @@ class StageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);root.chmod(0o700)
             req=old.purpose(recovery.OLD_REQUEST)
-            tools=old.TmuxArchDriver(Path(__file__).resolve().parents[2])._tools()
+            tools=reviewed_tool_sources()
             payload={'request':req,'build':base64.b64encode(tools['linux_package_fixture_build.py']['raw']).decode(),
                      'tool':base64.b64encode(tools['ssh_tmux_session.py']['raw']).decode()}
             calls=[]

@@ -14,6 +14,8 @@ on:
       - "scripts/record_macos_fixture_signing.py"
       - "scripts/test_record_macos_fixture_signing.py"
       - "scripts/test_macos_update_fixture_workflow.py"
+      - "scripts/test_macos_artifact_upload_selection.py"
+      - "scripts/testdata/macos-artifact-upload-glob/**"
       - "scripts/setup_macos_signing.sh"
       - "scripts/test_setup_macos_signing.py"
       - ".github/workflows/windows-desktop.yml"

@@ -703,6 +703,21 @@ def invoke_retained_install(launcher, workspace, environment, arguments, credent
         public_output.close()
 
 
+def close_recovered_fixture_owner(ok, recovery):
+    """Quit only the recovered synthetic OFF owner before workspace cleanup."""
+    controller = recovery.get("controllerId")
+    require(isinstance(controller, str) and str(uuid.UUID(controller)) == controller,
+            "Cleanup requires the exact recovered owner")
+    status = ok("--controller-id", controller, "status")
+    require(status.get("controllerId") == controller and
+            status.get("data", {}).get("runtimeRunning") is False,
+            "Cleanup must preserve a running or changed owner")
+    stopped = ok("--controller-id", controller, "quit")
+    require(stopped.get("controllerId") == controller and stopped.get("final") is True,
+            "Recovered owner quit is not proven; workspace retained")
+    return {"controllerId": controller, "runtimeOff": True, "quitAcknowledged": True}
+
+
 def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_deb_dependencies=False,
         arch_source_fixture=None, rpm_source_fixture=None, retained_fixture_auth=False,
         preserve_existing_fixture_password=False, cleanup_synthetic_workspace_after_success=False):
@@ -900,6 +915,7 @@ def run(launcher, target_version, confirmed, same_source_recovery=False, fresh_d
         # deliberately late: terminal receipt, replacement recovery, credential
         # restoration and the original owner must all already be proven.
         try:
+            result["replacementOwnerQuit"] = close_recovered_fixture_owner(ok, recovery)
             cleanup_synthetic_workspace(workspace, evidence, owner,
                                         protected_success=True,
                                         recovered=recovery_proven,

@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import select
+import shutil
 import stat
 import subprocess
 import sys
@@ -586,6 +587,20 @@ def _run_build(argv: list[str], cwd: Path, log: Path, timeout: int) -> None:
     _need(time.monotonic_ns() > started, "Build timing clock is invalid")
 
 
+def _launcher_jdk() -> Path:
+    """Select the inherited build JVM; validate it before any fixture build."""
+    home = os.environ.get("JAVA_HOME")
+    if home:
+        jdk = Path(home).resolve(strict=True)
+    else:
+        java = shutil.which("java")
+        _need(java is not None, "Linux fixture packaging JVM is unavailable")
+        jdk = Path(java).resolve(strict=True).parent.parent
+    _need(jdk.is_dir() and (jdk / "bin/java").is_file(),
+          "Linux fixture packaging JVM is unavailable")
+    return jdk
+
+
 def _remote_run(job: Path, request: Mapping[str, Any]) -> None:
     """Execute only the two fixed fixture families in an exact-source clone."""
     request = _request(request)
@@ -594,6 +609,8 @@ def _remote_run(job: Path, request: Mapping[str, Any]) -> None:
                           capture_output=True, text=True, timeout=20, check=False)
     _need(head.returncode == 0 and head.stdout.strip() == request["sourceSha"],
           "Remote build source differs")
+    _run_build(["python3", "scripts/test_jpackage_launcher.py", "--jdk", str(_launcher_jdk())],
+               source, job / "launcher-preflight.log", 360)
     runtime = source / "desktopApp/src/main/resources/bin/linux-amd64/sing-box"
     _run_build(["bash", "scripts/prepare_sing_box_desktop_runtime.sh"], source,
                job / "runtime-prep.log", 900)

@@ -1,5 +1,40 @@
 # Parity Failure-to-Regression Ledger
 
+## Reviewed Mac artifact and Linux fixture controls — 2026-10-12
+
+Additional integration controls: historical tmux fixtures copied current195ec
+build bytes into an approved874b source family, causing10 failures/34 errors in
+the affected slice. Genuine Git60e build and factory beforeimages restore90
+passing controls; current/future source refusal and every production approval
+constant remain. PUBLIC manifest SHA
+`71d8a0b74e86d64be12f95acadffcdcd268f7093aad3895614238a1b07f84936`
+pins the eight test-only paths and causal logs. Two permission-preservation tests
+also assumed mkdir(mode0750) ignored umask077; explicitly establishing their
+owned0750 beforeimages changes two failures to12 passes under077 and022, with
+the product helper unchanged. PUBLIC manifest SHA
+`71399064e3f62a576651609d96eebafebde4034deb2198a94ac1f5220cb1c860`
+pins that one test path. These controls are enrolled in existing discovery and
+release hygiene. Full prepush, native equivalence and delivery remain pending.
+
+Frozen integration caller is `60e925b21274d5502517562c8d9375b24881464f`,
+product2.2.7. The reviewed patches are integrated by root; final validation and
+delivery remain pending at this snapshot. Original failures, beforeimages and
+history remain.
+
+| Failure class | Preserved causal evidence and narrow repair | Routine and native scope |
+| --- | --- | --- |
+| Mac fixture upload loses hidden sealed bundle metadata | Original41ec loose artifact fails codesign while both original signed DMGs verify. The actual resolved upload-artifact v4.6.2 glob0.5.0/YAML selector loses hidden members; success upload adds only `include-hidden-files: true`. Current workflow RED has two failures in eight cases; candidate passes all eight, including tamper rejection. Actual Node.win32 member mapping separately has RED→GREEN after separator normalization. | `scripts/test_macos_artifact_upload_selection.py` joins existing release hygiene and workflow filters. Node/npm plus locked registry dependencies are required; five portable cases and three macOS-only codesign cases retain explicit platform gates. This component does not qualify current-source Mac packages or native installer acceptance. |
+| Linux fixed fixture build omits strict JDK launcher preflight | Preserved actual `_remote_run` admits measured dirty launcher output: one causal failure. Candidate runs strict launcher preflight before runtime preparation/default+arch package builds and passes seven controls. The portable inert command classifier uses `PureWindowsPath` basename; production selector is unchanged by that test correction. | `agent_tools.tests.test_linux_package_fixture_launcher_preflight` joins ordinary discovery. Actual strict preflight runs with inherited JDK selection; final-source equivalent native build and MCP cases remain. |
+| Recovered Linux synthetic owner still references cleanup workspace | Preserved actual cleanup prefix reaches workspace removal with a live replacement owner: one causal failure. Candidate proves exact recovered controller/runtime OFF, performs supported final quit, then cleans; four controls pass, including running/changed/unknown refusal. | `agent_tools.tests.test_linux_recovered_owner_cleanup` joins discovery. Complete DIRECT engineering DEB installation, same-source recovery, OFF quit and cleanup is GREEN in the authenticated `4df8a92e…` typed observation; final-source and matching MCP acceptance remain open. |
+
+Public source/evidence pins: Mac integration manifest `8dd2a3c60bcf710418b407720c8ae3be97ac2b4fbfff8b966675b3293d79b188`;
+Linux launcher manifest `d65be6c1e66ba91320b746f70e8fcd84d14c834275fe4afbab7e842062cc44e9`;
+cleanup source/control manifest `1dd2ec24536cbd161137819943b35e7d09c94e07ddebfa19873070088d018957`;
+DIRECT typed observation `4df8a92e33ef768d4b3578afe2114cc40bb5f21238dc1a720bd8c765cfe707e2`.
+The original Mac41ec2.2.5→2.2.6 pair and Linuxd32 derived2.1.19→2.2.2 pair
+retain their original provenance. No source relabel, unknown-job replay or final CI
+claim follows from these component results.
+
 ## Windows emitted task and preflight command bounds — 2026-10-12
 
 The real public MSI producer `_bootstrap` emitted a ScheduledTask argument of

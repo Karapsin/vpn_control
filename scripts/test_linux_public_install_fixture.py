@@ -110,6 +110,7 @@ class FixtureProvisioningTest(unittest.TestCase):
         def race(command, **kwargs):
             if "mkdir" in command and command[-1] == str(local) and not local.exists():
                 local.mkdir(mode=0o750)
+                local.chmod(0o750)
             return original(command, **kwargs)
         self.boundary.run = race
         self.prepare()
@@ -172,6 +173,7 @@ class FixtureProvisioningTest(unittest.TestCase):
     def test_existing_modes_are_preserved(self):
         local = self.home / ".local"
         local.mkdir(mode=0o750)
+        local.chmod(0o750)
         self.prepare()
         self.assertEqual(0o750, stat.S_IMODE(local.stat().st_mode))
         self.assertFalse(any(call[-1] == str(local) and "chmod" in call

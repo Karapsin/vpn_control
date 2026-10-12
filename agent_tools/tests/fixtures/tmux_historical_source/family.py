@@ -41,7 +41,7 @@ def load_family():
         return module
     for name in PINS:
         path,raw=source(name);modules[name]=compile_module(name,path,raw)
-    factory_path=BASE.parents[1]/'test_ssh_tmux_session_ssh.py'
+    factory_path=BASE/'test_ssh_tmux_session_ssh.py.source'
     raw=factory_path.read_bytes()
     if hashlib.sha256(raw).hexdigest()!=FACTORY_SHA:
         raise AssertionError('historical_factory_source_changed')

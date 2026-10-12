@@ -13,6 +13,7 @@ import unittest
 from unittest import mock
 
 from agent_tools import ssh_tmux_session as tool
+from agent_tools.tests.fixtures.tmux_reviewed_build import reviewed_build_bytes, load_reviewed_build
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -28,7 +29,7 @@ class SessionTests(unittest.TestCase):
         self.job = self.parent / self.req['correlationId']; self.job.mkdir(mode=0o700)
         self.source = self.job / 'source'; (self.source / 'agent_tools').mkdir(parents=True)
         self.helper = self.source / 'agent_tools/linux_package_fixture_build.py'
-        shutil.copyfile(ROOT / 'agent_tools/linux_package_fixture_build.py', self.helper)
+        self.helper.write_bytes(reviewed_build_bytes())
         self.commands = []; self.sockets = []
         self.addCleanup(lambda: [s.close() for s in self.sockets])
         self.failure = False
@@ -98,6 +99,19 @@ class SessionTests(unittest.TestCase):
         self.helper.write_bytes(self.helper.read_bytes() + b'\n# changed')
         with self.assertRaisesRegex(tool.SessionError, 'unreviewed_build_source'): self.start()
         self.assertFalse((self.job / 'tmux-launch.json').exists())
+
+    def test_current_and_future_unreviewed_build_sources_are_refused(self):
+        current = (ROOT / 'agent_tools/linux_package_fixture_build.py').read_bytes()
+        future = reviewed_build_bytes() + b'\n# synthetic future unreviewed source\n'
+        for label, raw in (('current', current), ('future', future)):
+            if hashlib.sha256(raw).hexdigest() == tool.REVIEWED_BUILD_SHA256:
+                continue  # An unchanged current source remains reviewed.
+            with self.subTest(source=label):
+                self.helper.write_bytes(raw)
+                with self.assertRaisesRegex(tool.SessionError, 'unreviewed_build_source'):
+                    self.start()
+                self.assertFalse((self.job / 'tmux-launch.json').exists())
+                self.assertEqual(0, self.submissions())
 
     def test_same_byte_source_replacement_rejected_after_start(self):
         result = self.start(); replacement = self.helper.with_suffix('.new'); shutil.copyfile(self.helper, replacement); replacement.replace(self.helper)
@@ -216,7 +230,7 @@ class SessionTests(unittest.TestCase):
         self.assertFalse((self.job / 'terminal.json').exists())
 
     def test_original_foreground_tar_loses_result_on_disconnect_after_build(self):
-        from agent_tools import linux_package_fixture_build as original
+        original = load_reviewed_build()
         runtime = self.source / 'desktopApp/src/main/resources/bin/linux-amd64/sing-box'
         runtime.parent.mkdir(parents=True); runtime.write_bytes(b'inert-runtime')
         artifact = self.job / 'inert-package'; artifact.write_bytes(b'completed package')

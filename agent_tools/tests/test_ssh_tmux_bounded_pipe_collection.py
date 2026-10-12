@@ -12,6 +12,7 @@ from unittest import mock
 from agent_tools import ssh_tmux_bounded_pipe_collection as collection
 from agent_tools import ssh_tmux_session as session
 from agent_tools.tests import test_ssh_tmux_session_ssh as original_tests
+from agent_tools.tests.fixtures.tmux_reviewed_build import reviewed_build_bytes
 
 PIN={'generation':[1,2,33152,getattr(os,'getuid',lambda:0)(),getattr(os,'getgid',lambda:0)(),10,1,1,1],'sha256':'a'*64}
 AUTH={'sourceSha':'a'*40,'intentPin':PIN,'anchorPin':PIN,'terminalPin':PIN,'action':'collect','collectorSourcePin':PIN,'argvSha256':'b'*64}
@@ -31,9 +32,23 @@ class BoundedPipeCollectionTest(unittest.TestCase):
             root=Path(tmp).resolve();tools=root/'agent_tools';tools.mkdir()
             source=Path(__file__).resolve().parents[2]/'agent_tools'
             for name in collection.CURRENT_SOURCES:
-                shutil.copyfile(source/name,tools/name)
+                if name == 'linux_package_fixture_build.py':
+                    (tools/name).write_bytes(reviewed_build_bytes())
+                else:
+                    shutil.copyfile(source/name,tools/name)
             pins=collection._current_sources(root)
             self.assertEqual(len(pins),5)
+            build_path=tools/'linux_package_fixture_build.py'
+            current=(source/'linux_package_fixture_build.py').read_bytes()
+            future=reviewed_build_bytes()+b'\n# synthetic future unreviewed source\n'
+            for label,raw in (('current',current),('future',future)):
+                if raw == reviewed_build_bytes():
+                    continue
+                with self.subTest(source=label):
+                    build_path.write_bytes(raw)
+                    with self.assertRaisesRegex(collection.CollectionError,'current_source_changed'):
+                        collection._current_sources(root)
+                    build_path.write_bytes(reviewed_build_bytes())
             with self.assertRaisesRegex(collection.CollectionError,'frozen_source_changed'):
                 collection._sources(root)
             # Each successor is exact bytes, not a source label or caller hash.
