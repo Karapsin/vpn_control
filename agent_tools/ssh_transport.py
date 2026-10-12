@@ -11,7 +11,7 @@ from enum import Enum
 import json
 import importlib
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import shlex
 import stat
@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Any, Iterable, Mapping, Sequence
+import uuid
 
 
 CONFIG_FILENAME = ".vm-hosts.local.json"
@@ -71,6 +72,39 @@ class WindowsCredentialProbe:
 
 
 @dataclass(frozen=True)
+class WindowsInputTokenPolicy:
+    kind: str
+    elevation: int
+    elevation_type: int
+    admin_member: bool
+    admin_enabled: bool
+
+
+@dataclass(frozen=True)
+class WindowsInputProfile:
+    """Configured selectors; these values do not prove native guest admission."""
+
+    environment: str
+    qga_socket_path: PurePosixPath
+    qmp_socket_path: PurePosixPath
+    qemu_pid: int
+    qemu_start_ticks: int
+    qemu_parent_pid: int
+    qemu_uid: int
+    qemu_argv_sha256: str
+    host_boot_id: str
+    account_name: str
+    expected_sid: str
+    session_id: int
+    profile_root: PureWindowsPath
+    installed_root: PureWindowsPath
+    task_root_parent: PureWindowsPath
+    native_context_path: Path
+    native_context_sha256: str
+    token_policy: WindowsInputTokenPolicy
+
+
+@dataclass(frozen=True)
 class SshHost:
     alias: str
     host: str
@@ -88,6 +122,7 @@ class SshHost:
     android_devices: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     password: str | None = field(default=None, repr=False, compare=False)
     windows_credential_probe: WindowsCredentialProbe | None = field(default=None, repr=False)
+    windows_input_profiles: Mapping[str, WindowsInputProfile] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True)
@@ -265,12 +300,116 @@ def _windows_credential_probe(value: Any) -> WindowsCredentialProbe:
                                   _ssh_user(value["accountName"]), sid, _path(value["credentialPath"], "credentialPath"), admission)
 
 
+def _windows_input_socket(value: Any, field_name: str) -> PurePosixPath:
+    if (type(value) is not str or not value.startswith("/") or value.startswith("//")
+            or value != value.strip() or _CONTROL_RE.search(value) or "\\" in value
+            or any(part in {"", ".", ".."} for part in value.split("/")[1:])):
+        raise SshConfigError(f"{field_name} requires a dedicated absolute POSIX path.")
+    return PurePosixPath(value)
+
+
+def _windows_input_path(value: Any, field_name: str) -> PureWindowsPath:
+    if (type(value) is not str or not value.startswith("C:\\") or value != value.strip()
+            or _CONTROL_RE.search(value) or "/" in value):
+        raise SshConfigError(f"{field_name} requires an absolute Windows profile path.")
+    parts = value[3:].split("\\")
+    if any(not part or part in {".", ".."} or part.rstrip(" .") != part
+           or re.search(r'[<>:"|?*]', part)
+           or re.fullmatch(r"(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", part)
+           for part in parts):
+        raise SshConfigError(f"Invalid {field_name} in Windows input profile.")
+    return PureWindowsPath(value)
+
+
+def _windows_input_context_path(value: Any) -> Path:
+    if (type(value) is not str or value != value.strip() or _CONTROL_RE.search(value)
+            or not value.startswith("/") or value.startswith("//") or "\\" in value
+            or any(part in {"", ".", ".."} for part in value.split("/")[1:])):
+        raise SshConfigError("nativeContextPath requires a dedicated absolute local path.")
+    return Path(value)
+
+
+def _windows_input_profiles(value: Any) -> dict[str, WindowsInputProfile]:
+    """Parse named operator records without selecting a guest or performing I/O."""
+    if type(value) is not dict:
+        raise SshConfigError("windowsInputProfiles must be an object.")
+    fields = {"environment", "qgaSocketPath", "qmpSocketPath", "qemuPid", "qemuStartTicks",
+              "qemuParentPid", "qemuUid", "qemuArgvSha256", "hostBootId", "accountName",
+              "expectedSid", "sessionId", "profileRoot", "installedRoot", "taskRootParent",
+              "nativeContextPath", "nativeContextSha256", "tokenPolicy"}
+    policy_fields = {"kind", "elevation", "elevationType", "adminMember", "adminEnabled"}
+    result = {}
+    for alias, profile in value.items():
+        if type(alias) is not str or not _ALIAS_RE.fullmatch(alias):
+            raise SshConfigError("Invalid Windows input profile name.")
+        if type(profile) is not dict or set(profile) != fields:
+            raise SshConfigError("Windows input profile requires exact VM, account, path and token fields.")
+        environment = profile["environment"]
+        if type(environment) is not str or not _ALIAS_RE.fullmatch(environment):
+            raise SshConfigError("Invalid Windows input environment.")
+        qga = _windows_input_socket(profile["qgaSocketPath"], "qgaSocketPath")
+        qmp = _windows_input_socket(profile["qmpSocketPath"], "qmpSocketPath")
+        if qga == qmp:
+            raise SshConfigError("Windows input requires distinct QGA and QMP paths.")
+        if any(type(profile[key]) is not int or profile[key] <= 0
+               for key in ("qemuPid", "qemuStartTicks", "qemuParentPid")):
+            raise SshConfigError("Windows input requires explicit positive process generation fields.")
+        if type(profile["qemuUid"]) is not int or profile["qemuUid"] < 0:
+            raise SshConfigError("Invalid Windows input process owner.")
+        digest = profile["qemuArgvSha256"]
+        if type(digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise SshConfigError("Invalid Windows input process argument digest.")
+        boot_id = profile["hostBootId"]
+        try:
+            canonical_boot_id = str(uuid.UUID(boot_id)) if type(boot_id) is str else None
+        except ValueError:
+            canonical_boot_id = None
+        if canonical_boot_id != boot_id or canonical_boot_id is None:
+            raise SshConfigError("Invalid Windows input host boot identity.")
+        account = profile["accountName"]
+        if type(account) is not str or not _USER_RE.fullmatch(account):
+            raise SshConfigError("Invalid Windows input local account name.")
+        sid = profile["expectedSid"]
+        if type(sid) is not str or not re.fullmatch(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+", sid):
+            raise SshConfigError("Invalid Windows input account SID.")
+        if type(profile["sessionId"]) is not int or profile["sessionId"] != 1:
+            raise SshConfigError("Windows input requires the configured ordinary session.")
+        root_text = "C:\\Users\\" + account
+        profile_root = _windows_input_path(profile["profileRoot"], "profileRoot")
+        installed_root = _windows_input_path(profile["installedRoot"], "installedRoot")
+        task_parent = _windows_input_path(profile["taskRootParent"], "taskRootParent")
+        task_prefix = root_text + "\\AppData\\Local\\VpnControl\\"
+        if (profile["profileRoot"] != root_text
+                or profile["installedRoot"] != root_text + "\\AppData\\Local\\vpn-control"
+                or not profile["taskRootParent"].startswith(task_prefix)):
+            raise SshConfigError("Windows input paths must remain beneath the configured local account.")
+        context_path = _windows_input_context_path(profile["nativeContextPath"])
+        context_digest = profile["nativeContextSha256"]
+        if type(context_digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", context_digest):
+            raise SshConfigError("Invalid Windows input native context digest.")
+        policy = profile["tokenPolicy"]
+        if (type(policy) is not dict or set(policy) != policy_fields
+                or type(policy["kind"]) is not str or policy["kind"] != "ordinaryFilteredAdmin"
+                or type(policy["elevation"]) is not int or policy["elevation"] != 0
+                or type(policy["elevationType"]) is not int or policy["elevationType"] != 3
+                or type(policy["adminMember"]) is not bool or policy["adminMember"] is not True
+                or type(policy["adminEnabled"]) is not bool or policy["adminEnabled"] is not False):
+            raise SshConfigError("Windows input requires the exact ordinary filtered administrator token policy.")
+        result[alias] = WindowsInputProfile(
+            environment, qga, qmp, profile["qemuPid"], profile["qemuStartTicks"],
+            profile["qemuParentPid"], profile["qemuUid"], digest, boot_id, account, sid, 1,
+            profile_root, installed_root, task_parent, context_path, context_digest,
+            WindowsInputTokenPolicy("ordinaryFilteredAdmin", 0, 3, True, False),
+        )
+    return result
+
+
 def _host_from_entry(alias: str, entry: Any) -> SshHost:
     if not _ALIAS_RE.fullmatch(alias):
         raise SshConfigError("Private VM inventory contains an invalid host alias.")
     if not isinstance(entry, dict):
         raise SshConfigError("Each VM host entry must be an object.")
-    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath", "remoteConfigFile", "fixtureTransferRoot", "androidDevices", "windowsCredentialProbe"}
+    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath", "remoteConfigFile", "fixtureTransferRoot", "androidDevices", "windowsCredentialProbe", "windowsInputProfiles"}
     required = {"host", "port", "user", "identityFile", "knownHostsFile"}
     if set(entry) - allowed or required - set(entry):
         raise SshConfigError("Private VM inventory contains unsupported or missing host fields.")
@@ -334,6 +473,7 @@ def _host_from_entry(alias: str, entry: Any) -> SshHost:
         android_devices=_android_devices(entry.get("androidDevices", {})),
         password=password,
         windows_credential_probe=_windows_credential_probe(entry["windowsCredentialProbe"]) if "windowsCredentialProbe" in entry else None,
+        windows_input_profiles=_windows_input_profiles(entry.get("windowsInputProfiles", {})),
     )
 
 

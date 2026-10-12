@@ -22,6 +22,8 @@ def request():
         "correlationId": CORRELATION,
         "sourceSha": SOURCE,
         "guestRoot": "/Users/admin/macos-parity2a7b6a4",
+        "baseVersion": "2.1.19",
+        "targetVersion": "2.2.0",
         "baseSha256": BASE_SHA,
         "baseSizeBytes": 141026827,
         "targetSha256": TARGET_SHA,
@@ -47,7 +49,7 @@ class FixtureGuestStageTest(unittest.TestCase):
                 path.chmod(0o644)
             base = hashlib.sha256(b"base").hexdigest()
             target = hashlib.sha256(b"target").hexdigest()
-            command = [sys.executable, "-c", stage._GUEST_CODE, "mutate", str(fixture),
+            command = [sys.executable, "-c", stage._GUEST_CODE, "mutate", str(fixture), "2.1.19", "2.2.0",
                        base, "4", "0" * 64, "6"]
             rejected = subprocess.run(command, capture_output=True, text=True)
             self.assertNotEqual(0, rejected.returncode)

@@ -19,7 +19,27 @@ python3 scripts/check_contract_docs.py
 ./scripts/status_catalog_tool.py check
 ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:verifyDebugAndroidTestSignatures
 python3 scripts/test_android_instrumentation_signatures.py
+python3 scripts/test_windows_qga_powershell_size.py
 ```
+
+## Windows compressed task and inert preflight
+
+Run `python3 -m unittest agent_tools.tests.test_windows_msi_public_scenario`
+and `python3 scripts/test_windows_qga_powershell_size.py` after the current producer
+or bounded carrier changes. The pure actual emitted-task and preflight tests
+verify full carrier/source equality and unchanged30000 command admission on hosts
+without PowerShell. Ordinary agent discovery enrolls both; prepush and Fast Checks
+explicitly run the helper script. The imported candidate suite has30 cases,
+26 pass/four explicit no-PowerShell skips, plus a harmless local parser/carrier
+roundtrip. Skips and local PS7 do not prove native WindowsPS5/MCP acceptance.
+
+For macOS fixture-stage request versions, run
+`agent_tools.tests.test_macos_fixture_guest_stage`,
+`agent_tools.tests.test_macos_fixture_guest_stage_versions` and affected
+`test_native_optimization_routes` cases. Actual request fields bind base/target
+versions before registry/guest work. Historical seven-field status/collect remains
+read-only. Fresh canonical validation and native machine/user installer cases
+remain required; source-only wrapper GREEN is not native fixture admission.
 
 ## Android owner drafts and collector deadline
 
@@ -165,20 +185,33 @@ both regressions run through ordinary agent discovery/prepush/Fast Checks.
 
 ## Completed DIRECT connection history controls
 
-`test_ssh_direct_ended_source_transition` discovers46 controls through ordinary
-agent-tool discovery, prepush and Fast Checks: the original22 and a24-case closure
+`test_ssh_direct_ended_source_transition` discovers48 controls through ordinary
+agent-tool discovery, prepush and Fast Checks: the original23 and a25-case closure
 subclass retaining those cases plus authentic b1a transition and extra-MCP refusal.
 It exercises the complete provider with actual historical/current source bytes
 and private owned files: same-source completion, finite reviewed predecessor
 transitions, and refusal cases for source populations, terminal intent and READY
-custody. The two public Git fixtures pin the old provider and closure bytes. Run it with
+custody. The three public Git fixtures pin the old provider, closure and exact reviewed
+MCP after bytes; current/future MCP bytes remain refused at that historical edge. Run it with
 `test_ssh_direct_nested_channel`, `test_ssh_fresh_nested_channel`,
 `test_ssh_channel_selection`, `test_ssh_channel_mcp_routes` and
 `test_ssh_transport`. Remote kernel replies are an inert declared seam; these
 controls do not establish native SSH recovery, SDK admission or Windows update
-acceptance. Unsupported POSIX coordinators retain46 explicit skips. The b1a bridge
+acceptance. Unsupported POSIX coordinators retain48 explicit skips. The b1a bridge
 changes only provider self and the exact reviewed closure pair; future unreviewed
 provider/MCP/closure transitions remain refused.
+
+## Current SSH close dependency controls
+
+After changing `ssh_transport.py`, run `test_ssh_connection_session_close`,
+`test_ssh_connection_session`, `test_ssh_session_close_routes` and
+`test_ssh_session_routes` before the full prepush tier. The graceful close owner
+pins exact reviewed transport bytes; refresh its literal only after reviewing
+that dependency change. A runtime-derived digest is not an admission substitute.
+The unchanged current-source close case provides causal RED/GREEN; altered or
+future bytes and changes during proof/absence remain refused. These63 controls
+are already enrolled in ordinary discovery. Inert master/ps/native boundaries
+and the config-free local `ssh -G` parser do not prove native SSH admission.
 
 ## macOS ACL fixture command lifecycle
 
@@ -244,6 +277,17 @@ agent-tool discovery, managed prepush and Fast Checks. Pair it with
 `test_mcp_server`, `test_managed_check_lease`, `test_check_output_retention` and
 `test_mcp_check_failure_output` for check-runner changes. It does not prove atomic
 publication or native filesystem authority.
+
+The named-profile `test_windows_guest_input` has33 controls in ordinary agent
+discovery, including seven actual configuration tests/121 decisions. Its valid
+large-frame case exercises dispatch, emitted main, retained collector and a real
+local QMP socket, asserting all five required frames and three actual broker
+packets with exact final Alt+Y. Stdout is finite at18,874,386 bytes; optional
+observations consume that same budget and may exhaust it to UNKNOWN. Win32/proc/
+QGA verdicts remain modeled, and current-source native MCP acceptance stays open.
+Its real retained-FD latch covers collector/foreground rehash serialization;
+separate byte-mutation and named-replacement cases preserve UNKNOWN/non-replay.
+All three methods run through existing discovery and Fast Checks enrollment.
 
 ## Native orchestration regressions
 

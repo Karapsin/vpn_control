@@ -26,12 +26,20 @@ TARGET_NAME = "vpn-control-2.2.0.dmg"
 TIMEOUT_SECONDS = 120
 _HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+_VERSION = re.compile(r"([1-9]|1[0-9])\.(0|[1-9]|1[0-9])\.(0|[1-9]|1[0-9])\Z")
 
 # Fixed Python is argv data to Tart; no shell, credentials, arbitrary guest path,
 # package execution, or request-controlled interpreter code crosses this route.
 _GUEST_CODE = r'''
-import hashlib,json,os,stat,sys
-mode,root,base_sha,base_size,target_sha,target_size=sys.argv[1:]
+import hashlib,json,os,re,stat,sys
+mode,root,base_version,target_version,base_sha,base_size,target_sha,target_size=sys.argv[1:]
+def version(value):
+    if not re.fullmatch(r'([1-9]|1[0-9])\.(0|[1-9]|1[0-9])\.(0|[1-9]|1[0-9])',value):
+        raise ValueError('unsafe fixture version')
+    return tuple(map(int,value.split('.')))
+if version(target_version)<=version(base_version): raise ValueError('target fixture must be newer')
+base_name='vpn-control-'+base_version+'.dmg'
+target_name='vpn-control-'+target_version+'.dmg'
 def directory(path):
     fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY)
     try:
@@ -66,15 +74,15 @@ def checked(label,name,digest,size):
         os.close(parent); raise
 handles=[]
 try:
-    handles.append(('base',checked('base','vpn-control-2.1.19.dmg',base_sha,base_size)))
-    handles.append(('target',checked('target','vpn-control-2.2.0.dmg',target_sha,target_size)))
+    handles.append(('base',checked('base',base_name,base_sha,base_size)))
+    handles.append(('target',checked('target',target_name,target_sha,target_size)))
     if mode=='mutate':
         for _,(_,fd,_,_) in handles: os.fchmod(fd,0o444)
     elif mode!='inspect': raise ValueError('unsupported mode')
     output={}
     for label,(parent,fd,before,digest) in handles:
         after=os.fstat(fd)
-        name='vpn-control-2.1.19.dmg' if label=='base' else 'vpn-control-2.2.0.dmg'
+        name=base_name if label=='base' else target_name
         at=os.stat(name,dir_fd=parent,follow_symlinks=False)
         if (after.st_dev,after.st_ino)!=(before.st_dev,before.st_ino) or (at.st_dev,at.st_ino)!=(before.st_dev,before.st_ino):
             raise ValueError('fixture replacement')
@@ -92,10 +100,12 @@ def _canonical_uuid(value: Any) -> str:
     return value
 
 
-def _request(value: Mapping[str, Any]) -> dict[str, Any]:
-    required = {"correlationId", "sourceSha", "guestRoot", "baseSha256", "baseSizeBytes",
+def _request(value: Mapping[str, Any], *, legacy_inspect: bool = False) -> dict[str, Any]:
+    required = {"correlationId", "sourceSha", "guestRoot", "baseVersion", "targetVersion", "baseSha256", "baseSizeBytes",
                 "targetSha256", "targetSizeBytes"}
-    if not isinstance(value, Mapping) or set(value) != required:
+    legacy_required = required - {"baseVersion", "targetVersion"}
+    legacy = legacy_inspect and isinstance(value, Mapping) and set(value) == legacy_required
+    if not isinstance(value, Mapping) or (set(value) != required and not legacy):
         raise ValueError("fixture stage request has unsupported fields")
     result = dict(value)
     result["correlationId"] = _canonical_uuid(result["correlationId"])
@@ -104,6 +114,15 @@ def _request(value: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("sourceSha must be a full lowercase commit SHA")
     if result["guestRoot"] != f"/Users/admin/macos-parity{source[:7]}":
         raise ValueError("guest fixture root is not bound to sourceSha")
+    if not legacy:
+        versions = []
+        for label in ("base", "target"):
+            version = result[f"{label}Version"]
+            if not isinstance(version, str) or not _VERSION.fullmatch(version):
+                raise ValueError(f"{label} version is invalid")
+            versions.append(tuple(map(int, version.split("."))))
+        if versions[1] <= versions[0]:
+            raise ValueError("target fixture must be newer than base")
     for label in ("base", "target"):
         digest, size = result[f"{label}Sha256"], result[f"{label}SizeBytes"]
         if not isinstance(digest, str) or not _HEX64.fullmatch(digest):
@@ -151,8 +170,14 @@ def _save(path: Path, record: Mapping[str, Any]) -> None:
 
 
 def _command(request: Mapping[str, Any], mode: str) -> list[str]:
+    request = _request(request, legacy_inspect=mode == "inspect")
+    # Only validated authentic legacy records may inspect the original fixed pair.
+    # Never add invented version fields to their persisted original request.
+    base_version = request.get("baseVersion", "2.1.19")
+    target_version = request.get("targetVersion", "2.2.0")
     return ["tart", "exec", VM_NAME, "/usr/bin/python3", "-c", _GUEST_CODE, mode,
-            request["guestRoot"], request["baseSha256"], str(request["baseSizeBytes"]),
+            request["guestRoot"], base_version, target_version,
+            request["baseSha256"], str(request["baseSizeBytes"]),
             request["targetSha256"], str(request["targetSizeBytes"])]
 
 

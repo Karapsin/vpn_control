@@ -121,6 +121,8 @@ on:
       - "scripts/windows_native_packaging.gradle"
       - "scripts/windows_install_admission_diagnostic.py"
       - "scripts/test_windows_install_admission_diagnostic.py"
+      - "scripts/windows_qga_powershell_size.py"
+      - "scripts/test_windows_qga_powershell_size.py"
       - "scripts/test_windows_packaging_graph.init.gradle"
       - "scripts/test_macos_install_gate.py"
       - "scripts/test_macos_install_enospc.py"
@@ -202,6 +204,9 @@ jobs:
 
       - name: Verify Windows admission diagnostic behavior
         run: python scripts/test_windows_install_admission_diagnostic.py
+
+      - name: Verify Windows PowerShell command bounds
+        run: python scripts/test_windows_qga_powershell_size.py
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

@@ -7,7 +7,9 @@ import contextlib
 import io
 import hashlib
 import gzip
+import os
 import re
+import shutil
 import tempfile
 import struct
 import zipfile
@@ -299,10 +301,81 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
                                       "VPNMSIX64\\vpncp117", "S-1-5-21-1-2-3-1002")
         packed = re.search(r"\$body='([^']+)'", command)
         self.assertIsNotNone(packed)
-        task = gzip.decompress(base64.b64decode(packed.group(1))).decode("utf-16le")
+        wrapper = gzip.decompress(base64.b64decode(packed.group(1))).decode("utf-16le")
+        inner = re.search(r"\$packed=\[Convert\]::FromBase64String\('([^']+)'\)", wrapper)
+        self.assertIsNotNone(inner)
+        raw = gzip.decompress(base64.b64decode(inner.group(1), validate=True))
+        task = raw.decode("utf-8", errors="strict")
+        self.assertEqual(task, scenario._public_task("11111111-1111-4111-8111-111111111111", pair,
+                                                   "S-1-5-21-1-2-3-1002"))
+        self.assertIn(hashlib.sha256(raw).hexdigest(), wrapper)
+        self.assertIn("$expected=" + str(len(raw)), wrapper)
         self.assertIn(" --async --timeout-seconds 120 updates install", task)
         self.assertIn("operations status $request.operationId", task)
         self.assertLess(len(base64.b64encode(command.encode("utf-16le"))), 30000)
+
+    def test_emitted_task_carrier_argument_cap_without_powershell(self) -> None:
+        pair = {"targetVersion": "2.2.0", "baseCliSha256": "a" * 64,
+                "targetMsiSha256": "b" * 64, "targetMsiSize": 1000,
+                "baseAppJarName": "desktopApp-fixed.jar", "baseAppJarSha256": "c" * 64,
+                "baseHelperSha256": "d" * 64, "sourceSha": SOURCE}
+        body = "# inert padding\n" * 6000 + "[Console]::Out.WriteLine('SOURCE_EXECUTED')\n"
+        with patch.object(scenario, "_public_task", return_value=body):
+            command = scenario._bootstrap("11111111-1111-4111-8111-111111111111", pair,
+                                          "VPNMSIX64\\vpncp117", "S-1-5-21-1-2-3-1002")
+        carriers = re.findall(r"\$body='([^']+)'", command)
+        self.assertEqual(len(carriers), 1)
+        raw = gzip.decompress(base64.b64decode(carriers[0], validate=True))
+        self.assertEqual(raw.decode("utf-16le", errors="strict").encode("utf-16le"), raw)
+        register = command.split("$stage='TASK_REGISTER'\n", 1)[1].split("$principal=", 1)[0]
+        lines = register.splitlines()
+        self.assertEqual(lines[0], "$packed=[Convert]::FromBase64String($body)")
+        assignments = [(index, line) for index, line in enumerate(lines) if re.search(r"\$body\s*=", line)]
+        actions = [(index, line) for index, line in enumerate(lines) if line.startswith("$action=")]
+        self.assertEqual(len(assignments), 1)
+        self.assertEqual(len(actions), 1)
+        body_index, body_assignment = assignments[0]
+        action_index, action_assignment = actions[0]
+        self.assertLess(body_index, action_index)
+        between = [line for line in lines[body_index + 1:action_index] if line.strip()]
+        self.assertIn(between, ([], ["$decompressor.Dispose();$inputStream.Dispose();$outputStream.Dispose()"] ))
+        self.assertIn(body_assignment, (
+            "$body=[Convert]::ToBase64String($outputStream.ToArray())",
+            "$body=[Convert]::ToBase64String($wrapperBytes)",
+        ))
+        if body_assignment.endswith("($wrapperBytes)"):
+            self.assertEqual(lines[:body_index].count(" $wrapperBytes=$outputStream.ToArray()"), 1)
+        action = re.fullmatch(r"\$action=New-ScheduledTaskAction -Execute '[^']+' -Argument \('([^']+)'\+\$body\)",
+                              action_assignment)
+        self.assertIsNotNone(action)
+        argument = action.group(1) + base64.b64encode(raw).decode("ascii")
+        self.emitted_task_argument_length = len(argument)
+        self.emitted_task_argument_sha256 = hashlib.sha256(argument.encode("ascii")).hexdigest()
+        self.assertLessEqual(len(argument), 30000)
+
+    def test_fixed_preflight_emitted_carrier_preserves_source_and_command_cap(self) -> None:
+        command = scenario._powershell_preflight_script()
+        self.preflight_encoded_command_length = len(base64.b64encode(command.encode("utf-16le")))
+        self.assertLess(self.preflight_encoded_command_length, 30000)
+        carrier = re.search(r"\$packed=\[Convert\]::FromBase64String\('([^']+)'\)", command)
+        self.assertIsNotNone(carrier)
+        raw = gzip.decompress(base64.b64decode(carrier.group(1), validate=True))
+        self.assertIn("$expected=" + str(len(raw)), command)
+        self.assertIn(hashlib.sha256(raw).hexdigest(), command)
+        probe = raw.decode("utf-8", errors="strict")
+        literals = re.search(r"\$bootstrap='((?:[^']|'')*)';\$task='((?:[^']|'')*)'\n", probe)
+        self.assertIsNotNone(literals)
+        sources = {"bootstrap": literals.group(1).replace("''", "'"),
+                   "task": literals.group(2).replace("''", "'")}
+        pair = {"targetVersion": "2.2.0", "baseCliSha256": "a" * 64,
+                "targetMsiSha256": "b" * 64, "targetMsiSize": 1000,
+                "baseAppJarName": "desktopApp-fixed.jar", "baseAppJarSha256": "c" * 64,
+                "baseHelperSha256": "d" * 64, "sourceSha": "e" * 40}
+        corr = "11111111-1111-4111-8111-111111111111"
+        self.assertEqual(sources["bootstrap"], scenario._bootstrap(corr, pair, "VPNMSIX64\\vpncp117", "S-1-5-21-1-2-3-1002"))
+        self.assertEqual(sources["task"], scenario._public_task(corr, pair, "S-1-5-21-1-2-3-1002"))
+        self.assertIn("Language.Parser]::ParseInput($bootstrap", probe)
+        self.assertIn("Language.Parser]::ParseInput($task", probe)
 
     def test_ps5_preflight_is_fixed_to_owned_guest_and_inert_program(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -322,6 +395,15 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
                 with self.assertRaises(scenario.WindowsMsiPreinstallStatusError):
                     scenario.powershell_preflight(root, {"host": "archlinux", "script": "updates install"})
             script = scenario._powershell_preflight_script()
+            carrier = re.search(r"\$packed=\[Convert\]::FromBase64String\('([^']+)'\)", script)
+            self.assertIsNotNone(carrier)
+            raw = gzip.decompress(base64.b64decode(carrier.group(1), validate=True))
+            self.assertIn(hashlib.sha256(raw).hexdigest(), script)
+            script = raw.decode("utf-8", errors="strict")
+            literals = re.search(r"\$bootstrap='((?:[^']|'')*)';\$task='((?:[^']|'')*)'\n", script)
+            self.assertIsNotNone(literals)
+            # These complete source strings are parser inputs, never invoked.
+            script = script[:literals.start()] + "$bootstrap='<source>';$task='<source>'\n" + script[literals.end():]
             self.assertIn("[System.Management.Automation.Language.Parser]::ParseInput", script)
             self.assertIn("Set-Content -LiteralPath $leaf -Encoding UTF8", script)
             self.assertNotIn("Start-ScheduledTask", script)
@@ -585,6 +667,95 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
             with self.assertRaises(scenario.WindowsMsiPreinstallStatusError):
                 scenario.preinstall_status(Path("."), "archlinux", JOB)
             run.assert_not_called()
+
+
+_POWERSHELL = os.environ.get("VPN_CONTROL_TEST_PWSH") or shutil.which("pwsh") or shutil.which("powershell")
+
+
+@unittest.skipUnless(_POWERSHELL, "local PowerShell required for emitted task controls")
+class WindowsMsiCompressedTaskTest(unittest.TestCase):
+    """Execute only generated carrier bytes and an inert task-action recorder."""
+
+    def run_powershell(self, arguments):
+        return subprocess.run([_POWERSHELL, "-NoLogo", "-NoProfile", "-NonInteractive", *arguments],
+                              capture_output=True, timeout=15)
+
+    def emitted_argument(self, body):
+        pair = {"targetVersion": "2.2.0", "baseCliSha256": "a" * 64,
+                "targetMsiSha256": "b" * 64, "targetMsiSize": 1000,
+                "baseAppJarName": "desktopApp-fixed.jar", "baseAppJarSha256": "c" * 64,
+                "baseHelperSha256": "d" * 64, "sourceSha": SOURCE}
+        with patch.object(scenario, "_public_task", return_value=body):
+            command = scenario._bootstrap("11111111-1111-4111-8111-111111111111", pair,
+                                          "VPNMSIX64\\vpncp117", "S-1-5-21-1-2-3-1002")
+        packed = re.search(r"\$body='([^']+)'", command).group(1)
+        selected = command.split("$stage='TASK_REGISTER'\n", 1)[1].split("$principal=", 1)[0]
+        control = ("$ErrorActionPreference='Stop';$script:ActionCalls=0;"
+                   "function New-ScheduledTaskAction {param([string]$Execute,[string]$Argument) "
+                   "$script:ActionCalls++;return $Argument};$body='" + packed + "';\n" + selected +
+                   "[Console]::Out.WriteLine(([ordered]@{argument=$action;calls=$script:ActionCalls}|ConvertTo-Json -Compress))")
+        result = self.run_powershell(["-Command", control])
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        value = json.loads(result.stdout)
+        self.assertEqual(value["calls"], 1)
+        return value["argument"]
+
+    def invoke_argument(self, argument):
+        return subprocess.run([_POWERSHELL, "-NoLogo", *argument.split()],
+                              capture_output=True, timeout=15)
+
+    def test_actual_emitted_scheduled_task_argument_stays_below_cap(self):
+        body = "# inert padding\n" * 6000 + "[Console]::Out.WriteLine('SOURCE_EXECUTED')\n"
+        argument = self.emitted_argument(body)
+        self.assertLessEqual(len(argument), 30000)
+        result = self.invoke_argument(argument)
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        self.assertEqual(result.stdout.decode().strip(), "SOURCE_EXECUTED")
+
+    def test_actual_emitted_unicode_body_invokes_once(self):
+        body = ("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n"
+                "[Console]::Out.WriteLine('SOURCE_EXECUTED:π✓')\n")
+        result = self.invoke_argument(self.emitted_argument(body))
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        self.assertEqual(result.stdout.decode("utf-8").splitlines(), ["SOURCE_EXECUTED:π✓"])
+
+    def test_actual_emitted_tampered_body_refused_before_invocation(self):
+        body = "[Console]::Out.WriteLine('SOURCE_EXECUTED')\n# original\n"
+        argument = self.emitted_argument(body)
+        prefix, encoded = argument.rsplit(" ", 1)
+        original = base64.b64decode(encoded, validate=True).decode("utf-16le")
+        inner = re.search(r"\$packed=\[Convert\]::FromBase64String\('([^']+)'\)", original)
+        variants = (body.replace("original", "tampered"), body[:-1], body + "# extra\n")
+        for changed in variants:
+            with self.subTest(byteLength=len(changed.encode("utf-8"))):
+                if inner:
+                    packed = base64.b64encode(gzip.compress(changed.encode("utf-8"), mtime=0)).decode()
+                    altered = original.replace(inner.group(1), packed, 1)
+                else:
+                    self.assertEqual(original, body)
+                    altered = changed
+                altered_arg = prefix + " " + base64.b64encode(altered.encode("utf-16le")).decode()
+                result = self.invoke_argument(altered_arg)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn(b"SOURCE_EXECUTED", result.stdout)
+
+    def test_actual_emitted_invalid_utf8_and_parser_fail_before_invocation(self):
+        body = "[Console]::Out.WriteLine('SOURCE_EXECUTED')\n"
+        argument = self.emitted_argument(body)
+        prefix, encoded = argument.rsplit(" ", 1)
+        wrapper = base64.b64decode(encoded, validate=True).decode("utf-16le")
+        inner = re.search(r"\$packed=\[Convert\]::FromBase64String\('([^']+)'\)", wrapper)
+        self.assertIsNotNone(inner)
+        for raw in (b"\xff", b"[Console]::Out.WriteLine('SOURCE_EXECUTED')\n}"):
+            with self.subTest(raw=raw):
+                packed = base64.b64encode(gzip.compress(raw, mtime=0)).decode()
+                altered = wrapper.replace(inner.group(1), packed, 1)
+                altered = re.sub(r"\$expected=[0-9]+", "$expected=" + str(len(raw)), altered, count=1)
+                altered = re.sub(r"\$actual -cne '[0-9a-f]{64}'", "$actual -cne '" + hashlib.sha256(raw).hexdigest() + "'", altered, count=1)
+                altered_arg = prefix + " " + base64.b64encode(altered.encode("utf-16le")).decode()
+                result = self.invoke_argument(altered_arg)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn(b"SOURCE_EXECUTED", result.stdout)
 
 
 if __name__ == "__main__":

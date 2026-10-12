@@ -33,7 +33,128 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance status — 2026-10-11, macOS fixture cleanup verified
+## Current acceptance status — 2026-10-12, Windows engineering update verified
+
+The full22-group/217-scenario plan remains incomplete. One engineering Windows
+installed/OFF update flow is now proved directly; this does not close its complete
+group, establish MCP equivalence, or relabel retained41ec packages as final source.
+The user requested one final exact-SHA five-workflow verification at the end.
+No release, main merge, tag, publisher or runtime upgrade is authorized.
+
+Delivered baseline is `a026d0254579a797d30a0c78c8f15d92eae74030`, version2.2.7.
+Its content fingerprint `8fde659ddf5b70c8e900d7561e03da37428ff8320729c92c759e83153bf75f5b`
+and terminal prepush61153 remain evidence for that baseline: all15 commands pass,
+agent6260/170 existing skips, actual macOS class14/zero skips/errors/failures.
+They do not validate the current integration changes. Root now owns the reviewed
+Windows carrier/preflight, routine selectors, macOS versioned fixture schema and
+maintainer ledger edits as one intentional dirty bucket. Fresh prepush76944 is
+terminal1:6283 tests/174 skips/two inherited historical MCP transition assertions
+failed after1978.032 seconds. The provider correctly refused unreviewed current
+MCP20141f bytes; those historical tests accidentally copied current source into
+the approved6ca7-to-570 edge. Exact public Git570 after bytes are now a pinned
+fixture, shared positive/negative baselines are restored, current/future MCP
+refusal is explicit, and all48 canonical module tests pass. Provider admission
+policy is unchanged. A fresh full prepush and coherent dev delivery remain
+required; actual native source transition needs its own terminal-custody review if that
+route has an older owned predecessor. The Windows input owner/profile/dispatcher
+is included in this same intentional integration bucket; all source peers have
+handed back before root final metadata and validation.
+
+
+Latest validation,04:55 Moscow: prepush79293 is terminal1 for fingerprint
+`d958cac084e940d6e543246810da6dcd9dd7c5fed5b0503c978b5f889f753c94`:
+6315 tests/175 skips/one failure/zero errors in1968.415 seconds. The actual
+Windows emitted-main/QMP observer test expected INPUT_KEY_ACK_ONLY but received
+UNKNOWN with `ValueError:Final source SHA drift`. The same failure is now
+causally reproduced: collector and foreground rehashes consume one retained FD's
+shared offset while its full bytes and generation9 remain unchanged. The full-run
+receipt lacks a per-FD trace, so attributing that historical occurrence to this
+measured mechanism remains an inference. Only existing observer condition scopes
+around verification and terminal closure change; the global held-source library
+is unchanged. The same latch gives RED1FAIL to GREEN, all33 isolated controls
+pass with zero skips, and81 canonical input/history tests pass in13.313 seconds
+with the separately qualified local parser. Actual byte changes and named-file
+replacement still refuse keys and replay. Native effects remain unproved.
+All earlier SSH-close failures pass. No valid current full prepush receipt or
+live full-check process remains. Native starts and checkpoint delivery are held
+until fresh full validation and the applicable admission gates pass. The finite
+public secondary-update source handoff is closed; a separate ignored mirror owner
+is implementing its direct adapter before any MCP registration/native claim.
+
+Earlier follow-up,04:13 Moscow: prepush19693 is terminal1 for fingerprint
+`c1208d191d8a92960ac6c334186e0c2872a769cd06dc3cc8c00c1ace3d5a2d2f`:
+6314 tests/175 skips/27 failures/five errors in1979.308 seconds. All32 failure
+headers are the same current SSH-close dependency mismatch: its literal still
+named transport6e4 after the reviewed optional profile addition produced b2ddce.
+The one-literal refresh is integrated after unchanged actual case RED1→GREEN1,
+three transport-specific refusals and63 complete close/session/route passes.
+No current/future digest wildcard, runtime-derived admission or native effect
+was added; all original runner/test children and source readers are closed.
+
+The additional actual five-frame Windows input case failed on the third valid
+frame at the old2MiB stdout aggregate cap. The cap-only fix is integrated at
+18,874,386 bytes, covering five mandatory frames plus13 bounded protocol rows.
+Optional observations still share that finite budget and may exhaust to UNKNOWN.
+The final broker oracle keeps normal assertions unconditional and separately
+asserts three actual packets/exact Alt+Y; copied module30/zero skips passes.
+Canonical owner plus history checks pass78/one no-PowerShell skip in11.495 seconds.
+Real local children/sockets/source closures are exercised; Win32/proc/QGA native
+verdicts remain modeled. Fresh FastMCP serialization and CLI missing-original
+refusals are checked separately from native admission, which remains open.
+
+Root's intended dirty integration bucket now contains21 explicit reviewed paths,
+including the exact current close pin. Final metadata/fresh full prepush and
+coherent dev delivery remain required. The secondary guest also lacks a typed
+public MCP check/download/install request owner: existing CP117 submission is
+fixed to its own guest/account/lease. Input-only MCP with direct submission would
+be hybrid component evidence. Its proven J2 source has three roles, not four;
+an early source-planning claim conflated a consumed epoch and was retracted.
+The sole operator is preparing only a finite public source handoff for a narrow
+secondary adapter; canonical integration and all native starts remain root-gated.
+
+| Slice | Owner and environment | Established evidence | Remaining work |
+| --- | --- | --- | --- |
+| Windows native | `windows_update_assembly`, sole Arch/QGA guest operator; currently held for root integration | J2 request0ae408/op fda2/job18c8 has actual UAC helper/job/owner binding, all3 key ACKs, authenticated handoff ACK, protected Succeeded/OK, all209 target files/200463283 bytes matching retained2.2.6, original-user Context2 MSI registration and fresh Limited GUI/owner return. Ordinary original status task10000→CLI2468 exited0 and proves the new controller1a717/OFF. New Limited updates task9672→CLI880 exited0 and recovers that exact job final/installed/OK/cleanupOK. | Adopt the working flow in the proper MCP owner and retest. Finish the other installer, CLI, VPN, owner, resource and visual scenarios, then source-invalidated final-package cases. Numeric installer-worker exit is unobserved after its result file was removed; retain this limit. |
+| Android native | Same sole operator; API35 emulator5682; no new lease | Original29684 delivered/root entry, then snapshot-one refused after3187.145 seconds on original_custody_cutoff. Remote3600 budget was unchanged. Parent66992 terminal1/SSH67413 exit0; strict outcome UNKNOWN/sourceClosingfalse. All18500 local descriptor closes succeeded; holders0. Genuine keeper23374/pipeline66550 terminal0/sourceClosingtrue/cleanupComplete; all original PIDs absent at01:14:32. | Establish failed-original/lease cleanup eligibility, then measure the slow original-custody/restoration path in a bounded admitted phase. Do not extend/reset budgets or blindly repeat the hour-long run. Finish both API29/API35 native matrices and corresponding MCP cases. |
+| Windows MCP tooling | Source peer mirrors; root owns canonical integration | Actual task carrier256163→4583 at unchanged30000 cap; pure actual-producer regression avoids PowerShell dependence. Full actual module import exposed preflight32252 overflow; repaired preflight25968. Full suite30 tests/26 pass/4 explicit PowerShell skips; one local PS7.5.4 carrier/parser roundtrip passes without executing the probe/task. Reviewed changes are integrated; native Windows PS5/MCP proof remains separate. | Fresh canonical checks and full prepush. Current CP117 public installer remains fixed to its own guest/SID. The reviewed named-profile input owner and five-action dispatcher are now integrated, with30 candidate controls and canonical78 combined tests passing/one explicit no-PowerShell skip. Fresh daemon/profile/context/route qualification, marker consumer compatibility and native MCP retest remain open. No current parity-agent MCP acceptance is inferred. |
+| Android source diagnosis | Bounded public-source peer; no native ownership | Source success-path lower bounds1219 original closings and506 restoration ADB invocations per complete snapshot. Cost dominance remains unmeasured. Actual isolated deadline/diagnostic error controls have2 RED→10 GREEN, preserve valid IO and fixed clock, and are not adopted. | Qualify any derived source change through its actual authenticated context and routine owner. No skipped restoration/source/identity guard or cached mutable response is authorized. |
+| macOS | Root owns schema integration; no native VM active | Required base/target versions are integrated in the existing fixture-stage request and MCP wrapper, with actual old-wrapper RED and22 candidate passes. Existing platform/kind/source/hash/size/parent checks remain. | Fresh canonical validation, resource/owner admission, complete machine/user-local direct native recovery/rollback/reboot/denial/GUI-return cases, then MCP equivalence and visuals. |
+| Linux | No native operator active | Prior lifecycle/package receipts remain historical. | Current RPM/DEB/Arch update/recovery, lifecycle/owner/resource and visual evidence remains open. Preserve runtime approvals and package provenance. |
+| Documents and final delivery | Root owns integration, host Gradle, metadata, commits and CI | Source audit maps17 scenarios to24 production owners/52 tests/98 read paths; all17 native evidence gates remain open. | Run the six existing-adapter groups, final-source package matrix, every visual gate, evidence reconciliation and final exact-SHA CI. |
+
+Root reviews are in `.runtime/root-parity-continuation-22e9/`:
+`windows-J2-target-and-return-root-review.json`,
+`windows-J2-returned-owner-status-root-review.json`, and
+`windows-J2-next-owner-recovery-root-review.json` join the exact J2 proof.
+`android-original-cutoff-and-keeper-closure-root-review.json` preserves the failed
+original separately from successful keeper closure. No original is replayed.
+
+The ordinary status collector2838 timed out after its task bootstrap1704 exited0.
+Same-original custody43980 subsequently recovered the genuine child exit0/status,
+opening+closing Limited token proof and current correlation; the collector fault
+was not an app failure. SYSTEM GetFileHash produced FileReadError/WriteErrorException;
+the guarded Limited8700 context read the same current binding successfully. ACL,
+sharing and the socket timeout's underlying cause remain unproved. The current
+marker stores binding only; official new-owner updates status supplies outcome
+and cleanup. Historical cf439 remains failed with PERSISTENCE_FAILED/installed
+unknown. b038/c0c cancellation cleanup is now reported OK by that same public
+recovery query; their cancellation causes remain unproved.
+
+Windows readback76240 failed on automatic PowerShell `$input` in WorkerResult.
+The corrected unique currentJobInputRoot has actual emitted-function RED→GREEN;
+ordinary native readback41389 subsequently passes. The missing-Pillow input83499
+failure was local while its SSH child exited0; the prepared-venv import precedes
+Guard/intent/SSH and actual whole-caller controls prove the ordering repair.
+These ignored recipes still need their real callable-owner/routine adoption.
+
+All native Guards, selected-source readers and local original process handles
+were explicitly closed before root canonical edits. Completed observation tasks
+remain preserved for later bounded cleanup. Native execution is held until root
+supplies the refreshed source tuple. The package pair remains source41ec,
+base2.2.5/target2.2.6, distinct from caller a026 and future final-source artifacts.
+No native timeout, failed proof or closed keeper authorizes automatic replay.
+
+## Historical acceptance status — 2026-10-11, macOS fixture cleanup verified
 
 Root owns final metadata, integration, host Gradle, checkpoint push and final CI.
 HEAD/origin/dev remain `41ec8c4364af6904dcec07ee2631d2d821910c64`;21 reviewed

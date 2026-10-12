@@ -1,5 +1,88 @@
 # Parity Failure-to-Regression Ledger
 
+## Windows emitted task and preflight command bounds — 2026-10-12
+
+The real public MSI producer `_bootstrap` emitted a ScheduledTask argument of
+256163 characters against the unchanged30000 admission. The retained beforeimage
+has4 causal failures; bounded deterministic UTF8/gzip/length/SHA/strict-parser
+carriers reduce the argument to4583. Ten candidate controls pass, including
+same-length/short/long tampering, invalid UTF8, Unicode, syntax and source bounds.
+The pure actual emitted-task test reproduces the same cap failure without a
+PowerShell installation. Existing task body and owner/route/remote guards remain.
+Evidence: `.runtime/root-parity-continuation-22e9/windows-compressed-producer-adoption-3150e48e-d384-4058-ad94-0b26d9561bb0/`
+and `windows-compressed-producer-pure-task-carrier-supplement-fa89f0e6-5af6-4b20-b3a9-888073b0ad25/`.
+
+Full actual module import exposed a second bound failure: emitted inert PS5
+preflight32252 exceeds30000. Preserve that exact candidate beforeimage and failure.
+The narrow `_powershell_preflight_script` repair quotes the exact bootstrap/task
+as parser inputs inside the existing bounded compressed probe, yielding25968.
+The fast actual preflight test has1 RED→1 GREEN; complete imported suite30 tests
+has26 pass/four explicit no-PowerShell skips. One real local PS7.5.4 child verifies
+outer/probe/held parser success and full byte/SHA roundtrips, without invoking the
+probe, bootstrap or task. The old eight TempDir cleanup/registration fixture faults
+are separately preserved, not counted as producer RED. Evidence:
+`windows-compression-full-module-check-f3296418-edcb-4973-b83b-4aa4606ef905/`.
+
+Both fast actual-producer controls join ordinary agent discovery. The helper
+script is explicitly added to prepush and Fast Checks/path filters. Root verifies
+52 public supplemental files plus13 actual canonical dependency pins and the
+combined patch inverse. This fixes current producer bounds; it does not establish
+native WindowsPowerShell5.1, current parity-agent admission or MCP equivalence.
+The CP117 route remains fixed to its original owner/profile. Those native gates
+and final-source artifacts remain mandatory.
+
+## Windows direct input and readback faults — 2026-10-12
+
+Original input83499 failed locally with ModuleNotFoundError:PIL after its SSH
+child exited0. The complete old caller reaches Guard/intent/SSH fixture boundaries
+before importing PIL; the corrected prepared-venv caller imports first. Actual
+whole-source causal controls show1 ordering RED→3 GREEN, boundary counts1/1/1→0/0/0
+when PIL is missing, and exact PPM→PNG pixels with three harmless local children
+reaped. Evidence: `windows-pillow-preflight-causal-53a8883f-00cf-4b16-b282-a563bc128b11/`.
+This is an ignored-recipe repair; callable-owner and routine adoption remain open.
+
+Original native readback76240 throws ParameterArgumentValidationErrorEmptyStringNotAllowed
+at WorkerResult Join-Path because automatic `$input` is empty in function scope.
+Actual emitted-function RED precedes the unique currentJobInputRoot correction;
+native readback41389 then verifies the209 target files and original-user MSI
+registration. Preserve the original failure and same installed job18c8; no install
+is replayed. Canonical windows_native_fixture emitter/TempFS is the later routine
+seam, but these ignored functions are not silently treated as enrolled.
+
+Ordinary status collector2838 times out in QGA receive/call/read after bootstrap
+PID1704 terminal0. Same-original task/root observation43980 recovers task10000 and
+CLI2468 original Limited principal/terminal0/OFF data. The transport fault remains
+separate from SYSTEM Metadata's actual GetFileHash FileReadError; guarded Limited
+context reads the current300-byte binding. No ACL/sharing/socket cause is invented.
+Official `updates status`82881 recovers exact J2 final/installed/OK/cleanupOK after
+all209 target hashes, MSI registration and normal GUI return. Numeric installer
+worker exit remains unobserved; historical cf439 PERSISTENCE_FAILED stays intact.
+Evidence remains under `.runtime/windows-direct-batch-a026-c0d047db-463a-4ea3-a35c-eac38e9efa49/`;
+root reviews retain only explicit finite public leaves. Proper MCP producer
+adoption, causal routine enrollment and native retests remain open.
+
+## Android original proof cutoff and traversal cost — 2026-10-12
+
+Authentic DIRECT29684 delivered/root entry and reached snapshot-one, then refused
+after3187.145 seconds at original-custody cutoff. The same single3600 proof clock
+was used; the1200 retirement composer value was overwritten before execution.
+Remote timeout killed only its bound infrastructure child; original parent exits1,
+SSH exits0, strict outcome UNKNOWN/sourceClosingfalse. All18500 local descriptor
+closes succeed. Original keeper23374/pipeline66550 subsequently exit0 with source
+closing/cleanupComplete; no reset/replay/new lease follows from that closure.
+
+The raising closing checks cutoff before IO, so its expired invocation performed
+no traversal. Source success-path lower bounds are1219 full original closings and
+506 restoration ADB calls per snapshot; native dominant cost is not yet measured.
+A separate isolated actual-method safety/diagnostic candidate has2 causal RED→10
+GREEN, checks the same cutoff through long loops and preserves original IO/error.
+It adds finite counters; it is not a throughput fix, fresh authority or adopted
+producer. Evidence:
+`.runtime/windows-readonly-route-preflight-aa02f2ec-5f3d-4c8a-8d09-a832265da57b/sdk4200-source-planning/closing-inert-controls-0d92ed53-52f2-4175-ad62-f333c6b7ec70/`.
+The exact authenticated derived context, routine owner and full direct/MCP proof
+must be qualified before adoption. Preserve all restoration/source/identity
+checks; no budget extension or cached mutable response is substituted for proof.
+
 ## macOS boot-token fixture command timeout — 2026-10-11
 
 Prepush84808 passed6260 agent tests/170 existing skips and subsequent tooling
@@ -4090,3 +4173,146 @@ tests,15 existing skips and zero errors/failures in20.487 seconds; independent
 source review found no issue. Source/result hashes are in
 `.runtime/root-parity-continuation-22e9/newline-canonical-root-review-20261011T150200Z.json`.
 Full validation remains open.
+
+## Historical SSH MCP transition fixture drift — 2026-10-12
+
+Fresh full prepush76944 stops at agent discovery:6283 tests/174 skips/two
+inherited `test_actual_old_provider_and_mcp_transition` failures. Actual focused
+selectors reproduce both failures in0.378 seconds. Current MCP20141f source is
+not the finite approved6ca7-to-570 transition, so provider UNKNOWN is correct.
+The routine historical fixture mistakenly copied current MCP into that edge.
+
+Preserve the exact approved570 bytes from public Git
+`a026d0254579a797d30a0c78c8f15d92eae74030` as a digest-checked compressed source
+fixture. Shared transition setup now uses those bytes for all historical positives
+and mutation negatives, preserving their admitted baseline. The B1A closure-only
+positive explicitly keeps its same current MCP source. A new inherited control
+rejects current/unreviewed future MCP bytes before transport/new intent, preserving
+all original intent/ready/terminal bytes and descriptor counts. All48 canonical
+module tests pass without skips/errors/failures in8.023 seconds. Ordinary discovery
+already enrolls this module. Provider admission policy is unchanged.
+
+Beforeimages and fast causal RED are preserved under
+`.runtime/root-parity-continuation-22e9/ssh-ended-mcp-history-failure-20261012T024600Z/`.
+Original full check streams remain in managed run dbe5a020-97fa-45e7-b131-d18a59d99849.
+This fixture repair does not authorize current-source native channel transition:
+actual owned predecessor terminal custody and an exact reviewed transition or
+retirement remain separate requirements. No private journal or native actor was
+read or changed by this fix. Fresh full prepush/dev delivery remain open.
+
+## Windows retained input owner causal controls — 2026-10-12
+
+The named-profile MCP owner adopts the previously proved J2 DIRECT input flow
+through a first frame, later actual ACK/task-binding join, and a full native guard
+before every atomic key packet. It preserves an original long-lived observer;
+owner loss and saved markers do not authorize reconstruction or replay.
+
+Actual candidate failures are retained: missing ACK returned an earlier frame
+(one FAIL); decision aliases bypassed exact validation, pre-Popen failure left a
+process=None registry entry, and dotted profiles were rejected (one FAIL/two
+ERROR); QGA open/protocol refusal was classified as missing metadata (one FAIL).
+Their actual methods pass after the narrow fixes. Seven actual configuration
+controls retain their original two FAIL versus candidate seven PASS/121 decisions.
+The stdlib frame preflight precedes Guard/intent/SSH and removes the prior Pillow
+dependency from this owner. Original beforeimages/raw results and declared seams
+are in the finite40-file public handoff under
+`.runtime/root-parity-continuation-22e9/windows-input-adoption-f09b5f9e-3fdf-49f4-897a-246b82e018d6/manifest.json`.
+
+Candidate29 controls pass without skips, including an actual local PowerShell
+parse. Root's integrated owner plus historical-transition module runs77 tests,
+one explicit no-PowerShell skip, zero failures/errors in10.060 seconds. Actual
+local children/streams/threads/held sources close; local QMP/frame/dispatch/emitted
+main are exercised. Win32/QGA native verdicts are modeled and native calls are
+zero. The actual exported MCP wrapper also preserves owner-loss UNKNOWN and
+non-replay without opening a private/native Guard. Ordinary agent discovery
+enrolls all29 controls, including the seven self-contained profile cases.
+
+Fresh qualified daemon/profile/context/current route, real guarded OS input,
+marker consumer compatibility and equivalent native update/recovery remain open.
+No installer success, native admission or full Windows group completion is
+inferred from these controls. No private configuration or protected original
+body was read or changed by this source integration.
+
+## Windows required frames exceed retained stdout budget — 2026-10-12
+
+The actual retained collector failed with `INPUT_CAPTURE_BOUND` on the third
+required valid1280x800 frame. Its2MiB aggregate stdout cap was smaller than the
+five-frame success flow, although every frame satisfied the existing700,000-byte
+gzip and1MiB line bounds. The same actual dispatch/emitted-main/collector/QMP
+case fails once against the authentic old owner and passes against the cap-only
+fix; all30 copied module controls pass with zero skips in3.277 seconds.
+
+Only stdout becomes18,874,386 bytes:18 required rows times the existing1MiB line
+limit plus newline. Stderr stays2MiB; source guards, frame/decompression limits,
+clocks, RPC and native policy are unchanged. Optional observations still share
+that finite budget and may exhaust it to UNKNOWN; they are not unbounded.
+The successful case retains five frames/4,043,005 stdout bytes and independently
+asserts three actual broker packets and exact final Alt+Y, as well as three
+ACK-only stages. Normal fixture packet assertions remain unconditional. Actual
+local children/readers close; Win32/proc/QGA verdicts are modeled, native calls0.
+
+Causal beforeimages, real results and the reviewed final patch are sealed under
+`.runtime/root-parity-continuation-22e9/windows-input-frame-budget-broker-proof-4ebf3450-2d53-42ec-b9d0-3e7ac4e78c8e/manifest.json`.
+The added method is enrolled by ordinary agent-tool discovery. Fresh public
+FastMCP serialization and CLI fallback verify missing-original UNKNOWN/non-replay
+without native admission; CLI correctly exits1 for its `ok=false` result. A root
+probe's initial expected-exit0 assertion error is preserved separately and is
+not attributed to the tool or product. Equivalent native input/update acceptance
+remains open; the existing CP117 update-submission owner does not cover the
+secondary guest and must not be silently generalized.
+
+## Reviewed SSH transport update invalidates current close pin — 2026-10-12
+
+Full prepush19693 is terminal1:6314 tests/175 skips/27 failures/five errors in
+1979.308 seconds. All32 failure headers belong to the close tests. The current
+close owner still pinned transport6e4 while the reviewed optional Windows profile
+addition produced b2ddce. It correctly refused before its close child/intent;
+positive and downstream mutation fixtures therefore could not reach their
+intended observation. Root retained the complete managed run
+`acec003b-111c-44cb-b4ac-aa763049fff3`; no successful final receipt was produced.
+
+The unchanged actual current-source close case gives one FAIL before and one
+PASS after updating only the explicit transport digest. All63 close/session and
+route controls pass with zero skips in2.122 seconds. Actual future bytes and
+transport drift during live proof/positive absence remain refused; the digest is
+not computed at runtime or broadened to a set. The exact transport review keeps
+30/32 old definitions AST-identical; only the trailing optional profile map and
+its host parser change. Existing selected-config equality can reject changed
+profile values, so universal behavior identity is not claimed.
+
+Beforeimages/results/review/one-literal patch are sealed in
+`.runtime/root-parity-continuation-22e9/ssh-session-close-pin-causal-e0651230-eb9a-4055-a8c4-96f9cf257a5d/manifest.json`.
+All32 local children and source readers close. Session/master/ps boundaries stay
+inert; the existing config-free local `ssh -G` parser sends no remote payload.
+The canonical tests are unchanged and already enrolled in normal discovery;
+run this focused dependency selection before full prepush on transport edits.
+Fresh native close/session admission is separate and has not been claimed.
+
+## Windows observer concurrent source rehashes — 2026-10-12
+
+Full prepush79293 ended with6315 tests/175 skips/one failure/zero errors in
+1968.415 seconds. The actual emitted-main/QMP observer expected INPUT_KEY_ACK_ONLY
+and received UNKNOWN with `ValueError:Final source SHA drift`. The full managed
+receipt is retained under check-run `cdba683e-fbe3-4ad1-a7a2-b10f7eb439d8`.
+
+A deterministic control pauses the real collector after its retained context FD
+seeks to0. The foreground's actual source verification consumes that shared
+offset to1176; the collector then hashes EOF and raises the real drift error.
+Held/named bytes, SHA and generation9 stay identical and the original child is
+still live. No error or UNKNOWN state is injected. This reproduces the mechanism;
+the historical full run lacks per-FD tracing, so its attribution is an inference.
+
+Only `source_guard` and terminal closure gain scopes of the existing observer
+condition lock. The global `_Held` implementation, verification content, clocks,
+source policies and native input limits stay unchanged. The same final latch is
+RED1FAIL against preserved83927 bytes, then passes against efc4ecc. Real byte
+mutation and named replacement still produce UNKNOWN, no new key ACK and no
+replay. All33 isolated controls pass with zero skips;81 canonical input/history
+tests pass in13.313 seconds. Local PS7.5.4 is parser-only, not WindowsPS5.1 proof.
+
+Beforeimages, actual traces/results, patch, earlier harness failures and complete
+local child/reader closure are sealed in
+`.runtime/root-parity-continuation-22e9/windows-input-source-serialization-causal-df21d644-0fe4-4d41-8a7f-f9f5a5809017/manifest.public.json`.
+Three new methods enter routine discovery/Fast Checks through the existing test
+module. Terminal-close/use is not claimed as a separately measured failure cause.
+Fresh full prepush and actual native input/update MCP acceptance remain required.

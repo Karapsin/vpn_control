@@ -21,6 +21,9 @@ def historical(name,expected):
     return body
 PROVIDER_BEFORE=historical('ssh_fresh_nested_channel.before.py.gz','b957d4b6bf37ca0c603f09f7df757284a56f042706533159fb5427c1b89fdafc')
 MCP_BEFORE=historical('mcp_server.before.py.gz','6ca7b4050ee5ca6977ff3948ad22b78350d49007c557ba603b9ab2a6558dc014')
+# Exact approved after bytes from public Git a026d0254579a797d30a0c78c8f15d92eae74030.
+# Future MCP edits do not change this historical admission edge.
+MCP_REVIEWED_AFTER=historical('mcp_server.reviewed-after.py.gz','5707593229d5fa3c331998a0f6bbc2bae1ca4dff3a94fd4f5f5c8064e07a14d7')
 
 @unittest.skipUnless(fixture_owner.COORDINATOR_CAPABLE,'POSIX private TempFS provider required')
 class ProviderEndedHistoryTests(unittest.TestCase):
@@ -57,8 +60,8 @@ class ProviderEndedHistoryTests(unittest.TestCase):
         self.assertEqual('ended',self.invoke('status')['state'])
         self.before={name:(self.journal/(self.corr+'.'+name+'.json')).read_bytes() for name in ('intent','ready','terminal')}
         self.new='c'*32;self.result={**prior,'correlationId':self.new,'controlPath':'/tmp/vpn-channel-'+self.new+'/m'}
-    def transition(self,*,equal=False):
-        if not equal:(self.source/'mcp_server.py').write_bytes(CURRENT_MCP_SOURCE.read_bytes())
+    def transition(self,*,equal=False,mcp_body=None):
+        if not equal:(self.source/'mcp_server.py').write_bytes(MCP_REVIEWED_AFTER if mcp_body is None else mcp_body)
         self.provider_path.write_bytes(CURRENT_PROVIDER_SOURCE.read_bytes())
         self.module=self.load()
     def row(self,name):return json.loads((self.journal/(self.corr+'.'+name+'.json')).read_bytes())
@@ -92,6 +95,16 @@ class ProviderEndedHistoryTests(unittest.TestCase):
         self.assertEqual(new['sourceSha256'],new['directSourcePins']['ssh_fresh_nested_channel.py'])
         self.assertEqual(self.before,{name:(self.journal/(self.corr+'.'+name+'.json')).read_bytes() for name in self.before})
         self.assertEqual(fd,len(os.listdir('/dev/fd')));self.assert_legacy_unchanged()
+    def test_unreviewed_current_or_future_mcp_refuses_without_successor(self):
+        self.seed()
+        bodies=[MCP_REVIEWED_AFTER+b'\n# inert unreviewed future MCP fixture\n']
+        current=CURRENT_MCP_SOURCE.read_bytes()
+        if current!=MCP_REVIEWED_AFTER:bodies.append(current)
+        for body in bodies:
+            with self.subTest(mcpSha256=hashlib.sha256(body).hexdigest()):
+                self.transition(mcp_body=body)
+                self.refuse()
+                self.assertEqual(self.before,{name:(self.journal/(self.corr+'.'+name+'.json')).read_bytes() for name in self.before})
     def row_for(self,corr,name):return json.loads((self.journal/(corr+'.'+name+'.json')).read_bytes())
     def negative(self,kind):
         self.seed();self.transition()
@@ -161,7 +174,7 @@ class ProviderEndedClosureHistoryTests(ProviderEndedHistoryTests):
 
     def test_actual_b1a_closure_only_transition_preserves_every_saved_byte(self):
         self.seed_b1a()
-        self.transition()
+        self.transition(mcp_body=CURRENT_MCP_SOURCE.read_bytes())
         fd_before = len(os.listdir('/dev/fd'))
         value = self.invoke(corr=self.new)
         self.assertEqual('ready', value['state'])

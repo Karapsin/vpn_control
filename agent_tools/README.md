@@ -72,6 +72,49 @@ The declared service-boundary regression does not claim remote SSH/auth repaired
 
 `prepare_start` deliberately blocks when a fetch fails, branches diverge, a dirty branch other than `dev` would need switching, or a dirty behind-`dev` worktree would need pulling. Resolve the reported condition explicitly and rerun it.
 
+## Windows retained input observer
+
+`vm_workflow` exposes `windows-input-start`, `windows-input-observe`,
+`windows-input-join`, `windows-input-decision` and `windows-input-finish` for the
+fixed `archlinux` host and an explicitly configured `windowsInputProfiles` name.
+Start accepts exactly `{host, profile, correlationId}`. Later actions also require
+the original owner-issued `inputId`; join adds the actual five-field
+`acceptedAck` (`requestId`, `operationId`, `controllerId`, `code`, `final`), and
+decision adds the exact visual decision fields documented by the owner schema.
+No caller job ID, context path, guard source or native-admission flag is accepted.
+
+Use one fresh, qualified, long-lived MCP daemon for the entire original observer.
+A fresh CLI/daemon cannot reconstruct an absent original from disk markers and
+returns UNKNOWN/non-replay. The named private profile selects an immutable
+context file/hash; its expected facts still require genuine current native
+qualification. A first rendered frame precedes application submission. Join the
+actual ACK with this task's binding before any key; every atomic focus/expand/
+approve packet reruns the fixed native guard and fresh frame/binding checks.
+QGA open/protocol refusals remain UNKNOWN. An ACK proves input transport only;
+it supplies no UI consent or installer outcome. Native update/recovery evidence
+is collected separately from the exact original operation.
+
+Routine `test_windows_guest_input` includes33 controls and seven real
+`load_config` tests/121 decisions. Actual local children, sockets, source files,
+frame conversion and a separately available PowerShell parser are exercised;
+Win32/QGA verdicts in these portable controls are explicitly modeled. Native
+current-source route/profile/context admission and equivalent MCP retesting
+remain required. The fixed CP117 public MSI owner is unchanged.
+
+The mandatory five-frame input flow has a finite stdout budget of18,874,386
+bytes, derived from five frame rows and13 protocol rows at the existing1MiB
+line limit plus newline. Stderr remains bounded to2MiB; frame, decompression,
+source and timeout limits are unchanged. Optional observations consume the same
+budget and can exhaust it to UNKNOWN without replay. The large-frame control
+checks actual retained QMP packet count and the final Alt+Y packet, separately
+from emitted ACKs.
+
+The observer serializes held-source verification and terminal closure with its
+existing condition lock. A deterministic real-FD control reproduces concurrent
+rehashes consuming a shared file offset despite unchanged bytes and identity.
+Actual byte changes and named-file replacement still return UNKNOWN without
+new keys or replay; the global source-closure library is unchanged.
+
 ## Native Acceptance Execution
 
 Follow TEST-002 and TEST-003 in `agent_docs/contracts.md` on Windows, Android,
@@ -2252,10 +2295,17 @@ fresh live readback and public inspection prove the opening rules returned.
 Unknown recovery keeps both journals and the lease for inspection.
 
 `vm_workflow("macos-fixture-guest-stage-start", inputs={correlationId,
-sourceSha, guestRoot, baseSha256, baseSizeBytes, targetSha256,
-targetSizeBytes})` verifies registered same-source DMGs and repairs only the
+sourceSha, guestRoot, baseVersion, targetVersion, baseSha256, baseSizeBytes,
+targetSha256, targetSizeBytes})` requires canonical three-part base-20 versions
+with a numerically newer target. It verifies registered same-source DMG bytes and
+derives only fixed guest basenames `vpn-control-<version>.dmg`, repairing only the
 mode of exact task-owned copies in the disposable Tart guest after hashing both.
-Status and collect accept only `correlationId`. It neither starts a fixture
+Versions are fixed argv data and remain bound to the original source, source-bound
+guest root, artifact hashes/sizes and correlation in the durable request. These
+caller-declared versions do not prove embedded app version, architecture or signature; native
+admission verifies those separately. Status and collect accept only `correlationId`.
+Authentic historical seven-field requests retain their original records and can
+only inspect the original fixed pair; new legacy mutation is rejected. It neither starts a fixture
 server nor submits an installer. An uncertain mutation cannot be resubmitted.
 
 `macos-machine-server-stop-start` takes the exact accepted machine campaign

@@ -9,6 +9,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Isolate local SSH parser fixtures and enroll portable build timing checks.
 - Make SSH dead-socket and build timing test fixtures independent of host defaults.
 - Reap timed-out macOS ACL test helpers before deleting their fixture files.
+- Bound Windows acceptance task and preflight commands and validate macOS fixture versions.
+- Guard Windows input observers and retain exact historical MCP transition fixtures.
+- Size Windows input captures for full prompts and refresh the reviewed SSH close dependency.
+- Serialize Windows input source verification and closure while preserving drift refusal.
 
 ## 2.2.7 - 2026-10-11
 

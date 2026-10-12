@@ -338,7 +338,11 @@ def _bootstrap(correlation: str, pair: dict[str, Any], account: str, sid: str) -
     root = _PUBLIC_ROOT + "\\mcp-msi-" + correlation
     image = r"C:\Users\vpncp117\AppData\Local\vpn-control"
     task = "VpnControlMcpMsi-" + correlation
-    body = base64.b64encode(gzip.compress(_public_task(correlation, pair, sid).encode("utf-16le"), mtime=0)).decode("ascii")
+    from scripts.windows_qga_powershell_size import compressed_powershell_command
+
+    task_command = compressed_powershell_command(_public_task(correlation, pair, sid))
+    wrapper_raw = task_command.encode("utf-16le")
+    body = base64.b64encode(gzip.compress(wrapper_raw, mtime=0)).decode("ascii")
     return """$ErrorActionPreference='Stop'
 $root={root};$installed={image};$task={task};$body={body}
 $stage='EXCLUSIVE'
@@ -359,12 +363,25 @@ $stage='STAGE'
  Set-Content -LiteralPath (Join-Path $root 'scenario.json') -Encoding UTF8
 $stage='TASK_REGISTER'
 $packed=[Convert]::FromBase64String($body)
+$wrapperSize={wrapper_size}
+if($wrapperSize -le 0 -or $wrapperSize -gt 30000 -or $packed.Length -gt 30000){{throw 'TASK_WRAPPER_BOUND'}}
 $inputStream=[IO.MemoryStream]::new([byte[]]$packed)
 $decompressor=[IO.Compression.GzipStream]::new($inputStream,[IO.Compression.CompressionMode]::Decompress)
-$outputStream=[IO.MemoryStream]::new()
-$decompressor.CopyTo($outputStream)
-$body=[Convert]::ToBase64String($outputStream.ToArray())
-$decompressor.Dispose();$inputStream.Dispose();$outputStream.Dispose()
+$outputStream=[IO.MemoryStream]::new();$buffer=[byte[]]::new(4096)
+try{{
+ while($true){{
+  $count=$decompressor.Read($buffer,0,[Math]::Min($buffer.Length,($wrapperSize+1-[int]$outputStream.Length)))
+  if($count -eq 0){{break}}
+  $outputStream.Write($buffer,0,$count)
+  if($outputStream.Length -gt $wrapperSize){{throw 'TASK_WRAPPER_LENGTH'}}
+ }}
+ $wrapperBytes=$outputStream.ToArray()
+}}finally{{$decompressor.Dispose();$inputStream.Dispose();$outputStream.Dispose()}}
+if($wrapperBytes.Length -ne $wrapperSize){{throw 'TASK_WRAPPER_LENGTH'}}
+$wrapperHash=[Security.Cryptography.SHA256]::Create()
+try{{$actual=([BitConverter]::ToString($wrapperHash.ComputeHash($wrapperBytes))).Replace('-','').ToLowerInvariant()}}finally{{$wrapperHash.Dispose()}}
+if($actual -cne {wrapper_sha}){{throw 'TASK_WRAPPER_SHA256'}}
+$body=[Convert]::ToBase64String($wrapperBytes)
 $action=New-ScheduledTaskAction -Execute 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' -Argument ('-NoProfile -NonInteractive -EncodedCommand '+$body)
 $principal=New-ScheduledTaskPrincipal -UserId {account} -LogonType Interactive -RunLevel Limited
 $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
@@ -373,7 +390,8 @@ $stage='TASK_START'
 Start-ScheduledTask -TaskName $task
 ([pscustomobject]@{{version=1;correlationId={corr};taskName=$task;triggered=$true}}|ConvertTo-Json -Compress)
 }}catch{{([pscustomobject]@{{version=1;correlationId={corr};triggered=$false;stage=$stage}}|ConvertTo-Json -Compress);exit 1}}
-""".format(root=_ps_literal(root), image=_ps_literal(image), task=_ps_literal(task), body=_ps_literal(body),
+    """.format(root=_ps_literal(root), image=_ps_literal(image), task=_ps_literal(task), body=_ps_literal(body),
+           wrapper_size=len(wrapper_raw), wrapper_sha=_ps_literal(hashlib.sha256(wrapper_raw).hexdigest()),
            cli_hash=_ps_literal(pair["baseCliSha256"]), jar=pair["baseAppJarName"],
            jar_hash=_ps_literal(pair["baseAppJarSha256"]), helper_hash=_ps_literal(pair["baseHelperSha256"]),
            state=_ps_literal(_STATE_DIR), target_version=pair["targetVersion"], target_hash=_ps_literal(pair["targetMsiSha256"]),
@@ -881,21 +899,9 @@ def _powershell_preflight_script() -> str:
     correlation = "11111111-1111-4111-8111-111111111111"
     bootstrap = _bootstrap(correlation, pair, "VPNMSIX64\\vpncp117", "S-1-5-21-1-2-3-1002")
     task = _public_task(correlation, pair, "S-1-5-21-1-2-3-1002")
-    def packed(value: str) -> str:
-        return base64.b64encode(gzip.compress(value.encode("utf-16le"), mtime=0)).decode("ascii")
-    return r'''$ErrorActionPreference='Stop'
-function Expand([string]$body) {
- $packed=[Convert]::FromBase64String($body)
- $inputStream=[IO.MemoryStream]::new([byte[]]$packed)
- $decompressor=[IO.Compression.GzipStream]::new($inputStream,[IO.Compression.CompressionMode]::Decompress)
- $outputStream=[IO.MemoryStream]::new()
- $decompressor.CopyTo($outputStream)
- $body=[Text.Encoding]::Unicode.GetString($outputStream.ToArray())
- $decompressor.Dispose();$inputStream.Dispose();$outputStream.Dispose()
- return $body
-}
+    script = r'''$ErrorActionPreference='Stop'
 try {
- $bootstrap=Expand '@BOOTSTRAP@';$task=Expand '@TASK@'
+ $bootstrap=@BOOTSTRAP@;$task=@TASK@
  $tokens=$null;$errors=$null
  [System.Management.Automation.Language.Parser]::ParseInput($bootstrap,[ref]$tokens,[ref]$errors)|Out-Null
  if($errors.Count -ne 0){throw 'BOOTSTRAP_SYNTAX'}
@@ -909,7 +915,10 @@ try {
  } finally {Remove-Item -LiteralPath $leaf -Force -ErrorAction SilentlyContinue}
  [Console]::Out.WriteLine('{"version":1,"code":"OK"}')
 } catch {[Console]::Out.WriteLine('{"version":1,"code":"FAILED"}');exit 1}
-'''.replace("@BOOTSTRAP@", packed(bootstrap)).replace("@TASK@", packed(task))
+'''.replace("@BOOTSTRAP@", _ps_literal(bootstrap)).replace("@TASK@", _ps_literal(task))
+    from scripts.windows_qga_powershell_size import compressed_powershell_command
+
+    return compressed_powershell_command(script)
 
 
 _REMOTE_PREFLIGHT = r'''import base64,json,os,secrets,socket,stat,sys,time

@@ -2135,7 +2135,8 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         from agent_tools import macos_fixture_guest_stage, native_artifact_registry
         source = "a" * 40
         request = {"correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "sourceSha": source,
-                   "guestRoot": "/Users/admin/macos-parityaaaaaaa", "baseSha256": "b" * 64,
+                   "guestRoot": "/Users/admin/macos-parityaaaaaaa", "baseVersion": "2.2.5", "targetVersion": "2.2.6",
+                   "baseSha256": "b" * 64,
                    "baseSizeBytes": 123, "targetSha256": "c" * 64, "targetSizeBytes": 456}
         def verified(_root, artifact_id):
             size = 123 if artifact_id.endswith("b" * 64) else 456
@@ -2159,6 +2160,137 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             result = mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start", request)
             self.assertFalse(result["ok"])
             self.assertFalse(result["replayAllowed"])
+
+    @staticmethod
+    def _macos_fixture_request():
+        return {"correlationId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "sourceSha": "a" * 40,
+                "guestRoot": "/Users/admin/macos-parityaaaaaaa", "baseVersion": "2.2.5", "targetVersion": "2.2.6",
+                "baseSha256": "b" * 64, "baseSizeBytes": 123, "targetSha256": "c" * 64, "targetSizeBytes": 456}
+
+    @staticmethod
+    def _macos_fixture_verified(_root, artifact_id):
+        # The registry proves byte/source identity. It has no embedded DMG version field.
+        size = 123 if artifact_id.endswith("b" * 64) else 456
+        return {"verification": "verified", "artifact": {"platform": "macos", "artifactKind": "desktop-package",
+                "sourceSha": "a" * 40, "sourceFingerprint": "d" * 64, "size": size}}
+
+    def test_macos_guest_stage_validates_explicit_versions_before_registry_or_dispatch(self):
+        from agent_tools import macos_fixture_guest_stage, native_artifact_registry
+        request = self._macos_fixture_request()
+        bad_requests = [{**request, field: value} for field, value in (
+            ("baseVersion", None), ("baseVersion", True), ("baseVersion", "02.2.5"),
+            ("baseVersion", "0.2.5"), ("baseVersion", "20.2.5"), ("baseVersion", "2.20.5"),
+            ("targetVersion", "2.2.20"), ("targetVersion", "2.2.6\n"), ("targetVersion", "2.2.6;id"),
+            ("targetVersion", "2.2.5"), ("targetVersion", "2.2.4"),
+            ("guestRoot", "/Users/admin/macos-parityfffffff"), ("sourceSha", "bad"),
+            ("baseSizeBytes", True), ("targetSha256", "bad"), ("correlationId", "bad"))]
+        bad_requests += [{key: value for key, value in request.items() if key != field}
+                         for field in ("baseVersion", "targetVersion")]
+        bad_requests.append({**request, "filename": "arbitrary.dmg"})
+        with patch.object(native_artifact_registry, "verify_artifact") as verify, \
+             patch.object(macos_fixture_guest_stage, "start") as start:
+            for bad in bad_requests:
+                with self.subTest(request=bad):
+                    self.assertFalse(mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start", bad)["ok"])
+            verify.assert_not_called()
+            start.assert_not_called()
+
+    def test_macos_guest_stage_rejects_legacy_mutation_before_registry(self):
+        from agent_tools import macos_fixture_guest_stage, native_artifact_registry
+        request = {key: value for key, value in self._macos_fixture_request().items()
+                   if key not in {"baseVersion", "targetVersion"}}
+        with patch.object(native_artifact_registry, "verify_artifact", side_effect=self._macos_fixture_verified) as verify, \
+             patch.object(macos_fixture_guest_stage, "start", return_value={"ok": True, "state": "complete"}) as start:
+            self.assertFalse(mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start", request)["ok"])
+            verify.assert_not_called()
+            start.assert_not_called()
+
+    def test_macos_guest_stage_preserves_registry_source_size_and_fingerprint_gates(self):
+        from agent_tools import macos_fixture_guest_stage, native_artifact_registry
+        request = self._macos_fixture_request()
+        for label in ("base", "target"):
+            for field, value in (("platform", "linux"), ("artifactKind", "runtime"),
+                                 ("sourceSha", "e" * 40), ("size", 999),
+                                 ("sourceFingerprint", None), ("sourceFingerprint", "e" * 64)):
+                def verified(root, artifact_id):
+                    result = self._macos_fixture_verified(root, artifact_id)
+                    if artifact_id == "sha256-" + request[label + "Sha256"]:
+                        result["artifact"][field] = value
+                    return result
+                with self.subTest(label=label, field=field, value=value), \
+                     patch.object(native_artifact_registry, "verify_artifact", side_effect=verified), \
+                     patch.object(macos_fixture_guest_stage, "start") as start:
+                    self.assertFalse(mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start", request)["ok"])
+                    start.assert_not_called()
+
+    def test_macos_guest_stage_wrapper_binds_real_journal_and_fixed_argv(self):
+        import json
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        from agent_tools import macos_fixture_guest_stage as stage, native_artifact_registry
+        request = self._macos_fixture_request()
+        observations = {label: {"sha256": request[label + "Sha256"], "sizeBytes": request[label + "SizeBytes"], "mode": 0o444}
+                        for label in ("base", "target")}
+        calls = []
+        def inert_runner(argv, **kwargs):
+            calls.append(argv)
+            self.assertEqual(["mutate", request["guestRoot"], "2.2.5", "2.2.6"], argv[6:10])
+            return subprocess.CompletedProcess(argv, 0, json.dumps(observations), "")
+        original_start = stage.start
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(mcp_server, "REPO_ROOT", root), \
+                 patch.object(native_artifact_registry, "verify_artifact", side_effect=self._macos_fixture_verified), \
+                 patch.object(stage, "start", side_effect=lambda root, inputs: original_start(root, inputs, runner=inert_runner)):
+                result = mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start", request)
+                self.assertTrue(result["ok"])
+                self.assertFalse(result["replayAllowed"])
+                self.assertEqual(1, len(calls))
+                journal = root / ".rag_index/macos-fixture-guest-stage" / (request["correlationId"] + ".json")
+                self.assertEqual(request, json.loads(journal.read_text())["request"])
+                self.assertEqual(result, mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start", request))
+                self.assertEqual(1, len(calls))
+                self.assertFalse(mcp_server._vm_workflow_impl("macos-fixture-guest-stage-start",
+                                 {**request, "targetVersion": "2.2.7"})["ok"])
+                self.assertEqual(1, len(calls))
+                self.assertEqual(request, json.loads(journal.read_text())["request"])
+
+    def test_macos_guest_stage_wrapper_observes_authentic_legacy_journal_only(self):
+        import json
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        from agent_tools import macos_fixture_guest_stage as stage, native_artifact_registry
+        request = {key: value for key, value in self._macos_fixture_request().items()
+                   if key not in {"baseVersion", "targetVersion"}}
+        observations = {label: {"sha256": request[label + "Sha256"], "sizeBytes": request[label + "SizeBytes"], "mode": 0o444}
+                        for label in ("base", "target")}
+        calls = []
+        def inert_runner(argv, **kwargs):
+            calls.append(argv)
+            self.assertEqual(["inspect", request["guestRoot"], "2.1.19", "2.2.0"], argv[6:10])
+            return subprocess.CompletedProcess(argv, 0, json.dumps(observations), "")
+        original_status = stage.status
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            journal = stage._directory(root) / (request["correlationId"] + ".json")
+            stage._save(journal, {"state": "unknown", "request": request, "observation": None})
+            with patch.object(mcp_server, "REPO_ROOT", root), \
+                 patch.object(native_artifact_registry, "verify_artifact") as verify, \
+                 patch.object(stage, "status", side_effect=lambda root, inputs: original_status(root, inputs, runner=inert_runner)):
+                for action in ("macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"):
+                    result = mcp_server._vm_workflow_impl(action, {"correlationId": request["correlationId"]})
+                    self.assertTrue(result["ok"])
+                    self.assertFalse(result["productAction"])
+                    self.assertFalse(result["replayAllowed"])
+                    self.assertEqual(request, json.loads(journal.read_text())["request"])
+                    before = journal.read_bytes()
+                    self.assertFalse(mcp_server._vm_workflow_impl(action,
+                                     {"correlationId": request["correlationId"], "baseVersion": "2.2.5"})["ok"])
+                    self.assertEqual(before, journal.read_bytes())
+                self.assertEqual(1, len(calls))
+                verify.assert_not_called()
 
     def test_android_public_inspect_routes_only_bounded_readonly_request(self):
         from agent_tools import android_public_inspect
