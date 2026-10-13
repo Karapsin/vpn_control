@@ -65,6 +65,10 @@ class DesktopNativeVisualCaptureTest {
         var captures = 0
         var recoveredDismissals = 0
         var recoveredCensuses = 0
+        fun <T> inertWindowsFrame(sceneId: String, titles: () -> List<String>, capture: () -> T): T =
+            captureWindowsNativeFrame(
+                sceneId, titles, dismissForeignDialog = {}, capture = capture, pauseBeforeRetry = {},
+            )
         val recovered = captureWindowsNativeFrame(
             "windows-tray-disconnected",
             {
@@ -108,7 +112,7 @@ class DesktopNativeVisualCaptureTest {
         check(captures == 1) { "Persistent foreign dialog must prevent screenshot publication" }
 
         val before = runCatching {
-            captureWindowsNativeFrame("windows-tray-disconnected", { listOf("System Properties") }) {
+            inertWindowsFrame("windows-tray-disconnected", { listOf("System Properties") }) {
                 captures++
                 "frame"
             }
@@ -118,7 +122,7 @@ class DesktopNativeVisualCaptureTest {
 
         var census = 0
         val after = runCatching {
-            captureWindowsNativeFrame("windows-tray-connected", {
+            inertWindowsFrame("windows-tray-connected", {
                 census++
                 if (census <= 3) listOf("VPN Control") else listOf("VPN Control", "System Properties")
             }) {
@@ -130,7 +134,7 @@ class DesktopNativeVisualCaptureTest {
         check(captures == 2) { "Post-frame dialog must reject the captured screenshot" }
 
         val suffixedBefore = runCatching {
-            captureWindowsNativeFrame("windows-tray-disconnected", { listOf("SYSTEM PROPERTIES - Virtual Memory") }) {
+            inertWindowsFrame("windows-tray-disconnected", { listOf("SYSTEM PROPERTIES - Virtual Memory") }) {
                 captures++
                 "frame"
             }
@@ -140,7 +144,7 @@ class DesktopNativeVisualCaptureTest {
 
         census = 0
         val suffixedAfter = runCatching {
-            captureWindowsNativeFrame("windows-tray-connected", {
+            inertWindowsFrame("windows-tray-connected", {
                 census++
                 if (census <= 3) listOf("VPN Control") else listOf("System Properties: Paging File")
             }) {
@@ -151,7 +155,7 @@ class DesktopNativeVisualCaptureTest {
         check(suffixedAfter is IllegalStateException)
         check(captures == 3) { "Suffixed post-frame dialog must reject the captured screenshot" }
 
-        val clean = captureWindowsNativeFrame("windows-tray-disconnected", { listOf("VPN Control") }) {
+        val clean = inertWindowsFrame("windows-tray-disconnected", { listOf("VPN Control") }) {
             captures++
             "clean frame"
         }

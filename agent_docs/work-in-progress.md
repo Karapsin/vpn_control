@@ -33,7 +33,47 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance and connection admission — 2026-10-13,04:58 Moscow
+## Current acceptance and integration — 2026-10-13,08:12 Moscow
+
+Delivered `dev` and `origin/dev` are `ef1e866c7cdf46aef1d4c79ca74bd74949ad2c2f`,
+product2.2.8. All17 prepush commands passed, including6484 agent tests/175 explicit
+skips and zero failures/errors. Final exact-SHA five-workflow CI remains deferred;
+no release is authorized. Full scope remains22 groups/217 scenario occurrences
+and249 platform scenes. Complete current-source matrix acceptance remains open.
+
+Root owns the intentional integration bucket: qualified Android observation and
+causal retention/source-closing controls; Linux GUI transfer-root admission and
+correlated receipt-location selection; the portable desktop native visual guard
+fixture; two inspected Windows location-dialog baselines; focused maintainer docs
+and final version metadata. The Android successor passed independent source
+review and is integrated:30 controls pass, six causal closing failures become
+GREEN, and real registered MCP/fresh CLI selected/default routing is covered.
+Combined canonical Android/Linux focused tests pass60 controls without skips;
+the hosted-provider desktop JUnit control passes. Windows suspended-child source
+is separately owned and not yet native-qualified or integrated. Preserve all
+beforeimages, original UNKNOWN records and authentic subsequent observations.
+
+| Slice | Owner and closed boundary | Evidence and next gate |
+| --- | --- | --- |
+| Linux GUI | linux_readiness; Ubuntu2341; local callers and selected4a588 channel closed with authentic ENDED; native HOLD | Currentef1 DEB8e0f/set69a installed,162 files verified. Complete DIRECT GUI case38916e4f passed484 frames and supported OFF/quit/reference cleanup/workspace removal. Protected12586OFF and Ubuntu2307ON preserved. Integrate two reviewed MCP admission/location fixes, then requalify source/artifacts and run a genuinely new matching MCP case; a1be/cb3 remain unreplayed UNKNOWN. |
+| Android observer | android_api35_operator; API35; all local holders closed, no new native grant | Corrected engineering2.2.2 fae CLI status+operations DIRECT returned matching owner00029/revision0, quiet output and unchanged app/device/proxy brackets. Reviewed candidate preserves initial UNKNOWN and appends final same-child streams before final source/profile/HEAD checks. Thirty controls pass, including real SDK/CLI routes. MCP retest, API29 and final2.2.8 acceptance remain open; no lease/new-owner/retirement authority. |
+| Windows update | windows_update_assembly; CP117; all local callers closed; native HOLD | Existing GUI8416 is visible/responding, controller91c1 reports OFF. Checkfc51/op1e86 returned authentic OK/final; fast requester principal remains UNKNOWN. Owned source peer prepares suspended-child identity capture. H12 expiry is not physical absence. Download/install and matching MCP proof remain open;41ec/e045 engineering provenance preserved. |
+| Desktop visuals | root; hosted exactef1 captures; no local VM effects | Windows run38344066995 produced57 eligible scenes. Add/Edit Location PNGs were opened and their geometry/contrast checks passed; baseline publication is in this bucket. Linux38344066406 and macOS38344068850 failed the same mocked Windows fixture's accidental Win32 call. Preserved source fails and isolated fixed consumer passes; native hosted reruns and full reviews remain open. Three secure OS scenes still require owned VMs. |
+| macOS native | root; stopped VM/legacy UNKNOWN preserved | Host has about11GiB available against80GiB fixture budget and no other mounted volume. No boot/install/trust action; continue other work while awaiting suitable storage. |
+
+Evidence remains in owned ignored namespaces: Linux `linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468`,
+Windows `windows-direct-batch-a026-c0d047db-463a-4ea3-a35c-eac38e9efa49`, Android
+`android-current-benign-direct-74-f4bf425e-f491-482d-b6bd-a3813abdb63e`, and Root
+`visual-native-portability-candidate-96ad74c98707457886427f73f07fd895`.
+Final version metadata, fresh full prepush and a coherent dev checkpoint are next
+before native source grants. The running MCP daemon retains an older15-command
+check plan; use fresh `mcp_tool.sh` for the current17-command tier and integrated
+handlers. Native submissions through the old source binding remain on HOLD.
+Existing ef1 Linux package reuse does not satisfy the fixed GUI route's current
+equivalence policy for this changed tooling/test set; source-bound rebuild or an
+authentic qualifying artifact is required, without relabeling the old package.
+
+## Historical acceptance and connection admission — 2026-10-13,04:58 Moscow
 
 Delivered `dev` and `origin/dev` are
 `74cccc42ad09a5dd4abeb100db6edf8363488e33`, product2.2.8. Its fresh

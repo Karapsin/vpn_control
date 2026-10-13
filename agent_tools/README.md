@@ -168,6 +168,14 @@ launcher and child execute the captured original bytes after joined descriptor
 closure; compression preserves their canonical seal and the65,536-byte command
 bound. Preparation authenticates source hashes before execution.
 
+Before the GUI probe, the driver observes the configured transfer root through
+nofollow directory descriptors. Missing, replaced, foreign-owned or nonprivate
+roots return `configured_transfer_root_unavailable` without job creation. This
+read does not create or repair a directory. The four preparation receipts select
+their exact registered correlation paths; identical receipt bytes at another
+registered location do not make the current location ambiguous. Other artifact
+selection retains its existing default behavior.
+
 Guest admission qualifies fixed `sudo -n` read capability before GUI effects.
 Cleanup first uses ordinary process inspection; real `/proc` permission denial
 may invoke the fixed privileged read census. Active references, incomplete
@@ -175,10 +183,11 @@ inspection and identity drift still refuse. Workspace deletion remains ordinary
 user, descriptor-relative and ownership-checked. Privilege is never a deletion
 fallback. Unknown original jobs and their inputs remain preserved without replay.
 
-The reviewed DIRECT case completed ten GUI slices/492 traffic frames and a
-same-original cleanup recovery. Its original UNKNOWN and unobserved runner exit
-remain unchanged. Four traffic components are recorded; equivalent native MCP
-retesting and the complete owner-lifecycle requirement remain open.
+The current-source Ubuntu DIRECT case `38916e4f` completed ten GUI slices and484
+traffic frames with exit0, supported owner stop, complete reference scans and
+ordinary-user workspace removal. The earlier492-frame case, its UNKNOWN and
+unobserved runner exit remain preserved. Equivalent native MCP retesting and the
+complete owner-lifecycle requirement remain open.
 
 ### Installer collection diagnostics
 
@@ -2184,6 +2193,22 @@ The observer verifies shell UID 2000, API and AVD identity before public CLI rea
 captures all five global proxy settings, and pins the configured ADB environment
 for status and operation-list reads. It rejects owner replacement. It cannot
 start, stop, install, refresh or modify the device. Transport loss remains unknown.
+
+For the retained API35 engineering image, the same action accepts exactly
+`identity={"cliArtifact":"qualified-d32-fae-2.2.2"}`, with host `archlinux`,
+device `api35` and timeout15. The fixed source selects the directly qualified
+155-file fae image; callers cannot supply a path, command or admission flag.
+The configured CLI and device profile stay unchanged. Without identity, the
+existing configured observer remains the default.
+
+The qualified observer runs the full status/operations read with app/device and
+source/image brackets, then uses the canonical result parser. It retains initial
+streams unchanged, naturally drains that same child and appends terminal streams
+before its final source/profile/HEAD check. Late terminal success does not replace
+an original timeout/UNKNOWN; failed final closing also returns UNKNOWN without
+replay. This engineering observation provides no installation, lease, retirement,
+new-owner or final-product acceptance authority. Use a fresh MCP/CLI process after
+integration; a running server can retain the older dispatcher.
 
 ### Verified fixture staging
 

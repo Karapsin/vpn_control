@@ -20,6 +20,7 @@ except ImportError:
 SCENARIO_ID='linux-owner-gui-lifecycle'
 BUNDLE_SCENARIO_ID='linux-owner-gui-lifecycle-driver'
 _FILES=('scripts/integration/linux_owner_lifecycle_scenario.py','scripts/integration/socks_http_fixture.py','scripts/native_fixture_run.sh')
+_TRANSFER_ROOT_PROBE="import json,os,stat,sys\nv=json.loads(sys.stdin.buffer.read(8193));ready=False\ntry:\n if type(v) is not dict or set(v)!={'root','context','uid'} or type(v['uid']) is not int:raise ValueError('shape')\n r=v['root'];c=v['context'];u=v['uid']\n if type(r) is not str or type(c) is not str or not r.startswith('/') or os.path.dirname(r)!=c or '..' in r.split('/') or os.getuid()!=u:raise ValueError('binding')\n flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW;identity=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)\n cf=os.open(c,flags)\n try:\n  cs=os.fstat(cf)\n  if not stat.S_ISDIR(cs.st_mode) or cs.st_uid!=u or stat.S_IMODE(cs.st_mode)!=0o700:raise ValueError('context')\n  rf=os.open(os.path.basename(r),flags,dir_fd=cf)\n  try:\n   rs=os.fstat(rf)\n   ready=stat.S_ISDIR(rs.st_mode) and rs.st_uid==u and stat.S_IMODE(rs.st_mode)==0o700 and identity(rs)==identity(os.stat(os.path.basename(r),dir_fd=cf,follow_symlinks=False)) and identity(cs)==identity(os.fstat(cf))==identity(os.stat(c,follow_symlinks=False))\n  finally:os.close(rf)\n finally:os.close(cf)\nexcept (OSError,ValueError,KeyError,TypeError):ready=False\nprint(json.dumps({'ready':ready,'readOnly':True}))\n"
 _INPUT_SCHEMA='vpn-control.linux-owner-gui-lifecycle.input'
 _MAX_INPUT=65536
 
@@ -49,8 +50,18 @@ def _probe_prefix(source,socks):
         +';ns={"__name__":"fixed_gui_source","__file__":"fixed_gui_source","_FIXED_SOURCE":source,"_SOCKS_SOURCE":socks};exec(compile(source,"fixed_gui_source","exec"),ns);ns["_CUSTODY"]=ns["FixedGuiSourceCustody"].memory(source,socks);')
 
 
-def _held_registered(root, artifact_id, maximum, held):
-    verified=registry.verify_artifact_readonly(root,artifact_id)
+def _held_registered(root, artifact_id, maximum, held, expected_path=None):
+    location_id=None
+    if expected_path is not None:
+        require(type(artifact_id) is str and len(artifact_id)==71 and artifact_id.startswith('sha256-') and all(c in '0123456789abcdef' for c in artifact_id[7:]),'registered_digest_binding')
+        registry._readonly_private_directory(Path(root)/'.rag_index')
+        registry._readonly_private_directory(Path(root)/registry.INDEX_RELATIVE)
+        record=registry._read_record_readonly(Path(root)/registry.INDEX_RELATIVE/(artifact_id+'.json'))
+        matches=[entry for entry in record['locations'] if entry['evidenceClass']=='local-verified' and entry.get('localPath')==str(expected_path)]
+        require(len(matches)==1,'correlated_preparation_location')
+        location_id=matches[0]['locationId']
+    verified=(registry.verify_artifact_readonly(root,artifact_id) if location_id is None
+              else registry.verify_artifact_readonly(root,artifact_id,location_id))
     require(verified.get('verification')=='verified','registered_local_bytes_required')
     location=verified.get('location',{});artifact=verified.get('artifact',{})
     require(location.get('evidenceClass')=='local-verified' and type(location.get('localPath')) is str,'local_artifact_location')
@@ -197,7 +208,7 @@ class NativeOwnerGuiLifecycleSshDriver(native_scenario_ssh.NativeScenarioSshDriv
             admissions={}
             for name in ('guest','display','fixture','protected'):
                 key={'guest':'guestAdmissionArtifactId','display':'displayAdmissionArtifactId','fixture':'fixtureAdmissionArtifactId','protected':'protectedOwnerArtifactId'}[name]
-                data,identity=_held_registered(self.root,value[key],262144,held)
+                data,identity=_held_registered(self.root,value[key],262144,held,Path(self.root)/'.rag_index'/'native-owner-gui-preparations'/plan.correlation_id/(name+'.json'))
                 admissions[name]=json.loads(data,object_pairs_hook=closure._pairs)
                 require(type(admissions[name]) is dict,'preparation_receipt_object')
             admissions['source']=self._source_admission(value,held)
@@ -274,7 +285,10 @@ class NativeOwnerGuiLifecycleSshDriver(native_scenario_ssh.NativeScenarioSshDriv
         return value if type(value) is dict else None
 
     def _preflight_prepared(self,prepared):
-        _,raw,_,admissions,sources,config,_,held,_=prepared
+        _,raw,_,admissions,sources,config,remote_root,held,_=prepared
+        root_check=self._run_closed(config,admissions['guest']['host'],native_scenario_ssh._py(_TRANSFER_ROOT_PROBE),json.dumps({'root':str(remote_root),'context':str(Path(admissions['guest']['ownedRoot']).parent),'uid':admissions['guest']['uid']}).encode(),held)
+        if not root_check or root_check.get('ready') is not True or root_check.get('readOnly') is not True:
+            return {'ready':False,'requirements':{'guiAdmission':{'state':'unknown','reason':'configured_transfer_root_unavailable','evidenceScope':'read-only-guest-probe'}},'scenarioId':SCENARIO_ID}
         program=_probe_prefix(sources[_FILES[0]],sources[_FILES[1]])+'v=json.loads(sys.stdin.buffer.read(262145),object_pairs_hook=ns["pairs"]);ns["validate_input"](v["input"]);print(json.dumps(ns["admission_probe"](v["input"],v["admissions"])))'
         payload=json.dumps({'input':json.loads(raw),'admissions':admissions}).encode()
         value=self._run_closed(config,admissions['guest']['host'],native_scenario_ssh._py(program),payload,held)

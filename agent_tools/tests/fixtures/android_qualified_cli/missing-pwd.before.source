@@ -1,0 +1,16 @@
+import errno, fcntl, os, pty, re, selectors, subprocess, termios, time
+def owned_home_identity(value):
+    if not isinstance(value,str) or '%' in value or '..' in value.split('/') or any(ord(c)<32 for c in value):raise ValueError('effective_key_not_literal')
+    if value.startswith('~/'):
+        home=Path(pwd.getpwuid(os.getuid()).pw_dir)
+        if not home.is_absolute():raise ValueError('effective_home_unknown')
+        info=os.lstat(home)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode&0o022:raise ValueError('effective_home_foreign')
+        return {'path':str(home/value[2:]),'home':str(home),'homePin':generation(info)}
+    if value.startswith('~') or not Path(value).is_absolute():raise ValueError('effective_key_unknown')
+    return {'path':value,'home':None,'homePin':None}
+def generation(info):
+    return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,
+            info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+import base64,hashlib,json,os,re,shlex,stat,subprocess,sys,time
+from pathlib import Path

@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Route nested guests through the selected Arch connection and refuse lost selection during setup.
 - Catch stale SSH close dependencies before long prepush checks.
 - Preserve reviewed ended SSH history, verify original channel termination, and cover native collection import failures.
+- Preserve qualified Android observation evidence, validate Linux GUI preparation, and repair portable visual capture fixtures.
 
 ## 2.2.8 - 2026-10-12
 

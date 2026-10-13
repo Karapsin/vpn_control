@@ -1,0 +1,251 @@
+"""Fixed qualified-image DIRECT observer. No installer or lease operations."""
+import errno,fcntl,pwd,selectors,termios,pty
+"""Private fixed caller's PTY collector. A timeout never closes a live PTY."""
+import errno, fcntl, os, pty, re, selectors, subprocess, termios, time
+CAP=4096
+class Custody:
+    def __init__(self, child, master, slave, stdout, secret, admitted_keys):
+        self.child=child; self.master=master; self.slave=slave; self.stdout=stdout
+        self.secret=secret; self.keys=tuple(os.fsencode(k) for k in admitted_keys)
+        self.selector=selectors.DefaultSelector(); self.raw={'stdout':bytearray(),'tty':bytearray()}
+        self.counts={'stdout':0,'tty':0}; self.eof={'stdout':False,'tty':False}
+        self.sent=False; self.refusal=None; self.timeout=False; self.closed=False
+        for fd,name in ((master,'tty'),(stdout.fileno(),'stdout')):
+            os.set_blocking(fd,False);self.selector.register(fd,selectors.EVENT_READ,name)
+    def _close_slave(self):
+        if self.slave is not None: os.close(self.slave); self.slave=None
+    def _step(self, seconds):
+        if self.child.poll() is not None:self._close_slave()
+        for key,_ in self.selector.select(seconds):
+            name=key.data
+            try: chunk=os.read(key.fd,4096)
+            except BlockingIOError:continue
+            except OSError as exc:
+                if name=='tty' and exc.errno==errno.EIO:chunk=b''
+                else:self.refusal=self.refusal or 'capture_read';self.selector.unregister(key.fd);self.eof[name]=True;continue
+            if not chunk:self.eof[name]=True;self.selector.unregister(key.fd);continue
+            self.counts[name]+=len(chunk); left=CAP-len(self.raw[name]);self.raw[name].extend(chunk[:max(left,0)])
+            if self.counts[name]>CAP:self.refusal=self.refusal or 'capture_overflow'
+            if name!='tty':continue
+            wire=bytes(self.raw['tty'])
+            prompts=list(re.finditer(rb"Enter passphrase for key '([^'\r\n]{1,2048})': ?",wire))
+            if len(prompts)>1:self.refusal=self.refusal or 'extra_prompt'
+            if prompts and not self.sent and self.refusal is None:
+                prompt=prompts[0]
+                if prompt.group(1) not in self.keys or wire[:prompt.start()].strip():self.refusal='foreign_prompt'
+                elif self.slave is None or termios.tcgetattr(self.slave)[3]&(termios.ECHO|termios.ECHONL):self.refusal='echo_enabled'
+                else:
+                    if not isinstance(self.secret,bytes) or not 0<len(self.secret)<=512 or any(c in self.secret for c in (b'\n',b'\r',b'\0')):self.refusal='secret_shape'
+                    else:
+                        payload=self.secret+b'\n';written=os.write(self.master,payload)
+                        if written!=len(payload):self.refusal='credential_write'
+                        self.sent=True;self.secret=None;self._close_slave()
+            if (b'assword:' in wire or b'Are you sure' in wire or b'yes/no' in wire) and not prompts:self.refusal=self.refusal or 'foreign_prompt'
+    def observe(self,seconds):
+        end=time.monotonic()+seconds
+        while not (self.child.poll() is not None and all(self.eof.values())):
+            left=end-time.monotonic()
+            if left<=0:self.timeout=True;break
+            self._step(min(.05,left))
+        complete=self.child.poll() is not None and all(self.eof.values())
+        if complete:self.close_terminal()
+        return self.snapshot()
+    def snapshot(self):
+        return {'pid':self.child.pid,'returnCode':self.child.poll(),
+                'complete':self.child.poll() is not None and all(self.eof.values()),
+                'timeout':self.timeout,'refusal':self.refusal,'credentialSent':self.sent,
+                'counts':dict(self.counts),'eof':dict(self.eof)}
+    def finish_naturally(self):
+        # The same custodian retains the master/pipes until natural child EOF.
+        # No timeout, signal, relaunch or close-on-expiry is performed here.
+        while not (self.child.poll() is not None and all(self.eof.values())):self._step(.05)
+        self.close_terminal()
+    def close_terminal(self):
+        if self.child.poll() is None:raise ValueError('live_child_custody')
+        if not self.closed:
+            self._close_slave(); self.selector.close();os.close(self.master);self.stdout.close();self.closed=True;self.secret=None
+
+def start_fixed(argv, secret, admitted_keys):
+    master,slave=pty.openpty();attrs=termios.tcgetattr(slave);attrs[3]&=~(termios.ECHO|termios.ECHONL);termios.tcsetattr(slave,termios.TCSANOW,attrs)
+    def session():
+        os.setsid();fcntl.ioctl(slave,termios.TIOCSCTTY,0)
+    env=dict(os.environ)
+    for key in ('SSH_ASKPASS','SSH_ASKPASS_REQUIRE','VPN_CONTROL_SSH_PASSWORD_FILE','DISPLAY'):env.pop(key,None)
+    env['TERM']='dumb'
+    try:child=subprocess.Popen(argv,stdin=slave,stderr=slave,stdout=subprocess.PIPE,env=env,preexec_fn=session,close_fds=True)
+    except BaseException:os.close(master);os.close(slave);raise
+    return Custody(child,master,slave,child.stdout,secret,admitted_keys)
+
+def owned_home_identity(value):
+    if not isinstance(value,str) or '%' in value or '..' in value.split('/') or any(ord(c)<32 for c in value):raise ValueError('effective_key_not_literal')
+    if value.startswith('~/'):
+        home=Path(pwd.getpwuid(os.getuid()).pw_dir)
+        if not home.is_absolute():raise ValueError('effective_home_unknown')
+        info=os.lstat(home)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode&0o022:raise ValueError('effective_home_foreign')
+        return {'path':str(home/value[2:]),'home':str(home),'homePin':generation(info)}
+    if value.startswith('~') or not Path(value).is_absolute():raise ValueError('effective_key_unknown')
+    return {'path':value,'home':None,'homePin':None}
+
+def generation(info):
+    return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,
+            info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+
+def parent_guard(chain):
+    for index,(fd,name,pin) in enumerate(chain):
+        named=os.stat('/',follow_symlinks=False) if index==0 else os.stat(name,dir_fd=chain[index-1][0],follow_symlinks=False)
+        if generation(os.fstat(fd))!=pin or generation(named)!=pin or not stat.S_ISDIR(named.st_mode):
+            raise ValueError('route_parent_changed')
+
+def file_pin(path, *, body=False, private=False):
+    path=Path(path)
+    if not path.is_absolute() or '..' in path.parts:raise ValueError('route_parent_unsafe')
+    chain=[];leaf=-1
+    try:
+        flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW
+        try:
+            fd=os.open('/',flags);chain.append((fd,None,generation(os.fstat(fd))))
+            for name in path.parent.parts[1:]:
+                fd=os.open(name,flags,dir_fd=chain[-1][0]);chain.append((fd,name,generation(os.fstat(fd))))
+        except OSError as exc:raise ValueError('route_parent_unsafe') from exc
+        final=os.fstat(chain[-1][0])
+        if final.st_uid!=os.getuid() or final.st_mode&0o022:raise ValueError('route_parent_unsafe')
+        parent_guard(chain)
+        before=os.stat(path.name,dir_fd=chain[-1][0],follow_symlinks=False)
+        if not stat.S_ISREG(before.st_mode) or before.st_uid!=os.getuid() or before.st_nlink!=1 or before.st_mode&0o022 or private and stat.S_IMODE(before.st_mode)!=0o600:
+            raise ValueError('route_file_unsafe')
+        pin={'generation':generation(before),'parents':[{'name':name,'generation':meta} for _,name,meta in chain]}
+        if body:
+            leaf=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=chain[-1][0])
+            if generation(os.fstat(leaf))!=pin['generation']:raise ValueError('route_file_changed')
+            parent_guard(chain)
+            chunks=[];total=0
+            while True:
+                chunk=os.read(leaf,65536)
+                if not chunk:break
+                chunks.append(chunk);total+=len(chunk)
+                if total>1048576:raise ValueError('route_file_unbounded')
+            raw=b''.join(chunks)
+            if len(raw)!=before.st_size or generation(os.fstat(leaf))!=pin['generation']:raise ValueError('route_file_changed')
+            pin.update(bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),
+                       unsupportedConfigDirectives=any(re.match(rb'\s*(include|match)\b',line,re.I) for line in raw.splitlines()))
+        if generation(os.stat(path.name,dir_fd=chain[-1][0],follow_symlinks=False))!=pin['generation']:raise ValueError('route_file_changed')
+        parent_guard(chain)
+        return pin
+    finally:
+        if leaf>=0:os.close(leaf)
+        for fd,_,_ in reversed(chain):os.close(fd)
+
+def ssh_options(spec):
+    return ['ssh','-T','-F',spec['configFile'],'-S',spec['controlPath'],'-o','ControlMaster=no','-o','ControlPersist=no',
+            '-o','ClearAllForwardings=yes','-o','PermitLocalCommand=no','-o','UpdateHostKeys=no','-o','ProxyCommand=none']
+
+def effective_route(spec):
+    result=subprocess.run([*ssh_options(spec),'-G',spec['remoteHostAlias']],capture_output=True,timeout=5)
+    if result.returncode!=0 or len(result.stdout)>65536 or result.stderr:raise ValueError('effective_route_unknown')
+    values={}
+    for line in result.stdout.decode('utf-8',errors='strict').splitlines():
+        name,_,value=line.partition(' ')
+        if name=='identityfile':values.setdefault(name,[]).append(value)
+    keys=values.get('identityfile',[])
+    if not keys:raise ValueError('effective_key_unknown')
+    identities=[owned_home_identity(p) for p in keys]
+    keys=[item['path'] for item in identities]
+    homes={item['home']:item['homePin'] for item in identities if item['home'] is not None}
+    existing={p:file_pin(p,private=True) for p in keys if os.path.lexists(p)}
+    if not existing:raise ValueError('effective_key_unavailable')
+    for home,pin in homes.items():
+        if generation(os.lstat(home))!=pin:raise ValueError('effective_home_changed')
+    return {'effectiveSha256':hashlib.sha256(result.stdout).hexdigest(),'keyMetadata':existing,'ownedHomePins':homes}
+
+
+import base64,hashlib,json,os,re,shlex,stat,subprocess,sys,time;from pathlib import Path
+PROBE='import os,sys,json,hashlib,stat,subprocess,selectors,time,re,select\nfrom pathlib import Path\nPROFILE = None\nASSET=Path(\'/home/kardinal/vpn-control-android-fae-qualified-506ed3bb93cb474ebc28a9a871cb4bd7\')\nPACKAGE=ASSET/\'vpn-control_2.2.2-1_amd64.launcher-repaired.deb\'\nPACKAGE_SHA=\'fae8a09a543ea6266614d6ddba3adf26a4edd24aec5f32d8b68e6d63e2a36e9b\'\nPACKAGE_PIN=[66307,104100836,33152,1000,1000,1,124104056,1791860206174998384,1791860206174998384]\nIMAGE=ASSET/\'android-image-7a67998fbd98401eb4cac86a70d81df2/image\'\nMANIFEST=IMAGE.parent/\'image-qualification.public.json\'\nMANIFEST_SHA=\'0b408f7a513c38a0a58687725625c5df64219dbf6d34bd6fff70df2b8dbb6e35\'\nOBS_NAME = \'full-observe-b995aafeebbb41caaca1998a17add08f\'\nif os.getuid()!=1000 or Path(\'/proc/sys/kernel/random/boot_id\').read_text().strip()!=\'25515f23-b966-4c3a-ae63-d38452375578\':raise ValueError(\'fixed_arch_identity\')\nif type(PROFILE)is not dict or set(PROFILE)!={\'adb\',\'cli\',\'serial\',\'expectedAvd\',\'api\'}or PROFILE[\'api\']!=35 or PROFILE[\'serial\']!=\'emulator-5682\':raise ValueError(\'fixed_android_profile\')\nheld=[];parents={};leaves={};image_files={};image_dirs={};captures=[];started=time.monotonic()\ndef gen(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]\ndef ident(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid]\ndef sha_fd(fd,size):\n h=hashlib.sha256();pos=0\n while pos<size:\n  block=os.pread(fd,min(65536,size-pos),pos)\n  if not block:raise ValueError(\'asset_truncated\')\n  h.update(block);pos+=len(block)\n if os.pread(fd,1,size):raise ValueError(\'asset_growth\')\n return h.hexdigest()\ndef hold_parents(path):\n for p in reversed(path.parent.parents):\n  if str(p)not in parents:\n   fd=os.open(p,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held.append(fd);s=os.fstat(fd)\n   if ident(os.lstat(p))!=ident(s):raise ValueError(\'asset_parent_changed\')\n   parents[str(p)]=(fd,ident(s))\n p=path.parent\n if str(p)not in parents:\n  fd=os.open(p,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held.append(fd);s=os.fstat(fd)\n  if ident(os.lstat(p))!=ident(s):raise ValueError(\'asset_parent_changed\')\n  parents[str(p)]=(fd,ident(s))\n if os.fstat(parents[str(p)][0]).st_uid!=1000 or stat.S_IMODE(os.fstat(parents[str(p)][0]).st_mode)!=0o700:raise ValueError(\'asset_parent_untrusted\')\ndef hold_file(path,size,sha,pin=None):\n hold_parents(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);held.append(fd);s=os.fstat(fd)\n if not stat.S_ISREG(s.st_mode)or s.st_uid!=1000 or s.st_nlink!=1 or s.st_mode&0o022 or s.st_size!=size or gen(os.lstat(path))!=gen(s):raise ValueError(\'asset_file_untrusted\')\n if pin is not None and gen(s)!=pin:raise ValueError(\'asset_generation_changed\')\n if sha_fd(fd,size)!=sha:raise ValueError(\'asset_hash_changed\')\n leaves[str(path)]=(fd,gen(s),sha,size);return fd\ndef source_closing():\n for path,(fd,pin)in parents.items():\n  if ident(os.fstat(fd))!=pin or ident(os.lstat(path))!=pin:raise ValueError(\'asset_parent_changed\')\n for path,(fd,pin,sha,size)in leaves.items():\n  if gen(os.fstat(fd))!=pin or gen(os.lstat(path))!=pin or sha_fd(fd,size)!=sha:raise ValueError(\'asset_file_changed\')\ndef retain(path,data):\n fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n try:\n  view=memoryview(data)\n  while view:\n   n=os.write(fd,view)\n   if n<=0:raise ValueError(\'retained_short_write\')\n   view=view[n:]\n  os.fsync(fd)\n finally:os.close(fd)\ndef image_closing():\n for path,(fd,pin)in image_dirs.items():\n  if ident(os.fstat(fd))!=pin or ident(os.lstat(path))!=pin:raise ValueError(\'image_directory_changed\')\n for rel,(fd,pin,sha,size)in image_files.items():\n  p=IMAGE/rel\n  if gen(os.fstat(fd))!=pin or gen(os.lstat(p))!=pin or sha_fd(fd,size)!=sha:raise ValueError(\'image_file_changed\')\n observed=set()\n for current,dirs,files in os.walk(IMAGE,followlinks=False):\n  if any((Path(current)/n).is_symlink()for n in dirs+files):raise ValueError(\'image_link_changed\')\n  observed.update((Path(current)/n).relative_to(IMAGE).as_posix()for n in files)\n if observed!=set(image_files):raise ValueError(\'image_inventory_changed\')\ndef call(label,words,cap=4096):\n t=time.monotonic();p=subprocess.Popen([PROFILE[\'adb\'],\'-s\',PROFILE[\'serial\'],*words],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)\n raw={p.stdout:bytearray(),p.stderr:bytearray()};active=set(raw);deadline=t+5\n try:\n  while active:\n   left=deadline-time.monotonic()\n   if left<=0:raise TimeoutError(\'fixed_adb_read_deadline\')\n   ready,_,_=select.select(list(active),[],[],left)\n   for stream in ready:\n    chunk=os.read(stream.fileno(),min(4096,cap+1-len(raw[stream])))\n    if not chunk:active.remove(stream);continue\n    raw[stream].extend(chunk)\n    if len(raw[stream])>cap:raise ValueError(\'fixed_adb_read_cap\')\n  p.wait(timeout=max(.01,deadline-time.monotonic()))\n  if p.returncode!=0 or raw[p.stderr]:raise ValueError(\'fixed_adb_read_unknown\')\n  return bytes(raw[p.stdout]).decode(\'utf-8\',\'strict\').strip()\n finally:\n  if p.poll()is None:p.kill()\n  p.wait(timeout=5)\n  captures.append({\'label\':label,\'returnCode\':p.returncode,\'stdoutBytes\':len(raw[p.stdout]),\'stderrBytes\':len(raw[p.stderr]),\'stdoutSha256\':hashlib.sha256(raw[p.stdout]).hexdigest(),\'stderrSha256\':hashlib.sha256(raw[p.stderr]).hexdigest(),\'elapsedSeconds\':time.monotonic()-t})\n  p.stdout.close();p.stderr.close()\n\ndef redact_proxy(value):\n    # Preserve only known diagnostic-safe values.  A global setting can carry a\n    # URI with credentials, so arbitrary values become a category, never text.\n    if value is None: return {"state": "unknown"}\n    value = value.strip()\n    if not value: return {"state": "unset"}\n    if value == "null": return {"state": "null", "value": value}\n    if value == ":0": return {"state": "disabled", "value": value}\n    if re.fullmatch(r"(?:127\\.0\\.0\\.1|localhost):[1-9][0-9]{0,4}", value) or re.fullmatch(r"\\[::1\\]:[1-9][0-9]{0,4}", value):\n        return {"state": "loopback", "value": value}\n    return {"state": "set"}\nPROXY_FIELDS = (\'http_proxy\', \'global_http_proxy_host\', \'global_http_proxy_port\', \'global_http_proxy_pac\', \'global_http_proxy_exclusion_list\')\ndef physical():\n abi=call(\'abi_list\',[\'shell\',\'getprop\',\'ro.product.cpu.abilist\']);bridge=call(\'native_bridge\',[\'shell\',\'getprop\',\'ro.dalvik.vm.native.bridge\']);sdk=call(\'sdk\',[\'shell\',\'getprop\',\'ro.build.version.sdk\']);uid=call(\'shell_uid\',[\'shell\',\'id\',\'-u\']);ka=call(\'kernel_avd\',[\'shell\',\'getprop\',\'ro.kernel.qemu.avd_name\']);ba=call(\'boot_avd\',[\'shell\',\'getprop\',\'ro.boot.qemu.avd_name\']);boot=call(\'guest_boot\',[\'shell\',\'cat\',\'/proc/sys/kernel/random/boot_id\'])\n avds={v for v in(ka,ba)if v}\n if sdk!=\'35\' or uid!=\'2000\' or avds!={PROFILE[\'expectedAvd\']} or not re.fullmatch(\'[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\',boot):raise ValueError(\'physical_device_mismatch\')\n if not abi or len(abi)>128 or len(bridge)>128 or not re.fullmatch(\'[A-Za-z0-9_,.-]+\',abi) or not re.fullmatch(\'[A-Za-z0-9_.-]*\',bridge):raise ValueError(\'abi_translation_unknown\')\n proxy={name:redact_proxy(call(\'proxy_\'+name,[\'shell\',\'settings\',\'get\',\'global\',name]))for name in PROXY_FIELDS}\n return {\'sdk\':sdk,\'shellUid\':uid,\'kernelAvd\':ka,\'bootAvd\':ba,\'guestBootId\':boot,\'serial\':PROFILE[\'serial\'],\'abiList\':abi,\'nativeBridge\':bridge,\'proxy\':proxy}\ndef app():\n pid=call(\'app_pid\',[\'shell\',\'pidof\',\'com.kardinal.vpncontrol\'])\n if pid!=\'1802\':raise ValueError(\'current_app_pid_changed\')\n raw=call(\'app_stat\',[\'shell\',\'cat\',\'/proc/\'+pid+\'/stat\']);m=re.fullmatch(pid+r\' \\(([^()\\r\\n]+)\\) (.+)\',raw)\n if not m or len(m[2].split())<20 or m[2].split()[19]!=\'13396416\':raise ValueError(\'current_app_birth_changed\')\n status=call(\'app_uid\',[\'shell\',\'cat\',\'/proc/\'+pid+\'/status\'],16384);u=re.search(r\'^Uid:\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s*$\',status,re.M)\n if not u or list(map(int,u.groups()))!=[10209]*4:raise ValueError(\'current_app_uid_changed\')\n return {\'pid\':1802,\'startTicks\':13396416,\'uid\':10209}\n\nimport os\nimport shutil\nfrom pathlib import Path\ndef public_cli_environment(adb: str, cli: Path, environment=None) -> dict | None:\n    """Pin packaged Android CLI children to this lifecycle\'s approved ADB binary.\n\n    Python fixture adapters do not execute the packaged Desktop Android client, so\n    they keep their existing inherited execution behavior. Packaged clients resolve\n    a bare ``adb`` at runtime; validate the selected binary before device or fixture\n    work, then put only its resolved parent ahead of the child\'s inherited PATH.\n    """\n    if cli.suffix.lower() == ".py":\n        return None\n    selected = Path(adb)\n    if not selected.is_absolute():\n        raise ValueError("Fixture packaged CLI requires an absolute ADB binary")\n    try:\n        selected = selected.resolve(strict=True)\n    except OSError as error:\n        raise ValueError("Fixture ADB binary is unavailable") from error\n    if not selected.is_file() or not os.access(selected, os.X_OK):\n        raise ValueError("Fixture ADB binary is not executable")\n    result = dict(os.environ if environment is None else environment)\n    result.pop("DYLD_INSERT_LIBRARIES", None)\n    result["PATH"] = str(selected.parent) + os.pathsep + result.get("PATH", os.defpath)\n    discovered = shutil.which("adb", path=result["PATH"])\n    try:\n        approved = discovered is not None and os.path.samefile(discovered, selected)\n    except OSError:\n        approved = False\n    if not approved:\n        raise RuntimeError("Fixture packaged CLI ADB path does not select the approved binary")\n    return result\n\ndef invoke(family,args,root):\n source_closing();image_closing();env=dict(os.environ)\n for key in(\'JAVA_TOOL_OPTIONS\',\'_JAVA_OPTIONS\',\'JDK_JAVA_OPTIONS\',\'LD_PRELOAD\',\'LD_LIBRARY_PATH\',\'DISPLAY\',\'WAYLAND_DISPLAY\'):env.pop(key,None)\n env.update(HOME=str(root/\'home\'),TMPDIR=str(root/\'tmp\'),XDG_CONFIG_HOME=str(root/\'config\'),XDG_CACHE_HOME=str(root/\'cache\'),XDG_RUNTIME_DIR=str(root/\'runtime\'))\n if family in(\'status\',\'operations\'):env=public_cli_environment(PROFILE[\'adb\'],IMAGE/\'bin/vpn-control\',env)\n child=subprocess.Popen([str(IMAGE/\'bin/vpn-control\'),*args],cwd=root,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True)\n retain(root/(family+\'-accepted.private.json\'),json.dumps({\'pid\':child.pid,\'family\':family,\'packageSha256\':PACKAGE_SHA,\'replayAllowed\':False},sort_keys=True).encode())\n selector=selectors.DefaultSelector();raw={child.stdout:bytearray(),child.stderr:bytearray()};active=set(raw);counts={child.stdout:0,child.stderr:0};expired=False;overflow=False;deadline=time.monotonic()+20\n try:\n  for stream in active:os.set_blocking(stream.fileno(),False);selector.register(stream,selectors.EVENT_READ)\n  while child.poll()is None or active:\n   expired=expired or time.monotonic()>=deadline\n   for key,_ in selector.select(.05):\n    stream=key.fileobj;block=os.read(stream.fileno(),4096)\n    if not block:active.remove(stream);selector.unregister(stream);continue\n    counts[stream]+=len(block);raw[stream].extend(block[:max(0,131072-len(raw[stream]))]);overflow=overflow or counts[stream]>131072\n  stdout=bytes(raw[child.stdout]);stderr=bytes(raw[child.stderr]);retain(root/(family+\'-stdout.private\'),stdout);retain(root/(family+\'-stderr.private\'),stderr)\n  source_closing();image_closing()\n  valid=child.returncode==0 and not stderr and not expired and not overflow\n  item=json.loads(stdout)if valid else None\n  if type(item)is not dict or item.get(\'ok\')is not True or item.get(\'final\')is not True or item.get(\'code\')!=\'OK\' or type(item.get(\'data\'))is not dict:raise ValueError(\'public_cli_reply_unknown\')\n  data=item[\'data\'];projection={\'family\':family,\'pid\':child.pid,\'returnCode\':child.returncode,\'complete\':True,\'stdoutBytes\':counts[child.stdout],\'stderrBytes\':counts[child.stderr],\'stdoutSha256\':hashlib.sha256(stdout).hexdigest(),\'stderrSha256\':hashlib.sha256(stderr).hexdigest(),\'quietContractPassed\':valid,\'ok\':item[\'ok\'],\'code\':item[\'code\'],\'final\':item[\'final\']}\n  if family in(\'status\',\'operations\'):\n   owner=item.get(\'controllerId\');revision=item.get(\'configurationRevision\')\n   if type(owner)is not str or not re.fullmatch(\'[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\',owner)or type(revision)is not int or revision!=0:raise ValueError(\'current_owner_status_unknown\')\n   projection.update(controllerId=owner,operationId=item.get(\'operationId\'),configurationRevision=revision)\n   if family==\'status\':projection.update(runtimeRunning=data.get(\'runtimeRunning\'),runtimeObservation=data.get(\'runtimeObservation\'))\n   else:\n    if type(data.get(\'operations\'))is not list:raise ValueError(\'operations_reply_unknown\')\n    projection[\'operationCount\']=len(data[\'operations\'])\n  else:\n   registry=data.get(\'jsonOperations\');projection.update(runtimeReadinessChecked=data.get(\'runtimeReadinessChecked\'),registryCount=len(registry)if type(registry)in(dict,list)else None)\n  return projection\n finally:selector.close();child.stdout.close();child.stderr.close()\ntry:\n hold_file(PACKAGE,124104056,PACKAGE_SHA,PACKAGE_PIN);mfd=hold_file(MANIFEST,39593,MANIFEST_SHA);metadata=json.loads(os.pread(mfd,39594,0))\n if metadata.get(\'packageSha256\')!=PACKAGE_SHA or metadata.get(\'originalNonGeneratedBytesAllEqual\')is not True or len(metadata.get(\'files\',{}))!=155 or metadata.get(\'classPathJars\')!=57:raise ValueError(\'current_image_manifest_unknown\')\n for rel,row in metadata[\'files\'].items():\n  if not isinstance(rel,str)or rel.startswith(\'/\')or \'..\'in Path(rel).parts:raise ValueError(\'image_member_unsafe\')\n  p=IMAGE/rel;hold_parents(p);fd=hold_file(p,row[\'bytes\'],row[\'sha256\'],row[\'generation\']);image_files[rel]=(fd,row[\'generation\'],row[\'sha256\'],row[\'bytes\'])\n for current,dirs,files in os.walk(IMAGE,followlinks=False):\n  fd=os.open(current,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held.append(fd);image_dirs[current]=(fd,ident(os.fstat(fd)))\n source_closing();image_closing()\n adb_fd=os.open(PROFILE[\'adb\'],os.O_RDONLY|os.O_NOFOLLOW);held.append(adb_fd);adb_pin=gen(os.fstat(adb_fd))\n if os.fstat(adb_fd).st_uid not in(0,1000)or os.fstat(adb_fd).st_mode&0o022 or gen(os.lstat(PROFILE[\'adb\']))!=adb_pin:raise ValueError(\'adb_untrusted\')\n first=physical();first_app=app();OBS=IMAGE.parent/OBS_NAME;OBS.mkdir(mode=0o700)\n for n in(\'home\',\'tmp\',\'config\',\'cache\',\'runtime\'):(OBS/n).mkdir(mode=0o700)\n trials=[]\n trials.append(invoke(\'status\',[\'--json\',\'--android\',\'--serial\',PROFILE[\'serial\'],\'--timeout-seconds\',\'15\',\'status\'],OBS))\n trials.append(invoke(\'operations\',[\'--json\',\'--android\',\'--serial\',PROFILE[\'serial\'],\'--timeout-seconds\',\'15\',\'operations\',\'list\'],OBS))\n last_app=app();last=physical()\n if first!=last or first_app!=last_app or gen(os.fstat(adb_fd))!=adb_pin or gen(os.lstat(PROFILE[\'adb\']))!=adb_pin:raise ValueError(\'current_android_closing_changed\')\n image_closing();source_closing()\n value={\'state\':\'CORRECTED_D32_FULL_OBSERVATION\',\'productVersion\':\'2.2.2\',\'engineeringOnly\':True,\'finalProductAcceptance\':False,\'packageSha256\':PACKAGE_SHA,\'device\':first,\'app\':first_app,\'trials\':trials,\'ownerConsistency\':\'consistent\'if trials[0][\'controllerId\']==trials[1][\'controllerId\']else\'unknown\',\'freshPhysicalAndAppBrackets\':2,\'imageFiles\':155,\'sourceAndImageClosing\':True,\'ownRecordsRoot\':str(OBS),\'configuredCliInvoked\':False,\'isolatedCorrectedCliInvoked\':True,\'globalInstall\':False,\'configuredProfileChanged\':False,\'guestMutationPerformed\':False,\'newOwnerAdmission\':False,\'leaseOrRetirementAuthority\':False,\'oldOutcome\':\'UNKNOWN\',\'replayAllowed\':False,\'elapsedSeconds\':time.monotonic()-started}\n wire=json.dumps({\'uid\':os.getuid(),\'boot\':Path(\'/proc/sys/kernel/random/boot_id\').read_text().strip(),\'androidObservation\':value},sort_keys=True)+\'\\n\'\n if len(wire.encode())>4096:raise ValueError(\'fixed_projection_cap\')\n sys.stdout.write(wire);sys.stdout.flush()\nfinally:\n errors=[]\n for fd in reversed(held):\n  try:os.close(fd)\n  except OSError as e:errors.append(type(e).__name__)\n if errors:raise ValueError(\'owned_descriptor_cleanup_failed\')\n'
+def reject_pairs(pairs):
+    value={}
+    for k,v in pairs:
+        if k in value:raise ValueError('duplicate')
+        value[k]=v
+    return value
+
+def bounded_envelope(stream, seconds=5):
+    fd=stream.fileno();os.set_blocking(fd,False);sel=selectors.DefaultSelector();sel.register(fd,selectors.EVENT_READ)
+    raw=bytearray();end=time.monotonic()+seconds
+    try:
+        while True:
+            left=end-time.monotonic()
+            if left<=0:raise ValueError('input_deadline')
+            if not sel.select(min(.05,left)):continue
+            chunk=os.read(fd,min(4097-len(raw),4096))
+            if not chunk:break
+            raw.extend(chunk)
+            if len(raw)>4096:raise ValueError('input_cap')
+        return json.loads(bytes(raw),object_pairs_hook=reject_pairs)
+    finally:sel.close()
+
+def fixed_inner(config_file,profile):
+    return ['ssh','-T','-F',config_file,'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=none','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','IdentityAgent=none','-o','PreferredAuthentications=publickey','-o','PasswordAuthentication=no','-o','KbdInteractiveAuthentication=no','-o','ConnectTimeout=10',profile,shlex.join(('python3','-I','-B','-c',PROBE))]
+
+def private_inner(custody,secret_bytes):
+    # Private only. Equal-length NUL masking keeps each retained stream <=4096.
+    streams={}
+    for name in ('stdout','tty'):
+        raw=bytes(custody.raw[name])
+        if len(raw)>CAP:raise ValueError('inner_capture_cap')
+        redactions=raw.count(secret_bytes) if secret_bytes else 0
+        if secret_bytes:raw=raw.replace(secret_bytes,b'\0'*len(secret_bytes))
+        streams[name]={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'redactions':redactions,'base64':base64.b64encode(raw).decode('ascii')}
+    return streams
+
+def append_final_inner(value,custody,secret_bytes,initial_private):
+ # Both snapshots are immutable values for the same original. Keep the initial
+ # UNKNOWN/refusal and caps; final evidence does not confer observation success.
+ custody.finish_naturally()
+ final=custody.snapshot()
+ if not custody.closed or not final['complete']:raise ValueError('final_capture_not_terminal')
+ value.update(finalInnerCapture=final,
+              _operatorPrivateCapture={'initial':initial_private,'final':private_inner(custody,secret_bytes)})
+ return value
+
+def remote_main():
+ custody=None;secret_bytes=None;phase='input';corr=None;initial_capture=None;initial_private=None
+ try:
+  corr,config_file,profile,source_sha=sys.argv[1:]
+  if re.fullmatch('[0-9a-f]{32}',corr)is None or source_sha!=_DECODED_SOURCE_SHA:raise ValueError('source_binding')
+  request=bounded_envelope(sys.stdin.buffer)
+  if type(request)is not dict or set(request)!={'passphrase'}:raise ValueError('request_shape')
+  secret=request.pop('passphrase')
+  if type(secret)is not str or not 0<len(secret.encode())<=512 or any(c in secret for c in ('\r','\n','\0')):raise ValueError('secret_shape')
+  phase='gateway_admission';config_file=config_file or str(Path.home()/'.ssh/config')
+  spec={'configFile':config_file,'controlPath':'none','remoteHostAlias':profile}
+  config_pin=file_pin(config_file,body=True)
+  if config_pin['unsupportedConfigDirectives']:raise ValueError('config_dependencies')
+  route_pin=effective_route(spec)
+  def guard():
+   if file_pin(config_file,body=True)!=config_pin or effective_route(spec)!=route_pin:raise ValueError('config_or_keys_changed')
+  guard();gateway={'uid':os.getuid(),'boot':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
+  if type(gateway['uid'])is not int or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',gateway['boot'])is None:raise ValueError('gateway_identity')
+  phase='inner_connection';secret_bytes=secret.encode();custody=start_fixed(fixed_inner(config_file,profile),secret_bytes,route_pin['keyMetadata']);secret=None
+  result=custody.observe(30);initial_capture=result;initial_private=private_inner(custody,secret_bytes)
+  if not result['complete'] or result['refusal']:
+   value={'state':'unknown','correlationId':corr,'phase':phase,'innerCapture':result,'gateway':gateway,'nativeActionAllowed':False,'replayAllowed':False}
+   value=append_final_inner(value,custody,secret_bytes,initial_private);guard()
+   print(json.dumps(value,sort_keys=True),flush=True);return 3
+  if result['returnCode']!=0:
+   wire=bytes(custody.raw['tty']).lower()
+   phase='host_key' if b'host key verification failed' in wire or b'remote host identification has changed'in wire else ('network'if any(x in wire for x in(b'connection refused',b'connection timed out',b'could not resolve',b'no route to host'))else('authentication'if b'permission denied'in wire and(b'publickey'in wire or b'password'in wire)else'unclassified'))
+   raise ValueError('fixed_probe_failed')
+  if result['credentialSent']is not True:raise ValueError('key_prompt_not_observed')
+  arch=json.loads(bytes(custody.raw['stdout']),object_pairs_hook=reject_pairs)
+  if type(arch)is not dict or set(arch)!={'uid','boot','androidObservation'}or type(arch['uid'])is not int or arch['uid']!=1000 or type(arch['boot'])is not str or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',arch['boot'])is None:raise ValueError('arch_identity')
+  phase='closing';guard()
+  print(json.dumps({'state':'observed','correlationId':corr,'gateway':gateway,'arch':arch,'capture':result,'nativeActionAllowed':False,'replayAllowed':False,'appOrGuestCommands':True,'journalAccess':False},sort_keys=True),flush=True);return 0
+ except (OSError,ValueError,KeyError,subprocess.SubprocessError)as e:
+  value={'state':'unknown','correlationId':corr,'phase':phase,'errorClass':type(e).__name__,'reason':str(e)if type(e)is ValueError and re.fullmatch('[a-z_]{1,64}',str(e))else'unclassified','errno':getattr(e,'errno',None),'nativeActionAllowed':False,'replayAllowed':False}
+  if custody is not None:
+   value['innerCapture']=initial_capture if initial_capture is not None else custody.observe(.01)
+   if initial_private is None:initial_private=private_inner(custody,secret_bytes)
+   value=append_final_inner(value,custody,secret_bytes,initial_private)
+  print(json.dumps(value,sort_keys=True),flush=True)
+  return 3
+if __name__=='__main__':sys.exit(remote_main())

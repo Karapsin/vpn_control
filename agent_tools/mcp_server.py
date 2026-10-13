@@ -2413,6 +2413,15 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
             except publisher.SshTransferError as error:
                 return _error("ssh_workflow", str(error))
         if action == "android-observe" and host and device:
+            if identity is not None:
+                if transfer is not None or type(identity) is not dict or set(identity) != {"cliArtifact"}:
+                    return _error("ssh_workflow", "Qualified Android observation requires only cliArtifact.")
+                qualified = importlib.import_module(f"{__package__}.android_qualified_cli_observation" if __package__ else "android_qualified_cli_observation")
+                try:
+                    result = qualified.observe(REPO_ROOT, host, device, identity["cliArtifact"], timeout_seconds)
+                    return {"tool": "ssh_workflow", "ok": result.get("available") is True, **result}
+                except qualified.QualifiedCliError as error:
+                    return _error("ssh_workflow", str(error))
             configured = transport.load_config(REPO_ROOT).hosts.get(host)
             if configured is None or device not in configured.android_devices:
                 return _error("ssh_workflow", "Unknown configured Android device alias.")

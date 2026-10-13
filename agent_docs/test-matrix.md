@@ -1192,6 +1192,32 @@ a terminal restart-required flag does not itself indicate active work.
 
 ### Native MCP workflow regressions
 
+`test_android_qualified_cli_observation` exercises the full observer with owned
+inert children, real output retention and declared source/profile/HEAD seams.
+Its30 controls include late output after observation timeout, post-retention
+source/profile/HEAD drift, actual registered FastMCP request/JSON serialization
+and a fresh isolated CLI process forwarding an owned identity JSON. Selected
+routing rejects access to current private configuration in these inert controls;
+default routing remains covered. POSIX custody controls skip on unsupported
+coordinators. Full API35 status/operations must still be retested natively through
+MCP against the qualified image. These checks do not qualify API29, installers,
+actions, uncertain leases or final-source Android acceptance.
+
+`test_native_owner_gui_preparation_admission` runs eight portable controls in
+ordinary agent-tool discovery. It executes the actual transfer-root observer
+against modeled Linux metadata and the real registry selection against inert
+registered locations. Missing or unsafe roots stop before the GUI probe; exactly
+correlated preparation locations resolve identical receipt bytes without changing
+registry defaults. Remote guest ownership, display admission and full GUI/traffic
+cleanup still require direct native proof and matching MCP retesting.
+
+`DesktopNativeVisualCaptureTest.windowsForeignSystemPropertiesDialogRejectsFrameBeforeAndAfterCapture`
+uses the real capture guard with injected inert dismissal for modeled Windows
+titles, including when the provider is hosted on Linux or macOS. It runs in
+ordinary desktop tests and hosted native capture. Real Windows dismissal remains
+separate and is used only at the actual Windows capture boundary. The portable
+control does not prove secure OS surface capture.
+
 Run `python3 -m unittest discover -s agent_tools/tests -t .` for private SSH profile
 validation, strict host-key routing, actual fake-SSH timeout/quoting behavior,
 canonical staged-input isolation, resource planning, and public MCP/CLI dispatch.

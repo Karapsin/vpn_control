@@ -1,5 +1,45 @@
 # Parity Failure-to-Regression Ledger
 
+## Qualified Android observer retention and closing — 2026-10-13
+
+The corrected fae engineering CLI completed the full DIRECT API35 status and
+operations observation in case82ae2e49: exit0, both EOFs, quiet stderr, unchanged
+app/device/proxy brackets and matching owner/revision. This establishes the
+read-only procedure only; final product, actions and installer acceptance remain.
+
+| Measured failure | Causal coverage and fixed result | Routine/native limit |
+| --- | --- | --- |
+| Direct predecessor exits3 because its owned HomeIdentity reader lacks `pwd`. | Actual preserved reader fails; restored prefix passes. The exact reader is exercised by the routine module. | The original failed attempt remains preserved; corrected full DIRECT is separate. |
+| Initial local snapshot loses later stdout and terminal evidence during natural drain. | Actual whole observer with an inert child retains0 bytes/null terminal despite actual late3062 bytes/exit0. Seven preserved-source controls fail, then pass after append-only final same-child retention. | Initial timeout/UNKNOWN is immutable and does not authorize replay. |
+| Final source closing precedes retention callbacks, allowing source drift to return observed. | An actual owned source mutation during `_retain_final` reproduces observed/available/sourceClosing. Six whole-consumer RED controls become GREEN when final retention precedes fresh source/profile/HEAD checks; final drift returns UNKNOWN with authentic terminal/raw evidence. | Real app/image/route guards and actual native retest remain required. |
+
+The sealed third successor is
+`mcp-qualified-cli-final-closing-ef1e-6563ed3b-4cf6-4865-8d68-0bcd58ec885c`
+under the owned Android runtime namespace. Its full public patch SHA256 is
+`821b8e32921489ca15af6fa3e0c2ab230052bdfcb73e1c4f310665bfed017c03`.
+Routine discovery passes30 controls, zero errors/skips, with descriptor count4
+before and after. Actual registered FastMCP serialization and fresh isolated CLI
+identity forwarding cover selected and unchanged default routes. Routine coverage
+belongs to `test_android_qualified_cli_observation` in prepush/Fast Checks. Sealed
+predecessors stay unchanged; no native or current private configuration was used
+by these controls.
+
+## Current Linux preparation and hosted visual portability — 2026-10-13
+
+| Failure and original evidence | Causal regression and fixed result | Native limit |
+| --- | --- | --- |
+| Current Ubuntu MCP case `a1be6063` remains UNKNOWN with no discovered job. A subsequent complete census found its configured transfer root absent; original stderr was not retained, so no historical exception trace is claimed. | Preserved driver reaches the GUI probe despite an absent root; the fixed actual preflight refuses first. Eight preparation-admission controls pass, including actual nofollow probe execution against modeled missing/replaced/foreign metadata. No directory mutation is added. | A new source-bound preparation and matching MCP scenario are still required. Original UNKNOWN is unreplayed. |
+| Identical prepared receipts have two genuine registered local paths; default selection refuses before transport in direct case `cb3dfa06`. | The actual registry default reproduces ambiguity; the fixed driver selects only the exact path for each of four current-correlation receipts. The original two-argument protocol remains compatible. New eight plus existing22 controls pass without skips. | Root creation and genuine guest/display/package facts are separate native admissions. |
+| Hosted Linux run38344066406 and macOS run38344068850 fail the mocked Windows dialog test by accidentally calling Win32 dismissal. | The preserved actual test method and guard compile and fail under hosted environment; the fixed method compiles and passes with inert dismissal/pause injection. Canonical focused JUnit also passes. Assertions, real capture guard and native Windows callback remain intact. | Re-run both hosted captures from the fixed checkpoint, retain provenance and inspect the images. No secure OS scene is qualified by the portable control. |
+
+Linux source packets remain in the owned `linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468`
+namespace, under `gui-transfer-root-admission-source-e57b79a3cc994a77bac6b722d2e066ce`.
+The visual beforeimage, compiled RED/GREEN and causal report remain under
+`.runtime/visual-native-portability-candidate-96ad74c98707457886427f73f07fd895`.
+Current Ubuntu DIRECT case38916e4f independently passed484 frames and complete
+owner/reference/workspace cleanup on the ef1 DEB. Earlier unknown histories stay
+immutable; final-source matrix and MCP acceptance remain open.
+
 ## Repeated close dependency pin refusal and early prepush gate — 2026-10-13
 
 Current-source prepush `4861de6b-a325-41d4-9f6e-a5dc54639e86` retains6442 tests,
