@@ -1,0 +1,21 @@
+{
+  "actualFailure": {
+    "correlationId": "cf560fa0-baa1-4f41-b318-91b6ac9b3419",
+    "errorClass": "NameError",
+    "identifier": "pwd",
+    "phase": "owned_home_identity/effective_route before archive receive",
+    "stderrBytes": 60007,
+    "stderrSha256": "03912064358901fdcda6b8e68e17eb93e2dd540d02512d2eff65ee7402642231"
+  },
+  "afterBytes": 44112,
+  "afterSha256": "e409c03ea3accccf0b16ea8653217e166b19fc372ece2184fc8bb48ab19c54bd",
+  "beforeBytes": 44101,
+  "beforeSha256": "8bf67e82925b04c58a429cea38041510e0566ceb61908aa9e473677e451fbf18",
+  "containsCredentialValues": false,
+  "containsProtectedAndroidProgramme": false,
+  "nativeClaim": false,
+  "origin": "actual submitted package-only gateway programme",
+  "rawTracebackExported": false,
+  "scope": "PUBLIC fixed package-only producer source",
+  "semanticDelta": "one explicit pwd import; guard/route/receiver/main unchanged"
+}

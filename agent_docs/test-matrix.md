@@ -269,21 +269,43 @@ both regressions run through ordinary agent discovery/prepush/Fast Checks.
 
 ## Completed DIRECT connection history controls
 
-`test_ssh_direct_ended_source_transition` discovers48 controls through ordinary
-agent-tool discovery, prepush and Fast Checks: the original23 and a25-case closure
-subclass retaining those cases plus authentic b1a transition and extra-MCP refusal.
+`test_ssh_direct_ended_source_transition` discovers58 controls through ordinary
+agent-tool discovery, prepush and Fast Checks: the original48 plus ten checkpoint74
+controls. The original23 and25-case closure subclass remain unchanged. New cases
+cover authentic four-provider ENDED dependency transitions, unresolved history and
+future MCP/transport/source-population refusal with actual Git source bytes.
 It exercises the complete provider with actual historical/current source bytes
 and private owned files: same-source completion, finite reviewed predecessor
 transitions, and refusal cases for source populations, terminal intent and READY
-custody. The three public Git fixtures pin the old provider, closure and exact reviewed
-MCP after bytes; current/future MCP bytes remain refused at that historical edge. Run it with
+custody. Public Git fixtures pin the old provider, closure and exact reviewed MCP
+and transport bytes. The checkpoint74 edge admits only its enumerated populations;
+unreviewed future source changes remain refused. Run it with
 `test_ssh_direct_nested_channel`, `test_ssh_fresh_nested_channel`,
 `test_ssh_channel_selection`, `test_ssh_channel_mcp_routes` and
 `test_ssh_transport`. Remote kernel replies are an inert declared seam; these
 controls do not establish native SSH recovery, SDK admission or Windows update
-acceptance. Unsupported POSIX coordinators retain48 explicit skips. The b1a bridge
+acceptance. Unsupported POSIX coordinators retain58 explicit skips. The b1a bridge
 changes only provider self and the exact reviewed closure pair; future unreviewed
 provider/MCP/closure transitions remain refused.
+
+## Original channel and readonly collection controls
+
+The fixed original6b observation adds15 controls in
+`test_ssh_direct_original6b_observation`. Run it with the seven DIRECT history,
+fresh/direct channel, selection, MCP route, transport and selected-descendant
+modules (200 tests). Its complete-provider controls preserve ENDED-only status,
+old-source invocation, exact additive inventory mapping, original READY custody,
+ordinary DIRECT behavior and changed-input/closing refusals. Copy-generation and
+access-time and concurrent-growth causal controls use owned actual files. Remote replies remain an
+inert child boundary; actual same-original DIRECT/MCP observations are separate.
+
+`test_windows_direct_readonly_checkpoint`, `test_windows_census_child_imports`
+and `test_windows_d32_gateway_imports` add13 routine controls for the fixed
+read-only checkpoint predicate and missing-import collector/gateway failures.
+They execute owned Git fixtures, the complete synthetic census module and the
+complete retained package gateway with declared inert native/process boundaries. Exact
+before/fixed source pins and native failure references remain explicit; these
+controls do not establish live guest readiness or authorize an app mutation.
 
 ## Current SSH close dependency controls
 

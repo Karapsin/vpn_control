@@ -832,6 +832,78 @@ under `.runtime/windows-journal-binder-review/`; deadline packets
 under `.runtime/root-parity-continuation-22e9/` binds88 reviewed public leaves;
 protected programme/proof/credential bodies were not read.
 
+## DIRECT history dependency admission — 2026-10-13
+
+New correlation `a242cdeb-01f9-4aff-8d3f-f9b718333e4c` returned UNKNOWN
+before intent creation or SSH. The first retained ENDED predecessor failed the
+finite source gate: MCP6ca7 versus60634 and transport6e4 versus00bc. The journal
+has188 recorded ENDED entries and one unresolved original6b; neither a local
+refusal nor a passed source predicate establishes that original's remote end.
+
+The preserved provider reproduces four failures across ten new complete-provider
+controls. The finite four-population checkpoint74 bridge passes all58 history
+controls with zero skips; Root's seven affected modules pass185 with zero skips.
+Original48 controls remain unchanged. Exact public Git gzip fixtures authenticate
+the old/current dependencies. Terminal/READY custody, unknown population, future
+source and unresolved-history refusals remain in ordinary discovery/prepush/Fast
+Checks. Independent SOURCE review is clear; remote replies in these tests are
+inert and do not establish native channel recovery or app acceptance.
+
+Actual independent DIRECT SSH qualification exited0/full EOF with expected
+gateway/Arch UID and boot identities. Root's joined local inventory check proves
+only the approved2341 profile addition and reconstructs the old outer authority
+exactly. A guarded DIRECT original6b observation now exits0/full EOF, with647
+stdout bytes proving ENDED against the authentic prior READY/same gateway boot.
+All originals stay unchanged; equivalent MCP observation and authentic local
+terminal publication now pass as recorded below. The direct prelude's copied-file generation comparison
+and unstable access-time comparison have preserved beforeimages and causal
+actual-file controls. The original access-time refusal's historical cause remains
+unproved. No old READY is promoted and no UNKNOWN mutation is replayed.
+
+Evidence: `.runtime/linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468/`
+`direct-ended-checkpoint74-repair-cf3b9178884444d48d7a816ca1cd2a31/`
+manifest53b55d6e; independent review
+`.runtime/ended-direct-source-review-924c2f6b/` manifest692d22dc; Root mapping
+`.runtime/root-linux-gui-final-composed-p6sf4cv4/original6b-local-inventory-mapping.public.json`
+SHA01d26b9f. Original histories, refusals and actual native outputs remain preserved.
+
+The exact-original provider observer adds15 routine controls, including both
+actual-file guard regressions and an ordinary DIRECT guard-branch regression.
+The initial draft accidentally attached session reuse to the observation branch:
+existing DIRECT positive gives one failure before correction and passes after.
+The final eight-module slice passes200 with zero skips. A review found that the
+prelude's initial size check did not bound reads during concurrent growth. An
+actual14-byte owned file grew: the old reader consumed4110 bytes; the fixed
+opening-size+1 cap reads15 bytes and immediately closes/refuses. That same
+regression gives actual RED/GREEN. The remote status core remains byte-identical.
+Native DIRECT proof is the original647-byte ENDED response; the equivalent
+fresh-CLI MCP status now also passes and creates authentic terminal5532afdf,
+while Root's joined check confirms original intent/READY bytes unchanged.
+
+Windows readiness collection exposed two further harness failures. An unchanged
+clean-checkpoint predicate refused read-only queries after a docs/tool-only edit;
+the actual old consumer fails while the fixed narrow predicate's nine controls
+pass, retaining product/source/config/scope refusal. A missing `subprocess` import
+failed after the guest query had already completed. The whole synthetic emitted
+module reproduces that NameError after two inert QGA calls; the sole import fix
+completes JSON and both routine controls pass. Actual original guest records were
+recovered without replay. The11 controls run through ordinary agent discovery,
+prepush and Fast Checks; opaque private facts are explicitly replaced in fixtures,
+and these tests do not supply native admission or successful-update evidence.
+
+The package gateway exposed a separate missing `pwd` import before any receiver
+or inner child started. The complete44101-byte retained gateway reproduces that
+NameError; its44112-byte successor differs only by the import. Both causal
+controls pass with inert route/receive/start boundaries and no native children.
+`test_windows_d32_gateway_imports` enrolls them in ordinary discovery, prepush and
+Fast Checks. The combined Windows collection slice passes13 with zero skips.
+The actual original failed transfer's two owned roots were observed absent before
+a new attempt. Its successor75753198 exits0/full EOF, transfers141244908 bytes
+through both SSH hops and verifies154 regular image files/211331924 bytes with
+two closing checks. This proves transfer only; isolated CLI execution and Android
+native acceptance remain separate. Original failure and disposition are preserved
+under `.runtime/windows-direct-batch-a026-c0d047db-463a-4ea3-a35c-eac38e9efa49/`.
+
 ## Completed DIRECT source history and READY custody — 2026-10-10
 
 SDK11015/11016 ended with failure before intent creation or SSH launch. The actual

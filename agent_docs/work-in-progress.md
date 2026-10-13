@@ -33,7 +33,88 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance and tool integration — 2026-10-13,02:34 Moscow
+## Current acceptance and connection admission — 2026-10-13,04:58 Moscow
+
+Delivered `dev` and `origin/dev` are
+`74cccc42ad09a5dd4abeb100db6edf8363488e33`, product2.2.8. Its fresh
+CLI prepush passed all17 commands:6446 agent tests/175 explicit skips,
+zero failures/errors. Managed checkpoint delivery explicitly deferred required
+CI to the final exact-SHA five-workflow check. No release is authorized.
+
+The intentional new bucket is the direct-channel provider, its existing routine
+history module, the exact-original observation module and its two guard
+beforeimages, seven exact public Git source fixtures, three Windows readonly
+checkpoint/whole-child collection modules and their reviewed public fixtures,
+plus Root-owned maintainer docs and version metadata. The finite ENDED-history bridge reproduced
+four failures on the preserved provider and passes58 controls with zero skips.
+Root's first seven affected-module check passes185 tests with zero skips; the
+final observer's eight modules pass200 with zero skips and the Windows routine
+modules pass13 with zero skips. The ordinary DIRECT compatibility bug has its
+own causal RED/GREEN. ENDED-history and observer SOURCE review are clear. The
+running read bound has an actual-file growth RED/GREEN and the equivalent MCP
+observation passes. Fresh prepush and delivery of this bucket remain pending.
+
+The actual local journal has189 entries:188 recorded ENDED and one unresolved
+original `6b8c3121-31ab-47ca-8122-52e2c3f10021`. The new source predicate
+admits all188 completed histories while preserving their bodies and terminal/READY
+custody. The original `a242cdeb-01f9-4aff-8d3f-f9b718333e4c` attempt remains
+UNKNOWN/intent-absent and is not replayed. Its earlier refusal occurred before
+SSH; it was not an observed network or authentication failure.
+
+A separate DIRECT connection-only observation has actually exited0 with full
+EOF, current held source/inventory closure, gateway UID1000/bootffaa02f2 and Arch
+UID1000/boot25515f23. It created no master and ran no app or guest commands.
+Root's joined local proof confirms that only the approved Ubuntu2341 profile
+was added, all other inventory values are unchanged and the original6b outer
+authority reconstructs exactly. The guarded DIRECT same-original observation
+has now exited0/full EOF with647 stdout bytes, matching the original READY and
+gateway boot and proving the original process/socket/listener absent. It changed
+no original records. Fresh-CLI MCP status now reports ENDED and publishes
+terminal5532afdf, bound to the original intent/READY and gateway boot. Root
+verified both originals remain unchanged under joined closing guards.
+Its metadata guards use held stable generations and full bytes;
+the preserved copy-generation and access-time mistakes have causal controls.
+
+| Owner | Exclusive current work | Remaining admission |
+| --- | --- | --- |
+| Root | Shared integration, local inventory/route, docs, metadata and delivery | Source/test review complete; close active guards, then fresh validation/checkpoint; final CI remains deferred |
+| linux_readiness | One genuinely new current channel/select and configured Linux guest admission | Current channel selected and fresh2341 host/guest read passes; admitted config creation and matching MCP GUI retake remain; no replay or old READY promotion |
+| windows_update_assembly | Fixed DIRECT Windows guest census; sole Windows/Android native operator | Actual H10/guest/package/ordinary-token readiness, then captured GUI/update and isolated matching Android CLI |
+
+The exact original Windows guest query was recovered without replay: exit0,
+base2.2.5/scope2, all209 image files, matching ordinary Explorer token twice,
+zero app actors and MSI stopped on both checks. Fresh host observation proves
+both original H10 processes absent and port53895 has no listener. The retained
+840-byte guest stderr still needs classification; this is readiness evidence,
+not a new GUI launch or successful update.
+
+The current channel994a is genuinely READY/selected; fixed same-original status
+observations retain that identity. Its first guest read wrapper rejected raw
+multiline source locally before SSH; using the existing canonical quoting helper
+produced terminal0/full EOF. Fresh privileged census sees eight QEMUs/30GiB,
+normal pressure and stable swap/OOM counters. Current2341 display, package2.2.8-1
+and OFF owner match, and protected2307 remains ON unchanged. Reservations retain
+22GiB pending and14GiB mapped running; no reservation was discarded. The legacy
+keeper does not support this DIRECT journal, so the current bounded observer uses
+the existing DIRECT status route rather than claiming legacy reuse.
+
+The genuine D32 package transfer75753198 is terminal0/full EOF with current
+source closing: both hops transferred the exact141244908-byte archive and the
+receiver verified154 regular files/211331924 bytes twice. The failed predecessor
+and same-original absence observation remain preserved. Isolated `--version`
+is next; configured CLI, app, profile and uncertain lease remain unchanged.
+
+The approved remote SSH config was created O_EXCL0600 after repeated fresh gates;
+its original65979 exits0/full EOF with source closing. Config540 bytes/SHAee3c9c4c
+is bound to the existing owned guest and key. The managed descendant route is
+being verified before fresh MCP preparation; inventory membership alone admits
+no guest action. Linux's four DIRECT GUI
+components remain partial historical evidence at the new checkpoint. Full22-group/
+217-scenario and249-scene acceptance remains open. macOS still needs suitable
+owned storage and a qualified baseline; other work continues. Original evidence
+and platform limits remain below.
+
+## Historical acceptance and tool integration — 2026-10-13,02:34 Moscow
 
 Root starts this integration from clean delivered
 `7f6df2bd3118c822d44aea08fbbb6f2bf0e15bf7`, product2.2.8. That checkpoint's

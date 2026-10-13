@@ -1,0 +1,399 @@
+import pwd
+"""Private fixed caller's PTY collector. A timeout never closes a live PTY."""
+import errno, fcntl, os, pty, re, selectors, subprocess, termios, time, hashlib, stat
+CAP=4096
+ARCHIVE_BYTES=141244908
+ARCHIVE_SHA256='753cd6487892dd1dce09930b09f6bce8052d3f077bbb7a11acf1bb6cd1c9ebe2'
+ARCHIVE_CHUNK=65536
+
+def _generation9(s):
+    return (s.st_dev,s.st_ino,s.st_mode,s.st_nlink,s.st_uid,s.st_gid,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+
+class HeldArchive:
+    # Parent retains the already admitted original FD; no pathname/reopen/seek API.
+    def __init__(self, fd):
+        s=os.fstat(fd)
+        if not stat.S_ISREG(s.st_mode) or s.st_size!=ARCHIVE_BYTES:raise ValueError('archive_admission')
+        if os.lseek(fd,0,os.SEEK_CUR)!=0:raise ValueError('archive_offset')
+        self.fd=fd;self.opening=_generation9(s);self.closing=None
+        self.pending=b'';self.offset=0;self.read_bytes=0;self.sent_bytes=0
+        self.digest=hashlib.sha256();self.eof=False;self.closed=False;self.refusal=None
+        self.write_calls=0;self.partial_writes=0;self.max_pending=0
+    def _refuse(self, reason):self.refusal=self.refusal or reason
+    def write_ready(self, pipe):
+        if self.refusal or self.closed:return
+        try:
+            if not self.pending:
+                if self.read_bytes==ARCHIVE_BYTES:
+                    extra=os.read(self.fd,1);self.eof=not extra
+                    self.closing=_generation9(os.fstat(self.fd))
+                    if extra:self._refuse('archive_extra')
+                    elif self.sent_bytes!=ARCHIVE_BYTES:self._refuse('archive_count')
+                    elif self.digest.hexdigest()!=ARCHIVE_SHA256:self._refuse('archive_hash')
+                    elif self.closing!=self.opening:self._refuse('archive_generation')
+                    pipe.close();self.closed=True;return
+                self.pending=os.read(self.fd,min(ARCHIVE_CHUNK,ARCHIVE_BYTES-self.read_bytes));self.offset=0
+                if not self.pending:self._refuse('archive_short');pipe.close();self.closed=True;return
+                self.read_bytes+=len(self.pending);self.digest.update(self.pending)
+                self.max_pending=max(self.max_pending,len(self.pending))
+            try:n=os.write(pipe.fileno(),memoryview(self.pending)[self.offset:])
+            except BlockingIOError:return
+            self.write_calls+=1
+            if n<=0:self._refuse('archive_pipe_write');return
+            if n<len(self.pending)-self.offset:self.partial_writes+=1
+            self.sent_bytes+=n;self.offset+=n
+            if self.offset==len(self.pending):self.pending=b'';self.offset=0
+        except (OSError,ValueError):self._refuse('archive_io')
+    def terminal(self, pipe):
+        # Always close-check the same held FD, including incomplete natural exits.
+        try:self.closing=_generation9(os.fstat(self.fd))
+        except OSError:self._refuse('archive_closing_stat')
+        if self.closing!=self.opening:self._refuse('archive_generation')
+        if not self.eof or self.sent_bytes!=ARCHIVE_BYTES:self._refuse('archive_incomplete')
+        if not self.closed:pipe.close();self.closed=True
+    def summary(self):
+        return {'readBytes':self.read_bytes,'sentBytes':self.sent_bytes,'eof':self.eof,
+                'sha256':self.digest.hexdigest(),'openingGeneration9':self.opening,
+                'closingGeneration9':self.closing,'refusal':self.refusal,
+                'writeCalls':self.write_calls,'partialWrites':self.partial_writes,
+                'maxPendingBytes':self.max_pending,'pipeClosed':self.closed}
+
+class Custody:
+    def __init__(self, child, master, slave, stdout, secret, admitted_keys, archive):
+        self.child=child; self.master=master; self.slave=slave; self.stdout=stdout
+        self.secret=secret; self.keys=tuple(os.fsencode(k) for k in admitted_keys)
+        self.selector=selectors.DefaultSelector(); self.raw={'stdout':bytearray(),'tty':bytearray()}
+        self.counts={'stdout':0,'tty':0}; self.eof={'stdout':False,'tty':False}
+        self.sent=False; self.refusal=None; self.timeout=False; self.closed=False
+        self.archive=archive;self.archive_registered=False
+        os.set_blocking(child.stdin.fileno(),False)
+        for fd,name in ((master,'tty'),(stdout.fileno(),'stdout')):
+            os.set_blocking(fd,False);self.selector.register(fd,selectors.EVENT_READ,name)
+    def _close_slave(self):
+        if self.slave is not None: os.close(self.slave); self.slave=None
+    def _step(self, seconds):
+        if self.child.poll() is not None:
+            self._close_slave()
+            if self.archive_registered:
+                self.selector.unregister(self.child.stdin.fileno());self.archive_registered=False
+            self.archive.terminal(self.child.stdin)
+        elif self.sent and self.refusal is None and not self.archive.closed and not self.archive.refusal and not self.archive_registered:
+            self.selector.register(self.child.stdin.fileno(),selectors.EVENT_WRITE,'archive-stdin');self.archive_registered=True
+        if self.refusal and not self.archive.closed:
+            if self.archive_registered:self.selector.unregister(self.child.stdin.fileno());self.archive_registered=False
+            self.child.stdin.close();self.archive.closed=True
+        if self.archive.refusal and not self.archive.closed:
+            if self.archive_registered:self.selector.unregister(self.child.stdin.fileno());self.archive_registered=False
+            self.child.stdin.close();self.archive.closed=True
+        for key,_ in self.selector.select(seconds):
+            name=key.data
+            if name=='archive-stdin':
+                # Credential branch remains authoritative; recheck before every write.
+                if self.sent and self.refusal is None:self.archive.write_ready(self.child.stdin)
+                if self.archive.closed or self.archive.refusal:
+                    self.selector.unregister(key.fd);self.archive_registered=False
+                continue
+            try: chunk=os.read(key.fd,4096)
+            except BlockingIOError:continue
+            except OSError as exc:
+                if name=='tty' and exc.errno==errno.EIO:chunk=b''
+                else:self.refusal=self.refusal or 'capture_read';self.selector.unregister(key.fd);self.eof[name]=True;continue
+            if not chunk:self.eof[name]=True;self.selector.unregister(key.fd);continue
+            self.counts[name]+=len(chunk); left=CAP-len(self.raw[name]);self.raw[name].extend(chunk[:max(left,0)])
+            if self.counts[name]>CAP:self.refusal=self.refusal or 'capture_overflow'
+            if name!='tty':continue
+            wire=bytes(self.raw['tty'])
+            prompts=list(re.finditer(rb"Enter passphrase for key '([^'\r\n]{1,2048})': ?",wire))
+            if len(prompts)>1:self.refusal=self.refusal or 'extra_prompt'
+            if prompts and not self.sent and self.refusal is None:
+                prompt=prompts[0]
+                if prompt.group(1) not in self.keys or wire[:prompt.start()].strip():self.refusal='foreign_prompt'
+                elif self.slave is None or termios.tcgetattr(self.slave)[3]&(termios.ECHO|termios.ECHONL):self.refusal='echo_enabled'
+                else:
+                    if not isinstance(self.secret,bytes) or not 0<len(self.secret)<=512 or any(c in self.secret for c in (b'\n',b'\r',b'\0')):self.refusal='secret_shape'
+                    else:
+                        payload=self.secret+b'\n';written=os.write(self.master,payload)
+                        if written!=len(payload):self.refusal='credential_write'
+                        self.sent=True;self.secret=None;self._close_slave()
+            if (b'assword:' in wire or b'Are you sure' in wire or b'yes/no' in wire) and not prompts:self.refusal=self.refusal or 'foreign_prompt'
+    def observe(self,seconds):
+        end=time.monotonic()+seconds
+        while not (self.child.poll() is not None and all(self.eof.values())):
+            left=end-time.monotonic()
+            if left<=0:self.timeout=True;break
+            self._step(min(.05,left))
+        complete=self.child.poll() is not None and all(self.eof.values())
+        if complete:self.close_terminal()
+        return {'pid':self.child.pid,'returnCode':self.child.poll(),'complete':complete,
+                'timeout':self.timeout,'refusal':self.refusal or self.archive.refusal,'credentialSent':self.sent,
+                'counts':dict(self.counts),'eof':dict(self.eof),'archive':self.archive.summary()}
+    def finish_naturally(self):
+        # The same custodian retains the master/pipes until natural child EOF.
+        # No timeout, signal, relaunch or close-on-expiry is performed here.
+        while not (self.child.poll() is not None and all(self.eof.values())):self._step(.05)
+        self.close_terminal()
+    def close_terminal(self):
+        if self.child.poll() is None:raise ValueError('live_child_custody')
+        if not self.closed:
+            self.archive.terminal(self.child.stdin)
+            self._close_slave(); self.selector.close();os.close(self.master);self.stdout.close();self.closed=True;self.secret=None
+
+def start_fixed(argv, secret, admitted_keys, archive_fd):
+    archive=HeldArchive(archive_fd)
+    master,slave=pty.openpty();attrs=termios.tcgetattr(slave);attrs[3]&=~(termios.ECHO|termios.ECHONL);termios.tcsetattr(slave,termios.TCSANOW,attrs)
+    def session():
+        os.setsid();fcntl.ioctl(slave,termios.TIOCSCTTY,0)
+    env=dict(os.environ)
+    for key in ('SSH_ASKPASS','SSH_ASKPASS_REQUIRE','VPN_CONTROL_SSH_PASSWORD_FILE','DISPLAY'):env.pop(key,None)
+    env['TERM']='dumb'
+    try:child=subprocess.Popen(argv,stdin=subprocess.PIPE,stderr=slave,stdout=subprocess.PIPE,env=env,preexec_fn=session,close_fds=True)
+    except BaseException:os.close(master);os.close(slave);raise
+    return Custody(child,master,slave,child.stdout,secret,admitted_keys,archive)
+
+def owned_home_identity(value):
+    if not isinstance(value,str) or '%' in value or '..' in value.split('/') or any(ord(c)<32 for c in value):raise ValueError('effective_key_not_literal')
+    if value.startswith('~/'):
+        home=Path(pwd.getpwuid(os.getuid()).pw_dir)
+        if not home.is_absolute():raise ValueError('effective_home_unknown')
+        info=os.lstat(home)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode&0o022:raise ValueError('effective_home_foreign')
+        return {'path':str(home/value[2:]),'home':str(home),'homePin':generation(info)}
+    if value.startswith('~') or not Path(value).is_absolute():raise ValueError('effective_key_unknown')
+    return {'path':value,'home':None,'homePin':None}
+
+def generation(info):
+    return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,
+            info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+
+def parent_guard(chain):
+    for index,(fd,name,pin) in enumerate(chain):
+        named=os.stat('/',follow_symlinks=False) if index==0 else os.stat(name,dir_fd=chain[index-1][0],follow_symlinks=False)
+        if generation(os.fstat(fd))!=pin or generation(named)!=pin or not stat.S_ISDIR(named.st_mode):
+            raise ValueError('route_parent_changed')
+
+def file_pin(path, *, body=False, private=False):
+    path=Path(path)
+    if not path.is_absolute() or '..' in path.parts:raise ValueError('route_parent_unsafe')
+    chain=[];leaf=-1
+    try:
+        flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW
+        try:
+            fd=os.open('/',flags);chain.append((fd,None,generation(os.fstat(fd))))
+            for name in path.parent.parts[1:]:
+                fd=os.open(name,flags,dir_fd=chain[-1][0]);chain.append((fd,name,generation(os.fstat(fd))))
+        except OSError as exc:raise ValueError('route_parent_unsafe') from exc
+        final=os.fstat(chain[-1][0])
+        if final.st_uid!=os.getuid() or final.st_mode&0o022:raise ValueError('route_parent_unsafe')
+        parent_guard(chain)
+        before=os.stat(path.name,dir_fd=chain[-1][0],follow_symlinks=False)
+        if not stat.S_ISREG(before.st_mode) or before.st_uid!=os.getuid() or before.st_nlink!=1 or before.st_mode&0o022 or private and stat.S_IMODE(before.st_mode)!=0o600:
+            raise ValueError('route_file_unsafe')
+        pin={'generation':generation(before),'parents':[{'name':name,'generation':meta} for _,name,meta in chain]}
+        if body:
+            leaf=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=chain[-1][0])
+            if generation(os.fstat(leaf))!=pin['generation']:raise ValueError('route_file_changed')
+            parent_guard(chain)
+            chunks=[];total=0
+            while True:
+                chunk=os.read(leaf,65536)
+                if not chunk:break
+                chunks.append(chunk);total+=len(chunk)
+                if total>1048576:raise ValueError('route_file_unbounded')
+            raw=b''.join(chunks)
+            if len(raw)!=before.st_size or generation(os.fstat(leaf))!=pin['generation']:raise ValueError('route_file_changed')
+            pin.update(bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),
+                       unsupportedConfigDirectives=any(re.match(rb'\s*(include|match)\b',line,re.I) for line in raw.splitlines()))
+        if generation(os.stat(path.name,dir_fd=chain[-1][0],follow_symlinks=False))!=pin['generation']:raise ValueError('route_file_changed')
+        parent_guard(chain)
+        return pin
+    finally:
+        if leaf>=0:os.close(leaf)
+        for fd,_,_ in reversed(chain):os.close(fd)
+
+def ssh_options(spec):
+    return ['ssh','-T','-F',spec['configFile'],'-S',spec['controlPath'],'-o','ControlMaster=no','-o','ControlPersist=no',
+            '-o','ClearAllForwardings=yes','-o','PermitLocalCommand=no','-o','UpdateHostKeys=no','-o','ProxyCommand=none']
+
+def effective_route(spec):
+    result=subprocess.run([*ssh_options(spec),'-G',spec['remoteHostAlias']],capture_output=True,timeout=5)
+    if result.returncode!=0 or len(result.stdout)>65536 or result.stderr:raise ValueError('effective_route_unknown')
+    values={}
+    for line in result.stdout.decode('utf-8',errors='strict').splitlines():
+        name,_,value=line.partition(' ')
+        if name=='identityfile':values.setdefault(name,[]).append(value)
+    keys=values.get('identityfile',[])
+    if not keys:raise ValueError('effective_key_unknown')
+    identities=[owned_home_identity(p) for p in keys]
+    keys=[item['path'] for item in identities]
+    homes={item['home']:item['homePin'] for item in identities if item['home'] is not None}
+    existing={p:file_pin(p,private=True) for p in keys if os.path.lexists(p)}
+    if not existing:raise ValueError('effective_key_unavailable')
+    for home,pin in homes.items():
+        if generation(os.lstat(home))!=pin:raise ValueError('effective_home_changed')
+    return {'effectiveSha256':hashlib.sha256(result.stdout).hexdigest(),'keyMetadata':existing,'ownedHomePins':homes}
+
+
+import hashlib,json,os,selectors,stat,time,uuid
+ARCHIVE_BYTES=141244908
+ARCHIVE_SHA256='753cd6487892dd1dce09930b09f6bce8052d3f077bbb7a11acf1bb6cd1c9ebe2'
+ROOT_PREFIX='/tmp/vpn-control-d32-package-stream-'
+
+def _gen9(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_nlink,s.st_uid,s.st_gid,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def _dir5(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)
+def bounded_package_header(stream,seconds=5):
+    fd=stream.fileno();os.set_blocking(fd,False);sel=selectors.DefaultSelector();sel.register(fd,selectors.EVENT_READ)
+    raw=bytearray();end=time.monotonic()+seconds
+    try:
+        while True:
+            left=end-time.monotonic()
+            if left<=0:raise ValueError('input_deadline')
+            if not sel.select(min(.05,left)):continue
+            chunk=os.read(fd,min(4097-len(raw),4096))
+            if not chunk:raise ValueError('input_header_eof')
+            raw.extend(chunk);at=raw.find(b'\n')
+            if at>=0:
+                if not 0<at<=4096 or b'\r' in raw[:at]:raise ValueError('input_cap')
+                return json.loads(bytes(raw[:at]),object_pairs_hook=reject_pairs),bytes(raw[at+1:])
+            if len(raw)>=4097:raise ValueError('input_cap')
+    finally:sel.close()
+
+def receive_fixed_package(stream,correlation,prefix=b''):
+    # Correlation chooses only a fresh fixed-prefix root; no path/command API.
+    if type(correlation)is not str or len(correlation)!=36 or str(uuid.UUID(correlation))!=correlation:raise ValueError('package_correlation')
+    if type(prefix)is not bytes or len(prefix)>4096:raise ValueError('package_prefix')
+    root=ROOT_PREFIX+correlation;os.mkdir(root,0o700)
+    directory=None;package=None;sel=None
+    try:
+        directory=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        ds=os.fstat(directory)
+        if ds.st_uid!=os.getuid() or stat.S_IMODE(ds.st_mode)!=0o700 or _dir5(ds)!=_dir5(os.lstat(root)):raise ValueError('package_root_identity')
+        package=os.open('package-image.tar.gz',os.O_RDWR|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory)
+        initial=os.fstat(package)
+        if not stat.S_ISREG(initial.st_mode) or initial.st_uid!=os.getuid() or stat.S_IMODE(initial.st_mode)!=0o600 or initial.st_nlink!=1 or initial.st_size!=0:raise ValueError('package_file_identity')
+        fd=stream.fileno();os.set_blocking(fd,False);sel=selectors.DefaultSelector();sel.register(fd,selectors.EVENT_READ)
+        count=0;digest=hashlib.sha256();pending=prefix
+        while True:
+            if not pending:
+                if not sel.select(.05):continue
+                try:pending=os.read(fd,min(65536,max(1,ARCHIVE_BYTES-count)))
+                except BlockingIOError:continue
+                if not pending:break
+            if count+len(pending)>ARCHIVE_BYTES:raise ValueError('package_extra')
+            offset=0
+            while offset<len(pending):
+                wrote=os.write(package,memoryview(pending)[offset:])
+                if wrote<=0:raise ValueError('package_write')
+                offset+=wrote
+            digest.update(pending);count+=len(pending);pending=b''
+        if count!=ARCHIVE_BYTES:raise ValueError('package_count')
+        if digest.hexdigest()!=ARCHIVE_SHA256:raise ValueError('package_hash')
+        os.fsync(package);stable=_gen9(os.fstat(package));named=os.stat('package-image.tar.gz',dir_fd=directory,follow_symlinks=False)
+        if stable!=_gen9(named):raise ValueError('package_named_identity')
+        os.lseek(package,0,os.SEEK_SET);readback=hashlib.sha256();readcount=0
+        while True:
+            chunk=os.read(package,65536)
+            if not chunk:break
+            readcount+=len(chunk);readback.update(chunk)
+            if readcount>ARCHIVE_BYTES:raise ValueError('package_readback_count')
+        if readcount!=ARCHIVE_BYTES or readback.hexdigest()!=ARCHIVE_SHA256:raise ValueError('package_readback_hash')
+        closing=_gen9(os.fstat(package))
+        if stable!=closing or closing!=_gen9(os.stat('package-image.tar.gz',dir_fd=directory,follow_symlinks=False)) or _dir5(ds)!=_dir5(os.lstat(root)):raise ValueError('package_closing_identity')
+        os.lseek(package,0,os.SEEK_SET)
+        result=package;package=None
+        return result,{'bytes':count,'sha256':digest.hexdigest(),'generation9':closing,'namedEqual':True,'eof':True,'correlation':correlation}
+    finally:
+        # Failed partial roots/files remain owned and untouched; no deletion/retry.
+        if sel is not None:sel.close()
+        if package is not None:os.close(package)
+        if directory is not None:os.close(directory)
+
+def bounded_package_envelope(stream,correlation,seconds=5):
+    record,prefix=bounded_package_header(stream,seconds)
+    archive_fd,metadata=receive_fixed_package(stream,correlation,prefix)
+    return record,archive_fd,metadata
+
+import base64, hashlib, json, os, re, shlex, stat, subprocess, sys, time, uuid;from pathlib import Path
+IMAGE_SOURCE_PACKED='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'
+def reject_pairs(pairs):
+    value={}
+    for k,v in pairs:
+        if k in value:raise ValueError('duplicate')
+        value[k]=v
+    return value
+
+def bounded_envelope(stream, seconds=5):
+    fd=stream.fileno();os.set_blocking(fd,False);sel=selectors.DefaultSelector();sel.register(fd,selectors.EVENT_READ)
+    raw=bytearray();end=time.monotonic()+seconds
+    try:
+        while True:
+            left=end-time.monotonic()
+            if left<=0:raise ValueError('input_deadline')
+            if not sel.select(min(.05,left)):continue
+            chunk=os.read(fd,min(4097-len(raw),4096))
+            if not chunk:break
+            raw.extend(chunk)
+            if len(raw)>4096:raise ValueError('input_cap')
+        return json.loads(bytes(raw),object_pairs_hook=reject_pairs)
+    finally:sel.close()
+
+def fixed_inner(config_file,profile,correlation):
+    wrapper='import os,sys,json,hashlib,base64,zlib;from pathlib import Path;assert os.getuid()==1000;assert Path("/proc/sys/kernel/random/boot_id").read_text().strip()=="25515f23-b966-4c3a-ae63-d38452375578";assert os.statvfs("/home/kardinal").f_bavail*os.statvfs("/home/kardinal").f_frsize>=1073741824;_M=zlib.decompress(base64.b64decode('+repr(IMAGE_SOURCE_PACKED)+',validate=True));assert len(_M)==35913 and hashlib.sha256(_M).hexdigest()=="4f507a60e1e6ca3179f7ca175e259911b19ccf3a36d4741743414800a4e4ab56";_N={"__name__":"fixed_d32_image_receiver"};exec(compile(_M.decode("utf-8","strict"),"fixed_d32_image_receiver","exec"),_N);raise SystemExit(_N["main"](['+repr(correlation)+']))'
+    command=shlex.join(('python3','-I','-B','-c',wrapper))
+    if len(os.fsencode(command))>60000:raise ValueError('inner_command_cap')
+    return ['ssh','-T','-F',config_file,'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=none','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','IdentityAgent=none','-o','PreferredAuthentications=publickey','-o','PasswordAuthentication=no','-o','KbdInteractiveAuthentication=no','-o','ConnectTimeout=10',profile,command]
+
+
+def private_inner(custody,secret_bytes):
+    # Private only. Equal-length NUL masking keeps each retained stream <=4096.
+    streams={}
+    for name in ('stdout','tty'):
+        raw=bytes(custody.raw[name])
+        if len(raw)>CAP:raise ValueError('inner_capture_cap')
+        redactions=raw.count(secret_bytes) if secret_bytes else 0
+        if secret_bytes:raw=raw.replace(secret_bytes,b'\0'*len(secret_bytes))
+        streams[name]={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'redactions':redactions,'base64':base64.b64encode(raw).decode('ascii')}
+    return streams
+
+def remote_main():
+    custody=None;secret_bytes=None;phase='input';corr=None;archive_fd=None
+    try:
+        corr,config_file,profile,source_sha=sys.argv[1:]
+        if str(uuid.UUID(corr))!=corr or source_sha!=_DECODED_SOURCE_SHA:raise ValueError('source_binding')
+        request,prefix=bounded_package_header(sys.stdin.buffer)
+        if type(request)is not dict or set(request)!={'passphrase'}:raise ValueError('request_shape')
+        secret=request.pop('passphrase')
+        if type(secret)is not str or not 0<len(secret.encode())<=512 or any(c in secret for c in ('\r','\n','\0')):raise ValueError('secret_shape')
+        phase='gateway_admission';config_file=config_file or str(Path.home()/'.ssh/config')
+        spec={'configFile':config_file,'controlPath':'none','remoteHostAlias':profile}
+        config_pin=file_pin(config_file,body=True)
+        if config_pin['unsupportedConfigDirectives']:raise ValueError('config_dependencies')
+        route_pin=effective_route(spec)
+        def guard():
+            if file_pin(config_file,body=True)!=config_pin or effective_route(spec)!=route_pin:raise ValueError('config_or_keys_changed')
+        guard();gateway={'uid':os.getuid(),'boot':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
+        if gateway!={'uid':1000,'boot':'ffaa02f2-49e2-4672-851c-d5a5c15f4a58'}:raise ValueError('gateway_identity')
+        if os.statvfs('/tmp').f_bavail*os.statvfs('/tmp').f_frsize<536870912:raise ValueError('gateway_space')
+        phase='fixed_archive_receive';archive_fd,package_metadata=receive_fixed_package(sys.stdin.buffer,corr,prefix);guard()
+        phase='inner_connection';secret_bytes=secret.encode();custody=start_fixed(fixed_inner(config_file,profile,corr),secret_bytes,route_pin['keyMetadata'],archive_fd);secret=None
+        accepted_fd=os.open(ROOT_PREFIX+corr+'/inner-original-accepted.private.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        try:os.write(accepted_fd,json.dumps({'correlationId':corr,'pid':custody.child.pid,'sourceSha256':source_sha,'scope':'fixed_package_only','replayAllowed':False},sort_keys=True).encode());os.fsync(accepted_fd)
+        finally:os.close(accepted_fd)
+        result=custody.observe(90)
+        if not result['complete'] or result['refusal']:
+            print(json.dumps({'state':'unknown','correlationId':corr,'phase':phase,'capture':result,'gateway':gateway,'_operatorPrivateCapture':private_inner(custody,secret_bytes),'nativeActionAllowed':False,'replayAllowed':False},sort_keys=True),flush=True);custody.finish_naturally();guard();return 3
+        if result['returnCode']!=0:raise ValueError('fixed_package_receiver_failed')
+        if result['credentialSent']is not True:raise ValueError('key_prompt_not_observed')
+        image=json.loads(bytes(custody.raw['stdout']),object_pairs_hook=reject_pairs)
+        if type(image)is not dict or image.get('state')!='FIXED_D32_PACKAGE_IMAGE_VALIDATED' or image.get('archiveSha256')!='753cd6487892dd1dce09930b09f6bce8052d3f077bbb7a11acf1bb6cd1c9ebe2' or image.get('regularFiles')!=154 or image.get('imageBytes')!=211331924 or image.get('joinedImageClosings')!=2 or image.get('launcherExecuted')is not False or image.get('globalInstall')is not False or image.get('profileChanged')is not False:raise ValueError('fixed_package_image_shape')
+        phase='closing';guard()
+        print(json.dumps({'state':'observed','correlationId':corr,'gateway':gateway,'image':image,'capture':result,'gatewayArchive':package_metadata,'nativeActionAllowed':False,'replayAllowed':False,'appOrGuestCommands':False,'journalAccess':False,'leaseChanged':False,'configuredCliChanged':False},sort_keys=True),flush=True);return 0
+    except (OSError,ValueError,KeyError,subprocess.SubprocessError)as e:
+        value={'state':'unknown','correlationId':corr,'phase':phase,'errorClass':type(e).__name__,'reason':str(e)if type(e)is ValueError and re.fullmatch('[a-z_]{1,64}',str(e))else'unclassified','errno':getattr(e,'errno',None),'nativeActionAllowed':False,'replayAllowed':False}
+        if custody is not None:value.update(innerCapture=custody.observe(.01),_operatorPrivateCapture=private_inner(custody,secret_bytes))
+        print(json.dumps(value,sort_keys=True),flush=True)
+        if custody is not None and not custody.closed:custody.finish_naturally()
+        return 3
+    finally:
+        if archive_fd is not None:os.close(archive_fd)
+
+if __name__=='__main__':sys.exit(remote_main())

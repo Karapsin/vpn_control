@@ -1,0 +1,41 @@
+{
+  "sourceStatus": "PUBLIC synthetic input fixture only",
+  "actualOriginalProgrammeSha256": "a00d0c15257f5dcc545969f5dc98a80619062ad3213fbade58944e9244562fa1",
+  "substitutions": [
+    "synthetic QEMU facts",
+    "synthetic owner paths",
+    "opaque fixed guest payload",
+    "synthetic H10 process facts"
+  ],
+  "unchangedUsedCode": [
+    "actual system_ps function",
+    "complete main flow",
+    "missing subprocess consumer",
+    "all import/decoder/bound logic except typed fixture facts"
+  ],
+  "declaredInertBoundaries": [
+    "QGA call",
+    "Linux process observation",
+    "ss listener",
+    "host mem/boot/disk"
+  ],
+  "red": {
+    "state": "RED",
+    "errorClass": "NameError",
+    "identifier": "subprocess",
+    "calls": [
+      "guest-exec",
+      "guest-exec-status"
+    ]
+  },
+  "green": {
+    "state": "PASS",
+    "qgaCalls": [
+      "guest-exec",
+      "guest-exec-status"
+    ],
+    "completeMainJson": true
+  },
+  "native": false,
+  "rawPrivateExport": false
+}

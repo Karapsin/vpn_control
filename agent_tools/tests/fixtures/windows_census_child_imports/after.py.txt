@@ -1,0 +1,134 @@
+import os,sys,json,stat,socket,secrets,time,base64,hashlib,subprocess
+pid='1234'
+ticks='23456'
+leaf='/synthetic/owned-vm'
+sock=leaf+'/qga.sock'
+def live(sock,pid,ticks):
+ if not stat.S_ISSOCK(os.lstat(sock).st_mode):return False
+ raw=open('/proc/%s/stat'%pid,'rb').read().split()
+ if len(raw)<22 or raw[21].decode()!=ticks:return False
+ inodes=set()
+ for name in os.listdir('/proc/%s/fd'%pid):
+  try:
+   link=os.readlink('/proc/%s/fd/%s'%(pid,name))
+   if link.startswith('socket:[') and link.endswith(']'):inodes.add(link[8:-1].encode())
+  except OSError:pass
+ return any(len(f)==8 and f[6] in inodes and f[7]==os.fsencode(sock) for f in (line.split() for line in open('/proc/net/unix','rb')))
+def call(sock,command,args,_deadline=None):
+ received=bytearray();primary=None
+ deadline=min(time.monotonic()+20,_deadline) if _deadline is not None else time.monotonic()+20
+ c=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+ def budget():
+  remaining=deadline-time.monotonic()
+  if remaining<=0:raise TimeoutError('collection-deadline')
+  c.settimeout(min(20,remaining))
+ def receive():
+  budget();return c.recv(1)
+ def send(data):
+  budget();c.sendall(data)
+ try:
+  budget();c.connect(sock);sid=secrets.randbits(63)
+  send(b'\xff'+json.dumps({'execute':'guest-sync-delimited','arguments':{'id':sid}},separators=(',',':')).encode()+b'\n')
+  for i in range(8192):
+   x=receive();received.extend(x)
+   if x==b'\xff':break
+  else:raise ValueError()
+  def line():
+   raw=bytearray()
+   for i in range(262144):
+    x=receive();received.extend(x)
+    if x==b'\n':
+     os.write(wirefd,bytes(raw)+b'\n');os.fsync(wirefd);return json.loads(raw)
+    if not x:raise ValueError()
+    raw.extend(x)
+   raise ValueError()
+  if line().get('return')!=sid:raise ValueError()
+  send(json.dumps({'execute':command,'arguments':args},separators=(',',':')).encode()+b'\n')
+  result=line()
+  if 'return' not in result:raise ValueError()
+  return result['return']
+ except BaseException as error:
+  primary=error;raise
+ finally:
+  try:
+   os.write(rawfd,bytes(received));os.fsync(rawfd)
+  except OSError as error:
+   if primary is None:raise
+   primary.readonlyQgaCaptureFailure={'stage':'raw_capture','errorClass':type(error).__name__,'errno':error.errno}
+  finally:c.close()
+def read(sock,path,maxsize=8192,deadline=None):
+ try:handle=call(sock,'guest-file-open',{'path':path,'mode':'rb'},_deadline=deadline)
+ except ValueError:return None
+ raw=bytearray()
+ try:
+  while len(raw)<maxsize:
+   v=call(sock,'guest-file-read',{'handle':handle,'count':min(4096,maxsize-len(raw))},_deadline=deadline)
+   part=base64.b64decode(v['buf-b64'],validate=True)
+   if v.get('count')!=len(part):raise ValueError()
+   raw.extend(part)
+   if v.get('eof') is True or not part:return bytes(raw)
+  raise ValueError()
+ finally:call(sock,'guest-file-close',{'handle':handle},_deadline=time.monotonic()+20)
+def identity():
+ raw=open('/proc/'+pid+'/stat','rb').read().split();argv=open('/proc/'+pid+'/cmdline','rb').read();uid=os.stat('/proc/'+pid).st_uid
+ assert raw[3]==b'3726881' and raw[21]==ticks.encode() and uid==1000 and hashlib.sha256(argv).hexdigest()=='43955c639e28ef9d0506ee36bc539ed64fe2d7580adb17a69167c8b048e47adc' and b'id=owned-qga' in argv and (leaf+'/qmp.sock').encode() in argv and live(sock,pid,ticks)
+ return [raw[0].decode(),raw[1].decode(),raw[3].decode(),raw[21].decode(),uid,hashlib.sha256(argv).hexdigest(),os.readlink('/proc/'+pid+'/exe')]
+from pathlib import Path
+_EXPECTED_QEMU=['1234','1233','23456',1000,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','/usr/bin/qemu-system-x86_64']
+def qemu_gate():
+    row=identity()
+    if [row[0],row[2],row[3],row[4],row[5],row[6]]!=_EXPECTED_QEMU:raise ValueError('EXACT_QEMU_IDENTITY')
+    return row
+def retain(name,value):
+    raw=(json.dumps(value,sort_keys=True)+'\n').encode()
+    fd=os.open(directory/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    try:os.write(fd,raw);os.fsync(fd)
+    finally:os.close(fd)
+def system_ps(script,label):
+    raw=script.encode('utf-8');sha=hashlib.sha256(raw).hexdigest()
+    consumer="$ErrorActionPreference='Stop';$s=[Console]::OpenStandardInput();$m=[IO.MemoryStream]::new();$buf=New-Object byte[] 4096;while(($n=$s.Read($buf,0,$buf.Length)) -gt 0){$m.Write($buf,0,$n);if($m.Length -gt "+str(len(raw))+"){throw 'FIXED_GUI_INPUT_BOUND'}};$b=$m.ToArray();if($b.Length -ne "+str(len(raw))+" -or ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($b))).Replace('-','').ToLowerInvariant() -cne '"+sha+"'){throw 'FIXED_GUI_INPUT_PIN'};$text=[Text.UTF8Encoding]::new($false,$true).GetString($b);& ([ScriptBlock]::Create($text))"
+    encoded=base64.b64encode(consumer.encode('utf-16le')).decode()
+    args=['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded]
+    whole=1+len('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')+sum(len(x)+3 for x in args)
+    if whole>30000:raise ValueError('WINDOWS_WHOLE_ARGUMENT_BOUND')
+    qemu_gate();ret=call(sock,'guest-exec',{'path':'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe','arg':args,'input-data':base64.b64encode(raw).decode(),'capture-output':True})
+    child=ret.get('pid');assert type(child)is int and child>0
+    retain(label+'-accepted.private.json',{'pid':child,'label':label,'commandSha256':sha,'wholeArgumentChars':whole,'automaticReplay':False})
+    deadline=time.monotonic()+90;pendingPublished=False
+    while True:
+        value=call(sock,'guest-exec-status',{'pid':child});assert isinstance(value,dict)
+        if value.get('exited')is True:break
+        if time.monotonic()>=deadline and not pendingPublished:
+            retain(label+'-observation-expired.private.json',{'pid':child,'state':'UNKNOWN','replayAllowed':False});pendingPublished=True
+        time.sleep(.1)
+    retain(label+'-terminal.private.json',value);qemu_gate()
+    out=base64.b64decode(value.get('out-data',''),validate=True);err=base64.b64decode(value.get('err-data',''),validate=True)
+    if len(out)>65536 or len(err)>65536:raise ValueError('SYSTEM_CHILD_CAPTURE_BOUND')
+    if value.get('exitcode')!=0:raise ValueError('SYSTEM_CHILD_EXIT_'+str(value.get('exitcode')))
+    if pendingPublished:raise ValueError('SYSTEM_CHILD_OBSERVATION_UNKNOWN')
+    return {'pid':child,'exit':value.get('exitcode'),'stdoutBytes':len(out),'stdoutSha256':hashlib.sha256(out).hexdigest(),'stderrBytes':len(err),'stderrSha256':hashlib.sha256(err).hexdigest(),'data':json.loads(out.decode('utf-8','strict'))}
+import zlib
+directory=Path('/synthetic/new-owned-census');directory.mkdir(mode=0o700)
+wirefd=os.open(directory/'wire.private',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+rawfd=os.open(directory/'raw.private',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+_opening=qemu_gate()
+_FIXED_BYTES=zlib.decompress(base64.b64decode('eJxTcS0qyi9yTC7JzM8LKEpNSy1KzUtOtVUPLskvULdW9/RzDQrRdXb1Cw4N1g1wjPTxd3RRBwDkiRD9',validate=True))
+if len(_FIXED_BYTES)!=52 or hashlib.sha256(_FIXED_BYTES).hexdigest()!='217445cfcd6199390c3d859e7a5c6b60e43fd5c587c2f3dcf90e7611fe3d360d':raise ValueError('CENSUS_SOURCE_PIN')
+_observed=system_ps(_FIXED_BYTES.decode('utf-8','strict'),'windows-readonly-census')
+_closing=qemu_gate();assert _opening==_closing
+
+def h10_row(pid,start,parent,expected_sha):
+ path=Path('/proc')/str(pid)
+ try:
+  st=(path/'stat').read_text();tail=st.rsplit(') ',1)[1].split();status=(path/'status').read_text();uid=int(next(l for l in status.splitlines()if l.startswith('Uid:')).split()[1]);cmd=(path/'cmdline').read_bytes();exe=os.readlink(path/'exe')
+ except FileNotFoundError:return {'pid':pid,'present':False,'birthMatched':None}
+ if int(tail[19])!=start or uid!=1000 or hashlib.sha256(cmd).hexdigest()!=expected_sha or (parent is not None and int(tail[1])!=parent):raise ValueError('H10_ORIGINAL_REPLACED')
+ return {'pid':pid,'present':True,'startTicks':int(tail[19]),'uid':uid,'parentPid':int(tail[1]),'image':exe,'argvSha256':expected_sha}
+_h10a=h10_row(4321,34567,None,'e07252bb726e1a151cf18f62e70f64a2578a40824f820c8adfa90c0a2a0977cc')
+_h10b=h10_row(4322,34567,4321,'b89f8b9cc26182b2571a4e10930b00795059992b9e93534c1311fedd4eb76c58')
+_ports=subprocess.run(['ss','-H','-ltn','sport = :53895'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=3,check=False)
+if _ports.returncode!=0 or _ports.stderr or len(_ports.stdout)>4096:raise ValueError('H10_PORT_OBSERVATION')
+_h10={'timeoutParent':_h10a,'server':_h10b,'ownedPort53895HasAnyListener':bool(_ports.stdout.strip()),'oldDeadlineIsNotAbsence':True}
+if _h10a!=h10_row(4321,34567,None,'e07252bb726e1a151cf18f62e70f64a2578a40824f820c8adfa90c0a2a0977cc')or _h10b!=h10_row(4322,34567,4321,'b89f8b9cc26182b2571a4e10930b00795059992b9e93534c1311fedd4eb76c58'):raise ValueError('H10_CLOSING_CHANGED')
+
+_mem={l.split(':',1)[0]:l.split(':',1)[1].strip()for l in Path('/proc/meminfo').read_text().splitlines()if ':'in l};_fs=os.statvfs('/tmp');print(json.dumps({'uid':os.getuid(),'boot':Path('/proc/sys/kernel/random/boot_id').read_text().strip(),'memAvailableBytes':int(_mem['MemAvailable'].split()[0])*1024,'diskAvailableBytes':_fs.f_bavail*_fs.f_frsize,'guest':_observed,'h10':_h10,'qemuOpeningClosingEqual':True,'qemu':{'pid':int(_opening[0]),'parentPid':int(_opening[2]),'startTicks':int(_opening[3]),'uid':_opening[4],'argvSha256':_opening[5],'image':_opening[6]}},sort_keys=True))

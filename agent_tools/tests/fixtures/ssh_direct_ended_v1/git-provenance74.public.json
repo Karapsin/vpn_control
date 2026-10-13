@@ -1,0 +1,47 @@
+{
+  "gitSourceBodies": [
+    {
+      "commit": "74cccc42ad09a5dd4abeb100db6edf8363488e33",
+      "fixture": "mcp_server.checkpoint74.py.gz",
+      "gitPath": "agent_tools/mcp_server.py",
+      "sourceBytes": 641755,
+      "sourceSha256": "60634d64854d5be19af49d0204412037eb56fd02e74d586da50d8a0920674893"
+    },
+    {
+      "commit": "2743200799f6fb73f38d60d38b2f21afc838d310",
+      "fixture": "ssh_transport.before-reviewed74.py.gz",
+      "gitPath": "agent_tools/ssh_transport.py",
+      "sourceBytes": 32208,
+      "sourceSha256": "6e4e9bfcdf620dab84cec100a4990121198fc95b331e0468adf8b79fb2e9e372"
+    },
+    {
+      "commit": "74cccc42ad09a5dd4abeb100db6edf8363488e33",
+      "fixture": "ssh_transport.checkpoint74.py.gz",
+      "gitPath": "agent_tools/ssh_transport.py",
+      "sourceBytes": 40654,
+      "sourceSha256": "00bcf88a41031ee11bd356dafc2ceda5ef609fa10471c9f9ed710fa084596db4"
+    },
+    {
+      "commit": "ed0ca9ddd8f6fbcc794c3775bb94562e5d1d0165",
+      "fixture": "ssh_fresh_nested_channel.inventory-provider-before.py.gz",
+      "gitPath": "agent_tools/ssh_fresh_nested_channel.py",
+      "sourceBytes": 47049,
+      "sourceSha256": "f569a8b606d207b4d5a5623cc580216a595f2826ed93ebca5f2ab38cb1a55663"
+    },
+    {
+      "commit": "a026d0254579a797d30a0c78c8f15d92eae74030",
+      "fixture": "ssh_fresh_nested_channel.current-provider-before.py.gz",
+      "gitPath": "agent_tools/ssh_fresh_nested_channel.py",
+      "sourceBytes": 49368,
+      "sourceSha256": "a78e779e21716a9ccf2ab96330f47a0342308d215749f7b90a13f1a8c80b52ed"
+    },
+    {
+      "commit": "2743200799f6fb73f38d60d38b2f21afc838d310",
+      "fixture": "ssh_direct_nested_channel.before-reviewed74.py.gz",
+      "gitPath": "agent_tools/ssh_direct_nested_channel.py",
+      "sourceBytes": 5409,
+      "sourceSha256": "99c6ce89cda8431936220be31ea0b6c989b78668d1a155b71cbb98d85c23ce0f"
+    }
+  ],
+  "schemaVersion": 1
+}

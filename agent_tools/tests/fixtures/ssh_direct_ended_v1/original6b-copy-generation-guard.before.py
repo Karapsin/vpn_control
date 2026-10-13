@@ -1,0 +1,1 @@
+original=data(intent.body);saved=data(ready.body);assert original['inventory']==data(proof.body)['beforeimagePin'] and saved['intent']==intent.pin() and original['sourceSha256']==OLD_SOURCE and original['remoteSourceSha256']==REMOTE
