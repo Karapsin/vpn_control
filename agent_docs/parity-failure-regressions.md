@@ -1,5 +1,160 @@
 # Parity Failure-to-Regression Ledger
 
+## Android complete retained observations — 2026-10-14,01:07
+
+The first OS/private read retained its complete result before the wire reply
+overflowed. Its2,621,266-byte package dump exceeded the original per-command
+bound, and the old Active parser also included the Finalized header. Reviewed
+pure projection preserves complete Active and Finalized sections plus explicit
+Historical/Legacy terminators, retains full producer size/hash, and grants no
+admission. Actual stored-source controls reproduce three original errors and
+pass on the fixed projection; nine routine controls remain portable. No raw
+private package dump is committed.
+
+The original fixed record collector required85 SSH children and failed during
+preparation of the next child. Preserved original8135 produces one frame and
+fails the identical whole-record criterion. Existing binary capture now retains
+all2,302 bounded frames through one data child before source closing and decode.
+Root decoded the exact original6,848,391-byte wire to3,534,648 bytes with hash
+e0a55010 on the final pure decoder. Routine controls retain partial/error output
+without admission or replay, source closure and original bounds. Review exposed
+Python bool/int equality in frame pins; exact two controls are RED on33cc and
+GREEN on5a5b after both frame pins receive strict type validation. Thirty framing
+controls pass; absent-fcntl gives19 PASS/11 explicit POSIX skips. The final test
+hash and four exact fixture resources are declared in affected-test metadata.
+
+The later bc61 read collected140 complete records and two empty OS installer
+sections, three historical terminal receipts and clean fixture residues. Its
+compact wire still exceeded the unchanged reply limit; complete saved-result
+collection succeeds without rerunning the read. A separate caller passed actor
+dictionaries into a tuple-based helper, checking /proc/pid and falsely reporting
+absence. That actor qualification is invalid and remains excluded. The actor
+fix, Windows intent/window/cleanup routines and Linux DTO/watcher routines are
+still pending canonical enrollment; their native observations are not whole
+scenario acceptance. Original installer0dd and Windowsf52 remain UNKNOWN.
+
+Evidence: `.runtime/retained-binary-collection-20261014-local/routine/replacement-seal.json`,
+`.runtime/independent-retained828-review-34867827-9abc-4c8f-ad58-5f0fbccf2cda`,
+`.runtime/root-reviewed-native-leaf-integration-8c5de857-be0d-4433-9955-85c192b94c58/fixed828-real-retained-wire.public.json`,
+`.runtime/android-native-successor-32d06f17-7738-4e95-8460-13b909d2a586/bc61-immutable-result-collection-807e83f0-033f-4507-a0b3-13a8dbd0ddea`.
+
+## Rich-resource proof and retained-result collection — 2026-10-13,23:59
+
+The protected Linux consumer also omitted comm7 and ignored executable EACCES
+under a normal QEMU comm prefix. Independent identical controls reproduce both
+assertion failures. Two additional missing-query AttributeErrors establish only
+new seam enrollment. The first candidate unnecessarily expanded16KiB command
+lines to32KiB; an actual20,031-byte boundary assertion is RED there and GREEN
+on the final reviewed patch91aed64c. Canonical four-module36 GREEN retains the
+original16384 limit and protected resource/claim/source/actor gates. Whole native
+DIRECT succeeds with2901-byte raw3bf5f589 and complete stable8/30GiB; fresh budget
+still refuses76GiB versus60.3GiB. No allocation, claim release or build admission
+is inferred. Matching MCP missing-reservation refusal remains a separate gate.
+Evidence: `.runtime/linux-native-successor-48540b40-a60d-4e26-8a0b-309fe1a272ba/qualified-f6aa-33897268-391f-4e7f-b053-5c28c5df7e1a/rich-resource-consumer-final-3f4be117-289b-49c4-b408-5fa42d67402a`.
+
+Two later owned collectors need separate causal coverage before delivery. API35
+fixed OS/private read source5a21 saved complete result.private.json before final
+wire_encoded_bounds; raw33,187-byte stderr and the exact beforeimage remain.
+Approved guest read commands actually ran; an inherited adbReads0 claim is corrected,
+with no guest mutation/replay inferred. Collect only that immutable original result.
+Windows exactSYSTEM2020 cleanup initially returned ORIGINAL_ACCEPTED_CHANGED after
+native collection. Host-only collection of already-retained records proves the
+held-handle stop/absence and original terminal exit1. Original199-byte accepted
+file generation/hash is unchanged; the grouped closing parent predicate is not
+identified because its exact opening generation was not retained. Preserve the
+failure without calling it auth/network or replaying cleanup. Originalf52 remains
+UNKNOWN; original CLI/status never ran. Neither pending causal routine is closed
+by these successful retained-record observations.
+
+## Completed observation fixes and remaining native gates — 2026-10-13,23:39
+
+- The API35 emitted diagnostic failed with SyntaxError before CLI execution.
+  Exact5850-byte stderr and malformed source remain preserved. Only newline
+  framing changed; the actual emitted source compiles RED→GREEN, and two routine
+  checks in `test_android_routing_emitted_source.py` pass. The subsequent single
+  routing read timed out after30s with no partial output; collector repair is not
+  routing/product acceptance. The invalid before.source is declared only as an
+  exact opaque negative fixture; it is never treated as an importable module.
+- Current API35 facts falsely rejected ordinary CPU/fault/memory counter changes
+  by comparing the whole `/proc/PID/stat` row. Exact preserved guard raises one
+  RED error; fixed PID/comm/PPID/start-tick comparison passes the same8 controls,
+  retaining closing PID/boot checks. Native corrected21-record capture proves
+  unchanged epoch, runtimeOFF/ops0. Routine coverage is
+  `test_android_current_cli_process_epoch.py`; original0dd UNKNOWN/held remains.
+- Linux live QEMU comm7 omitted two real executable generations. Exe-first
+  census controls reproduce the omission, and the final correction also refuses
+  missing-stat/live-directory ambiguity. Fixed stdin-only privileged observation
+  removes measured executable EACCES without promoting roles or admission.
+  Canonical143 observer/route/census controls pass; complete native DIRECT/MCP
+  inventories both retain8/30GiB and unchanged36GiB reservations. Rich protected
+  resource admission still needs its separately reviewed consumer fix and fresh
+  capacity proof. No claim is released from age or process absence.
+- Windows actual867-byte marker proves child9300 never resumed after setup
+  MethodInvocationException. Native held-handle cleanup proves9300 then1816
+  terminal/absent and taskReady/LastResult1; no SYSTEM2020/GUI/runtime signal.
+  Original2020 remains LIVE_ORIGINAL on its authenticated status read. Preserve
+  originalf52 UNKNOWN and raw cleanup bytes; postCreate/exception/cleanup causal
+  routines and native qualification are separate unfinished delivery gates.
+
+Android evidence: `.runtime/android-native-successor-32d06f17-7738-4e95-8460-13b909d2a586`.
+Linux evidence: `.runtime/linux-native-successor-48540b40-a60d-4e26-8a0b-309fe1a272ba`.
+Windows evidence: `.runtime/windows-direct-batch-a026-c0d047db-463a-4ea3-a35c-eac38e9efa49`.
+
+## Original status capture and live census — 2026-10-13
+
+- Android original0dd whole host envelope exceeded the existing65536-byte wire
+  cap. The preserved serializer fails the same capacity control; bounded lossless
+  framing passes6 codec and9 status/custody controls. Original helper admission
+  ASTs remain identical. Independent review reproduced and fixed nonfinite JSON
+  overflow and absent-fcntl collection; an added unused CLI path equality was
+  removed while original bundle/source and four device guards remain intact.
+  Integrated DIRECT/MCP captures match wire56c535a7 and decodedf1e7c08a exactly;
+  original operation UNKNOWN/lease held is preserved. Routine coverage:
+  `test_android_original_host_status.py`, `test_android_original_host_wire.py`.
+  Evidence: `.runtime/android-native-successor-32d06f17-7738-4e95-8460-13b909d2a586/host11-compressed-repair-78d3f560-a210-4258-8a5c-e747c6a852c3`.
+- Linux actual headless QEMU uses separate `-memory 2048`; the old parser and
+  classifier reject it. Same3 controls fail on the beforeimage, then pass; both
+  consumers pass117. The integrated whole census subsequently remains UNKNOWN:
+  two authentic live QEMU processes use comm7, and resource observation records
+  executable-read EACCES. Those are distinct measured failures, not network or
+  termination evidence. Exe-first correction and existing privileged observation
+  are pending; no admission or role inference follows from memory-parser GREEN.
+  Routine memory coverage: `test_arch_qemu_holder_census.py`.
+  Evidence: `.runtime/linux-native-successor-48540b40-a60d-4e26-8a0b-309fe1a272ba`.
+- Windows originalf52 same-assembly compiler passes on native PowerShell5.1.
+  The exact867-byte unknown-suspended marker proves child9300 never resumed and
+  setup failed with MethodInvocationException; the unchanged source deliberately
+  preserves that state in a wait loop. Earlier omitted-marker diagnostics and
+  their raw records are retained. Underlying setup detail remains unknown; this
+  is not a public status/update success and does not authorize original replay.
+  Evidence: `.runtime/windows-direct-batch-a026-c0d047db-463a-4ea3-a35c-eac38e9efa49/f52-unknown-suspended-marker-3e8b6a21-45eb-4ec8-bf22-bd18916e7844`.
+
+
+## Reviewed delivery source edge and binary observation — 2026-10-13
+
+Originalbadc READ-ONLY status under its authenticated16 original source pins
+proved ENDED with647-byte stdout, exit0, both EOFs and final source closure.
+Current preparation nevertheless refused before a new intent because the
+finite ENDED comparison lacked the reviewed9df8→f227 MCP source transition.
+The fix admits only six enumerated predecessor providers and the exact current
+MCP bytes, preserving every other source pin, typed field and original
+terminal/READY custody. It does not rewrite history or adopt a live/UNKNOWN
+channel. The same40 controls actually fail on the preserved source (eight
+assertions) and pass on the final correction. An intermediate candidate's
+unreviewed current-provider combination was also reproduced and refused by
+the final static predecessor guard. Native new-route/MCP qualification remains
+required. Evidence is `.runtime/direct-ended-delivery-edge-536a5b6c-2e1a-4b32-835e-f7d1c67a1ce9`.
+
+The first temporary observer attempted JSON serialization of binary capture
+streams, causing TypeError and UNKNOWN/capture_retention. It did not establish
+absence of transport. The corrected callback retains exact binary files before
+JSON metadata; actual beforeimage RED (two TypeErrors), fixed GREEN (two tests)
+and the authentic original ENDED retest are preserved. Routine coverage is
+`test_ssh_native_status_capture_callback`; this is historical fixture/collector
+coverage, not a new public observer or Android update acceptance. Original
+failed observations remain intact. Independent review is
+`.runtime/independent-direct-delivery-review-1a6e17f9-380c-47c6-b8ef-bc2324a8d540`.
+
 ## Execution optimization regressions — 2026-10-13
 
 The next complete managed attempt at fingerprint25fc8fb5 ran6216 tests:

@@ -24,7 +24,7 @@ class ResourceTests(unittest.TestCase):
   return {'state':'observed','hostBootId':REQUEST['correlationId'],'vms':[],'physicalMemoryBytes':64*1024**3,'swapUsedBytes':0,'samples':samples,'diskAvailableBytes':100*1024**3,'diskDevice':1,'inventoryComplete':True}
  def prepare(self):
   def query(root,program,payload,guard):guard();return self.host(),{'receipt':'retained'}
-  with mock.patch.object(r.build,'preflight'),mock.patch.object(r,'sources',return_value={}),mock.patch.object(r.closure,'fixed_query',side_effect=query):return r.prepare(self.root,REQUEST,self.identity,source_root=self.root)
+  with mock.patch.object(r.build,'preflight'),mock.patch.object(r,'sources',return_value={}),mock.patch.object(r,'fixed_resource_query',side_effect=query):return r.prepare(self.root,REQUEST,self.identity,source_root=self.root)
  def test_causal_missing_resource_binding_never_enters_build(self):
   with mock.patch.object(r.adapter,'McpTmuxDriver'),mock.patch.object(r.build,'start') as entered:
    with self.assertRaises((ValueError,FileNotFoundError)):r.operate(self.root,'start',REQUEST,source_root=self.root)
@@ -67,7 +67,7 @@ class ResourceTests(unittest.TestCase):
   entered=[]
   def base(driver,program,payload,**kw):kw['guard']();entered.append(program);return {'state':'ok'}
   def query(root,program,payload,guard):guard();return record['host'],{}
-  with mock.patch.object(r,'sources',return_value={}),mock.patch.object(r.closure,'fixed_query',side_effect=query) as host, mock.patch.object(r.adapter.McpTmuxDriver,'_query',new=base):
+  with mock.patch.object(r,'sources',return_value={}),mock.patch.object(r,'fixed_resource_query',side_effect=query) as host, mock.patch.object(r.adapter.McpTmuxDriver,'_query',new=base):
    driver._query(r.old._STAGE,payload,job=job,guard=lambda:None)
    driver._query(r.old._ACTION,{**payload,'action':'release'},job=job,guard=lambda:None)
    self.assertEqual(2,host.call_count);self.assertEqual(2,len(entered))
@@ -81,7 +81,7 @@ class ResourceTests(unittest.TestCase):
   driver=object.__new__(r.ResourceDriver);driver.root=self.root;driver.source_root=self.root
   def query(root,program,payload,guard):
    self.path.write_bytes(self.path.read_bytes()+b' ');guard();return record['host'],{}
-  with mock.patch.object(r,'sources',return_value={}),mock.patch.object(r.closure,'fixed_query',side_effect=query),mock.patch.object(r.adapter.McpTmuxDriver,'_query') as effect:
+  with mock.patch.object(r,'sources',return_value={}),mock.patch.object(r,'fixed_resource_query',side_effect=query),mock.patch.object(r.adapter.McpTmuxDriver,'_query') as effect:
    with self.assertRaises(ValueError):driver._query(r.old._STAGE,{'request':r.old.purpose(REQUEST)},job=job,guard=lambda:None)
    effect.assert_not_called()
 
@@ -89,17 +89,63 @@ class ResourceTests(unittest.TestCase):
   import builtins,io,os,types
   from contextlib import redirect_stdout
   proc=self.root/'proc';proc.mkdir();(proc/'sys/kernel/random').mkdir(parents=True);(proc/'sys/kernel/random/boot_id').write_text(REQUEST['correlationId'])
+  (proc/'1').mkdir();(proc/'1/comm').write_text('systemd\n');(proc/'1/ns').mkdir();(proc/'self/ns').mkdir(parents=True);(proc/'1/ns/pid').symlink_to('pid:[123]');(proc/'self/ns/pid').symlink_to('pid:[123]');(proc/'self/mountinfo').write_text('1 2 0:1 / /proc rw - proc proc rw\n');(proc/'1/stat').write_text('1 (systemd) '+' '.join(['S']+['0']*18+['1','0']));(proc/'1/exe').symlink_to('/sbin/init')
   (proc/'pressure').mkdir();(proc/'pressure/memory').write_text('some avg10=0.00\nfull avg10=0.00\n')
   (proc/'meminfo').write_text('MemAvailable: 52428800 kB\nMemTotal: 67108864 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n');(proc/'vmstat').write_text('pswpin 0\npswpout 0\noom_kill 0\n')
-  process=proc/'123';process.mkdir();(process/'comm').write_text('qemu-system-x86\n');fields=['S']+['0']*20;fields[19]='456';fields[3]='123';(process/'stat').write_text('123 (qemu) '+' '.join(fields));(process/'cmdline').write_bytes(b'qemu-system-x86_64\0-m\0'+b'2048\0');exe=self.root/'qemu-system-x86_64';exe.write_bytes(b'fixed');(process/'exe').symlink_to(exe)
+  process=proc/'123';process.mkdir();(process/'comm').write_text(getattr(self,'fixture_comm','7')+'\n');fields=['S']+['0']*20;fields[19]='456';fields[3]='123';(process/'stat').write_text('123 (qemu) '+' '.join(fields));(process/'cmdline').write_bytes(b'qemu-system-x86_64\0-m\0'+b'2048\0'+getattr(self,'cmdline_padding',b''));exe=self.root/'qemu-system-x86_64';exe.write_bytes(b'fixed');(process/'exe').symlink_to(exe)
   def mapped(value):return str(proc)+str(value)[5:] if isinstance(value,(str,Path)) and str(value).startswith('/proc') else value
-  fakeos=types.SimpleNamespace(**{k:getattr(os,k) for k in dir(os)});fakeos.listdir=lambda path:os.listdir(mapped(path));fakeos.stat=lambda path,*args,**kwargs:os.stat(mapped(path),*args,**kwargs)
+  fakeos=types.SimpleNamespace(**{k:getattr(os,k) for k in dir(os)});fakeos.listdir=lambda path:os.listdir(mapped(path));fakeos.geteuid=lambda:0;fakeos.readlink=lambda path:os.readlink(mapped(path));fakeos.path=types.SimpleNamespace(**{k:getattr(os.path,k) for k in dir(os.path)});fakeos.path.exists=lambda path:os.path.exists(mapped(path));fakeos.stat=lambda path,*args,**kwargs:os.stat(mapped(path),*args,**kwargs)
+  original_readlink=fakeos.readlink
+  def readlink(path):
+   if getattr(self,'unreadable_qemu_exe',False) and str(path)=='/proc/123/exe':raise PermissionError(13,'Permission denied')
+   return original_readlink(path)
+  fakeos.readlink=readlink
   original_import=builtins.__import__
   def imports(name,*args,**kwargs):return fakeos if name=='os' else original_import(name,*args,**kwargs)
   fakebuiltins={**vars(builtins),'__import__':imports,'open':lambda path,*args,**kwargs:builtins.open(mapped(path),*args,**kwargs)}
-  output=io.StringIO();program=r.host_program().replace("fixed='/home/kardinal/.vpn-control-mcp-fixtures'",'fixed='+repr(str(self.root)))
+  output=io.StringIO();program=r.host_program().replace("if s.st_uid!=1000:",'if s.st_uid!='+str(os.getuid())+':').replace("FIXED_BOOT='25515f23-b966-4c3a-ae63-d38452375578'",'FIXED_BOOT='+repr(REQUEST['correlationId'])).replace("fixed='/home/kardinal/.vpn-control-mcp-fixtures'",'fixed='+repr(str(self.root)))
   with mock.patch('sys.stdin',types.SimpleNamespace(buffer=io.BytesIO(b'{}'))),redirect_stdout(output):exec(program,{'__builtins__':fakebuiltins})
   value=json.loads(output.getvalue());self.assertTrue(value['inventoryComplete']);self.assertEqual(1,len(value['vms']));self.assertEqual(2*1024**3,value['vms'][0]['configuredMemoryBytes']);self.assertEqual(456,value['vms'][0]['startTicks']);self.assertNotIn('command',value['vms'][0])
+
+ def test_generated_resource_program_keeps_actual_exe_eacces_unknown(self):
+  self.unreadable_qemu_exe=True;self.fixture_comm='qemu-system-x86'
+  with self.assertRaisesRegex(ValueError,'resource_process_unknown'):
+   self.test_generated_host_program_reads_full_qemu_memory_and_safe_disk()
+
+ def test_generated_resource_program_preserves_original_cmdline_bound(self):
+  self.cmdline_padding=b'x'*20000+b'\0'
+  with self.assertRaisesRegex(ValueError,'resource_identity_changed'):
+   self.test_generated_host_program_reads_full_qemu_memory_and_safe_disk()
+
+ def test_closed_privileged_query_retains_capture_and_checks_closing_source(self):
+  import types,sys
+  from agent_tools import ssh_direct_nested_channel as direct, ssh_transport
+  authority=mock.MagicMock();authority.__enter__.return_value=authority
+  authority.config=types.SimpleNamespace(hosts={'archlinux':types.SimpleNamespace(transport='nested',user='kardinal',password='inert-fixture-secret')})
+  calls=[];real_popen=r.adapter.subprocess.Popen
+  def launch(unused,*args,**kwargs):return real_popen([sys.executable,'-I','-B','-c','import sys;sys.stdin.buffer.read();print('+repr(json.dumps(self.host()))+')'],*args,**kwargs)
+  with mock.patch.object(direct,'Guard',return_value=authority),mock.patch.object(ssh_transport,'build_ssh_argv',return_value=['ssh','fixed']) as argv,mock.patch.object(r.adapter.subprocess,'Popen',side_effect=launch) as launched,mock.patch.object(r.adapter,'_capture',wraps=r.adapter._capture) as collect:
+   value,receipt=r.fixed_resource_query(self.root,r.host_program(),{},lambda:calls.append('guard'))
+   self.assertEqual('observed',value['state']);self.assertTrue((self.root/receipt['directory']/'stdout').is_file())
+   self.assertGreaterEqual(len(calls),4);self.assertEqual(1,collect.call_count);self.assertEqual(1,launched.call_count);self.assertEqual(b'inert-fixture-secret\n{}',collect.call_args.kwargs['payload']);self.assertEqual('sudo',argv.call_args.kwargs['command'][0]);self.assertNotIn('inert-fixture-secret',str(argv.call_args.kwargs['command']));self.assertEqual(30,collect.call_args.kwargs['timeout_seconds'])
+  with mock.patch.object(direct,'Guard') as before:
+   with self.assertRaisesRegex(ValueError,'resource_fixed_query_required'):r.fixed_resource_query(self.root,r.host_program(),{'arbitrary':'payload'},lambda:None)
+   before.assert_not_called()
+
+ def test_privileged_query_unknown_and_closing_guard_never_returns_resource(self):
+  import types,sys
+  from agent_tools import ssh_direct_nested_channel as direct, ssh_transport
+  authority=mock.MagicMock();authority.__enter__.return_value=authority;authority.config=types.SimpleNamespace(hosts={'archlinux':types.SimpleNamespace(transport='nested',user='kardinal',password='inert-fixture-secret')})
+  real_popen=r.adapter.subprocess.Popen
+  with mock.patch.object(direct,'Guard',return_value=authority),mock.patch.object(ssh_transport,'build_ssh_argv',return_value=['ssh','fixed']):
+   for body,reason in (("import sys;sys.stdin.buffer.read();sys.exit(1)",'resource_capture_unknown'),("import sys;sys.stdin.buffer.read();print('{}');sys.stderr.write('failure')",'resource_capture_changed')):
+    def launch(unused,*args,**kwargs):return real_popen([sys.executable,'-I','-B','-c',body],*args,**kwargs)
+    with mock.patch.object(r.adapter.subprocess,'Popen',side_effect=launch):
+     with self.assertRaisesRegex(ValueError,reason):r.fixed_resource_query(self.root,r.host_program(),{},lambda:None)
+   with mock.patch.object(r.adapter.subprocess,'Popen') as launched:
+    with self.assertRaisesRegex(ValueError,'closing_changed'):r.fixed_resource_query(self.root,r.host_program(),{},lambda:(_ for _ in ()).throw(ValueError('closing_changed')))
+    launched.assert_not_called()
+
 
 
 class ResourcePortableSchemaTests(unittest.TestCase):

@@ -1,0 +1,10 @@
+def app_epoch(raw, expected_pid):
+    match = re.fullmatch(re.escape(expected_pid) + ' \\(([^()\\r\\n]+)\\) (.+)', raw)
+    if match is None:
+        raise ValueError('facts_app_stat_unknown')
+    fields = match[2].split()
+    if len(fields) < 20 or fields[0] in ('Z', 'X', 'x') or (not fields[1].isdigit()) or (not fields[19].isdigit()) or (int(fields[19]) <= 0):
+        raise ValueError('facts_app_stat_unknown')
+    return (expected_pid, match[1], int(fields[1]), int(fields[19]))
+if app_epoch(shell('app-stat-after', 'cat', '/proc/' + pid + '/stat'), pid) != app_epoch(stat1, pid) or shell('app-pid-after', 'pidof', 'com.kardinal.vpncontrol') != pid or shell('guest-boot-after', 'cat', '/proc/sys/kernel/random/boot_id') != boot:
+    raise ValueError('facts_app_epoch_changed')

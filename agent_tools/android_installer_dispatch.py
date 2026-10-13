@@ -658,6 +658,9 @@ def _remote(root: Path, intent: dict[str, Any], action: str,
             str(config.hosts[host].fixture_transfer_root) != intent["fixtureRoot"]):
         return {"state": "unknown", "reason": "route_changed"}
     expected = intent["remote"]
+    if action == "status" and intent.get("correlationId") == "0dd55704-1e80-4d62-8d9d-2f0a123e0c3b":
+        from . import android_original_host_status
+        return android_original_host_status.observe_original(root, intent)
     argv = ssh_transport.build_ssh_argv(config, host, 60, command=(
         "python3", "-I", "-B", "-c", "exec(" + repr(_REMOTE) + ")", action,
         intent["fixtureRoot"], host, intent["device"], intent["correlationId"],

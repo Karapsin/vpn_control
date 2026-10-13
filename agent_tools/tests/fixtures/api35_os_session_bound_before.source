@@ -1,0 +1,48 @@
+"""Exact measured 5a21 helper ASTs; inert boundaries supplied by tests."""
+def capture_command(role, words, environment=None, limit=1048576, timeout=30):
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise ValueError('read_budget_ended')
+    t = time.monotonic()
+    timed = False
+    process = real_subprocess.Popen(words, stdin=real_subprocess.DEVNULL, stdout=real_subprocess.PIPE, stderr=real_subprocess.PIPE, env=environment)
+    try:
+        out, error = process.communicate(timeout=min(timeout, left))
+    except real_subprocess.TimeoutExpired:
+        timed = True
+        process.kill()
+        out, error = process.communicate()
+    retain(role + '.stdout.private', out)
+    retain(role + '.stderr.private', error)
+    row = {'role': role, 'pid': process.pid, 'returnCode': process.returncode, 'timedOut': timed, 'elapsedSeconds': time.monotonic() - t, 'stdoutBytes': len(out), 'stderrBytes': len(error), 'stdoutSha256': hashlib.sha256(out).hexdigest(), 'stderrSha256': hashlib.sha256(error).hexdigest(), 'stdoutBase64': base64.b64encode(out).decode(), 'stderrBase64': base64.b64encode(error).decode(), 'stdoutEOF': True, 'stderrEOF': True}
+    records.append(row)
+    if timed or len(out) > limit or len(error) > min(limit, 65536):
+        raise ValueError('read_command_timeout_or_bound')
+    return real_subprocess.CompletedProcess(words, process.returncode, out, error)
+
+def terminal_pass(suffix):
+    os_dump = device('os-installer-' + suffix, 'dumpsys', 'package')
+    match = re.search('(?m)^Active install sessions:\\s*\\n(.*?)(?=^Historical install sessions:|^Legacy install sessions:)', os_dump, re.S | re.M)
+    if match is None or match.group(1).strip() not in ('', '(none)', 'None'):
+        raise ValueError('os_active_installer_not_empty_or_unknown')
+    metadata = parse_installer_metadata_census(privileged('metadata-' + suffix, BINDING['metadataScript']))
+    directory = metadata['no_backup/control-install-sessions']
+    legacy = metadata['files/control-installs']
+    if legacy != {'kind': 'absent', 'generation': '', 'entries': []} or directory['kind'] != 'directory' or sorted((x['name'] for x in directory['entries'])) != BINDING['receiptNames']:
+        raise ValueError('app_installer_inventory_changed')
+    rows = []
+    for entry in directory['entries']:
+        fields = entry['generation'].split('|')
+        if len(fields) != 10 or fields[5:8] != ['600', str(UID), str(UID)] or fields[8:] != ['1', 'regular file'] or (not fields[2].isdigit()) or (not 0 < int(fields[2]) <= 4096):
+            raise ValueError('app_receipt_generation_unknown')
+        name = entry['name']
+        role = 'receipt-' + suffix + '-' + name
+        privileged(role, 'set -eu; test "$(id -u)" = 0; p=/data/user/0/com.kardinal.vpncontrol/no_backup/control-install-sessions/' + name + '; test ! -L "$p"; cat "$p"')
+        raw = base64.b64decode(next((x['stdoutBase64'] for x in records if x['role'] == role)))
+        if len(raw) != int(fields[2]):
+            raise ValueError('app_receipt_size_changed')
+        rows.append({'name': name, 'generation': entry['generation'], 'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw), 'rawBase64': base64.b64encode(raw).decode()})
+    closing = parse_installer_metadata_census(privileged('metadata-closing-' + suffix, BINDING['metadataScript']))
+    if closing != metadata:
+        raise ValueError('app_installer_inventory_changed_during_read')
+    return {'metadata': metadata, 'rows': rows, 'osActiveSessions': 'empty'}

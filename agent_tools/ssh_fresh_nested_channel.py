@@ -369,6 +369,8 @@ _REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER='b1a91629fe22e04a5f347af7047cfe4df819727
 _REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER='a78e779e21716a9ccf2ab96330f47a0342308d215749f7b90a13f1a8c80b52ed'
 _REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER='dcb5714fc706482826e5d5238cee19b22c64f06084a5a4e8610c5a53e4fbba68'
 _REVIEWED_DIRECT_ANDROID_WRAPPER_MCP='9df8d8600b67c6d6161673cc5bfefa77af205b5dfa8adfcd3a52bc1107d52f58'
+_REVIEWED_ENDED_DIRECT_DELIVERY_PROVIDER='acdccf42ac5794d6809664fa933bb50377549a4c000ecebc457bb3528eb83c2a'
+_REVIEWED_DIRECT_DELIVERY_MCP='f2270ebb2cfd63066d84807b67b1d577b0acd1e90852ac397cf4f05d53c06f9c'
 _REVIEWED_DIRECT_CHECKPOINT74_MCP='60634d64854d5be19af49d0204412037eb56fd02e74d586da50d8a0920674893'
 _REVIEWED_DIRECT_CHECKPOINT74_TRANSPORT='00bcf88a41031ee11bd356dafc2ceda5ef609fa10471c9f9ed710fa084596db4'
 _REVIEWED_DIRECT_CHECKPOINT74_BEFORE_TRANSPORT='6e4e9bfcdf620dab84cec100a4990121198fc95b331e0468adf8b79fb2e9e372'
@@ -388,16 +390,26 @@ def _ended_direct_intent_matches(previous,current):
     if type(old)is not dict or type(new)is not dict or set(old)!=set(direct_channel._SOURCE_NAMES) or set(new)!=set(old):return False
     if any(type(x)is not str or re.fullmatch('[0-9a-f]{64}',x)is None for x in [*old.values(),*new.values()]):return False
     if current.get('sourceSha256')!=_source() or new.get('ssh_fresh_nested_channel.py')!=current['sourceSha256']:return False
-    if previous.get('sourceSha256') not in (_source(),_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER,_REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER,_REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER,_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER) or old.get('ssh_fresh_nested_channel.py')!=previous['sourceSha256']:return False
+    if previous.get('sourceSha256') not in (_source(),_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER,_REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER,_REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER,_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER,_REVIEWED_ENDED_DIRECT_DELIVERY_PROVIDER) or old.get('ssh_fresh_nested_channel.py')!=previous['sourceSha256']:return False
     from . import native_review_source_closure as source_closure
     if new.get('native_review_source_closure.py')!='0fac471b05e0e784913f5508a5d90b279fbc48c96751b83082d1f9c14cef95ae' or hashlib.sha256(Path(source_closure.__file__).read_bytes()).hexdigest()!=new['native_review_source_closure.py']:return False
+    # Exact reviewed delivery edge to the authenticated acdcc/9df intermediate.
+    # Only the current provider self-pin and this MCP pin are projected; all
+    # older population decisions below retain their finite original comparisons.
+    # The actual current MCP bytes remain bound to f227 throughout.
+    reviewed_mcp_source=new['mcp_server.py']
+    if new['mcp_server.py']==_REVIEWED_DIRECT_DELIVERY_MCP and old['mcp_server.py']!=new['mcp_server.py']:
+        if previous.get('sourceSha256') not in (_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER,_REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER,_REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER,_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER,_REVIEWED_ENDED_DIRECT_DELIVERY_PROVIDER):return False
+        if hashlib.sha256(Path(direct_channel.__file__).with_name('mcp_server.py').read_bytes()).hexdigest()!=_REVIEWED_DIRECT_DELIVERY_MCP:return False
+        new={**new,'ssh_fresh_nested_channel.py':_REVIEWED_ENDED_DIRECT_DELIVERY_PROVIDER,'mcp_server.py':_REVIEWED_DIRECT_ANDROID_WRAPPER_MCP}
+        current={**current,'sourceSha256':_REVIEWED_ENDED_DIRECT_DELIVERY_PROVIDER,'directSourcePins':new}
     # The reviewed Android observation wrapper is the only new MCP byte edge.
     # The original provider/source population remains fixed; all other pins,
     # authority, inventory and typed fields must match. Callers prove ENDED custody.
     if (previous.get('sourceSha256')==_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER
             and old.get('mcp_server.py')==_REVIEWED_DIRECT_CHECKPOINT74_MCP
             and new.get('mcp_server.py')==_REVIEWED_DIRECT_ANDROID_WRAPPER_MCP):
-        if hashlib.sha256(Path(direct_channel.__file__).with_name('mcp_server.py').read_bytes()).hexdigest()!=_REVIEWED_DIRECT_ANDROID_WRAPPER_MCP:return False
+        if hashlib.sha256(Path(direct_channel.__file__).with_name('mcp_server.py').read_bytes()).hexdigest()!=reviewed_mcp_source:return False
         normalized={**old,'ssh_fresh_nested_channel.py':new['ssh_fresh_nested_channel.py'],'mcp_server.py':new['mcp_server.py']}
         return normalized==new and json.dumps({**previous,'sourceSha256':current['sourceSha256'],'directSourcePins':new},sort_keys=True)==json.dumps(current,sort_keys=True)
     if previous.get('sourceSha256')==_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER:return False
@@ -407,7 +419,7 @@ def _ended_direct_intent_matches(previous,current):
         population=_REVIEWED_DIRECT_CHECKPOINT74_POPULATIONS.get(previous.get('sourceSha256'))
         if population is None or (old.get('mcp_server.py'),old.get('ssh_direct_nested_channel.py'),old.get('native_review_source_closure.py'))!=population or old.get('ssh_transport.py')!=_REVIEWED_DIRECT_CHECKPOINT74_BEFORE_TRANSPORT:return False
         if new.get('ssh_direct_nested_channel.py')!='5b82a0a63fbd2fbc44aa4203c76060ede36236a11cdc8399e186bf7c69cc2ff3':return False
-        for name,digest in (('mcp_server.py',new['mcp_server.py']),('ssh_transport.py',_REVIEWED_DIRECT_CHECKPOINT74_TRANSPORT),('ssh_direct_nested_channel.py','5b82a0a63fbd2fbc44aa4203c76060ede36236a11cdc8399e186bf7c69cc2ff3')):
+        for name,digest in (('mcp_server.py',reviewed_mcp_source),('ssh_transport.py',_REVIEWED_DIRECT_CHECKPOINT74_TRANSPORT),('ssh_direct_nested_channel.py','5b82a0a63fbd2fbc44aa4203c76060ede36236a11cdc8399e186bf7c69cc2ff3')):
             if hashlib.sha256(Path(direct_channel.__file__).with_name(name).read_bytes()).hexdigest()!=digest:return False
         normalized={**old,'ssh_fresh_nested_channel.py':new['ssh_fresh_nested_channel.py'],'mcp_server.py':new['mcp_server.py'],'ssh_transport.py':new['ssh_transport.py'],'ssh_direct_nested_channel.py':new['ssh_direct_nested_channel.py'],'native_review_source_closure.py':new['native_review_source_closure.py']}
         return normalized==new and json.dumps({**previous,'sourceSha256':current['sourceSha256'],'directSourcePins':new},sort_keys=True)==json.dumps(current,sort_keys=True)
@@ -565,7 +577,7 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                     if set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'} or ended['state']!='ended' or ended['correlationId']!=prior_id:return _public()
                     old_intent=stack.enter_context(private.Snapshot(channel_dir,name))
                     old_value=json.loads(old_intent.body,object_pairs_hook=transport._reject_duplicate_keys)
-                    if ended['intentSha256']!=old_intent.digest or (old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) and not (direct and old_value.get('sourceSha256') in (_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER,_REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER,_REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER,_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER))) or (not direct and old_value.get('inventory')!=config_source.pin()):return _public()
+                    if ended['intentSha256']!=old_intent.digest or (old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) and not (direct and old_value.get('sourceSha256') in (_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER,_REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER,_REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER,_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER,_REVIEWED_ENDED_DIRECT_DELIVERY_PROVIDER))) or (not direct and old_value.get('inventory')!=config_source.pin()):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9A and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9A):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9527 and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9527):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_012:

@@ -1,0 +1,60 @@
+import os
+import shutil
+from pathlib import Path
+def public_cli_environment(adb: str, cli: Path, environment=None) -> dict | None:
+    """Pin packaged Android CLI children to this lifecycle's approved ADB binary.
+
+    Python fixture adapters do not execute the packaged Desktop Android client, so
+    they keep their existing inherited execution behavior. Packaged clients resolve
+    a bare ``adb`` at runtime; validate the selected binary before device or fixture
+    work, then put only its resolved parent ahead of the child's inherited PATH.
+    """
+    if cli.suffix.lower() == ".py":
+        return None
+    selected = Path(adb)
+    if not selected.is_absolute():
+        raise ValueError("Fixture packaged CLI requires an absolute ADB binary")
+    try:
+        selected = selected.resolve(strict=True)
+    except OSError as error:
+        raise ValueError("Fixture ADB binary is unavailable") from error
+    if not selected.is_file() or not os.access(selected, os.X_OK):
+        raise ValueError("Fixture ADB binary is not executable")
+    result = dict(os.environ if environment is None else environment)
+    result.pop("DYLD_INSERT_LIBRARIES", None)
+    result["PATH"] = str(selected.parent) + os.pathsep + result.get("PATH", os.defpath)
+    discovered = shutil.which("adb", path=result["PATH"])
+    try:
+        approved = discovered is not None and os.path.samefile(discovered, selected)
+    except OSError:
+        approved = False
+    if not approved:
+        raise RuntimeError("Fixture packaged CLI ADB path does not select the approved binary")
+    return result
+
+import base64,hashlib,json,os,stat,subprocess,sys,time
+from pathlib import Path
+adb,cli,serial,fixture,diagnostic=sys.argv[1:]
+if os.getuid()!=1000 or Path('/proc/sys/kernel/random/boot_id').read_text().strip()!='25515f23-b966-4c3a-ae63-d38452375578':raise ValueError('host_identity_changed')
+parent=Path(fixture);info=parent.lstat()
+if not stat.S_ISDIR(info.st_mode) or info.st_uid!=1000 or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('private_fixture_parent_changed')
+packet=parent/('android-routing-readonly-'+diagnostic);packet.mkdir(mode=0o700)
+def retain(name,data):
+ fd=os.open(packet/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'wb')as stream:stream.write(data);stream.flush();os.fsync(stream.fileno())
+environment=public_cli_environment(adb,Path(cli));argv=[cli,'--json','--android','--serial',serial,'--timeout-seconds','60','routing','show']
+started=time.monotonic();timed=False;code=None
+try:
+ done=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30,env=environment,check=False);out,error,code=done.stdout,done.stderr,done.returncode
+except subprocess.TimeoutExpired as failure:
+ timed=True;out=failure.stdout or b'';error=failure.stderr or b''
+# Complete command bytes are private before any parsing/projection; no command JSON parse here.
+retain('stdout.private',out);retain('stderr.private',error)
+metadata={'diagnosticCorrelationId':diagnostic,'command':'routing show','commandTimeoutSeconds':30,'commandReturnCode':code,'commandTimedOut':timed,'commandElapsedSeconds':time.monotonic()-started,'stdoutBytes':len(out),'stderrBytes':len(error),'stdoutSha256':hashlib.sha256(out).hexdigest(),'stderrSha256':hashlib.sha256(error).hexdigest(),'rawRetainedDirectory':str(packet),'expectedOwner':'00029efa-6bce-45d9-8789-212b07635153','expectedRevision':0,'originalOutcome':'UNKNOWN','guestMutationAllowed':False,'leaseReleased':False,'replayAllowed':False,'hostBoot':'25515f23-b966-4c3a-ae63-d38452375578','hostUid':1000}
+retain('command-capture.private.json',(json.dumps(metadata,sort_keys=True)+'\n').encode())
+if len(out)>67108864 or len(error)>65536:
+ metadata['transportedCommandBytesComplete']=False
+else:
+ metadata['transportedCommandBytesComplete']=True;sys.stdout.buffer.write(out);sys.stdout.buffer.flush();sys.stderr.buffer.write(error);sys.stderr.buffer.flush()
+sys.stderr.buffer.write(b'
+VC_API35_ROUTING_DIAG_META='+json.dumps(metadata,sort_keys=True,separators=(',',':')).encode()+b'\n');sys.stderr.buffer.flush()

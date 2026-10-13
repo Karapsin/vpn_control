@@ -1,0 +1,7 @@
+"""Exact prechild-failed/fixed bootstrap expressions; binary.sha is supplied by tests."""
+def before_bootstrap(source):
+    reader = 'import hashlib,json,sys\nh=sys.stdin.buffer.readline(513)\nv=json.loads(h)\nif v!=' + repr({'schema': 1, 'bytes': len(source), 'sha256': binary.sha(source)}) + ':raise ValueError("fixed_frame_invalid")\np=sys.stdin.buffer.read(' + str(len(source) + 1) + ')\nif len(p)!=' + str(len(source)) + ' or hashlib.sha256(p).hexdigest()!=' + repr(binary.sha(source)) + ':raise ValueError("fixed_frame_changed")\nexec(compile(p,"<fixed-immutable-828-reader>","exec"))\n'
+    return ('python3', '-I', '-B', '-c', reader)
+def fixed_bootstrap(source):
+    reader = 'import hashlib,json,sys\nh=sys.stdin.buffer.readline(513)\nv=json.loads(h)\nif v!=' + repr({'schema': 1, 'bytes': len(source), 'sha256': binary.sha(source)}) + ':raise ValueError("fixed_frame_invalid")\np=sys.stdin.buffer.read(' + str(len(source) + 1) + ')\nif len(p)!=' + str(len(source)) + ' or hashlib.sha256(p).hexdigest()!=' + repr(binary.sha(source)) + ':raise ValueError("fixed_frame_changed")\nexec(compile(p,"<fixed-immutable-828-reader>","exec"))\n'
+    return ('python3', '-I', '-B', '-c', 'exec(' + repr(reader) + ')')

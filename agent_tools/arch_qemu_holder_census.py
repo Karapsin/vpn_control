@@ -73,10 +73,15 @@ def sockets():
      except (ValueError,IndexError):raise ValueError('tcp-table')
  return unix,tcp
 def memory(argv):
- if argv.count('-m')!=1:return None
- i=argv.index('-m')
+ declarations=[x for x in argv if x in ('-m','-memory') or x.startswith(('-m=','-memory=')) or re.fullmatch(r'-m[0-9].*',x)]
+ if len(declarations)!=1 or declarations[0] not in ('-m','-memory'):return None
+ flag=declarations[0];i=argv.index(flag)
  if i+1>=len(argv):return None
- value=argv[i+1].removeprefix('size=')
+ value=argv[i+1]
+ if flag=='-memory':
+  if not re.fullmatch(r'[1-9][0-9]{0,5}',value):return None
+  amount=int(value);return amount if 128<=amount<=65536 else None
+ value=value.removeprefix('size=')
  m=re.fullmatch(r'([1-9][0-9]{0,5})([MmGg]?)',value)
  if not m:return None
  amount=int(m.group(1))*(1024 if m.group(2).lower()=='g' else 1)
@@ -108,23 +113,34 @@ def proc_visible():
   return 'subset=pid' not in options and not any(
    option.startswith('hidepid=') and option!='hidepid=0' for option in options)
  except (OSError,ValueError,IndexError):return False
+def unallocated_process(pid,start):
+ try:
+  for sample in range(2):
+   tail=open('/proc/%d/stat'%pid,encoding='ascii').read().rsplit(')',1)[1].split()
+   flags=int(tail[6])
+   if int(tail[19])!=start or not (tail[0]=='Z' or flags>=0 and flags&0x00200000):return False
+  return True
+ except (OSError,ValueError,IndexError,UnicodeError):return False
 def scan(unix,tcp):
  complete=proc_visible();items=[]
  entries=[item for item in os.listdir('/proc') if item.isdecimal()]
  if len(entries)>8192:raise ValueError('proc-count')
  for item in entries:
   pid=int(item)
-  try:comm=open('/proc/%d/comm'%pid,encoding='ascii').read(128).strip()
-  except FileNotFoundError:
+  before=ticks(pid)
+  if before is None:
    if os.path.exists('/proc/%d'%pid):complete=False
    continue
-  except OSError:complete=False;continue
-  if not comm.startswith('qemu-system-'):continue
+  try:exe=os.path.basename(os.readlink('/proc/%d/exe'%pid))
+  except (OSError,UnicodeError):
+   after=ticks(pid)
+   if (after is None and os.path.exists('/proc/%d'%pid)) or (after is not None and not unallocated_process(pid,before)):complete=False
+   continue
+  if not exe.startswith('qemu-system-'):continue
   if len(items)>=MAX_QEMU:complete=False;break
-  before=ticks(pid)
-  if before is None:complete=False;items.append({'pid':pid,'state':'unknown','reason':'start-unreadable'});continue
   try:
-   exe=os.path.basename(os.readlink('/proc/%d/exe'%pid))
+   executable=os.stat('/proc/%d/exe'%pid)
+   executable_generation=(executable.st_dev,executable.st_ino,executable.st_mode,executable.st_uid,executable.st_gid,executable.st_size,executable.st_mtime_ns,executable.st_ctime_ns,executable.st_nlink)
    raw=open('/proc/%d/cmdline'%pid,'rb').read(32769)
    if not 0<len(raw)<=32768:raise ValueError('cmdline-size')
    argv=[p.decode('utf-8','replace') for p in raw.split(b'\0') if p]
@@ -148,6 +164,9 @@ def scan(unix,tcp):
      if inode in tcp:listeners.append({'inode':inode,'port':tcp[inode][0],'bindAddress':tcp[inode][1]})
    if len(disks)>32 or len(qmps)>16 or len(listeners)>32:raise ValueError('descriptor-count')
    if ticks(pid)!=before:raise ValueError('generation-changed')
+   after_executable=os.stat('/proc/%d/exe'%pid)
+   after_generation=(after_executable.st_dev,after_executable.st_ino,after_executable.st_mode,after_executable.st_uid,after_executable.st_gid,after_executable.st_size,after_executable.st_mtime_ns,after_executable.st_ctime_ns,after_executable.st_nlink)
+   if os.path.basename(os.readlink('/proc/%d/exe'%pid))!=exe or after_generation!=executable_generation:raise ValueError('executable-changed')
    mem=memory(argv)
    if mem is None:raise ValueError('memory-unknown'+(':'+memory_arg if memory_arg else ''))
    items.append({'pid':pid,'startTicks':before,'state':'observed','exe':exe,
@@ -215,7 +234,7 @@ def classify(raw: Mapping[str, Any], *, local_claim: Mapping[str, Any] | None) -
             continue
         required = {"pid", "startTicks", "state", "exe", "allocatedMemoryMiB", "disks", "qmpSockets", "tcpListeners"}
         if (set(item) != required or type(item.get("startTicks")) is not int or item["startTicks"] <= 0 or
-                item.get("exe") not in ("qemu-system-x86_64", "qemu-system-aarch64") or
+                item.get("exe") not in ("qemu-system-x86_64", "qemu-system-aarch64", "qemu-system-x86_64-headless") or
                 type(item.get("allocatedMemoryMiB")) is not int or not 128 <= item["allocatedMemoryMiB"] <= 65536 or
                 not isinstance(item.get("disks"), list) or len(item["disks"]) > 32 or
                 not isinstance(item.get("qmpSockets"), list) or len(item["qmpSockets"]) > 16 or
@@ -290,3 +309,107 @@ def observe(root: Path | str, request: Mapping[str, Any], *, runner=None) -> dic
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
         raise ValueError("Arch QEMU census response is unavailable") from error
     return classify(raw, local_claim=_read_local_claim(root))
+
+# Scoped current Arch read; no caller-supplied command, path, principal or secret.
+_PRIVILEGED_HOST_SOURCE_SHA256 = 'a6b36ab56709b5c98bfff03f895af6b0f4ea2e8c64b6b158d70166d69d099d12'
+_PRIVILEGED_HOLDER_PROGRAM_SHA256 = '03e67f73b7b4fc5418a369d267c8668cb9aaf8b87fe0a635f910d0f19152090e'
+_PRIVILEGED_PROGRAM_SHA256 = '68a29151a50dd071801097991eff538f6379f5ad0ababfc7abfc829f6938f665'
+_PRIVILEGED_PREFIX = "import contextlib,io,json,os,stat,time\nif os.geteuid()!=0:raise SystemExit(21)\nBOOT='25515f23-b966-4c3a-ae63-d38452375578'\ndef boot():return open('/proc/sys/kernel/random/boot_id',encoding='ascii').read().strip()\nif boot()!=BOOT:raise ValueError('host_boot_changed')\ndef fixed(source):\n buffer=io.StringIO()\n with contextlib.redirect_stdout(buffer):exec(compile(source,'fixed-reviewed-host-read','exec'),{})\n body=buffer.getvalue()\n if not 0<len(body.encode())<=32768:raise ValueError('fixed_output_bound')\n return json.loads(body)\n"
+_PRIVILEGED_SUFFIX = "first_host=fixed(HOST_SOURCE);first_holder=fixed(HOLDER_SOURCE)\nlast_host=fixed(HOST_SOURCE);last_holder=fixed(HOLDER_SOURCE)\nif any(not isinstance(x,dict) for x in (first_host,last_host,first_holder,last_holder)):raise ValueError('fixed_output_shape')\nif any(len(x.get('vms',[]))>16 for x in (first_host,last_host)):raise ValueError('qemu_bound')\nhost_stable=first_host.get('vms')==last_host.get('vms') and first_host.get('physicalMemoryBytes')==last_host.get('physicalMemoryBytes')\nholder_stable=first_holder.get('processes')==last_holder.get('processes')\nfixed_disk='/home/kardinal/.vpn-control-mcp-fixtures';chain=[]\ntry:\n fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);chain.append((fd,None,None,os.fstat(fd)))\n for part in fixed_disk.split('/')[1:]:\n  parent=fd;fd=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);info=os.fstat(fd);named=os.stat(part,dir_fd=parent,follow_symlinks=False)\n  if (info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid)!=(named.st_dev,named.st_ino,named.st_mode,named.st_uid,named.st_gid):raise ValueError('disk_ancestor_changed')\n  chain.append((fd,parent,part,info))\n if info.st_uid!=1000:raise ValueError('disk_owner_changed')\n disk=os.fstatvfs(fd)\n for held,parent,part,before in chain:\n  after=os.fstat(held)\n  if (before.st_dev,before.st_ino,before.st_mode,before.st_uid,before.st_gid)!=(after.st_dev,after.st_ino,after.st_mode,after.st_uid,after.st_gid):raise ValueError('disk_ancestor_changed')\n  if parent is not None:\n   named=os.stat(part,dir_fd=parent,follow_symlinks=False)\n   if (before.st_dev,before.st_ino,before.st_mode,before.st_uid,before.st_gid)!=(named.st_dev,named.st_ino,named.st_mode,named.st_uid,named.st_gid):raise ValueError('disk_ancestor_changed')\nfinally:\n for held,_,_,_ in reversed(chain):os.close(held)\nboot_stable=boot()==BOOT\nprint(json.dumps({'scope':'FIXED_PRIVILEGED_HOST_RESOURCE_AND_HOLDER_READ_ONLY','hostBootId':BOOT,'effectiveUid':os.geteuid(),'host':last_host,'holder':last_holder,'hostBefore':first_host,'holderBefore':first_holder,'hostInventoryStable':host_stable,'holderInventoryStable':holder_stable,'bootStable':boot_stable,'diskAvailableBytes':disk.f_bavail*disk.f_frsize,'diskDevice':info.st_dev,'diskOwnerUid':info.st_uid,'nativeActionAllowed':False},separators=(',',':')))\n"
+
+def _privileged_program():
+    import hashlib
+    from . import native_host_observation as host
+    if (hashlib.sha256(Path(host.__file__).read_bytes()).hexdigest() != _PRIVILEGED_HOST_SOURCE_SHA256 or
+            hashlib.sha256(_REMOTE.encode()).hexdigest() != _PRIVILEGED_HOLDER_PROGRAM_SHA256):
+        raise ValueError('privileged_source_changed')
+    script = (_REMOTE.replace("if pwd.getpwuid(os.geteuid()).pw_name!='kardinal':raise SystemExit(21)",
+                              "if os.geteuid()!=0:raise SystemExit(21)")
+              .replace('__GUEST__', repr(windows_vm_fresh_setup.GUEST))
+              .replace('__WIN__', repr(windows_vm_fresh_setup.WINDOWS_SHA256))
+              .replace('__DRV__', repr(windows_vm_fresh_setup.DRIVER_SHA256)))
+    program = (_PRIVILEGED_PREFIX + 'HOST_SOURCE=' + repr(host._REMOTE_PROGRAM) +
+               '\nHOLDER_SOURCE=' + repr(script) + '\n' + _PRIVILEGED_SUFFIX)
+    if hashlib.sha256(program.encode()).hexdigest() != _PRIVILEGED_PROGRAM_SHA256:
+        raise ValueError('privileged_program_changed')
+    return program
+
+
+def _privileged_capture(argv, payload, timeout):
+    """Reuse the existing binary collector and stdin adapter, with the fixed 64KiB cap."""
+    import types
+    from . import ssh_connection_recovery as recovery, ssh_fresh_nested_channel as fresh
+    namespace = dict(recovery._bounded_socket_query.__globals__)
+    namespace['_SOCKET_CAPTURE_BYTES'] = 65536
+    bounded = types.FunctionType(recovery._bounded_socket_query.__code__, namespace)
+    namespace = dict(fresh._collect.__globals__)
+    namespace['recovery'] = types.SimpleNamespace(_bounded_socket_query=bounded)
+    return types.FunctionType(fresh._collect.__code__, namespace)(argv, payload, timeout)
+
+
+def _privileged_projection(raw, timestamp, timeout):
+    from . import native_host_observation as host
+    if (not isinstance(raw, dict) or raw.get('scope') != 'FIXED_PRIVILEGED_HOST_RESOURCE_AND_HOLDER_READ_ONLY' or
+            type(raw.get('effectiveUid')) is not int or raw.get('effectiveUid') != 0 or raw.get('hostBootId') != '25515f23-b966-4c3a-ae63-d38452375578' or
+            any(raw.get(key) is not True for key in ('bootStable','hostInventoryStable','holderInventoryStable')) or
+            raw.get('diskOwnerUid') != 1000 or type(raw.get('diskAvailableBytes')) is not int or raw['diskAvailableBytes'] < 0):
+        raise ValueError('privileged_identity_unknown')
+    holder = classify(raw['holder'], local_claim=None)
+    resource = host._measurement(raw['host'], timestamp, None, timeout)
+    if (holder['inventoryComplete'] is not True or resource.get('measurementAvailability') != 'complete' or
+            sorted((x['pid'],x['startTicks'],x['configuredMemoryBytes']) for x in resource['vms']) !=
+            sorted((x['pid'],x['startTicks'],x['allocatedMemoryMiB']*1048576) for x in holder['processes'])):
+        raise ValueError('privileged_inventory_unknown')
+    return {**resource, 'holderCensus': holder, 'diskAvailableBytes': raw['diskAvailableBytes'],
+            'diskOwnerUid': raw['diskOwnerUid'], 'hostInventoryStable': True,
+            'holderInventoryStable': True, 'bootStable': True, 'nativeActionAllowed': False}
+
+
+def observe_privileged(root, request):
+    """One explicit Arch-only fixed sudo read; ordinary observe() stays unprivileged."""
+    if (not isinstance(request, Mapping) or set(request) != {'host','timeoutSeconds'} or
+            request.get('host') != 'archlinux' or type(request.get('timeoutSeconds')) is not int or
+            not 1 <= request['timeoutSeconds'] <= 30):
+        raise ValueError('privileged_request_invalid')
+    import hashlib
+    import time
+    from . import ssh_direct_nested_channel as direct, native_host_observation as host, check_output_retention as retention
+    from .native_review_source_closure import _Held
+    timestamp = time.time_ns() // 1000000
+    held = _Held()
+    password = payload = None
+    try:
+        for path in (Path(__file__), Path(host.__file__), Path(windows_vm_fresh_setup.__file__)):
+            held.read(str(path.absolute()), hashlib.sha256(path.read_bytes()).hexdigest())
+        program = _privileged_program()
+        with direct.Guard(Path(root)) as guard:
+            guard.guard(); held.finish(); held.final_identity_pass()
+            target = guard.config.hosts['archlinux']
+            if target.transport != 'nested' or target.user != 'kardinal':
+                raise ValueError('privileged_principal_unknown')
+            password = target.password
+            if (not isinstance(password,str) or not 0 < len(password.encode()) <= 512 or
+                    any(value in password for value in ('\n','\r','\0'))):
+                raise ValueError('privileged_credential_unknown')
+            argv = ssh_transport.build_ssh_argv(guard.config,'archlinux',request['timeoutSeconds'],
+                command=('sudo','-S','-p','','python3','-I','-B','-c','exec('+repr(program)+')'))
+            payload = password.encode() + b'\n'; password = None
+            guard.guard(); held.finish(); held.final_identity_pass()
+            capture = _privileged_capture(argv,payload,request['timeoutSeconds']); payload = None
+            receipt = retention.retain_observation_capture(root,label='archlinux privileged fixed host read',
+                capture=capture,source_fingerprint=_PRIVILEGED_PROGRAM_SHA256)
+            guard.guard(); held.finish(); held.final_identity_pass()
+            if not capture['complete'] or capture['returnCode'] != 0 or capture['stderr']:
+                result = host._unknown(timestamp,'privileged_capture_unknown',timeout=request['timeoutSeconds'])
+            else:
+                try:
+                    result = _privileged_projection(json.loads(capture['stdout']),timestamp,request['timeoutSeconds'])
+                except (ValueError,KeyError,TypeError):
+                    result = host._unknown(timestamp,'privileged_projection_unknown',timeout=request['timeoutSeconds'])
+            guard.guard(); held.finish(); held.final_identity_pass()
+            return {**result,'captureReceipt':receipt,'sourceClosingAuthenticated':True,'nativeActionAllowed':False}
+    except (OSError,ValueError,KeyError,TypeError):
+        return host._unknown(timestamp,'privileged_observer_unknown',timeout=request['timeoutSeconds'])
+    finally:
+        password = payload = None
+        held.close()

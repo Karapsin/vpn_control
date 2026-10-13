@@ -41,7 +41,7 @@ def _name(value: Any, field: str) -> str:
 def _request(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise NativeEnvironmentObservationError("environment observation request must be an object")
-    allowed = {"hostAlias", "device", "jobIdentity", "artifactId", "locationId", "timeoutSeconds", "observations", "observeHost", "vmIdentity"}
+    allowed = {"hostAlias", "device", "jobIdentity", "artifactId", "locationId", "timeoutSeconds", "observations", "observeHost", "vmIdentity", "privilegedHost"}
     if set(value) - allowed:
         raise NativeEnvironmentObservationError("environment observation request has unsupported fields")
     result: dict[str, Any] = {"hostAlias": _name(value.get("hostAlias"), "host alias")}
@@ -79,6 +79,13 @@ def _request(value: Mapping[str, Any]) -> dict[str, Any]:
     result["observeHost"] = value.get("observeHost", False) or "vmIdentity" in value
     if "vmIdentity" in value:
         result["vmIdentity"] = native_host_observation._identity(value["vmIdentity"])
+    if "privilegedHost" in value:
+        if type(value["privilegedHost"]) is not bool:
+            raise NativeEnvironmentObservationError("privilegedHost must be boolean")
+        if (value.get("hostAlias") != "archlinux" or value.get("observeHost") is not True or
+                set(value) - {"hostAlias", "observeHost", "privilegedHost", "timeoutSeconds"}):
+            raise NativeEnvironmentObservationError("privilegedHost requires the fixed Arch host observation only")
+        result["privilegedHost"] = value["privilegedHost"]
     return result
 
 
@@ -157,7 +164,14 @@ def observe_environment(root: str | Path, request: Mapping[str, Any]) -> dict[st
             components["host"] = _unknown(time.time_ns() // 1_000_000, "live-linux-host", "deadline_exhausted")
         else:
             try:
-                observed_host = native_host_observation.observe_host(root, requested["hostAlias"], timeout, requested.get("vmIdentity"))
+                if requested.get("privilegedHost"):
+                    if __package__:
+                        from . import arch_qemu_holder_census
+                    else:
+                        from agent_tools import arch_qemu_holder_census
+                    observed_host = arch_qemu_holder_census.observe_privileged(root, {"host": "archlinux", "timeoutSeconds": timeout})
+                else:
+                    observed_host = native_host_observation.observe_host(root, requested["hostAlias"], timeout, requested.get("vmIdentity"))
                 known = observed_host.get("measurementAvailability") == "complete"
                 if "vmIdentity" in requested:
                     known = known and (observed_host.get("vmIdentity") or {}).get("state") == "matched"

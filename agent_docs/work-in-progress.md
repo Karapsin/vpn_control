@@ -33,7 +33,129 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Optimization integration — prevalidation record, 2026-10-13
+## Current continuation — 2026-10-14,01:07 Moscow
+
+HEAD/origin/dev are9be1a05ef87d118724c2a7e314c5628ccb6bb208, product2.2.9.
+Root owns40 intentional dirty paths: the previous31-path reviewed observation
+bucket plus bounded OS projection and fixed original828 framing routines.
+Exact fixture-loader metadata is enrolled. Focused canonical54 tests pass;
+final managed prepush and coherent checkpoint remain open. Full22-group,
+217-membership and249-scene acceptance is incomplete. Final exact-SHA CI stays
+deferred to overall delivery; no release or RPi concurrency change is authorized.
+
+| Slice | Sole owner | Current evidence | Next gate |
+| --- | --- | --- | --- |
+| Windows CP117 | Windows worker | Exact ordinary-session window proof passed. Supported close acknowledged once; the remaining identified UI8416 was stopped using its held handle, wrapper7724 exited naturally. Closing actor count0/endpoint absent/MSI stopped; no runtime signal or baseline reset. Originalf52 remains UNKNOWN. | Fresh sameW GUI/currentowner, typed ordinary public status, then complete direct update scenarios and matching MCP retests. Cleanup/window/intent causal routine enrollment remains open. |
+| Android API35 | Android worker | Complete bc61 saved result324955/0fe02070 retains140 records, two empty Active/Finalized checks, three historical terminal receipts and clean residues. Currentowner00029/rev0/PID1802/stopped. Original actor qualification is invalid because caller dictionaries reached a tuple helper; actual local correction is prepared. | Narrow fresh numeric-actor check, routing/backup equality, component-certificate/retirement admission; then native scenarios and matching MCP. Original0dd remains UNKNOWN/lease held. |
+| Fedora2340 | Linux worker | Exact9be RPMpair2.2.8→2.2.9 registered/verified, copied and independently rechecked. Basee75 was submitted once; materialized worker17180/start9597549 on boot680a continues independently of canonical edits. Local submission/source holders closed. Original copy DTO error remains preserved. | Observe SAME base job, then whole DIRECT public update/failure/recovery/cleanup and matching MCP. No2328 substitution, claim release or Ubuntu2307 interruption. |
+| macOS | Resource hold | No inspected volume meets80GiB free. | User storage change then fresh admission; no deletion, boot or trust mutation. |
+
+Linux temporarily owns shared route prepare/select for same-process qualification
+and immediate submission, avoiding idle expiry during caretaker handoffs. Route
+mutation serializes across operators; independent admitted captures may overlap.
+Source16/config/key bytes are unchanged. Native packets retain their original
+source/package identities; tooling integration does not relabel native acceptance.
+
+Evidence: `.runtime/root-reviewed-native-leaf-integration-8c5de857-be0d-4433-9955-85c192b94c58`,
+`.runtime/retained-binary-collection-20261014-local/routine`,
+`.runtime/independent-retained828-review-34867827-9abc-4c8f-ad58-5f0fbccf2cda`.
+
+## Historical continuation — 2026-10-13,23:59 Moscow
+
+HEAD/origin/dev remain `9be1a05ef87d118724c2a7e314c5628ccb6bb208`, product2.2.9.
+The optimization hold is cleared. Final exact-SHA five-workflow CI is deferred
+until the final checkpoint as requested. The withdrawn RPi concurrency request
+has caused no setting change. No release is authorized.
+
+Root owns30 intentional dirty paths: the reviewed finite ENDED-only SSH delivery
+transition and controls; Android original host capture, emitted framing and
+process-epoch regressions; Linux executable census, fixed privileged host
+observation and the protected rich-resource reader; dependency declarations and maintainer evidence. Shared16 source
+pins/config remain unchanged after the reviewed delivery edge. The new epoch
+routine passes8 controls; canonical privileged-observer/consumer checks pass143.
+The final rich-resource reader passes36 canonical checks, and its whole DIRECT
+read retains2901 bytes/3bf5f589 with complete stable8/30GiB actors and unchanged
+claims. Its original16KiB command bound is preserved. Original beforeimages and
+unsuccessful intermediate seals remain preserved.
+Version notes, final managed prepush and coherent dev checkpoint are still open.
+Evidence: `.runtime/root-reviewed-native-leaf-integration-8c5de857-be0d-4433-9955-85c192b94c58`.
+
+| Slice | Exclusive owner | Current native evidence | Next gate |
+| --- | --- | --- | --- |
+| Shared route/API35 | Android worker | Original0dd DIRECT/MCP host captures match exactly; original operation UNKNOWN/lease held. Fixed current CLI facts retain21 complete records, owner00029efa/rev0, PID1802, runtimeOFF and ops0. Original11,872,243-byte routing backup hash365fbdf1 is intact, with historical owner430178de/rev0. The separate routing read timed out after30s with no partial output; no cancellation or cause is inferred. | The single OS/private batch saved its result before wire_encoded_bounds prevented delivery; semantic outcome remains uncollected/UNKNOWN. Collect that exact retained result without rerunning the batch, then prove current routing/backup equality and retirement admission. Do not replay original installer/getter or release its lease from absence. |
+| Windows CP117 | Windows worker | Native PowerShell5.1 compilation passes. Exact owned never-resumed child9300 and preservation waiter1816 were stopped using held handles after fresh identity/source proof; original task is Ready/LastResult1. Original SYSTEM2020 was subsequently stopped using its held handle after exact native identity proof; immutable retained native bytes prove terminal exit1/absence. A closing-check error after collection remains preserved, with the precise grouped parent predicate unknown. No GUI/runtime signal, original replay, public status or update acceptance. | Complete causal collector/cleanup routines; qualify corrected postCreate witness and bounded exception retention on native5.1, then public status and update scenarios. |
+| Linux guests/host | Linux worker; Android shared-route caretaker | Complete stable privileged DIRECT/MCP host observations match8 QEMUs/30GiB. All8 reservations remain36GiB; protected local build admission needs76GiB versus60.3GiB physical. No release candidate has authentic reservation binding. Hosted RPM fixture run38464184442 succeeded for exact9be, pair2.2.8→2.2.9, correlation9dbd434c-d413-4ac2-8676-2a98074df0e4. | The downloaded pair passes independent RPM/header/source verification. Register exact bytes, qualify owned Fedora2340 and execute native RPM acceptance. Matching resource MCP admission currently must refuse the absent fresh reservation; no claim is created to reach that read. Preserve Ubuntu2307 ON and all unknown claims. |
+| macOS Tart | Mac worker, resource hold | No inspected mounted volume has80GiB free; generated storage totals only4.79GiB. | User storage change, fresh admission, trusted baseline/source-matched artifact. No deletion, boot or trust mutation from resource observations. |
+
+The frozen producer remains `/Users/karapsin_de/.codex/worktrees/parity-native-9be1/vpn_control`.
+No tooling checkpoint relabels its original packages or UNKNOWN histories.
+Fresh matrix audit at9be reports0 passed,19 open,3 historical requirements;
+0/217 current scenario memberships are registered passed. Six receipt records
+include one immutable retraction; none closes a requirement. This accounting does
+not erase earlier partial implementation/native evidence. The full22-group,
+217-scenario and249-scene acceptance goal remains incomplete. Audit packet:
+`.runtime/reservation-audit-matrix-1791923821216706000`.
+
+## Historical continuation — 2026-10-13,22:26 Moscow
+
+HEAD/origin/dev remain `9be1a05ef87d118724c2a7e314c5628ccb6bb208`, product2.2.9.
+The optimization hold is cleared; the full parity goal remains incomplete.
+Final exact-SHA five-workflow CI is deferred as requested. The RPi concurrency
+request was withdrawn by the user; no setting was changed.
+
+Root owns integration of three intentional dirty buckets: the finite ENDED-only
+SSH source transition and its causal controls; the original Android host-status
+capture leaf/codec; and the measured Linux holder memory/classifier correction.
+Android and Linux leaf bytes match their independently reviewed manifests.
+Canonical focused checks passed26 new/changed controls and67 existing consumers.
+Fresh affected-test selection passed441/503 modules, including all three changed
+leaf consumers; existing dependency metadata needs no further declaration.
+Version notes, final managed prepush and coherent checkpoint delivery remain open.
+Evidence: `.runtime/root-reviewed-native-leaf-integration-8c5de857-be0d-4433-9955-85c192b94c58`.
+
+| Slice | Exclusive owner | Current native evidence | Next gate |
+| --- | --- | --- | --- |
+| Shared SSH route/API35 | Android worker | Original0dd direct and integrated fresh-CLI MCP host capture retain identical18249-byte wire/128567-byte decoded records; all holders closed. Original operation/lease remain UNKNOWN/held. Fresh device read proves baseline2.2.2 and owner00029efa/rev0; routing command failed without retained detail. | Capture one bounded routing-only raw command; prove remaining retirement admission facts before any lease or guest effect. |
+| Windows CP117 | Windows worker | Actual PowerShell5.1 same-assembly compilation passes. Originalf52 marker proves child9300 was never resumed, principal unproved, setup MethodInvocationException; task intentionally preserves UNKNOWN_SUSPENDED. No public status result or update acceptance. | Diagnose exact setup/callback cause on preserved source; no original child resume/task replay. |
+| Linux guests/host | Linux worker; Android executes synchronized shared-route host reads | Fresh whole census remains UNKNOWN. Two live QEMU generations have comm7 and are omitted by name filtering; native resource observer sees8/30GiB but executable-read EACCES prevents complete admission. | Review exe-first causal correction and existing fixed privileged read recipe; complete DIRECT then matching MCP proof. Preserve8claims and Ubuntu2307 ON. |
+| macOS Tart | Mac worker, on resource hold | No inspected mounted volume has80GiB free; generated storage totals only4.79GiB. | User storage change, fresh admission, trusted baseline/source-matched artifact. No deletion, boot or trust mutation authorized by these reads. |
+
+The frozen producer remains `/Users/karapsin_de/.codex/worktrees/parity-native-9be1/vpn_control`.
+Original artifacts and UNKNOWN histories are not relabelled after tool changes.
+Full22-group/217-scenario/249-scene native/visual acceptance remains open.
+
+## Historical continuation — 2026-10-13,21:00 Moscow
+
+The six optimizations passed all17 managed prepush commands and6216 agent tests
+(167 explicit skips) at fingerprint3d9cd7b1. Clean checkpoint
+`9be1a05ef87d118724c2a7e314c5628ccb6bb208` was pushed todev, version2.2.9.
+Its authenticated delivery packet is `.runtime/root-optimization-corrected-prepush-mkfiaqfd`.
+The optimization hold is cleared. Final exact-SHA five-workflow CI remains deferred.
+The managed clean producer is `/Users/karapsin_de/.codex/worktrees/parity-native-9be1/vpn_control`;
+its source is frozen and is not relabelled after coordinator changes.
+
+Current uncommitted work is a reviewed finite ENDED-only SSH source transition,
+its two public historical source fixtures and40 routine controls, plus two
+historical binary-capture callback controls. Identical causal tests failed on
+preserved beforeimages and pass on the corrections; canonical focused42 pass.
+An intermediate over-admission was reproduced and corrected before integration.
+Evidence: `.runtime/direct-ended-delivery-edge-536a5b6c-2e1a-4b32-835e-f7d1c67a1ce9`
+and `.runtime/independent-direct-delivery-review-1a6e17f9-380c-47c6-b8ef-bc2324a8d540`.
+Affected-test fixture declarations, fresh native route qualification, prepush
+and checkpoint delivery remain required for these changed contents.
+
+Android is the sole shared-route operator; originalbadc is authentically ENDED.
+Its original Android lease remains UNKNOWN/held. Linux waits for a qualified
+new route and keeps all eight claims and Ubuntu2307 ON untouched. Windows owns
+CP117: originalf52 SYSTEM2020/compiler/task/status remain UNKNOWN. Only its exact
+local SSH observer was terminated; local holders are zero. Its next diagnostic
+must have finite terminal observation and complete bounded raw retention, with
+no original app/task replay. macOS remains on resource hold: no mounted volume
+has80GiB free, and all inspected generated directories total only4.79GiB.
+No VM boot, deletion or baseline trust change is implied by those observations.
+Full22-group/217-scenario/249-scene acceptance remains incomplete.
+
+## Optimization integration — historical prevalidation record, 2026-10-13
 
 All six requested optimizations are integrated. Platform work remains on hold
 until fresh managed prepush validation and a clean checkpoint qualify the final

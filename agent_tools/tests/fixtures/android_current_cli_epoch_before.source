@@ -1,0 +1,2 @@
+if shell('app-stat-after', 'cat', '/proc/' + pid + '/stat') != stat1 or shell('app-pid-after', 'pidof', 'com.kardinal.vpncontrol') != pid or shell('guest-boot-after', 'cat', '/proc/sys/kernel/random/boot_id') != boot:
+    raise ValueError('facts_app_epoch_changed')

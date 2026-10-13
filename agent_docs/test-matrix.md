@@ -1,5 +1,9 @@
 # Test Matrix
 
+## Retained Android OS and result observations
+
+Run `python3 -m unittest agent_tools.tests.test_android_api35_os_session_projection agent_tools.tests.test_android_retained_result_binary_collection agent_tools.tests.test_android_original_host_wire agent_tools.tests.test_android_original_host_status` after changing the bounded OS projection, original-host wire owner or retained-record collector. The54 controls include complete Active/Finalized section retention, producer/EOF/hash and wire bounds, actual fake children, source closing, no replay, typed frame pins and preserved original failures. Missing `fcntl` leaves19 pure framing controls enabled and explicitly skips11 POSIX child controls. Ordinary discovery and the exact four-resource loader declaration enroll these consumers. The fixed decoder covers only original828; collected facts do not release an unknown installer lease or prove current routing, retirement or full native/MCP acceptance.
+
 ## Refresh-status and deterministic complete visual capture
 
 After changing the desktop subscription status consumer or its neutral catalog
@@ -339,6 +343,14 @@ production permission checks. Timing7 remains enrolled in release hygiene;
 both regressions run through ordinary agent discovery/prepush/Fast Checks.
 
 ## Completed DIRECT connection history controls
+
+`test_ssh_direct_retained_delivery_transition` adds40 actual provider/journal
+controls for the exact9df8→f227 MCP delivery edge. The original source populations,
+terminal/READY custody and typed source/authority fences remain required.
+`test_ssh_native_status_capture_callback` adds two historical temporary-callback
+controls using actual binary child streams through the current collector.
+Both modules run through affected discovery, managed prepush and Fast Checks.
+Their local results do not prove a new native route or platform acceptance.
 
 `test_ssh_direct_ended_source_transition` discovers58 controls through ordinary
 agent-tool discovery, prepush and Fast Checks: the original48 plus ten checkpoint74
@@ -1339,3 +1351,35 @@ without a server schema change. Unsupported POSIX coordinators skip these 22
 controls. Run with the retained-wrapper, direct-channel, selector, MCP-route and
 transport modules. The original Android masked exception was not retained;
 these local reproductions prove the constructor defect, not its native cause.
+
+### Original Android host-status capture and Linux holder parsing
+
+Routine discovery includes `test_android_original_host_status` (9 controls),
+`test_android_original_host_wire` (6 controls), and the measured headless memory
+cases in `test_arch_qemu_holder_census`. These controls preserve exact original
+records, fixed decoded/wire bounds, private binary retention, source/bundle and
+lease custody, finite JSON and explicit unsupported-platform skips. Native
+DIRECT/MCP equivalence remains required; collector checks alone do not close
+Android installer acceptance or complete Linux VM resource admission.
+
+## API35 current CLI process epoch
+
+Run `python3 -m unittest agent_tools.tests.test_android_current_cli_process_epoch`
+for the exact captured stat guard and its three immutable fixtures. The same8
+controls produce one original ValueError RED, then8 GREEN with no skips, including
+absent-fcntl execution. Mutable resource counters retain the same epoch; PID,
+comm, parent, start ticks, closing PID/boot and malformed stat are refused.
+Ordinary discovery and affected dependency selection must include this module.
+Native21-record current facts are engineering observations, not installer
+retirement, package certificate, routing equality or full parity acceptance.
+
+## Protected rich Linux resource consumer
+
+Run `test_ssh_tmux_resource_admission`, `test_tmux_resource_routes`,
+`test_native_engineering_tmux_future` and `test_native_engineering_entrypoint`
+through `python3 -m unittest agent_tools.tests.<module>`. Canonical36 checks cover
+actual emitted executable census, independent EACCES refusal, preserved16KiB
+command limit, stdin-only fixed privileged collection, source closing and immutable
+engineering context. Whole native DIRECT is separately verified; lacking a fresh
+reservation must refuse MCP admission, and excessive capacity must remain refused.
+Tests never authorize reservation release or new build allocation.

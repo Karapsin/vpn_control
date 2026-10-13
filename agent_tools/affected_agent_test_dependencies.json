@@ -99,6 +99,16 @@
         "60634d64854d5be19af49d0204412037eb56fd02e74d586da50d8a0920674893"
       ]
     },
+    "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.delivery-reviewed.py.gz": {
+      "reason": "Immutable compressed exact reviewed canonical MCP f227 source; finite literal module and keeper-role registries are identical to the existing reviewed canonical declaration.",
+      "scopes": [
+        "@modules:_VM_NATIVE_ADAPTERS",
+        "@files:_KEEPER_ROLES"
+      ],
+      "sourceSha256": [
+        "f2270ebb2cfd63066d84807b67b1d577b0acd1e90852ac397cf4f05d53c06f9c"
+      ]
+    },
     "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.reviewed-after.py.gz": {
       "scopes": [
         "@modules:_VM_NATIVE_ADAPTERS",
@@ -262,6 +272,17 @@
       ],
       "sourceSha256": [
         "a5e4d94fada8cf24824931ea7c7dca3bc1babb0c436587f1f89ce30be4a4e2ea"
+      ]
+    },
+    "agent_tools/tests/test_android_retained_result_binary_collection.py": {
+      "scopes": [
+        "agent_tools/tests/fixtures/android_retained_record_binary/collector-8135-before.source",
+        "agent_tools/tests/fixtures/android_retained_record_binary/sender-green.source",
+        "agent_tools/tests/fixtures/android_retained_record_binary/sender-missing-json-before.source",
+        "agent_tools/tests/fixtures/android_retained_record_binary/sender-shadow-before.source"
+      ],
+      "sourceSha256": [
+        "d5fec7fc4e4d3fcdb29a9ea386f3c75d3e5f721f43cdc17830e637d65044cbb2"
       ]
     },
     "agent_tools/tests/test_arch_ai_loop_observe.py": {
@@ -511,6 +532,7 @@
     }
   },
   "nonPythonResources": {
+    "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-loss.source": "24001dcaed1e666438e18497abde4594b6f3121b28c339a569b11955da0d3a21",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-restored.source": "dc4ea223703ea8b16faa07d1b6d231d45b30d078f09e4e1e4954241a3be9efa6"
   },

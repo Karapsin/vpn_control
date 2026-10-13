@@ -1,0 +1,40 @@
+
+import hashlib,os,stat,sys
+from pathlib import Path
+root=Path('/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/retained-binary-collection-20261014-local/fake-source');uid=503;expected='79fcb4b69c70ca85301899ebc150e6e7d404e9c6ffd2b4beb3530e8c1e26aa4a';expected_size=3534648
+boot=root/'boot.private';leaf='result.private.json';chain=[];fd=None
+identity=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)
+gen=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+try:
+ parent=root;paths=list(reversed([parent,*parent.parents]))
+ for path in paths:
+  n=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);chain.append((path,n,identity(os.fstat(n))))
+ if stat.S_IMODE(os.fstat(chain[-1][1]).st_mode)!=0o700 or os.fstat(chain[-1][1]).st_uid!=uid:raise ValueError('parent_private')
+ fd=os.open(leaf,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=chain[-1][1]);pin=gen(os.fstat(fd))
+ if not stat.S_ISREG(pin[2])or stat.S_IMODE(pin[2])!=0o600 or pin[3]!=uid or pin[5]!=1 or not 0<pin[6]<=4194304 or pin[6]!=expected_size:raise ValueError('file_shape')
+ def guard():
+  if boot.read_text()!='25515f23-b966-4c3a-ae63-d38452375578':raise ValueError('boot_changed')
+  for path,n,p in chain:
+   if identity(os.fstat(n))!=p or identity(os.stat(path,follow_symlinks=False))!=p:raise ValueError('parent_changed')
+  if gen(os.fstat(fd))!=pin or gen(os.stat(leaf,dir_fd=chain[-1][1],follow_symlinks=False))!=pin:raise ValueError('file_changed')
+ def digest():
+  h=hashlib.sha256();offset=0
+  while True:
+   b=os.pread(fd,min(65536,4194304+1-offset),offset)
+   if not b:break
+   offset+=len(b);h.update(b)
+   if offset>4194304:raise ValueError('file_bound')
+  if offset!=expected_size or h.hexdigest()!=expected:raise ValueError('file_hash')
+ guard();digest();guard()
+ sys.stdin.buffer.read(1)
+ offset=0
+ while offset<expected_size:
+  b=os.pread(fd,min(1536,expected_size-offset),offset)
+  if not b:raise ValueError('file_partial')
+  frame=json.dumps({'kind':'receipt','offset':offset,'chunk':__import__('base64').b64encode(b).decode(),'eof':offset+1536>=expected_size},separators=(',',':')).encode()+b'\n'
+  if len(frame)>4096:raise ValueError('frame_bound')
+  sys.stdout.buffer.write(frame);offset+=len(b)
+ sys.stdout.buffer.flush();digest();guard()
+finally:
+ if fd is not None:os.close(fd)
+ for _,n,_ in reversed(chain):os.close(n)

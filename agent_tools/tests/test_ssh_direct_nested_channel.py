@@ -158,8 +158,10 @@ class DirectChannelTests(unittest.TestCase):
             self.assertTrue(selected['ok']);self.assertEqual('selected',selected['state'])
             status=server._ssh_workflow_impl('connection-direct-channel-status','archlinux',identity=identity)
             self.assertTrue(status['ok']);self.assertEqual('ready',status['state'])
-            for bad in ({**identity,'command':'true'}, {**identity,'correlationId':True}):
-                value=server._ssh_workflow_impl('connection-direct-channel-prepare','archlinux',identity=bad)
+            for bad in ({**identity,'command':'true'}, {**identity,'correlationId':True}, {**identity,'correlationId':self.corr}):
+                with mock.patch.object(direct,'prepare',wraps=direct.prepare) as provider:
+                    value=server._ssh_workflow_impl('connection-direct-channel-prepare','archlinux',identity=bad)
+                provider.assert_not_called()
                 self.assertFalse(value['ok']);self.assertFalse(value['nativeActionAllowed']);self.assertFalse(value['replayAllowed'])
         self.assertEqual(1,sum(c[6]=='prepare' for c in self.calls));self.assertEqual(2,len(retained))
 

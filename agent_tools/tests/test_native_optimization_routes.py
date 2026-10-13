@@ -75,6 +75,40 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         self.assertEqual("unknown", result["state"])
         self.assertFalse(result["replayAllowed"])
 
+    def test_environment_status_explicit_privileged_arch_seam_uses_existing_route(self):
+        from unittest.mock import Mock
+        from agent_tools import native_environment_observation as environment, arch_qemu_holder_census as census
+        # Pure finite DTO projection: native emitted-script and whole-host proofs
+        # are covered separately; these controls require no POSIX symlinks.
+        sample = {'observedAtUnixMs': 1, 'availableMemoryBytes': 20*1024**3,
+                  'psi': 'normal', 'psiSomeAvg10': 0.0, 'psiFullAvg10': 0.0,
+                  'vmstat': {'pswpin': 0, 'pswpout': 0, 'oomKill': 0}}
+        host = {'state': 'observed', 'physicalMemoryBytes': 32*1024**3,
+                'swapUsedBytes': 0, 'samples': [sample, {**sample, 'observedAtUnixMs': 2}],
+                'inventoryComplete': True, 'vms': [{'pid': 42, 'startTicks': 99,
+                'qemuExecutable': 'qemu-system-x86_64', 'configuredMemoryBytes': 4*1024**3}]}
+        holder = {'schemaVersion': 1, 'host': 'archlinux', 'censusComplete': True,
+                  'windowsBaselineReceipt': None, 'processes': [
+                    {'pid': 42, 'startTicks': 99, 'state': 'observed', 'exe': 'qemu-system-x86_64',
+                     'allocatedMemoryMiB': host['vms'][0]['configuredMemoryBytes']//1048576,
+                     'disks': [], 'qmpSockets': [], 'tcpListeners': []}]}
+        raw = {'scope': 'FIXED_PRIVILEGED_HOST_RESOURCE_AND_HOLDER_READ_ONLY',
+               'effectiveUid': 0, 'hostBootId': '25515f23-b966-4c3a-ae63-d38452375578',
+               'bootStable': True, 'hostInventoryStable': True, 'holderInventoryStable': True,
+               'diskOwnerUid': 1000, 'diskAvailableBytes': 100000000000,
+               'host': host, 'holder': holder}
+        with patch.object(mcp_server, '_MCP_BOOT_TIME_NS', 2**63-1), \
+             patch.object(environment.ssh_transport, 'probe', return_value=Mock(ok=True, status=environment.ssh_transport.ProbeStatus.OK)), \
+             patch.object(census, 'observe_privileged', side_effect=lambda root, request: census._privileged_projection(raw, 1, request['timeoutSeconds']), create=True) as dispatch, \
+             patch.object(environment.native_host_observation, 'observe_host') as ordinary:
+            result = mcp_server._vm_workflow_impl('environment-status',
+                {'hostAlias': 'archlinux', 'observeHost': True, 'privilegedHost': True, 'timeoutSeconds': 12})
+        self.assertTrue(result['ok'], result)
+        self.assertTrue(result['requestedProbesReady'])
+        self.assertFalse(result['ready']);self.assertFalse(result['nativeActionAllowed'])
+        self.assertTrue(result['components']['host']['observation']['holderCensus']['inventoryComplete'])
+        dispatch.assert_called_once();ordinary.assert_not_called()
+
     def test_arch_qemu_holder_census_is_read_only_and_fails_closed(self):
         from agent_tools import arch_qemu_holder_census
         request = {"host": "archlinux", "timeoutSeconds": 20}

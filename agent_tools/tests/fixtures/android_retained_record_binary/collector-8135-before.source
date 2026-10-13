@@ -1,0 +1,95 @@
+import os,stat,json,hashlib,base64,sys,math
+from pathlib import Path
+def _generation(info: os.stat_result) -> list[int]:
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, stat.S_IMODE(info.st_mode), info.st_uid, info.st_nlink]
+
+def _directory(path: Path) -> int:
+    absolute = path.absolute()
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in absolute.parts[1:]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        info = os.fstat(fd)
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 448:
+            raise ValueError('private_parent_invalid')
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+def _ancestry(path: Path) -> list[list[int]]:
+    absolute = path.absolute()
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+    result = []
+    try:
+        for part in absolute.parts[1:]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = child
+            info = os.fstat(fd)
+            result.append([info.st_dev, info.st_ino, info.st_mode, info.st_uid])
+        return result
+    finally:
+        os.close(fd)
+
+def private_snapshot(path: Path, limit: int=1048576) -> tuple[bytes, list[int], str]:
+    ancestry = _ancestry(path.parent)
+    parent = _directory(path.parent)
+    try:
+        info = os.fstat(parent)
+        if ancestry[-1] != [info.st_dev, info.st_ino, info.st_mode, info.st_uid]:
+            raise ValueError('private_parent_changed')
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
+        with os.fdopen(fd, 'rb') as stream:
+            before = os.fstat(stream.fileno())
+            payload = stream.read(limit + 1)
+            after = os.fstat(stream.fileno())
+        named = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+        if not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or stat.S_IMODE(before.st_mode) != 384 or (before.st_nlink != 1) or (len(payload) > limit) or (len(payload) != before.st_size) or (_generation(before) != _generation(after)) or (_generation(before) != _generation(named)) or (_ancestry(path.parent) != ancestry):
+            raise ValueError('private_file_changed')
+        return (payload, _generation(before), hashlib.sha256(payload).hexdigest())
+    finally:
+        os.close(parent)
+
+def unique(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError('duplicate_json_key')
+        value[key] = item
+    return value
+
+root_raw,kind,offset_raw,pin_raw=sys.argv[1:]
+ROOT=Path(root_raw);DIRECTORY=ROOT/'android-current-readonly-retirement-facts-828431f1-5588-4b99-b85c-1bf1dece9da9';PATH=DIRECTORY/'result.private.json'
+CORRELATION='828431f1-5588-4b99-b85c-1bf1dece9da9';HOST_BOOT='25515f23-b966-4c3a-ae63-d38452375578';LIMIT=4194304;CHUNK=1536
+# Exact existing retained-record cap and chunk size, one fixed owned record only.
+def refuse_constant(value):raise ValueError('record_nonfinite_json')
+def number(value):
+ result=float(value)
+ if not math.isfinite(result):raise ValueError('record_nonfinite_json')
+ return result
+try:
+ offset=int(offset_raw);requested=json.loads(pin_raw,object_pairs_hook=unique,parse_constant=refuse_constant,parse_float=number)
+ if os.getuid()!=1000 or kind not in('status','receipt')or offset<0 or (kind=='status'and(offset!=0 or requested is not None)):raise ValueError('fixed_record_request_invalid')
+ boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+ if boot!=HOST_BOOT:raise ValueError('fixed_record_host_boot_changed')
+ parent_ancestry=_ancestry(DIRECTORY);root_fd=_directory(ROOT);os.close(root_fd);directory_fd=_directory(DIRECTORY);os.close(directory_fd)
+ raw,generation,digest=private_snapshot(PATH,LIMIT)
+ if not raw:raise ValueError('fixed_record_empty')
+ value=json.loads(raw,object_pairs_hook=unique,parse_constant=refuse_constant,parse_float=number)
+ if type(value)is not dict or value.get('scope')!='fixed_readonly_retirement_facts_only'or value.get('correlationId')!=CORRELATION or value.get('originalOutcome')!='UNKNOWN'or value.get('leaseReleased')is not False or value.get('replayAllowed')is not False or value.get('guestMutationPerformed')is not False or value.get('componentCertificateCreated')is not False or value.get('retirementAdmission')is not False:raise ValueError('fixed_record_source_binding_changed')
+ pin={'generation':generation,'sha256':digest,'bytes':len(raw),'ancestry':parent_ancestry,'hostBootId':boot}
+ result={'state':'record-authenticated','correlationId':CORRELATION,'receiptPin':pin,'replayAllowed':False}
+ if kind=='receipt':
+  if requested!=pin or offset>len(raw):raise ValueError('fixed_record_pin_or_offset_changed')
+  result.update(kind=kind,offset=offset,pin=pin,chunk=base64.b64encode(raw[offset:offset+CHUNK]).decode(),eof=offset+CHUNK>=len(raw))
+ closing,closing_generation,closing_hash=private_snapshot(PATH,LIMIT)
+ if closing!=raw or closing_generation!=generation or closing_hash!=digest or _ancestry(DIRECTORY)!=parent_ancestry or Path('/proc/sys/kernel/random/boot_id').read_text().strip()!=boot:raise ValueError('fixed_record_closing_changed')
+ result['sourceClosingAuthenticated']=True
+ output=json.dumps(result,separators=(',',':')).encode()
+ if len(output)+1>4096:raise ValueError('fixed_record_reply_bounds')
+ sys.stdout.buffer.write(output+b'\n');sys.stdout.buffer.flush()
+except FileNotFoundError:print(json.dumps({'state':'unknown','reason':'fixed_record_missing','correlationId':CORRELATION,'replayAllowed':False}))
+except(OSError,ValueError,TypeError,KeyError):print(json.dumps({'state':'unknown','reason':'fixed_record_auth_or_bound_unknown','correlationId':CORRELATION,'replayAllowed':False}))

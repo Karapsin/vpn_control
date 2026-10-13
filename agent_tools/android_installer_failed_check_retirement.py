@@ -1807,3 +1807,33 @@ def remote_metadata_bound_proxy_collector_source() -> str:
  if [named.st_dev,named.st_ino,named.st_mode,named.st_uid]!=parents[1]:raise ValueError('collector_named_parent_changed')"""
     if old_guard not in source:raise ValueError('collector_source_shape_changed')
     return source.replace(old_guard,new_guard,1)
+
+
+def project_api35_os_session_dump(raw, receipt):
+    LIMIT = 4194304
+    SECTION_LIMIT = 1048576
+    HEADERS = (b'Active install sessions:', b'Finalized install sessions:', b'Historical install sessions:', b'Legacy install sessions:')
+    if type(raw) is not bytes or not 0 < len(raw) <= LIMIT or type(receipt) is not dict:
+        raise ValueError('os_dump_record_bound')
+    if receipt.get('returnCode') != 0 or type(receipt.get('returnCode')) is not int or receipt.get('timedOut') is not False or (receipt.get('stdoutEOF') is not True) or (receipt.get('stderrEOF') is not True) or (type(receipt.get('stderrBytes')) is not int) or (receipt.get('stderrBytes') != 0) or (type(receipt.get('stdoutBytes')) is not int) or (receipt.get('stdoutBytes') != len(raw)) or (receipt.get('stdoutSha256') != hashlib.sha256(raw).hexdigest()):
+        raise ValueError('os_dump_complete_capture_required')
+    raw.decode('utf-8', 'strict')
+    if b'\x00' in raw or not raw.endswith(b'\n'):
+        raise ValueError('os_dump_complete_text_required')
+    lines = raw.splitlines(keepends=True)
+    positions = []
+    for header in HEADERS:
+        found = [i for i, line in enumerate(lines) if line.rstrip(b'\r\n') == header]
+        if len(found) != 1:
+            raise ValueError('os_session_header_ambiguous_or_missing')
+        positions.append(found[0])
+    if positions != sorted(positions):
+        raise ValueError('os_session_header_order')
+    section = b''.join(lines[positions[0]:positions[2] + 1])
+    legacy = lines[positions[3]]
+    if len(section) + len(legacy) > SECTION_LIMIT:
+        raise ValueError('os_session_projection_bound')
+    active = b''.join(lines[positions[0] + 1:positions[1]])
+    finalized = b''.join(lines[positions[1] + 1:positions[2]])
+    projection = section + legacy
+    return {'schema': 1, 'producerReturnCode': 0, 'producerStdoutEOF': True, 'producerStderrEOF': True, 'producerStdoutBytes': len(raw), 'producerStdoutSha256': receipt['stdoutSha256'], 'activeSectionComplete': True, 'finalizedSectionComplete': True, 'headerCounts': [1, 1, 1, 1], 'activeEmpty': active.strip() in (b'', b'(none)', b'None'), 'finalizedEmpty': finalized.strip() in (b'', b'(none)', b'None'), 'sectionText': projection.decode('utf-8'), 'sectionBytes': len(projection), 'sectionSha256': hashlib.sha256(projection).hexdigest(), 'historicalBodyOmitted': True, 'legacyBodyOmitted': True, 'admissionAllowed': False}

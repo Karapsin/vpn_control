@@ -21,26 +21,54 @@ from . import vm_workflow
 need=old.need
 MEMORY=8*1024**3
 HOST_SHA='a6b36ab56709b5c98bfff03f895af6b0f4ea2e8c64b6b158d70166d69d099d12'
+BOOT='25515f23-b966-4c3a-ae63-d38452375578'
 VM_SHA='d0db49f7c4fc67348dd6f7ba9ebb35cfad01f055ffde374858fa36ac02f6711c'
 
 _REMOTE=r'''
+def proc_visible():
+ try:
+  if open('/proc/1/comm',encoding='ascii').read(128).strip()!='systemd':return False
+  if os.readlink('/proc/1/ns/pid')!=os.readlink('/proc/self/ns/pid'):return False
+  mounts=[]
+  with open('/proc/self/mountinfo',encoding='ascii') as f:
+   for line in f:
+    before,after=line.strip().split(' - ',1)
+    fields=before.split();tail=after.split()
+    if len(fields)>=6 and fields[4]=='/proc':mounts.append((fields,tail))
+  if len(mounts)!=1:return False
+  fields,tail=mounts[0]
+  if len(tail)<3 or tail[0]!='proc':return False
+  options=set((fields[5]+','+tail[2]).split(','))
+  return 'subset=pid' not in options and not any(
+   option.startswith('hidepid=') and option!='hidepid=0' for option in options)
+ except (OSError,ValueError,IndexError):return False
 def census():
  boot=open('/proc/sys/kernel/random/boot_id').read().strip(); rows=[]
+ if boot!=FIXED_BOOT or not proc_visible():raise ValueError('resource_host_unknown')
  entries=os.listdir('/proc')
  if len(entries)>8192:raise ValueError('resource_census_limit')
  for entry in entries:
   if not entry.isdigit():continue
   pid=int(entry)
-  try:comm=open('/proc/'+entry+'/comm').read().strip()
-  except OSError:raise ValueError('resource_process_unknown')
-  if not comm.startswith('qemu-system-'):continue
   base='/proc/'+entry
+  start=stat(pid)
+  if start is None:
+   if os.path.exists(base):raise ValueError('resource_process_unknown')
+   continue
+  try:exe=os.path.basename(os.readlink(base+'/exe'))
+  except (OSError,UnicodeError):
+   after=stat(pid)
+   if (after is None and os.path.exists(base)) or (after is not None and not (kernel_thread(pid,start) or terminal_zombie(pid,start))):raise ValueError('resource_process_unknown')
+   continue
+  if not exe.startswith('qemu-system-'):continue
   before=open(base+'/stat').read().rsplit(')',1)[1].split()
   raw=open(base+'/cmdline','rb').read(16385)
   executable=os.stat(base+'/exe');uid=os.stat(base).st_uid
   configured=parse_memory(raw.rstrip(b'\0').split(b'\0'))
   after=open(base+'/stat').read().rsplit(')',1)[1].split()
-  if before[19]!=after[19] or before[3]!=after[3] or len(raw)>16384 or configured is None:raise ValueError('resource_identity_changed')
+  current_executable=os.stat(base+'/exe')
+  generation=lambda info:(info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_size,info.st_mtime_ns,info.st_ctime_ns,info.st_nlink)
+  if int(before[19])!=start or before[19]!=after[19] or before[3]!=after[3] or not 0<len(raw)<=16384 or configured is None or generation(executable)!=generation(current_executable) or os.path.basename(os.readlink(base+'/exe'))!=exe or os.stat(base).st_uid!=uid:raise ValueError('resource_identity_changed')
   rows.append({'pid':pid,'startTicks':int(before[19]),'sessionId':int(before[3]),'uid':uid,'commandSha256':hashlib.sha256(raw).hexdigest(),'executableGeneration':[executable.st_dev,executable.st_ino,executable.st_mode,executable.st_uid,executable.st_gid,executable.st_size,executable.st_mtime_ns,executable.st_ctime_ns,executable.st_nlink],'configuredMemoryBytes':configured})
  if open('/proc/sys/kernel/random/boot_id').read().strip()!=boot:raise ValueError('resource_boot_changed')
  return boot,sorted(rows,key=lambda x:x['pid'])
@@ -54,7 +82,7 @@ try:
   parent=fd;fd=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);s=os.fstat(fd);named=os.stat(part,dir_fd=parent,follow_symlinks=False)
   if (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)!=(named.st_dev,named.st_ino,named.st_mode,named.st_uid,named.st_gid):raise ValueError('resource_disk_ancestor_changed')
   chain.append((fd,parent,part,s))
- if s.st_uid!=os.getuid():raise ValueError('resource_disk_owner_changed')
+ if s.st_uid!=1000:raise ValueError('resource_disk_owner_changed')
  disk=os.fstatvfs(fd)
  for held,parent,part,before in chain:
   after=os.fstat(held)
@@ -71,10 +99,42 @@ print(json.dumps(result,separators=(',',':')))
 def host_program():
  need(hashlib.sha256(Path(host.__file__).read_bytes()).hexdigest()==HOST_SHA,'host_source_changed')
  tree=ast.parse(host._REMOTE_PROGRAM)
- functions=[ast.get_source_segment(host._REMOTE_PROGRAM,n) for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('memory','parse_memory')]
- need(len(functions)==2,'host_definitions_changed')
- value='import json,os,sys,time,hashlib,stat as statmod\nif sys.stdin.buffer.read(16385)!=b"{}":raise ValueError("resource_fixed_payload_required")\n'+'\n'.join(functions)+'\n'+_REMOTE
+ functions=[ast.get_source_segment(host._REMOTE_PROGRAM,n) for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('memory','parse_memory','stat','kernel_thread','terminal_zombie')]
+ need(len(functions)==5,'host_definitions_changed')
+ value='import json,os,sys,time,hashlib\nif os.geteuid()!=0:raise ValueError("resource_privilege_required")\nif sys.stdin.buffer.read(16385)!=b"{}":raise ValueError("resource_fixed_payload_required")\nFIXED_BOOT='+repr(BOOT)+'\n'+'\n'.join(functions)+'\n'+_REMOTE
  compile(value,'<fixed-tmux-resource-observation>','exec');return value
+
+
+def fixed_resource_query(root,program,payload,guard):
+ """Closed Arch resource read through the existing bounded tmux capture."""
+ need(program==host_program() and type(payload)is dict and not payload,'resource_fixed_query_required')
+ from . import ssh_direct_nested_channel as direct, ssh_transport
+ from .native_review_source_closure import _Held
+ held=_Held();private=password=None
+ try:
+  source_pins={}
+  for module in (host,closure,adapter,vm_workflow):
+   path=Path(module.__file__).absolute();pin=closure.pipe._read(path,262144,False)[1];held.read(str(path),pin['sha256']);source_pins[str(path)]=pin
+  path=Path(__file__).absolute();pin=closure.pipe._read(path,262144,False)[1];held.read(str(path),pin['sha256']);source_pins[str(path)]=pin
+  with direct.Guard(Path(root)) as authority:
+   def close():authority.guard();held.finish();held.final_identity_pass();guard()
+   close();target=authority.config.hosts['archlinux']
+   need(target.transport=='nested' and target.user=='kardinal','resource_principal_unknown')
+   password=target.password
+   need(type(password)is str and 0<len(password.encode())<=512 and not any(c in password for c in ('\n','\r','\0')),'resource_credential_unknown')
+   argv=ssh_transport.build_ssh_argv(authority.config,'archlinux',30,command=('sudo','-S','-p','','python3','-I','-B','-c','exec('+repr(program)+')'))
+   private=password.encode()+b'\n{}';password=None
+   def launch():
+    close();return adapter.subprocess.Popen(argv,cwd=root,stdin=adapter.subprocess.PIPE,stdout=adapter.subprocess.PIPE,stderr=adapter.subprocess.PIPE,bufsize=0)
+   binding={'phase':'status','snapshot':None,'sources':source_pins,'transport':{'hostAlias':'archlinux','privilegedResourceRead':True},'local':{},'argvSha256':hashlib.sha256(session.canonical(argv)).hexdigest()}
+   outcome,capsule=adapter._capture(root,authority=binding,launch=launch,payload=private,guard=close,timeout_seconds=30);private=None
+   close();need(outcome['state']=='captured','resource_capture_unknown')
+   raw,pin=closure.pipe._read(capsule/'receipt.json');need(pin==outcome['receiptPin'],'resource_capture_changed');record=json.loads(raw)
+   raw,pin=closure.pipe._read(capsule/'stdout',adapter.MAX_STDOUT);stderr,stderr_pin=closure.pipe._read(capsule/'stderr',adapter.MAX_STDERR)
+   need(pin==record['stdoutPin'] and stderr_pin==record['stderrPin'] and not stderr,'resource_capture_changed')
+   value=json.loads(raw,object_pairs_hook=closure.ssh_transport._reject_duplicate_keys)
+   close();need(type(value)is dict,'resource_reply_unknown');return value,{'directory':str(capsule.relative_to(root)),'receiptPin':outcome['receiptPin'],'stdoutPin':pin}
+ finally:private=password=None;held.close()
 
 
 def sources(root,engineering_context=None):
@@ -128,7 +188,7 @@ def prepare(root,request,identity,*,source_root,engineering_context=None):
  with closure.claim_lock(root) as (_,lock_guard):
   pin,pending=inventory(root,request,identity);original=sources(root,engineering_context)
   def guard():lock_guard();need(sources(root,engineering_context)==original and inventory(root,request,identity)==(pin,pending),'resource_admission_changed')
-  value,capture=closure.fixed_query(root,host_program(),{},guard);plan=budget(value,pending);guard()
+  value,capture=fixed_resource_query(root,host_program(),{},guard);plan=budget(value,pending);guard()
   record={'request':request,'identity':identity,'sourceRoot':str(Path(source_root).absolute()),'sources':original,'inventoryPin':pin,'pending':pending,'host':value,'plan':plan,'capture':capture}
   target=directory(root,request['correlationId'],True);birth=closure.pipe._write_once(target/'admission.json',session.canonical(record));closure.pipe._write_once(target/'seal.json',session.canonical({'admissionPin':birth}))
  return {'state':'ready','correlationId':request['correlationId'],'resourceBound':True,'nativeActionAllowed':False}
@@ -156,7 +216,7 @@ class ResourceDriver(adapter.McpTmuxDriver):
    if effect:need(inventory(self.root,request,record['identity'])==(record['inventoryPin'],record['pending']),'resource_inventory_changed')
    if guard:guard()
   if effect:
-   value,_=closure.fixed_query(self.root,host_program(),{},bound)
+   value,_=fixed_resource_query(self.root,host_program(),{},bound)
    need(value['hostBootId']==record['host']['hostBootId'] and value['vms']==record['host']['vms'] and value['diskDevice']==record['host']['diskDevice'],'resource_preserved_principal_changed');budget(value,record['pending'])
   return super()._query(program,payload,job=job,guard=bound)
 
@@ -177,7 +237,7 @@ def operate(root,action,raw,*,source_root=None,engineering_context=None):
   record,birth,seal=load(root,request,source_root,engineering_context);pin,pending=inventory(root,request,record['identity']);need((pin,pending)==(record['inventoryPin'],record['pending']),'resource_inventory_changed')
   def bound():
    lock_guard();need(load(root,request,source_root,engineering_context)==(record,birth,seal) and inventory(root,request,record['identity'])==(pin,pending),'resource_preflight_changed')
-  value,_=closure.fixed_query(root,host_program(),{},bound);bound();budget(value,pending)
+  value,_=fixed_resource_query(root,host_program(),{},bound);bound();budget(value,pending)
   need(value['hostBootId']==record['host']['hostBootId'] and value['vms']==record['host']['vms'] and value['diskDevice']==record['host']['diskDevice'],'resource_preserved_principal_changed')
   if action=='preflight':return driver.preflight(request)
   return build.start(root,request,driver=driver,source_root=source_root,admission=lambda unused,req:driver.preflight(req),**({} if engineering_context is None else {'engineering_context':engineering_context}))
