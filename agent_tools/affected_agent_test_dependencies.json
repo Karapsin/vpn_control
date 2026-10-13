@@ -6,7 +6,8 @@
       "sourceSha256": [
         "469fe841617aab2d8ea835c7f579534c1401934b001b3e82b07d0deed328f381",
         "51f4561a3c34a61725b58eb3539db36c95094b0593421055282969f6dfefdcaa",
-        "746376a5a4bc935b9e02a828df7d54941baa6a4010002ee93e8354eb43d4e9c1"
+        "746376a5a4bc935b9e02a828df7d54941baa6a4010002ee93e8354eb43d4e9c1",
+        "87d819fbe4a94e9e3a590ca34c74f13ab189782794fa6a7a96f9bcbe2f830c88"
       ]
     },
     "agent_tools/android_installer_component_bundle.py": {
@@ -189,7 +190,8 @@
       "sourceSha256": [
         "d59173ae35e3aeaaa03b18f7c4b04ceca6a17e865cd1ba30a2f228aed79f4633",
         "5cdef7bba517354e0f0b8b2fb1d432216b1b8da936bb91e97464a034a7483d34",
-        "1f8ca14cebea13fc8a6d420dff75b1350878ea128a372867ef54dadec1169be3"
+        "1f8ca14cebea13fc8a6d420dff75b1350878ea128a372867ef54dadec1169be3",
+        "0495792e1a5f7f16a58fcee3d8967dfe0fab48e0e82bba31968a18ebc144a186"
       ]
     },
     "agent_tools/tests/test_android_api35_proxy_stage_diagnostic.py": {
@@ -263,6 +265,16 @@
       ],
       "sourceSha256": [
         "027ac79de55abe0d9e9cc1b4140061a4e1f9953f48a0e33eca3ac8f48fca02af"
+      ]
+    },
+    "agent_tools/tests/test_android_original_actor_pin_shape.py": {
+      "reason": "Exact preserved actor-shape before/fixed fixtures; current canonical emitter is invoked by the regression. Historical guard coverage stays separate.",
+      "scopes": [
+        "agent_tools/tests/fixtures/api35_original_actor_pin_before.source",
+        "agent_tools/tests/fixtures/api35_original_actor_pin_fixed.source"
+      ],
+      "sourceSha256": [
+        "098687cc4b1482f4d9b7f5dea459cf8d1937cac48e639d32bbd33e12ada1eae8"
       ]
     },
     "agent_tools/tests/test_android_packaged_component_read_transport.py": {

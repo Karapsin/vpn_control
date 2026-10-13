@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep deep test sockets within bounds and verify selective import roots.
 - Improve guarded native result capture and Linux host resource observations.
 - Retain complete bounded Android installer observations and validate framed result identities.
+- Harden retained Android JSON and actor regression coverage, and isolate frozen test package imports.
 
 ## 2.2.9 - 2026-10-13
 

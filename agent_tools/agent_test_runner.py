@@ -127,7 +127,16 @@ def source_context(root: Path, leaf: Path, sources: dict[str, str]) -> Path:
     # Fixed empty package markers keep canonical namespace packages from mixing
     # into this finite context. Reviewed helpers import only pinned siblings or
     # stdlib; no native runtime/configuration is copied or imported.
-    for relative in ("agent_tools/__init__.py", "agent_tools/tests/__init__.py"):
+    markers = ["agent_tools/__init__.py", "agent_tools/tests/__init__.py"]
+    if any(relative.startswith("scripts/") for relative in sources):
+        markers.append("scripts/__init__.py")
+    if any(relative.startswith("scripts/integration/") for relative in sources):
+        markers.append("scripts/integration/__init__.py")
+    for relative in markers:
+        # An explicitly pinned marker already has its authenticated bytes and
+        # read-only mode. Never replace it with a generated empty file.
+        if relative in sources:
+            continue
         destination = context / relative
         destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)

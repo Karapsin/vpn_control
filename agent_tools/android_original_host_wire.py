@@ -134,3 +134,12 @@ def decode_retained_record_frames(wire, pin):
     if len(raw) != pin['bytes'] or hashlib.sha256(raw).hexdigest() != pin['sha256']:
         raise ValueError('final_hash')
     return bytes(raw)
+
+
+def decode_durable_json_record(payload: bytes):
+    """Decode the existing private async producer's one-LF JSON record."""
+    if type(payload) is not bytes or not 0 < len(payload) <= 16384 or payload[-1:] != b'\n':
+        raise ValueError('durable_json_record_bound_or_terminator')
+    # The producer's LF belongs to its file framing. All other trailing bytes,
+    # duplicate keys, and nonfinite JSON retain the existing strict refusal.
+    return _strict_json(payload[:-1])

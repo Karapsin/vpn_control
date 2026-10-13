@@ -77,6 +77,59 @@ class AgentTestRunnerTests(unittest.TestCase):
     def sleeping(self, seconds=0.12):
         return "import time,unittest\nclass C(unittest.TestCase):\n def test_one(self): time.sleep(%r)\n" % seconds
 
+    def test_frozen_script_packages_forbid_canonical_namespace_fallback(self):
+        sources = {}
+        for package in ("scripts", "scripts/integration"):
+            directory = self.root / package
+            directory.mkdir(parents=True, exist_ok=True)
+            helper = directory / "reviewed_helper.py"
+            helper.write_text("VALUE='frozen'\n")
+            sources[helper.relative_to(self.root).as_posix()] = runner.digest(helper)
+            (directory / "unreviewed_helper.py").write_text("VALUE='canonical-only'\n")
+        leaf = self.root / "freeze"
+        leaf.mkdir(mode=0o700)
+        context = runner.source_context(self.root, leaf, sources)
+        body = """import importlib,json,sys
+from pathlib import Path
+context,canonical=sys.argv[1:]
+sys.path[:0]=[context,canonical]
+escaped=[]
+for package in ('scripts','scripts.integration'):
+ reviewed=importlib.import_module(package+'.reviewed_helper')
+ assert Path(reviewed.__file__).is_relative_to(Path(context))
+ try: foreign=importlib.import_module(package+'.unreviewed_helper')
+ except ModuleNotFoundError: pass
+ else: escaped.append({'module':foreign.__name__,'path':foreign.__file__})
+print(json.dumps(escaped))
+"""
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+        env.pop("DYLD_INSERT_LIBRARIES", None)
+        child = subprocess.run([sys.executable, "-I", "-B", "-c", body, str(context), str(self.root)],
+                               cwd=self.root, env=env, capture_output=True, text=True, timeout=5)
+        self.assertEqual(0, child.returncode, child.stderr)
+        self.assertEqual([], json.loads(child.stdout), "canonical script imports escaped frozen closure")
+        self.assertTrue(runner.sources_match(context, sources))
+
+    def test_frozen_pinned_empty_package_marker_preserved_without_collision(self):
+        marker = self.root / "agent_tools/tests/__init__.py"
+        helper = self.root / "agent_tools/tests/frozen_helper.py"
+        helper.write_text("VALUE='frozen'\n")
+        sources = {path.relative_to(self.root).as_posix(): runner.digest(path) for path in (marker, helper)}
+        leaf = self.root / "freeze"
+        leaf.mkdir(mode=0o700)
+        context = runner.source_context(self.root, leaf, sources)
+        frozen_marker = context / "agent_tools/tests/__init__.py"
+        self.assertEqual(marker.read_bytes(), frozen_marker.read_bytes())
+        self.assertEqual(0o400, frozen_marker.stat().st_mode & 0o777)
+        self.assertTrue(runner.sources_match(context, sources))
+        body = "import sys;sys.path.insert(0,sys.argv[1]);from agent_tools.tests import frozen_helper;assert frozen_helper.VALUE=='frozen';print(frozen_helper.__file__)"
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+        env.pop("DYLD_INSERT_LIBRARIES", None)
+        child = subprocess.run([sys.executable, "-I", "-B", "-c", body, str(context)],
+                               cwd=self.root, env=env, capture_output=True, text=True, timeout=5)
+        self.assertEqual(0, child.returncode, child.stderr)
+        self.assertTrue(Path(child.stdout.strip()).is_relative_to(context))
+
     def test_actual_elapsed_timing_success_skip_failure_error_subtest_and_expected(self):
         with self.environment():
             self.module("outcomes", '''import time,unittest

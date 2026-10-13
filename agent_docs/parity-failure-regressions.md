@@ -1,5 +1,46 @@
 # Parity Failure-to-Regression Ledger
 
+## Linked actor and isolated import coverage — 2026-10-14,02:12
+
+The original Android actor caller passed dictionary keys into a tuple helper,
+checking `/proc/pid` and falsely reporting absence. Identical preserved-source
+controls reproduce four failures; the corrected numeric identity passes thirteen
+controls. Five of those invoke the actual current host-status emitter against
+temporary proc files. Mutating that emitter back to dictionaries causes four
+failures and one error, proving future producer coverage. Missing fcntl passes
+all thirteen; missing O_NOFOLLOW explicitly skips thirteen. Guard-only historical
+controls do not claim canonical retirement admission. Exact test and two fixture
+dependencies are enrolled. Native proof e211f522 retains both original actors
+absent twice; original0dd remains UNKNOWN with its lease held.
+
+Frozen test source contexts also allowed `scripts` namespace imports to fall back
+to canonical files and collided with an explicitly pinned empty package marker.
+The same two controls yield one failure and one FileExistsError before the fix,
+then pass with conditional script markers and preservation of pinned markers.
+Independent review passes twenty focused controls and four boundary checks.
+The current delivered prepush used one serial group and did not exercise the
+affected namespace path; its receipt is not retrospectively invalidated.
+No new concurrency group or speed improvement is claimed.
+
+Canonical actor/runner union passes forty controls. Review evidence:
+`.runtime/independent-android-actor-review-067495c9-3047-4df9-8fb8-4c0f6f9ddb0b`,
+`.runtime/independent-runner-marker-review-479eed94-ec46-4900-aae9-36b5740c7018`.
+The durable JSON record consumer rejected the async producer's single terminating
+LF as trailing bytes. The new decoder removes exactly that framing byte and
+retains strict duplicate/nonfinite/trailing refusal and the16384-byte record
+limit. Actual current producer payload and file bodies are executed by the tests.
+The preserved consumer yields two trailing-LF errors and one failure; eight fixed
+controls pass. Review caught a masked size test; valid JSON plus one LF now passes
+at16384 bytes and refuses16385. Removing only the length predicate causes the
+same corrected test to fail. Missing fcntl passes eight; non-POSIX execution
+passes seven and skips only the actual POSIX durable-file case. Existing selector
+discovery maps the wire owner, actual async producer and one exact fixture.
+Canonical LF/wire/actor union passes27 controls; with the runner union,54 distinct
+controls pass. The full f79 export remains independently evidenced, and this
+decoder does not grant installer retirement or matching MCP acceptance.
+Evidence: `.runtime/independent-durable-lf-review-87c76949-abd6-4964-8a0a-44e54812513f`,
+`.runtime/android-native-successor-32d06f17-7738-4e95-8460-13b909d2a586/literal-durable-json-bound-test-fixed-candidate-018ba02e-063b-4838-aaf8-7be61a1df7d9`.
+
 ## Android complete retained observations — 2026-10-14,01:07
 
 The first OS/private read retained its complete result before the wire reply

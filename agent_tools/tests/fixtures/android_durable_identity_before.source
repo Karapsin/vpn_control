@@ -1,0 +1,1 @@
+identity=_strict_json(base64.b64decode(first['job']['identity.json']['base64']))

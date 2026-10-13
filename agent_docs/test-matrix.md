@@ -1,6 +1,29 @@
 # Test Matrix
 
+## Original actor identity and isolated package markers
+
+Run `python3 -m unittest agent_tools.tests.test_android_original_actor_pin_shape`
+after changing the original-host actor emitter. Thirteen controls include actual
+canonical emission into proc-shaped fixtures, exact start identity, PID reuse,
+absence and foreign UID visibility. Historical private guards remain separate;
+missing O_NOFOLLOW explicitly skips the thirteen POSIX controls. The two preserved
+source fixtures and exact test hash are mapped in affected-test metadata.
+
+Run `python3 -m unittest agent_tools.tests.test_agent_test_runner` for isolated
+test-context changes. Package-marker controls execute clean child imports to
+reject canonical namespace fallback and preserve authenticated pinned markers.
+They do not admit additional parallel groups. Existing dynamic-loader scopes
+stay unchanged; exact reviewed owner and test hashes are enrolled.
+
 ## Retained Android OS and result observations
+
+For the existing async producer's private one-LF JSON records, run
+`python3 -m unittest agent_tools.tests.test_android_durable_json_record agent_tools.tests.test_android_original_host_wire`.
+Eight durable-record controls execute actual producer bodies and the current
+decoder, including valid JSON at16384/16385 bytes, strict trailing data, duplicate
+keys and nonfinite numbers. Only the actual POSIX file producer skips off POSIX.
+Affected selection discovers both production owners and the preserved consumer
+fixture; no broader dynamic-loader exception is needed.
 
 Run `python3 -m unittest agent_tools.tests.test_android_api35_os_session_projection agent_tools.tests.test_android_retained_result_binary_collection agent_tools.tests.test_android_original_host_wire agent_tools.tests.test_android_original_host_status` after changing the bounded OS projection, original-host wire owner or retained-record collector. The54 controls include complete Active/Finalized section retention, producer/EOF/hash and wire bounds, actual fake children, source closing, no replay, typed frame pins and preserved original failures. Missing `fcntl` leaves19 pure framing controls enabled and explicitly skips11 POSIX child controls. Ordinary discovery and the exact four-resource loader declaration enroll these consumers. The fixed decoder covers only original828; collected facts do not release an unknown installer lease or prove current routing, retirement or full native/MCP acceptance.
 
@@ -71,8 +94,8 @@ still runs its other product, packaging and documentation gates.
 
 The related selector, MCP planner/responsiveness and runner modules cover selection,
 source/cache drift, old/new dependency closure, CI baselines, private durations and
-actual child closure. `test_agent_test_runner` currently has23 controls and four
-reviewed independent groups containing18 real tests. Unreviewed modules serialize;
+actual child closure. The registry has four reviewed independent groups containing
+18 real tests. Unreviewed modules serialize;
 parallel execution never shares their mutable fixtures. The measured18-test median
 was0.416s serial versus0.309s parallel. This small benchmark is not a whole-suite
 speedup claim. Timing records identify expensive tests before expanding concurrency.

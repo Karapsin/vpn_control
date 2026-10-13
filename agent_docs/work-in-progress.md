@@ -33,7 +33,34 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current continuation — 2026-10-14,01:07 Moscow
+## Current continuation — 2026-10-14,02:12 Moscow
+
+HEAD/origin/dev are `93e0b97248bf2945e72ef0d5989acdf4a7870266`, product2.2.9.
+The40-path checkpoint passed17 managed commands, including6288 agent tests
+(166 explicit skips), and was pushed with final exact-SHA CI deferred. Root now
+owns the next intentional tooling bucket: isolated test-package markers, linked
+Android actor regression, bounded durable-JSON decoding, exact test dependency
+metadata and maintainer evidence. Focused canonical checks pass54 distinct controls. Final managed prepush and
+checkpoint delivery remain open. Native captures are closed during integration.
+Full22-group,217-membership and249-scene acceptance remains incomplete.
+
+| Slice | Sole owner | Current evidence | Next gate |
+| --- | --- | --- | --- |
+| Windows CP117 | Windows worker | Original916 never-resumed child was stopped once with exact held identity. Fresh child6188 resumed and exited0; full native/public bytes are retained. Closing witness remains UNKNOWN. Current three GUI processes preserved. | Interpret the same retained result, prove current public status and runtimeOFF, then whole DIRECT update scenarios and matching MCP. |
+| Android API35 | Android worker | Numeric original actors are absent in two qualified passes. Fresh f79 export completed; both11,872,243-byte backups differ only in exported_at, with all56,000 suffixes and every other byte equal. | Feed authentic documents to existing rules digest; qualify actual2.2.2 component CLI/certificate and original retirement. Original0dd remains UNKNOWN/lease held. |
+| Fedora2340 | Linux worker | Whole DIRECT9be RPM2.2.8→2.2.9 succeeded, protected job SUCCEEDED/OK, exact next owner recovered, account restored locked, product quit and workspace removed. Owned server17643 remains live. | Actual failure/cancel/wait-loss cases, production-linked causal routines, then matching MCP and final-source acceptance. |
+| macOS | Resource hold | No inspected volume meets80GiB free. | User storage change then fresh admission; no deletion, boot or trust mutation. |
+
+Linux owns route mutation; all three platform operators handed back local
+capture holders0 before this integration. Original package/source identities,
+unknown histories, protected Ubuntu2307 and all eight claims remain unchanged.
+No release or RPi concurrency change is authorized.
+
+Evidence: `.runtime/root-reviewed-routine-integration-cf355daa-97e9-47e9-b105-7a44ff973f70`,
+`.runtime/independent-runner-marker-review-479eed94-ec46-4900-aae9-36b5740c7018`,
+`.runtime/independent-android-actor-review-067495c9-3047-4df9-8fb8-4c0f6f9ddb0b`.
+
+## Historical continuation — 2026-10-14,01:07 Moscow
 
 HEAD/origin/dev are9be1a05ef87d118724c2a7e314c5628ccb6bb208, product2.2.9.
 Root owns40 intentional dirty paths: the previous31-path reviewed observation
