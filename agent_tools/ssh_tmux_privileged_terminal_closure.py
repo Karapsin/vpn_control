@@ -23,7 +23,7 @@ from . import windows_vm_virt_firmware_install as credentials
 
 need = old.need
 CORRELATION = closure.CORRELATION
-DIAGNOSTIC_SOURCE_SHA = "0e0ea6e85415ed627e08776c9fb7ddf32d067cbe51a34ee6d34fa6b0f6b3a461"
+DIAGNOSTIC_SOURCE_SHA = "42d431e8ca4ef49c1157ae30dacef27c801e90e58df994d1f9296f69ff5243e7"
 MAX_STDOUT = 16 * 1024
 MAX_STDERR = 64 * 1024
 

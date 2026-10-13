@@ -1,9 +1,9 @@
-"""Test-only reviewed tmux build source; never native/production authority.
+"""Current tool fixtures and an unchanged historical tmux build model.
 
-Fixture bytes come unchanged from Git60e925b21274d5502517562c8d9375b24881464f
-at agent_tools/linux_package_fixture_build.py. The frozen factory sibling comes
-from that same commit's agent_tools/tests/test_ssh_tmux_session_ssh.py. Current
-production approval constants are intentionally preserved.
+Historical874 bytes come unchanged from Git60e925b21274d5502517562c8d9375b24881464f
+at agent_tools/linux_package_fixture_build.py. Their loader preserves the original
+foreground tar/disconnect model. Current tool consumers capture the actual
+current helper/session bytes through the unchanged production allowlist.
 """
 import hashlib
 from pathlib import Path
@@ -29,13 +29,18 @@ def load_reviewed_build():
     return module
 
 
+def current_build_bytes():
+    from agent_tools import linux_package_fixture_build as build
+    return Path(build.__file__).read_bytes()
+
+
 def reviewed_tool_sources():
     from agent_tools import ssh_tmux_session as session
     from agent_tools import ssh_tmux_session_ssh as adapter
-    with tempfile.TemporaryDirectory(prefix='tmux-reviewed-tools-', dir='/tmp') as tmp:
+    with tempfile.TemporaryDirectory(prefix='tmux-current-tools-', dir='/tmp') as tmp:
         root = Path(tmp); root.chmod(0o700)
         tools = root / 'agent_tools'; tools.mkdir()
-        (tools / 'linux_package_fixture_build.py').write_bytes(reviewed_build_bytes())
+        (tools / 'linux_package_fixture_build.py').write_bytes(current_build_bytes())
         (tools / 'ssh_tmux_session.py').write_bytes(Path(session.__file__).read_bytes())
         # Exercise the real production allowlist; no hash or _tools bypass.
         return adapter.TmuxArchDriver(root)._tools()

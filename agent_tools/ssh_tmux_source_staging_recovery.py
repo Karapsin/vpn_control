@@ -116,11 +116,12 @@ class ExactFetchDriver(old.TmuxArchDriver):
 
 # Only fresh current-source jobs select this separately reviewed provider. The
 # historical ExactFetchDriver and its original intent/capture pins stay strict.
-CURRENT_ADAPTER_SHA = "91c8af7b5e47412f8bf9fbe907e69d163ad174c3dc2200bf10f795cee545cc21"
+CURRENT_ADAPTER_SHA = "6f2109d961d585dfeca7f4493604cff722558a0a2a53b04ad5e3fe5e0f0578a3"
 
 class CurrentExactFetchDriver(ExactFetchDriver):
-    def _snapshot(self, request):
-        value=old.TmuxArchDriver._snapshot(self, request)
+    def _snapshot(self, request, *, admission=False):
+        value=(old.TmuxArchDriver._snapshot(self, request) if self.engineering_context is None else
+               old.TmuxArchDriver._snapshot(self, request, admission=admission))
         value["stagingCompanionSource"]=old.blob(Path(__file__).resolve())[1]
         value["stageProgramSha256"]=hashlib.sha256(STAGE_V2.encode()).hexdigest()
         need(value["adapterSource"]["sha256"]==CURRENT_ADAPTER_SHA,"current_adapter_changed")

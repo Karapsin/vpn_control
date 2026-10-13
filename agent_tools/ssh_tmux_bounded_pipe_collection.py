@@ -163,10 +163,10 @@ def _sources(root):
 # Separate catalogue for fresh MCP jobs. Historical _sources never adopts
 # these successors, and no caller can supply an expected source hash.
 CURRENT_SOURCES={
-    'ssh_tmux_source_staging_recovery.py': '75bfd68d3aca2fa0a915f395ecdc9e62bd68c7ef7f809d17ba6e966af3a015b2',
-    'ssh_tmux_session_ssh.py': '91c8af7b5e47412f8bf9fbe907e69d163ad174c3dc2200bf10f795cee545cc21',
-    'ssh_tmux_session.py': '0b865df3b9c5221229f4bd3c6f49a63c569a609d6258a269ab92c61b013a41fb',
-    'linux_package_fixture_build.py': '874b7be8d70e917553d466ed2b8ad71419dec5f21bfd3092060f16180c284cf5',
+    'ssh_tmux_source_staging_recovery.py': '26a1a9f310a3d73b2e053adfdb56df587ae4e682a68b06fa84b6ed4ef441027f',
+    'ssh_tmux_session_ssh.py': '6f2109d961d585dfeca7f4493604cff722558a0a2a53b04ad5e3fe5e0f0578a3',
+    'ssh_tmux_session.py': 'd2d878b2f89b56020a0a20b76236dda0b826384c4159c9a47aaaaf0af0e910c3',
+    'linux_package_fixture_build.py': '95e3749be6f397dfa6d9435c04ec7fda225713bc1b6ec7eeca9736edd43ca966',
 }
 
 def _current_sources(root):

@@ -13,7 +13,7 @@ import unittest
 from unittest import mock
 
 from agent_tools import ssh_tmux_session as tool
-from agent_tools.tests.fixtures.tmux_reviewed_build import reviewed_build_bytes, load_reviewed_build
+from agent_tools.tests.fixtures.tmux_reviewed_build import reviewed_build_bytes, load_reviewed_build, current_build_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -29,7 +29,7 @@ class SessionTests(unittest.TestCase):
         self.job = self.parent / self.req['correlationId']; self.job.mkdir(mode=0o700)
         self.source = self.job / 'source'; (self.source / 'agent_tools').mkdir(parents=True)
         self.helper = self.source / 'agent_tools/linux_package_fixture_build.py'
-        self.helper.write_bytes(reviewed_build_bytes())
+        self.helper.write_bytes(current_build_bytes())
         self.commands = []; self.sockets = []
         self.addCleanup(lambda: [s.close() for s in self.sockets])
         self.failure = False
@@ -102,8 +102,8 @@ class SessionTests(unittest.TestCase):
 
     def test_current_and_future_unreviewed_build_sources_are_refused(self):
         current = (ROOT / 'agent_tools/linux_package_fixture_build.py').read_bytes()
-        future = reviewed_build_bytes() + b'\n# synthetic future unreviewed source\n'
-        for label, raw in (('current', current), ('future', future)):
+        future = current + b'\n# synthetic future unreviewed source\n'
+        for label, raw in (('historical', reviewed_build_bytes()), ('future', future)):
             if hashlib.sha256(raw).hexdigest() == tool.REVIEWED_BUILD_SHA256:
                 continue  # An unchanged current source remains reviewed.
             with self.subTest(source=label):
@@ -193,7 +193,7 @@ class SessionTests(unittest.TestCase):
         self.assertFalse((job / 'tmux-launch.json').exists())
 
     def test_only_reviewed_tool_overlay_is_allowed(self):
-        self.assertEqual('874b7be8d70e917553d466ed2b8ad71419dec5f21bfd3092060f16180c284cf5',
+        self.assertEqual(hashlib.sha256(current_build_bytes()).hexdigest(),
                          tool.REVIEWED_BUILD_SHA256)
         original = self.fake_run
         def overlay(args, cwd=None):

@@ -153,7 +153,7 @@ _RECEIVER = 'import base64,hashlib,json,os,stat,subprocess,sys,zlib\nroot,host,e
 def _receiver():
     return '_LAUNCHER_SOURCE='+repr(_LAUNCHER)+'\n'+_RECEIVER
 
-_COLLECT=r'''import json,os,stat,sys
+_COLLECT=r'''import hashlib,json,os,stat,sys
 root,host,env,scenario,corr,bundle_hash,artifact_json,pid,ticks=sys.argv[1:]
 job=os.path.join(root,'native-scenario-jobs',env,scenario,corr)
 def unknown():print(json.dumps({'state':'unknown','correlationId':corr}));raise SystemExit(0)
@@ -164,6 +164,9 @@ def read(name):
   if not stat.S_ISREG(st.st_mode) or st.st_uid!=os.geteuid() or stat.S_IMODE(st.st_mode)!=0o600 or st.st_size>4*1024*1024:unknown()
   raw=os.read(fd,4*1024*1024+1)
   if len(raw)!=st.st_size:unknown()
+  if name=="scenario-receipt.json":
+   global receipt_raw
+   receipt_raw=raw
   return json.loads(raw)
  finally:os.close(fd)
 try:
@@ -173,7 +176,7 @@ try:
  expected={'scenarioId':scenario,'host':host,'environment':env,'correlationId':corr,'bundleHash':bundle_hash,'artifactIds':json.loads(artifact_json)}
  if any(intent.get(k)!=v or wrapper.get(k)!=v for k,v in expected.items()):unknown()
  identity=intent.get('identity',{})
- if identity.get('pid')!=int(pid) or identity.get('startTicks')!=int(ticks) or wrapper.get('pid')!=int(pid) or wrapper.get('startTicks')!=int(ticks):unknown()
+ if any(type(identity.get(k)) is not int for k in ('pid','startTicks')) or any(type(wrapper.get(k)) is not int for k in ('pid','startTicks','exitCode')) or identity.get('pid')!=int(pid) or identity.get('startTicks')!=int(ticks) or wrapper.get('pid')!=int(pid) or wrapper.get('startTicks')!=int(ticks):unknown()
  if receipt.get('schema')!='vpn-control.linux-owner-gui-lifecycle.receipt' or receipt.get('scenarioId')!=scenario or receipt.get('correlationId')!=corr:unknown()
  cleanup=receipt.get('cleanup',{})
  if not isinstance(cleanup,dict):unknown()
@@ -181,7 +184,15 @@ try:
   'exitCode':wrapper.get('exitCode'),'frames':receipt.get('frames') if type(receipt.get('frames')) is int else None,
   'cleanup':{'state':cleanup.get('state'),**{k:cleanup.get(k) if type(cleanup.get(k)) is bool else None for k in ('ownerStopped','workspaceRemoved','protectedPreserved','referencesAbsent')}},
   'ownedActors':receipt.get('ownedActors') if isinstance(receipt.get('ownedActors'),list) and len(receipt['ownedActors'])<=16 else None,'originalEvidenceDirectory':receipt.get('originalEvidenceDirectory'),'sourceIdentity':receipt.get('sourceIdentity'),'packageSourceSha':receipt.get('packageSourceSha'),'displayRestoration':receipt.get('displayRestoration'),'replayAllowed':False}
- print(json.dumps(summary))
+ # Retain the actual complete guest receipt in the private caller payload.
+ # Existing transport budget stays 8192. A larger receipt remains immutable
+ # on the guest and its observation is explicitly partial/UNKNOWN.
+ summary['actualReceiptRaw']=receipt_raw.decode('utf-8')
+ summary['actualReceiptSha256']=hashlib.sha256(receipt_raw).hexdigest()
+ complete=json.dumps(summary,separators=(',',':'),ensure_ascii=False,allow_nan=False)
+ if len(complete.encode('utf-8'))>8192:
+  print(json.dumps({'state':'unknown','correlationId':corr,'partial':True,'reason':'collector_output_limit','originalRetained':True,'originalReceiptSha256':hashlib.sha256(receipt_raw).hexdigest()},separators=(',',':')))
+ else:print(complete)
 except Exception:unknown()
 '''
 
@@ -321,7 +332,7 @@ class NativeOwnerGuiLifecycleSshDriver(native_scenario_ssh.NativeScenarioSshDriv
             config=ssh_transport.load_config(self.configuration_root);target=config.hosts.get(plan.host);remote_root=getattr(target,'fixture_transfer_root',None)
             if not isinstance(remote_root,PurePosixPath) or not remote_root.is_absolute():return None
             value=self._run(config,plan.host,native_scenario_ssh._py(_COLLECT,str(remote_root),plan.host,plan.environment,plan.scenario_id,plan.correlation_id,plan.bundle_hash,json.dumps(dict(plan.artifact_ids),sort_keys=True,separators=(',',':')),str(identity.pid),str(identity.start_ticks)),None)
-            return value if value and value.get('state')=='collected' and value.get('correlationId')==plan.correlation_id else None
+            return value if value and value.get('state') in ('collected','unknown') and value.get('correlationId')==plan.correlation_id else None
         except (OSError,ValueError):return None
 
 

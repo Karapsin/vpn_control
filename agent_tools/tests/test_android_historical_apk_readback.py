@@ -42,6 +42,7 @@ class HistoricalApkReadbackTests(unittest.TestCase):
         for name,value in [('base.apk',b'b'*8192),('target.apk',b't'*8192),('output/intent.json',b'{"fixture":"inert"}\n')]:
             path=self.job/name;path.write_bytes(value);path.chmod(0o600)
             files[name]={'size':len(value),'sha256':hashlib.sha256(value).hexdigest()}
+        self.carrier_refusals=[]
         self.expected={'boot':fixture.BOOT,'job':str(self.job),'files':files,
             'observationId':'33333333-3333-4333-8333-333333333333','originalCorrelationId':fixture.ORIGINAL}
 
@@ -52,7 +53,7 @@ class HistoricalApkReadbackTests(unittest.TestCase):
             remote=remote.replace('|os.O_NONBLOCK','')
         return portable(remote.replace('__EXPECTED__',repr(self.expected)))
 
-    def run_carrier(self,read_hook=None,expected=None):
+    def _run_carrier_once(self,read_hook=None,expected=None):
         source=portable(fixture.REMOTE.replace('__EXPECTED__',repr(expected or self.expected)))
         output=io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -63,6 +64,33 @@ class HistoricalApkReadbackTests(unittest.TestCase):
         self.assertEqual(1,len(output.getvalue().splitlines()))
         return json.loads(output.getvalue())
 
+    @staticmethod
+    def generation(path):
+        value=path.lstat()
+        return [value.st_dev,value.st_ino,value.st_mode,value.st_uid,value.st_gid,
+                value.st_nlink,value.st_size,value.st_mtime_ns,value.st_ctime_ns]
+
+    def owned_generations(self):
+        return {str(p):self.generation(p) for p in [self.parent,*self.parent.rglob('*')]}
+
+    def outside_generations(self):
+        # The carrier still guards every ancestor. Shared host temp metadata
+        # may change independently; only an entirely new guarded proof can pass.
+        return {str(p):self.generation(p) for p in self.parent.parents}
+
+    def run_carrier(self,read_hook=None,expected=None):
+        for attempt in range(3):
+            owned=self.owned_generations();outside=self.outside_generations()
+            proof=self._run_carrier_once(read_hook,expected)
+            if proof['state']=='observed':return proof
+            self.carrier_refusals.append(copy.deepcopy(proof))
+            owned_after=self.owned_generations();outside_after=self.outside_generations()
+            external_metadata_only=(outside!=outside_after and set(outside)==set(outside_after)
+                and all(outside[name][:6]==outside_after[name][:6] for name in outside))
+            if (proof['failure']!='parent_changed' or owned!=owned_after
+                    or not external_metadata_only or attempt==2):return proof
+        raise AssertionError('bounded carrier attempts exhausted')
+
     def test_exact_nonsecret_extraction_hashes(self):
         self.assertEqual(fixture.REMOTE_SHA256,hashlib.sha256(fixture.REMOTE.encode()).hexdigest())
         parser=inspect.getsource(fixture.validate).rstrip('\n')
@@ -71,7 +99,8 @@ class HistoricalApkReadbackTests(unittest.TestCase):
 
     def test_complete_regular_two_read_proof_and_parser_no_effects(self):
         before={str(p.relative_to(self.job)):p.read_bytes()for p in self.job.rglob('*')if p.is_file()}
-        proof=self.run_carrier();self.assertEqual('observed',proof['state'])
+        proof=self.run_carrier();self.assertEqual('observed',proof['state'],
+            f"carrier failure={proof['failure']} phase={proof['phase']}")
         self.assertEqual(proof,fixture.validate(proof,{'expected':self.expected}))
         self.assertEqual(proof['observations'][0],proof['observations'][1])
         self.assertTrue(all(proof[k]is False for k in ('effectsPerformed','historicalOutcomeChanged','acceptanceComplete')))
@@ -100,7 +129,58 @@ class HistoricalApkReadbackTests(unittest.TestCase):
     def test_actual_parser_refuses_impossible_full_generation(self):
         proof=self.run_carrier()
         for row in proof['observations']:row['files'][0]['generation'][6]+=1
-        with self.assertRaisesRegex(ValueError,'file_pin_invalid'):fixture.validate(proof,{'expected':self.expected})
+        with self.assertRaisesRegex(ValueError,'file_pin_invalid',
+                msg=f"carrier failure={proof['failure']} phase={proof['phase']}"):
+            fixture.validate(proof,{'expected':self.expected})
+
+    def shared_ancestor_noise(self,repeat=False):
+        actual=os.read;changes=[]
+        def noise(fd,size):
+            part=actual(fd,size)
+            if part and os.fstat(fd).st_ino==(self.job/'output/intent.json').lstat().st_ino and (repeat or not changes):
+                with tempfile.TemporaryDirectory(dir=self.parent.parent):pass
+                changes.append(True)
+            return part
+        return noise,changes
+
+    def test_shared_ancestor_metadata_noise_needs_new_complete_proof(self):
+        noise,changes=self.shared_ancestor_noise()
+        proof=self.run_carrier(noise)
+        self.assertEqual('observed',proof['state'])
+        self.assertEqual(proof,fixture.validate(proof,{'expected':self.expected}))
+        self.assertEqual(1,len(changes));self.assertEqual(1,len(self.carrier_refusals))
+        old=self.carrier_refusals[0]
+        self.assertEqual(('unknown','parent_changed'),(old['state'],old['failure']))
+        self.assertTrue(all(old[k]is False for k in ('effectsPerformed','historicalOutcomeChanged','acceptanceComplete')))
+        with self.assertRaisesRegex(ValueError,'observation_unknown'):fixture.validate(old,{'expected':self.expected})
+
+    def test_original_regular_and_parser_cases_survive_once_only_shared_noise(self):
+        original=self.run_carrier
+        for name in ('test_complete_regular_two_read_proof_and_parser_no_effects',
+                     'test_actual_parser_refuses_impossible_full_generation'):
+            with self.subTest(case=name):
+                noise,changes=self.shared_ancestor_noise()
+                with patch.object(self,'run_carrier',side_effect=lambda:original(noise)):
+                    getattr(self,name)()
+                self.assertEqual(1,len(changes))
+
+    def test_shared_ancestor_noise_exhausts_without_promoting_unknown(self):
+        noise,changes=self.shared_ancestor_noise(repeat=True)
+        proof=self.run_carrier(noise)
+        self.assertEqual(('unknown','parent_changed'),(proof['state'],proof['failure']))
+        self.assertEqual(3,len(getattr(self,'carrier_refusals',[])));self.assertEqual(3,len(changes))
+        with self.assertRaisesRegex(ValueError,'observation_unknown'):fixture.validate(proof,{'expected':self.expected})
+
+    def test_owned_parent_drift_refuses_without_retry(self):
+        actual=os.read;reads=[]
+        def drift(fd,size):
+            part=actual(fd,size)
+            if part and stat.S_ISREG(os.fstat(fd).st_mode):
+                reads.append(True);self.job.chmod(0o755)
+            return part
+        proof=self.run_carrier(drift)
+        self.assertEqual(('unknown','parent_changed'),(proof['state'],proof['failure']))
+        self.assertEqual(1,len(reads));self.assertEqual(1,len(getattr(self,'carrier_refusals',[proof])))
 
     def test_symlink_and_hardlink_refused_without_foreign_read(self):
         path=self.job/'target.apk';foreign=self.parent/'foreign';foreign.write_bytes(path.read_bytes());foreign.chmod(0o600)

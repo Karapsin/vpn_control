@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 from contextlib import contextmanager
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -30,6 +31,8 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _ARTIFACT_ID = re.compile(r"^sha256-[0-9a-f]{64}$")
 _JOURNAL_VERSION = 1
 _FAILURE_EXCERPT_LIMIT = 1_024
+_COLLECTION_LIMIT = 8_192  # Existing fixed collector transport bound.
+_COLLECTED_SCENARIOS = {"linux-scheduled-refresh", "linux-owner-gui-lifecycle"}
 _SCENARIOS = {"linux-public-update-preflight", "linux-scheduled-refresh", "linux-owner-gui-lifecycle"}
 
 
@@ -192,47 +195,144 @@ class ScenarioExecutor:
         self._require_private_journal_platform()
         with self._journal_lock():
             record = self._require(correlation_id)
-            if record["state"] == ExecutionState.TERMINAL.value:
-                return self._public(record)
             initial_identity = record.get("identity")
-        observed = self._observe(record)
-        with self._journal_lock():
-            current = self._require(correlation_id)
-            # Observation takes place outside the lock.  A later terminal fact or
-            # a newly discovered PID generation always wins over stale results.
-            if current["state"] == ExecutionState.TERMINAL.value:
-                return self._public(current)
-            if current.get("identity") != initial_identity:
-                return self._public(current)
-            self._write(observed)
-            return self._public(observed)
+        if record["state"] != ExecutionState.TERMINAL.value:
+            observed = self._observe(record)
+            with self._journal_lock():
+                current = self._require(correlation_id)
+                # A terminal fact or newer generation wins over stale reads.
+                if current["state"] != ExecutionState.TERMINAL.value and current.get("identity") == initial_identity:
+                    self._write(observed)
+        return self._collect_terminal(correlation_id)
 
     def resume(self, correlation_id: str) -> dict[str, Any]:
-        """Recover observation after a disconnected caller; this never calls submit."""
+        """Recover observation after disconnect; never calls submit."""
         return self.status(correlation_id)
 
     def collect(self, correlation_id: str, *, include_failure_excerpt: bool = False) -> dict[str, Any]:
         self._require_private_journal_platform()
+        result = self._collect_terminal(correlation_id)
         with self._journal_lock():
             record = self._require(correlation_id)
-            result = self._public(record)
             result["evidencePaths"] = list(record.get("evidencePaths", []))
             if include_failure_excerpt and isinstance(record.get("failureExcerpt"), str):
                 result["failureExcerpt"] = record["failureExcerpt"]
-        # Fixed drivers may expose a bounded, typed summary of their own
-        # terminal receipt. Do the read-only remote collection outside the
-        # journal lock; failure never changes terminal execution evidence.
-        if record["state"] == ExecutionState.TERMINAL.value:
-            collector = getattr(self.driver, "collect", None)
-            if callable(collector) and record.get("identity") is not None:
-                try:
-                    evidence = collector(ScenarioPlan.from_mapping(record["plan"]),
-                        JobIdentity.from_mapping(record["identity"]))
-                    if isinstance(evidence, Mapping) and evidence.get("correlationId") == correlation_id:
-                        result["scenarioEvidence"] = dict(evidence)
-                except (OSError, ValueError):
-                    pass
         return result
+
+    def _collect_terminal(self, correlation_id: str) -> dict[str, Any]:
+        # Fixed collectors only read the same immutable, correlation-bound
+        # receipt. An orphaned old SSH reader remains uncertain after an
+        # observer crash; re-observation neither asserts it ended nor grants
+        # mutation/replay authority. Live local observers share this lease.
+        with self._journal_lock():
+            record = self._require(correlation_id)
+            plan = ScenarioPlan.from_mapping(record["plan"])
+            if (record["state"] != ExecutionState.TERMINAL.value
+                    or plan.scenario_id not in _COLLECTED_SCENARIOS
+                    or record.get("collection", {}).get("state") == "complete"):
+                return self._public(record)
+        with self._collection_lease(correlation_id) as lease_guard:
+            if lease_guard is None:
+                with self._journal_lock():
+                    return self._public(self._require(correlation_id))
+            return self._collect_terminal_owned(correlation_id, lease_guard=lease_guard)
+
+    @contextmanager
+    def _collection_lease(self, correlation_id: str):
+        self._path(correlation_id)  # Validate the original scoped token.
+        self._ensure_private_journal()
+        path = self.journal_directory / (correlation_id + ".collection.lock")
+        descriptor = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        acquired = False
+        try:
+            metadata = os.fstat(descriptor)
+            if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid()
+                    or metadata.st_nlink != 1 or stat.S_IMODE(metadata.st_mode) & 0o077):
+                raise ScenarioExecutionError("Scenario collection lease is unsafe.")
+            generation = self._lease_generation(metadata)
+            with self._journal_lock():
+                record = self._require(correlation_id)
+                if "collectionLease" in record and record["collectionLease"] != generation:
+                    raise ScenarioExecutionError("Scenario collection lease identity changed.")
+                if "collectionLease" not in record:
+                    record["collectionLease"] = generation
+                    self._write(record)
+            def guard():
+                if (self._lease_generation(os.fstat(descriptor)) != generation
+                        or self._lease_generation(path.lstat()) != generation):
+                    raise ScenarioExecutionError("Scenario collection lease identity changed.")
+                with self._journal_lock():
+                    if self._require(correlation_id).get("collectionLease") != generation:
+                        raise ScenarioExecutionError("Scenario collection lease journal changed.")
+            guard()
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+            except BlockingIOError:
+                pass
+            if acquired:guard()
+            yield guard if acquired else None
+            if acquired:guard()
+        finally:
+            os.close(descriptor)
+
+    @staticmethod
+    def _lease_generation(info):
+        return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_nlink]
+
+    def _collect_terminal_owned(self, correlation_id: str, *, lease_guard) -> dict[str, Any]:
+        with self._journal_lock():
+            record = self._require(correlation_id)
+            plan = ScenarioPlan.from_mapping(record["plan"])
+            if record["state"] != ExecutionState.TERMINAL.value or plan.scenario_id not in _COLLECTED_SCENARIOS:
+                return self._public(record)
+            collection = record.get("collection")
+            if collection and collection["state"] == "complete":
+                return self._public(record)
+            # Reserve this read before leaving the lock. Concurrent observers
+            # cannot duplicate collection or expose incomplete terminal success.
+            record["collection"] = {"state": "collecting", "reason": "collector_pending", "rawJson": None}
+            self._write(record)
+            identity = JobIdentity.from_mapping(record["identity"])
+        lease_guard()
+        payload = None
+        reason = "collector_unavailable"
+        try:
+            collector = getattr(self.driver, "collect", None)
+            evidence = collector(plan, identity) if callable(collector) else None
+            if isinstance(evidence, Mapping):
+                raw = json.dumps(dict(evidence), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+                if len(raw.encode("utf-8")) <= _COLLECTION_LIMIT:
+                    payload = raw
+                    if self._collection_matches(plan, record["exitCode"], evidence):
+                        reason = "collected"
+                    else:
+                        reason = "collector_unknown"
+                else:
+                    reason = "collector_output_limit"
+        except Exception:
+            reason = "collector_unavailable"
+        except BaseException:
+            # An interrupted observer must not leave an authored collecting
+            # state forever. The separate owned collection lease controls when
+            # a later read may resume; the mutation and terminal stay unchanged.
+            with self._journal_lock():
+                current = self._require(correlation_id)
+                if current["identity"] == identity.as_dict() and current["receipt"] == record["receipt"]:
+                    current["collection"] = {"state": "unknown", "reason": "collector_interrupted", "rawJson": None}
+                    self._write(current)
+            raise
+        lease_guard()
+        with self._journal_lock():
+            current = self._require(correlation_id)
+            if current["identity"] != identity.as_dict() or current["receipt"] != record["receipt"]:
+                return self._public(current)
+            current["collection"] = {"state": "complete" if reason == "collected" else "unknown",
+                                     "reason": reason, "rawJson": payload}
+            # Store the complete bounded actual collector payload privately
+            # before computing the finite public projection.
+            self._write(current)
+            return self._public(current)
 
     def _observe(self, record: dict[str, Any]) -> dict[str, Any]:
         plan = ScenarioPlan.from_mapping(record["plan"])
@@ -347,7 +447,7 @@ class ScenarioExecutor:
         base = {"journalVersion", "plan", "state", "identity", "lastReason", "evidencePaths"}
         optional = {"failureExcerpt"}
         if state == ExecutionState.TERMINAL.value:
-            optional |= {"exitCode", "receipt"}
+            optional |= {"exitCode", "receipt", "collection", "collectionLease"}
         if state not in {item.value for item in ExecutionState} or set(value) - base - optional or not base <= set(value):
             raise ScenarioExecutionError("Scenario journal has invalid fields.")
         identity = value["identity"]
@@ -369,6 +469,35 @@ class ScenarioExecutor:
             receipt = value.get("receipt")
             if not self._terminal_matches(plan, parsed, receipt) or receipt["exitCode"] != value["exitCode"]:
                 raise ScenarioExecutionError("Scenario terminal receipt is invalid.")
+
+        lease = value.get("collectionLease")
+        if lease is not None and (not isinstance(lease, list) or len(lease) != 9
+                or any(type(x) is not int or x < 0 for x in lease)
+                or not stat.S_ISREG(lease[2]) or stat.S_IMODE(lease[2]) != 0o600
+                or lease[3] != os.getuid() or lease[5] != 0 or lease[8] != 1):
+            raise ScenarioExecutionError("Scenario collection lease pin is invalid.")
+        collection = value.get("collection")
+        if collection is not None:
+            if (not isinstance(collection, dict) or set(collection) != {"state", "reason", "rawJson"}
+                    or collection["state"] not in {"collecting", "complete", "unknown"}
+                    or collection["reason"] not in {"collector_pending", "collected", "collector_unavailable", "collector_unknown", "collector_output_limit", "collector_interrupted"}):
+                raise ScenarioExecutionError("Scenario collection journal is invalid.")
+            if ((collection["state"] == "complete" and collection["reason"] != "collected")
+                    or (collection["state"] == "collecting" and (collection["reason"] != "collector_pending" or collection["rawJson"] is not None))
+                    or (collection["state"] == "unknown" and collection["reason"] in {"collected", "collector_pending"})):
+                raise ScenarioExecutionError("Scenario collection state and reason differ.")
+            raw = collection["rawJson"]
+            if raw is not None:
+                if not isinstance(raw, str) or len(raw.encode("utf-8")) > _COLLECTION_LIMIT:
+                    raise ScenarioExecutionError("Scenario collection payload exceeds its original bound.")
+                try:
+                    evidence = json.loads(raw)
+                except (ValueError, TypeError) as error:
+                    raise ScenarioExecutionError("Scenario collection payload is invalid.") from error
+            else:
+                evidence = None
+            if collection["state"] == "complete" and not self._collection_matches(plan, value["exitCode"], evidence):
+                raise ScenarioExecutionError("Scenario collection identity is invalid.")
 
     def _read(self, correlation_id: str) -> dict[str, Any] | None:
         path = self._path(correlation_id)
@@ -466,6 +595,71 @@ class ScenarioExecutor:
             result["jobIdentity"] = record["identity"]
         if "exitCode" in record:
             result["exitCode"] = record["exitCode"]
+        if record["state"] == ExecutionState.TERMINAL.value and plan["scenarioId"] in _COLLECTED_SCENARIOS:
+            collection = record.get("collection")
+            complete = collection is not None and collection["state"] == "complete"
+            result["collectionState"] = "complete" if complete else "unknown"
+            if collection:
+                result["collectionReason"] = collection["reason"]
+                if collection["rawJson"]:
+                    private = json.loads(collection["rawJson"])
+                    if private.get("partial") is True:
+                        result["partial"] = True
+                        digest = private.get("originalReceiptSha256")
+                        if isinstance(digest, str) and _SHA256.fullmatch(digest):
+                            result["originalReceiptSha256"] = digest
+            if not complete:
+                result.update(state="unknown", reason="terminal_collection_unverified",
+                              executionState="terminal", executionExitCode=record["exitCode"])
+            else:
+                result["scenarioEvidence"] = ScenarioExecutor._project_collection(json.loads(collection["rawJson"]))
         if duplicate:
             result["duplicate"] = True
         return result
+
+    @staticmethod
+    def _project_collection(value: Mapping[str, Any]) -> dict[str, Any]:
+        # No raw guest paths, arbitrary strings, owned actor records or nested
+        # authority payloads cross the public boundary.
+        result = {key: value[key] for key in ("state", "scenarioId", "correlationId", "result", "actualReceiptSha256")}
+        for key in ("frames", "exitCode"):
+            if type(value.get(key)) is int:
+                result[key] = value[key]
+        if value.get("mode") in {"refresh-only", "refresh-find-best"}:
+            result["mode"] = value["mode"]
+        if type(value.get("preflightReady")) is bool:
+            result["preflightReady"] = value["preflightReady"]
+        for key in ("scheduledOperationId", "scheduledCode"):
+            if isinstance(value.get(key), str) and _TOKEN.fullmatch(value[key]):
+                result[key] = value[key]
+        if type(value.get("secondaryTotalMs")) in (int, float) and 0 <= value["secondaryTotalMs"] <= 3600000:
+            result["secondaryTotalMs"] = value["secondaryTotalMs"]
+        for name, flags in (("cleanup", ("ownerStopped", "protectedPreserved", "workspaceRemoved", "referencesAbsent")),
+                            ("traffic", ("oldPortContinuity", "portMigrated", "postTransitionTraffic"))):
+            part = value.get(name)
+            if isinstance(part, Mapping):
+                result[name] = {key: part[key] for key in flags if type(part.get(key)) is bool}
+                if name == "cleanup":
+                    result[name]["state"] = part.get("state") if part.get("state") in {"complete", "incomplete", "preserved-for-recovery", "not-started"} else "unknown"
+        return result
+
+    @staticmethod
+    def _collection_matches(plan: ScenarioPlan, exit_code: int, value: Mapping[str, Any] | None) -> bool:
+        if (not isinstance(value, Mapping) or value.get("state") != "collected"
+                or value.get("scenarioId") != plan.scenario_id or value.get("correlationId") != plan.correlation_id
+                or value.get("result") not in ("passed", "failed")
+                or type(value.get("exitCode")) is not int or value["exitCode"] != exit_code):
+            return False
+        raw = value.get("actualReceiptRaw")
+        digest = value.get("actualReceiptSha256")
+        if not isinstance(raw, str) or not isinstance(digest, str) or not _SHA256.fullmatch(digest):
+            return False
+        if hashlib.sha256(raw.encode("utf-8")).hexdigest() != digest:
+            return False
+        try:
+            receipt = json.loads(raw)
+        except (ValueError, TypeError):
+            return False
+        return (isinstance(receipt, dict) and receipt.get("schema") == "vpn-control." + plan.scenario_id + ".receipt"
+                and receipt.get("scenarioId") == plan.scenario_id and receipt.get("correlationId") == plan.correlation_id
+                and receipt.get("result") == value["result"])

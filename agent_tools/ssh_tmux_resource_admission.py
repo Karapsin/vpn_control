@@ -77,8 +77,11 @@ def host_program():
  compile(value,'<fixed-tmux-resource-observation>','exec');return value
 
 
-def sources(root):
- result=closure._sources(root)
+def sources(root,engineering_context=None):
+ code_root=Path(root) if engineering_context is None else engineering_context.source_root
+ if engineering_context is not None:
+  engineering_context.require_native_consumers((Path(__file__),Path(closure.__file__),Path(adapter.__file__),Path(host.__file__),Path(vm_workflow.__file__)))
+ result=closure._sources(code_root)
  for module,expected in ((host,HOST_SHA),(vm_workflow,VM_SHA)):
   path=Path(module.__file__).absolute();pin=closure.pipe._read(path,262144,False)[1];need(pin['sha256']==expected,'resource_dependency_changed');result[str(path)]=pin
  path=Path(__file__).absolute();result[str(path)]=closure.pipe._read(path,262144,False)[1];return result
@@ -119,21 +122,21 @@ def budget(value,pending):
  return vm_workflow.admit_plan(measurement,requested_memory_bytes=MEMORY,headroom_bytes=2*1024**3,reservations=pending)
 
 
-def prepare(root,request,identity,*,source_root):
+def prepare(root,request,identity,*,source_root,engineering_context=None):
  """Root-only protected identity binding; does not create/release reservations."""
- root=Path(root).absolute();request=build._request(request);build.preflight(root,request,source_root=source_root)
+ root=Path(root).absolute();request=build._request(request);build.preflight(root,request,source_root=source_root,**({} if engineering_context is None else {'engineering_context':engineering_context}))
  with closure.claim_lock(root) as (_,lock_guard):
-  pin,pending=inventory(root,request,identity);original=sources(root)
-  def guard():lock_guard();need(sources(root)==original and inventory(root,request,identity)==(pin,pending),'resource_admission_changed')
+  pin,pending=inventory(root,request,identity);original=sources(root,engineering_context)
+  def guard():lock_guard();need(sources(root,engineering_context)==original and inventory(root,request,identity)==(pin,pending),'resource_admission_changed')
   value,capture=closure.fixed_query(root,host_program(),{},guard);plan=budget(value,pending);guard()
   record={'request':request,'identity':identity,'sourceRoot':str(Path(source_root).absolute()),'sources':original,'inventoryPin':pin,'pending':pending,'host':value,'plan':plan,'capture':capture}
   target=directory(root,request['correlationId'],True);birth=closure.pipe._write_once(target/'admission.json',session.canonical(record));closure.pipe._write_once(target/'seal.json',session.canonical({'admissionPin':birth}))
  return {'state':'ready','correlationId':request['correlationId'],'resourceBound':True,'nativeActionAllowed':False}
 
 
-def load(root,request,source_root=None):
+def load(root,request,source_root=None,engineering_context=None):
  target=directory(root,request['correlationId']);raw,pin=closure.pipe._read(target/'admission.json',1048576);record=json.loads(raw)
- need(set(record)=={'request','identity','sourceRoot','sources','inventoryPin','pending','host','plan','capture'} and record['request']==request and sources(root)==record['sources'] and json.loads(closure.pipe._read(target/'seal.json')[0])=={'admissionPin':pin},'resource_admission_changed')
+ need(set(record)=={'request','identity','sourceRoot','sources','inventoryPin','pending','host','plan','capture'} and record['request']==request and sources(root,engineering_context)==record['sources'] and json.loads(closure.pipe._read(target/'seal.json')[0])=={'admissionPin':pin},'resource_admission_changed')
  if source_root is not None:need(str(Path(source_root).absolute())==record['sourceRoot'],'resource_source_crossed')
  return record,pin,closure.pipe._read(target/'seal.json')[1]
 
@@ -141,14 +144,15 @@ def load(root,request,source_root=None):
 class ResourceDriver(adapter.McpTmuxDriver):
  def _query(self,program,payload,*,job=None,guard=None):
   if program==old._AVAILABILITY:return super()._query(program,payload,job=job,guard=guard)
-  request=build._request({k:payload['request'].get(k) for k in ('sourceSha','baseVersion','targetVersion','correlationId')});record,pin,seal=load(self.root,request,self.source_root)
+  context=getattr(self,'engineering_context',None)
+  request=build._request({k:payload['request'].get(k) for k in ('sourceSha','baseVersion','targetVersion','correlationId')});record,pin,seal=load(self.root,request,self.source_root,context)
   binding={'admissionPin':pin,'sealPin':seal,'request':request}
   binding_path=job/'tmux-resource-binding.json'
   if program==old._STAGE:closure.pipe._write_once(binding_path,session.canonical(binding))
   binding_raw,binding_pin=closure.pipe._read(binding_path);need(json.loads(binding_raw)==binding,'resource_birth_changed')
   effect=program==old._STAGE or payload.get('action') in ('prepare','release')
   def bound():
-   need(load(self.root,request,self.source_root)==(record,pin,seal) and closure.pipe._read(binding_path)==(binding_raw,binding_pin),'resource_binding_changed')
+   need(load(self.root,request,self.source_root,context)==(record,pin,seal) and closure.pipe._read(binding_path)==(binding_raw,binding_pin),'resource_binding_changed')
    if effect:need(inventory(self.root,request,record['identity'])==(record['inventoryPin'],record['pending']),'resource_inventory_changed')
    if guard:guard()
   if effect:
@@ -157,23 +161,23 @@ class ResourceDriver(adapter.McpTmuxDriver):
   return super()._query(program,payload,job=job,guard=bound)
 
 
-def operate(root,action,raw,*,source_root=None):
+def operate(root,action,raw,*,source_root=None,engineering_context=None):
  need(action in ('availability','preflight','start','status','collect') and type(raw)is dict,'resource_action_invalid')
  if action=='availability':return adapter.operate(root,action,raw,source_root=source_root)
  if action in ('status','collect'):
   need(set(raw)=={'correlationId'} and build._correlation(raw['correlationId']),'resource_request_invalid')
   if not os.path.lexists(directory(root,raw['correlationId'])):return adapter.operate(root,action,raw,source_root=source_root)
-  bound_record,_,_=load(root,build._request(build._read(build._directory(Path(root),False)/(raw['correlationId']+'.json'))))
-  driver=ResourceDriver(root,source_root=bound_record['sourceRoot'])
+  bound_record,_,_=load(root,build._request(build._read(build._directory(Path(root),False)/(raw['correlationId']+'.json'))),engineering_context=engineering_context)
+  driver=ResourceDriver(root,source_root=bound_record['sourceRoot'],engineering_context=engineering_context)
   if action=='status':return build.status(root,raw,driver=driver)
-  journal=build._directory(driver.root,False);record=build._read(journal/(raw['correlationId']+'.json'));request=build._request(record);load(root,request,source_root);return driver.collect_existing(request)
- request=build._request(raw);load(root,request,source_root) # Before driver/build entry.
- driver=ResourceDriver(root,source_root=source_root)
+  journal=build._directory(driver.root,False);record=build._read(journal/(raw['correlationId']+'.json'));request=build._request(record);load(root,request,source_root,engineering_context);return driver.collect_existing(request)
+ request=build._request(raw);load(root,request,source_root,engineering_context) # Before driver/build entry.
+ driver=ResourceDriver(root,source_root=source_root,engineering_context=engineering_context)
  with closure.claim_lock(root) as (_,lock_guard):
-  record,birth,seal=load(root,request,source_root);pin,pending=inventory(root,request,record['identity']);need((pin,pending)==(record['inventoryPin'],record['pending']),'resource_inventory_changed')
+  record,birth,seal=load(root,request,source_root,engineering_context);pin,pending=inventory(root,request,record['identity']);need((pin,pending)==(record['inventoryPin'],record['pending']),'resource_inventory_changed')
   def bound():
-   lock_guard();need(load(root,request,source_root)==(record,birth,seal) and inventory(root,request,record['identity'])==(pin,pending),'resource_preflight_changed')
+   lock_guard();need(load(root,request,source_root,engineering_context)==(record,birth,seal) and inventory(root,request,record['identity'])==(pin,pending),'resource_preflight_changed')
   value,_=closure.fixed_query(root,host_program(),{},bound);bound();budget(value,pending)
   need(value['hostBootId']==record['host']['hostBootId'] and value['vms']==record['host']['vms'] and value['diskDevice']==record['host']['diskDevice'],'resource_preserved_principal_changed')
   if action=='preflight':return driver.preflight(request)
-  return build.start(root,request,driver=driver,source_root=source_root,admission=lambda unused,req:driver.preflight(req))
+  return build.start(root,request,driver=driver,source_root=source_root,admission=lambda unused,req:driver.preflight(req),**({} if engineering_context is None else {'engineering_context':engineering_context}))

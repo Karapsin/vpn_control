@@ -60,7 +60,7 @@ class NativeScheduledRefreshSshTest(unittest.TestCase):
         self.assertEqual(0, completed.returncode, completed.stderr)
 
     @unittest.skipUnless(os.name == "posix", "Receipt ownership and mode checks require POSIX.")
-    def test_collect_admits_bounded_long_receipt_and_rejects_oversize(self):
+    def test_collect_retains_overbudget_receipt_as_partial_unknown_and_rejects_oversize(self):
         plan = self.plan(self.input())
         with tempfile.TemporaryDirectory() as raw:
             job = Path(raw) / "native-scenario-jobs" / plan.environment / plan.scenario_id / plan.correlation_id
@@ -88,7 +88,13 @@ class NativeScheduledRefreshSshTest(unittest.TestCase):
             completed = subprocess.run([sys.executable, "-c", scheduled._COLLECT, *args],
                                        capture_output=True, text=True, check=False)
             self.assertEqual(0, completed.returncode, completed.stderr)
-            self.assertEqual("collected", json.loads(completed.stdout)["state"])
+            original = (job / "scenario-receipt.json").read_bytes()
+            value = json.loads(completed.stdout)
+            self.assertEqual("unknown", value["state"])
+            self.assertTrue(value["partial"])
+            self.assertTrue(value["originalRetained"])
+            self.assertEqual(hashlib.sha256(original).hexdigest(), value["originalReceiptSha256"])
+            self.assertEqual(original, (job / "scenario-receipt.json").read_bytes())
             receipt["traffic"]["oldPortSamples"] = [{"probe": "x" * 200} for _ in range(22000)]
             path = job / "scenario-receipt.json"
             path.write_text(json.dumps(receipt), encoding="utf-8")

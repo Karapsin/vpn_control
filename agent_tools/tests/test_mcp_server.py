@@ -33,17 +33,17 @@ def command_result(*, stdout: str = "", stderr: str = "", ok: bool = True) -> di
 
 
 class McpSurfaceTest(unittest.TestCase):
-    def test_managed_agent_suite_discovery_uses_repository_top_level(self) -> None:
-        expected = [mcp_server.AGENT_TEST_PYTHON, "-m", "unittest", "discover",
-                    "-s", "agent_tools/tests", "-t", "."]
-        for area, level in (("agent_tools", "focused"), ("agent_tools", "prepush")):
-            with self.subTest(level=level):
+    def test_managed_agent_suite_runs_only_affected_modules(self) -> None:
+        selection = mcp_server.affected_agent_tests.Selection("a" * 40, ("agent_tools/docs_assistant.py",),
+                         ("agent_tools.tests.test_docs_assistant",), 2)
+        expected = selection.commands(mcp_server.AGENT_TEST_PYTHON)
+        with mock.patch.object(mcp_server, "_agent_test_selection", return_value=selection):
+            for area, level in (("agent_tools", "focused"), ("agent_tools", "prepush")):
                 commands = mcp_server._commands_for(area, level)
-                agent_suites = [command for command in commands
-                                if "discover" in command and "agent_tools/tests" in command]
-                self.assertEqual([expected], agent_suites)
+                self.assertEqual(expected, [command for command in commands if "unittest" in command])
         workflow = (mcp_server.REPO_ROOT / ".github/workflows/fast-checks.yml").read_text()
-        self.assertIn("python -m unittest discover -s agent_tools/tests -t .", workflow)
+        self.assertIn("python agent_tools/affected_agent_tests.py --run", workflow)
+        self.assertNotIn("python -m unittest discover -s agent_tools/tests", workflow)
 
     def test_android_native_tool_setup_uses_sdk_resolver(self) -> None:
         for name in ("android-release.yml", "fast-checks.yml"):

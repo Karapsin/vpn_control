@@ -1,0 +1,710 @@
+"""Finite unittest runner with retained timing and reviewed module concurrency.
+
+The managed caller owns repository fingerprint/lease/output-retention admission.
+This runner binds its reports to that fingerprint and the exact module bytes; it
+never grants a prepush receipt. Isolation is an explicit reviewed source pin,
+not a claim derived from names or a caller-provided parallel flag.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+
+MODULE = re.compile(r"agent_tools\.tests\.test_[a-zA-Z0-9_]+\Z")
+HEX = re.compile(r"[0-9a-f]{64}\Z")
+# Both codec tests execute only stdlib AST/codec prefixes before native effects.
+# Encoder tests call only a pure bounded in-memory helper; docs fixtures pass
+# an owned TemporaryDirectory explicitly to every writer. A changed reviewed
+# test/helper disables concurrency automatically until another isolation review.
+ISOLATED_SOURCES = {
+    "agent_tools.tests.test_linux_gui_capsule_codec": {
+        "agent_tools/tests/test_linux_gui_capsule_codec.py": "79c9f56042eb30eed1316e722d4e7fa61ff230e88d965053eb20cbaccf60eb63",
+        "scripts/integration/linux_owner_lifecycle_scenario.py": "18e4fd8b4ba23d552ce8ebfef15a214b2d63d6e8d254d8c76ea58d7f6f2929bc",
+        "agent_tools/tests/fixtures/linux_gui_source_custody/codec-driver.before.source": "c094d68cf9a9dc871ced17183d66571e6a2de279b2759abe43a80a4be816ecc8",
+        "agent_tools/tests/fixtures/linux_gui_source_custody/normal-capsule.source": "5f8d4cffb0c69439b703e13729c0ea5aa687c1a5d37e0386ddaf50065beefe0c",
+    },
+    "agent_tools.tests.test_linux_gui_launcher_codec": {
+        "agent_tools/tests/test_linux_gui_launcher_codec.py": "5dcd1115cd59051757f46cb6fbf341d549c9c007be44bf46ad174377fafbed18",
+        "agent_tools/native_owner_gui_lifecycle_ssh.py": "04d3cb90e073c68a88e93a26ee68e5f5844051762320896aa30e49d7e2366f7f",
+        "agent_tools/tests/fixtures/linux_gui_source_custody/normal-capsule.source": "5f8d4cffb0c69439b703e13729c0ea5aa687c1a5d37e0386ddaf50065beefe0c",
+    },
+    "agent_tools.tests.test_windows_ps_bootstrap": {
+        "agent_tools/tests/test_windows_ps_bootstrap.py": "f2ff19fc8f6afc0e1bb80f1e87d1cb48bc602113ec372751bca235cbfc742d47",
+        "agent_tools/windows_ps_bootstrap.py": "16e75497abe7cd6da3367b620143cdd9209a61e078a6e02a94879f281fa9ea79",
+    },
+    "agent_tools.tests.test_docs_assistant": {
+        "agent_tools/tests/test_docs_assistant.py": "e8d01444038f9855b3c6c4e99d8c8db8c4ce68c56a3a951feeee7b3ff29abb48",
+        "agent_tools/docs_assistant.py": "443f914e6a693eabeddbdf4692308d3a779f947eb85c07764f73b3afebe1c62e",
+    },
+}
+
+
+def digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def validate_plan(value: object) -> dict:
+    if not isinstance(value, dict) or set(value) - {"schemaVersion", "sourceFingerprint", "modules", "maxWorkers"}:
+        raise ValueError("Invalid unittest plan")
+    if type(value.get("schemaVersion")) is not int or value["schemaVersion"] != 1:
+        raise ValueError("Invalid unittest plan version")
+    if not isinstance(value.get("sourceFingerprint"), str) or not HEX.fullmatch(value["sourceFingerprint"]):
+        raise ValueError("Invalid source fingerprint")
+    modules = value.get("modules")
+    if not isinstance(modules, list) or not modules or len(modules) > 2000:
+        raise ValueError("Invalid module selection")
+    if any(not isinstance(name, str) or not MODULE.fullmatch(name) for name in modules) or len(set(modules)) != len(modules):
+        raise ValueError("Invalid or duplicate unittest module")
+    workers = value.get("maxWorkers", 2)
+    if type(workers) is not int or workers not in (1, 2):
+        raise ValueError("Worker limit must be 1 or 2")
+    return {**value, "maxWorkers": min(workers, os.cpu_count() or 1)}
+
+
+def private_directory(path: Path) -> None:
+    # Require an already private, owned, ordinary parent. No weak ACL fallback.
+    if os.name != "posix" or not hasattr(os, "O_NOFOLLOW"):
+        raise ValueError("Private timing retention requires POSIX")
+    for parent in [path.parent, *path.parent.parents]:
+        info = parent.lstat()
+        if stat.S_ISLNK(info.st_mode):
+            raise ValueError("Timing path cannot contain symlinks")
+    info = path.parent.stat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+        raise ValueError("Timing parent must be private and owned")
+    path.mkdir(mode=0o700)  # Exclusive reservation prevents unknown replay.
+
+
+def create_file(path: Path):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    return os.fdopen(fd, "w", encoding="utf-8")
+
+
+def write_json(path: Path, value: dict) -> None:
+    with create_file(path) as stream:
+        json.dump(value, stream, sort_keys=True, separators=(",", ":"))
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def sources_match(root: Path, sources: dict[str, str]) -> bool:
+    try:
+        return bool(sources) and all(digest(root / path) == expected for path, expected in sources.items())
+    except OSError:
+        return False
+
+
+def source_context(root: Path, leaf: Path, sources: dict[str, str]) -> Path:
+    """Freeze only reviewed inputs; codec tests reread producers per test."""
+    context = leaf / "sources"
+    context.mkdir(mode=0o700)
+    for relative, expected in sources.items():
+        path = Path(relative)
+        if path.is_absolute() or ".." in path.parts or not HEX.fullmatch(expected):
+            raise ValueError("Invalid reviewed source")
+        raw = (root / path).read_bytes()
+        if hashlib.sha256(raw).hexdigest() != expected:
+            raise ValueError("Isolation source changed before dispatch")
+        destination = context / path
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+    # Fixed empty package markers keep canonical namespace packages from mixing
+    # into this finite context. Reviewed helpers import only pinned siblings or
+    # stdlib; no native runtime/configuration is copied or imported.
+    for relative in ("agent_tools/__init__.py", "agent_tools/tests/__init__.py"):
+        destination = context / relative
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)
+        os.close(fd)
+    return context
+
+
+
+def fixture_generation(path: Path) -> list[int]:
+    info = path.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
+            or stat.S_IMODE(info.st_mode) != 0o700):
+        raise ValueError("Worker fixture root must be private and owned")
+    return [info.st_dev, info.st_ino, info.st_uid]
+
+
+def worker_fixture_root(root: Path, leaf: Path, plan: dict) -> tuple[Path, list[int]]:
+    # Ignore inherited TMPDIR and keep room for real nested fixture sockets.
+    # Resolve macOS's /tmp symlink before reserving this unique owned root.
+    parent = Path("/tmp").resolve(strict=True)
+    if parent.is_relative_to(root.resolve()):
+        raise ValueError("System temporary root cannot be within test checkout")
+    path = Path(tempfile.mkdtemp(prefix="vct-", dir=parent))
+    generation = fixture_generation(path)
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        held = os.fstat(fd)
+        if [held.st_dev, held.st_ino, held.st_uid] != generation:
+            raise ValueError("Worker fixture root changed before group binding")
+        # Darwin's shared /tmp inherits group0. Change only the held newly
+        # created directory; children then inherit the current user's group.
+        os.fchown(fd, -1, os.getgid())
+        if (fixture_generation(path) != generation
+                or os.fstat(fd).st_gid != os.getgid()):
+            raise ValueError("Worker fixture group binding changed")
+    finally:
+        os.close(fd)
+    for name in ("tmp", "runtime", "locks"):
+        (path / name).mkdir(mode=0o700)
+    write_json(leaf / "fixture-root.json", {"schemaVersion": 1, "path": str(path),
+               "generation": generation, "sourceFingerprint": plan["sourceFingerprint"],
+               "modules": plan["modules"], "runnerSha256": digest(Path(__file__))})
+    return path, generation
+
+
+def cleanup_fixture_root(path: Path, generation: list[int]) -> bool:
+    # Move into a new private namespace before deletion: a replacement at the
+    # original name must never become cleanup authority. A postmove mismatch
+    # retains the moved object and its create-only cleanup intent.
+    try:
+        if fixture_generation(path) != generation:
+            return False
+        quarantine = Path(tempfile.mkdtemp(prefix="vct-clean-", dir=path.parent))
+        write_json(quarantine / "intent.json", {"originalPath": str(path), "generation": generation})
+        moved = quarantine / "root"
+        path.rename(moved)
+        if fixture_generation(moved) != generation:
+            return False
+        shutil.rmtree(moved)
+        (quarantine / "intent.json").unlink()
+        quarantine.rmdir()
+        return not moved.exists() and not path.exists()
+    except (OSError, ValueError):
+        return False
+
+
+def worker_groups(root: Path, modules: list[str]) -> list[tuple[bool, list[str]]]:
+    isolated = []
+    serial = []
+    for name in modules:
+        sources = ISOLATED_SOURCES.get(name)
+        reviewed = bool(sources) and sources_match(root, sources)
+        (isolated if reviewed else serial).append(name)
+    return [(True, [name]) for name in isolated] + ([(False, serial)] if serial else [])
+
+
+class TimingSuite(unittest.TestSuite):
+    """Include time spent in failed module/class fixtures, which lack startTest."""
+    def _fixture(self, method, *args):
+        result = args[-1]
+        previous = getattr(result, "fixture_started", None)
+        result.fixture_started = time.monotonic()
+        try:
+            return method(*args)
+        finally:
+            result.fixture_started = previous
+
+    def _handleClassSetUp(self, test, result):
+        return self._fixture(super()._handleClassSetUp, test, result)
+
+    def _handleModuleFixture(self, test, result):
+        return self._fixture(super()._handleModuleFixture, test, result)
+
+    def _tearDownPreviousClass(self, test, result):
+        return self._fixture(super()._tearDownPreviousClass, test, result)
+
+    def _handleModuleTearDown(self, result):
+        return self._fixture(super()._handleModuleTearDown, result)
+
+
+class TimingResult(unittest.TextTestResult):
+    def __init__(self, *args, journal, public_identities=None, fixture_identities=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.public_identities = public_identities or {}
+        self.fixture_identities = fixture_identities or {}
+        self.journal = journal
+        self.timings = []
+        self.active = {}
+        self.fixture_started = None
+
+    def startTest(self, test):
+        identity = self.public_identities.get(id(test), "unclassified-test")
+        self.active[id(test)] = {"testId": identity, "publicTestId": identity,
+                                "startedMonotonic": time.monotonic(), "outcome": "incomplete"}
+        self.event({"event": "started", **self.active[id(test)]})
+        super().startTest(test)
+
+    def event(self, value):
+        self.journal.write(json.dumps(value, sort_keys=True) + "\n")
+        self.journal.flush()
+        if getattr(self.journal, "durable", True):
+            os.fsync(self.journal.fileno())
+
+    def outcome(self, test, outcome, reason=None):
+        item = self.active.get(id(test))
+        if item is None:
+            ended = time.monotonic()
+            fixture = type(test) is unittest.suite._ErrorHolder
+            if fixture:
+                identity = self.fixture_identities.get(test.description, "unclassified-test")
+            elif isinstance(test, unittest.case._SubTest):
+                identity = self.public_identities.get(id(test.test_case), "unclassified-test")
+            else:
+                identity = self.public_identities.get(id(test), "unclassified-test")
+            row = {"testId": identity, "publicTestId": identity,
+                   "startedMonotonic": self.fixture_started or ended,
+                   "endedMonotonic": ended, "outcome": outcome, "fixture": fixture}
+            row["elapsedSeconds"] = ended - row["startedMonotonic"]
+            if reason is not None:
+                row["skipReason"] = reason
+            self.timings.append(row)
+            self.event({"event": "finished", **row})
+        else:
+            # A test can have multiple failed/error subtests or teardown errors.
+            # Preserve the highest severity without changing stdlib counts.
+            severity = {"incomplete": 0, "success": 1, "expectedFailure": 1, "skipped": 1,
+                        "unexpectedSuccess": 2, "failure": 3, "error": 4}
+            if severity[outcome] >= severity[item["outcome"]]:
+                item["outcome"] = outcome
+            if reason is not None:
+                item["skipReason"] = reason
+
+    def stopTest(self, test):
+        row = self.active.pop(id(test))
+        row["endedMonotonic"] = time.monotonic()
+        row["elapsedSeconds"] = row["endedMonotonic"] - row["startedMonotonic"]
+        self.timings.append(row)
+        self.event({"event": "finished", **row})
+        super().stopTest(test)
+
+    def addSuccess(self, test):
+        self.outcome(test, "success"); super().addSuccess(test)
+
+    def addError(self, test, err):
+        self.outcome(test, "error"); super().addError(test, err)
+
+    def addFailure(self, test, err):
+        self.outcome(test, "failure"); super().addFailure(test, err)
+
+    def addSkip(self, test, reason):
+        self.outcome(test, "skipped", reason); super().addSkip(test, reason)
+
+    def addExpectedFailure(self, test, err):
+        self.outcome(test, "expectedFailure"); super().addExpectedFailure(test, err)
+
+    def addUnexpectedSuccess(self, test):
+        self.outcome(test, "unexpectedSuccess"); super().addUnexpectedSuccess(test)
+
+    def addSubTest(self, test, subtest, err):
+        if err is not None:
+            self.outcome(test, "failure" if issubclass(err[0], test.failureException) else "error")
+        super().addSubTest(test, subtest, err)
+
+
+class ImportFailure(unittest.TestCase):
+    def __init__(self, name, error):
+        super().__init__("runTest")
+        self.name = name
+        self.error = error
+
+    def id(self):
+        return self.name + ".import"
+
+    def runTest(self):
+        raise self.error
+
+
+def counts(result) -> dict:
+    return {"testsRun": result.testsRun, "failures": len(result.failures), "errors": len(result.errors),
+            "skipped": len(result.skipped), "expectedFailures": len(result.expectedFailures),
+            "unexpectedSuccesses": len(result.unexpectedSuccesses)}
+
+
+def selected_module(name):
+    parts = name.split(".")
+    length = 3 if parts[0] == "agent_tools" else 2
+    return ".".join(parts[:length]), parts[length:]
+
+
+def validate_exact_selection(name):
+    module_name, suffix = selected_module(name)
+    if not suffix:
+        return
+    module = importlib.import_module(module_name)
+    cls = getattr(module, suffix[0], None)
+    if not isinstance(cls, type) or not issubclass(cls, unittest.TestCase):
+        raise ValueError("Exact selection requires a unittest TestCase class")
+    if len(suffix) == 2 and (not suffix[1].startswith("test") or not callable(getattr(cls, suffix[1], None))):
+        raise ValueError("Exact selection requires a unittest test method")
+
+
+def test_cases(suite):
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            yield from test_cases(item)
+        else:
+            yield item
+
+
+def public_bindings(suites, names):
+    """Bind source symbols before test code can mutate IDs/class metadata."""
+    identities = {}
+    fixture_identities = {}
+    symbol = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*\Z")
+    for suite, selected in zip(suites, names):
+        module_name, suffix = selected_module(selected)
+        fixture_identities["setUpModule (" + module_name + ")"] = "setUpModule (" + module_name + ")"
+        fixture_identities["tearDownModule (" + module_name + ")"] = "tearDownModule (" + module_name + ")"
+        module = sys.modules.get(module_name)
+        for test in test_cases(suite):
+            if isinstance(test, ImportFailure) or type(test).__name__ == "_FailedTest" and type(test).__module__ == "unittest.loader":
+                identities[id(test)] = module_name + ".import"
+                continue
+            if not isinstance(test, unittest.TestCase):
+                identities[id(test)] = "unclassified-test"
+                continue
+            cls = type(test)
+            attributes = sorted(key for key, value in vars(module).items() if value is cls and symbol.fullmatch(key)) if module else []
+            class_name = suffix[0] if suffix and suffix[0] in attributes else attributes[0] if attributes else "generated"
+            method_name = getattr(test, "_testMethodName", None)
+            if (not isinstance(method_name, str) or not symbol.fullmatch(method_name)
+                    or not (method_name.startswith("test") or method_name == "runTest")):
+                method_name = "unclassified"
+            identity = module_name + "." + class_name + "." + method_name
+            identities[id(test)] = identity
+            actual_class = cls.__module__ + "." + cls.__qualname__
+            for phase in ("setUpClass", "tearDownClass"):
+                fixture_identities[phase + " (" + actual_class + ")"] = phase + " (" + module_name + "." + class_name + ")"
+    return identities, fixture_identities
+
+
+def load_suite(names: list[str], *, exact=False):
+    loader = unittest.TestLoader()
+    loader.suiteClass = TimingSuite
+    suites = []
+    for name in names:
+        try:
+            if exact:
+                validate_exact_selection(name)
+            suites.append(loader.loadTestsFromName(name))
+        except Exception as error:
+            suites.append(TimingSuite([ImportFailure(name, error)]))
+    suite = TimingSuite(suites)
+    suite.public_identities, suite.fixture_identities = public_bindings(suites, names)
+    return suite
+
+
+def worker(plan: dict, directory: Path, *, isolation=None) -> int:
+    context = directory / "sources" if isolation is not None else Path.cwd()
+    sys.path.insert(0, str(context))
+    started = time.monotonic()
+    with create_file(directory / "timings.jsonl") as journal:
+        if isolation is not None and not sources_match(context, isolation):
+            print("Agent unittest isolation refused: source-drift", file=sys.stderr)
+            return 2
+        suite = load_suite(plan["modules"])
+        runner = unittest.TextTestRunner(verbosity=1)
+        runner.resultclass = lambda *args, **kwargs: TimingResult(*args, journal=journal, public_identities=suite.public_identities,
+                                                                fixture_identities=suite.fixture_identities, **kwargs)
+        result = runner.run(suite)
+        terminal = {"schemaVersion": 1, "state": "complete", "sourceFingerprint": plan["sourceFingerprint"],
+                    "modules": plan["modules"], "startedMonotonic": started, "endedMonotonic": time.monotonic(),
+                    "counts": counts(result), "timings": result.timings, "successful": result.wasSuccessful()}
+        write_json(directory / "result.json", terminal)
+    return 0 if terminal["successful"] else 1
+
+
+def _stop_workers(active: list[dict]) -> None:
+    # Only sessions created by this invocation are signalled; no PID rediscovery.
+    for item in active:
+        process = item["process"]
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    deadline = time.monotonic() + 3
+    for item in active:
+        process = item["process"]
+        try:
+            process.wait(timeout=max(0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+
+
+def close_session(process) -> tuple[bool, bool]:
+    """Refuse success for a terminal worker that left an owned descendant."""
+    try:
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        return True, False
+    # Never rediscover or signal unrelated processes; this is the same new session.
+    leaked = True
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True, leaked
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return True, leaked
+        time.sleep(0.02)
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return True, leaked
+    # Unknown descendants remain an incomplete result, never a success receipt.
+    try:
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        return True, leaked
+    return False, leaked
+
+
+def run_plan(plan: dict, directory: Path, *, stream=sys.stderr) -> dict:
+    plan = validate_plan(plan)
+    root = Path.cwd()
+    module_hashes = {name: digest(root / (name.replace(".", "/") + ".py")) for name in plan["modules"]
+                     if (root / (name.replace(".", "/") + ".py")).is_file()}
+    private_directory(directory)
+    write_json(directory / "plan.json", {**plan, "moduleHashes": module_hashes})
+    groups = worker_groups(root, plan["modules"])
+    reviewed_sources = {relative: expected for isolated, modules in groups if isolated
+                        for name in modules for relative, expected in ISOLATED_SOURCES[name].items()}
+    started = time.monotonic()
+    active = []
+    completed = []
+    cancellation = [False]
+    original_handlers = {}
+    def cancel(signum, frame):
+        cancellation[0] = True
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        original_handlers[signum] = signal.signal(signum, cancel)
+    infrastructure_error = None
+    try:
+        next_group = 0
+        while next_group < len(groups) or active:
+            if cancellation[0]:
+                break
+            while next_group < len(groups) and len(active) < plan["maxWorkers"]:
+                isolated, modules = groups[next_group]
+                if active and (not isolated or any(not item["isolated"] for item in active)):
+                    break
+                leaf = directory / ("worker-%04d" % next_group)
+                leaf.mkdir(mode=0o700)
+                child_plan = {**plan, "modules": modules}
+                isolation = ISOLATED_SOURCES[modules[0]] if isolated else None
+                if isolation is not None:
+                    source_context(root, leaf, isolation)
+                write_json(leaf / "plan.json", {"plan": child_plan, "isolationSources": isolation})
+                env = os.environ.copy()
+                fixture_root, fixture_pin = worker_fixture_root(root, leaf, child_plan)
+                env.update(TMPDIR=str(fixture_root / "tmp"), TMP=str(fixture_root / "tmp"), TEMP=str(fixture_root / "tmp"),
+                           VPN_CONTROL_TEST_RUNTIME_ROOT=str(fixture_root / "runtime"), VPN_CONTROL_TEST_LOCK_ROOT=str(fixture_root / "locks"),
+                           PYTHONDONTWRITEBYTECODE="1")
+                env.pop("DYLD_INSERT_LIBRARIES", None)
+                out = create_file(leaf / "stdout.txt")
+                err = create_file(leaf / "stderr.txt")
+                try:
+                    process = subprocess.Popen([sys.executable, "-B", str(Path(__file__).resolve()), "--worker-plan", str(leaf / "plan.json"),
+                                                "--worker-dir", str(leaf)], cwd=root, env=env,
+                                               stdout=out, stderr=err, start_new_session=True)
+                finally:
+                    out.close(); err.close()
+                item = {"process": process, "directory": leaf, "isolated": isolated, "modules": modules,
+                        "startedMonotonic": time.monotonic(), "pid": process.pid,
+                        "fixtureRoot": str(fixture_root), "fixtureRootGeneration": fixture_pin}
+                active.append(item)
+                write_json(leaf / "started.json", {key: value for key, value in item.items() if key not in ("process", "directory")})
+                next_group += 1
+                if not isolated:
+                    break
+            for item in list(active):
+                if item["process"].poll() is not None:
+                    item["process"].wait()
+                    item["returncode"] = item["process"].returncode
+                    item["endedMonotonic"] = time.monotonic()
+                    completed.append(item); active.remove(item)
+            if active:
+                time.sleep(0.02)
+    except Exception as error:
+        infrastructure_error = type(error).__name__
+    finally:
+        _stop_workers(active)
+        for item in active:
+            item["returncode"] = item["process"].returncode
+            item["endedMonotonic"] = time.monotonic()
+            completed.append(item)
+        for signum, handler in original_handlers.items():
+            signal.signal(signum, handler)
+    records = []
+    timings = []
+    total = dict.fromkeys(("testsRun", "failures", "errors", "skipped", "expectedFailures", "unexpectedSuccesses"), 0)
+    worker_failure = False
+    for item in completed:
+        leaf = item["directory"]
+        record = {key: value for key, value in item.items() if key not in ("process", "directory")}
+        record["reaped"] = item["process"].poll() is not None
+        record["sessionAbsent"], record["descendantLeak"] = close_session(item["process"])
+        try:
+            result = json.loads((leaf / "result.json").read_text())
+            if (result["state"] != "complete" or result["sourceFingerprint"] != plan["sourceFingerprint"]
+                    or result["modules"] != item["modules"] or result["successful"] != (item["returncode"] == 0)):
+                raise ValueError("Worker terminal mismatch")
+            for key in total:
+                total[key] += result["counts"][key]
+            timings.extend(result["timings"])
+            record["state"] = "complete"
+            worker_failure |= not result["successful"]
+        except (OSError, ValueError, KeyError, TypeError):
+            record["state"] = "incomplete"
+            worker_failure = True
+            # Retain completed timing observations from an aborted worker without
+            # inventing its unavailable final unittest counts or terminal success.
+            try:
+                events = [json.loads(line) for line in (leaf / "timings.jsonl").read_text().splitlines()]
+                partial = [{**event, "partialWorker": True} for event in events if event.get("event") == "finished"]
+                timings.extend(partial)
+                record["partialTimingCount"] = len(partial)
+            except (OSError, ValueError, TypeError):
+                record["partialTimingCount"] = 0
+        record["fixtureRootRemoved"] = (record["sessionAbsent"] and
+                                          cleanup_fixture_root(Path(item["fixtureRoot"]), item["fixtureRootGeneration"]))
+        records.append(record)
+        # Stream exact worker diagnostics. They are also retained per worker.
+        for name in ("stdout.txt", "stderr.txt"):
+            with (leaf / name).open() as body:
+                while chunk := body.read(65536):
+                    stream.write(chunk)
+    try:
+        changed = (any(digest(root / (name.replace(".", "/") + ".py")) != expected for name, expected in module_hashes.items())
+                   or any(digest(root / relative) != expected for relative, expected in reviewed_sources.items()))
+    except OSError:
+        changed = True
+    incomplete = cancellation[0] or infrastructure_error is not None or len(completed) != len(groups) or changed or any(x["state"] != "complete" or not x["sessionAbsent"] or x["descendantLeak"] or not x["fixtureRootRemoved"] for x in records)
+    state = "cancelled" if cancellation[0] else "incomplete" if incomplete else "failed" if worker_failure else "complete"
+    report = {"schemaVersion": 1, "state": state, "successful": state == "complete", "sourceFingerprint": plan["sourceFingerprint"],
+              "moduleHashes": module_hashes, "reviewedSourceHashes": reviewed_sources, "counts": total, "timings": timings, "workers": records,
+              "maxWorkers": plan["maxWorkers"], "startedMonotonic": started, "endedMonotonic": time.monotonic(),
+              "replayAllowed": False, "infrastructureError": infrastructure_error}
+    write_json(directory / "report.json", report)
+    elapsed = report["endedMonotonic"] - started
+    stream.write("\nRan %d tests in %.3fs\n\n" % (total["testsRun"], elapsed))
+    if report["successful"]:
+        stream.write("OK" + (" (skipped=%d)" % total["skipped"] if total["skipped"] else "") + "\n")
+    else:
+        stream.write("FAILED (failures=%d, errors=%d, skipped=%d, unexpected successes=%d; state=%s)\n" %
+                     (total["failures"], total["errors"], total["skipped"], total["unexpectedSuccesses"], state))
+    stream.write("Slowest tests: " + "; ".join("%.3fs %s [%s]" % (x["elapsedSeconds"], x["testId"], x["outcome"])
+                                              for x in sorted(timings, key=lambda x: x["elapsedSeconds"], reverse=True)[:5]) + "\n")
+    stream.flush()
+    return report
+
+
+SERIAL_ID = re.compile(r"(?:agent_tools\.tests\.test_[a-zA-Z0-9_]+|scripts\.test_windows_fixture_stage_acl)(?:\.[a-zA-Z_][a-zA-Z0-9_]*){0,2}\Z")
+PUBLIC_ID = re.compile(r"(?:[a-zA-Z_][a-zA-Z0-9_]*\.)+[a-zA-Z_][a-zA-Z0-9_]*\Z")
+FIXTURE_ID = re.compile(r"(?:setUp|tearDown)(?:Class|Module) \((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[a-zA-Z_][a-zA-Z0-9_]*\)\Z")
+
+
+class PublicTimingJournal:
+    """Explicit CI projection: no private path, reason, traceback or file writer."""
+    durable = False
+
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, value):
+        event = json.loads(value)
+        if event.get("event") != "finished":
+            return
+        identity = event.get("publicTestId", "unclassified-test")
+        if len(identity) > 512 or not (PUBLIC_ID.fullmatch(identity) or FIXTURE_ID.fullmatch(identity)):
+            identity = "unclassified-test"
+        projected = {"schemaVersion": 1, "testId": identity, "elapsedSeconds": event["elapsedSeconds"],
+                     "outcome": event["outcome"], "fixture": event.get("fixture", False)}
+        self.stream.write("AGENT_TEST_TIMING " + json.dumps(projected, sort_keys=True) + "\n")
+
+    def flush(self):
+        self.stream.flush()
+
+
+def serial_stdout(names: list[str], fingerprint: str, *, timing_stream=None, diagnostic_stream=None) -> dict:
+    """Portable explicit mode; CI retains its normal output, never private files."""
+    if (not isinstance(fingerprint, str) or not HEX.fullmatch(fingerprint) or not names or len(names) > 2000
+            or len(set(names)) != len(names) or any(not isinstance(name, str) or not SERIAL_ID.fullmatch(name) for name in names)):
+        raise ValueError("Invalid serial test selection")
+    timing_stream = sys.stdout if timing_stream is None else timing_stream
+    diagnostic_stream = sys.stderr if diagnostic_stream is None else diagnostic_stream
+    sys.path.insert(0, str(Path.cwd()))
+    journal = PublicTimingJournal(timing_stream)
+    test_runner = unittest.TextTestRunner(stream=diagnostic_stream, verbosity=1)
+    suite = load_suite(names, exact=True)
+    test_runner.resultclass = lambda *args, **kwargs: TimingResult(*args, journal=journal, public_identities=suite.public_identities,
+                                                                fixture_identities=suite.fixture_identities, **kwargs)
+    started = time.monotonic()
+    result = test_runner.run(suite)
+    summary = {"schemaVersion": 1, "mode": "serial-stdout", "successful": result.wasSuccessful(),
+               "sourceFingerprint": fingerprint, "counts": counts(result), "elapsedSeconds": time.monotonic() - started}
+    timing_stream.write("AGENT_TEST_SUMMARY " + json.dumps(summary, sort_keys=True) + "\n")
+    timing_stream.flush()
+    return summary
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--serial-stdout", action="store_true", help="Explicit portable serial CI timing projection; no private reports")
+    parser.add_argument("--source-fingerprint")
+    parser.add_argument("--module", action="append", default=[])
+    parser.add_argument("--test-id", action="append", default=[])
+    parser.add_argument("--plan-file", type=Path)
+    parser.add_argument("--report-dir", type=Path)
+    parser.add_argument("--worker-plan", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--worker-dir", type=Path, help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    if args.serial_stdout:
+        if args.plan_file is not None or args.report_dir is not None or args.worker_plan is not None or args.worker_dir is not None:
+            parser.error("Serial stdout mode cannot write private reports")
+        try:
+            result = serial_stdout(args.module + args.test_id, args.source_fingerprint)
+        except ValueError:
+            parser.error("Invalid serial test selection")
+        return 0 if result["successful"] else 1
+    if args.source_fingerprint is not None or args.module or args.test_id:
+        parser.error("Serial selectors require --serial-stdout")
+    if args.worker_plan is not None and args.worker_dir is not None and args.plan_file is None and args.report_dir is None:
+        request = json.loads(args.worker_plan.read_text())
+        if not isinstance(request, dict) or set(request) != {"plan", "isolationSources"}:
+            parser.error("Invalid private worker request")
+        isolation = request["isolationSources"]
+        if isolation is not None and (not isinstance(isolation, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in isolation.items())):
+            parser.error("Invalid isolation sources")
+        return worker(validate_plan(request["plan"]), args.worker_dir, isolation=isolation)
+    if args.plan_file is None or args.report_dir is None or args.worker_plan is not None or args.worker_dir is not None:
+        parser.error("--plan-file and --report-dir are required")
+    try:
+        result = run_plan(json.loads(args.plan_file.read_text()), args.report_dir.absolute())
+    except (OSError, ValueError) as error:
+        print("Agent unittest runner refused: " + type(error).__name__, file=sys.stderr)
+        return 2
+    return 0 if result["successful"] else 130 if result["state"] == "cancelled" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

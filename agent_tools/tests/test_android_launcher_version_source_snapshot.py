@@ -154,8 +154,11 @@ spec=importlib.util.spec_from_file_location('fixture',sys.argv[1])
 f=importlib.util.module_from_spec(spec);spec.loader.exec_module(f)
 exec(f.CANONICAL_HELPERS_SOURCE)
 exec(f.PREVIOUS_SHARED_RETAINER_SOURCE if sys.argv[2]=='old' else f.CURRENT_RETAINER_SOURCE)
+spec=importlib.util.spec_from_file_location('collector_ancestry',sys.argv[3])
+ancestry=importlib.util.module_from_spec(spec);spec.loader.exec_module(ancestry)
 with tempfile.TemporaryDirectory() as temporary:
  ROOT=pathlib.Path(temporary).resolve();GETTER={'stageId':'inert-fixed-stage'}
+ os=ancestry.CollectorFixtureOS(ROOT)
  held=[];parent_cache={};directory=ROOT/('android-cli-stage-'+GETTER['stageId']);pins={}
  for name in ('intent.json','receipt.json',*f.STAGE_PATHS):
   path=directory/name if name in ('intent.json','receipt.json') else directory/'tree'/name
@@ -168,9 +171,11 @@ with tempfile.TemporaryDirectory() as temporary:
  finally:
   for chain,name,fd,generation in reversed(held):os.close(fd)
   close_parents(list(parent_cache.values()))
+  assert not os.live, os.live
+  print('COLLECTOR_FDS_CLOSED',flush=True)
 """
         argv = [sys.executable, '-I', '-B', '-c', code, fixture.__file__]
-        old = subprocess.Popen([*argv, 'old'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        old = subprocess.Popen([*argv, 'old', str(Path(__file__).with_name('test_android_launcher_collector_ancestry.py'))], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             try:
                 out, err = old.communicate(timeout=1)
@@ -184,9 +189,10 @@ with tempfile.TemporaryDirectory() as temporary:
                 old.kill()
             out, err = old.communicate(timeout=2)
         self.assertIn(b'BEFORE_RETAIN', out)
-        current = subprocess.run([*argv, 'new'], capture_output=True, timeout=2)
+        current = subprocess.run([*argv, 'new', str(Path(__file__).with_name('test_android_launcher_collector_ancestry.py'))], capture_output=True, timeout=2)
         self.assertEqual(current.returncode, 0, current.stderr)
         self.assertIn(b'FIFO_REFUSED', current.stdout)
+        self.assertIn(b'COLLECTOR_FDS_CLOSED', current.stdout)
 
     def test_actual_155_file_old_emfile_new_shared_under_unchanged_1024(self):
         code = r"""
@@ -196,10 +202,13 @@ f=importlib.util.module_from_spec(spec);spec.loader.exec_module(f)
 exec(f.CANONICAL_HELPERS_SOURCE)
 exec(f.OLD_RETAINER_SOURCE if sys.argv[2]=='old' else f.CURRENT_RETAINER_SOURCE)
 exec(f.HELD_GUARD_SOURCE)
+spec=importlib.util.spec_from_file_location('collector_ancestry',sys.argv[3])
+ancestry=importlib.util.module_from_spec(spec);spec.loader.exec_module(ancestry)
 original=resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE,(1024,original[1]))
 with tempfile.TemporaryDirectory(dir='/tmp') as temporary:
  ROOT=pathlib.Path(temporary).resolve();GETTER={'stageId':'inert-fixed-stage'}
+ os=ancestry.CollectorFixtureOS(ROOT)
  held=[];parent_cache={};directory=ROOT/('android-cli-stage-'+GETTER['stageId']);pins={}
  for name in ('intent.json','receipt.json',*f.STAGE_PATHS):
   path=directory/name if name in ('intent.json','receipt.json') else directory/'tree'/name
@@ -226,12 +235,14 @@ with tempfile.TemporaryDirectory(dir='/tmp') as temporary:
   for chain,name,fd,generation in reversed(held):
    os.close(fd)
    if sys.argv[2]=='old':close_parents(chain)
-  if sys.argv[2]!='old':close_parents(list(parent_cache.values()))
+  if sys.argv[2]!='old':
+   close_parents(list(parent_cache.values()))
+   assert not os.live, os.live
 """
         outputs = {}
         for mode in ('old', 'new', 'parent'):
             result = subprocess.run([sys.executable, '-I', '-B', '-c', code,
-                                     fixture.__file__, mode], capture_output=True, timeout=8)
+                                     fixture.__file__, mode, str(Path(__file__).with_name('test_android_launcher_collector_ancestry.py'))], capture_output=True, timeout=8)
             self.assertEqual(result.returncode, 0, result.stderr)
             outputs[mode] = json.loads(result.stdout)
         self.assertEqual(outputs['old']['state'], 'old-emfile')

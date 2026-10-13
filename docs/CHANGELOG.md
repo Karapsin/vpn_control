@@ -5,6 +5,12 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Keep Windows fixture dispatch inputs compatible with the existing update workflow checks.
+- Keep agent-test temporary roots short and private with generation-safe cleanup.
+- Keep deep test sockets within bounds and verify selective import roots.
+
+## 2.2.9 - 2026-10-13
+
 - Keep MCP checks responsive and recover Linux update clients with guarded cleanup.
 - Verify Linux GUI lifecycle with sealed source custody and guarded cleanup.
 - Route nested guests through the selected Arch connection and refuse lost selection during setup.
@@ -12,6 +18,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Preserve reviewed ended SSH history, verify original channel termination, and cover native collection import failures.
 - Preserve qualified Android observation evidence, validate Linux GUI preparation, and repair portable visual capture fixtures.
 - Render unavailable refresh status truthfully and make visual captures deterministic with complete image comparison.
+- Preserve authenticated SSH terminal evidence across tool checkpoints and align Linux packaging checks with reviewed current sources.
+- Stabilize historical Android test fixtures against unrelated temporary-directory metadata changes while preserving native guards.
+- Select affected agent tests, record durations, and preserve frozen native execution and bounded result collection.
 
 ## 2.2.8 - 2026-10-12
 

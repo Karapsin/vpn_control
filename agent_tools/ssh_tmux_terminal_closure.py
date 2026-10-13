@@ -29,7 +29,7 @@ if os.name=='posix':
 else:pipe=fcntl=None
 need=old.need
 CORRELATION='86fcac2e-2fb5-47a8-bf1e-eb62d4accfd0'
-ADAPTER_SHA='e18776b55a426c52d4f3b65cc3373c1930705a1ab13556bfb6e7357322466dd6'
+ADAPTER_SHA='87b76515a48ef34102349e083de467bf0b934498706dc30f5801d585b1616fec'
 
 
 def _sources(root):

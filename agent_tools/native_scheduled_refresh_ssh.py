@@ -147,7 +147,7 @@ open(os.path.join(job,"release"),"x").close()
 print(json.dumps({"state":"submitted","identity":identity},separators=(",",":")))'''
 
 
-_COLLECT = r'''import json,os,stat,sys
+_COLLECT = r'''import hashlib,json,os,stat,sys
 root,host,env,scenario,corr,bundle_hash,artifact_json,pid,ticks=sys.argv[1:]
 job=os.path.join(root,"native-scenario-jobs",env,scenario,corr)
 def unknown(): print(json.dumps({"state":"unknown","correlationId":corr},separators=(",",":"))); raise SystemExit(0)
@@ -158,6 +158,9 @@ def read(name):
   if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>4*1024*1024: unknown()
   raw=os.read(fd,4*1024*1024+1)
   if len(raw)!=info.st_size: unknown()
+  if name=="scenario-receipt.json":
+   global receipt_raw
+   receipt_raw=raw
   value=json.loads(raw)
   if not isinstance(value,dict): unknown()
   return value
@@ -169,8 +172,8 @@ try:
  expected={"scenarioId":scenario,"host":host,"environment":env,"bundleHash":bundle_hash,"artifactIds":json.loads(artifact_json),"correlationId":corr}
  if any(intent.get(k)!=v or wrapper.get(k)!=v for k,v in expected.items()): unknown()
  identity=intent.get("identity")
- if not isinstance(identity,dict) or identity.get("pid")!=int(pid) or identity.get("startTicks")!=int(ticks): unknown()
- if wrapper.get("pid")!=int(pid) or wrapper.get("startTicks")!=int(ticks): unknown()
+ if not isinstance(identity,dict) or any(type(identity.get(k)) is not int for k in ("pid","startTicks")) or identity.get("pid")!=int(pid) or identity.get("startTicks")!=int(ticks): unknown()
+ if any(type(wrapper.get(k)) is not int for k in ("pid","startTicks","exitCode")) or wrapper.get("pid")!=int(pid) or wrapper.get("startTicks")!=int(ticks): unknown()
  if receipt.get("schema")!="vpn-control.linux-scheduled-refresh.receipt" or receipt.get("scenarioId")!=scenario or receipt.get("correlationId")!=corr: unknown()
  cleanup=receipt.get("cleanup"); preflight=receipt.get("preflight")
  if not isinstance(cleanup,dict): unknown()
@@ -196,7 +199,15 @@ try:
  traffic=receipt.get("traffic")
  if isinstance(traffic,dict):
   summary["traffic"]={key:flag(traffic,key) for key in ("oldPortContinuity","portMigrated","postTransitionTraffic")}
- print(json.dumps(summary,separators=(",",":")))
+ # Retain the actual complete guest receipt in the private caller payload.
+ # Existing transport budget stays 8192. A larger receipt remains immutable
+ # on the guest and its observation is explicitly partial/UNKNOWN.
+ summary['actualReceiptRaw']=receipt_raw.decode('utf-8')
+ summary['actualReceiptSha256']=hashlib.sha256(receipt_raw).hexdigest()
+ complete=json.dumps(summary,separators=(',',':'),ensure_ascii=False,allow_nan=False)
+ if len(complete.encode('utf-8'))>8192:
+  print(json.dumps({'state':'unknown','correlationId':corr,'partial':True,'reason':'collector_output_limit','originalRetained':True,'originalReceiptSha256':hashlib.sha256(receipt_raw).hexdigest()},separators=(',',':')))
+ else:print(complete)
 except Exception: unknown()'''
 
 
@@ -246,7 +257,7 @@ class NativeScheduledRefreshSshDriver(native_scenario_ssh.NativeScenarioSshDrive
                 plan.host, plan.environment, plan.scenario_id, plan.correlation_id, plan.bundle_hash,
                 json.dumps(dict(plan.artifact_ids), sort_keys=True, separators=(",", ":")),
                 str(identity.pid), str(identity.start_ticks)), None)
-            return result if result and result.get("state") == "collected" and result.get("correlationId") == plan.correlation_id else None
+            return result if result and result.get("state") in {"collected", "unknown"} and result.get("correlationId") == plan.correlation_id else None
         except (OSError, ValueError, ssh_transport.SshConfigError):
             return None
 

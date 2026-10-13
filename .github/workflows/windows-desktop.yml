@@ -12,11 +12,19 @@ on:
         description: Canonical UUID binding one immutable MSI fixture dispatch
         required: false
         type: string
+      agent_test_baseline:
+        description: Comparison commit for affected agent tests (package-only dispatch defaults to current SHA)
+        required: false
+        type: string
   push:
     branches:
       - dev
   pull_request:
     paths:
+      - "agent_tools/affected_agent_tests.py"
+      - "agent_tools/affected_agent_test_dependencies.json"
+      - "agent_tools/agent_test_runner.py"
+      - "agent_tools/tests/test_affected_agent_tests.py"
       - ".gitattributes"
       - "agent_tools/tests/test_historical_fixture_checkout_bytes.py"
       - "agent_tools/tests/fixtures/**/*.source"
@@ -182,7 +190,9 @@ jobs:
         run: ./scripts/check_release_hygiene.sh
 
       - name: Verify native managed-check locking and receipts
-        run: python -m unittest agent_tools.tests.test_managed_check_lease agent_tools.tests.test_mcp_server.FingerprintTest agent_tools.tests.test_historical_fixture_checkout_bytes
+        env:
+          AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.agent_test_baseline || github.sha) || '' }}
+        run: python agent_tools/affected_agent_tests.py --run --include agent_tools.tests.test_managed_check_lease agent_tools.tests.test_mcp_server.FingerprintTest agent_tools.tests.test_historical_fixture_checkout_bytes
 
       - name: Require native Windows PowerShell for causal guards
         run: python -c "import os, shutil; assert os.name == 'nt' and shutil.which('powershell.exe'), 'Native Windows PowerShell is required'"
@@ -190,10 +200,12 @@ jobs:
       - name: Verify Windows PowerShell5.1 Hashtable sum and progress oracle
         run: python scripts/test_windows_native_fixture.py WindowsHashtableSumTest
 
-      - name: Verify CP117 PowerShell causal guards
+      - name: Verify affected CP117 PowerShell causal guards
         shell: pwsh
+        env:
+          AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.agent_test_baseline || github.sha) || '' }}
         run: >-
-          python -m unittest
+          python agent_tools/affected_agent_tests.py --run --include
           agent_tools.tests.test_windows_diagnostic_authority_capture.PrivateExceptionChainTests
           agent_tools.tests.test_windows_cp117_c32_absence.C32AbsenceTests.test_windows_trigger_guard_accepts_only_empty_or_single_null
           agent_tools.tests.test_windows_cp117_c32_absence.C32AbsenceTests.test_windows_result_decoder_accepts_only_utf8_with_optional_bom

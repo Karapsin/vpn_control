@@ -21,7 +21,7 @@ import time
 from uuid import UUID
 
 PURPOSE = "linux-package-fixture-build"
-REVIEWED_BUILD_SHA256 = "874b7be8d70e917553d466ed2b8ad71419dec5f21bfd3092060f16180c284cf5"
+REVIEWED_BUILD_SHA256 = "95e3749be6f397dfa6d9435c04ec7fda225713bc1b6ec7eeca9736edd43ca966"
 MAX_RESULT = 3 * 1024**3 + 16384
 
 

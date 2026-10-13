@@ -29,7 +29,7 @@ from . import linux_package_fixture_build as build
 from . import ssh_tmux_session as session
 from . import ssh_transport
 
-TOOL_SHA = "0b865df3b9c5221229f4bd3c6f49a63c569a609d6258a269ab92c61b013a41fb"
+TOOL_SHA = "d2d878b2f89b56020a0a20b76236dda0b826384c4159c9a47aaaaf0af0e910c3"
 BUILD_SHA = session.REVIEWED_BUILD_SHA256
 REMOTE_ROOT = "/home/kardinal/.vpn-control-linux-package-fixture"
 MAX_RESPONSE = 2 * 1024**2
@@ -218,15 +218,19 @@ def command(program):
 
 
 class TmuxArchDriver:
-    def __init__(self, root, *, source_root=None):
+    # Original sparse legacy adapters carry no engineering context.
+    engineering_context = None
+
+    def __init__(self, root, *, source_root=None, engineering_context=None):
         need(os.name == "posix" and resource is not None, "unsupported_coordinator_platform")
         self.root = Path(root).resolve(strict=True)
         self.source_root = build._source_root(self.root, source_root)
+        self.engineering_context = engineering_context
 
     def _tools(self):
         values = {}
         for name, sha in (("ssh_tmux_session.py", TOOL_SHA), ("linux_package_fixture_build.py", BUILD_SHA)):
-            raw, pin = blob(self.root / "agent_tools" / name)
+            raw, pin = blob((self.source_root if self.engineering_context is not None else self.root) / "agent_tools" / name)
             need(pin["sha256"] == sha, "unreviewed_tool_source")
             values[name] = {"pin": pin, "raw": raw}
         return values
@@ -262,22 +266,32 @@ class TmuxArchDriver:
         need(directory is not None, "coordinator_journal_missing")
         return directory / request["correlationId"]
 
-    def _snapshot(self, request):
+    def _snapshot(self, request, *, admission=False):
+        if self.engineering_context is not None:
+            self.engineering_context.revalidate(self.source_root, request, admission=admission)
         tools = self._tools(); unused, transport = self._transport()
-        return {"request": request, "coordinator": self._records(request), "transport": transport,
+        result = {"request": request, "coordinator": self._records(request), "transport": transport,
                 "tools": {key: value["pin"] for key, value in tools.items()},
                 "adapterSource": blob(Path(__file__).resolve())[1],
                 "transportSource": blob(Path(ssh_transport.__file__).resolve())[1]}
+        if self.engineering_context is not None:
+            result["engineeringContextSha256"] = hashlib.sha256(self.engineering_context.authority).hexdigest()
+        return result
 
-    def _guard(self, request, original):
-        need(self._snapshot(request) == original, "admission_changed")
+    def _guard(self, request, original, *, admission=False):
+        current = (self._snapshot(request) if self.engineering_context is None else
+                   self._snapshot(request, admission=admission))
+        need(current == original, "admission_changed")
 
-    def _saved(self, request):
+    def _saved(self, request, *, admission=False):
         job = self._job(request); session.private_dir(job)
         raw, unused = session.read(job / "tmux-adapter-intent.json")
         value = json.loads(raw)
         need(value.get("request") == request, "adapter_intent_changed")
-        self._guard(request, value)
+        if self.engineering_context is None:
+            self._guard(request, value)
+        else:
+            self._guard(request, value, admission=admission)
         return job, value
 
     def _query(self, program, payload, *, job=None, guard=None):
@@ -349,7 +363,11 @@ class TmuxArchDriver:
 
     def preflight(self, raw):
         request = build._request(raw)
-        admitted = build.preflight(self.root, request, source_root=self.source_root)
+        if self.engineering_context is None:
+            admitted = build.preflight(self.root, request, source_root=self.source_root)
+        else:
+            admitted = build.preflight(self.root, request, source_root=self.source_root,
+                                       engineering_context=self.engineering_context)
         dependency = self.availability()
         return {**admitted, "state": "ready" if dependency["available"] else "blocked",
                 "reason": dependency["reason"], "nativeActionAllowed": False}
@@ -358,8 +376,16 @@ class TmuxArchDriver:
         request = build._request(raw)
         # Reuse mandatory clean exact origin/dev version admission, including the
         # existing same-Git managed worktree constraint; no dirty-source bypass.
-        build._source_preflight(self.source_root, request)
-        original = self._snapshot(request); job = self._job(request)
+        if self.engineering_context is None:
+            build._source_preflight(self.source_root, request)
+        else:
+            build._source_preflight(self.source_root, request, engineering_context=self.engineering_context)
+            need(self.root == self.engineering_context.coordinator_root, "engineering_storage_root_changed")
+            self.engineering_context.require_native_consumers((Path(__file__), Path(build.__file__),
+                Path(session.__file__), Path(ssh_transport.__file__)))
+        original = (self._snapshot(request) if self.engineering_context is None else
+                    self._snapshot(request, admission=True))
+        job = self._job(request)
         job.mkdir(mode=0o700)  # Any existing/partial attempt is consumed.
         intent_pin = session.write_once(job / "tmux-adapter-intent.json", session.canonical(original))
         job_pin = session.private_dir(job)
@@ -367,7 +393,10 @@ class TmuxArchDriver:
         payload = {"request": purpose(request), "build": base64.b64encode(tools["linux_package_fixture_build.py"]["raw"]).decode(),
                    "tool": base64.b64encode(tools["ssh_tmux_session.py"]["raw"]).decode()}
         def guard():
-            self._guard(request, original)
+            if self.engineering_context is None:
+                self._guard(request, original)
+            else:
+                self._guard(request, original, admission=True)
             need(session.private_dir(job) == job_pin and
                  session.read(job / "tmux-adapter-intent.json")[1] == intent_pin, "local_authority_changed")
         stage = self._query(_STAGE, payload, job=job, guard=guard)
@@ -385,7 +414,9 @@ class TmuxArchDriver:
         return {"state": "submitted", "correlationId": request["correlationId"]}
 
     def _action(self, request, action, **fields):
-        job, original = self._saved(request)
+        mutation = action in {"prepare", "release"}
+        job, original = (self._saved(request) if self.engineering_context is None else
+                         self._saved(request, admission=mutation))
         job_pin = session.private_dir(job)
         intent_pin = session.read(job / "tmux-adapter-intent.json")[1]
         stage_raw, stage_pin = session.read(job / "tmux-stage.json")
@@ -397,7 +428,10 @@ class TmuxArchDriver:
             payload["anchorPin"] = json.loads(anchor_raw)["anchorPin"]; pins["anchor"] = anchor_pin
         payload.update(fields)
         def guard():
-            self._guard(request, original)
+            if self.engineering_context is None:
+                self._guard(request, original)
+            else:
+                self._guard(request, original, admission=mutation)
             need(session.private_dir(job) == job_pin and
                  session.read(job / "tmux-adapter-intent.json")[1] == intent_pin, "local_authority_changed")
             need(session.read(job / "tmux-stage.json")[1] == pins["stage"] and
@@ -405,7 +439,9 @@ class TmuxArchDriver:
         return self._query(_ACTION, payload, job=job, guard=guard)
 
     def release(self, raw):
-        request = build._request(raw); job, unused = self._saved(request)
+        request = build._request(raw)
+        job, unused = (self._saved(request) if self.engineering_context is None else
+                       self._saved(request, admission=True))
         # Lost replies never call release again; status remains available.
         session.write_once(job / "tmux-release-intent.json", session.canonical({"request": request}))
         value = self._action(request, "release")

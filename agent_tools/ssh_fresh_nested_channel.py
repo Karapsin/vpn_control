@@ -28,8 +28,9 @@ from . import ssh_nested_socket_owned_home_observation as owned_home
 
 def validated_unknown(result):
     required={'state','nativeActionAllowed','replayAllowed','correlationId'}
-    optional={'failurePhase','failureReason','exceptionClass','errno'}
+    optional={'failurePhase','failureReason','exceptionClass','errno','reason'}
     if not isinstance(result,dict) or not required<=set(result) or not set(result)<=required|optional or result['state']!='unknown' or result['nativeActionAllowed'] is not False or result['replayAllowed'] is not False or not isinstance(result['correlationId'],str) or re.fullmatch('[0-9a-f]{32}',result['correlationId']) is None:raise ValueError('unknown_dto')
+    if 'reason' in result and (type(result['reason'])is not str or result['reason'] not in {'outer_prompt_unavailable','credential_unavailable','intent_absent','intent_binding_changed'}):raise ValueError('unknown_dto')
     if 'failurePhase' in result and (not isinstance(result['failurePhase'],str) or result['failurePhase'] not in _PUBLIC_PHASES):raise ValueError('unknown_dto')
     fields=set(result)&{'failureReason','exceptionClass','errno'}
     if fields and (fields!={'failureReason','exceptionClass','errno'} or 'failurePhase' not in result or not isinstance(result['failureReason'],str) or result['failureReason'] not in _REMOTE_REASONS or not isinstance(result['exceptionClass'],str) or result['exceptionClass'] not in _EXCEPTION_CLASSES or (result['errno'] is not None and (type(result['errno'])is not int or not 0<=result['errno']<=255))):raise ValueError('unknown_dto')
@@ -366,6 +367,8 @@ _REVIEWED_ENDED_DIRECT_PROVIDER='b957d4b6bf37ca0c603f09f7df757284a56f04270653315
 _REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER='f569a8b606d207b4d5a5623cc580216a595f2826ed93ebca5f2ab38cb1a55663'
 _REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER='b1a91629fe22e04a5f347af7047cfe4df8197274b3a7e2b8a1723703014295fd'
 _REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER='a78e779e21716a9ccf2ab96330f47a0342308d215749f7b90a13f1a8c80b52ed'
+_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER='dcb5714fc706482826e5d5238cee19b22c64f06084a5a4e8610c5a53e4fbba68'
+_REVIEWED_DIRECT_ANDROID_WRAPPER_MCP='9df8d8600b67c6d6161673cc5bfefa77af205b5dfa8adfcd3a52bc1107d52f58'
 _REVIEWED_DIRECT_CHECKPOINT74_MCP='60634d64854d5be19af49d0204412037eb56fd02e74d586da50d8a0920674893'
 _REVIEWED_DIRECT_CHECKPOINT74_TRANSPORT='00bcf88a41031ee11bd356dafc2ceda5ef609fa10471c9f9ed710fa084596db4'
 _REVIEWED_DIRECT_CHECKPOINT74_BEFORE_TRANSPORT='6e4e9bfcdf620dab84cec100a4990121198fc95b331e0468adf8b79fb2e9e372'
@@ -385,16 +388,26 @@ def _ended_direct_intent_matches(previous,current):
     if type(old)is not dict or type(new)is not dict or set(old)!=set(direct_channel._SOURCE_NAMES) or set(new)!=set(old):return False
     if any(type(x)is not str or re.fullmatch('[0-9a-f]{64}',x)is None for x in [*old.values(),*new.values()]):return False
     if current.get('sourceSha256')!=_source() or new.get('ssh_fresh_nested_channel.py')!=current['sourceSha256']:return False
-    if previous.get('sourceSha256') not in (_source(),_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER,_REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER,_REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER) or old.get('ssh_fresh_nested_channel.py')!=previous['sourceSha256']:return False
+    if previous.get('sourceSha256') not in (_source(),_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER,_REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER,_REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER,_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER) or old.get('ssh_fresh_nested_channel.py')!=previous['sourceSha256']:return False
     from . import native_review_source_closure as source_closure
     if new.get('native_review_source_closure.py')!='0fac471b05e0e784913f5508a5d90b279fbc48c96751b83082d1f9c14cef95ae' or hashlib.sha256(Path(source_closure.__file__).read_bytes()).hexdigest()!=new['native_review_source_closure.py']:return False
+    # The reviewed Android observation wrapper is the only new MCP byte edge.
+    # The original provider/source population remains fixed; all other pins,
+    # authority, inventory and typed fields must match. Callers prove ENDED custody.
+    if (previous.get('sourceSha256')==_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER
+            and old.get('mcp_server.py')==_REVIEWED_DIRECT_CHECKPOINT74_MCP
+            and new.get('mcp_server.py')==_REVIEWED_DIRECT_ANDROID_WRAPPER_MCP):
+        if hashlib.sha256(Path(direct_channel.__file__).with_name('mcp_server.py').read_bytes()).hexdigest()!=_REVIEWED_DIRECT_ANDROID_WRAPPER_MCP:return False
+        normalized={**old,'ssh_fresh_nested_channel.py':new['ssh_fresh_nested_channel.py'],'mcp_server.py':new['mcp_server.py']}
+        return normalized==new and json.dumps({**previous,'sourceSha256':current['sourceSha256'],'directSourcePins':new},sort_keys=True)==json.dumps(current,sort_keys=True)
+    if previous.get('sourceSha256')==_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER:return False
     # Checkpoint74 is a finite reviewed ENDED-only source population bridge.
     # No intent, route, inventory, authority or remote-program byte is rewritten.
-    if new.get('mcp_server.py')==_REVIEWED_DIRECT_CHECKPOINT74_MCP and new.get('ssh_transport.py')==_REVIEWED_DIRECT_CHECKPOINT74_TRANSPORT and (old.get('mcp_server.py')!=new['mcp_server.py'] or old.get('ssh_transport.py')!=new['ssh_transport.py']):
+    if new.get('mcp_server.py') in (_REVIEWED_DIRECT_CHECKPOINT74_MCP,_REVIEWED_DIRECT_ANDROID_WRAPPER_MCP) and new.get('ssh_transport.py')==_REVIEWED_DIRECT_CHECKPOINT74_TRANSPORT and (old.get('mcp_server.py')!=new['mcp_server.py'] or old.get('ssh_transport.py')!=new['ssh_transport.py']):
         population=_REVIEWED_DIRECT_CHECKPOINT74_POPULATIONS.get(previous.get('sourceSha256'))
         if population is None or (old.get('mcp_server.py'),old.get('ssh_direct_nested_channel.py'),old.get('native_review_source_closure.py'))!=population or old.get('ssh_transport.py')!=_REVIEWED_DIRECT_CHECKPOINT74_BEFORE_TRANSPORT:return False
         if new.get('ssh_direct_nested_channel.py')!='5b82a0a63fbd2fbc44aa4203c76060ede36236a11cdc8399e186bf7c69cc2ff3':return False
-        for name,digest in (('mcp_server.py',_REVIEWED_DIRECT_CHECKPOINT74_MCP),('ssh_transport.py',_REVIEWED_DIRECT_CHECKPOINT74_TRANSPORT),('ssh_direct_nested_channel.py','5b82a0a63fbd2fbc44aa4203c76060ede36236a11cdc8399e186bf7c69cc2ff3')):
+        for name,digest in (('mcp_server.py',new['mcp_server.py']),('ssh_transport.py',_REVIEWED_DIRECT_CHECKPOINT74_TRANSPORT),('ssh_direct_nested_channel.py','5b82a0a63fbd2fbc44aa4203c76060ede36236a11cdc8399e186bf7c69cc2ff3')):
             if hashlib.sha256(Path(direct_channel.__file__).with_name(name).read_bytes()).hexdigest()!=digest:return False
         normalized={**old,'ssh_fresh_nested_channel.py':new['ssh_fresh_nested_channel.py'],'mcp_server.py':new['mcp_server.py'],'ssh_transport.py':new['ssh_transport.py'],'ssh_direct_nested_channel.py':new['ssh_direct_nested_channel.py'],'native_review_source_closure.py':new['native_review_source_closure.py']}
         return normalized==new and json.dumps({**previous,'sourceSha256':current['sourceSha256'],'directSourcePins':new},sort_keys=True)==json.dumps(current,sort_keys=True)
@@ -475,6 +488,29 @@ def _original6b_status_admission(root,stack,directory,config_source,held,actual,
     return program,guard,terminal_publication
 
 
+def _retained_direct_ended(stack,directory,held,previous,current):
+    """Original positive terminal evidence only; no current remote readiness."""
+    if not _ended_direct_intent_matches(previous,current):return False
+    corr=current['correlationId']
+    if not all(os.path.lexists(directory.path/(corr+'.'+name+'.json')) for name in ('terminal','ready')):return False
+    terminal=stack.enter_context(private.Snapshot(directory,corr+'.terminal.json'))
+    ended=json.loads(terminal.body,object_pairs_hook=transport._reject_duplicate_keys)
+    if (type(ended)is not dict or set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'}
+            or ended['state']!='ended' or ended['correlationId']!=corr or ended['intentSha256']!=held.digest
+            or type(ended['receiptSha256'])is not str):return False
+    ready=stack.enter_context(private.Snapshot(directory,corr+'.ready.json'))
+    receipt=json.loads(ready.body,object_pairs_hook=transport._reject_duplicate_keys)
+    if (ended['receiptSha256']!=ready.digest or type(receipt)is not dict or set(receipt)!={'intent','result'}
+            or json.dumps(receipt['intent'],sort_keys=True)!=json.dumps(held.pin(),sort_keys=True)):return False
+    prior=receipt['result']
+    if (type(prior)is not dict or set(prior)!={'state','correlationId','master','arch','controlPath'}
+            or prior['state']!='ready' or prior['correlationId']!=corr or prior['controlPath']!='/tmp/vpn-channel-'+corr+'/m'
+            or json.dumps(prior['arch'],sort_keys=True)!=json.dumps({'uid':EXPECTED_UID,'boot':EXPECTED_BOOT},sort_keys=True)
+            or not _master_shape(prior['master']) or ended['gatewayBoot']!=prior['master']['gatewayBoot']):return False
+    def guard():held.guard();ready.guard();terminal.guard()
+    guard();return guard
+
+
 def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inventory_diagnostic=None,*,direct=False):
     phase='input'
     try:
@@ -529,7 +565,7 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                     if set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'} or ended['state']!='ended' or ended['correlationId']!=prior_id:return _public()
                     old_intent=stack.enter_context(private.Snapshot(channel_dir,name))
                     old_value=json.loads(old_intent.body,object_pairs_hook=transport._reject_duplicate_keys)
-                    if ended['intentSha256']!=old_intent.digest or (old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) and not (direct and old_value.get('sourceSha256') in (_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER,_REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER,_REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER))) or (not direct and old_value.get('inventory')!=config_source.pin()):return _public()
+                    if ended['intentSha256']!=old_intent.digest or (old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) and not (direct and old_value.get('sourceSha256') in (_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER,_REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER,_REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER,_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER))) or (not direct and old_value.get('inventory')!=config_source.pin()):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9A and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9A):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9527 and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9527):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_012:
@@ -563,6 +599,14 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             expected={**intent,binding_key:original_outer}
             original_observation=None
             if actual!=expected or (direct and original_outer!=outer_receipt):
+                retained=_retained_direct_ended(stack,channel_dir,held,actual,intent) if direct and not prepare and original_outer==outer_receipt else None
+                if retained:
+                    # Report the immutable original terminal; no SSH, publication,
+                    # renewal, selection or application operation is performed.
+                    presented.guard();ownership.guard();config_source.guard();held.guard();channel_dir.guard();direct_guard.guard()
+                    if _source()!=source_sha or asdict(transport.load_config(root))!=asdict(config):raise ValueError('source_or_config_changed')
+                    retained();direct_guard.guard();retained()
+                    return _public('ended',correlationId=correlation_id)
                 if direct and not prepare and correlation_id==_ORIGINAL6B:
                     original_observation=_original6b_status_admission(root,stack,channel_dir,config_source,held,actual,intent,direct_guard)
                 if original_observation is None:return _public(reason='intent_binding_changed')

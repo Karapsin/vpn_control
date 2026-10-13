@@ -1,5 +1,147 @@
 # Parity Failure-to-Regression Ledger
 
+## Execution optimization regressions — 2026-10-13
+
+The next complete managed attempt at fingerprint25fc8fb5 ran6216 tests:
+8 failures,12 errors and167 explicit skips. All266 failed identities retained
+from the preceding cancelled run passed. Its five complete output capsules and
+worker/session closure are authenticated in
+`.runtime/root-optimization-final-prepush-appw878r/terminal-output-authenticated.json`.
+It is a failed validation, not a reusable receipt.
+
+Three remaining causes were measured. A current launcher test still asserted the
+previous195ec42b helper hash; the exact case is RED before a one-literal update
+to independently reviewed95e3749b, then24/24 module checks pass. Historical source
+pins are unchanged; evidence is `.runtime/tmux-current-gate-repair-ik1x8wpt`.
+An import-root test still required discovery commands after selective planning.
+Its original focused/prepush assertions are RED; the repaired existing case
+executes missing-root negative discovery, repository-root positive discovery,
+actual MCP named commands and the actual Fast Checks helper on a tiny Git fixture
+with a conflicting `tests/scripts.py`. Canonical GREEN takes0.630s, avoiding the
+original156.563s whole-repository import probe. Evidence and beforeimages are in
+`.runtime/unittest-import-root-repair-nfik78ls`; no import guard is waived.
+
+The short Darwin worker prefix still leaves deeper Windows fixture socket names
+too long. Independent unchanged16-case reproduction has5 failures/12 errors at
+the managed depth and16 passes under a shorter owned root, both UID503/GID20.
+Measured socket lengths include CP117111→67, pair113→69, repair118→74,
+tertiary112→68 and secureboot121→77 bytes. Original limits and fixtures remain
+unchanged. Evidence is `.runtime/windows-fixture-failure-repair-deb8ffc4-d30b-43f7-9b2c-750346160d01`.
+The independently reviewed shared correction reserves a short canonical
+`/private/tmp` root on macOS and sets the current group only through its held
+newly owned directory descriptor. Named generations are checked before and after,
+and the descriptor closes in `finally`. Quarantine, source guards and reaping are
+unchanged. The existing socket control now binds the actual nested repair and
+secureboot path shapes:120-byte failure on the preserved runner, GREEN on the
+correction. All25 controls and the same16 Windows cases pass without skips;
+evidence is `.runtime/runner-deep-socket-repair-a0sydwlw`, with independent review
+`.runtime/runner-deep-socket-review-3a8d7523-cd39-4f78-bf38-0401f3ca4d09/report.json`.
+Platform acceptance remains on hold until final managed validation and delivery.
+
+The next managed run at fingerprint9481d56b exposed a runner isolation defect:
+its synthetic temporary roots were inside the checkout's private history tree.
+The unchanged historical guard correctly refused that location. Long paths also
+exceeded actual AF_UNIX socket limits and inflated a generated component receipt
+past its existing65536-byte cap. Failed channel setup left a shared sleep mock
+active, causing later dispatch and responsiveness failures. The same historical,
+callback, joined-flow, socket and ordered responsiveness cases reproduce RED on
+the retained runner and GREEN with short private system temporary roots. Native
+guards, historical fixtures and payload limits are unchanged.
+
+Independent review reproduced a cleanup race: replacing the reserved directory
+after its generation check made path-based removal delete an independent tree.
+Cleanup now moves into a fresh private quarantine, records its intent and checks
+the moved generation before removal; mismatches retain both evidence and data.
+The identical controlled exchange is RED on the intermediate runner and GREEN
+on the correction. Routine runner controls cover checkout-independent ownership,
+actual socket binding, session closure and the cleanup exchange. Beforeimages,
+raw failures and focused results remain in
+`.runtime/runner-temp-isolation-repair-t8c0ig0x`; independent review is
+`.runtime/runner-temp-review-d866se7y/review.json`.
+
+Root stopped only the positively identified owned local check runner after the
+failed environment and causal corrections were demonstrated. Its managed result
+is cancelled/130, not validation success:3019 partial finished timing events,
+reaped worker and complete child-session absence. All five completed output
+capsules are authenticated in
+`.runtime/root-optimization-prepush-retry-tsyyutbt/terminal-output-authenticated.json`.
+No aggregate unittest count or fresh prepush receipt is inferred from that partial
+run. Final corrected contents require a new managed prepush before delivery.
+
+The first integrated prepush stopped in release hygiene because inserting the
+Windows agent-test baseline before existing fixture inputs broke the exact
+registered fixture interface assertion. Capsuleca95d166 retains the complete
+failure at source fingerprint0b2c9ff8; the entire unfixed YAML is preserved in
+`.runtime/root-optimization-prepush-3ok332g5/windows-desktop.before.yml`.
+The same existing8-test `scripts/test_windows_update_fixture_workflow.py` suite
+had1 actual RED failure and now passes8/8 after moving only the new optional input
+after both existing fixture fields. No workflow behavior, job, baseline meaning or
+product code changes. This causal regression already runs in release hygiene/CI;
+the full managed tier must restart on the corrected final contents.
+
+| Reproduced failure | Actual causal correction and routine scope | Evidence limit |
+| --- | --- | --- |
+| Timing uses an unpinned codec dependency, accepts success after helper drift, projects a custom private test identity or invokes a generic callable through a test selector. | Preserved runner versions fail the same controls. The reviewed runner binds complete source closures, verifies actual used bytes through completion and derives trusted timing identities before execution. Dedicated `test_agent_test_runner` has25 passing controls, including the later temporary-root corrections above. | Four reviewed groups contain18 real tests; median0.416s serial versus0.309s parallel. No broad-suite speedup is claimed. |
+| An interrupted result observer remains collecting forever; replacing its lease inode permits simultaneous collectors; inconsistent cache state promotes terminal; floating PID/ticks compare equal to integer selectors. | The identical controls fail on preserved executor/collector beforeimages and pass after a durable named-generation lease, exact cache state/reason/payload validation and strict integer actor fields. `test_native_scenario_first_observation` and `test_native_collector_payload` exercise actual local threads/processes and inline collector bodies. Independent retake passes22 controls, zero skips. | Raw guest receipt persists privately before projection; oversized or uncertain collection stays UNKNOWN. Local tests do not close old remote readers, replay mutations or satisfy native acceptance. |
+
+Selective checks retain actual RED for product/shared over-selection, mixed
+literal/unknown dynamic imports, selector/JSON source races, stale cached bytecode,
+fixture Markdown omission and Windows registry PR coverage. A computed filename
+escaped repository-looking and `/tmp` prefixes, silently omitting a source consumer.
+The fixed selector requires bounded imported/path provenance or exact consumer-hash
+reviewed finite input scopes; unknown readers refuse. Old/current consumers,
+explicit audits, CI baselines and deletion/rename remain covered. The former unsafe
+reader control now requires reviewed scope instead of accepting arbitrary suffixes.
+
+The independent nine-file policy review passes81 controls at packet17fe54f9;
+all15 changed declarations match physical consumer bytes and actual finite inputs.
+The current broad bundle selects442/499 modules through actual shared dependencies;
+individual tool changes select smaller groups. Root reviewed the separate fixed
+engineering MCP two-hunk delta and exact metadata hash append. Its2 callbacks and
+4 SDK checks pass; combined canonical policy/MCP checks pass110 with one skip.
+Original beforeimages/RED remain under `.runtime/agent-selection-candidate-20261013`;
+final evidence is `.runtime/agent-selection-final-successor-20261013/manifest.json`
+and `.runtime/agent-selection-independent-successor-584cdee5dee74b69a3103e51cf55e12c/review.public.json`.
+The selector, MCP planner/close-gate, baseline and cached-source controls run through
+related checks and applicable CI. No whole-suite fallback or broad speedup claim is
+used; original native acceptance remains required.
+
+The frozen engineering context also has preserved actual causal cases. Holding
+all1938 product files (231,320,860B) open failed at1016 FDs under a1024 soft limit;
+the fixed bounded walk retains native source descriptors, hashes every product
+byte twice and closes named generations at312 peak FDs. Qualification uses33 Git
+processes and revalidation19 rather than1000 before the original failure.
+`test_native_execution_context_performance` keeps that real-scale control.
+
+Matching stale bytecode executed a marker before malformed fixed-producer input
+was rejected, despite unchanged physical helper source. The isolated engineering
+script now redirects cache reads before repository imports. The actual poisoned
+cache control passes without the marker; `-B` alone had only stopped cache writes.
+The current inherited snapshot also forwards strict admission mode; missing
+forwarding had refused the actual engineering submit. These regressions belong to
+`test_native_engineering_entrypoint` and `test_native_engineering_snapshot`.
+`test_native_execution_context` and `test_native_execution_context_gitlink`
+retain actual bytes/index-flag, artifact, target-ref, finite dependency and link
+checks. Unknown parent/child start responses burn the original dispatch identity
+before effects; duplicate start refuses UNKNOWN instead of relaunching.
+
+Independent review verified28 distinct core controls, no skips, plus a real
+LFS pointer/hydrated-byte and same-size/mtime/index-flag tamper case. Original
+beforeimages and RED/GREEN are in `.runtime/execution-optimization-native`.
+The fixed engineering route covers the Linux package builder, starts only from a
+new qualified clean checkpoint, and does not grant arbitrary tooling equivalence,
+other platform admission or final current-source acceptance. Native runs remain
+separate required gates.
+
+Timing beforeimages and executed RED/GREEN are retained under
+`.runtime/agent-test-timing-candidate-20261013`; final independent approval is
+`.runtime/agent-test-timing-final-review-0081e77112ce42ca9a87b4c24faeb757/review.md`.
+Collection beforeimages, original failures and actual controls are retained under
+`.runtime/execution-optimization-native`; independent retake is
+`.runtime/first-observation-rereview-e3249466-fa5c-48a6-bb1f-6940859cb48a/review.json`.
+Related change-scoped agent tests, managed prepush and CI are the routine gates.
+The original platform scenarios remain required after the optimization hold.
+
 ## Host storage interruption of validation — 2026-10-13
 
 Original prepush93117/runner24399/discovery26712 has only four completed current
@@ -4661,3 +4803,134 @@ local child/reader closure are sealed in
 Three new methods enter routine discovery/Fast Checks through the existing test
 module. Terminal-close/use is not claimed as a separately measured failure cause.
 Fresh full prepush and actual native input/update MCP acceptance remain required.
+
+## Retained DIRECT Android wrapper source binding — 2026-10-13
+
+Fresh CLI status of original4a588e0e refused `intent_binding_changed` before SSH
+(native failure41f18693). Its authentic ENDED terminal binds original intent
+4e3120c6 and READY receipta18cd1f9; its reviewed provider isdcb5714f. Only typed
+MCP source changes60634→9df8: nine lines adding qualified Android observation,
+with unchanged outer authority, inventory, remote program and remaining pins.
+
+The finite edge retains original terminal/READY custody. Retained status reports
+only original positive end and never implies current readiness; native actions
+and application replay remain false. Historical bytes are not rewritten. New
+prepare uses a fresh connection correlation after qualified ended history,
+including only the already enumerated predecessor populations. Unknown, live,
+missing, malformed, altered or unreviewed history still refuses.
+
+`test_ssh_direct_retained_wrapper_transition` runs the complete local provider
+with protected journals and historical public Git source bytes. Actual RED on
+the preserved provider and identical GREEN on the candidate cover the retained
+status and new-preparation causes, plus36 controls including source/credential
+and closing-custody fences. Routine discovery, prepush and Fast Checks include
+the module. The original native scenario remains required after integration;
+local positive terminal reporting is historical evidence, not SSH qualification.
+
+## DIRECT local reason constructor mismatch — 2026-10-13
+
+The original Android local status capsule reports non-ready dependency setup;
+its nested exception text is missing, so the masked original cause is unproved.
+A separate fresh CLI observation of original 4a588e0e returned the bounded
+`intent_binding_changed` reason. The current provider emits four closed local
+reasons already recognized by the MCP wrapper, but `validated_unknown` excluded
+its `reason` key. The actual protected local provider/route reproduction proves
+that `direct.route_options` consequently raised plain `unknown_dto` instead of
+retaining `ChannelUnknown` and the bounded cause.
+
+The minimal DTO correction accepts only `outer_prompt_unavailable`,
+`credential_unavailable`, `intent_absent` and `intent_binding_changed`. It adds
+no arbitrary text, route authority, native action or replay permission and
+changes no MCP schema. `test_ssh_direct_route_local_reason` supplies actual
+same-test RED on the preserved source and GREEN on the combined candidate,
+plus 22 controls for malformed/private/unexpected values and ordinary routing.
+It is automatically enrolled in discovery, prepush and Fast Checks. The prior
+36 finite ENDED controls and original source/custody evidence remain intact.
+Root retains native diagnosis and connection qualification ownership; no native
+cause or complete Android acceptance is inferred from the local regression.
+
+## Linux current package-tool pin chain — 2026-10-13
+
+Current collection and session consumers reject the actual195ec42b package
+helper because they expect historical874 bytes; dependent adapter/closure pins
+are stale as well. The current helper includes reviewed native JDK selection
+and actual jpackage launcher admission. Replacing it with the old helper would
+remove required gates. Eight narrowly scoped source/test edits update only the
+current checksum chain. Historical fixture, request, stage and terminal maps
+remain unchanged.
+
+The same five actual source-admission controls produce four RED errors on the
+preserved beforeimages and five GREEN passes on the corrected chain; all52
+focused controls pass with zero skips. Routine discovery/Fast Checks includes
+these controls in the existing modules. Tests now copy actual current bytes
+instead of injecting historical874 bytes under a current-source claim. Source
+and helper drift still refuse without starting a child. Root independently
+reproduced RED/GREEN in
+`.runtime/linux-native-successor-48540b40-a60d-4e26-8a0b-309fe1a272ba/stale-pin-candidate-b592d781-8eee-44b9-af81-0f36345213b3`.
+Actual source staging, package build and original native/MCP scenarios remain
+required; local pin acceptance does not prove connectivity or capacity.
+
+The broader actual306-test tmux run additionally exposed current-consumer
+fixtures inserting historical874 and a diagnostic expecting the pre-fix closure
+hash. Current fixtures now capture actual current bytes through production
+allowlists; the original874 loader and foreground tar/disconnect model remain
+unchanged. The diagnostic, privileged closure and claim bridge require three
+successor checksum constants. Actual `closure_source_changed`,
+`diagnostic_source_changed` and `privileged_source_changed` REDs are preserved.
+The new routine diagnostic chain test exercises actual checksums and refuses
+changed bytes at each consumer. Seven affected modules pass126 tests with no
+skips. Root independently reproduces the original first-gate refusal and reviews
+the six-path successor in the same packet's
+`current-fixture-successor-7f19f0f8-9424-497a-842e-a665386ef5c3` directory.
+
+## Historical Android fixture shared-ancestor noise — 2026-10-13
+
+Full prepush6584 tests reports two historical APK-readback assertions and one
+remaining-proxy setup `coldboot_local_ancestry_changed` error. Authentic failed
+capsulec20dfcda and streams are preserved. Unchanged focused tests pass; full-run
+actor/metadata deltas were not captured. Controlled real sibling-directory
+churn outside the owned TempFS reproduces both mechanisms on preserved source.
+
+APK-readback fixture: identical13 tests produce four RED assertions then GREEN.
+It retries at most three complete actual guarded reads, only for parent_changed
+with unchanged full owned generations and external metadata-only churn. Every
+UNKNOWN is retained and rejected; exhaustion and owned drift refuse. Carrier,
+parser, fixture hashes and proof schemas remain unchanged.
+
+Historical writer fixture: same remaining-case sibling-churn control is actual
+RED then GREEN. Only volatile metadata on exact outside ancestor inodes is a
+declared test seam. Live identity/mode/UID/GID, owned metadata/source bytes,
+create-only writes and FD custody remain guarded. Seven controls and all209
+distinct affected tests pass across retained runs, including inode replacement,
+permission/symlink refusal, owned drift and closed descriptors. One missing
+isolated Kotlin enum input was copied from canonical bytes and rechecked.
+Historical source bytes and production behavior are unchanged; neither test
+model proves native admission. New controls enter routine discovery/Fast Checks.
+Root independent sibling-churn RED is retained, alongside both worker packets.
+
+## Launcher collector fixture ancestry — 2026-10-13
+
+The next full prepush completed6595 tests in2163.407s with175 skips and one
+failure: the current FIFO collector test refused `census_ancestry_changed`
+during source-pin setup. Capsule `08beeabb-cb35-482b-85c7-28dfed2eabe5` and all
+five completed check outputs are authenticated in
+`.runtime/root-linux-parity-integration-9glhl10u/retry-failure-authenticated.public.json`.
+The exact original actor remains unproved. Unchanged focused execution passes;
+controlled real external sibling churn reproduces the actual original guard
+failure on preserved source.
+
+A child-local test facade stabilizes size/mtime/ctime/link metadata only for
+the exact recorded external ancestor inode, mode and principals. Owned metadata,
+bytes, named/held FD identity and symlink checks remain live. No native guard,
+production helper or historical source body changes. The same controlled case
+is RED before and GREEN after; independent review reproduces both with zero
+tracked FDs. Original FIFO old-hang/new-refusal and155-file old-EMFILE/new-shared
+controls retain their causal value. Canonical focused execution passes20 tests
+with one honest Linux-only subreaper skip.
+
+Nine new controls in `test_android_launcher_collector_ancestry.py` enter ordinary
+agent-tool discovery and change-scoped selection. Evidence and beforeimages:
+`.runtime/launcher-collector-ancestry-71rmdqf7` and
+`.runtime/launcher-collector-ancestry-review-d0985f40-1c2f-41f8-a061-5ce2439d7a8c`.
+This declares a fixture view; it neither proves native admission nor excuses a
+changed live ancestor during the original native scenario.

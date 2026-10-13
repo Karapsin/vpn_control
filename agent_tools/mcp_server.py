@@ -7,6 +7,7 @@ import functools
 from datetime import date
 import hashlib
 import importlib
+import importlib.util
 import json
 import os
 import re
@@ -34,6 +35,26 @@ local_build_environment = importlib.import_module(
 )
 managed_check_lease = importlib.import_module(f"{__package__ or 'agent_tools'}.managed_check_lease")
 check_output_retention = importlib.import_module(f"{__package__ or 'agent_tools'}.check_output_retention")
+_SELECTOR_IMPORT_BYTES = {
+    path: path.read_bytes()
+    for path in (Path(__file__).resolve().with_name("affected_agent_tests.py"),
+                 Path(__file__).resolve().with_name("affected_agent_test_dependencies.json"))
+}
+_SELECTOR_IMPORT_DIGESTS = {path: hashlib.sha256(raw).hexdigest() for path, raw in _SELECTOR_IMPORT_BYTES.items()}
+_SELECTOR_SOURCE_PATH = Path(__file__).resolve().with_name("affected_agent_tests.py")
+_SELECTOR_MODULE_NAME = f"{__package__ or 'agent_tools'}.affected_agent_tests"
+# Execute the captured source itself: a timestamp-valid .pyc cannot qualify old
+# executed policy under a newer source digest. Relative imports retain identity.
+_SELECTOR_SPEC = importlib.util.spec_from_file_location(_SELECTOR_MODULE_NAME, _SELECTOR_SOURCE_PATH)
+affected_agent_tests = importlib.util.module_from_spec(_SELECTOR_SPEC)
+sys.modules[_SELECTOR_MODULE_NAME] = affected_agent_tests
+exec(compile(_SELECTOR_IMPORT_BYTES[_SELECTOR_SOURCE_PATH], str(_SELECTOR_SOURCE_PATH), "exec"), affected_agent_tests.__dict__)
+setattr(sys.modules[__package__ or "agent_tools"], "affected_agent_tests", affected_agent_tests)
+_SELECTOR_IMPORT_CHANGED = (
+    any(hashlib.sha256(path.read_bytes()).hexdigest() != digest for path, digest in _SELECTOR_IMPORT_DIGESTS.items())
+    or affected_agent_tests.LOADED_SELECTOR_SOURCE_SHA256 != _SELECTOR_IMPORT_DIGESTS[Path(affected_agent_tests.__file__).resolve()]
+    or affected_agent_tests.LOADED_DEPENDENCY_MANIFEST_SHA256 != _SELECTOR_IMPORT_DIGESTS[affected_agent_tests.DEPENDENCY_MANIFEST.resolve()]
+)
 
 # A daemon can outlive edits to the check runner or its imported dependencies.
 # Bind the loaded implementation, rather than treating current disk bytes as
@@ -45,8 +66,13 @@ _CHECK_RUNNER_SOURCE_DIGESTS = {
         Path(local_build_environment.__file__).resolve(),
         Path(managed_check_lease.__file__).resolve(),
         Path(check_output_retention.__file__).resolve(),
+        Path(affected_agent_tests.__file__).resolve(),
+        affected_agent_tests.DEPENDENCY_MANIFEST.resolve(),
+        Path(__file__).resolve().with_name("agent_test_runner.py"),
     )
 }
+_CHECK_RUNNER_SOURCE_DIGESTS.update(_SELECTOR_IMPORT_DIGESTS)
+_CHECK_RUNNER_SOURCE_DIGESTS[affected_agent_tests.DEPENDENCY_MANIFEST.resolve()] = affected_agent_tests.LOADED_DEPENDENCY_MANIFEST_SHA256
 
 try:  # The repository tests intentionally run without the optional MCP package.
     from mcp.server.fastmcp import FastMCP
@@ -141,7 +167,6 @@ FOCUSED_COMMANDS: dict[str, list[list[str]]] = {
     ],
     "docs": [["git", "diff", "--check"], ["./scripts/check_docs_hygiene.sh"]],
     "agent_tools": [
-        [AGENT_TEST_PYTHON, "-m", "unittest", "discover", "-s", "agent_tools/tests", "-t", "."],
         ["./scripts/check_docs_hygiene.sh"],
     ],
 }
@@ -150,8 +175,6 @@ PREPUSH_COMMANDS = [
     ["git", "diff", "--check"],
     ["./scripts/check_release_hygiene.sh"],
     ["./scripts/check_docs_hygiene.sh"],
-    [AGENT_TEST_PYTHON, "-m", "unittest", "agent_tools.tests.test_ssh_connection_session_close"],
-    [AGENT_TEST_PYTHON, "-m", "unittest", "discover", "-s", "agent_tools/tests", "-t", "."],
     [sys.executable, "scripts/check_ui_theme.py"],
     [sys.executable, "scripts/test_visual_regression.py"],
     [sys.executable, "scripts/test_visual_platform.py"],
@@ -409,7 +432,11 @@ def run_checks(
     if source_error:
         return source_error
     selected_area = _infer_area("validation", None if area == "auto" else area, _changed_paths())
-    commands = _commands_for(selected_area, level)
+    planned_fingerprint = _snapshot_fingerprint() if level == "prepush" else None
+    try:
+        commands = _commands_for(selected_area, level)
+    except affected_agent_tests.SelectionError as error:
+        return _error("run_checks", str(error), blockers=[{"phase": "agent-test-selection", "state": "unresolved"}])
     if dry_run:
         return {
             "ok": True,
@@ -420,12 +447,15 @@ def run_checks(
 
     try:
         with managed_check_lease.acquire(REPO_ROOT):
-            return _run_check_commands(selected_area, level, commands)
+            return _run_check_commands(selected_area, level, commands, planned_fingerprint)
     except managed_check_lease.ManagedCheckLeaseError as error:
         return _error("run_checks", str(error), blockers=[{"phase": "check-lease", "state": error.state}])
 
 
 def _check_runner_source_error(**extra: Any) -> dict[str, Any] | None:
+    if _SELECTOR_IMPORT_CHANGED:
+        return _error("run_checks", "Selector or dependency metadata changed during import; use a fresh process.",
+                      blockers=[{"phase": "check-source", "state": "changed-during-load"}], **extra)
     for path, loaded_digest in _CHECK_RUNNER_SOURCE_DIGESTS.items():
         try:
             current_digest = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -445,8 +475,16 @@ def _check_runner_source_error(**extra: Any) -> dict[str, Any] | None:
     return None
 
 
-def _run_check_commands(selected_area: str, level: str, commands: list[list[str]]) -> dict[str, Any]:
+def _agent_test_runtime_command(command, fingerprint):
+    if len(command) >= 4 and command[1:3] == ["-m", "unittest"]:
+        fingerprint = _snapshot_fingerprint()
+    return affected_agent_tests.prepare_run(REPO_ROOT, command, fingerprint)
+
+
+def _run_check_commands(selected_area: str, level: str, commands: list[list[str]], planned_fingerprint: str | None = None) -> dict[str, Any]:
     checked_fingerprint = _snapshot_fingerprint() if level == "prepush" else None
+    if planned_fingerprint is not None and planned_fingerprint != checked_fingerprint:
+        return _error("run_checks", "Repository contents changed after planning; regenerate the check plan.")
     results = []
     output_fingerprint = checked_fingerprint or hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     for index, command in enumerate(commands):
@@ -457,7 +495,11 @@ def _run_check_commands(selected_area: str, level: str, commands: list[list[str]
             return check_output_retention.retain_completed_output(
                 REPO_ROOT, label=f"{level}-{index}", returncode=returncode,
                 stdout=stdout, stderr=stderr, source_fingerprint=output_fingerprint)
-        result = _run(command, timeout=50 * 60, output_capture=capture)
+        try:
+            dispatched_command = _agent_test_runtime_command(command, output_fingerprint)
+        except (affected_agent_tests.SelectionError, OSError) as error:
+            return _error("run_checks", str(error), blockers=[{"phase": "agent-test-plan", "state": "refused"}], command_results=results)
+        result = _run(dispatched_command, timeout=50 * 60, output_capture=capture)
         results.append(result)
         if not result["ok"]:
             return _error(
@@ -882,11 +924,19 @@ def _infer_area(task: str, area: str | None, paths: list[str]) -> str:
     return "docs"
 
 
+def _agent_test_selection():
+    return affected_agent_tests.select(REPO_ROOT)
+
+
 def _commands_for(area: str, level: str) -> list[list[str]]:
     if level == "prepush":
-        return [list(command) for command in PREPUSH_COMMANDS]
-    commands = FOCUSED_COMMANDS.get(area)
-    return [list(command) for command in (commands or FOCUSED_COMMANDS["docs"])]
+        commands = [list(command) for command in PREPUSH_COMMANDS]
+        commands[3:3] = _agent_test_selection().commands(AGENT_TEST_PYTHON)
+        return commands
+    commands = [list(command) for command in (FOCUSED_COMMANDS.get(area) or FOCUSED_COMMANDS["docs"])]
+    if area == "agent_tools":
+        commands[0:0] = _agent_test_selection().commands(AGENT_TEST_PYTHON)
+    return commands
 
 
 def _safety_notes(task: str, area: str) -> list[str]:
@@ -2486,7 +2536,7 @@ _VM_NATIVE_ADAPTERS = (
     "windows_cp117_cp95_task_retire", "windows_cp117_e848_http_task_retire", "windows_cp117_c32_retained_task_retire", "windows_cp117_source_pre_effect_close",
     "windows_cp117_cp95_retained_tasks", "windows_cp117_e848_http_task",
     "native_vm_baseline_config", "native_vm_baseline_inventory", "native_acceptance_matrix", "native_fixture_preflight",
-    "native_scenario_batch", "native_artifact_reuse", "native_acceptance_overview", "native_scenario_execution",
+    "native_execution_context", "native_scenario_batch", "native_artifact_reuse", "native_acceptance_overview", "native_scenario_execution",
     "native_scenario_ssh", "native_artifact_registry", "native_environment",
     "native_environment_observation", "native_scenario_bundle", "native_next_action",
     "native_response_diagnostics", "native_build_timing", "native_parity_response_projection",
@@ -2665,6 +2715,16 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         if action == "android-coldboot-product-api29-observe":
             return _agent_module("android_coldboot_product_routes").dispatch(REPO_ROOT, action, inputs)
         if action in {"linux-package-tmux-resource-prepare", "linux-package-tmux-availability", "linux-package-tmux-preflight", "linux-package-tmux-start", "linux-package-tmux-status", "linux-package-tmux-collect", "arch-tmux-install-preflight", "arch-tmux-install-start", "arch-tmux-install-status"}:
+            if "engineeringContext" in inputs:
+                operation = action.removeprefix("linux-package-tmux-")
+                if not action.startswith("linux-package-tmux-") or operation not in {"preflight", "start", "status", "collect"}:
+                    return _error("vm_workflow", "Engineering context requires a fixed Linux build operation.")
+                try:
+                    return _agent_module("native_execution_context").dispatch_linux_engineering(REPO_ROOT, operation, inputs)
+                except (ValueError, TypeError, OSError):
+                    return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                            "reason": "engineering-context-unavailable", "replayAllowed": False,
+                            "nativeActionAllowed": False, "productAction": False}
             return _agent_module("tmux_workflow_routes").dispatch(REPO_ROOT, action, inputs)
         if action == "acceptance-status":
             overview = _agent_module("native_acceptance_overview")

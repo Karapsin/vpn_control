@@ -20,7 +20,7 @@ from . import ssh_transport
 
 need = old.need
 CORRELATION = closure.CORRELATION
-CLOSURE_SHA = "376882d9b636d3605b1bb9ca855f4db48b7f1478caa17ae1026d92e187d7f071"
+CLOSURE_SHA = "2372a3beda92a5d0b2d7d2a6802e5c6c595b190a24405e1da8e080bac11a1ddc"
 
 _DIAGNOSTIC = r'''
 if set(payload)!={'action','request','stagePin','anchorPin'} or payload['action']!='status':raise ValueError('diagnostic_fixed_request_required')

@@ -29,7 +29,7 @@ CollectionError=AdapterError
 need=old.need
 MAX_STDOUT=2*1024**2
 MAX_STDERR=65536
-PIPE_SHA='32995897f304e57d5a6848184e5873a02e0e3c9287d4683d895ec78eeeef5402'
+PIPE_SHA='3988f5b997b26c231599d9f92093ae20d144d25d853d4ad71e0821b6b1b5278d'
 BaseDriver=recovery.CurrentExactFetchDriver if recovery is not None else object
 
 def _capsule(root):return pipe._capsule(root)
@@ -103,9 +103,12 @@ def _capture(root,*,authority,launch,payload,guard,timeout_seconds=95):
 
 
 class McpTmuxDriver(BaseDriver):
-    def __init__(self,root,*,source_root=None):
+    def __init__(self,root,*,source_root=None,engineering_context=None):
         need(os.name=='posix' and recovery is not None,'unsupported_coordinator_platform')
-        super().__init__(root,source_root=source_root)
+        super().__init__(root,source_root=source_root,engineering_context=engineering_context)
+
+    def _code_root(self):
+        return self.source_root if self.engineering_context is not None else self.root
 
     def _phase(self,program,payload,job):
         need(type(payload)is dict,'invalid_query_payload')
@@ -143,14 +146,14 @@ class McpTmuxDriver(BaseDriver):
         if os.path.lexists(birth):
             raw,pin=pipe._read(birth);value=json.loads(raw)
             seal_raw,seal_pin=pipe._read(job/'tmux-mcp-adapter-birth-seal.json')
-            need(json.loads(seal_raw)=={'birthPin':pin} and value=={'snapshot':snapshot,'sources':_sources(self.root)},'adapter_birth_changed');local['birthPin']=pin;local['birthSealPin']=seal_pin
+            need(json.loads(seal_raw)=={'birthPin':pin} and value=={'snapshot':snapshot,'sources':_sources(self._code_root())},'adapter_birth_changed');local['birthPin']=pin;local['birthSealPin']=seal_pin
         else:need(action in ('status','collect') and not os.path.lexists(job/'tmux-mcp-adapter-birth-seal.json'),'adapter_birth_missing')
         return action,snapshot,local
 
     def _query(self,program,payload,*,job=None,guard=None):
         phase,snapshot,local=self._phase(program,payload,job)
         need(phase=='availability' or callable(guard),'query_guard_missing')
-        sources=_sources(self.root);config,transport=self._transport()
+        sources=_sources(self._code_root());config,transport=self._transport()
         connection=ssh_transport.connection_host(config,'archlinux');need(connection.password is None,'password_transport_not_supported')
         if phase=='stage':
             birth=job/'tmux-mcp-adapter-birth.json'
@@ -160,7 +163,7 @@ class McpTmuxDriver(BaseDriver):
         fixed=recovery.STAGE_V2 if program==old._STAGE else program
         argv=ssh_transport.build_ssh_argv(config,'archlinux',10,command=recovery.command(fixed))
         def exact_guard():
-            need(_sources(self.root)==sources and self._transport()[1]==transport,'query_authority_changed')
+            need(_sources(self._code_root())==sources and self._transport()[1]==transport,'query_authority_changed')
             current_phase,current_snapshot,current_local=self._phase(program,payload,job)
             # Stage birth is written once before this guard and is bound separately.
             if phase=='stage':

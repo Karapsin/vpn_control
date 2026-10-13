@@ -9,6 +9,8 @@ native authority. Host/device execution remains each test's declared seam.
 import copy
 import hashlib
 import json
+import os
+import stat
 import types
 from pathlib import Path
 from agent_tools import android_device_availability as availability
@@ -32,10 +34,57 @@ def digest(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
+class LocalWriterOS:
+    """Real writer FDs with a declared stable external-directory metadata view.
+
+    Only size/timestamps/link-count on exact ancestors outside the owned TempFS
+    are synthetic. Parent device/inode/type/mode/principals, every owned object
+    and create-only writes stay live. Historical source bytes stay unchanged.
+    """
+    _VOLATILE = ('st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_nlink')
+
+    def __init__(self, root):
+        self.external = {}
+        self.live = set()
+        for parent in Path(root).resolve().parents:
+            info = os.stat(parent, follow_symlinks=False)
+            self.external[(info.st_dev, info.st_ino)] = {
+                name: getattr(info, name) for name in self._VOLATILE
+            }
+
+    def __getattr__(self, name):
+        return getattr(os, name)
+
+    def _view(self, info):
+        frozen = self.external.get((info.st_dev, info.st_ino)) if stat.S_ISDIR(info.st_mode) else None
+        if frozen is None:
+            return info
+        values = {name: getattr(info, name) for name in dir(info) if name.startswith('st_')}
+        return types.SimpleNamespace(**{**values, **frozen})
+
+    def stat(self, *args, **kwargs):
+        return self._view(os.stat(*args, **kwargs))
+
+    def fstat(self, fd):
+        return self._view(os.fstat(fd))
+
+    def open(self, *args, **kwargs):
+        fd = os.open(*args, **kwargs)
+        self.live.add(fd)
+        return fd
+
+    def close(self, fd):
+        try:
+            return os.close(fd)
+        finally:
+            self.live.discard(fd)
+
+
 class Context:
     def __init__(self, root):
         self.root = Path(root).resolve()
         self.modules = {}
+        self.local_writer_os = LocalWriterOS(self.root)
         self._temps = []
         self._restore_producers = {}
         for role, (name, sha) in SOURCES.items():
@@ -57,6 +106,7 @@ class Context:
         g.coldboot = b
         g.analog = analog
         self.getter = g
+        self._bind_local_writer(b, '_write_local_intent')
         self.reservation = {'reservationId': 'synthetic-api35', 'token': 'synthetic-token',
                             'hostAlias': 'archlinux', 'environment': 'owned-android-api35-coldboot',
                             'operator': 'root-android'}
@@ -73,6 +123,14 @@ class Context:
         b.prepare(self.root, 'api35', g.CORRELATION, self.reservation, 'admit')
         row['allocationState'] = 'running'
         self.write('.rag_index/native-environments/reservations.json', {'reservations': [row]})
+
+    def _bind_local_writer(self, owner, name):
+        # Only the local writer's OS view is modeled. All actual source readers,
+        # historical factories, scope checks and byte/FD guards still execute.
+        original = getattr(owner, name)
+        namespace = {**original.__globals__, 'os': self.local_writer_os}
+        setattr(owner, name, types.FunctionType(original.__code__, namespace,
+            original.__name__, original.__defaults__, original.__closure__))
 
     def write(self, relative, value, size=None):
         raw = value if isinstance(value, bytes) else (json.dumps(value, sort_keys=True, separators=(',', ':'))+'\n').encode()
@@ -201,6 +259,7 @@ class Context:
             value.RESULT_FILE_SHA = self.write('.runtime/parity-evidence/'+value.CAPSULE+'/stdout-0.private',
                                                b'out:'+base64.b64encode(raw)+b'\n')
         elif name == 'android_api35_owned_proxy_restore.py':
+            self._bind_local_writer(value, '_write_local')
             self._restore_receipts(value)
         return value
 

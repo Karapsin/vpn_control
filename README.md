@@ -1,6 +1,6 @@
 # VPN Control Install Files
 
-**Version:** `2.2.8`
+**Version:** `2.2.9`
 
 Download install files from the [GitHub Actions package workflows](https://github.com/Karapsin/vpn_control/actions). Open the workflow for your platform, choose a successful run, and download its package from `Artifacts`.
 

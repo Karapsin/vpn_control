@@ -1,5 +1,6 @@
 """Inert local processes only: original mux FD limit and durable bounded reads."""
 import json
+import hashlib
 import os
 from pathlib import Path
 try:import resource
@@ -32,32 +33,80 @@ class BoundedPipeCollectionTest(unittest.TestCase):
             root=Path(tmp).resolve();tools=root/'agent_tools';tools.mkdir()
             source=Path(__file__).resolve().parents[2]/'agent_tools'
             for name in collection.CURRENT_SOURCES:
-                if name == 'linux_package_fixture_build.py':
-                    (tools/name).write_bytes(reviewed_build_bytes())
-                else:
-                    shutil.copyfile(source/name,tools/name)
+                shutil.copyfile(source/name,tools/name)
             pins=collection._current_sources(root)
             self.assertEqual(len(pins),5)
             build_path=tools/'linux_package_fixture_build.py'
             current=(source/'linux_package_fixture_build.py').read_bytes()
-            future=reviewed_build_bytes()+b'\n# synthetic future unreviewed source\n'
-            for label,raw in (('current',current),('future',future)):
-                if raw == reviewed_build_bytes():
+            for label,raw in (('reviewed-predecessor',reviewed_build_bytes()),
+                              ('future',current+b'\n# synthetic future unreviewed source\n')):
+                if raw == current:
                     continue
                 with self.subTest(source=label):
                     build_path.write_bytes(raw)
                     with self.assertRaisesRegex(collection.CollectionError,'current_source_changed'):
                         collection._current_sources(root)
-                    build_path.write_bytes(reviewed_build_bytes())
+                    build_path.write_bytes(current)
             with self.assertRaisesRegex(collection.CollectionError,'frozen_source_changed'):
                 collection._sources(root)
-            # Each successor is exact bytes, not a source label or caller hash.
             for name in collection.CURRENT_SOURCES:
                 path=tools/name;raw=path.read_bytes();path.write_bytes(raw+b'\n')
                 with self.assertRaisesRegex(collection.CollectionError,'current_source_changed'):
                     collection._current_sources(root)
                 path.write_bytes(raw)
             self.assertEqual(len(collection._current_sources(root)),5)
+
+    def test_actual_current_adapter_and_resource_source_chain_never_dispatches(self):
+        from agent_tools import ssh_tmux_mcp_adapter as adapter
+        from agent_tools import ssh_tmux_terminal_closure as closure
+        root=Path(__file__).resolve().parents[2]
+        with mock.patch.object(subprocess,'Popen',side_effect=AssertionError('No native dispatch')) as effect:
+            pins=adapter._sources(root)
+            self.assertEqual(6,len(pins))
+            self.assertEqual(8,len(closure._sources(root)))
+            self.assertIn(str(root/'agent_tools/linux_package_fixture_build.py'),pins)
+            effect.assert_not_called()
+
+    def test_actual_current_tool_capture_accepts_current_and_rejects_historical_or_mutated(self):
+        import shutil
+        from agent_tools import ssh_tmux_mcp_adapter as adapter
+        source=Path(__file__).resolve().parents[2]/'agent_tools'
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();tools=root/'agent_tools';tools.mkdir()
+            for name in ('ssh_tmux_session.py','linux_package_fixture_build.py'):
+                shutil.copyfile(source/name,tools/name)
+            driver=adapter.McpTmuxDriver(root)
+            with mock.patch.object(subprocess,'Popen',side_effect=AssertionError('No native dispatch')) as effect:
+                captured=driver._tools()
+                helper=tools/'linux_package_fixture_build.py';current=helper.read_bytes()
+                self.assertEqual(current,captured['linux_package_fixture_build.py']['raw'])
+                self.assertEqual(hashlib.sha256(current).hexdigest(),captured['linux_package_fixture_build.py']['pin']['sha256'])
+                for raw in (reviewed_build_bytes(),current+b'\n'):
+                    helper.write_bytes(raw)
+                    with self.assertRaisesRegex(adapter.AdapterError,'unreviewed_tool_source'):driver._tools()
+                helper.write_bytes(current)
+                self.assertEqual(captured['linux_package_fixture_build.py']['raw'],driver._tools()['linux_package_fixture_build.py']['raw'])
+                effect.assert_not_called()
+
+    def test_actual_current_remote_source_pin_uses_git_and_exact_helper_bytes(self):
+        from agent_tools import ssh_tmux_mcp_adapter as adapter
+        source=Path(__file__).resolve().parents[2]/'agent_tools'
+        def git(root,*args):
+            done=subprocess.run(['git','-C',str(root),*args],capture_output=True,check=False)
+            self.assertEqual(0,done.returncode,done.stderr.decode());return done.stdout
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve();tools=root/'agent_tools';tools.mkdir()
+            helper=tools/'linux_package_fixture_build.py';current=(source/helper.name).read_bytes();helper.write_bytes(current)
+            git(root,'init','-q');git(root,'add','agent_tools/linux_package_fixture_build.py')
+            git(root,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','owned inert source')
+            request={'sourceSha':git(root,'rev-parse','HEAD').decode().strip()}
+            captured=session.source_pin(root,request)
+            self.assertEqual(hashlib.sha256(current).hexdigest(),captured['helperSha256'])
+            for raw in (reviewed_build_bytes(),current+b'\n'):
+                helper.write_bytes(raw)
+                with self.assertRaisesRegex(session.SessionError,'unreviewed_build_source'):session.source_pin(root,request)
+            helper.write_bytes(current)
+            self.assertEqual(captured['helperSha256'],session.source_pin(root,request)['helperSha256'])
 
     def test_historical_catalogue_retains_exact_original_bytes_and_refuses_mutation(self):
         from agent_tools.tests.fixtures.tmux_historical_source import family

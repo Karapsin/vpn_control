@@ -1,0 +1,518 @@
+{
+  "loaders": {
+    "agent_tools/agent_test_runner.py": {
+      "reason": "Transparent execution of selected, validated test inputs; those test modules are the selection graph roots.",
+      "scopes": [],
+      "sourceSha256": [
+        "469fe841617aab2d8ea835c7f579534c1401934b001b3e82b07d0deed328f381",
+        "51f4561a3c34a61725b58eb3539db36c95094b0593421055282969f6dfefdcaa",
+        "746376a5a4bc935b9e02a828df7d54941baa6a4010002ee93e8354eb43d4e9c1"
+      ]
+    },
+    "agent_tools/android_installer_component_bundle.py": {
+      "scopes": [
+        "@files:FILES"
+      ],
+      "sourceSha256": [
+        "e5bdaf09353f979af3ebbcb40091fd7f661ec563159bb7e900ea1a2a659ede0a"
+      ]
+    },
+    "agent_tools/linux_deb_arch_guest_prepare_remote.py": {
+      "scopes": [
+        "scripts/fixture_environment.py",
+        "agent_tools/linux_deb_arch_guest_prepare.py"
+      ],
+      "sourceSha256": [
+        "3ca0db900635ae8c65ff9a98746d6fdc7873df30c71e58720b36de3d11cb9e1f"
+      ]
+    },
+    "agent_tools/mcp_server.py": {
+      "scopes": [
+        "@modules:_VM_NATIVE_ADAPTERS",
+        "@files:_KEEPER_ROLES"
+      ],
+      "sourceSha256": [
+        "5b782a08381d67fbaa3ffae04684004097618727458fa9a1c7051305553f6f7c",
+        "78536ab7eac167fc3d10176da5a222738df2bee5ee41084b13f8bf0330764521",
+        "82843637060af3d30eb8b8905a5d350923e78874e7bfdfaa82a1562a8f159127",
+        "9df8d8600b67c6d6161673cc5bfefa77af205b5dfa8adfcd3a52bc1107d52f58",
+        "d317608db90be112ebc56f8bca564d25ed1784373996dcc20da9ba1b060606e9",
+        "6e77402bb76fcf52b8029db3306581a49676ada1122afdf06329fd8f1bc1abfc",
+        "f2270ebb2cfd63066d84807b67b1d577b0acd1e90852ac397cf4f05d53c06f9c"
+      ]
+    },
+    "agent_tools/ssh_acceptance_observation_routes.py": {
+      "scopes": [
+        "agent_tools/ssh_nested_socket_orphan_archive.py",
+        "agent_tools/android_device_availability.py"
+      ],
+      "sourceSha256": [
+        "72826e036d075bed3d5791ee84222d0f2ca47b594f873e868281b01f0df73b32"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_owner_epoch/bundle.source": {
+      "scopes": [
+        "@files:FILES"
+      ],
+      "sourceSha256": [
+        "c6e2218fb927ed2107f7a234e9c2a94ea41da78a178032a904c190bd0ee9d92c"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_installer_hermetic/component-bundle.source": {
+      "scopes": [
+        "@files:FILES"
+      ],
+      "sourceSha256": [
+        "6d2ff26ae551d1d7c3b2b7ba7428b02fdd1e28e91beb760a4a4ee12de7738a85"
+      ]
+    },
+    "agent_tools/tests/fixtures/historical_source.py": {
+      "scopes": [],
+      "sourceSha256": [
+        "758df05a4f089a0f21636bb6aee5f128e38721ab12e21c2a93c1a94eb767505d"
+      ]
+    },
+    "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.android-wrapper-reviewed.py.gz": {
+      "scopes": [
+        "@modules:_VM_NATIVE_ADAPTERS",
+        "@files:_KEEPER_ROLES"
+      ],
+      "sourceSha256": [
+        "9df8d8600b67c6d6161673cc5bfefa77af205b5dfa8adfcd3a52bc1107d52f58"
+      ]
+    },
+    "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.before.py.gz": {
+      "scopes": [
+        "@modules:_VM_NATIVE_ADAPTERS",
+        "@files:_KEEPER_ROLES"
+      ],
+      "sourceSha256": [
+        "6ca7b4050ee5ca6977ff3948ad22b78350d49007c557ba603b9ab2a6558dc014"
+      ]
+    },
+    "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.checkpoint74.py.gz": {
+      "scopes": [
+        "@modules:_VM_NATIVE_ADAPTERS",
+        "@files:_KEEPER_ROLES"
+      ],
+      "sourceSha256": [
+        "60634d64854d5be19af49d0204412037eb56fd02e74d586da50d8a0920674893"
+      ]
+    },
+    "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.reviewed-after.py.gz": {
+      "scopes": [
+        "@modules:_VM_NATIVE_ADAPTERS",
+        "@files:_KEEPER_ROLES"
+      ],
+      "sourceSha256": [
+        "5707593229d5fa3c331998a0f6bbc2bae1ca4dff3a94fd4f5f5c8064e07a14d7"
+      ]
+    },
+    "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_transport.before-reviewed74.py.gz": {
+      "reason": "Frozen transport artifact admits only these sibling helpers, with source-location checks after package-context import.",
+      "scopes": [
+        "agent_tools/ssh_connection_session.py"
+      ],
+      "sourceSha256": [
+        "6e4e9bfcdf620dab84cec100a4990121198fc95b331e0468adf8b79fb2e9e372"
+      ]
+    },
+    "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_transport.checkpoint74.py.gz": {
+      "reason": "Frozen transport artifact admits only these sibling helpers, with source-location checks after package-context import.",
+      "scopes": [
+        "agent_tools/ssh_connection_session.py",
+        "agent_tools/ssh_channel_selection.py"
+      ],
+      "sourceSha256": [
+        "00bcf88a41031ee11bd356dafc2ceda5ef609fa10471c9f9ed710fa084596db4"
+      ]
+    },
+    "agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/backend_context.py": {
+      "scopes": [
+        "agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/"
+      ],
+      "sourceSha256": [
+        "186db6e027abb195b8484df57cc1e9868a0fd531849a470b9275c69dbb72fb75"
+      ]
+    },
+    "agent_tools/tests/fixtures/tmux_historical_source/family.py": {
+      "scopes": [
+        "agent_tools/tests/fixtures/tmux_historical_source/"
+      ],
+      "sourceSha256": [
+        "9a652e16946b2ce3c71fa10347145d016098f2250a7e152a675a9e14289dd440"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_cp117_public_context/whole_entry.py": {
+      "reason": "Pinned provenance inputs plus two explicit current test filenames; temporary runtime reads use owned generated bytes.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_cp117_public_context/provenance.json",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/original-base-test.source",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/original-server-test.source",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/original-context-caller.source",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/original-stage-caller.source",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/current-context.source",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/fixture-script.source",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/original-stage-result.json",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/original-stage-remote.source",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/original-stage-exit.json",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/current-host-main.source",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/old-host-main.source",
+        "agent_tools/tests/fixtures/windows_cp117_public_context/old-context.source",
+        "agent_tools/tests/test_windows_cp117_base_source_refresh.py",
+        "agent_tools/tests/test_windows_cp117_server_preflight.py"
+      ],
+      "sourceSha256": [
+        "a975c7fcd9e626d2df1c17d3acbba57fd09e35b6f36af2ec2e6f172628bbd2b2"
+      ]
+    },
+    "agent_tools/tests/test_agent_test_runner.py": {
+      "reason": "Reviewed test source override is preserved runner beforeimage; generated modules are inert temporary inputs. Explicit repository source-copy classification inputs stay dependencies.",
+      "scopes": [
+        "agent_tools/agent_test_runner.py",
+        "agent_tools/tests/test_linux_gui_capsule_codec.py",
+        "scripts/integration/linux_owner_lifecycle_scenario.py",
+        "agent_tools/tests/fixtures/linux_gui_source_custody/codec-driver.before.source",
+        "agent_tools/tests/fixtures/linux_gui_source_custody/normal-capsule.source",
+        "agent_tools/android_installer_direct_transport.py"
+      ],
+      "sourceSha256": [
+        "d59173ae35e3aeaaa03b18f7c4b04ceca6a17e865cd1ba30a2f228aed79f4633",
+        "5cdef7bba517354e0f0b8b2fb1d432216b1b8da936bb91e97464a034a7483d34",
+        "1f8ca14cebea13fc8a6d420dff75b1350878ea128a372867ef54dadec1169be3"
+      ]
+    },
+    "agent_tools/tests/test_android_api35_proxy_stage_diagnostic.py": {
+      "scopes": [
+        "agent_tools/tests/fixtures/android_api35_proxy_probe_initial.py"
+      ],
+      "sourceSha256": [
+        "d6b359c96456b3d165552d745e4f5fd8386aa14e659ff6f5362fbe4c4de7179c"
+      ]
+    },
+    "agent_tools/tests/test_android_current_owner_epoch.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_current_owner_epoch/bundle.source",
+        "agent_tools/tests/fixtures/android_current_owner_epoch/command.source",
+        "agent_tools/tests/fixtures/android_current_owner_epoch/current-owner-factory.source",
+        "agent_tools/tests/fixtures/android_current_owner_epoch/owner.source"
+      ],
+      "sourceSha256": [
+        "74685be11af6484faa9561d97b07423cec7fdd7cd6e7cddf34666eed209326ee"
+      ]
+    },
+    "agent_tools/tests/test_android_installer_component_bundle.py": {
+      "scopes": [
+        "agent_tools/android_installer_component_bundle.py"
+      ],
+      "sourceSha256": [
+        "c210c10c1ffe90b752f668ea153c4d8ba8bd54fcf975bb21299d3b4ebbb941ea"
+      ]
+    },
+    "agent_tools/tests/test_android_installer_jdk_source_context.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/android_api29_current_permission_observation.py",
+        "agent_tools/android_api29_external_java_observation.py",
+        "agent_tools/android_api35_coldboot_product_observation.py",
+        "agent_tools/android_avd_coldboot.py",
+        "agent_tools/android_avd_launch_recovery.py",
+        "agent_tools/android_coldboot_product_observation.py",
+        "agent_tools/android_component_command_transport.py",
+        "agent_tools/android_installer_component_adapter.py",
+        "agent_tools/android_installer_component_bundle.py"
+      ],
+      "sourceSha256": [
+        "883887fa0c6d440a518bdf4923a79bfbf871af30a52156bcdeabf61225bbbbd4"
+      ]
+    },
+    "agent_tools/tests/test_android_installer_readonly_source_assembly.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/android_api35_coldboot_product_observation.py",
+        "agent_tools/android_avd_coldboot.py",
+        "agent_tools/android_avd_launch_recovery.py",
+        "agent_tools/android_installer_asset_collection.py",
+        "agent_tools/android_installer_component_bundle.py",
+        "agent_tools/android_installer_direct_transport.py",
+        "agent_tools/android_installer_dispatch.py",
+        "agent_tools/tests/fixtures/android_installer_readonly_source/bridge-assembly-current.source",
+        "agent_tools/tests/fixtures/android_installer_readonly_source/identity-assembly-current.source",
+        "agent_tools/tests/fixtures/android_installer_readonly_source/identity-assembly-uid1000-before.source",
+        "agent_tools/tests/fixtures/android_installer_readonly_source/owner-api35-before-streaming.source"
+      ],
+      "sourceSha256": [
+        "6089032587b2275b9dcde33cf8f46526b7c578e6ad805607e6dd766b94a4a0c3"
+      ]
+    },
+    "agent_tools/tests/test_android_observation.py": {
+      "scopes": [
+        "agent_tools/ssh_transport.py",
+        "agent_tools/android_observation.py"
+      ],
+      "sourceSha256": [
+        "027ac79de55abe0d9e9cc1b4140061a4e1f9953f48a0e33eca3ac8f48fca02af"
+      ]
+    },
+    "agent_tools/tests/test_android_packaged_component_read_transport.py": {
+      "reason": "Reviewed actual test body: finite loader callsites or hash-checked fixture override for preserved temporary RED inputs; runtime output files are not repository source inputs.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_installer_hermetic/product-launcher-test.source"
+      ],
+      "sourceSha256": [
+        "a5e4d94fada8cf24824931ea7c7dca3bc1babb0c436587f1f89ce30be4a4e2ea"
+      ]
+    },
+    "agent_tools/tests/test_arch_ai_loop_observe.py": {
+      "scopes": [
+        "agent_tools/ssh_transport.py",
+        "agent_tools/arch_ai_loop_observe.py"
+      ],
+      "sourceSha256": [
+        "721d0e8068bea8d58df7caece7dd17399f9983ee9f980728d35294c6a26a5992"
+      ]
+    },
+    "agent_tools/tests/test_historical_fixture_checkout_bytes.py": {
+      "reason": "Three literal fixture pins and two literal pinned-family registries; temporary checkout rereads the same finite fixture list.",
+      "scopes": [
+        ".gitattributes",
+        "agent_tools/tests/fixtures/windows_cp117_recovery/short_socket_51538dad.source",
+        "agent_tools/tests/fixtures/android_proxy_os_history/retirement_3eed5a2e.source",
+        "agent_tools/tests/fixtures/android_component_legacy/provenance.json",
+        "scripts/testdata/windows-persistent-ready-parser/",
+        "scripts/testdata/windows-persistent-taskroot/"
+      ],
+      "sourceSha256": [
+        "6dc373a2812f2e5bef0e1a30dcaea88c2aec294afd330d79dcf9a4a969bf3ffd"
+      ]
+    },
+    "agent_tools/tests/test_linux_download_wait_loss.py": {
+      "scopes": [
+        "scripts/test_linux_public_install.py",
+        "agent_tools/linux_deb_arch_native_driver.py"
+      ],
+      "sourceSha256": [
+        "8324f07b3eb81fb95eb3c485f55f3a33b0a42948e9cec8d2467883e823d81fcc"
+      ]
+    },
+    "agent_tools/tests/test_native_execution_context_performance.py": {
+      "reason": "Exact reviewed repository-shape performance fixture copies the complete real scripts inventory from imported fixtures.ROOT. Other data reads are temporary fixture outputs; no native or remote source dependency.",
+      "scopes": [
+        "scripts/"
+      ],
+      "sourceSha256": [
+        "0b0a305dcf5aba0a02bb798670c9712d496403497bfa961838b7920a20fd7327"
+      ]
+    },
+    "agent_tools/tests/test_native_owner_gui_preparation_admission.py": {
+      "scopes": [
+        "agent_tools/native_owner_gui_lifecycle_ssh.py"
+      ],
+      "sourceSha256": [
+        "e7279ac8fadd38ac5bd13a98f20280a285d100cdb64d8b06c20818f57e435f4a"
+      ]
+    },
+    "agent_tools/tests/test_native_scenario_execution.py": {
+      "reason": "Reviewed actual test body: finite loader callsites or hash-checked fixture override for preserved temporary RED inputs; runtime output files are not repository source inputs.",
+      "scopes": [
+        "agent_tools/native_scenario_execution.py"
+      ],
+      "sourceSha256": [
+        "bff6cf6a7f4a31fac577b23d41566e4e5caeae279daed9cf08b743699b06ff10"
+      ]
+    },
+    "agent_tools/tests/test_native_scenario_ssh.py": {
+      "reason": "Reviewed actual test body: finite loader callsites or hash-checked fixture override for preserved temporary RED inputs; runtime output files are not repository source inputs.",
+      "scopes": [
+        "agent_tools/ssh_transport.py",
+        "agent_tools/native_scenario_bundle.py",
+        "agent_tools/native_scenario_execution.py",
+        "agent_tools/native_scenario_ssh.py"
+      ],
+      "sourceSha256": [
+        "ebeff5bd44e5cd61accff05f7872cc2b04fa9605b9e55126f795a854ddf6a58b"
+      ]
+    },
+    "agent_tools/tests/test_ssh_channel_keeper_entry.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/check_output_retention.py",
+        "agent_tools/mcp_server.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/ssh_channel_keeper.py",
+        "agent_tools/ssh_channel_keeper_entry.py",
+        "agent_tools/ssh_channel_selection.py",
+        "agent_tools/ssh_connection_recovery.py",
+        "agent_tools/ssh_connection_session.py",
+        "agent_tools/ssh_fresh_nested_channel.py",
+        "agent_tools/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/ssh_nested_socket_retirement.py",
+        "agent_tools/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/ssh_recovery_adoption.py",
+        "agent_tools/ssh_transport.py"
+      ],
+      "sourceSha256": [
+        "946571fdb816aa4568bab6ecaf948e6a454e2db4e8aa807d43b5ed380309ea1f"
+      ]
+    },
+    "agent_tools/tests/test_ssh_connection_recovery.py": {
+      "scopes": [
+        "agent_tools/ssh_transport.py",
+        "agent_tools/ssh_connection_recovery.py"
+      ],
+      "sourceSha256": [
+        "73656dc8b55688380f34b9f7a4ea121bc317c86e58a0715e098257f91f934b1b"
+      ]
+    },
+    "agent_tools/tests/test_ssh_direct_ended_inventory_successor.py": {
+      "scopes": [
+        "agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/"
+      ],
+      "sourceSha256": [
+        "c74a8f359d6deccb6a10968559d48036a679ed2418dcd04877f23840eaa6df55"
+      ]
+    },
+    "agent_tools/tests/test_ssh_direct_ended_source_transition.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.checkpoint74.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.reviewed-after.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/native_review_source_closure.before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_direct_nested_channel.before-reviewed74.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_fresh_nested_channel.before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_fresh_nested_channel.closure-provider-before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_fresh_nested_channel.current-provider-before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_fresh_nested_channel.inventory-provider-before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_transport.before-reviewed74.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_transport.checkpoint74.py.gz"
+      ],
+      "sourceSha256": [
+        "584c2db7def52571850a05c5c0334ba09410700b6e7109b212b7a38c622eb748"
+      ]
+    },
+    "agent_tools/tests/test_ssh_direct_inventory_diagnostic.py": {
+      "scopes": [
+        "agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/"
+      ],
+      "sourceSha256": [
+        "4d33ddf32bf050259373da5f017a37868664719165ca032d0872aad616ba5a53"
+      ]
+    },
+    "agent_tools/tests/test_ssh_forward.py": {
+      "scopes": [
+        "agent_tools/ssh_transport.py",
+        "agent_tools/ssh_connection_recovery.py",
+        "agent_tools/ssh_forward.py"
+      ],
+      "sourceSha256": [
+        "b906fbe00ad070e6d27ae07e36b47f034058569bf5fe3a58329859d7f6e19ee8"
+      ]
+    },
+    "agent_tools/tests/test_ssh_jobs.py": {
+      "scopes": [
+        "agent_tools/ssh_transport.py",
+        "agent_tools/ssh_jobs.py"
+      ],
+      "sourceSha256": [
+        "e82133b475384b558829ca1e64e89425380e46db2ff42ad33be5f1399d9632dc"
+      ]
+    },
+    "agent_tools/tests/test_ssh_keeper_consumer_actors.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/tests/fixtures/ssh_keeper_causal/consumer-after.source",
+        "agent_tools/tests/fixtures/ssh_keeper_causal/consumer-before.source"
+      ],
+      "sourceSha256": [
+        "9c0b11063829551c5b0d567524c378ec9ea5aec9cdd1821302e84787ae5d3693"
+      ]
+    },
+    "agent_tools/tests/test_windows_census_child_imports.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_census_child_imports/after.py.txt",
+        "agent_tools/tests/fixtures/windows_census_child_imports/before.py.txt",
+        "agent_tools/tests/fixtures/windows_census_child_imports/inert_consumer.py",
+        "agent_tools/tests/fixtures/windows_census_child_imports/metadata.public.json"
+      ],
+      "sourceSha256": [
+        "57e1c069139b71d9df9f2042cd615a331376b1da6690caf65d60ad281fafee91"
+      ]
+    },
+    "agent_tools/tests/test_windows_d32_gateway_imports.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_d32_gateway_imports/gateway.after.py.txt",
+        "agent_tools/tests/fixtures/windows_d32_gateway_imports/gateway.before.py.txt",
+        "agent_tools/tests/fixtures/windows_d32_gateway_imports/metadata.public.json"
+      ],
+      "sourceSha256": [
+        "5eb2a425f7d68d6a7903470d9c6c79c7359c66336ed1fd9696bd136e21a88120"
+      ]
+    },
+    "agent_tools/tests/test_windows_direct_readonly_checkpoint.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_readonly_checkpoint/checkpoint.before.public.py",
+        "agent_tools/tests/fixtures/windows_readonly_checkpoint/original-refusal.public.json",
+        "agent_tools/tests/fixtures/windows_readonly_checkpoint/readonly_checkpoint.py"
+      ],
+      "sourceSha256": [
+        "ed1b2e12c8ae6babf56aa4930a454a872af6030ef39fb62340669be1671e0a46"
+      ]
+    },
+    "agent_tools/tests/test_windows_hosted_fixture_workflow.py": {
+      "reason": "tracked_show validates path membership in fixed production CALLER and REUSABLE before reading source; other reads use temporary generated outputs.",
+      "scopes": [
+        ".github/workflows/windows-update-fixture.yml",
+        ".github/workflows/windows-desktop.yml"
+      ],
+      "sourceSha256": [
+        "cd8e97e5a21888ebb04aedecbaa151b0f714fe4d7712fba7291406909efbfbef"
+      ]
+    },
+    "agent_tools/tests/test_windows_ordinary_https.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_ordinary_https/actual-fixture-producer.source",
+        "agent_tools/tests/fixtures/windows_ordinary_https/before-total-deadline.cs",
+        "agent_tools/tests/fixtures/windows_ordinary_https/prior-direct-tls.cs",
+        "agent_tools/tests/fixtures/windows_ordinary_https/provenance.json"
+      ],
+      "sourceSha256": [
+        "81587335a05a0720a163be2f7c7f06e738c4d703d39c168fdba46e8dd68ca331"
+      ]
+    },
+    "agent_tools/tests/test_windows_secondary_ordinary_read.py": {
+      "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/current_file_binding.ps1",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/current_publication.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/decision_consumer.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/delete_native.cs",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_admission_guards.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_file_binding.ps1",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_interfaces.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_publication.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_resources.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/provenance.json",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/reader_handles.ps1",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/reviewed_admission_consumer.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/sdk_consumer.source"
+      ],
+      "sourceSha256": [
+        "2ebd29dd55d05fe445420c328592f0ba2dd7d715e43479a01b0b9d17a4558aaa"
+      ]
+    }
+  },
+  "nonPythonResources": {
+    "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-loss.source": "24001dcaed1e666438e18497abde4594b6f3121b28c339a569b11955da0d3a21",
+    "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-restored.source": "dc4ea223703ea8b16faa07d1b6d231d45b30d078f09e4e1e4954241a3be9efa6"
+  },
+  "schemaVersion": 1
+}

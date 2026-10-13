@@ -55,6 +55,34 @@ If a large task intentionally spans several buckets, document the current intent
 
 Do not use broad cleanup commands such as `git reset --hard` or `git checkout -- .` unless the user explicitly approves it. Preserve unrelated local changes.
 
+## Selective checks and native execution optimization
+
+Use `python3 agent_tools/affected_agent_tests.py --run` for agent-tool validation.
+Product and prose-only changes select zero agent tests. Tool changes select actual
+transitive consumers; unknown dependencies fail with an explanation. Use an
+explicit `--audit --baseline HEAD --run` for a complete agent-suite audit. The
+managed prepush retains its other gates and binds the selection and result to the
+same contents. Per-test timing identifies expensive cases; only reviewed isolated
+independent groups run concurrently. See TEST-004 and `test-matrix.md`.
+
+Keep native engineering execution in a qualified immutable clean source worktree,
+separate from coordinator tooling edits. Record original source/package/version,
+consumed tool hashes, guest generation, operator and server identity. An unrelated
+tooling change never relabels old artifacts or grants final current-source acceptance.
+A consumed or unknown source change requires new qualification. The initial fixed
+engineering route covers only the Linux package builder and requires a new clean
+checkpoint containing its gate; it cannot extend an old producer retroactively.
+See the concrete operation in `agent_tools/README.md` and TEST-005.
+
+Collect the complete actual bounded result once before publishing its finite public
+summary. Preserve private raw payloads and the original execution receipt; partial
+or uncertain collection remains UNKNOWN. Reuse completed collection and compatible
+existing batches. Keep source, package, guest, operator and server identities
+constant; changing them requires fresh admission. Serialize interfering mutations.
+Restrict infrastructure work to demonstrated blockers or explicitly requested
+optimizations, with preserved beforeimages and causal RED/GREEN coverage. Direct
+native proof and matching MCP retesting remain required under TEST-002.
+
 ## Common Patch Workflow
 
 1. Identify the smallest behavior or documentation unit.

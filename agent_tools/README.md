@@ -132,14 +132,81 @@ operator may batch independent read-only observations. Retain original handles,
 raw evidence and cleanup ownership, and preserve unknown outcomes without replay.
 MCP remains the repository startup and delivery entry point.
 
+### Fixed Linux engineering source context
+
+
+Activation requires a newly validated, clean producer checkpoint containing this
+engineering gate and the reviewed exact producer pins. The old 7143184 producer
+cannot acquire this feature retroactively. Use the normal configured coordinator
+MCP for `prepare_start`; keep its configured host inventory, artifact registry,
+reservations and journals authoritative. Create/select a clean linked worktree
+at that exact checkpoint with the existing managed worktree API. Do not run the
+startup branch synchronization inside its detached frozen checkout.
+
+For the existing `vm_workflow` actions `linux-package-tmux-preflight`, `-start`,
+`-status`, and `-collect`, explicitly supply the same original four request fields
+`sourceSha`, `baseVersion`, `targetVersion`, `correlationId`, plus:
+
+```json
+{"engineeringContext":{"sourceRoot":"<absolute clean linked producer worktree>","artifactIds":["sha256-<original registered package digest>"]}}
+```
+
+The fixed route derives all code from that qualified source tree. It calls only
+the existing Linux builder entrypoint under isolated Python; its private stdin
+packet permits those four operation names, the exact original request, and the
+registered artifact IDs. It retains a bounded private output/EOF receipt using
+the existing collector. It accepts no module, command, driver, raw authority or
+admission-mode override. The frozen producer uses the original coordinator for
+configuration, inventory, reservations, registry and journals. Preflight enrolls
+an immutable context and uses the existing resource admission without changing
+or releasing reservations. Existing host budget, claim and source/artifact gates
+still apply.
+
+Qualification proves the live named `origin/dev` commit descends from the exact
+original source, with only fixed reviewed unrelated changes. Eligible concrete
+examples are `agent_tools/managed_check_lease.py`,
+`agent_tools/check_output_retention.py`, documentation and tests. A native-used
+producer/facade or an unknown tool change refuses. Product version metadata alone
+may advance only when every other byte in that file matches; the result explicitly
+reports `originalPackageVersion`, `ENGINEERING_ORIGINAL_SOURCE_ONLY`, and
+`finalAcceptance:false`. The full tracked product/native dependency catalogue is
+hashed from actual named bytes, independently of Git index flags. The fixed unused
+`sing-box-libsrc` Git link is bound to its original OID and checkout state; unknown
+links or module configuration refuse. No submodule/runtime initialization occurs.
+
+Start requalifies the admission target before effects. A parent launch burn and a
+child dispatch burn precede execution, followed by the existing durable build
+intent and host claim; an uncertain original start cannot be launched again.
+Status/collect load the original protected enrollment and may observe the same
+original result after a later branch advance, while retaining every source/tool,
+package/artifact, transport, journal and guest identity. They never grant mutation
+rights. Final current-source acceptance still requires the exact current product
+source and package acceptance. This route covers the fixed Linux builder; it does
+not claim other platform admission guards were extended or native execution passed.
+
+### Collector uncertainty and local observer loss
+
+The complete first result is a bounded exact UTF-8 guest receipt plus SHA256,
+retained privately before projection. A receipt above the unchanged 8192-byte
+transport budget is explicitly partial/UNKNOWN with its immutable original
+retained on the guest and a safe digest. PID/start-tick/exit-code bindings require
+actual integer fields. A live observer holds a separate nonblocking local lease
+whose immutable file generation is bound to the terminal journal; replacing the
+named lease refuses another collector. Collection state, reason and payload are
+validated together. An interrupted observer records UNKNOWN where it can; process
+exit releases the lease and permits a fresh read of the same original immutable
+receipt. An old orphaned SSH reader remains uncertain: this never asserts it is
+closed, infers terminal success, resubmits a mutation or adds general recovery.
+
 ### Early SSH close dependency check
 
-The prepush tier invokes the existing close-session regression module after
-hygiene and before full agent-test discovery. An outdated exact dependency pin
+When the dependency selection includes the close-session regression module,
+the prepush tier invokes it after hygiene and before the other selected agent tests. An outdated exact dependency pin
 therefore refuses early, with retained diagnostics and no validation receipt.
 After a reviewed transport change, update its exact close-tool dependency SHA;
 current-source, unauthorized-source and historical non-replay guards remain.
-The full tier and focused command sets retain all their existing coverage.
+The prepush tier retains all affected consumers; an explicit audit selects the
+complete agent suite.
 
 ### Selected Arch route for nested guests
 
@@ -479,11 +546,35 @@ The index is a navigation aid. `AGENTS.md` remains the agent hard-rule layer, `a
 
 ## Tests
 
-Run the stdlib-only unit suite with:
+Run affected agent-tool tests with:
 
 ```bash
-python3 -m unittest discover -s agent_tools/tests -t .
+python3 agent_tools/affected_agent_tests.py --run
 ```
+
+The selector compares Git changes with the applicable baseline and includes actual
+transitive consumers from both previous and current source. Product or prose-only
+changes run no agent tests. A changed tool, runtime fixture or dependency selects
+its affected consumers; unknown dependencies refuse selection with an explanation.
+Shared dependencies can legitimately select a broad set. CI uses the push's
+previous SHA or PR merge base; a missing comparison baseline is a failure.
+Use `--baseline <commit>` for an explicit comparison and `--audit --baseline HEAD
+--run` only for an intentional complete agent-suite audit.
+
+When selection refuses a dynamic source reader or loader, inspect that exact
+consumer and preserve its source beforeimage. Add a finite reviewed dependency
+scope in `affected_agent_test_dependencies.json` bound to the actual consumer's
+source hash, or teach the static resolver the demonstrated bounded expression
+with causal coverage. A changed opaque consumer invalidates its declaration.
+Do not use a whole-suite fallback, imported test execution or a caller-supplied
+consumer list to make an unknown mapping appear qualified.
+
+The runner retains each test's duration and outcome privately, with aggregate
+counts in its result. Only reviewed source-bound independent groups run concurrently,
+with at most two local workers and separate immutable fixture copies. All other
+modules run in one serialized group. Fixture/import errors, skips, subtests and
+incomplete children remain visible. Windows named checks use serial stdout timing.
+This bounds local test execution; it does not change remote agent concurrency.
 
 The complete local pre-push tier is documented in `agent_docs/test-matrix.md` and is also encoded by `run_checks(level="prepush")`.
 

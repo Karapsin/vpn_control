@@ -32,7 +32,7 @@ class RunChecksResponsivenessTests(unittest.IsolatedAsyncioTestCase):
         self.calls = []
         self.workers = []
 
-        def inert_commands(area, level, commands):
+        def inert_commands(area, level, commands, planned_fingerprint=None):
             self.workers.append(threading.current_thread())
             self.calls.append((area, level))
             self.events.append("check-started")
@@ -50,6 +50,8 @@ class RunChecksResponsivenessTests(unittest.IsolatedAsyncioTestCase):
         self.patches = [
             mock.patch.object(server, "REPO_ROOT", self.root),
             mock.patch.object(server, "_changed_paths", return_value=[]),
+            mock.patch.object(server, "_commands_for", return_value=[["owned-inert-check"]]),
+            mock.patch.object(server, "_snapshot_fingerprint", return_value="a" * 64),
             mock.patch.object(server, "_run_check_commands", side_effect=inert_commands),
         ]
         for patch in self.patches:

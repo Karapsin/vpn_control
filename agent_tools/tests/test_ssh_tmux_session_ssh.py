@@ -76,7 +76,7 @@ class DriverTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir='/tmp'); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name); self.root.chmod(0o700)
         tools = self.root / 'agent_tools'; tools.mkdir()
-        (tools / 'linux_package_fixture_build.py').write_bytes(reviewed_build_bytes())
+        shutil.copyfile(ROOT / 'agent_tools/linux_package_fixture_build.py', tools / 'linux_package_fixture_build.py')
         shutil.copyfile(ROOT / 'agent_tools/ssh_tmux_session.py', tools / 'ssh_tmux_session.py')
         key = self.root / 'key'; key.write_bytes(b'private key'); key.chmod(0o600)
         known = self.root / 'known'; known.write_bytes(b'known host'); known.chmod(0o600)
@@ -161,7 +161,7 @@ class DriverTests(unittest.TestCase):
         current = (ROOT / 'agent_tools/linux_package_fixture_build.py').read_bytes()
         future = reviewed_build_bytes() + b'\n# synthetic future unreviewed source\n'
         path = self.root / 'agent_tools/linux_package_fixture_build.py'
-        for label, raw in (('current', current), ('future', future)):
+        for label, raw in (('historical', reviewed_build_bytes()), ('future', future)):
             if hashlib.sha256(raw).hexdigest() == session.REVIEWED_BUILD_SHA256:
                 continue
             with self.subTest(source=label):
@@ -170,11 +170,11 @@ class DriverTests(unittest.TestCase):
                     self.driver._tools()
                 self.assertEqual([], self.remote.calls)
 
-    def test_reviewed_timeout_repair_overlay_passes_exact_tools_gate(self):
-        # This specific producer delta has independent causal review 245b9910.
+    def test_current_launcher_preflight_helper_passes_exact_tools_gate(self):
+        # The current coordinator stages the exact tracked launcher-preflight helper.
         with mock.patch.object(self.driver, '_transport', side_effect=AssertionError('No transport')) as transport:
             tools = self.driver._tools()
-        self.assertEqual('874b7be8d70e917553d466ed2b8ad71419dec5f21bfd3092060f16180c284cf5',
+        self.assertEqual('95e3749be6f397dfa6d9435c04ec7fda225713bc1b6ec7eeca9736edd43ca966',
                          tools['linux_package_fixture_build.py']['pin']['sha256'])
         transport.assert_not_called()
         self.assertEqual([], self.remote.calls)

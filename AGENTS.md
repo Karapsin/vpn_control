@@ -217,7 +217,15 @@ Use `agent_docs/test-matrix.md` for path-based test selection and validation tie
 
 Documentation-only changes should run `git diff --check` and `./scripts/check_docs_hygiene.sh`.
 
-Agent tool or MCP changes should also run `python3 -m unittest discover -s agent_tools/tests -t .`. Broad changes must use the complete pre-push tier in `agent_docs/test-matrix.md`.
+Agent tool or MCP changes should run `python3 agent_tools/affected_agent_tests.py --run`.
+Select only changed tools and their transitive test consumers, including runtime
+fixtures and owned workflow/script dependencies. Product or prose-only changes do
+not run the agent-tool suite. Unknown dependency mappings must refuse selection;
+they must not silently omit coverage. Use
+`python3 agent_tools/affected_agent_tests.py --audit --baseline HEAD --run` only
+for an intentional full-suite audit. Broad changes still use the complete managed
+pre-push tier in `agent_docs/test-matrix.md`; its agent-test stage uses the same
+affected selection.
 
 Versions use three components `a.b.c`; `a` is in `1..19` and `b`/`c` are in `0..19`. Normal automatic rolls increment `c`, carrying at 20 (`2.0.19` becomes `2.1.0`, and `2.19.19` becomes `3.0.0`). `gradle.properties` is canonical and the exact same product version is used on every platform. Android version code and update build number are non-displayed monotonic IDs derived from the product version.
 

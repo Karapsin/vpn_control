@@ -95,16 +95,22 @@ def _source_root(coordinator: Path, source_root: Path | str | None) -> Path:
     return candidate
 
 
-def _source_preflight(root: Path, request: Mapping[str, str]) -> None:
+def _source_preflight(root: Path, request: Mapping[str, str], *, engineering_context=None) -> None:
     """Read only immutable source checks, intentionally separate from coordination."""
     source = request["sourceSha"]
+    if engineering_context is not None:
+        from .native_execution_context import EngineeringExecutionContext
+        _need(type(engineering_context) is EngineeringExecutionContext,
+              "Linux engineering admission requires its qualified context")
+        engineering_context.revalidate(root, request)
     probes = (
         (["git", "-C", str(root), "rev-parse", "HEAD"], source),
         (["git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-c",
           "core.untrackedCache=false", "-C", str(root), "status", "--porcelain=v1",
           "--untracked-files=all"], ""),
-        (["git", "-C", str(root), "ls-remote", "origin", "refs/heads/dev"],
-         source + "\trefs/heads/dev"),
+        *(() if engineering_context is not None else (
+            (["git", "-C", str(root), "ls-remote", "origin", "refs/heads/dev"],
+             source + "\trefs/heads/dev"),)),
     )
     for argv, expected in probes:
         try:
@@ -123,21 +129,30 @@ def _source_preflight(root: Path, request: Mapping[str, str]) -> None:
           re.search(r"^vpnControlVersion=" + re.escape(request["targetVersion"]) + r"$",
                     tracked.stdout, re.MULTILINE) is not None,
           "Linux build target version differs from frozen source")
+    if engineering_context is not None:
+        engineering_context.revalidate(root, request)
 
 
 def preflight(root: Path | str, raw: Mapping[str, Any], *,
-              source_root: Path | str | None = None) -> dict[str, Any]:
+              source_root: Path | str | None = None, engineering_context=None) -> dict[str, Any]:
     """Read-only source/host gate; a dirty or unfrozen source cannot build."""
     request = _request(raw)
     root = Path(root).resolve(strict=True)
     source = _source_root(root, source_root)
-    _source_preflight(source, request)
+    if engineering_context is None:
+        _source_preflight(source, request)
+    else:
+        _source_preflight(source, request, engineering_context=engineering_context)
     from . import ssh_transport
     config = ssh_transport.load_config(root)
     _need(_HOST in config.hosts, "Fixed Arch build host is not configured")
-    return {"state": "ready", "sourceSha": request["sourceSha"], "baseVersion": request["baseVersion"],
-            "targetVersion": request["targetVersion"], "host": _HOST,
-            "packageFamilies": ["default", "arch"], "nativeActionAllowed": False}
+    result = {"state": "ready", "sourceSha": request["sourceSha"], "baseVersion": request["baseVersion"],
+              "targetVersion": request["targetVersion"], "host": _HOST,
+              "packageFamilies": ["default", "arch"], "nativeActionAllowed": False}
+    if engineering_context is not None:
+        result.update(engineering_context.revalidate(source, request))
+        result["state"] = "ready"
+    return result
 
 
 def _directory(root: Path, create: bool) -> Path | None:
@@ -202,7 +217,7 @@ def _unknown(correlation: str, reason: str) -> dict[str, Any]:
 
 
 def start(root: Path | str, raw: Mapping[str, Any], *, driver=None, admission=None,
-          source_root: Path | str | None = None) -> dict[str, Any]:
+          source_root: Path | str | None = None, engineering_context=None) -> dict[str, Any]:
     request = _request(raw)
     root = Path(root).resolve(strict=True)
     directory = _directory(root, create=True)
@@ -217,17 +232,27 @@ def start(root: Path | str, raw: Mapping[str, Any], *, driver=None, admission=No
         return {"state": "blocked", "correlationId": request["correlationId"],
                 "reason": "build-host-already-claimed", "replayAllowed": False}
     if admission is None:
-        admitted = preflight(root, request, source_root=source_root)
+        if engineering_context is None:
+            admitted = preflight(root, request, source_root=source_root)
+        else:
+            admitted = preflight(root, request, source_root=source_root, engineering_context=engineering_context)
     else:
         # Test and recovery admissions still cannot silently bypass a requested
         # clean-worktree source binding.  Coordinator host configuration and
         # claim ownership remain exclusively at ``root``.
-        if source_root is not None:
-            _source_preflight(_source_root(root, source_root), request)
+        if source_root is not None or engineering_context is not None:
+            if engineering_context is None:
+                _source_preflight(_source_root(root, source_root), request)
+            else:
+                _source_preflight(_source_root(root, source_root), request, engineering_context=engineering_context)
         admitted = admission(root, request)
     _need(isinstance(admitted, Mapping) and admitted.get("ready") is True or
           isinstance(admitted, Mapping) and admitted.get("state") == "ready",
           "Linux build preflight is not ready")
+    if engineering_context is not None:
+        _need(root == engineering_context.coordinator_root,
+              "Engineering native storage must remain its coordinator checkout")
+        engineering_context.require_native_consumers((Path(__file__),))
     driver = driver or FixedArchDriver(root)
     try:
         _write_once(claim, {"correlationId": request["correlationId"], "host": _HOST})
@@ -940,8 +965,102 @@ def _local_worker(root: Path, correlation: str) -> None:
         _state(job, {**identity, "state": "unknown", "reason": type(error).__name__})
 
 
+
+def _engineering_packet(value):
+    """Finite local protocol; no command, raw authority, or driver selection."""
+    from .native_execution_context import ExecutionContextError
+    _need(type(value) is dict and set(value) == {'operation','request','artifactIds'},
+          'Engineering packet fields differ')
+    _need(value['operation'] in ('preflight','start','status','collect') and
+          type(value['operation']) is str and type(value['artifactIds']) is list,
+          'Engineering operation differs')
+    request = _request(value['request'])
+    _need(0 < len(value['artifactIds']) <= 100 and len(set(value['artifactIds'])) == len(value['artifactIds'])
+          and all(type(x) is str and re.fullmatch(r'sha256-[0-9a-f]{64}',x) for x in value['artifactIds']),
+          'Engineering artifacts differ')
+    return value['operation'],request,tuple(value['artifactIds'])
+
+
+def _engineering_context(root, source, request, artifacts, operation):
+    from . import native_execution_context as context
+    from . import ssh_tmux_session as session
+    directory = _directory(root, create=operation=='preflight')
+    _need(directory is not None,'Engineering enrollment is absent')
+    path = directory/(request['correlationId']+'.engineering.json')
+    if os.path.lexists(path):
+        raw, pin = session.read(path,2*1024**2)
+        value = json.loads(raw)
+        _need(type(value) is dict and set(value)=={'schemaVersion','request','artifactIds','sourceRoot','coordinatorRoot','authority'}
+              and value['schemaVersion']==1 and value['request']==request and value['artifactIds']==list(artifacts)
+              and value['sourceRoot']==str(source) and value['coordinatorRoot']==str(root),
+              'Engineering enrollment binding differs')
+        authority = session.canonical(value['authority']).rstrip(b'\n')
+        admitted = context.EngineeringExecutionContext(root,source,authority)
+        admitted.revalidate(source,request,admission=operation in ('preflight','start'))
+        _need(session.read(path,2*1024**2)==(raw,pin),'Engineering enrollment changed')
+        return admitted
+    _need(operation=='preflight','Engineering enrollment is absent')
+    admitted = context.EngineeringExecutionContext.qualify(root,source,request,artifacts)
+    value = {'schemaVersion':1,'request':request,'artifactIds':list(artifacts),'sourceRoot':str(source),
+             'coordinatorRoot':str(root),'authority':json.loads(admitted.authority)}
+    _need(len(session.canonical(value))<=2*1024**2,'Engineering enrollment exceeds bound')
+    _write_once(path,value)
+    return admitted
+
+
+def _engineering_local(root, packet):
+    """Frozen producer code, original coordinator storage, fixed resource gate."""
+    from . import native_execution_context as context
+    from . import ssh_tmux_resource_admission as resource
+    from . import tmux_workflow_routes as routes
+    from . import tmux_public_projection as projection
+    operation,request,artifacts = _engineering_packet(packet)
+    root=Path(root).resolve(strict=True)
+    source=Path(__file__).resolve(strict=True).parents[1]
+    admitted=_engineering_context(root,source,request,artifacts,operation)
+    # Every repository module already loaded by the fixed entrypoint must be
+    # physically in the qualified producer tree before any driver effect.
+    consumers=[]
+    for name,module in tuple(sys.modules.items()):
+        if name.split('.')[0] not in ('agent_tools','scripts'):continue
+        path=getattr(module,'__file__',None)
+        if path and Path(path).suffix=='.py':consumers.append(Path(path))
+    admitted.require_native_consumers(consumers)
+    if operation=='preflight' and not os.path.lexists(resource.directory(root,request['correlationId'])):
+        identity=routes._protected_identity(root,request)
+        resource.prepare(root,request,identity,source_root=source,engineering_context=admitted)
+    raw=request if operation in ('preflight','start') else {'correlationId':request['correlationId']}
+    if operation=='start':
+        burn=_directory(root,False)/(request['correlationId']+'.engineering-child-start.json')
+        try:_write_once(burn,{'request':request,'contextSha256':hashlib.sha256(admitted.authority).hexdigest()})
+        except FileExistsError:
+            proof=admitted.revalidate(source,request)
+            return {**_unknown(request['correlationId'],'already-journaled'),**proof}
+    result=resource.operate(root,operation,raw,source_root=source,engineering_context=admitted)
+    proof=admitted.revalidate(source,request,admission=operation in ('preflight','start'))
+    if operation=='preflight':
+        result={k:v for k,v in result.items() if k not in proof and k not in {'contextSha256','scope','originalPackageVersion','targetSha','finalAcceptance'}}
+        # sourceSha/nativeActionAllowed remain part of the original fixed schema.
+        result['sourceSha']=request['sourceSha'];result['nativeActionAllowed']=False
+    result=projection.project(operation,result,raw)
+    return {**result,**proof,'correlationId':request['correlationId'],'replayAllowed':False}
+
+
+def _engineering_main(root):
+    from . import ssh_transport
+    raw=sys.stdin.buffer.read(16385)
+    _need(0 < len(raw) <= 16384,'Engineering input exceeds bound')
+    packet=json.loads(raw,object_pairs_hook=ssh_transport._reject_duplicate_keys)
+    result=_engineering_local(root,packet)
+    payload=json.dumps(result,sort_keys=True,separators=(',',':'),allow_nan=False).encode()+b'\n'
+    _need(len(payload)<=16384,'Engineering output exceeds bound')
+    sys.stdout.buffer.write(payload);sys.stdout.buffer.flush()
+
+
 def main() -> None:
-    if len(sys.argv) == 4 and sys.argv[1] == "--local-worker":
+    if len(sys.argv) == 3 and sys.argv[1] == "--engineering-local":
+        _engineering_main(sys.argv[2])
+    elif len(sys.argv) == 4 and sys.argv[1] == "--local-worker":
         _local_worker(Path(sys.argv[2]), sys.argv[3])
     elif len(sys.argv) == 4 and sys.argv[1] == "--remote-run":
         request = json.loads(base64.b64decode(sys.argv[3], validate=True))
@@ -951,4 +1070,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--engineering-local":
+        # -B prevents writes; redirect reads away from every existing cache too.
+        # This fixed script was loaded from source before repository imports.
+        sys.pycache_prefix = "/dev/null"
+    if __package__ is None or __package__ == "":
+        # -I removes cwd/PYTHONPATH; this fixed script derives only its own tree.
+        sys.path.insert(0, str(Path(__file__).resolve(strict=True).parents[1]))
+        __package__ = "agent_tools"
     main()

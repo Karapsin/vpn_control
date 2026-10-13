@@ -33,7 +33,158 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance and integration — 2026-10-13,10:16 Moscow
+## Optimization integration — prevalidation record, 2026-10-13
+
+All six requested optimizations are integrated. Platform work remains on hold
+until fresh managed prepush validation and a clean checkpoint qualify the final
+contents. Resume the original native cases with their exact ownership and source
+bindings after that gate. Existing UNKNOWNs, receipts and protected Ubuntu2307 ON
+remain intact; no new platform/resource/package action ran during this hold.
+This section records source integration before validation. Actual managed receipts
+and Git state establish the later check and delivery result; no receipt is reused
+after contents change.
+
+The integration source base is `7143184879853ec007d4f778c147bb69724a64dd`,
+version2.2.8. The new development bullet normally rolls the10-note threshold to
+2.2.9. No release operation is authorized. Final exact-SHA five-workflow CI remains
+deferred until final delivery by user instruction.
+
+| Optimization | Integrated behavior and evidence | Limit |
+| --- | --- | --- |
+| Select affected agent tests | Nine reviewed selector/MCP/CI paths; independent81 controls and canonical110 controls PASS (one skip), exact consumer hashes and Git baselines | Current broad transport/tool bundle legitimately selects442/499 modules; product/prose changes select zero; unknown mappings refuse |
+| Record duration and concurrent independent groups | Reviewed runner25 PASS, per-test private duration/outcome, short owned system temporary roots, two isolated local workers, four qualified groups18 real cases | Other modules serialize;18-case1.347x benchmark is not a whole-suite estimate |
+| Freeze native engineering source | Reviewed19-path context/current-pin packet; canonical31 PASS, retained74 mapped inert controls, original artifacts and coordinator custody | Initial fixed Linux builder only, future clean checkpoint,2 reviewed unrelated helpers/docs/tests/version eligibility, finalAcceptance:false |
+| First complete bounded observation | Reviewed six-path collector/executor slice; canonical22 PASS, durable observer generation and exact actor/cache guards | Oversized/uncertain collection stays UNKNOWN; no old reader closure or native proof is inferred |
+| Batch compatible native cases | Existing GUI ten-slice, Android profile4 and durable batch controls reused | Shared source/package/guest/operator/server identity, serialized interfering mutations, no uncertain replay |
+| Restrict infrastructure work | TEST-004/005 and focused maintainer procedures; demonstrated failure evidence and causal RED/GREEN retained | Original direct native scenarios, matching MCP retests, full matrix and exact-SHA delivery remain required |
+
+The selector source-policy packet17fe54f9 is independently approved. Root also
+reviewed the exact engineering MCP6e774→f2270ebb two-hunk addition and its single
+metadata hash append;2 callback and4 SDK controls pass. The nine canonical files were authenticated against
+`.runtime/agent-selection-final-successor-20261013/manifest.json`; the only later
+change moves Windows' new optional baseline input after its existing fixture fields.
+That narrow interface correction preserves its beforeimage and actual1 RED→8 GREEN
+script suite in `.runtime/root-optimization-prepush-3ok332g5`.
+The first managed attempt stopped early in release hygiene; no new receipt or
+checkpoint resulted. Restart the complete tier on final corrected contents.
+The corrected retry then exposed temporary-root placement, socket-path and
+receipt-size failures, plus downstream shared-mock leakage from failed setup.
+Short private system temporary roots preserve the unchanged guards and pass the
+same causal cases. Independent review also reproduced and corrected a cleanup
+directory-exchange race; mismatched quarantine generations retain data. Final
+runner evidence is `.runtime/runner-temp-isolation-repair-t8c0ig0x` and review is
+`.runtime/runner-temp-review-d866se7y/review.json`. Root stopped only the identified
+local test runner after those causes were proven. The original managed result is
+cancelled/130 with3019 partial timing events and verified worker/session absence;
+five complete output capsules are authenticated under
+`.runtime/root-optimization-prepush-retry-tsyyutbt`. That run supplies no valid
+prepush receipt. A fresh full managed tier remains required on final contents.
+The next complete attempt at fingerprint25fc8fb5 ran6216 tests with8 failures,
+12 errors and167 explicit skips. All266 preceding failed identities passed.
+Five complete capsules and reaped/absent worker sessions are authenticated in
+`.runtime/root-optimization-final-prepush-appw878r/terminal-output-authenticated.json`.
+Root integrated a stale current-helper test-hash correction (24 canonical checks
+PASS) and an executable selective import-root regression (one canonical check
+PASS). Deeper Windows socket fixtures still exceed the managed temporary path;
+the unchanged16-case reproduction passes under a shorter owned root with the
+same UID/GID. The reviewed central correction uses a short canonical system root
+and binds its group through the held newly owned directory descriptor, with named
+generation checks and unconditional descriptor closure. All25 controls and the
+same16 Windows cases pass; the strengthened actual nested socket control is RED
+on the preserved runner and GREEN on the correction. Evidence is
+`.runtime/runner-deep-socket-repair-a0sydwlw`, with independent review under
+`.runtime/runner-deep-socket-review-3a8d7523-cd39-4f78-bf38-0401f3ca4d09`.
+Native guards and individual fixtures remain unchanged. Original failed sources, logs and
+capsules remain preserved; no valid receipt, checkpoint or platform action is
+inferred. Final source must run the complete managed tier again before delivery.
+The original worker stopped at model capacity; its successor completed the same
+owned scope. Candidate sources, all beforeimages and actual failure evidence remain
+preserved; historical source/pin maps are unchanged. Root owns final documentation,
+version metadata, checks, explicit commit paths and development delivery.
+
+The earlier26-path full retry remains terminal1:6595 tests,2163.407s,175 skips and
+one launcher fixture `census_ancestry_changed` refusal. Its exact original actor
+remains unproved. Five completed output capsules/source bytes are authenticated in
+`.runtime/root-linux-parity-integration-9glhl10u/retry-failure-authenticated.public.json`.
+The integrated child-local fixture repair passes20 controls with1 honest Linux-only
+skip; native guard/historical bytes remain intact. Earlier opening details are
+preserved in `.runtime/root-linux-parity-integration-9glhl10u/wip-optimization-before-final-validation.md`.
+
+The RPi concurrency10 message was withdrawn as wrong-chat; no setting changed.
+Full22-group/217-scenario/249-scene acceptance remains incomplete. Do not treat
+local orchestration checks, this integration record or a checkpoint push as native
+acceptance or release permission.
+
+## Historical acceptance and integration — 2026-10-13,14:25 Moscow
+
+Delivered `dev`/`origin/dev` remain `7143184879853ec007d4f778c147bb69724a64dd`,
+product2.2.8. Root owns the reviewed connection/Linux source-chain bucket and
+three Android test-fixture repairs. The full prepush at fingerprint600c stopped
+after6584 agent tests in2439.410s: two APK-readback assertions, one ancestry setup
+error and175 explicit skips. Original completed failure/capsule is retained;
+there is no valid new prepush receipt or checkpoint. Final five-workflow exact-SHA
+CI is deferred until final delivery. Full22-group/217-scenario/249-scene goal is
+incomplete; no release is authorized.
+
+The APK fixture now permits at most three complete guarded reads only after
+proven outside metadata-only churn with unchanged full owned generations. UNKNOWN
+attempts remain retained and rejected. The historical writer fixture declares a
+stable volatile metadata view only for exact external ancestor inodes; actual
+identity, principals, permissions, owned metadata, source bytes and FD guards
+remain live. Production guards, historical carrier/parser/source hashes and
+native facts are unchanged. Controlled sibling churn supplies causal RED/GREEN;
+the exact actor in the original full-run failure was not captured.
+
+| Slice | Owner and current boundary | Evidence and next gate |
+| --- | --- | --- |
+| Windows | windows_update_assembly; sole CP117 operator; all readers closed | Authentic cleanup7776 exited0 and stopped only pinned SYSTEM waiter7288. Full wire/native streams are retained locally; stderr has three CLIXML progress streams and no error stream. Original task Ready/result1, compiler and CLI results remain unresolved. Isolated startup-retention fix covers initial setup and removes a detached duplicate parameter, with explicit PS7/inert-seam limits. Review/adopt for fresh Windows native compiler/status case after source admission, then full update/failure/recovery/MCP equivalence. |
+| Android | android_api35_operator; all borrowers closed | Matching current DIRECT small observation remains GREEN. Compatible2.2.8 APK is registered. Existing direct original0dd status reaches native observer and returns worker_or_receipt_unknown, leaseReleasedfalse/replayfalse; original intent/lease untouched. Earlier masked causes remain unproved. Fresh MCP connection prepare/select works; original6410 is positively ENDED and new selectedbadc physical end is unobserved. Recover authentic original worker/disposition or prove separately authorized fenced retirement before installer admission. |
+| Linux | linux_native_successor; native HOLD | Reviewed current package-tool and diagnostic chains plus fixtures pass126 affected controls. Historical484-frame GUI case remains. After coherent source checkpoint, qualify physical resources/all eight reservation claims, build source-bound packages and complete matching MCP/native cases. Protected Ubuntu2307ON is unchanged. |
+| macOS | macos_native_successor; native HOLD | Last measured disk72,709,935,104 bytes is below80GiB; memory WARN/5125MiB and trusted stopped baseline absent. No boot/install/trust action admitted. Other platforms continue. |
+| Visuals | root; no baseline mutation | Delivered rendering/capture/mask fixes retain causal proof. Fixed-source native recapture and249-scene review remain open. |
+
+Root must validate the final content, push only reviewed explicit paths and keep
+native/source readers closed before staging. Fresh `mcp_tool.sh` uses the complete
+17-command tier and current handlers; the loaded daemon predates them. Evidence
+packets: `.runtime/root-linux-parity-integration-9glhl10u`,
+`.runtime/historical-apk-readback-repair-7731cb33-e056-448e-8949-23e1459b4a27`,
+`.runtime/prepush-ancestry-repair-bxdquuyw`,
+`.runtime/windows-direct-batch-a026-c0d047db-463a-4ea3-a35c-eac38e9efa49` and
+`.runtime/android-current-benign-direct-74-f4bf425e-f491-482d-b6bd-a3813abdb63e`.
+
+## Historical acceptance and integration — 2026-10-13,12:58 Moscow
+
+Delivered `dev` and `origin/dev` are `7143184879853ec007d4f778c147bb69724a64dd`,
+product2.2.8. Its fresh17-command prepush passed6522 agent tests with175 explicit
+skips and zero failures. One final exact-SHA five-workflow verification remains
+pending by user instruction; no release is authorized. Full22-group/217-scenario/
+249-scene acceptance remains incomplete.
+
+Root owns the intentional integration bucket: the reviewed finite historical
+ENDED-channel transition, four-value local refusal DTO correction, Linux current
+package-tool checksum chain and their causal regressions. All canonical source
+readers handed back before editing. Original native UNKNOWN records and package
+provenance remain unchanged. Focused checks, final version note, fresh full
+prepush and a coherent development checkpoint are required before native
+connection requalification.
+
+| Slice | Owner and boundary | Current evidence and next gate |
+| --- | --- | --- |
+| Windows | windows_update_assembly; sole CP117 operator; retained-byte diagnosis only | Original task is Ready with result1 and absent result markers. The exact waiter-cleanup attempt timed out receiving guest status; its accepted native outcome remains UNKNOWN. Local holders closed, but the old public outer snapshot is incomplete. Recover the same accepted cleanup and original waiter status without replay, then identify the task failure before native compiler/status/update cases. |
+| Android | android_api35_operator; API35; native HOLD | Current DIRECT small status/operations closing passed in17.195s, owner00029/revision0/OFF and exact installed2.2.2 package. Full retained backup was joined without another export. Compatible signed2.2.8 x86_64 target is registered. Old installer lease0dd remains UNKNOWN; local dependency setup refuses the selected route. Requalify the route and observe the exact original lease before any installer admission. API29 and full action/installer matrix remain open. |
+| Linux | linux_native_successor; native HOLD | Current package-tool pin chain incorrectly expects an older helper. Same five causal checks fail before and pass after correction. Broader checks exposed current/historical fixture mixing and three downstream diagnostic pins; the six-path successor passes126 affected controls without skips. Historical DIRECT GUI484-frame case remains preserved. Requalify connection and physical resources, count all reservation claims, then build source-bound packages and complete matching MCP acceptance. Ubuntu2307ON is protected. |
+| macOS | macos_native_successor; native HOLD | Last host observation:72,709,935,104 bytes available against80GiB minimum, WARN memory pressure and5125MiB available. No trusted stopped baseline is configured. No boot/install/trust action admitted; other platforms continue. |
+| Visuals | root; no baseline mutation | Delivered refresh-status rendering, pointer-neutral capture and removal of15 masks retain causal proof. Fixed-source recaptures and complete249-scene native review remain open. |
+
+Evidence: `.runtime/arch-channel-reason-repair-3cf107aa-f5bc-4885-b100-05a309a637f9`,
+`.runtime/root-linux-parity-integration-9glhl10u`,
+`.runtime/android-current-benign-direct-74-f4bf425e-f491-482d-b6bd-a3813abdb63e`,
+`.runtime/root-android-x86-714318-rzpt7gy1` and
+`.runtime/windows-direct-batch-a026-c0d047db-463a-4ea3-a35c-eac38e9efa49`.
+Use fresh `mcp_tool.sh` for the current17-command check plan and integrated
+handlers; the loaded MCP daemon predates these handlers.
+
+## Historical acceptance and integration — 2026-10-13,10:16 Moscow
 
 Delivered `dev` and `origin/dev` are `e96f3c6fe66984c6d46e93f2e0636b11d365c938`,
 product2.2.8. That checkpoint passed all17 prepush commands, including6522 agent

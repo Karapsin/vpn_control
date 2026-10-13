@@ -22,6 +22,57 @@ authorize mask exceptions, threshold changes or native acceptance promotion.
 
 Use this matrix to choose the smallest useful validation set for a patch. Add more tests when the touched code crosses boundaries.
 
+## Launcher collector test fixture isolation
+
+After changing the launcher snapshot fixture or its external ancestry test view,
+run `python3 -m unittest agent_tools.tests.test_android_launcher_version_source_snapshot agent_tools.tests.test_android_launcher_collector_ancestry`.
+The21 controls preserve actual FIFO and1024-FD causal cases, controlled external
+churn, owned ancestry/bytes and named FD exchange, identity/mode/principal and
+symlink refusal. On macOS, one existing Linux-only subreaper case skips honestly.
+Native guard and historical source bytes remain unchanged. These modules belong
+to ordinary discovery and the related change-scoped agent-test selection.
+
+## Frozen engineering source and first-observation collection
+
+For changes to the fixed Linux engineering gate, run the related modules
+`test_native_execution_context`, `test_native_execution_context_gitlink`,
+`test_native_execution_context_performance`, `test_native_engineering_entrypoint`,
+`test_native_engineering_snapshot`, `test_native_engineering_tmux_future` and
+`test_native_engineering_mcp_route` under `agent_tools.tests`. The real-scale
+performance control retains1938 files/231MB under1024 FDs. Entry and caller checks
+cover the actual fixed isolated script, loaded driver inheritance, original
+coordinator storage, strict future mutation admission and original historical
+reads, stale caches, immutable start burns and no uncertain replay. Test transport
+effects are inert; these checks do not qualify the real host or native scenario.
+
+For first-observation collection, run `test_native_scenario_first_observation`,
+`test_native_collector_payload` and `test_native_scheduled_refresh_ssh` under
+`agent_tools.tests`. These22 composed controls retain actual collector payloads,
+strict actor fields, output bounds, private retention, interruption/process exit,
+concurrent observer exclusion and original receipt/exit truth. Routine affected
+selection includes their real dependencies; the original native scenarios and
+MCP retakes remain required. Existing compatible GUI/Android recipes and durable
+batch controls remain the batching gates; no additional remote execution framework
+is introduced.
+
+## Agent test selection and measured execution
+
+Product and prose-only changes do not run agent-tool tests. For tool changes,
+`python3 agent_tools/affected_agent_tests.py --run` derives the changed paths and
+actual transitive consumers from Git and both source versions. Shared infrastructure
+runs every affected consumer; unbounded or unknown dependencies fail selection.
+An intentional full audit uses `--audit --baseline HEAD --run`. A missing CI baseline
+refuses; it does not silently broaden or omit checks. The complete managed prepush
+still runs its other product, packaging and documentation gates.
+
+The related selector, MCP planner/responsiveness and runner modules cover selection,
+source/cache drift, old/new dependency closure, CI baselines, private durations and
+actual child closure. `test_agent_test_runner` currently has23 controls and four
+reviewed independent groups containing18 real tests. Unreviewed modules serialize;
+parallel execution never shares their mutable fixtures. The measured18-test median
+was0.416s serial versus0.309s parallel. This small benchmark is not a whole-suite
+speedup claim. Timing records identify expensive tests before expanding concurrency.
+
 ## CI Shortcut
 
 The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual fast guardrail set for code changes:
@@ -29,7 +80,7 @@ The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual f
 ```bash
 ./scripts/check_release_hygiene.sh
 ./scripts/check_docs_hygiene.sh
-python3 -m unittest discover -s agent_tools/tests -t .
+python3 agent_tools/affected_agent_tests.py --run
 python3 scripts/check_ui_theme.py
 python3 scripts/test_visual_regression.py
 python3 scripts/test_visual_platform.py
@@ -44,7 +95,7 @@ python3 scripts/test_windows_qga_powershell_size.py
 
 ## Early prepush SSH dependency gate
 
-Run `python3 -m unittest agent_tools.tests.test_mcp_prepush_ssh_close_gate agent_tools.tests.test_ssh_connection_session_close` after changing the check planner, transport or close-source dependency. The existing26 close controls retain strict current-source and mutation/timeout/refusal coverage. Four causal planner/runner controls ensure early failure stops expensive discovery and receipt publication; a successful gate preserves all prior full checks and focused tiers. Standard discovery enrolls the new controls. The fixed prepush tier additionally invokes the existing close module before full discovery; no dynamic source pin acceptance is used.
+Run `python3 -m unittest agent_tools.tests.test_mcp_prepush_ssh_close_gate agent_tools.tests.test_ssh_connection_session_close` after changing the check planner, transport or close-source dependency. The existing26 close controls retain strict current-source and mutation/timeout/refusal coverage. Four causal planner/runner controls ensure early failure stops expensive discovery and receipt publication; a successful gate preserves all prior full checks and focused tiers. Standard discovery enrolls the new controls. The fixed prepush tier invokes the existing close module before other agent tests only when its dependency scope is selected; no dynamic source pin acceptance is used.
 
 ## Selected Arch descendant routing
 
@@ -579,7 +630,7 @@ If a mapped check cannot run because the environment lacks an Android SDK, emula
 | Windows packaging | `./scripts/package_windows_desktop_vm.sh` when a VM is available, or `.\scripts\package_windows_desktop.ps1` on Windows |
 | macOS packaging | `./scripts/package_macos_desktop.sh` on macOS |
 | Documentation only | `git diff --check` and `./scripts/check_docs_hygiene.sh` |
-| `agent_tools/`, `.codex/config.toml`, or `.github/required-workflows.json` | `python3 -m unittest discover -s agent_tools/tests -t .`, `./scripts/check_docs_hygiene.sh`, `./scripts/check_release_hygiene.sh`, and `git diff --check`; use the full pre-push tier when lifecycle or CI behavior changes |
+| `agent_tools/`, `.codex/config.toml`, or `.github/required-workflows.json` | `python3 agent_tools/affected_agent_tests.py --run`, `./scripts/check_docs_hygiene.sh`, `./scripts/check_release_hygiene.sh`, and `git diff --check`; the complete managed pre-push tier selects affected agent consumers when lifecycle or CI behavior changes |
 | Release workflow/package guardrails | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, agent tool tests, visual comparator tests, and `git diff --check` |
 
 The `VPN Integration` workflow has two profiles. `core` runs fast deterministic contracts and is advisory on `dev`; `all` additionally runs full traffic on an Android emulator, Windows, Arch Linux, Ubuntu, and Linux Mint, including Linux update install/relaunch. Release readiness accepts only explicit exhaustive VPN success plus a complete exact-SHA agent visual receipt and matching commit status. Never run the full desktop probe on a machine carrying an active VPN connection; its environment opt-in is reserved for disposable runners. Visual capture uses only isolated agent-owned environments or eligible GitHub-hosted ephemeral fallbacks with synthetic fixtures.
@@ -1257,3 +1308,34 @@ Optional macOS immutable-update pair workflow changes run
 real Bash/shebang fixture checks are POSIX-only; macOS/Linux run them, while
 Windows reports explicit skips. Workflow dispatch produces test artifacts only
 and does not replace guest installation/recovery acceptance.
+
+## Retained DIRECT wrapper transition controls
+
+`test_ssh_direct_retained_wrapper_transition` adds36 ordinary discovery controls
+for the exact public71431848 provider and reviewed60634→9df8 Android observation
+wrapper edge. Actual protected TempFS journals and the complete provider prove
+local reporting of authentic original positive ENDED without a child or write,
+new connection-only preparation after qualified ended history, and refusals for
+live/unknown/missing/malformed/altered history, credentials/inventory/source drift,
+READY custody, typed fields, unobserved populations and closing races. The four
+already reviewed predecessor populations retain their finite gates. The module
+is included automatically in ordinary agent-tool discovery, prepush and Fast
+Checks. Run it with the completed DIRECT history modules above. POSIX-only
+coordinator controls retain36 explicit skips elsewhere. Declared inert remote
+replies only seed the fixtures: these tests do not prove current connectivity,
+new native connection qualification, SDK admission or Windows acceptance.
+
+## DIRECT local refusal reason controls
+
+`test_ssh_direct_route_local_reason` adds 22 controls through ordinary agent-tool
+unittest discovery, managed prepush and Fast Checks. The actual protected local
+provider and `direct.route_options` reproduce inventory/source binding refusal,
+absent intent and unavailable gateway prompt without an SSH child. The route
+retains a `ChannelUnknown` with only the existing four closed local reasons;
+private text, malformed values, unexpected fields and unsafe action flags
+refuse. Ordinary ready routing and remote UNKNOWN diagnostics retain their
+existing behavior. The actual MCP route preserves the bounded local reason
+without a server schema change. Unsupported POSIX coordinators skip these 22
+controls. Run with the retained-wrapper, direct-channel, selector, MCP-route and
+transport modules. The original Android masked exception was not retained;
+these local reproductions prove the constructor defect, not its native cause.
