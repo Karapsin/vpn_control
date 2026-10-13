@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "ตำแหน่งที่ใช้งาน: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "ตำแหน่งที่ใช้งาน: ไม่พร้อมใช้งาน",
   "CONNECTION_RESTART_PENDING": "เริ่มการเชื่อมต่อใหม่เพื่อใช้การเปลี่ยนแปลงที่บันทึกไว้",
-  "CONNECTION_RESTART_UNKNOWN": "ไม่ทราบว่าจำเป็นต้องเริ่มใหม่หรือไม่"
+  "CONNECTION_RESTART_UNKNOWN": "ไม่ทราบว่าจำเป็นต้องเริ่มใหม่หรือไม่",
+  "REFRESH_STATUS_UNAVAILABLE": "ไม่สามารถแสดงสถานะการรีเฟรชได้"
 }

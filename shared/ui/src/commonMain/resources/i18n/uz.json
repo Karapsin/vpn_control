@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Faol joylashuv: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Faol joylashuv: mavjud emas",
   "CONNECTION_RESTART_PENDING": "Saqlangan o‘zgarishlarni qo‘llash uchun ulanishni qayta ishga tushiring.",
-  "CONNECTION_RESTART_UNKNOWN": "Qayta ishga tushirish zarurligi nomaʼlum."
+  "CONNECTION_RESTART_UNKNOWN": "Qayta ishga tushirish zarurligi nomaʼlum.",
+  "REFRESH_STATUS_UNAVAILABLE": "Yangilash holati mavjud emas"
 }

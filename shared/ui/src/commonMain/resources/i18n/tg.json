@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Ҷойгиршавии фаъол: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Ҷойгиршавии фаъол: дастнорас",
   "CONNECTION_RESTART_PENDING": "Барои татбиқи тағйироти захирашуда пайвастро аз нав оғоз кунед.",
-  "CONNECTION_RESTART_UNKNOWN": "Маълум нест, ки оғози дубора лозим аст ё не."
+  "CONNECTION_RESTART_UNKNOWN": "Маълум нест, ки оғози дубора лозим аст ё не.",
+  "REFRESH_STATUS_UNAVAILABLE": "Ҳолати навсозӣ дастнорас аст"
 }

@@ -303,6 +303,7 @@ enum class UiText {
     SHOW_WINDOW,
     HIDE_WINDOW,
     EXIT,
+    REFRESH_STATUS_UNAVAILABLE,
 }
 
 class AppStrings(

@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktiivne asukoht: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktiivne asukoht: pole saadaval",
   "CONNECTION_RESTART_PENDING": "Salvestatud muudatuste rakendamiseks taaskäivitage ühendus.",
-  "CONNECTION_RESTART_UNKNOWN": "Pole teada, kas taaskäivitamine on vajalik."
+  "CONNECTION_RESTART_UNKNOWN": "Pole teada, kas taaskäivitamine on vajalik.",
+  "REFRESH_STATUS_UNAVAILABLE": "Värskenduse olek pole saadaval"
 }

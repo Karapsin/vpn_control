@@ -21,6 +21,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
@@ -244,6 +246,64 @@ class VisualCaptureTest {
     }
 
     @Test
+    fun narrowStressCaptureClearsInheritedPointerHover() =
+        assertStressCaptureClearsInheritedPointerHover("stress-narrow-long-german")
+
+    @Test
+    fun largeFontStressCaptureClearsInheritedPointerHover() =
+        assertStressCaptureClearsInheritedPointerHover("stress-large-font")
+
+    private fun assertStressCaptureClearsInheritedPointerHover(sceneId: String) {
+            val directory = Files.createTempDirectory("vpn-control-visual-pointer-hover")
+            val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+            val viewport = visualViewport(sceneId)
+            val state = visualState(sceneId)
+            service.replaceStateForVisualCapture(state, visualLocations(), visualRuntimeStatusDetails(state))
+            try {
+                runDesktopComposeUiTest(width = 1280, height = 800) {
+                    compose = this
+                    setContent {
+                        CompositionLocalProvider(
+                            LocalDensity provides Density(viewport.density, viewport.fontScale),
+                            LocalStatsClock provides StatsClock({ 1_700_003_600_000L }, false),
+                        ) {
+                            Box(Modifier.requiredSize((viewport.width / viewport.density).dp,
+                                (viewport.height / viewport.density).dp)) {
+                                VpnControlTheme {
+                                    DesktopVpnControlApp(windowProvider = { error("Native dialogs are not used") },
+                                        service = service, onCheckAndDownloadUpdate = {},
+                                        onDismissOrCancelUpdate = {}, onInstallUpdate = {})
+                                }
+                            }
+                        }
+                    }
+                    waitForIdle()
+                    openSceneMenu(sceneId)
+                    waitForIdle()
+                    val neutral = captureScene(directory.resolve("neutral.png"), viewport.width, viewport.height)
+                    onNodeWithTag("find-best", useUnmergedTree = true).performMouseInput { moveTo(center) }
+                    waitForIdle()
+                    val hovered = onNodeWithTag("find-best", useUnmergedTree = true).captureToImage()
+                    val hoveredPixels = IntArray(hovered.width * hovered.height)
+                    hovered.readPixels(hoveredPixels)
+                    check(hoveredPixels.count { it and 0xffffff == 0x26313d } > hoveredPixels.size / 2) {
+                        "$sceneId must actually seed the original RGB(38,49,61) hover before capture"
+                    }
+                    val settled = captureScene(directory.resolve("settled.png"), viewport.width, viewport.height)
+                    val expected = IntArray(viewport.width * viewport.height)
+                    val actual = IntArray(viewport.width * viewport.height)
+                    neutral.getRGB(0, 0, viewport.width, viewport.height, expected, 0, viewport.width)
+                    settled.getRGB(0, 0, viewport.width, viewport.height, actual, 0, viewport.width)
+                    check(expected.contentEquals(actual)) {
+                        "$sceneId capture retained pointer-dependent pixels"
+                    }
+                }
+            } finally {
+                directory.toFile().deleteRecursively()
+            }
+    }
+
+    @Test
     fun captureRequestedScenes() {
         if (System.getenv("VPN_CONTROL_VISUAL_OUTPUT") == null) return
         runDesktopComposeUiTest(width = 1280, height = 800) capture@{
@@ -368,6 +428,10 @@ class VisualCaptureTest {
     }
 
     private fun captureScene(path: Path, width: Int, height: Int): BufferedImage {
+        compose.onAllNodes(isRoot(), useUnmergedTree = true)[0].performMouseInput {
+            moveTo(Offset(-1f, -1f))
+        }
+        compose.waitForIdle()
         val roots = compose.onAllNodes(isRoot(), useUnmergedTree = true)
         val nodes = roots.fetchSemanticsNodes(atLeastOneRootRequired = true)
         val canvas = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)

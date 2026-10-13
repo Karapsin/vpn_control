@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Белсенді орын: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Белсенді орын: қолжетімсіз",
   "CONNECTION_RESTART_PENDING": "Сақталған өзгерістерді қолдану үшін қосылымды қайта іске қосыңыз.",
-  "CONNECTION_RESTART_UNKNOWN": "Қайта іске қосу қажет пе, белгісіз."
+  "CONNECTION_RESTART_UNKNOWN": "Қайта іске қосу қажет пе, белгісіз.",
+  "REFRESH_STATUS_UNAVAILABLE": "Жаңарту күйі қолжетімсіз"
 }

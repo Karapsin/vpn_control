@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Emplacement actif : {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Emplacement actif : indisponible",
   "CONNECTION_RESTART_PENDING": "Redémarrez la connexion pour appliquer les modifications enregistrées.",
-  "CONNECTION_RESTART_UNKNOWN": "On ignore si un redémarrage est nécessaire."
+  "CONNECTION_RESTART_UNKNOWN": "On ignore si un redémarrage est nécessaire.",
+  "REFRESH_STATUS_UNAVAILABLE": "État de l’actualisation indisponible"
 }

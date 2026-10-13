@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktivna lokacija: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktivna lokacija: ni na voljo",
   "CONNECTION_RESTART_PENDING": "Znova zaženite povezavo, da uveljavite shranjene spremembe.",
-  "CONNECTION_RESTART_UNKNOWN": "Ni znano, ali je potreben ponovni zagon."
+  "CONNECTION_RESTART_UNKNOWN": "Ni znano, ali je potreben ponovni zagon.",
+  "REFRESH_STATUS_UNAVAILABLE": "Stanje osveževanja ni na voljo"
 }

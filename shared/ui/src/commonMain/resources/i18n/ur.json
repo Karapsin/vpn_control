@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "فعال مقام: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "فعال مقام: دستیاب نہیں",
   "CONNECTION_RESTART_PENDING": "محفوظ کردہ تبدیلیاں لاگو کرنے کے لیے کنکشن دوبارہ شروع کریں۔",
-  "CONNECTION_RESTART_UNKNOWN": "یہ معلوم نہیں کہ دوبارہ شروع کرنا ضروری ہے یا نہیں۔"
+  "CONNECTION_RESTART_UNKNOWN": "یہ معلوم نہیں کہ دوبارہ شروع کرنا ضروری ہے یا نہیں۔",
+  "REFRESH_STATUS_UNAVAILABLE": "ریفریش کی کیفیت دستیاب نہیں"
 }

@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Active location: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Active location: unavailable",
   "CONNECTION_RESTART_PENDING": "Restart the connection to apply saved changes.",
-  "CONNECTION_RESTART_UNKNOWN": "Whether a restart is required is unknown."
+  "CONNECTION_RESTART_UNKNOWN": "Whether a restart is required is unknown.",
+  "REFRESH_STATUS_UNAVAILABLE": "Refresh status unavailable"
 }

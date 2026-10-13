@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "ສະຖານທີ່ທີ່ໃຊ້ງານ: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "ສະຖານທີ່ທີ່ໃຊ້ງານ: ບໍ່ພ້ອມໃຊ້ງານ",
   "CONNECTION_RESTART_PENDING": "ເລີ່ມການເຊື່ອມຕໍ່ໃໝ່ເພື່ອນຳໃຊ້ການປ່ຽນແປງທີ່ບັນທຶກໄວ້.",
-  "CONNECTION_RESTART_UNKNOWN": "ຍັງບໍ່ຮູ້ວ່າຈຳເປັນຕ້ອງເລີ່ມໃໝ່ຫຼືບໍ່."
+  "CONNECTION_RESTART_UNKNOWN": "ຍັງບໍ່ຮູ້ວ່າຈຳເປັນຕ້ອງເລີ່ມໃໝ່ຫຼືບໍ່.",
+  "REFRESH_STATUS_UNAVAILABLE": "ບໍ່ມີສະຖານະການໂຫຼດໃໝ່"
 }

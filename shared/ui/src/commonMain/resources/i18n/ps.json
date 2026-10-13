@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "فعاله موقعیت: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "فعاله موقعیت: شتون نه لري",
   "CONNECTION_RESTART_PENDING": "د خوندي شویو بدلونونو د پلي کولو لپاره اتصال بیا پیل کړئ.",
-  "CONNECTION_RESTART_UNKNOWN": "معلومه نه ده چې بیا پیل ته اړتیا شته که نه."
+  "CONNECTION_RESTART_UNKNOWN": "معلومه نه ده چې بیا پیل ته اړتیا شته که نه.",
+  "REFRESH_STATUS_UNAVAILABLE": "د تازه کولو حالت شتون نه لري"
 }

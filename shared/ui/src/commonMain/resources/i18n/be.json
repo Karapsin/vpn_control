@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Актыўная лакацыя: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Актыўная лакацыя: недаступная",
   "CONNECTION_RESTART_PENDING": "Перазапусціце злучэнне, каб ужыць захаваныя змены.",
-  "CONNECTION_RESTART_UNKNOWN": "Невядома, ці патрэбны перазапуск."
+  "CONNECTION_RESTART_UNKNOWN": "Невядома, ці патрэбны перазапуск.",
+  "REFRESH_STATUS_UNAVAILABLE": "Статус абнаўлення недаступны"
 }

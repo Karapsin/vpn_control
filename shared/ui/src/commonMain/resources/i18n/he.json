@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "מיקום פעיל: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "מיקום פעיל: לא זמין",
   "CONNECTION_RESTART_PENDING": "יש להפעיל מחדש את החיבור כדי להחיל את השינויים שנשמרו.",
-  "CONNECTION_RESTART_UNKNOWN": "לא ידוע אם נדרשת הפעלה מחדש."
+  "CONNECTION_RESTART_UNKNOWN": "לא ידוע אם נדרשת הפעלה מחדש.",
+  "REFRESH_STATUS_UNAVAILABLE": "מצב הרענון אינו זמין"
 }

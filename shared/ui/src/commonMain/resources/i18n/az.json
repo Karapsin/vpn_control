@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktiv məkan: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktiv məkan: əlçatan deyil",
   "CONNECTION_RESTART_PENDING": "Saxlanmış dəyişiklikləri tətbiq etmək üçün yenidən başladın.",
-  "CONNECTION_RESTART_UNKNOWN": "Yenidən başlatmanın lazım olub-olmadığı məlum deyil."
+  "CONNECTION_RESTART_UNKNOWN": "Yenidən başlatmanın lazım olub-olmadığı məlum deyil.",
+  "REFRESH_STATUS_UNAVAILABLE": "Yenilənmə statusu əlçatan deyil"
 }

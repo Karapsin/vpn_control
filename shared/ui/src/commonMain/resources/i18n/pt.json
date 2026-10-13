@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Localização ativa: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Localização ativa: indisponível",
   "CONNECTION_RESTART_PENDING": "Reinicie a ligação para aplicar as alterações guardadas.",
-  "CONNECTION_RESTART_UNKNOWN": "Não se sabe se é necessário reiniciar."
+  "CONNECTION_RESTART_UNKNOWN": "Não se sabe se é necessário reiniciar.",
+  "REFRESH_STATUS_UNAVAILABLE": "Estado da atualização indisponível"
 }

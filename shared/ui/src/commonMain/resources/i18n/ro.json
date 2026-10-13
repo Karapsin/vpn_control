@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Locație activă: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Locație activă: indisponibilă",
   "CONNECTION_RESTART_PENDING": "Reporniți conexiunea pentru a aplica modificările salvate.",
-  "CONNECTION_RESTART_UNKNOWN": "Nu se știe dacă este necesară repornirea."
+  "CONNECTION_RESTART_UNKNOWN": "Nu se știe dacă este necesară repornirea.",
+  "REFRESH_STATUS_UNAVAILABLE": "Starea reîmprospătării nu este disponibilă"
 }

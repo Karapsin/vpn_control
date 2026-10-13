@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "활성 위치: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "활성 위치: 사용할 수 없음",
   "CONNECTION_RESTART_PENDING": "저장된 변경 사항을 적용하려면 연결을 다시 시작하세요.",
-  "CONNECTION_RESTART_UNKNOWN": "다시 시작해야 하는지 알 수 없습니다."
+  "CONNECTION_RESTART_UNKNOWN": "다시 시작해야 하는지 알 수 없습니다.",
+  "REFRESH_STATUS_UNAVAILABLE": "새로고침 상태를 확인할 수 없음"
 }

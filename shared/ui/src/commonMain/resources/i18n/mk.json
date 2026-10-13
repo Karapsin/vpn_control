@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Активна локација: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Активна локација: недостапна",
   "CONNECTION_RESTART_PENDING": "Рестартирајте ја врската за да ги примените зачуваните промени.",
-  "CONNECTION_RESTART_UNKNOWN": "Не е познато дали е потребно рестартирање."
+  "CONNECTION_RESTART_UNKNOWN": "Не е познато дали е потребно рестартирање.",
+  "REFRESH_STATUS_UNAVAILABLE": "Статусот на освежување не е достапен"
 }

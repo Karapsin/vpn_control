@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Ակտիվ տեղադրություն՝ {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Ակտիվ տեղադրություն՝ հասանելի չէ",
   "CONNECTION_RESTART_PENDING": "Պահպանված փոփոխությունները կիրառելու համար վերագործարկեք կապը։",
-  "CONNECTION_RESTART_UNKNOWN": "Հայտնի չէ՝ արդյոք վերագործարկում է պահանջվում։"
+  "CONNECTION_RESTART_UNKNOWN": "Հայտնի չէ՝ արդյոք վերագործարկում է պահանջվում։",
+  "REFRESH_STATUS_UNAVAILABLE": "Թարմացման կարգավիճակը հասանելի չէ"
 }

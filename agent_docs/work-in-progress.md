@@ -33,7 +33,53 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance and integration — 2026-10-13,08:12 Moscow
+## Current acceptance and integration — 2026-10-13,10:16 Moscow
+
+Delivered `dev` and `origin/dev` are `e96f3c6fe66984c6d46e93f2e0636b11d365c938`,
+product2.2.8. That checkpoint passed all17 prepush commands, including6522 agent
+tests/175 explicit skips and zero failure headers. Final exact-SHA five-workflow
+verification remains deferred. Full22-group/217-scenario/249-scene acceptance is
+incomplete; current matrix accounting reports19 open and three historical groups.
+
+Root owns the intentional new integration bucket: the desktop refresh-status
+consumer, one neutral label in all66 UI catalogs, its eight rendered row tests,
+the pointer-neutral visual fixture and two causal tests, the four-path no-mask
+correction, these maintainer evidence docs and final changelog metadata. All
+candidate beforeimages, causal RED/GREEN and independent reviews are preserved.
+All native source holders closed before canonical edits. Focused canonical
+validation passes10 desktop regressions and47 shared UI tests, zero skips/failures,
+plus16 comparator tests, all-language localization, status catalogs and theme.
+Original full prepush93117 reached agent-tool discovery, then host ENOSPC
+prevented the outer observer's terminal-record write. Its result/stderr files are
+empty, original processes are physically absent, and only prepush-0..3 have
+complete current receipts. Discovery remains UNKNOWN; no checkpoint intent or
+push occurred. Available storage subsequently recovered without task cleanup;
+a new full validation is required after resource/process checks. Preserve the
+original incomplete record and invalid old receipt rather than promoting them.
+
+| Slice | Owner and current boundary | Evidence and next gate |
+| --- | --- | --- |
+| Windows update | windows_update_assembly; sole CP117 operator; native HOLD, ignored source diagnosis only | Original0ef SYSTEM9668 exited1: `Get-Item` could not find the new stage's `sources/image.json`. Same-original error recovery98e614 exited0/full EOF; all source holders closed. No native compiler or suspended CLI proof; fix the measured stage issue causally, then obtain a fresh source grant. Existing GUI/check and H12 histories remain unchanged; no download/install submitted. |
+| Android observer | android_api35_operator; API35; all holders closed | Matching fresh-CLI MCP case75210 exits0 with complete status/operations, matching owner00029/revision0/OFF, full streams and app/device/image/source closure. This closes the engineering2.2.2 read-only procedure only. Final compatible2.2.8 APK, API29, actions, installers and historical UNKNOWN cases remain open. |
+| Linux GUI | sole guest operator boundary retained; native HOLD | Complete ef1 DIRECT GUI case38916 passed484 frames and cleanup. Reviewed MCP fixes are delivered, but artifact equivalence refuses the changed source set. Build a final-source package after this product/fixture bucket settles, then run a new matching MCP case. Ubuntu2307ON is protected. |
+| Visuals | root; canonical fixes, no VM or baseline mutation | Five Windows Profile scenes expose the real refresh-status defect; two stress scenes expose hover-dependent captures. All15 mask declarations violate VISUAL-004 and are removed without changing107 scenes, thresholds or pixels. Recapture fixed-source scenes, deterministic native surfaces and failed Linux/macOS hosted providers; full249-scene review remains open. |
+| macOS native | root; stopped VM and legacy UNKNOWN preserved | Latest storage observation has13,238,403,072 bytes against80GiB required. No new boot/install/trust action; other work continues. |
+
+New evidence packets are under `.runtime/refresh-status-consumer-candidate-1aa6faea8c4b46538c0edc582b01bcc2`,
+`.runtime/stress-interaction-diagnostic-35ec0c6f8cc64fabae9268c30a1650c3`,
+`.runtime/visual-no-mask-candidate-20261013-visual004` and
+`.runtime/root-parity-integration-22f_zeq8`. Independent source reviews are
+`refresh-status-independent-review` and `visual-no-mask-independent-review-20261013`.
+The storage diagnosis and source beforeimages are retained in
+`.runtime/prepush-storage-diagnosis-c1db9bbd48db432592528b430fccee34`.
+No specific canonical defect or surviving large temporary leak was established.
+No historical namespace was deleted, and no speculative storage threshold was
+introduced. Existing retention refuses failed IO; the host's transient allocation
+trigger remains unresolved. The loaded MCP daemon has the older check plan; use fresh `mcp_tool.sh` for
+integrated handlers and the17-command prepush tier. Preserve exact original
+package source/versions; no engineering evidence is promoted to final acceptance.
+
+## Historical acceptance and integration — 2026-10-13,08:12 Moscow
 
 Delivered `dev` and `origin/dev` are `ef1e866c7cdf46aef1d4c79ca74bd74949ad2c2f`,
 product2.2.8. All17 prepush commands passed, including6484 agent tests/175 explicit

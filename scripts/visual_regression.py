@@ -149,42 +149,22 @@ def write_png(path: Path, image: PngImage) -> None:
     path.write_bytes(payload)
 
 
-def _ignored_pixels(width: int, height: int, regions: object) -> bytearray:
-    if regions is None:
-        return bytearray(width * height)
-    if not isinstance(regions, list):
-        raise ValueError("ignore_regions must be a list of [left, top, right, bottom] rectangles")
-    ignored = bytearray(width * height)
-    for region in regions:
-        if (
-            not isinstance(region, list)
-            or len(region) != 4
-            or any(not isinstance(value, int) or isinstance(value, bool) for value in region)
-        ):
-            raise ValueError("ignore_regions must contain integer [left, top, right, bottom] rectangles")
-        left, top, right, bottom = region
-        if left < 0 or top < 0 or right > width or bottom > height or right <= left or bottom <= top:
-            raise ValueError(
-                f"ignore region is clipped or outside the {width}x{height} image: {region}",
-            )
-        row = bytes((1,)) * (right - left)
-        for y in range(top, bottom):
-            start = y * width + left
-            ignored[start : start + len(row)] = row
-    return ignored
+def _reject_ignore_regions(regions: object) -> None:
+    if regions is not None and (not isinstance(regions, list) or regions):
+        raise ValueError("VISUAL-004 forbids comparison masks; ignore_regions must be empty")
 
 
 def _scene_ignore_regions(scene: dict[str, object], platform: str) -> list[object]:
-    common = scene.get("ignore_regions") or []
-    scoped = scene.get("ignore_regions_by_platform") or {}
-    if not isinstance(common, list) or not isinstance(scoped, dict):
-        raise ValueError("ignore_regions and ignore_regions_by_platform must be lists and a platform map")
-    if any(key not in ("android", "linux", "windows", "macos") for key in scoped):
-        raise ValueError("ignore_regions_by_platform contains an unsupported platform")
-    selected = scoped.get(platform, [])
-    if not isinstance(selected, list):
-        raise ValueError("ignore_regions_by_platform values must be rectangle lists")
-    return [*common, *selected]
+    _reject_ignore_regions(scene.get("ignore_regions"))
+    scoped = scene.get("ignore_regions_by_platform")
+    if scoped is not None:
+        if not isinstance(scoped, dict):
+            raise ValueError("ignore_regions_by_platform must be a platform map")
+        if any(key not in ("android", "linux", "windows", "macos") for key in scoped):
+            raise ValueError("ignore_regions_by_platform contains an unsupported platform")
+        for regions in scoped.values():
+            _reject_ignore_regions(regions)
+    return []
 
 
 def _compare(
@@ -193,6 +173,7 @@ def _compare(
     max_delta: int,
     ignore_regions: object = None,
 ) -> tuple[dict[str, float | int], PngImage]:
+    _reject_ignore_regions(ignore_regions)
     if (baseline.width, baseline.height) != (actual.width, actual.height):
         raise ValueError(
             f"dimension mismatch: baseline={baseline.width}x{baseline.height}, "
@@ -202,17 +183,9 @@ def _compare(
     absolute_error = 0
     diff = bytearray(len(actual.pixels))
     pixel_count = actual.width * actual.height
-    ignored = _ignored_pixels(actual.width, actual.height, ignore_regions)
-    ignored_count = sum(ignored)
-    compared_count = pixel_count - ignored_count
-    if compared_count <= 0:
-        raise ValueError("ignore_regions cannot exclude the entire image")
+    compared_count = pixel_count
     for pixel in range(pixel_count):
         offset = pixel * 4
-        if ignored[pixel]:
-            gray = sum(actual.pixels[offset : offset + 3]) // 9
-            diff[offset : offset + 4] = bytes((gray, gray, gray, 255))
-            continue
         deltas = [abs(actual.pixels[offset + channel] - baseline.pixels[offset + channel]) for channel in range(3)]
         absolute_error += sum(deltas)
         changed = max(deltas) > max_delta
@@ -227,7 +200,7 @@ def _compare(
         "width": actual.width,
         "height": actual.height,
         "compared_pixels": compared_count,
-        "ignored_pixels": ignored_count,
+        "ignored_pixels": 0,
         "changed_pixels": changed_pixels,
         "changed_ratio": changed_pixels / compared_count,
         "mean_channel_error": absolute_error / (compared_count * 3),
@@ -334,6 +307,8 @@ def _load_manifest(path: Path) -> dict[str, object]:
     root = json.loads(path.read_text(encoding="utf-8"))
     if root.get("schema_version") != 1 or not isinstance(root.get("scenes"), list):
         raise ValueError("visual manifest must use schema_version 1 and contain scenes")
+    for scene in root["scenes"]:
+        _scene_ignore_regions(scene, "")
     return root
 
 

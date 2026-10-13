@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "ទីតាំងសកម្ម៖ {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "ទីតាំងសកម្ម៖ មិនអាចប្រើបាន",
   "CONNECTION_RESTART_PENDING": "ចាប់ផ្ដើមការតភ្ជាប់ឡើងវិញ ដើម្បីអនុវត្តការផ្លាស់ប្ដូរដែលបានរក្សាទុក។",
-  "CONNECTION_RESTART_UNKNOWN": "មិនទាន់ដឹងថាតើត្រូវចាប់ផ្ដើមឡើងវិញឬអត់។"
+  "CONNECTION_RESTART_UNKNOWN": "មិនទាន់ដឹងថាតើត្រូវចាប់ផ្ដើមឡើងវិញឬអត់។",
+  "REFRESH_STATUS_UNAVAILABLE": "មិនមានស្ថានភាពផ្ទុកឡើងវិញទេ"
 }

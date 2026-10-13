@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Vendndodhja aktive: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Vendndodhja aktive: e padisponueshme",
   "CONNECTION_RESTART_PENDING": "Rinisni lidhjen për të zbatuar ndryshimet e ruajtura.",
-  "CONNECTION_RESTART_UNKNOWN": "Nuk dihet nëse nevojitet rinisje."
+  "CONNECTION_RESTART_UNKNOWN": "Nuk dihet nëse nevojitet rinisje.",
+  "REFRESH_STATUS_UNAVAILABLE": "Gjendja e rifreskimit nuk është e disponueshme"
 }

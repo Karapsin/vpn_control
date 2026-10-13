@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Активдүү жайгашуу: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Активдүү жайгашуу: жеткиликсиз",
   "CONNECTION_RESTART_PENDING": "Сакталган өзгөртүүлөрдү колдонуу үчүн туташууну кайра баштаңыз.",
-  "CONNECTION_RESTART_UNKNOWN": "Кайра баштоо керекпи, белгисиз."
+  "CONNECTION_RESTART_UNKNOWN": "Кайра баштоо керекпи, белгисиз.",
+  "REFRESH_STATUS_UNAVAILABLE": "Жаңыртуу абалы жеткиликсиз"
 }

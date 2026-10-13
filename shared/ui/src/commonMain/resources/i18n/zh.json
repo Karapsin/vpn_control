@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "当前连接位置：{0}",
   "ACTIVE_CONNECTION_UNKNOWN": "当前连接位置：不可用",
   "CONNECTION_RESTART_PENDING": "重新启动连接以应用已保存的更改。",
-  "CONNECTION_RESTART_UNKNOWN": "尚不清楚是否需要重新启动。"
+  "CONNECTION_RESTART_UNKNOWN": "尚不清楚是否需要重新启动。",
+  "REFRESH_STATUS_UNAVAILABLE": "刷新状态不可用"
 }

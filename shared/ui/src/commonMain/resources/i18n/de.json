@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktiver Standort: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktiver Standort: nicht verfügbar",
   "CONNECTION_RESTART_PENDING": "Starten Sie die Verbindung neu, um gespeicherte Änderungen anzuwenden.",
-  "CONNECTION_RESTART_UNKNOWN": "Es ist unbekannt, ob ein Neustart erforderlich ist."
+  "CONNECTION_RESTART_UNKNOWN": "Es ist unbekannt, ob ein Neustart erforderlich ist.",
+  "REFRESH_STATUS_UNAVAILABLE": "Aktualisierungsstatus nicht verfügbar"
 }

@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktív hely: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktív hely: nem érhető el",
   "CONNECTION_RESTART_PENDING": "A mentett módosítások alkalmazásához indítsa újra a kapcsolatot.",
-  "CONNECTION_RESTART_UNKNOWN": "Nem ismert, hogy szükséges-e az újraindítás."
+  "CONNECTION_RESTART_UNKNOWN": "Nem ismert, hogy szükséges-e az újraindítás.",
+  "REFRESH_STATUS_UNAVAILABLE": "A frissítés állapota nem érhető el"
 }

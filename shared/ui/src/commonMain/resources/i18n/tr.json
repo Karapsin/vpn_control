@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Etkin konum: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Etkin konum: kullanılamıyor",
   "CONNECTION_RESTART_PENDING": "Kaydedilen değişiklikleri uygulamak için bağlantıyı yeniden başlatın.",
-  "CONNECTION_RESTART_UNKNOWN": "Yeniden başlatma gerekip gerekmediği bilinmiyor."
+  "CONNECTION_RESTART_UNKNOWN": "Yeniden başlatma gerekip gerekmediği bilinmiyor.",
+  "REFRESH_STATUS_UNAVAILABLE": "Yenileme durumu kullanılamıyor"
 }

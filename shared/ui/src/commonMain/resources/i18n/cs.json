@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktivní lokalita: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktivní lokalita: nedostupná",
   "CONNECTION_RESTART_PENDING": "Restartujte připojení, aby se použily uložené změny.",
-  "CONNECTION_RESTART_UNKNOWN": "Není známo, zda je nutný restart."
+  "CONNECTION_RESTART_UNKNOWN": "Není známo, zda je nutný restart.",
+  "REFRESH_STATUS_UNAVAILABLE": "Stav obnovení není dostupný"
 }

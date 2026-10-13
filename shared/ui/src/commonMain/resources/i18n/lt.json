@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktyvi vieta: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktyvi vieta: nepasiekiama",
   "CONNECTION_RESTART_PENDING": "Paleiskite ryšį iš naujo, kad pritaikytumėte išsaugotus pakeitimus.",
-  "CONNECTION_RESTART_UNKNOWN": "Nežinoma, ar reikia paleisti iš naujo."
+  "CONNECTION_RESTART_UNKNOWN": "Nežinoma, ar reikia paleisti iš naujo.",
+  "REFRESH_STATUS_UNAVAILABLE": "Atnaujinimo būsena nepasiekiama"
 }

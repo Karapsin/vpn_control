@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "موقعیت فعال: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "موقعیت فعال: در دسترس نیست",
   "CONNECTION_RESTART_PENDING": "برای اعمال تغییرات ذخیره‌شده، اتصال را دوباره راه‌اندازی کنید.",
-  "CONNECTION_RESTART_UNKNOWN": "مشخص نیست که راه‌اندازی مجدد لازم است یا نه."
+  "CONNECTION_RESTART_UNKNOWN": "مشخص نیست که راه‌اندازی مجدد لازم است یا نه.",
+  "REFRESH_STATUS_UNAVAILABLE": "وضعیت نوسازی در دسترس نیست"
 }

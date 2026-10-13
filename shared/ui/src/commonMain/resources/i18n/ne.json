@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "सक्रिय स्थान: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "सक्रिय स्थान: उपलब्ध छैन",
   "CONNECTION_RESTART_PENDING": "सुरक्षित गरिएका परिवर्तन लागू गर्न जडान पुनः सुरु गर्नुहोस्।",
-  "CONNECTION_RESTART_UNKNOWN": "पुनः सुरु गर्न आवश्यक छ कि छैन भन्ने थाहा छैन।"
+  "CONNECTION_RESTART_UNKNOWN": "पुनः सुरु गर्न आवश्यक छ कि छैन भन्ने थाहा छैन।",
+  "REFRESH_STATUS_UNAVAILABLE": "रिफ्रेसको स्थिति उपलब्ध छैन"
 }

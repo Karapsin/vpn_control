@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktīvā atrašanās vieta: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktīvā atrašanās vieta: nav pieejama",
   "CONNECTION_RESTART_PENDING": "Restartējiet savienojumu, lai lietotu saglabātās izmaiņas.",
-  "CONNECTION_RESTART_UNKNOWN": "Nav zināms, vai ir nepieciešama restartēšana."
+  "CONNECTION_RESTART_UNKNOWN": "Nav zināms, vai ir nepieciešama restartēšana.",
+  "REFRESH_STATUS_UNAVAILABLE": "Atsvaidzināšanas statuss nav pieejams"
 }

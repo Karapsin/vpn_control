@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktiv plassering: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktiv plassering: utilgjengelig",
   "CONNECTION_RESTART_PENDING": "Start tilkoblingen på nytt for å bruke lagrede endringer.",
-  "CONNECTION_RESTART_UNKNOWN": "Det er ukjent om omstart er nødvendig."
+  "CONNECTION_RESTART_UNKNOWN": "Det er ukjent om omstart er nødvendig.",
+  "REFRESH_STATUS_UNAVAILABLE": "Oppdateringsstatus er ikke tilgjengelig"
 }

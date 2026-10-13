@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Активна локація: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Активна локація: недоступна",
   "CONNECTION_RESTART_PENDING": "Перезапустіть з’єднання, щоб застосувати збережені зміни.",
-  "CONNECTION_RESTART_UNKNOWN": "Невідомо, чи потрібен перезапуск."
+  "CONNECTION_RESTART_UNKNOWN": "Невідомо, чи потрібен перезапуск.",
+  "REFRESH_STATUS_UNAVAILABLE": "Статус оновлення недоступний"
 }

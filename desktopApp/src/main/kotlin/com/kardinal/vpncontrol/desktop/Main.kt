@@ -1397,10 +1397,11 @@ private fun DesktopProfileContent(
                 }
                 subscriptions.forEachIndexed { visualIndex, subscription ->
                     val isSelected = state.activeSubscriptionId == subscription.id
-                    val refreshStatus = subscription.refreshStatus?.encoded().orEmpty()
-                        .takeIf { it.isNotBlank() }
-                        ?.let(strings::statusMessage)
-                        ?: strings.get(UiText.NOT_REFRESHED_YET)
+                    val refreshStatus = when {
+                        subscription.refreshStatusUnavailable -> strings.get(UiText.REFRESH_STATUS_UNAVAILABLE)
+                        subscription.refreshStatus != null -> strings.statusMessage(subscription.refreshStatus.encoded())
+                        else -> strings.get(UiText.NOT_REFRESHED_YET)
+                    }
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()

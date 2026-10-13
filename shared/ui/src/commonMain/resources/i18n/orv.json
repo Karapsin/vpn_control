@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Дѣиствующее мѣсто: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Дѣиствующее мѣсто: недоступно",
   "CONNECTION_RESTART_PENDING": "Возобновите соединеніе, дабы примѣнить сохранённыя измѣненія.",
-  "CONNECTION_RESTART_UNKNOWN": "Неизвѣстно, требуется ли возобновленіе соединенія."
+  "CONNECTION_RESTART_UNKNOWN": "Неизвѣстно, требуется ли возобновленіе соединенія.",
+  "REFRESH_STATUS_UNAVAILABLE": "Состояніе обновленія недоступно"
 }

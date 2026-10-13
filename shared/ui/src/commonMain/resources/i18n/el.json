@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Ενεργή τοποθεσία: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Ενεργή τοποθεσία: μη διαθέσιμη",
   "CONNECTION_RESTART_PENDING": "Επανεκκινήστε τη σύνδεση για να εφαρμοστούν οι αποθηκευμένες αλλαγές.",
-  "CONNECTION_RESTART_UNKNOWN": "Δεν είναι γνωστό αν απαιτείται επανεκκίνηση."
+  "CONNECTION_RESTART_UNKNOWN": "Δεν είναι γνωστό αν απαιτείται επανεκκίνηση.",
+  "REFRESH_STATUS_UNAVAILABLE": "Η κατάσταση ανανέωσης δεν είναι διαθέσιμη"
 }

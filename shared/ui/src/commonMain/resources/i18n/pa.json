@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "ਸਰਗਰਮ ਟਿਕਾਣਾ: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "ਸਰਗਰਮ ਟਿਕਾਣਾ: ਉਪਲਬਧ ਨਹੀਂ",
   "CONNECTION_RESTART_PENDING": "ਸੰਭਾਲੀਆਂ ਤਬਦੀਲੀਆਂ ਲਾਗੂ ਕਰਨ ਲਈ ਕਨੈਕਸ਼ਨ ਮੁੜ ਚਾਲੂ ਕਰੋ।",
-  "CONNECTION_RESTART_UNKNOWN": "ਇਹ ਪਤਾ ਨਹੀਂ ਹੈ ਕਿ ਮੁੜ ਚਾਲੂ ਕਰਨ ਦੀ ਲੋੜ ਹੈ ਜਾਂ ਨਹੀਂ।"
+  "CONNECTION_RESTART_UNKNOWN": "ਇਹ ਪਤਾ ਨਹੀਂ ਹੈ ਕਿ ਮੁੜ ਚਾਲੂ ਕਰਨ ਦੀ ਲੋੜ ਹੈ ਜਾਂ ਨਹੀਂ।",
+  "REFRESH_STATUS_UNAVAILABLE": "ਰਿਫ੍ਰੈਸ਼ ਦੀ ਸਥਿਤੀ ਉਪਲਬਧ ਨਹੀਂ ਹੈ"
 }

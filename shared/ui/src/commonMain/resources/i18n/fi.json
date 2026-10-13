@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktiivinen sijainti: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktiivinen sijainti: ei saatavilla",
   "CONNECTION_RESTART_PENDING": "Ota tallennetut muutokset käyttöön käynnistämällä yhteys uudelleen.",
-  "CONNECTION_RESTART_UNKNOWN": "Ei tiedetä, tarvitaanko uudelleenkäynnistys."
+  "CONNECTION_RESTART_UNKNOWN": "Ei tiedetä, tarvitaanko uudelleenkäynnistys.",
+  "REFRESH_STATUS_UNAVAILABLE": "Päivityksen tila ei ole saatavilla"
 }

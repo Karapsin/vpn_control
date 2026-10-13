@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Actieve locatie: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Actieve locatie: niet beschikbaar",
   "CONNECTION_RESTART_PENDING": "Start de verbinding opnieuw om opgeslagen wijzigingen toe te passen.",
-  "CONNECTION_RESTART_UNKNOWN": "Het is onbekend of opnieuw starten nodig is."
+  "CONNECTION_RESTART_UNKNOWN": "Het is onbekend of opnieuw starten nodig is.",
+  "REFRESH_STATUS_UNAVAILABLE": "Verversingsstatus niet beschikbaar"
 }

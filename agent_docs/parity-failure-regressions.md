@@ -1,5 +1,70 @@
 # Parity Failure-to-Regression Ledger
 
+## Host storage interruption of validation — 2026-10-13
+
+Original prepush93117/runner24399/discovery26712 has only four completed current
+capsules, prepush-0..3, fingerprint51a249116a149b193d63aae7d264f2dfd4c9d2622a6591509632bf96fa86e5ad.
+Host ENOSPC also blocked `git fetch` and the outer observer's terminal-record
+write after `child.wait()`. Its in-memory child exit code was not retained;
+result/stderr files are empty and no new valid prepush receipt exists. All four
+original process identities are physically absent. Delivery observer1977 stopped
+without a checkpoint intent. Full validation remains UNKNOWN, not passed/failed.
+
+Read-only investigation preserves source beforeimages and diagnosis under
+`.runtime/prepush-storage-diagnosis-c1db9bbd48db432592528b430fccee34`;
+diagnosis SHA256fefbf87db2318000e95a5775d3c73c7b924a5b5ad6a36e5636ddec5487444fd8.
+Most allocated repository space is historical native evidence/packages, not check
+logs. No specific causal temporary-copy leak or canonical defect was established.
+Available storage recovered without task cleanup; do not infer its transient
+allocation trigger or delete unknown/live evidence from directory size alone.
+
+Existing `FailedCheckOutputTests.test_retention_failure_blocks_successful_prepush_receipt`
+and `RetainTests.test_projection_failure_preserves_raw_and_has_no_receipt` enforce
+failed retention/projection refusal and original stream preservation. `_run`
+catches actual retention OSError and rejects successful validation; the original
+outer observer's ENOSPC is not proof that this path ran. No speculative code fix
+or authored causal RED is claimed. A fresh full tier under rechecked capacity is
+required, and any reproduced causal source failure needs TEST-001 coverage before
+integration. Original incomplete records and every native UNKNOWN remain intact.
+
+## Refresh-status truth and complete visual comparison — 2026-10-13
+
+| Measured failure | Preserved causal proof and correction | Routine/native scope |
+| --- | --- | --- |
+| The actual desktop subscription row ignores `refreshStatusUnavailable`, displaying “not refreshed yet” for nonempty undecodable historical results. Five Windows Profile captures expose the incorrect label. | The full preserved Main consumer renders eight real owner/frontend cases: five legacy failures and three passing controls. Fixed consumer plus one neutral catalog label passes8/8. Controlled RED using fixed catalog plumbing still has the same five failures. No private raw status, timestamp, persistence or refresh outcome changes. | `DesktopProfileRefreshStatusTest` joins ordinary desktop tests. The original five Windows scenes and affected platform appearance require recapture/review before baseline changes. |
+| The visual fixture retains pointer hover on Find Best in both stress scenes. | Actual application hover reproduces RGB(38,49,61); scrolling and explicit focus produce different controls. Identical two-test regression fails2/2 on preserved capture code and passes2/2 when real Compose pointer input moves outside the viewport before capture. Complete frames must equal their neutral controls. | Two ordinary `VisualCaptureTest` methods; no OS mouse, product hover or focus behavior is changed. Original Windows pointer history is unavailable; both native stress recaptures remain required. |
+| Manifest/comparator masks contradict VISUAL-004 and hide changed pixels. | Preserved comparator admits masks; three identical causal tests produce25 assertion failures before the fix and pass afterward. A real1280x800 PNG pair has256 changed pixels in the former taskbar mask: old masked comparison hides all256, full-image ratio0.00025 exceeds unchanged0.0002. Fixed comparison refuses masks and preserves original unmasked metrics/diff pixels. | Existing16-test comparator suite runs in release hygiene/prepush/Fast Checks. Remove only15 mask declarations, preserving107 scenes and thresholds. Deterministic complete native captures remain required; old masked evidence cannot close acceptance. |
+
+Original sources, beforeimages, raw failure artifacts, dependency pins and executed
+RED/GREEN remain in the three named candidate namespaces recorded in current
+`work-in-progress.md`. Independent reviews confirm the69-path product candidate
+and four-path no-mask candidate; Root reviewed the one-path hover correction.
+Host-rendered controls do not replace the original native scenarios.
+
+Canonical focused validation after integration passes8 rendered refresh-row tests,
+two real pointer/capture tests and47 shared UI tests, without skips or failures.
+The16 comparator tests and localization/status/theme checks pass. Exact executed
+Gradle argv, full logs and JUnit counts are preserved in
+`.runtime/root-parity-integration-22f_zeq8`; full prepush remains the delivery gate.
+
+## Same-original Windows stage failure and Android MCP observation — 2026-10-13
+
+Windows original0ef534e4a77248a2a3fd4076715c7303 reached the guest, then SYSTEM
+PID9668 exited1 with no stdout and1555 retained stderr bytes. Same-original
+record observation98e61428bab84478a18858fe76353ff1 recovered `Get-Item` PathNotFound
+for the new stage's `sources/image.json`, line51/character57. This is a measured
+fixture-stage failure, not SSH authentication failure or compiler acceptance.
+All observers/guards closed; the sole operator owns isolated causal diagnosis.
+No original action is replayed and no download/install is submitted.
+
+Android matching MCP engineering observation75210da4740d4c7a8eaadc96111eaa24
+completed through fresh CLI at e96: managed exit0, status/operations exit0, quiet
+stderr, both EOFs, owner00029/revision0/OFF and closing source/image/app/device
+brackets. Its public receipt and closed-holder handback remain under
+`matching-mcp-full-observe-e96f-477a18ad-c6ca-4018-bab0-892038e8057d` in the owned
+Android namespace. This closes the matching2.2.2 read-only procedure only;
+final2.2.8 package/action/API29/installer acceptance and historical UNKNOWN stay open.
+
 ## Qualified Android observer retention and closing — 2026-10-13
 
 The corrected fae engineering CLI completed the full DIRECT API35 status and

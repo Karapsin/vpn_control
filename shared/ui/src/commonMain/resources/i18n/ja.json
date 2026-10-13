@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "有効なロケーション: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "有効なロケーション: 利用不可",
   "CONNECTION_RESTART_PENDING": "保存した変更を適用するには、接続を再起動してください。",
-  "CONNECTION_RESTART_UNKNOWN": "再起動が必要かどうかは不明です。"
+  "CONNECTION_RESTART_UNKNOWN": "再起動が必要かどうかは不明です。",
+  "REFRESH_STATUS_UNAVAILABLE": "更新状況を表示できません"
 }

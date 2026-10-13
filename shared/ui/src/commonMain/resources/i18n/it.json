@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Posizione attiva: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Posizione attiva: non disponibile",
   "CONNECTION_RESTART_PENDING": "Riavvia la connessione per applicare le modifiche salvate.",
-  "CONNECTION_RESTART_UNKNOWN": "Non è noto se sia necessario riavviare."
+  "CONNECTION_RESTART_UNKNOWN": "Non è noto se sia necessario riavviare.",
+  "REFRESH_STATUS_UNAVAILABLE": "Stato dell’aggiornamento non disponibile"
 }

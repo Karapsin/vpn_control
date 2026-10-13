@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "செயலில் உள்ள இடம்: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "செயலில் உள்ள இடம்: கிடைக்கவில்லை",
   "CONNECTION_RESTART_PENDING": "சேமித்த மாற்றங்களைப் பயன்படுத்த இணைப்பை மீண்டும் தொடங்கவும்.",
-  "CONNECTION_RESTART_UNKNOWN": "மீண்டும் தொடங்க வேண்டுமா என்பது தெரியவில்லை."
+  "CONNECTION_RESTART_UNKNOWN": "மீண்டும் தொடங்க வேண்டுமா என்பது தெரியவில்லை.",
+  "REFRESH_STATUS_UNAVAILABLE": "புதுப்பிப்பு நிலை கிடைக்கவில்லை"
 }

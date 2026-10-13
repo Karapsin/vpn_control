@@ -1,5 +1,25 @@
 # Test Matrix
 
+## Refresh-status and deterministic complete visual capture
+
+After changing the desktop subscription status consumer or its neutral catalog
+label, run `:desktopApp:test --tests com.kardinal.vpncontrol.desktop.DesktopProfileRefreshStatusTest`,
+`:shared:ui:desktopTest` and `python3 scripts/check_localization.py`. Eight actual
+owner/frontend row tests cover legacy/private/unavailable, empty and typed results.
+Normal desktop/prepush/Fast Checks discover the class without special enrollment.
+
+The two `VisualCaptureTest` stress pointer regressions must seed the exact hover
+color and demand complete frame equality after the real capture helper. Run
+`narrowStressCaptureClearsInheritedPointerHover` and
+`largeFontStressCaptureClearsInheritedPointerHover` through ordinary desktop tests.
+Native Windows recapture remains a separate acceptance gate.
+
+`python3 scripts/test_visual_regression.py` retains16 comparator controls, including
+actual PNG differences and manifest admission for prohibited masks. Existing
+release hygiene/prepush/Fast Checks execute it. VISUAL-004 requires complete image
+comparison and deterministic capture, including OS-owned surfaces; tests do not
+authorize mask exceptions, threshold changes or native acceptance promotion.
+
 Use this matrix to choose the smallest useful validation set for a patch. Add more tests when the touched code crosses boundaries.
 
 ## CI Shortcut

@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Cihê çalak: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Cihê çalak: ne berdest e",
   "CONNECTION_RESTART_PENDING": "Ji bo sepandina guhertinên tomarkirî girêdanê ji nû ve bidin destpêkirin.",
-  "CONNECTION_RESTART_UNKNOWN": "Nayê zanîn ka ji nû ve destpêkirin pêwîst e an na."
+  "CONNECTION_RESTART_UNKNOWN": "Nayê zanîn ka ji nû ve destpêkirin pêwîst e an na.",
+  "REFRESH_STATUS_UNAVAILABLE": "Rewşa nûkirinê ne berdest e"
 }

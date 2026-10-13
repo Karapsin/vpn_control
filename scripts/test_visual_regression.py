@@ -21,47 +21,46 @@ SPEC.loader.exec_module(visual_regression)
 
 
 class VisualRegressionTest(unittest.TestCase):
-    def test_android_main_os_chrome_mask_covers_only_status_icons(self) -> None:
-        manifest = json.loads(visual_regression.DEFAULT_MANIFEST.read_text(encoding="utf-8"))
-        scenes = {scene["id"]: scene for scene in manifest["scenes"]}
-        for scene_id, x in (("main-disconnected", 884), ("main-connected", 968)):
-            scene = scenes[scene_id]
-            android = visual_regression._scene_ignore_regions(scene, "android")
-            ignored = visual_regression._ignored_pixels(1080, 2400, android)
-            self.assertEqual(1, ignored[47 * 1080 + x])
-            self.assertEqual(1, ignored[79 * 1080 + x])
-            self.assertEqual(0, ignored[150 * 1080 + 900])
-            for desktop in ("linux", "windows", "macos"):
-                self.assertEqual([], visual_regression._scene_ignore_regions(scene, desktop))
+    def test_repository_manifest_has_no_comparison_masks(self) -> None:
+        manifest = visual_regression._load_manifest(visual_regression.DEFAULT_MANIFEST)
+        for scene in manifest["scenes"]:
+            with self.subTest(scene=scene["id"]):
+                self.assertFalse(scene.get("ignore_regions"), scene["id"])
+                self.assertFalse(any(scene.get("ignore_regions_by_platform", {}).values()), scene["id"])
+                for platform in scene["platforms"]:
+                    self.assertEqual([], visual_regression._scene_ignore_regions(scene, platform))
 
-    def test_platform_scoped_os_chrome_mask_does_not_hide_other_platforms(self) -> None:
+    def test_manifest_rejects_masks_on_every_platform_before_verify_or_record(self) -> None:
+        for declaration in (
+            {"ignore_regions": [[0, 0, 10, 10]]},
+            {"ignore_regions_by_platform": {"linux": [[0, 0, 10, 10]]}},
+            {"ignore_regions_by_platform": {"android": [[0, 0, 10, 10]]}},
+        ):
+            with self.subTest(declaration=declaration):
+                manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+                scene = manifest["scenes"][0]
+                scene.pop("ignore_regions", None)
+                scene.pop("ignore_regions_by_platform", None)
+                scene.update(declaration)
+                self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+                for action in (self.verify, self.record):
+                    with self.subTest(action=action.__name__):
+                        with self.assertRaisesRegex(ValueError, "VISUAL-004"):
+                            action()
+                self.assertFalse((self.reports / "linux/report.json").exists())
+
+    def test_empty_mask_metadata_keeps_full_image_comparison(self) -> None:
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
-        manifest["scenes"][0]["ignore_regions_by_platform"] = {"android": [[0, 0, 10, 10]]}
-        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
-        pixels = bytearray(self.image.pixels)
-        for row in range(10):
-            start = row * 100 * 4
-            pixels[start : start + 40] = bytes((255, 255, 255, 255)) * 10
-        visual_regression.write_png(
-            self.actual / "main.png",
-            visual_regression.PngImage(100, 100, bytes(pixels)),
-        )
-        self.assertEqual(1, self.verify())
-
-        manifest["scenes"][0]["ignore_regions_by_platform"] = {"linux": [[0, 0, 10, 10]]}
+        manifest["scenes"][0].update({
+            "ignore_regions": [],
+            "ignore_regions_by_platform": {"android": [], "linux": []},
+        })
         self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
         self.assertEqual(0, self.verify())
         report = json.loads((self.reports / "linux/report.json").read_text(encoding="utf-8"))
-        self.assertEqual([[0, 0, 10, 10]], report["scenes"][0]["ignore_regions"])
-
-    def test_android_notification_date_exclusion_covers_header_without_hiding_subject(self) -> None:
-        manifest = json.loads(visual_regression.DEFAULT_MANIFEST.read_text(encoding="utf-8"))
-        scene = next(item for item in manifest["scenes"] if item["id"] == "android-vpn-notification")
-        ignored = visual_regression._ignored_pixels(1080, 2400, scene["ignore_regions"])
-        # Native API 35 capture moved the date across this entire observed header span.
-        for x, y in ((53, 48), (180, 62), (390, 62), (402, 75)):
-            self.assertEqual(1, ignored[y * 1080 + x], (x, y))
-        self.assertEqual(0, ignored[600 * 1080 + 200])
+        self.assertEqual([], report["scenes"][0]["ignore_regions"])
+        self.assertEqual(0, report["scenes"][0]["metrics"]["ignored_pixels"])
+        self.assertEqual(10_000, report["scenes"][0]["metrics"]["compared_pixels"])
 
     def test_geometry_target_size_uses_capture_density(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -115,13 +114,6 @@ class VisualRegressionTest(unittest.TestCase):
             self.assertIn(identifier, ids)
         attributes = (visual_regression.ROOT / ".gitattributes").read_text(encoding="utf-8")
         self.assertIn("visual-tests/baselines/**/*.png filter=lfs", attributes)
-
-    def test_repository_secure_macos_scenes_ignore_only_nondeterministic_guest_chrome(self) -> None:
-        root = json.loads(visual_regression.DEFAULT_MANIFEST.read_text(encoding="utf-8"))
-        scenes = {scene["id"]: scene for scene in root["scenes"]}
-        guest_chrome = [[0, 0, 1280, 30], [0, 700, 1280, 800]]
-        for scene_id in ("macos-gatekeeper", "macos-install-confirmation"):
-            self.assertEqual(guest_chrome, scenes[scene_id]["ignore_regions"])
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -206,28 +198,43 @@ class VisualRegressionTest(unittest.TestCase):
         )
         self.assertEqual(1, self.verify())
 
-    def test_scene_ignore_region_excludes_only_declared_pixels(self) -> None:
+    def test_png_difference_in_former_windows_taskbar_band_cannot_be_masked(self) -> None:
+        # The original Windows native scenes excluded [0, 750, 1280, 800].
+        baseline = visual_regression.PngImage(1280, 800, bytes((8, 17, 31, 255)) * 1_024_000)
+        pixels = bytearray(baseline.pixels)
+        for row in range(760, 768):
+            start = (row * 1280 + 1200) * 4
+            pixels[start : start + 32 * 4] = bytes((255, 255, 255, 255)) * 32
+        baseline_path = self.root / "windows-native.baseline.png"
+        actual_path = self.root / "windows-native.actual.png"
+        visual_regression.write_png(baseline_path, baseline)
+        visual_regression.write_png(actual_path, visual_regression.PngImage(1280, 800, bytes(pixels)))
+        baseline = visual_regression.read_png(baseline_path)
+        actual = visual_regression.read_png(actual_path)
+        metrics, diff = visual_regression._compare(baseline, actual, 8)
+        self.assertEqual(256, metrics["changed_pixels"])
+        self.assertEqual(1_024_000, metrics["compared_pixels"])
+        self.assertEqual(0, metrics["ignored_pixels"])
+        self.assertGreater(metrics["changed_ratio"], 0.0002)
+        offset = (760 * 1280 + 1200) * 4
+        self.assertEqual(255, diff.pixels[offset])
+        with self.assertRaisesRegex(ValueError, "VISUAL-004"):
+            visual_regression._compare(baseline, actual, 8, [[0, 750, 1280, 800]])
+
+    def test_native_scene_full_image_difference_fails_verification(self) -> None:
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
-        manifest["scenes"][0]["ignore_regions"] = [[0, 0, 10, 10]]
+        manifest["scenes"][0]["geometry_required"] = False
         self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
         pixels = bytearray(self.image.pixels)
-        for row in range(10):
+        for row in range(90, 100):
             start = row * 100 * 4
             pixels[start : start + 40] = bytes((255, 255, 255, 255)) * 10
-        visual_regression.write_png(
-            self.actual / "main.png",
-            visual_regression.PngImage(100, 100, bytes(pixels)),
-        )
-        self.assertEqual(0, self.verify())
-        report = json.loads((self.reports / "linux/report.json").read_text(encoding="utf-8"))
-        self.assertEqual(100, report["scenes"][0]["metrics"]["ignored_pixels"])
-
-        pixels[10 * 4 : 20 * 4] = bytes((255, 255, 255, 255)) * 10
-        visual_regression.write_png(
-            self.actual / "main.png",
-            visual_regression.PngImage(100, 100, bytes(pixels)),
-        )
+        visual_regression.write_png(self.actual / "main.png", visual_regression.PngImage(100, 100, bytes(pixels)))
         self.assertEqual(1, self.verify())
+        report = json.loads((self.reports / "linux/report.json").read_text(encoding="utf-8"))
+        self.assertEqual(100, report["scenes"][0]["metrics"]["changed_pixels"])
+        self.assertEqual(0, report["scenes"][0]["metrics"]["ignored_pixels"])
+        self.assertEqual([], report["scenes"][0]["ignore_regions"])
 
     def test_scene_threshold_can_allow_bounded_native_surface_rasterization(self) -> None:
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
@@ -244,11 +251,22 @@ class VisualRegressionTest(unittest.TestCase):
         report = json.loads((self.reports / "linux/report.json").read_text(encoding="utf-8"))
         self.assertEqual(0.002, report["scenes"][0]["thresholds"]["max_changed_ratio"])
 
-    def test_invalid_scene_ignore_region_fails_closed(self) -> None:
-        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
-        manifest["scenes"][0]["ignore_regions"] = [[0, 0, 101, 10]]
-        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
-        self.assertEqual(1, self.verify())
+    def test_malformed_mask_metadata_fails_closed(self) -> None:
+        for declaration in (
+            {"ignore_regions": False},
+            {"ignore_regions": {}},
+            {"ignore_regions_by_platform": []},
+            {"ignore_regions_by_platform": {"linux": False}},
+        ):
+            with self.subTest(declaration=declaration):
+                manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+                scene = manifest["scenes"][0]
+                scene.pop("ignore_regions", None)
+                scene.pop("ignore_regions_by_platform", None)
+                scene.update(declaration)
+                self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    self.verify()
 
     def test_dimension_mismatch_still_writes_diagnostic_contact_sheet(self) -> None:
         visual_regression.write_png(

@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Işjeň ýerleşiş: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Işjeň ýerleşiş: elýeterli däl",
   "CONNECTION_RESTART_PENDING": "Saklanan üýtgeşmeleri ulanmak üçin birikmäni täzeden başladyň.",
-  "CONNECTION_RESTART_UNKNOWN": "Täzeden başlamagyň zerurdygy belli däl."
+  "CONNECTION_RESTART_UNKNOWN": "Täzeden başlamagyň zerurdygy belli däl.",
+  "REFRESH_STATUS_UNAVAILABLE": "Täzeleniş ýagdaýy elýeterli däl"
 }

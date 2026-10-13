@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "الموقع النشط: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "الموقع النشط: غير متاح",
   "CONNECTION_RESTART_PENDING": "أعد التشغيل لتطبيق التغييرات المحفوظة.",
-  "CONNECTION_RESTART_UNKNOWN": "تعذر تحديد الحاجة إلى إعادة التشغيل."
+  "CONNECTION_RESTART_UNKNOWN": "تعذر تحديد الحاجة إلى إعادة التشغيل.",
+  "REFRESH_STATUS_UNAVAILABLE": "حالة التحديث غير متاحة"
 }

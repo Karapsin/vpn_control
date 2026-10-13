@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "აქტიური მდებარეობა: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "აქტიური მდებარეობა: მიუწვდომელია",
   "CONNECTION_RESTART_PENDING": "შენახული ცვლილებების გამოსაყენებლად კავშირი ხელახლა ჩართეთ.",
-  "CONNECTION_RESTART_UNKNOWN": "უცნობია, საჭიროა თუ არა ხელახლა ჩართვა."
+  "CONNECTION_RESTART_UNKNOWN": "უცნობია, საჭიროა თუ არა ხელახლა ჩართვა.",
+  "REFRESH_STATUS_UNAVAILABLE": "განახლების სტატუსი მიუწვდომელია"
 }

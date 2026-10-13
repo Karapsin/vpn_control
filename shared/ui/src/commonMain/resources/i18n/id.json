@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Lokasi aktif: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Lokasi aktif: tidak tersedia",
   "CONNECTION_RESTART_PENDING": "Mulai ulang koneksi untuk menerapkan perubahan yang disimpan.",
-  "CONNECTION_RESTART_UNKNOWN": "Belum diketahui apakah perlu memulai ulang."
+  "CONNECTION_RESTART_UNKNOWN": "Belum diketahui apakah perlu memulai ulang.",
+  "REFRESH_STATUS_UNAVAILABLE": "Status penyegaran tidak tersedia"
 }

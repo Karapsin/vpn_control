@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Активная локация: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Активная локация: недоступна",
   "CONNECTION_RESTART_PENDING": "Перезапустите соединение, чтобы применить сохранённые изменения.",
-  "CONNECTION_RESTART_UNKNOWN": "Неизвестно, требуется ли перезапуск."
+  "CONNECTION_RESTART_UNKNOWN": "Неизвестно, требуется ли перезапуск.",
+  "REFRESH_STATUS_UNAVAILABLE": "Статус обновления недоступен"
 }

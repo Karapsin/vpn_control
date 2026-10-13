@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktiv placering: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktiv placering: utilgængelig",
   "CONNECTION_RESTART_PENDING": "Genstart forbindelsen for at anvende de gemte ændringer.",
-  "CONNECTION_RESTART_UNKNOWN": "Det vides ikke, om genstart er nødvendig."
+  "CONNECTION_RESTART_UNKNOWN": "Det vides ikke, om genstart er nødvendig.",
+  "REFRESH_STATUS_UNAVAILABLE": "Opdateringsstatus er ikke tilgængelig"
 }

@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Активна локация: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Активна локация: недостъпна",
   "CONNECTION_RESTART_PENDING": "Рестартирайте връзката, за да приложите запазените промени.",
-  "CONNECTION_RESTART_UNKNOWN": "Не е известно дали е необходимо рестартиране."
+  "CONNECTION_RESTART_UNKNOWN": "Не е известно дали е необходимо рестартиране.",
+  "REFRESH_STATUS_UNAVAILABLE": "Състоянието на опресняване е недостъпно"
 }

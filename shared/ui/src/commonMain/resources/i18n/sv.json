@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktiv plats: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktiv plats: inte tillgänglig",
   "CONNECTION_RESTART_PENDING": "Starta om anslutningen för att tillämpa sparade ändringar.",
-  "CONNECTION_RESTART_UNKNOWN": "Det är okänt om en omstart krävs."
+  "CONNECTION_RESTART_UNKNOWN": "Det är okänt om en omstart krävs.",
+  "REFRESH_STATUS_UNAVAILABLE": "Uppdateringsstatus är inte tillgänglig"
 }

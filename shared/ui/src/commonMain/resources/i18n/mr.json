@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "सक्रिय स्थान: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "सक्रिय स्थान: अनुपलब्ध",
   "CONNECTION_RESTART_PENDING": "जतन केलेले बदल लागू करण्यासाठी कनेक्शन पुन्हा सुरू करा.",
-  "CONNECTION_RESTART_UNKNOWN": "पुन्हा सुरू करणे आवश्यक आहे का हे माहीत नाही."
+  "CONNECTION_RESTART_UNKNOWN": "पुन्हा सुरू करणे आवश्यक आहे का हे माहीत नाही.",
+  "REFRESH_STATUS_UNAVAILABLE": "रीफ्रेशची स्थिती उपलब्ध नाही"
 }

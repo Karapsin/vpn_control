@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktywna lokalizacja: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktywna lokalizacja: niedostępna",
   "CONNECTION_RESTART_PENDING": "Uruchom połączenie ponownie, aby zastosować zapisane zmiany.",
-  "CONNECTION_RESTART_UNKNOWN": "Nie wiadomo, czy wymagane jest ponowne uruchomienie."
+  "CONNECTION_RESTART_UNKNOWN": "Nie wiadomo, czy wymagane jest ponowne uruchomienie.",
+  "REFRESH_STATUS_UNAVAILABLE": "Status odświeżania niedostępny"
 }

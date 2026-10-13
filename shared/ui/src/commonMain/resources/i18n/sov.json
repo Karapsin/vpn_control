@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Действующий узел: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Действующий узел: недоступен",
   "CONNECTION_RESTART_PENDING": "Перезапустите соединение для ввода сохранённых изменений в действие.",
-  "CONNECTION_RESTART_UNKNOWN": "Необходимость перезапуска не установлена."
+  "CONNECTION_RESTART_UNKNOWN": "Необходимость перезапуска не установлена.",
+  "REFRESH_STATUS_UNAVAILABLE": "Состояние обновления недоступно"
 }

@@ -24,7 +24,7 @@ A targeted development review may name one or more affected platforms. A release
 
 Synthetic fixtures freeze time, traffic, progress, data, locale, animations, window position, display scaling, and font selection. Capture must never use the operator's real workspace, credentials, subscriptions, or active VPN/runtime. Every local or hosted subset writes `capture-<provider>.json`, binding its environment fingerprint, scene files, manifest, and checked-out target SHA; comparison refuses a missing, stale, modified, or incomplete provenance set. JSON provenance hashes use canonical parsed content so Windows CRLF checkout rules cannot invalidate otherwise identical evidence.
 
-An OS-owned scene may declare pixel-coordinate `ignore_regions` only for an unavoidable platform surface outside the subject under review, such as the Windows taskbar clock or Android notification date. The comparator validates every rectangle, excludes it from both ratios, and still fails if exclusions cover the whole image. The subject itself must remain compared and must also pass agent review.
+Every scene compares the complete image under `VISUAL-004`, including OS-owned chrome. Dynamic values such as clocks, dates, and status icons must be frozen in the isolated capture environment. Nonempty `ignore_regions` or `ignore_regions_by_platform` declarations are rejected during manifest admission, and direct comparator calls also reject masks. Agent review accompanies the full-image comparison.
 
 ## Provider Selection
 
@@ -89,8 +89,8 @@ guest-network connection. This keeps capture independent of Local Network privac
 invalidated when Homebrew Python is upgraded. The driver waits for the guest VNC route after every
 managed reboot and refreshes Tart's reported IP before retrying a failed VNC action.
 The install-confirmation scene leaves guest wall time current because moving time backward can suppress
-Authorization Services sheets; its time-dependent menu-bar and Dock pixels are already excluded from
-automated comparison. If a Screen Sharing edge tab appears, the driver dismisses it and captures in the
+Authorization Services sheets. Its menu-bar and Dock pixels remain part of the full-image comparison;
+any dynamic values require a deterministic capture fixture before this scene can satisfy `VISUAL-004`. If a Screen Sharing edge tab appears, the driver dismisses it and captures in the
 same VNC session so it neither recreates the tab nor clicks outside the secure sheet.
 The macOS driver builds from a cached guest-local checkout pinned to the requested SHA, so Gradle never
 writes into the host's shared worktree while another platform is capturing. Before every secure scene it

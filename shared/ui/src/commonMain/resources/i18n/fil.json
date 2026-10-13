@@ -286,5 +286,6 @@
   "ACTIVE_CONNECTION_LOCATION": "Aktibong lokasyon: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktibong lokasyon: hindi available",
   "CONNECTION_RESTART_PENDING": "I-restart ang koneksyon upang ilapat ang mga na-save na pagbabago.",
-  "CONNECTION_RESTART_UNKNOWN": "Hindi alam kung kailangan ng pag-restart."
+  "CONNECTION_RESTART_UNKNOWN": "Hindi alam kung kailangan ng pag-restart.",
+  "REFRESH_STATUS_UNAVAILABLE": "Hindi available ang status ng pag-refresh"
 }
