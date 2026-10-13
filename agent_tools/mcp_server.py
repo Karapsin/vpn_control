@@ -150,6 +150,7 @@ PREPUSH_COMMANDS = [
     ["git", "diff", "--check"],
     ["./scripts/check_release_hygiene.sh"],
     ["./scripts/check_docs_hygiene.sh"],
+    [AGENT_TEST_PYTHON, "-m", "unittest", "agent_tools.tests.test_ssh_connection_session_close"],
     [AGENT_TEST_PYTHON, "-m", "unittest", "discover", "-s", "agent_tools/tests", "-t", "."],
     [sys.executable, "scripts/check_ui_theme.py"],
     [sys.executable, "scripts/test_visual_regression.py"],
@@ -6884,7 +6885,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     method = {"scenario-status": executor.status, "scenario-resume": executor.resume, "scenario-collect": executor.collect}[action]
                     result = method(inputs["correlationId"])
                 accepted = result.get("state") == "submitted" or (result.get("state") == "terminal" and result.get("exitCode") == 0)
-                product_action = result.get("scenarioId") == "linux-scheduled-refresh"
+                product_action = result.get("scenarioId") in {"linux-scheduled-refresh", "linux-owner-gui-lifecycle"}
                 return {"tool": "vm_workflow", "ok": accepted,
                         "evidenceClass": "installed-package" if product_action else "component",
                         "productAction": product_action, **result}

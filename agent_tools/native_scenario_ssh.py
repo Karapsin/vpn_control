@@ -25,6 +25,7 @@ except ImportError:  # pragma: no cover
 SCENARIO_ID = "linux-public-update-preflight"
 BUNDLE_SCENARIO_ID = "linux-public-update-driver"
 SCENARIO_ARTIFACT_KEYS = {
+    "linux-owner-gui-lifecycle": frozenset({"bundleManifest", "scenarioInput"}),
     SCENARIO_ID: frozenset({"bundleManifest"}),
     "linux-scheduled-refresh": frozenset({"bundleManifest", "scenarioInput"}),
 }
@@ -173,6 +174,16 @@ class NativeScenarioSshDriver:
         self.input_resolver = input_resolver
 
     def submit(self, plan: native_scenario_execution.ScenarioPlan) -> native_scenario_execution.JobIdentity:
+        if plan.scenario_id == "linux-owner-gui-lifecycle":
+            if self.input_resolver is None:
+                raise NativeScenarioSshError("Owner GUI input resolver is unavailable.")
+            try:
+                from . import native_owner_gui_lifecycle_ssh as gui
+            except ImportError:
+                import native_owner_gui_lifecycle_ssh as gui
+            delegate = gui.NativeOwnerGuiLifecycleSshDriver(self.root, self.bundle_resolver,
+                self.input_resolver, self.timeout_seconds, self.ssh_binary, self.configuration_root)
+            return delegate.submit(plan)
         if plan.scenario_id == "linux-scheduled-refresh":
             if self.input_resolver is None:
                 raise NativeScenarioSshError("Scheduled refresh input resolver is unavailable.")
@@ -210,6 +221,16 @@ class NativeScenarioSshDriver:
 
     def collect(self, plan: native_scenario_execution.ScenarioPlan,
                 identity: native_scenario_execution.JobIdentity) -> Mapping[str, Any] | None:
+        if plan.scenario_id == "linux-owner-gui-lifecycle":
+            if self.input_resolver is None:
+                return None
+            try:
+                from . import native_owner_gui_lifecycle_ssh as gui
+            except ImportError:
+                import native_owner_gui_lifecycle_ssh as gui
+            delegate = gui.NativeOwnerGuiLifecycleSshDriver(self.root, self.bundle_resolver,
+                self.input_resolver, self.timeout_seconds, self.ssh_binary, self.configuration_root)
+            return delegate.collect(plan, identity)
         if plan.scenario_id != "linux-scheduled-refresh":
             return None
         try:

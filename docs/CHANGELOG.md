@@ -6,6 +6,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Keep MCP checks responsive and recover Linux update clients with guarded cleanup.
+- Verify Linux GUI lifecycle with sealed source custody and guarded cleanup.
+- Route nested guests through the selected Arch connection and refuse lost selection during setup.
+- Catch stale SSH close dependencies before long prepush checks.
 
 ## 2.2.8 - 2026-10-12
 

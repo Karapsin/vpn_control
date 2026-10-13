@@ -569,6 +569,28 @@ def _selection_module():
     return module
 
 
+def _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary):
+    selection=_selection_module()
+    session=_session_module()
+    try:
+        metadata=selection.selected_route_options(config.root,'archlinux',config)
+        if metadata is None or len(route)!=2:raise SshConfigError('Selected SSH channel is unavailable.')
+        selected_config=session.transport.load_config(config.root)
+        if asdict(selected_config)!=asdict(config):raise SshConfigError('Selected SSH configuration changed.')
+        outer=connection_host(selected_config,'archlinux')
+        prefix,endpoint=session._outer_prefix(selected_config,outer)
+        # Fixed admitted route; no canonical socket/fresh handshake fallback.
+        nested=route[0]
+        inner=[nested_ssh_binary]
+        if nested.remote_config_file is not None:inner.extend(('-F',str(nested.remote_config_file)))
+        inner.extend(metadata['innerOptions'])
+        inner.extend(('-T','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no',nested.remote_host_alias,shlex.join(command)))
+        extra=['-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no'] if metadata.get('transportMode')=='direct' else []
+        return [ssh_binary,*prefix[1:],*metadata['outerOptions'],*extra,'-T',endpoint,shlex.join(inner)]
+    except (selection.SelectionUnknown,session.SessionUnknown,selection.transport.SshConfigError):
+        raise SshConfigError('Explicitly selected SSH channel is unavailable; observe or renew it explicitly.') from None
+
+
 def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
                    command: Sequence[str] = ("true",), ssh_binary: str = "ssh",
                    nested_ssh_binary: str = "ssh") -> list[str]:
@@ -582,30 +604,16 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
     ssh_binary = _string(ssh_binary, "ssh executable")
     nested_ssh_binary = _string(nested_ssh_binary, "nested ssh executable")
     route = _route_hosts(config.hosts, host)
-    if host=='archlinux' and os.path.lexists(config.root/'.rag_index'/'ssh-channel-selection'):
-        selection=_selection_module()
-        session=_session_module()
-        try:
-            metadata=selection.selected_route_options(config.root,host,config)
-            if metadata is None or len(route)!=2:raise SshConfigError('Selected SSH channel is unavailable.')
-            selected_config=session.transport.load_config(config.root)
-            if asdict(selected_config)!=asdict(config):raise SshConfigError('Selected SSH configuration changed.')
-            outer=connection_host(selected_config,host)
-            prefix,endpoint=session._outer_prefix(selected_config,outer)
-            # Fixed admitted route; no canonical socket/fresh handshake fallback.
-            nested=route[0]
-            inner=[nested_ssh_binary]
-            if nested.remote_config_file is not None:inner.extend(('-F',str(nested.remote_config_file)))
-            inner.extend(metadata['innerOptions'])
-            inner.extend(('-T','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no',nested.remote_host_alias,shlex.join(command)))
-            extra=['-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no'] if metadata.get('transportMode')=='direct' else []
-            return [ssh_binary,*prefix[1:],*metadata['outerOptions'],*extra,'-T',endpoint,shlex.join(inner)]
-        except (selection.SelectionUnknown,session.SessionUnknown,selection.transport.SshConfigError):
-            raise SshConfigError('Explicitly selected SSH channel is unavailable; observe or renew it explicitly.') from None
+    selected_arch_present = (host=='archlinux' or any(entry.alias=='archlinux' for entry in route)) and os.path.lexists(config.root/'.rag_index'/'ssh-channel-selection')
+    if host=='archlinux' and selected_arch_present:
+        return _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary)
     # Compose from the destination outward. Each layer quotes one complete argv
     # for the shell used by that layer's OpenSSH remote command, retaining every
     # configured intermediate hop instead of replacing the previous last token.
-    for nested in route[:-1]:
+    for index,nested in enumerate(route[:-1]):
+        if nested.alias=='archlinux' and selected_arch_present:
+            # Compose every descendant first, then reuse only admitted Arch authority.
+            return _build_selected_arch_argv(config,route[index:],command,ssh_binary,nested_ssh_binary)
         if not nested.remote_host_alias:
             raise SshConfigError("Nested transport needs a remote host alias.")
         remote_command = [nested_ssh_binary]
@@ -617,6 +625,8 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
                                "-o", f"UserKnownHostsFile={nested.known_hosts_file}",
                                nested.remote_host_alias, shlex.join(command)))
         command = remote_command
+    if route[-1].alias=='archlinux' and selected_arch_present:
+        return _build_selected_arch_argv(config,route[-1:],command,ssh_binary,nested_ssh_binary)
     target = route[-1]
     argv = [
         ssh_binary, "-p", str(target.port), "-l", target.user,

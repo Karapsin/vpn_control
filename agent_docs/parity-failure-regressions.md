@@ -1,5 +1,78 @@
 # Parity Failure-to-Regression Ledger
 
+## Repeated close dependency pin refusal and early prepush gate — 2026-10-13
+
+Current-source prepush `4861de6b-a325-41d4-9f6e-a5dc54639e86` retains6442 tests,
+175 skips,27 failures/five errors in1988.657 seconds. All32 failing headers map
+to22 distinct close-test methods. Close correctly refused before intent/child:
+its reviewed dependency still pinned `b2ddce`, while transport had changed to
+`00bcf88a41031ee11bd356dafc2ceda5ef609fa10471c9f9ed710fa084596db4`.
+This repeats the October12 integration failure preserved below.
+
+The actual current-source positive reproduces one failure before the exact
+literal update; all26 close controls pass afterward in1.769 seconds. Only the
+reviewed full transport SHA changes. Close/status logic, session/inventory pins,
+strict unauthorized-source refusal and every historical receipt remain unchanged.
+Root retains the beforeimage and RED/GREEN under
+`.runtime/root-linux-gui-final-composed-p6sf4cv4/session-close.*`.
+
+The MCP prepush planner now runs that existing close module immediately after
+hygiene and before expensive discovery. Actual prior planner/runner extraction
+has three failures in four controls; fixed extraction passes all four with zero
+skips. A failed gate dispatches neither discovery nor receipt publication; success
+retains every prior full command and focused tiers. The routine module is
+`test_mcp_prepush_ssh_close_gate`. No dynamic pin acceptance, SSH/native effect or
+history rewrite is introduced. Fresh full validation and native handback remain.
+
+## Selected Arch descendant routing — 2026-10-13
+
+Nested guest argv construction previously missed the explicitly selected Arch
+channel. The actual beforeimage fails the selected-invocation control; the fixed
+helper retains the original selected-route validation and composes only declared
+inner hops. A second actual beforeimage falls back after selection disappears
+during quoting; the entry-time presence latch now refuses instead. Absence at
+entry preserves ordinary routing, including later directory appearance. The
+existing explicit Arch test boundary initially raised AttributeError; the final
+predicate preserves its original controlled selection refusal.
+
+Retained causal packets are under the owned Linux runtime evidence directory:
+`selected-arch-descendant-source-cbf913836f434ba28de6532a46b94aec`,
+`selected-arch-descendant-latched-source-9afcf8a0a1dd4a6080eed76fa8ae58f2`
+and `selected-arch-explicit-compat-source-98a0a92c22624102801b8382cadc988b`.
+The final source SHA256 is
+`00bcf88a41031ee11bd356dafc2ceda5ef609fa10471c9f9ed710fa084596db4`.
+The routine new11 and composed41 controls pass with zero skips. No connection
+renewal, fallback from selected refusal, native reachability or guest acceptance
+is inferred; fresh configuration-bound selection and native retesting remain.
+
+## Reviewed Linux GUI procedure and recovered cleanup — 2026-10-13
+
+The current7f DEB DIRECT case `1bcf9678` completed ten GUI slices/492 traffic
+frames, then failed cleanup at unrelated nondumpable user-systemd5533. Recovery
+worker10559 retained exit0, completed both reference scans and ordinary-user
+descriptor-relative removal, and preserved the current OFF anchor and old
+Ubuntu ON runtime. Original runner6553 exit remains unobserved; the original
+receipt remains UNKNOWN. Matrix receipt
+`native-acceptance-5b7e674c4a6cf479332a919f19199df3` records four DIRECT components
+only. Full lifecycle and equivalent MCP retesting remain open.
+
+| Failure | Causal coverage and fix | Routine/native limit |
+| --- | --- | --- |
+| Same-UID nondumpable process blocks both cleanup scans | Actual native permission failures and active-reference refusal retained; portable preserved source has two errors before the fixed root-read census. Ordinary inspection stays first; only real `/proc` permission denial admits the bounded observer. User deletion is unchanged. | `test_linux_owner_gui_privileged_cleanup` executes actual census code with modeled process facts and rejects active cwd/fd/cmdline references, wrong held FD and generation drift. Native recovered cleanup is separate. |
+| Privileged read capability is missing from initial admission | Actual prior admission reaches the later gate instead of the capability gate. Fixed admission observes root real/effective UID, guest boot, caller birth and complete read access before GUI effects; warnings/malformed/incomplete/mismatched results refuse. | Same module, standard discovery; new guest preparation must genuinely qualify capability. |
+| Full six-file capsule exceeds the child command bound | Actual159861-byte capsule fails on preserved child encoder; fixed five controls preserve every body and the canonical seal, reject tampering before SOURCE execution and retain the65,536-byte bound. | `test_linux_gui_capsule_codec`; original pre-dispatch refusal is preserved. |
+| Outer launcher still encodes the whole base64 capsule | Actual receiver encoder fails `launcher_command_bound` on that same capsule; fixed four controls preserve canonical bytes and seal before execution. No command-bound increase. | `test_linux_gui_launcher_codec`; actual native MCP dispatch remains required. |
+| Larger admitted source exceeds the preparation probe bound | Composed existing probe control fails at33305 bytes; fixed source compression preserves both authenticated bodies and passes the unchanged32KiB probe check. | `test_native_owner_gui_lifecycle`; standard-library decompression is qualified by future native preparation. |
+| Causal cleanup tests assume Unix UID APIs | Actual removed-API run has nine errors before modeled UID fixtures; the successor runs every control with those APIs absent and no skips. | Same privileged cleanup module; no native OS capability is inferred from modeling. |
+| Sudo monitor PID is mistaken for its ordinary child | Preserved actual wrapper prefix fails; fixed three controls retain the child-reported PID/birth, require ordinary UID and physical absence, and retain actual terminal recovery exit. | `test_linux_gui_cleanup_worker_identity`, exact historical fragments; no unrelated production MCP wrapper is changed. |
+| Owned inert controls survive observation timeout | Actual preserved test runners leak their admitted children on timeout; fixed controls terminate/reap only those exact inert children and preserve the original timeout/UNKNOWN evidence. | `test_linux_gui_source_custody`; this grants no guest or runtime signal authority. |
+
+The complete composed seven-module suite passes70 controls with zero skips.
+Source-custody/native helper controls and unchanged package provenance remain
+bound separately. Root owns canonical integration and delivery; sole native
+operators remain on HOLD until clean handback. Final prepush/push are pending;
+no required CI success or release is claimed.
+
 ## Reviewed MCP responsiveness and Linux recovery — 2026-10-12
 
 Root integrates these used-tool changes from57e; the fresh post-edit prepush and

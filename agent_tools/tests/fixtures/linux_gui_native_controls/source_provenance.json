@@ -1,0 +1,191 @@
+{
+  "display.before": {
+    "originalPath": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468/gui-display-binding-causal-7ea7c72382bf43bdbdba203a33964ba0/beforeimage.py",
+    "originalBytes": 23959,
+    "originalSha256": "8b67babbe9fb04cc90ca888c5da89543bf5c10127f8d624164482183abe77139",
+    "fragments": {
+      "start_gui.before": {
+        "lines": [
+          38,
+          64
+        ],
+        "fragmentSha256": "edd736a79be70399337780eb6fd7820e011978711bc655debcd58b471d8ef9ef"
+      }
+    }
+  },
+  "display.fixed": {
+    "originalPath": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468/gui-display-binding-causal-7ea7c72382bf43bdbdba203a33964ba0/fixed.py",
+    "originalBytes": 23974,
+    "originalSha256": "a6a16077cfecc5bac1ed565aa41500e1d9942b0b53d384baa8ed61604200e46b",
+    "fragments": {
+      "start_gui.fixed": {
+        "lines": [
+          38,
+          64
+        ],
+        "fragmentSha256": "b5dda1a831cd8ad5546df4f9f34800c6c0d2d7a37beb263af6920494646c2322"
+      },
+      "worker.original.source": {
+        "lines": [
+          1,
+          245
+        ],
+        "fragmentSha256": "a6a16077cfecc5bac1ed565aa41500e1d9942b0b53d384baa8ed61604200e46b"
+      }
+    }
+  },
+  "builder.before": {
+    "originalPath": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468/gui-original-worker-pin-causal-411f2e943e1248f1805c9f895d687e62/builder.beforeimage.py",
+    "originalBytes": 4735,
+    "originalSha256": "9ced307c1f218dcad1283717dd06610461c1084883b43010f656cb1b07729028",
+    "fragments": {
+      "worker_pin.before": {
+        "lines": [
+          4,
+          11
+        ],
+        "fragmentSha256": "b6f1076181d38545b0e30c09e751388d17630826a53a02feeae5ad5815726a85"
+      }
+    }
+  },
+  "builder.fixed": {
+    "originalPath": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468/gui-original-worker-pin-causal-411f2e943e1248f1805c9f895d687e62/builder.fixed.py",
+    "originalBytes": 4820,
+    "originalSha256": "07506f4ebf556ade8802fcbbcdb993c4895759051e3f070f1558413931fd7d9f",
+    "fragments": {
+      "worker_pin.fixed": {
+        "lines": [
+          4,
+          11
+        ],
+        "fragmentSha256": "a0fefa670d5c397294d70aeb52ae95a28006cd985c172e1598414075c5d88bd8"
+      }
+    }
+  },
+  "close.before": {
+    "originalPath": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468/wm-close-native-source-handoff-c7c464bc39634152826433df09c5bcaf/close.beforeimage.py",
+    "originalBytes": 169,
+    "originalSha256": "b1614ad1240ddc92701968b821bc14000698db96942c9bb7bd980d8b1a79e75a",
+    "fragments": {
+      "wm_close.before": {
+        "lines": [
+          1,
+          2
+        ],
+        "fragmentSha256": "b1614ad1240ddc92701968b821bc14000698db96942c9bb7bd980d8b1a79e75a"
+      }
+    }
+  },
+  "close.fixed": {
+    "originalPath": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468/wm-close-native-source-handoff-c7c464bc39634152826433df09c5bcaf/close.fixed.py",
+    "originalBytes": 5310,
+    "originalSha256": "8cbe76e0c0f2f8260dd9de6955ddc4f1d62610bbee63d7ed14ee1e0ac8a6e3d9",
+    "fragments": {
+      "wm_close.fixed": {
+        "lines": [
+          1,
+          90
+        ],
+        "fragmentSha256": "8cbe76e0c0f2f8260dd9de6955ddc4f1d62610bbee63d7ed14ee1e0ac8a6e3d9"
+      }
+    }
+  },
+  "caller.before": {
+    "originalPath": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468/gui_proxy_lifecycle_case.prepared-a053a99a49ad410088190d6da9cc61e5.py",
+    "originalBytes": 41348,
+    "originalSha256": "01cd403035068636f860db5018a6ff240f0e950900feb1bedacf9bb004750992",
+    "fragments": {
+      "window_state.before": {
+        "lines": [
+          42,
+          45
+        ],
+        "fragmentSha256": "4ec41927280876699998415724e9327d54cb2b0b787cfff113632e2c30ba665b"
+      },
+      "caller.before": {
+        "lines": [
+          133,
+          133
+        ],
+        "fragmentSha256": "73011f69940ad45700cf1915b85a7bfa4991c54678ea2f242d2cd082434fe951"
+      }
+    }
+  },
+  "driver.before": {
+    "originalPath": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468/gui-engineering-native-completion-public-4bbdefcd83264278bf54d359e555b081/visibility-crash-used-driver.py",
+    "originalBytes": 20545,
+    "originalSha256": "ce06f06ae85ce35922f30af71a42ee88b42d008042cb225e2e61d6b9e1d785d3",
+    "fragments": {
+      "visible_main": {
+        "lines": [
+          173,
+          182
+        ],
+        "fragmentSha256": "24d246706fe48cd2225307d80a1042d7f7c6a4c656ef3d3f8e9f0a9509e76b5e"
+      },
+      "visible_window": {
+        "lines": [
+          183,
+          189
+        ],
+        "fragmentSha256": "a8024bbfa803eb1b55eead92eabc3b9a87dde7a7dec1f6c99dc62df894fda3da"
+      },
+      "hidden_frontend": {
+        "lines": [
+          190,
+          196
+        ],
+        "fragmentSha256": "21a6b9839d189c7d8d8fd8eba222550478852bf9dff9f0ab1f4668446b0d0e18"
+      },
+      "matched_status": {
+        "lines": [
+          171,
+          172
+        ],
+        "fragmentSha256": "27fcc101756ad1366346ce46dd204959a45f9f63b7b03514cef09162325f745e"
+      },
+      "checkpoint": {
+        "lines": [
+          249,
+          250
+        ],
+        "fragmentSha256": "eb94e5fa1a976380fcbb98cc67fb0bae816a67bc087a68395bef12fa3f445b17"
+      },
+      "caller.fixed": {
+        "lines": [
+          254,
+          255
+        ],
+        "fragmentSha256": "8505b00adf76940ef6452d34a1b9a4f0f04858ff9c7d8475a23d3ca3feefcee1"
+      },
+      "lease.before": {
+        "lines": [
+          258,
+          259
+        ],
+        "fragmentSha256": "a294933da5525b0b0b3f6adadb93c1fc717e96354ba1a4eecf728f9df7c9fa36"
+      }
+    }
+  },
+  "driver.fixed": {
+    "originalPath": "/Users/karapsin_de/Nextcloud/projects/vpn_control/.runtime/linux-parity-native-1a477863-e198-41d8-91a9-976d31aea468/gui-engineering-native-completion-public-4bbdefcd83264278bf54d359e555b081/no-tray-remainder-used-driver.py",
+    "originalBytes": 20468,
+    "originalSha256": "36287bc6be578ed7bbd9c1d0401d4a381758747eebe018bc58abb9f5bc826912",
+    "fragments": {
+      "lease.fixed": {
+        "lines": [
+          251,
+          254
+        ],
+        "fragmentSha256": "81ed86f11f4ed2fe8d06efb7c03bb8960ca9f75df7df06645c03ba6dcfa16235"
+      },
+      "lease.fixed.attach": {
+        "lines": [
+          265,
+          265
+        ],
+        "fragmentSha256": "562fb525bf624c3cd3f1122cf42d266c731457d6a891cb9fc0cf6820c453de4d"
+      }
+    }
+  }
+}

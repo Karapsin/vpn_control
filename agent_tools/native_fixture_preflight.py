@@ -25,6 +25,8 @@ Dispatch = Callable[[str, str, Mapping[str, Any]], Mapping[str, Any]]
 _TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _ARTIFACT = re.compile(r"^sha256-([0-9a-f]{64})$")
 _SCENARIOS = {
+    "linux-owner-gui-lifecycle-preparation": frozenset({"host", "environment", "bundleManifestArtifactId", "preparationInputArtifactId"}),
+    "linux-owner-gui-lifecycle": frozenset({"host", "environment", "bundleManifestArtifactId", "scenarioInputArtifactId", "scenarioCorrelationId"}),
     "linux-public-update-preflight": frozenset({"host", "environment", "bundleManifestArtifactId"}),
     "linux-scheduled-refresh": frozenset({"host", "environment", "bundleManifestArtifactId",
                                            "scenarioInputArtifactId", "scenarioCorrelationId"}),
@@ -54,7 +56,7 @@ def _request(value: Mapping[str, Any]) -> dict[str, Any]:
     for field in ("host", "environment"):
         if not isinstance(result[field], str) or not _TOKEN.fullmatch(result[field]):
             raise NativeFixturePreflightError(f"Fixture {field} is invalid.")
-    for field in ("bundleManifestArtifactId", "scenarioInputArtifactId"):
+    for field in ("bundleManifestArtifactId", "scenarioInputArtifactId", "preparationInputArtifactId"):
         if field in result and (not isinstance(result[field], str) or not _ARTIFACT.fullmatch(result[field])):
             raise NativeFixturePreflightError(f"Fixture {field} is invalid.")
     if result["scenarioId"] == "linux-scheduled-refresh-fixture-ready":
@@ -65,7 +67,7 @@ def _request(value: Mapping[str, Any]) -> dict[str, Any]:
         if relative is not None and (not isinstance(relative, str) or not _RELATIVE.fullmatch(relative)
                                      or any(part in ("", ".", "..") for part in relative.split("/"))):
             raise NativeFixturePreflightError("Fixture certificate path is unsafe.")
-    if result["scenarioId"] == "linux-scheduled-refresh":
+    if result["scenarioId"] in {"linux-scheduled-refresh", "linux-owner-gui-lifecycle"}:
         if not isinstance(result["scenarioCorrelationId"], str) or not _TOKEN.fullmatch(result["scenarioCorrelationId"]):
             raise NativeFixturePreflightError("Fixture scenario correlation is invalid.")
     timeout = result.get("timeoutSeconds", 15)
@@ -210,6 +212,12 @@ def check(root: Path | str, request: Mapping[str, Any], dispatcher: Dispatch) ->
     """Return current scoped requirements; unknown and failed both deny admission."""
     asked = _request(request)  # Validate every field before any network operation.
     scenario = asked["scenarioId"]
+    if scenario in {"linux-owner-gui-lifecycle", "linux-owner-gui-lifecycle-preparation"}:
+        try:
+            from . import native_owner_gui_lifecycle_ssh as gui
+        except ImportError:
+            import native_owner_gui_lifecycle_ssh as gui
+        return (gui.preparation_preflight if scenario.endswith("-preparation") else gui.fixture_preflight)(Path(root), asked)
     host = _configured(Path(root), asked["host"])
     requirements = {name: _requirement("not-applicable", "scenario_does_not_use_requirement", "scenario-contract")
                     for name in _FIELDS}

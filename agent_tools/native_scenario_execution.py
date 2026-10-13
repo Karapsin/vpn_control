@@ -30,7 +30,7 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _ARTIFACT_ID = re.compile(r"^sha256-[0-9a-f]{64}$")
 _JOURNAL_VERSION = 1
 _FAILURE_EXCERPT_LIMIT = 1_024
-_SCENARIOS = {"linux-public-update-preflight", "linux-scheduled-refresh"}
+_SCENARIOS = {"linux-public-update-preflight", "linux-scheduled-refresh", "linux-owner-gui-lifecycle"}
 
 
 class ScenarioExecutionError(ValueError):

@@ -22,6 +22,39 @@ python3 scripts/test_android_instrumentation_signatures.py
 python3 scripts/test_windows_qga_powershell_size.py
 ```
 
+## Early prepush SSH dependency gate
+
+Run `python3 -m unittest agent_tools.tests.test_mcp_prepush_ssh_close_gate agent_tools.tests.test_ssh_connection_session_close` after changing the check planner, transport or close-source dependency. The existing26 close controls retain strict current-source and mutation/timeout/refusal coverage. Four causal planner/runner controls ensure early failure stops expensive discovery and receipt publication; a successful gate preserves all prior full checks and focused tiers. Standard discovery enrolls the new controls. The fixed prepush tier additionally invokes the existing close module before full discovery; no dynamic source pin acceptance is used.
+
+## Selected Arch descendant routing
+
+Run `python3 -m unittest agent_tools.tests.test_ssh_selected_arch_descendant agent_tools.tests.test_ssh_transport agent_tools.tests.test_ssh_channel_selection`.
+The41 controls pass with zero skips. Eleven new controls cover selected-route
+composition through declared guest hops, stale/unknown selection refusal, complete
+inventory binding, entry-time selection presence and disappearance during argv
+setup. Existing explicit Arch compatibility remains covered. Ordinary discovery
+enrolls these controls; fresh native channel qualification remains required.
+
+## Linux GUI lifecycle source custody and cleanup
+
+Run these mapped modules together after changing the fixed GUI recipe:
+
+```bash
+python3 -m unittest agent_tools.tests.test_linux_gui_native_controls agent_tools.tests.test_linux_gui_source_custody agent_tools.tests.test_linux_gui_capsule_codec agent_tools.tests.test_linux_gui_launcher_codec agent_tools.tests.test_linux_owner_gui_privileged_cleanup agent_tools.tests.test_linux_gui_cleanup_worker_identity agent_tools.tests.test_native_owner_gui_lifecycle
+```
+
+All70 composed controls pass with zero skips. They cover actual launcher/child
+source custody, late changes before dispatch, exact inert-child timeout cleanup,
+the normal six-file capsule's unchanged size bounds/seal, fixed privileged-read
+admission and reference/identity refusals, and the sudo-monitor versus child
+identity distinction. Privileged census tests execute the fixed body under
+modeled OS primitives; UID APIs may be absent without skipping the controls.
+Standard agent-tool discovery enrolls every module in prepush/Fast Checks.
+
+Keep the original native UNKNOWN and separate terminal cleanup recovery. Unit
+and source controls do not qualify installed GUI traffic, current guest/display
+admission, equivalent MCP retesting or the remaining lifecycle scenarios.
+
 ## MCP responsiveness and Linux download recovery
 
 Historical CP117 server-factory source comparisons run in

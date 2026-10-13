@@ -20,6 +20,11 @@ import tempfile
 SCHEMA_VERSION = 1
 MANIFEST_NAME = "native-scenario-manifest.json"
 _SCENARIOS = {
+    "linux-owner-gui-lifecycle-driver": (
+        "scripts/integration/linux_owner_lifecycle_scenario.py",
+        "scripts/integration/socks_http_fixture.py",
+        "scripts/native_fixture_run.sh",
+    ),
     "linux-public-update-driver": (
         "scripts/test_linux_public_install.py",
         "scripts/linux_fixture_auth.py",

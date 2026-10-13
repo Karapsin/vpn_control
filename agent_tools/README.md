@@ -132,6 +132,54 @@ operator may batch independent read-only observations. Retain original handles,
 raw evidence and cleanup ownership, and preserve unknown outcomes without replay.
 MCP remains the repository startup and delivery entry point.
 
+### Early SSH close dependency check
+
+The prepush tier invokes the existing close-session regression module after
+hygiene and before full agent-test discovery. An outdated exact dependency pin
+therefore refuses early, with retained diagnostics and no validation receipt.
+After a reviewed transport change, update its exact close-tool dependency SHA;
+current-source, unauthorized-source and historical non-replay guards remain.
+The full tier and focused command sets retain all their existing coverage.
+
+### Selected Arch route for nested guests
+
+Declared guests below `archlinux` use its explicitly selected retained channel,
+with the original whole-inventory/session checks and declared inner hops. Selection
+presence is captured before argv setup; disappearance or stale authority refuses
+without a generic fallback. An inventory change requires explicit channel
+qualification and selection for the new inventory. Missing selection at entry
+retains ordinary routing; argv construction never renews a connection.
+
+### Fixed Linux GUI lifecycle recipe
+
+The existing `fixture-preflight` action accepts
+`scenarioId="linux-owner-gui-lifecycle-preparation"` with exactly `host`,
+`environment`, `bundleManifestArtifactId` and `preparationInputArtifactId`.
+Its registered selectors identify an already owned guest, private display,
+protected owner and installed DEB. The fixed read-only producer observes actual
+guest/display/package/protected facts and registers the resulting admissions
+and scenario input; authored readiness flags are insufficient. The configured
+guest port must match its allocation. Replaced tray actors require fresh receipts.
+
+Use the returned input with the existing fixed scenario preflight and resumable
+batch/execution routes for `linux-owner-gui-lifecycle`. Its six-file capsule binds
+the driver, SOCKS fixture, native runner, manifest, input and admissions. Both
+launcher and child execute the captured original bytes after joined descriptor
+closure; compression preserves their canonical seal and the65,536-byte command
+bound. Preparation authenticates source hashes before execution.
+
+Guest admission qualifies fixed `sudo -n` read capability before GUI effects.
+Cleanup first uses ordinary process inspection; real `/proc` permission denial
+may invoke the fixed privileged read census. Active references, incomplete
+inspection and identity drift still refuse. Workspace deletion remains ordinary
+user, descriptor-relative and ownership-checked. Privilege is never a deletion
+fallback. Unknown original jobs and their inputs remain preserved without replay.
+
+The reviewed DIRECT case completed ten GUI slices/492 traffic frames and a
+same-original cleanup recovery. Its original UNKNOWN and unobserved runner exit
+remain unchanged. Four traffic components are recorded; equivalent native MCP
+retesting and the complete owner-lifecycle requirement remain open.
+
 ### Installer collection diagnostics
 
 `android_installer_asset_collection` retains bounded schema-2 terminal diagnostics

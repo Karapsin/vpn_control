@@ -33,7 +33,41 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current acceptance and tool integration — 2026-10-12,19:16 Moscow
+## Current acceptance and tool integration — 2026-10-13,02:34 Moscow
+
+Root starts this integration from clean delivered
+`7f6df2bd3118c822d44aea08fbbb6f2bf0e15bf7`, product2.2.8. That checkpoint's
+final prepush passed all16 commands, including6361 agent tests/175 explicit
+skips and no failures/errors. Its receipt does not validate these edits. Required
+CI remains deferred to one final exact-SHA five-workflow verification.
+
+The intentional bucket is the proven Linux GUI lifecycle driver, fixed SSH
+adapter, existing bundle/preflight/batch/execution route joins and their causal
+source-custody, timeout, codec, privileged-read and worker-identity tests/fixtures,
+plus selected Arch descendant routing, its exact close-tool dependency pin,
+an early prepush close gate and their causal regressions, root-owned
+maintainer docs and changelog metadata. Both native operators
+closed their local source holders before edits. Root owns these canonical files,
+checks, metadata and delivery; guest actions remain with their sole operators.
+The Linux controls pass70 tests with zero skips; selected-route compatibility
+passes41 and current close controls pass26. The post-route full prepush is terminal
+failure:6442 tests/175 skips/27 failures/five errors in1988.657 seconds, all32 failure
+headers in the close module because its exact transport pin was stale. The reviewed
+pin update repairs that sole cause; a four-control causal planner/runner regression
+adds the existing close suite before expensive discovery. Fresh final validation,
+coherent delivery and equivalent MCP native retesting remain pending.
+
+| Platform | Current evidence | Remaining work and owner |
+| --- | --- | --- |
+| Linux | Current7f DEB2.2.8-1 installed in owned Ubuntu2341. One DIRECT GUI run completed ten slices/492 traffic frames; same-original cleanup recovery exited0, removed its workspace and preserved both the current OFF anchor and old Ubuntu ON runtime. Original6553 kernel exit was not retained and its UNKNOWN receipt stays unchanged. MCP matrix receipt `native-acceptance-5b7e674c4a6cf479332a919f19199df3` records only four DIRECT GUI traffic components. | linux_readiness: fresh configured guest/display/preparation admission, fixed MCP retake, remaining CLI/installer/lifecycle/document/visual cases. Protected Ubuntu2307 remains untouched; Fedora2340 retains its installed engineering base. |
+| Windows | Engineering41ec base2.2.5 remains installed. A fresh ordinary-user GUI initially answered status OFF, then its background owner disappeared before any new update request. Scoped recovery retired only the retained GUI remnants, with no runtime kill or base restore. Actual owner exit cause remains unproved. | windows_update_assembly: one controlled normal GUI launch retaining frontend diagnostics and child exit, composed public update and remaining DIRECT/MCP/native/visual cases. No new native action during the integration boundary. |
+| Android | API35 retains the old nondebuggable2.2.2 fixture and original uncertain lease. Configured bridge CLI reports2.1.16 and fails the matching-version gate. A genuine d32/a9a2.2.2 package-only CLI image is registered for an isolated version check; it is not yet native-qualified. Current7f CI APK has a different signer and ARM64-only ABI, so it cannot be relabelled as a compatible fixture update. | windows_update_assembly: prove the isolated matching CLI, preserve uncertain original operations and complete API29/API35 actions/installers/documents and MCP retests. |
+| macOS | Stopped Tart53 and legacy unknown installer remain preserved. No qualified clean baseline; available local storage remains below its admitted budget. | Await suitable owned storage, then actual resource/access/dependency admission and DIRECT/MCP/native/visual work. Other platforms continue. |
+
+The full22-group/217-scenario and249-platform-scene scope remains incomplete.
+No release, main merge, tag, publisher or runtime upgrade is authorized.
+
+## Historical acceptance and tool integration — 2026-10-12,19:16 Moscow
 
 Root starts this coherent integration from clean delivered
 `57e49541612c2a2083aee261ab1f9c20c53cafa4`, product2.2.8. Its final prepush

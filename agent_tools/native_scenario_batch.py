@@ -32,6 +32,7 @@ _VERSION = 2
 _RECIPE = "linux-public-update-preflight"
 _WINDOWS_RECIPE = "windows-credential-validity-v1"
 _SCHEDULED_RECIPE = "linux-scheduled-refresh"
+_GUI_RECIPE = "linux-owner-gui-lifecycle"
 _RPM_RECIPE = "linux-rpm-public-install-recovery"
 Dispatch = Callable[[str, str, Mapping[str, Any]], Mapping[str, Any]]
 
@@ -47,7 +48,7 @@ def _token(value: object, name: str) -> str:
 
 
 def _plan(value: Mapping[str, Any]) -> dict[str, str]:
-    if not isinstance(value, Mapping) or value.get("recipe") not in {_RECIPE, _WINDOWS_RECIPE, _SCHEDULED_RECIPE, _RPM_RECIPE}:
+    if not isinstance(value, Mapping) or value.get("recipe") not in {_RECIPE, _WINDOWS_RECIPE, _SCHEDULED_RECIPE, _RPM_RECIPE, _GUI_RECIPE}:
         raise NativeScenarioBatchError("Batch recipe is not allowlisted.")
     if value["recipe"] == _RECIPE:
         required = {"batchId", "recipe", "host", "environment", "bundleManifestArtifactId", "scenarioCorrelationId"}
@@ -82,11 +83,11 @@ def _plan(value: Mapping[str, Any]) -> dict[str, str]:
                 raise ValueError()
         except ValueError as error:
             raise NativeScenarioBatchError("Windows probe correlationId must be a canonical UUID.") from error
-    elif result["recipe"] == _SCHEDULED_RECIPE:
+    elif result["recipe"] in {_SCHEDULED_RECIPE, _GUI_RECIPE}:
         try:
             if str(uuid.UUID(result["scenarioCorrelationId"])) != result["scenarioCorrelationId"]:
                 raise ValueError()
-            native_fixture_preflight._request({"scenarioId": _SCHEDULED_RECIPE,
+            native_fixture_preflight._request({"scenarioId": result["recipe"],
                 "host": result["host"], "environment": result["environment"],
                 "bundleManifestArtifactId": result["bundleManifestArtifactId"],
                 "scenarioInputArtifactId": result["scenarioInputArtifactId"],
@@ -133,10 +134,11 @@ def _nodes(plan: Mapping[str, str]) -> dict[str, dict[str, Any]]:
         }
         _ensure_acyclic(result)
         return result
-    if plan["recipe"] == _SCHEDULED_RECIPE:
+    if plan["recipe"] in {_SCHEDULED_RECIPE, _GUI_RECIPE}:
+        recipe = plan["recipe"]
         digest = _ARTIFACT.fullmatch(plan["bundleManifestArtifactId"]).group(1)
         correlation = plan["scenarioCorrelationId"]
-        preflight = {"scenarioId": _SCHEDULED_RECIPE, "host": plan["host"],
+        preflight = {"scenarioId": recipe, "host": plan["host"],
             "environment": plan["environment"], "bundleManifestArtifactId": plan["bundleManifestArtifactId"],
             "scenarioInputArtifactId": plan["scenarioInputArtifactId"],
             "scenarioCorrelationId": correlation}
@@ -144,7 +146,7 @@ def _nodes(plan: Mapping[str, str]) -> dict[str, dict[str, Any]]:
             "artifact": {"surface": "vm", "action": "artifact-verify", "inputs": {"artifactId": plan["bundleManifestArtifactId"]}, "after": [], "mode": "preflight"},
             "scenarioInput": {"surface": "vm", "action": "artifact-verify", "inputs": {"artifactId": plan["scenarioInputArtifactId"]}, "after": [], "mode": "preflight"},
             "fixture": {"surface": "fixture", "action": "check", "inputs": preflight, "after": [], "mode": "preflight"},
-            "start": {"surface": "vm", "action": "scenario-start", "inputs": {"scenarioId": _SCHEDULED_RECIPE,
+            "start": {"surface": "vm", "action": "scenario-start", "inputs": {"scenarioId": recipe,
                 "host": plan["host"], "environment": plan["environment"], "bundleHash": digest,
                 "artifactIds": {"bundleManifest": plan["bundleManifestArtifactId"],
                                 "scenarioInput": plan["scenarioInputArtifactId"]},
@@ -152,7 +154,7 @@ def _nodes(plan: Mapping[str, str]) -> dict[str, dict[str, Any]]:
             "status": {"surface": "vm", "action": "scenario-status", "inputs": {"correlationId": correlation},
                        "after": ["start"], "mode": "observe"},
             "collect": {"surface": "vm", "action": "scenario-collect", "inputs": {"correlationId": correlation},
-                        "scenarioId": _SCHEDULED_RECIPE,
+                        "scenarioId": recipe,
                         "after": ["status"], "mode": "collect", "afterTerminal": True},
         }
         _ensure_acyclic(result)
@@ -291,6 +293,19 @@ class NativeScenarioBatch:
                     "outcome": "correlation_mismatch", "evidence": {}}
         if node["action"] == "scenario-collect" and node["inputs"].get("correlationId"):
             summary = value.get("scenarioEvidence")
+            if node.get("scenarioId") == _GUI_RECIPE:
+                cleanup = summary.get("cleanup") if isinstance(summary, Mapping) else None
+                if not isinstance(summary, Mapping) or summary.get("correlationId") != expected or not isinstance(cleanup, Mapping):
+                    return {"state": "waiting", "outcome": "observer_unknown", "evidence": evidence}
+                evidence["scenarioEvidence"] = {"correlationId": expected, "result": summary.get("result"),
+                    "frames": summary.get("frames") if type(summary.get("frames")) is int else None,
+                    "cleanup": {"state": cleanup.get("state"), **{k: cleanup.get(k) if type(cleanup.get(k)) is bool else None
+                        for k in ("ownerStopped", "protectedPreserved", "workspaceRemoved", "referencesAbsent")}}}
+                accepted = (state == "terminal" and type(value.get("exitCode")) is int and value["exitCode"] == 0
+                    and summary.get("result") == "passed" and type(summary.get("frames")) is int and summary["frames"] >= 80
+                    and cleanup.get("state") == "complete" and all(cleanup.get(k) is True
+                        for k in ("ownerStopped", "protectedPreserved", "workspaceRemoved", "referencesAbsent")))
+                return {"state": "success" if accepted else "failed", "outcome": "accepted" if accepted else "rejected", "evidence": evidence}
             if node.get("scenarioId") == _SCHEDULED_RECIPE:
                 # The fixed remote collector returns a bounded typed summary,
                 # not arbitrary runner JSON or guest paths.
