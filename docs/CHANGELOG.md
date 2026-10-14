@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.10 - 2026-10-14
 
 - Keep Windows fixture dispatch inputs compatible with the existing update workflow checks.
 - Keep agent-test temporary roots short and private with generation-safe cleanup.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Bind isolated checks to loaded runner sources and owned fixtures; derive Android owner admission from verified bundles.
 - Update the physical-batch regression to the verified Android owner source.
 - Preserve authenticated historical source fixtures in CI whitespace checks.
+- Decode CI comparison events as UTF-8 on Windows.
 
 ## 2.2.9 - 2026-10-13
 

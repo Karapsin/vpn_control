@@ -139,6 +139,48 @@ class GitSelectionTests(unittest.TestCase):
         event=self.root/'.event.json';event.write_text(json.dumps({'before':self.base}))
         with mock.patch.dict(os.environ,{'GITHUB_EVENT_NAME':'push','GITHUB_EVENT_PATH':str(event)}):
             self.assertEqual(self.base,selector.select(self.root).baseline)
+    def test_utf8_ci_events_ignore_windows_locale_and_keep_actual_baseline(self):
+        self.write('agent_tools/leaf.py','value=4');self.git('add','.');self.git('commit','-qm','tool change')
+        event=self.root/'.event.json'
+        # The failed exact-SHA Windows run records this author in its head_commit.
+        # Its UTF-8 contains 0x81, which is undefined in the Windows cp1252 locale.
+        author='Карапсин Данила'
+        original_open=Path.open
+        def windows_locale_open(path,*args,**kwargs):
+            if path==event and kwargs.get('encoding') in (None,'locale'):
+                kwargs['encoding']='cp1252'
+            return original_open(path,*args,**kwargs)
+        for kind,payload in (
+            ('push',{'before':self.base,'head_commit':{'author':{'name':author}}}),
+            ('pull_request',{'pull_request':{'base':{'sha':self.base}},'sender':{'name':author}}),
+        ):
+            with self.subTest(event=kind):
+                raw=json.dumps(payload,ensure_ascii=False).encode('utf-8')
+                with self.assertRaises(UnicodeDecodeError):raw.decode('cp1252')
+                event.write_bytes(raw)
+                with mock.patch.dict(os.environ,{'GITHUB_EVENT_NAME':kind,'GITHUB_EVENT_PATH':str(event)}),mock.patch.object(Path,'open',windows_locale_open):
+                    plan=selector.select(self.root)
+                self.assertEqual(self.base,plan.baseline)
+                self.assertEqual(('agent_tools.tests.test_leaf',),plan.modules)
+    def test_unavailable_ci_event_still_refuses_without_head_fallback(self):
+        event=self.root/'.event.json'
+        for raw in (b'\x81',b'{',b'{}'):
+            with self.subTest(raw=raw):
+                event.write_bytes(raw)
+                with mock.patch.dict(os.environ,{'GITHUB_EVENT_NAME':'push','GITHUB_EVENT_PATH':str(event)}):
+                    with self.assertRaisesRegex(selector.SelectionError,'CI comparison baseline is unavailable'):
+                        selector.select(self.root)
+        event.unlink()
+        with mock.patch.dict(os.environ,{'GITHUB_EVENT_NAME':'push','GITHUB_EVENT_PATH':str(event)}):
+            with self.assertRaisesRegex(selector.SelectionError,'CI comparison baseline is unavailable'):
+                selector.select(self.root)
+    def test_invalid_ci_before_commit_still_refuses_without_head_fallback(self):
+        event=self.root/'.event.json'
+        for before in ('0'*40,'f'*40):
+            with self.subTest(before=before):
+                event.write_bytes(json.dumps({'before':before}).encode('utf-8'))
+                with mock.patch.dict(os.environ,{'GITHUB_EVENT_NAME':'push','GITHUB_EVENT_PATH':str(event)}):
+                    with self.assertRaises(selector.SelectionError):selector.select(self.root)
     def test_dispatch_missing_baseline_refuses(self):
         with mock.patch.dict(os.environ,{'GITHUB_EVENT_NAME':'workflow_dispatch','GITHUB_EVENT_PATH':str(self.root/'missing')}):
             with self.assertRaises(selector.SelectionError):selector.select(self.root)

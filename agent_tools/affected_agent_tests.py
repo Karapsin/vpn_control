@@ -78,7 +78,7 @@ def baseline_for(root, baseline=None):
         event = os.environ.get("GITHUB_EVENT_NAME")
         if event:
             try:
-                data = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+                data = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
                 if event == "push":
                     baseline = data["before"]
                 elif event == "pull_request":
