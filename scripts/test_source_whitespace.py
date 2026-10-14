@@ -1,12 +1,20 @@
 import pathlib
 import os
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import check_source_whitespace as checker
+
+
+def workflow_command_argv(command):
+    if shlex.split(command) != ["python3", "scripts/check_source_whitespace.py"]:
+        raise ValueError("Unexpected CI whitespace command")
+    return [sys.executable, "scripts/check_source_whitespace.py"]
 
 
 class SourceWhitespaceTest(unittest.TestCase):
@@ -26,6 +34,7 @@ class SourceWhitespaceTest(unittest.TestCase):
                     break
                 body.append(line[10:] if line else "")
             command = "\n".join(body)
+        argv = workflow_command_argv(command)
         names = tuple(checker.HISTORICAL_BYTE_ARCHIVES)
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
@@ -40,9 +49,7 @@ class SourceWhitespaceTest(unittest.TestCase):
             subprocess.run(["git", "add", "."], cwd=root, check=True)
 
             def check(expected, path=None):
-                env = dict(os.environ, PATH=str(pathlib.Path(sys.executable).parent)
-                           + os.pathsep + os.environ.get("PATH", os.defpath))
-                result = subprocess.run(["bash", "-c", command], cwd=root, env=env,
+                result = subprocess.run(argv, cwd=root,
                                         capture_output=True, text=True)
                 self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
                 if path is not None:
@@ -66,6 +73,39 @@ class SourceWhitespaceTest(unittest.TestCase):
             check(1, "new.py")
             (root / "new.py").write_bytes(b"ordinary source\n")
             check(0)
+
+    def test_python_workflow_boundary_ignores_unusable_bash_in_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            poison = pathlib.Path(temporary)
+            marker = poison / "bash-was-launched"
+            if os.name == "nt":
+                # A Python executable named bash rejects the shell command.
+                # The fixed boundary must not execute this PATH candidate.
+                shutil.copy2(sys.executable, poison / "bash.exe")
+            else:
+                launcher = poison / "bash"
+                launcher.write_text(
+                    "#!" + sys.executable + "\n"
+                    "import os, pathlib, sys\n"
+                    "pathlib.Path(os.environ['WHITESPACE_BASH_MARKER']).touch()\n"
+                    "sys.stderr.write('Windows Subsystem for Linux has no installed distributions.\\n')\n"
+                    "raise SystemExit(1)\n", encoding="utf-8")
+                launcher.chmod(0o700)
+            with mock.patch.dict(os.environ, {
+                "PATH": str(poison) + os.pathsep + os.environ.get("PATH", os.defpath),
+                "WHITESPACE_BASH_MARKER": str(marker),
+            }):
+                self.test_actual_fast_checks_boundary_preserves_only_authenticated_archives()
+            self.assertFalse(marker.exists(), "The whitespace boundary launched bash")
+
+    def test_unexpected_workflow_command_refuses_shell_or_argument_changes(self):
+        for command in ("bash -c 'python3 scripts/check_source_whitespace.py'",
+                        "python3 scripts/check_source_whitespace.py --ignore",
+                        "python3 scripts/check_source_whitespace.py; echo accepted",
+                        "python3 scripts/check_other_whitespace.py"):
+            with self.subTest(command=command):
+                with self.assertRaisesRegex(ValueError, "Unexpected CI whitespace command"):
+                    workflow_command_argv(command)
 
     def test_untracked_source_is_checked_before_staging(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Prefer current agent guidance while retaining explicit historical evidence retrieval.
+- Run the CI whitespace regression without a platform shell dependency.
 
 ## 2.2.10 - 2026-10-14
 

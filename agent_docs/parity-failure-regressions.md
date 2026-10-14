@@ -49,6 +49,15 @@ Windows log exposes only generic baseline error, so its exact exception is unobs
 the decoding attribution to that job is an inference. Final exact-SHA CI remains required.
 No native scenario or old job was replayed for these fixes.
 
+The first cleanup delivery's Windows run failed in the new whitespace test because
+bare `bash` selected the Windows WSL launcher with no installed distribution.
+Original full CI log and test/workflow beforeimages are retained at
+`.runtime/docs-cleanup-2026-10-14/windows-bash-boundary/`. The portable repair executes
+the exact reviewed Python checker command with the test interpreter, refuses
+unexpected commands and retains the poisoned-PATH causal RED/GREEN control.
+The original four fixture bytes/hashes and whole-whitespace failure evidence remain intact.
+Final delivery still requires new content-bound prepush and all five new exact-SHA CI successes.
+
 Current custody retrieval still promoted historical instructions after prose moves.
 One narrow RAG classification repair demotes archived/retained history for ordinary
 queries and keeps explicit history queries discoverable. The same5-test suite gives
