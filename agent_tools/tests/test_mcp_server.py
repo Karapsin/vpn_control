@@ -9,6 +9,7 @@ import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from agent_tools import mcp_server
@@ -333,14 +334,49 @@ class FingerprintTest(unittest.TestCase):
                 release.set()
             self.assertTrue(first.result(timeout=10)["ok"])
 
-    def test_prepush_records_only_unchanged_checked_content(self) -> None:
+    def _assert_prepush_completion_matches_retention_capability(self) -> None:
         receipt = self.root / ".rag_index" / "prepush_receipt.json"
         before = mcp_server._snapshot_fingerprint()
+        retention_os = mcp_server.check_output_retention.os
+        supported = retention_os.name == "posix" and all(
+            hasattr(retention_os, name) for name in ("O_NOFOLLOW", "O_DIRECTORY", "geteuid", "fsync"))
+        command = [sys.executable, "-c",
+                   "import sys; sys.stdout.buffer.write(b'private stdout\\n'); sys.stderr.buffer.write(b'private stderr\\n')"]
         with mock.patch.object(mcp_server, "RECEIPT_PATH", receipt), \
-                mock.patch.object(mcp_server, "_commands_for", return_value=[[sys.executable, "-c", "pass"]]):
+                mock.patch.object(mcp_server, "_commands_for", return_value=[command]):
             result = mcp_server.run_checks(level="prepush")
-        self.assertTrue(result["ok"])
-        self.assertEqual(before, json.loads(receipt.read_text())["fingerprint"])
+        child = result["command_results"][0]
+        self.assertEqual(0, child["returncode"])
+        self.assertEqual("private stdout", child["stdout"])
+        self.assertEqual("private stderr", child["stderr"])
+        self.assertEqual(before, mcp_server._snapshot_fingerprint())
+        if supported:
+            self.assertTrue(result["ok"])
+            self.assertTrue(child["ok"])
+            self.assertNotIn("retentionError", child)
+            self.assertEqual(before, json.loads(receipt.read_text())["fingerprint"])
+            capture = child["completionOutput"]
+            directory = self.root / ".rag_index" / "check-runs" / capture["runId"]
+            self.assertEqual(b"private stdout\n", (directory / "stdout.private").read_bytes())
+            self.assertEqual(b"private stderr\n", (directory / "stderr.private").read_bytes())
+        else:
+            self.assertFalse(result["ok"])
+            self.assertFalse(child["ok"])
+            self.assertEqual("unsupported_private_retention", child["retentionError"])
+            self.assertNotIn("completionOutput", child)
+            self.assertFalse(receipt.exists())
+            self.assertFalse((self.root / ".rag_index" / "check-runs").exists())
+
+    def test_prepush_records_only_unchanged_checked_content(self) -> None:
+        self._assert_prepush_completion_matches_retention_capability()
+
+    def test_prepush_unsupported_private_retention_never_creates_receipt(self) -> None:
+        # Scope the capability seam to the real retainer's module binding;
+        # subprocess, pathlib and the rest of the host retain their actual OS.
+        for capability in (SimpleNamespace(name="nt"), SimpleNamespace(name="posix")):
+            with self.subTest(platform=capability.name), \
+                    mock.patch.object(mcp_server.check_output_retention, "os", capability):
+                self._assert_prepush_completion_matches_retention_capability()
 
     def test_fingerprint_survives_committed_addition_and_deletion(self) -> None:
         (self.root / "tracked.txt").unlink()

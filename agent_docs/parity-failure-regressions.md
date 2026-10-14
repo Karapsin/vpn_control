@@ -101,6 +101,19 @@ managed prepush, Fast Checks and the native Windows managed-check stage enroll
 the new test. Full native installer acceptance remains separate; new exact-SHA
 Windows package CI must rerun the original failed stage before delivery.
 
+The source checkout controls then passed in Windows run `38578867402` at
+`a7a13d395357f6feeb256e419dd1d84f4d07d3d4`. A distinct test fixture failure
+expected successful prepush on a host whose private-retention capability is
+intentionally unsupported. The native assertion exposed only `ok=false`.
+The real-child retainer-only capability seam reproduces the original test RED
+and corrected test GREEN with `unsupported_private_retention`, child exit0,
+complete captured streams and no validation receipt. The ordinary
+`test_mcp_server.FingerprintTest` suite now exercises both actual supported
+private output/fingerprint preservation and Windows/missing-API refusal. No
+production gate is weakened or replaced with a mocked success. Evidence and
+beforeimages remain in the packet's `second-attempt/`; original native Windows
+stage rerun remains required before exact-SHA delivery.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

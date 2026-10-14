@@ -73,6 +73,21 @@ pass. Evidence and unfixed beforeimages are retained in
 New content-bound validation and a new exact-SHA Windows rerun remain required;
 the failed checkpoint is not a delivered milestone.
 
+The next checkpoint `a7a13d395357f6feeb256e419dd1d84f4d07d3d4` passed the
+Windows source-selection/checkout controls, then run `38578867402` exposed a
+distinct fingerprint-test expectation failure. Its positive prepush assertion
+ignored the existing unsupported private-retention gate on Windows. The native
+log retains only `ok=false`; the real-child capability reproducer identifies
+`unsupported_private_retention` with exit0 and no receipt. The preserved original
+test gives RED under the same retainer-only Windows capability seam; the corrected
+test gives GREEN, preserving actual child streams and refusal. Supported POSIX
+still requires exact private output bytes and the unchanged source fingerprint;
+Windows and missing-API POSIX require failure and no validation receipt. Production
+retention code is unchanged. All 35 module controls pass locally (one existing
+optional-client dependency skip in the base interpreter); native Windows CI must
+rerun the original stage. Evidence is in the `second-attempt/` subdirectory of the
+same retained failure packet.
+
 Android compilation/carrier changes remain measured candidates, unadopted:
 five local hook derivation runs measured median 55.776 ms before and 12.552 ms
 with an inert cache experiment (nine compilations/parses to two, nine fresh source
