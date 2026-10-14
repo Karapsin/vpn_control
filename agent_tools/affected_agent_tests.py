@@ -21,6 +21,7 @@ import sys
 import uuid
 import stat
 import io
+from types import MappingProxyType
 
 
 # Reviewed opaque loaders: changes to their exact source require renewed mapping.
@@ -137,14 +138,58 @@ def read_source(path, raw):
         raise SelectionError("Python dependency source is not UTF-8: " + path) from error
 
 
-def dependencies(path, source, inventory):
-    """Conservative local dependency edges, with unresolved loading refusal."""
-    if REVIEWED_NON_PYTHON_RESOURCES.get(path) == hashlib.sha256(source.encode()).hexdigest():
-        return set()
+class _OwnerIndex:
+    """Read-only owner exclusion over one selection's immutable inventory."""
+    def __init__(self, entries, owner):
+        self.entries, self.owner = entries, owner
+
+    def get(self, key, default=()):
+        values = self.entries.get(key)
+        return values - {self.owner} if values is not None else default
+
+    def items(self):
+        for key, values in self.entries.items():
+            yield key, values - {self.owner}
+
+
+def _inventory_indexes(inventory):
+    module_paths = {p[:-3].replace("/", "."): p for p in inventory if p.endswith(".py")}
+    aliases, module_aliases, directories = {}, {}, {}
+    for candidate in inventory:
+        if is_document(candidate):
+            continue
+        item = PurePosixPath(candidate)
+        for alias in (candidate, item.name):
+            aliases.setdefault(alias, set()).add(candidate)
+        if item.suffix == ".py":
+            for alias in (item.stem, candidate[:-3].replace("/", ".")):
+                module_aliases.setdefault(alias, set()).add(candidate)
+        for start in range(1, len(item.parts)):
+            aliases.setdefault("/".join(item.parts[start:]), set()).add(candidate)
+        for directory in item.parents:
+            if str(directory) != ".":
+                directories.setdefault(str(directory), set()).add(candidate)
+    freeze = lambda entries: MappingProxyType({key: frozenset(values) for key, values in entries.items()})
+    return MappingProxyType(module_paths), freeze(aliases), freeze(module_aliases), freeze(directories)
+
+
+def _analysis(path, source):
     try:
         tree = ast.parse(source, filename=path)
     except (SyntaxError, ValueError) as error:
         raise SelectionError("Cannot analyze Python source: " + path) from error
+    return tree, tuple(ast.walk(tree))
+
+
+def dependencies(path, source, inventory):
+    """Conservative local dependency edges, with unresolved loading refusal."""
+    return _dependencies(path, source, inventory, _inventory_indexes(inventory))
+
+
+def _dependencies(path, source, inventory, indexes, analysis=None):
+    if REVIEWED_NON_PYTHON_RESOURCES.get(path) == hashlib.sha256(source.encode()).hexdigest():
+        return set()
+    tree, nodes = analysis if analysis is not None else _analysis(path, source)
     edges = set()
     def unknown(message):
         declaration = REVIEWED_DYNAMIC_DEPENDENCIES.get(path)
@@ -187,27 +232,11 @@ def dependencies(path, source, inventory):
         init = str(parent / "__init__.py")
         if init in inventory and init != path:
             edges.add(init)
-    module_paths = {p[:-3].replace("/", "."): p for p in inventory if p.endswith(".py")}
+    module_paths, all_aliases, all_module_aliases, all_directories = indexes
+    aliases = _OwnerIndex(all_aliases, path)
+    module_aliases = _OwnerIndex(all_module_aliases, path)
+    directories = _OwnerIndex(all_directories, path)
     tokens = set(re.findall(r"[A-Za-z0-9_./-]+", source))
-    strings = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
-    # Embedded scripts, filename lists, path joins and fixture roots are real
-    # dependencies. Index names once per file rather than comparing every string
-    # against every repository path.
-    aliases, module_aliases, directories = {}, {}, {}
-    for candidate in inventory:
-        if candidate == path or is_document(candidate):
-            continue
-        item = PurePosixPath(candidate)
-        for alias in (candidate, item.name):
-            aliases.setdefault(alias, set()).add(candidate)
-        if item.suffix == ".py":
-            for alias in (item.stem, candidate[:-3].replace("/", ".")):
-                module_aliases.setdefault(alias, set()).add(candidate)
-        for start in range(1, len(item.parts)):
-            aliases.setdefault("/".join(item.parts[start:]), set()).add(candidate)
-        for directory in item.parents:
-            if str(directory) != ".":
-                directories.setdefault(str(directory), set()).add(candidate)
     for token in tokens:
         edges.update(aliases.get(token.removeprefix("./"), ()))
 
@@ -219,7 +248,7 @@ def dependencies(path, source, inventory):
             for target in targets:
                 if isinstance(target, ast.Name):
                     assignments.setdefault(target.id, []).append(node.value)
-    for node in ast.walk(tree):
+    for node in nodes:
         if isinstance(node, ast.ImportFrom):
             for alias in node.names:
                 import_bindings[alias.asname or alias.name] = alias.name
@@ -319,7 +348,7 @@ def dependencies(path, source, inventory):
         if isinstance(node, ast.Dict):
             return {literal_value(key, seen): literal_value(value, seen) for key, value in zip(node.keys, node.values)}
         raise ValueError("not a literal registry")
-    source_loops = [node for node in ast.walk(tree) if isinstance(node, ast.For)]
+    source_loops = [node for node in nodes if isinstance(node, ast.For)]
     def reader_loop_bindings(reader):
         bindings = {}
         def bind(target, value):
@@ -344,8 +373,8 @@ def dependencies(path, source, inventory):
             except (ValueError, TypeError):
                 continue
         return bindings
-    path_constructors = {alias.asname or alias.name for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module == "pathlib" for alias in node.names if alias.name == "Path"}
-    pathlib_namespaces = {alias.asname or alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names if alias.name == "pathlib"}
+    path_constructors = {alias.asname or alias.name for node in nodes if isinstance(node, ast.ImportFrom) and node.module == "pathlib" for alias in node.names if alias.name == "Path"}
+    pathlib_namespaces = {alias.asname or alias.name for node in nodes if isinstance(node, ast.Import) for alias in node.names if alias.name == "pathlib"}
     def bounded_source_path(node, bindings, seen=frozenset()):
         if isinstance(node, ast.Constant):
             return isinstance(node.value, (str, int))
@@ -372,7 +401,7 @@ def dependencies(path, source, inventory):
             if isinstance(node.func, ast.Attribute) and node.func.attr in {"resolve", "absolute", "with_name", "with_suffix", "joinpath"}:
                 return bounded_source_path(node.func.value, bindings, seen) and all(bounded_source_path(value, bindings, seen) for value in node.args) and not node.keywords
         return False
-    for reader in ast.walk(tree):
+    for reader in nodes:
         if not isinstance(reader, ast.Call):
             continue
         call = reader.func.attr if isinstance(reader.func, ast.Attribute) else getattr(reader.func, "id", "")
@@ -380,7 +409,7 @@ def dependencies(path, source, inventory):
         if call in {"walk", "listdir"}:
             owner = reader.func.value if isinstance(reader.func, ast.Attribute) else None
             qualified_os = isinstance(owner, ast.Name) and import_bindings.get(owner.id) == "os"
-            imported_os = isinstance(reader.func, ast.Name) and any(isinstance(node, ast.ImportFrom) and node.module == "os" and any((alias.asname or alias.name) == reader.func.id and alias.name == call for alias in node.names) for node in ast.walk(tree))
+            imported_os = isinstance(reader.func, ast.Name) and any(isinstance(node, ast.ImportFrom) and node.module == "os" and any((alias.asname or alias.name) == reader.func.id and alias.name == call for alias in node.names) for node in nodes)
             if not qualified_os and not imported_os:
                 continue
         expression = None
@@ -417,7 +446,7 @@ def dependencies(path, source, inventory):
                 unknown("Unbounded or reviewed source directory reader: ")
             else:
                 edges.update(resources)
-    for node in ast.walk(tree):
+    for node in nodes:
         names = []
         if isinstance(node, ast.Import):
             names = [a.name for a in node.names]
@@ -497,13 +526,35 @@ def select_from_sources(sources, changed, baseline="inert", existing_tests=None)
     relevant = {p for p in changed if not is_document(p) and potentially_agent_input(p)}
     if not relevant:
         return Selection(baseline, tuple(sorted(changed)), (), len(tests))
-    graph, errors = {}, {}
+    graph, errors, script_inputs = {}, {}, {}
+    indexes = _inventory_indexes(inventory)
     for path, text in sources.items():
         if is_python_source(path) and text is not None:
             graph[path] = set()
             for version in (text if isinstance(text, tuple) else (text,)):
                 try:
-                    graph[path].update(dependencies(path, version, inventory))
+                    exempt = REVIEWED_NON_PYTHON_RESOURCES.get(path) == hashlib.sha256(version.encode()).hexdigest()
+                    try:
+                        analysis = _analysis(path, version)
+                    except SelectionError:
+                        if not exempt:
+                            raise
+                        analysis = None
+                    if analysis is not None and path.startswith("agent_tools/tests/"):
+                        imported = script_inputs.setdefault(path, set())
+                        for node in analysis[1]:
+                            base = node.module if isinstance(node, ast.ImportFrom) else None
+                            if base and base.startswith("scripts"):
+                                names = [base] + [base + "." + alias.name for alias in node.names]
+                            elif isinstance(node, ast.Import):
+                                names = [alias.name for alias in node.names if alias.name.startswith("scripts.")]
+                            else:
+                                names = []
+                            for name in names:
+                                candidate = name.replace(".", "/") + ".py"
+                                if candidate in inventory:
+                                    imported.add(candidate)
+                    graph[path].update(_dependencies(path, version, inventory, indexes, analysis))
                 except SelectionError as error:
                     errors[path] = error
                     graph[path].update(getattr(error, "dependencies", set()))
@@ -520,44 +571,45 @@ def select_from_sources(sources, changed, baseline="inert", existing_tests=None)
                     continue
                 owned.add(dependency); pending.extend(graph.get(dependency, ()))
         elif owner.startswith("agent_tools/tests/"):
-            text = sources[owner]
-            for version in (text if isinstance(text, tuple) else (text,)):
-                try:
-                    tree = ast.parse(version)
-                except (SyntaxError, TypeError):
-                    continue
-                for node in ast.walk(tree):
-                    base = node.module if isinstance(node, ast.ImportFrom) else None
-                    if base and base.startswith("scripts"):
-                        names = [base] + [base + "." + alias.name for alias in node.names]
-                    elif isinstance(node, ast.Import):
-                        names = [alias.name for alias in node.names if alias.name.startswith("scripts.")]
-                    else:
-                        names = []
-                    for name in names:
-                        candidate = name.replace(".", "/") + ".py"
-                        if candidate in inventory:
-                            owned.add(candidate)
+            owned.update(script_inputs.get(owner, ()))
     relevant = {p for p in relevant if not p.startswith("scripts/") or p in owned}
     if not relevant:
         return Selection(baseline, tuple(sorted(changed)), (), len(tests))
     if errors and any(p.startswith("agent_tools/") or is_python_source(p) for p in relevant):
         raise errors[sorted(errors)[0]]
-    selected = []
-    consumed = set()
-    for test in tests:
-        reachable, pending = set(), [test]
-        while pending:
-            path = pending.pop()
-            if path in reachable:
-                continue
-            reachable.add(path)
-            pending.extend(graph.get(path, ()))
-        if reachable & relevant:
+    reverse = {}
+    for owner, dependencies_ in graph.items():
+        for dependency in dependencies_:
+            reverse.setdefault(dependency, set()).add(owner)
+    affected, pending = set(), list(relevant)
+    while pending:
+        path = pending.pop()
+        if path in affected:
+            continue
+        affected.add(path)
+        pending.extend(reverse.get(path, ()))
+    selected = [test for test in tests if test in affected]
+    # Preserve the original selected-test then error-path ordering. Errors are
+    # uncommon; ordinary selection shares one forward closure across all tests.
+    if errors:
+        for test in selected:
+            reachable, pending = set(), [test]
+            while pending:
+                path = pending.pop()
+                if path in reachable:
+                    continue
+                reachable.add(path)
+                pending.extend(graph.get(path, ()))
             for path in sorted(reachable & set(errors)):
                 raise errors[path]
-            selected.append(test)
-            consumed.update(reachable & relevant)
+    reachable, pending = set(), list(selected)
+    while pending:
+        path = pending.pop()
+        if path in reachable:
+            continue
+        reachable.add(path)
+        pending.extend(graph.get(path, ()))
+    consumed = reachable & relevant
     unmapped = {p for p in relevant if p.startswith("agent_tools/") and p not in consumed and not p.startswith("agent_tools/tests/test_")}
     if unmapped:
         raise SelectionError("Changed agent dependency has no known consumers: " + ", ".join(sorted(unmapped)))

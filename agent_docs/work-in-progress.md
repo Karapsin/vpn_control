@@ -2,8 +2,20 @@
 
 ## Current next action and human scope
 
-Documentation cleanup is the current task. Verify its development delivery before
-starting [the active execution brief](parity-solo-plan.md) after fresh MCP startup.
+Documentation cleanup delivered clean `dev` at
+`a4f52a35459af3129ed02ca33e2045631f29ca59` (product `2.2.10`); fresh managed
+exact-SHA checks confirmed all five required workflows successful. The current
+task is a bounded agent-tool optimization milestone before parity resumes:
+reuse selector inventory/analysis/traversals, compare the actual capability
+surface, and measure Android compilation/carrier candidates before adoption.
+The implementation owner holds `agent_tools/affected_agent_tests.py` and its
+new equivalence controls; the coordinator owns this ledger, validation and
+delivery. Read-only workers own separate ignored characterization/measurement
+directories. No native guest/emulator operator or original-job custody is
+transferred by this task. The implementation plan is
+`.runtime/agent-tools-optimization-2026-10-14/plan.md`.
+Resume [the active execution brief](parity-solo-plan.md) after this milestone's
+clean exact-SHA development delivery and fresh MCP startup.
 Platform order: Linux → Windows → Android (API35, then API29), one platform at a time.
 The user subsequently allowed subagents; bounded assistance requires explicit file
 ownership and one operator per environment. Global TEST-003 remains unchanged.
@@ -11,6 +23,58 @@ macOS native/visual acceptance is **USER-DEFERRED**; macOS package CI remains re
 In-scope completion and full four-platform acceptance are separate claims.
 No release, native acceptance, original-job replay, guest lifecycle action,
 lease release, credential/trust change or host VPN interruption is part of cleanup.
+
+## Optimization milestone and parity handoff
+
+The adopted scope is selector calculation reuse only. One invocation builds
+immutable lookup indexes, analyzes each old/new source version once and selects
+consumers through reverse edges with a shared forward consumption closure. Fresh
+source fingerprints, old/new import union, reviewed loader hashes, deterministic
+refusals and the public API remain required. No native procedure changed, so this
+milestone grants no native acceptance and does not refresh artifact provenance.
+
+Baseline characterization records 12 actual serialized MCP tools, 517 CLI VM
+choices and 39 SSH choices, with separate batch allowlists. Before/after capability
+inventories and all historical fixture bytes match. The selector source digest
+changes; an already-loaded check daemon correctly refuses it as stale. Use fresh
+MCP startup or the documented fresh-process managed check route.
+
+Differential controls cover all 1,191 Python dependency sources, 2,709 catalogue
+paths and 511 tests (7,547 edges), with no edge or selection mismatches. The
+representative selector-change traversal visits 807,933 edges before and 11,762
+after. Five comparable instrumented selections measured median 46.338 seconds
+before and 8.151 seconds after (82.4% less), selecting the same 448 of 511 modules.
+AST parses fell from 1,853 to 1,191 and whole-tree walks from 8,980 to 1,188;
+inventory construction fell from 1,188 (inferred baseline count) to one directly
+counted construction. A separate plain-process control measured 47.352 to
+8.185 seconds; single peak-RSS observations were 183.34 and 173.75 MB, which
+establish no memory-growth observation rather than a statistical memory claim.
+The parse-reuse cost regression fails on the preserved baseline (nine parses
+where six suffice) and passes on the patch. All 80 focused controls pass.
+Existing selector controls and new real-Git/reuse controls preserve removed
+imports, deletions/renames, cycles, colliding aliases, script ownership, reviewed
+non-Python inputs, source changes and refusal order. Complete measurements and
+beforeimages are retained under `.runtime/agent-tools-optimization-2026-10-14/`.
+
+Android compilation/carrier changes remain measured candidates, unadopted:
+five local hook derivation runs measured median 55.776 ms before and 12.552 ms
+with an inert cache experiment (nine compilations/parses to two, nine fresh source
+snapshots retained). This is not complete guard or native timing. A complete
+carrier size experiment measured 1,840,856 to 801,601 bytes (56.45% less), but its
+decoder was never admitted/executed and lacks qualification. Neither experiment
+is a production speedup. An owned-descriptor reproduction confirmed `_close`
+abandons later descriptors after EBADF; its original source and reproducer remain
+preserved for the separate native-consuming correctness batch.
+
+Before adopting those Android changes, finish complete namespace/custody/error
+controls and full API35/API29 DIRECT scenarios, then matching MCP retests under
+TEST-001/002. Installer0dd remains UNKNOWN with its lease held and replay forbidden.
+Do not promote the unqualified cache/carrier experiment or replace old pins.
+Git-read/fingerprint work and Windows/Linux routing/transport changes remain
+bounded backlog; none is needed to resume parity after this milestone's verified
+delivery. Continue Linux → Windows → API35 → API29 from fresh source/fixture
+admission, preserving the original custody rows below. macOS native/visual remains
+USER-DEFERRED; normal macOS package CI still applies.
 
 ## Source, delivery and acceptance accounting
 
@@ -20,11 +84,14 @@ lease release, credential/trust change or host VPN interruption is part of clean
 - At that exact SHA, Fast Checks and Windows Desktop Package failed; Android,
   Linux and macOS packages succeeded. Cleanup repairs only confirmed hygiene/event
   decoding prerequisites and the demonstrated current-versus-history retrieval gap.
-- Cleanup content is in the containing commit. Obtain its actual SHA/version with
-  fresh startup; the final private delivery record is
+- Cleanup delivery is `a4f52a35459af3129ed02ca33e2045631f29ca59`; its private record is
   `.runtime/docs-cleanup-2026-10-14/delivery.json`. A commit or local validation alone
   never establishes successful exact-SHA CI. Managed `git_workflow` checks against
   the actual SHA are the live delivery authority; this capsule is source-bounded.
+- Optimization content is in the containing commit; obtain its actual SHA/version
+  with fresh startup and verify its exact required workflows. Its final private
+  measurement/delivery record is
+  `.runtime/agent-tools-optimization-2026-10-14/delivery.json`.
 - Read-only `matrix-status` at reconciliation: **0 passed, 18 open, 4 historical**
   groups, 22 total / 217 scenario memberships, 1 retracted receipt. All 217 memberships
   lack accepted current-source full-native evidence. This measures acceptance
