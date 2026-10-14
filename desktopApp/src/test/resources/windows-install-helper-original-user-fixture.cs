@@ -70,7 +70,8 @@ public static class OriginalUserAdapterFixtures {
             if (VpnInstallHelperRoles.RunOriginalUser(adapter)!=0) throw new Exception("Return did not finish");
             // The two scheduled pauses are pending-clear followed by exclusive-lock release.
             // Process startup would return BUSY until BOTH events have happened.
-            if (session.Pauses!=2 || session.ReturnAdmissionChecks!=3 || session.ReturnGateStage!=2 ||
+            // Cleanup uses three admission checks; relaunch revalidates the cleared gate once.
+            if (session.Pauses!=2 || session.ReturnAdmissionChecks!=4 || session.ReturnGateStage!=2 ||
                 session.NativeCalls!=1 || session.ResultCalls!=1 || session.Relaunches!=1)
                 throw new Exception("Returned owner raced coordinator cleanup or replayed native install");
         }

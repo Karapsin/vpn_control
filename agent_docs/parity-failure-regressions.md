@@ -68,6 +68,17 @@ before any PowerShell/hash result and fabricate no success receipt. The unchange
 209-file hash/count/size/tree oracle remains required in Windows exact-SHA CI.
 Evidence: `.runtime/docs-cleanup-2026-10-14/windows-hash-oracle/`.
 
+A further Windows package run reached the ordinary desktop test tier and failed
+`SuccessfulReceiptWaitsForCoordinatorGateRelease`: its inert fixture still expected
+three admission checks. The unchanged adapter now checks during completed-input
+cleanup (three checks, two scheduled pauses), then revalidates before relaunch
+(fourth check). The fixture-only correction retains two pauses, cleared stage2,
+one install/result/relaunch and one disposal; production sources are unchanged.
+Original full CI log, beforeimages and causal receipts:
+`.runtime/docs-cleanup-2026-10-14/windows-package-build/`. The eight existing
+original-user fixture cases remain in routine Windows `:desktopApp:test`; this
+inert regression does not run or accept an actual installer/owner-return scenario.
+
 Current custody retrieval still promoted historical instructions after prose moves.
 One narrow RAG classification repair demotes archived/retained history for ordinary
 queries and keeps explicit history queries discoverable. The same5-test suite gives
