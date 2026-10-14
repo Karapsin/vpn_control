@@ -1,0 +1,1430 @@
+# Historical test-matrix source snapshot — 2026-10-14
+
+This is preserved historical documentation, not current status or a command to
+replay native operations. Use the [active matrix](../../../test-matrix.md) for
+current check routing and the [active ledger](../../../work-in-progress.md) for
+current scope. Original source commit: `3944739d3f33983dbd7a23ac0b8cf00aa20107aa`; Git blob: `837e60ef831b0b2302e558f59197b245498f2131`.
+The exact unchanged private beforeimage and hash metadata remain at
+`.runtime/docs-cleanup-2026-10-14/test-routing/`. The body below changes only three
+relative documentation references, listed in the [migration manifest](../../../testing/migration-manifest.md).
+
+# Test Matrix
+
+## Runner self-input, SSH fixture custody and Android owner admission
+
+Run `python3 -m unittest agent_tools.tests.test_agent_test_runner_self_input agent_tools.tests.test_ssh_fresh_fixture_custody agent_tools.tests.test_android_api35_current_owner_admission agent_tools.tests.test_agent_test_runner`
+for this combined integration. The self-input controls execute frozen workers,
+cached-code/source mismatches, source generation exchanges and both mixed-group
+closing orders. The custody controls execute actual setup and generation-aware
+cleanup; the owner controls invoke the real complete bundle factory and its
+receipt/source guards. Preserved beforeimages supply causal RED. Ordinary
+discovery and exact dependency declarations enroll the controls. Missing POSIX
+capabilities skip the applicable descriptor/process tests explicitly. These
+checks do not qualify new concurrent groups or complete native acceptance.
+
+## Original actor identity and isolated package markers
+
+Run `python3 -m unittest agent_tools.tests.test_android_original_actor_pin_shape`
+after changing the original-host actor emitter. Thirteen controls include actual
+canonical emission into proc-shaped fixtures, exact start identity, PID reuse,
+absence and foreign UID visibility. Historical private guards remain separate;
+missing O_NOFOLLOW explicitly skips the thirteen POSIX controls. The two preserved
+source fixtures and exact test hash are mapped in affected-test metadata.
+
+Run `python3 -m unittest agent_tools.tests.test_agent_test_runner` for isolated
+test-context changes. Package-marker controls execute clean child imports to
+reject canonical namespace fallback and preserve authenticated pinned markers.
+They do not admit additional parallel groups. Existing dynamic-loader scopes
+stay unchanged; exact reviewed owner and test hashes are enrolled.
+
+## Retained Android OS and result observations
+
+For the existing async producer's private one-LF JSON records, run
+`python3 -m unittest agent_tools.tests.test_android_durable_json_record agent_tools.tests.test_android_original_host_wire`.
+Eight durable-record controls execute actual producer bodies and the current
+decoder, including valid JSON at16384/16385 bytes, strict trailing data, duplicate
+keys and nonfinite numbers. Only the actual POSIX file producer skips off POSIX.
+Affected selection discovers both production owners and the preserved consumer
+fixture; no broader dynamic-loader exception is needed.
+
+Run `python3 -m unittest agent_tools.tests.test_android_api35_os_session_projection agent_tools.tests.test_android_retained_result_binary_collection agent_tools.tests.test_android_original_host_wire agent_tools.tests.test_android_original_host_status` after changing the bounded OS projection, original-host wire owner or retained-record collector. The54 controls include complete Active/Finalized section retention, producer/EOF/hash and wire bounds, actual fake children, source closing, no replay, typed frame pins and preserved original failures. Missing `fcntl` leaves19 pure framing controls enabled and explicitly skips11 POSIX child controls. Ordinary discovery and the exact four-resource loader declaration enroll these consumers. The fixed decoder covers only original828; collected facts do not release an unknown installer lease or prove current routing, retirement or full native/MCP acceptance.
+
+## Refresh-status and deterministic complete visual capture
+
+After changing the desktop subscription status consumer or its neutral catalog
+label, run `:desktopApp:test --tests com.kardinal.vpncontrol.desktop.DesktopProfileRefreshStatusTest`,
+`:shared:ui:desktopTest` and `python3 scripts/check_localization.py`. Eight actual
+owner/frontend row tests cover legacy/private/unavailable, empty and typed results.
+Normal desktop/prepush/Fast Checks discover the class without special enrollment.
+
+The two `VisualCaptureTest` stress pointer regressions must seed the exact hover
+color and demand complete frame equality after the real capture helper. Run
+`narrowStressCaptureClearsInheritedPointerHover` and
+`largeFontStressCaptureClearsInheritedPointerHover` through ordinary desktop tests.
+Native Windows recapture remains a separate acceptance gate.
+
+`python3 scripts/test_visual_regression.py` retains16 comparator controls, including
+actual PNG differences and manifest admission for prohibited masks. Existing
+release hygiene/prepush/Fast Checks execute it. VISUAL-004 requires complete image
+comparison and deterministic capture, including OS-owned surfaces; tests do not
+authorize mask exceptions, threshold changes or native acceptance promotion.
+
+Use this matrix to choose the smallest useful validation set for a patch. Add more tests when the touched code crosses boundaries.
+
+## Launcher collector test fixture isolation
+
+After changing the launcher snapshot fixture or its external ancestry test view,
+run `python3 -m unittest agent_tools.tests.test_android_launcher_version_source_snapshot agent_tools.tests.test_android_launcher_collector_ancestry`.
+The21 controls preserve actual FIFO and1024-FD causal cases, controlled external
+churn, owned ancestry/bytes and named FD exchange, identity/mode/principal and
+symlink refusal. On macOS, one existing Linux-only subreaper case skips honestly.
+Native guard and historical source bytes remain unchanged. These modules belong
+to ordinary discovery and the related change-scoped agent-test selection.
+
+## Frozen engineering source and first-observation collection
+
+For changes to the fixed Linux engineering gate, run the related modules
+`test_native_execution_context`, `test_native_execution_context_gitlink`,
+`test_native_execution_context_performance`, `test_native_engineering_entrypoint`,
+`test_native_engineering_snapshot`, `test_native_engineering_tmux_future` and
+`test_native_engineering_mcp_route` under `agent_tools.tests`. The real-scale
+performance control retains1938 files/231MB under1024 FDs. Entry and caller checks
+cover the actual fixed isolated script, loaded driver inheritance, original
+coordinator storage, strict future mutation admission and original historical
+reads, stale caches, immutable start burns and no uncertain replay. Test transport
+effects are inert; these checks do not qualify the real host or native scenario.
+
+For first-observation collection, run `test_native_scenario_first_observation`,
+`test_native_collector_payload` and `test_native_scheduled_refresh_ssh` under
+`agent_tools.tests`. These22 composed controls retain actual collector payloads,
+strict actor fields, output bounds, private retention, interruption/process exit,
+concurrent observer exclusion and original receipt/exit truth. Routine affected
+selection includes their real dependencies; the original native scenarios and
+MCP retakes remain required. Existing compatible GUI/Android recipes and durable
+batch controls remain the batching gates; no additional remote execution framework
+is introduced.
+
+## Agent test selection and measured execution
+
+Product and prose-only changes do not run agent-tool tests. For tool changes,
+`python3 agent_tools/affected_agent_tests.py --run` derives the changed paths and
+actual transitive consumers from Git and both source versions. Shared infrastructure
+runs every affected consumer; unbounded or unknown dependencies fail selection.
+An intentional full audit uses `--audit --baseline HEAD --run`. A missing CI baseline
+refuses; it does not silently broaden or omit checks. The complete managed prepush
+still runs its other product, packaging and documentation gates.
+
+The related selector, MCP planner/responsiveness and runner modules cover selection,
+source/cache drift, old/new dependency closure, CI baselines, private durations and
+actual child closure. The registry has four reviewed independent groups containing
+18 real tests. Unreviewed modules serialize;
+parallel execution never shares their mutable fixtures. The measured18-test median
+was0.416s serial versus0.309s parallel. This small benchmark is not a whole-suite
+speedup claim. Timing records identify expensive tests before expanding concurrency.
+
+## CI Shortcut
+
+The GitHub Actions workflow `.github/workflows/fast-checks.yml` runs the usual fast guardrail set for code changes:
+
+```bash
+./scripts/check_release_hygiene.sh
+./scripts/check_docs_hygiene.sh
+python3 agent_tools/affected_agent_tests.py --run
+python3 scripts/check_ui_theme.py
+python3 scripts/test_visual_regression.py
+python3 scripts/test_visual_platform.py
+python3 scripts/test_visual_review.py
+python3 scripts/check_contract_docs.py
+./scripts/check_localization.py
+./scripts/status_catalog_tool.py check
+./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:verifyDebugAndroidTestSignatures
+python3 scripts/test_android_instrumentation_signatures.py
+python3 scripts/test_windows_qga_powershell_size.py
+```
+
+## Early prepush SSH dependency gate
+
+Run `python3 -m unittest agent_tools.tests.test_mcp_prepush_ssh_close_gate agent_tools.tests.test_ssh_connection_session_close` after changing the check planner, transport or close-source dependency. The existing26 close controls retain strict current-source and mutation/timeout/refusal coverage. Four causal planner/runner controls ensure early failure stops expensive discovery and receipt publication; a successful gate preserves all prior full checks and focused tiers. Standard discovery enrolls the new controls. The fixed prepush tier invokes the existing close module before other agent tests only when its dependency scope is selected; no dynamic source pin acceptance is used.
+
+## Selected Arch descendant routing
+
+Run `python3 -m unittest agent_tools.tests.test_ssh_selected_arch_descendant agent_tools.tests.test_ssh_transport agent_tools.tests.test_ssh_channel_selection`.
+The41 controls pass with zero skips. Eleven new controls cover selected-route
+composition through declared guest hops, stale/unknown selection refusal, complete
+inventory binding, entry-time selection presence and disappearance during argv
+setup. Existing explicit Arch compatibility remains covered. Ordinary discovery
+enrolls these controls; fresh native channel qualification remains required.
+
+## Linux GUI lifecycle source custody and cleanup
+
+Run these mapped modules together after changing the fixed GUI recipe:
+
+```bash
+python3 -m unittest agent_tools.tests.test_linux_gui_native_controls agent_tools.tests.test_linux_gui_source_custody agent_tools.tests.test_linux_gui_capsule_codec agent_tools.tests.test_linux_gui_launcher_codec agent_tools.tests.test_linux_owner_gui_privileged_cleanup agent_tools.tests.test_linux_gui_cleanup_worker_identity agent_tools.tests.test_native_owner_gui_lifecycle
+```
+
+All70 composed controls pass with zero skips. They cover actual launcher/child
+source custody, late changes before dispatch, exact inert-child timeout cleanup,
+the normal six-file capsule's unchanged size bounds/seal, fixed privileged-read
+admission and reference/identity refusals, and the sudo-monitor versus child
+identity distinction. Privileged census tests execute the fixed body under
+modeled OS primitives; UID APIs may be absent without skipping the controls.
+Standard agent-tool discovery enrolls every module in prepush/Fast Checks.
+
+Keep the original native UNKNOWN and separate terminal cleanup recovery. Unit
+and source controls do not qualify installed GUI traffic, current guest/display
+admission, equivalent MCP retesting or the remaining lifecycle scenarios.
+
+## MCP responsiveness and Linux download recovery
+
+Historical CP117 server-factory source comparisons run in
+`agent_tools.tests.test_windows_cp117_server_read_binding`. Keep their exact
+length/hash-bound update-fixture bytes in the existing historical fixture context;
+retain the live Windows ACL function comparison and the unchanged1MiB read bound.
+The `.source` fixture is protected by the existing `-text` rule.
+
+Run `agent_tools.tests.test_mcp_run_checks_responsiveness` with the installed MCP
+SDK: the actual registered callback must answer concurrent planning promptly,
+refuse overlapping execution through the existing lease and keep the original
+worker/lease after caller cancellation. Synchronous CLI/core and public schemas
+remain unchanged. Four controls run through ordinary agent-tool discovery;
+missing optional SDK is an explicit capability skip, not MCP qualification.
+
+Run `agent_tools.tests.test_linux_download_wait_loss` and
+`agent_tools.tests.test_linux_deb_arch_native_driver` after changing Linux update
+or fixture serving. The used package-update route enables exact wait-client
+identity/socket qualification, original-operation recovery and fixed64KiB/12ms
+asset pacing; default responses and manifests stay unpaced, rollback is excluded.
+Cleanup admits both restored locked and independently preserved-password fixture
+baselines; terminal protected success, correlated recovery, restored credentials,
+supported owner quit and absence of process references are still required.
+The26 routine controls include causal endpoint/cleanup tests, socket identity,
+pacing and actual caller wiring. Real Linux proc/PTY/credential behavior and the
+matching final-source MCP installation/recovery/cleanup retake remain native gates.
+
+## Mac artifact selection and Linux fixture admission
+
+`python3 scripts/test_macos_artifact_upload_selection.py` requires Node.js,
+npm and access to the npm registry for the locked fixture-only `npm ci`.
+The runner creates and removes its own ignored temporary dependency/cache tree;
+there is no repository-root Node project or `node_modules` installation.
+Release hygiene, Fast Checks and the macOS package PR path filters enroll this
+selector. Missing Node/npm fails the prerequisite. Five actual YAML/glob cases
+run on every host; three signed-bundle/codesign cases run on macOS and explicitly
+skip elsewhere. macOS requires `codesign`. The fixtures pin the original resolved
+upload-artifact v4.6.2 glob0.5.0 engine; requalify that pin when the action changes.
+The unchanged success artifact selector must retain hidden sealed bundle members
+with `include-hidden-files: true`; missing hidden metadata and tampering fail.
+
+Run `agent_tools.tests.test_linux_package_fixture_launcher_preflight` and
+`agent_tools.tests.test_linux_recovered_owner_cleanup` through ordinary agent-tool
+unittest discovery after Linux fixture changes. The actual fixed fixture driver
+selects inherited `JAVA_HOME`, then resolved PATH Java, and runs strict jpackage
+preflight before runtime preparation or either package family. The actual cleanup
+path queries the exact recovered controller, proves runtime OFF and requires
+final supported quit before removing its synthetic workspace. Running runtime,
+changed controller and uncertain quit retain the workspace. These inert causal
+controls do not replace installed-package DIRECT and matching MCP acceptance.
+
+## Windows compressed task and inert preflight
+
+Run `python3 -m unittest agent_tools.tests.test_windows_msi_public_scenario`
+and `python3 scripts/test_windows_qga_powershell_size.py` after the current producer
+or bounded carrier changes. The pure actual emitted-task and preflight tests
+verify full carrier/source equality and unchanged30000 command admission on hosts
+without PowerShell. Ordinary agent discovery enrolls both; prepush and Fast Checks
+explicitly run the helper script. The imported candidate suite has30 cases,
+26 pass/four explicit no-PowerShell skips, plus a harmless local parser/carrier
+roundtrip. Skips and local PS7 do not prove native WindowsPS5/MCP acceptance.
+
+For macOS fixture-stage request versions, run
+`agent_tools.tests.test_macos_fixture_guest_stage`,
+`agent_tools.tests.test_macos_fixture_guest_stage_versions` and affected
+`test_native_optimization_routes` cases. Actual request fields bind base/target
+versions before registry/guest work. Historical seven-field status/collect remains
+read-only. Fresh canonical validation and native machine/user installer cases
+remain required; source-only wrapper GREEN is not native fixture admission.
+
+## Android owner drafts and collector deadline
+
+`test_ssh_direct_inventory_diagnostic` and
+`test_ssh_direct_ended_inventory_successor` join ordinary agent-tool discovery.
+Run them with DIRECT/fresh channel, completed-source transition, selection,
+MCP-route, transport and source-closure modules: the current integrated set passes202
+checks without skips. The earlier152-check receipt remains historical evidence.
+Run `scripts/test_python_platform_contracts.py` and
+`scripts/check_python_platform_contracts.py` for the manifested absent-module
+discovery and repository-package probe path. Actual Windows discovery retains
+explicit Unix skips; local controls do not establish native route acceptance.
+
+Refresh/validation owner drafts and DNS queued-save controls are in
+`AndroidSettingsActionsServiceTest`. Six original stale-save assertions and four
+intermediate lifetime assertions precede88 passing checks; nine additional actual
+queued-save/response-loss assertions fail on that predecessor and pass in the
+97-test successor. Run settings actions/control, SSH drafts, configuration store
+and shared `ControlSettingsLogicTest` together, then compile the final canonical
+ViewModel joins. Exact unresolved-request retention is scoped to the same opening;
+these controls do not prove cross-reopen recovery or Android native timing.
+
+`AndroidConnectionActionsServiceTest`, `AndroidDiagnosticsActionsServiceTest` and
+`AndroidDiagnosticsReportShareTest` exercise typed owner admission, operation history,
+exact-request response recovery, frontend cancellation, redacted failure reporting
+and exact completed-report sharing. Four authentic original assertion failures and
+two prepared sharing-boundary cancellation failures precede19 isolated passing tests,
+zero skips/errors, plus app compilation. Run these selectors with the other affected
+app suites after the final ViewModel joins. Native consent, runtime and sharing
+acceptance remain separate requirements; these tests declare their Android OS seams.
+
+DNS draft coverage in `AndroidSettingsActionsServiceTest`,
+`AndroidSettingsControlTest`, `AndroidSshSettingsDraftTest`,
+`AndroidConfigurationStoreTest` and shared `ControlSettingsLogicTest` exercises
+real configuration snapshots, owner mutation leases, persisted revision guards,
+lost-response retry and asynchronous frontend lifetime. Three original stale-save
+and five old-candidate lifetime assertions fail on their preserved beforeimages;
+73 isolated checks pass without skips, plus Android compilation. The shared DNS
+patch clears the legacy migration notice only for an explicit DNS group.
+
+`AndroidProfileActionsServiceTest` exercises the real subscription owner,
+production storage/serializer and stable rendered subscription identity. It
+covers CLI conflict, deleted/recreated targets, owner replacement, persistence,
+busy state, exact-request retry and actual queued/deferred close/edit/open races.
+Two original stale-target assertions, six lifetime assertions and one pending-open
+feedback assertion fail on preserved sources; all26 successor checks pass without
+skips, plus Android compilation. Ordinary app tests/prepush/Fast Checks discover
+both draft suites. Run the affected app selectors and shared settings selector,
+then Android compile after the final ViewModel joins. Actual installed GUI/CLI
+and matching MCP cases remain separate gates on both supported API levels.
+
+`AndroidSettingsActionsServiceTest` and `AndroidSettingsControlTest` cover GUI
+mode saves through the real typed owner, unchanged live runtime, pending/revert,
+busy/revision conflicts, failed persistence and truthful post-commit uncertainty.
+Run `:app:testDebugUnitTest` with those two selectors and
+`:app:compileDebugKotlin`. Ordinary app tests/prepush/Fast Checks discover them.
+Preserved original mode behavior fails two runtime stop-count assertions; the
+reviewed candidate passes31 tests without skips. Actual GUI save during live A,
+pending B and explicit restart remain native gates.
+
+`test_android_installer_asset_collection` discovers24 controls, including five
+deadline API checks: unchanged default, consistent execution/handle limit,
+strict refusal before effects, finite range and complete source inverse. The
+metadata defect's genuine prior RED remains separately recorded; unsupported
+new API errors are not causal RED. Owned pipe/directory controls retain explicit
+capability skips on unsupported hosts. Prepush/Fast Checks discover the module;
+the next DIRECT native caller must use this API and preserve its actual handle.
+
+`test_android_installer_readonly_source_assembly` also discovers17 controls.
+The current full collector module hash must be pinned explicitly: genuine
+emission failed with the old pin, while the new behavioral regression rejects
+foreign full-module bytes through both bridge entry points. Default embedded
+templates and generated default CodeType remain unchanged. Combined canonical
+collector/bridge discovery passes41 checks with zero skips. Full agent discovery
+and the remaining prepush commands must run again after all final edits.
+
+## Local OpenSSH option parser controls
+
+`test_openssh_option_probe` joins ordinary agent-tool discovery, prepush and
+Fast Checks. Run it with `test_ssh_connection_session` and
+`test_windows_tertiary_guest_stage`. The two real OpenSSH parser tests retain
+their effective-option assertions. Their shared helper admits only config-free
+`-F /dev/null` queries with `-G` before one destination, and retries only a local
+parser timeout, at most twice with the unchanged five-second limit per attempt.
+The original owned child is killed and reaped by `subprocess.run` before a
+successor; nonzero exits, semantic failures and unsafe queries are not retried.
+Original timeout exceptions and partial streams remain available and retained.
+
+Causal controls use preserved original test methods and real owned child
+processes. Their explicit launcher and shortened test-clock seams exercise the
+same timeout/kill/wait decision without opening SSH connections. Persistent
+timeouts still fail. These controls alone do not establish an original parser's
+stall cause, remote authentication, network recovery or native acceptance.
+
+The fixture-byte regression also uses actual owned children with explicit Windows
+text-newline translation. Binary fixture writes preserve exact timeout partial
+stdout/stderr, success output and nonzero stderr; captured evidence is never
+normalized. The unchanged text fixtures fail four byte assertions under that seam.
+The13-control module remains in ordinary discovery; real Windows execution is a
+separate gate. Bounded retry controls do not waive a failed full-suite parser test.
+
+Qualified macOS stacks identify one Session parser blocked in default service-name
+lookup during named-address classification. The service-boundary control retains
+authentic beforemethods and actual argv constructors. Actual parser fixtures now
+use documentation numeric addresses before construction, preserve effective
+ports2228/22 and assert them. The owned-child replay substitutes only the measured
+service dependency; the OS latency trigger remains unknown. Named-host coverage,
+original refusal/semantic checks and five-second deadlines remain. Real installed
+`ssh -G` tests still run; this does not prove native connection/package acceptance.
+
+`scripts/test_build_phase_timing.py` runs its seven existing cases through release
+hygiene, prepush and package CI. Its resolved repository import root is covered by
+an actual `test_native_build_timing` subprocess from an unrelated cwd with
+PYTHONPATH removed, so an importing harness cannot hide a broken entrypoint.
+Existing Windows OS/ACL mocks do not replace native Windows ACL evidence.
+
+## Held-source mode handoff controls
+
+`test_native_review_source_closure` runs26 checks through ordinary agent-tool
+discovery, prepush and Fast Checks. Its two mode-handoff cases use real owned
+files and the actual _Held implementation: chmod during review refuses despite
+unchanged SHA, while setting final modes before review closes cleanly. Both
+verify descriptor closure. Run this module with the affected DIRECT channel
+controls. These local custody tests do not establish native installation success.
+
+## Local fixture isolation under full discovery
+
+`test_ssh_direct_nested_channel` retains actual installed OpenSSH `-O check` on
+an owned bound/closed Unix socket, unchanged3-second deadline and original
+refusal-versus-authentication assertions. Numeric endpoint and explicit original22
+avoid named/default-service fixture dependencies. Its routine authentic-method
+RED/GREEN replay uses a real child and genuine kernel refusal at a declared
+lookup boundary; it does not establish the historical timeout cause. Run it with
+option-probe, Session and two-hop parser modules. Remote/native acceptance remains
+separate, and unsupported POSIX coordinators retain explicit skips.
+
+`BuildPhaseTimingEntrypointTest` executes the actual seven-case timing script from
+unrelated cwd without PYTHONPATH under child-only077/022 on POSIX; Windows retains
+the direct branch. The intended unsafe directory explicitly chmods0755 after
+owned creation. This covers inherited-umask fixture isolation without weakening
+production permission checks. Timing7 remains enrolled in release hygiene;
+both regressions run through ordinary agent discovery/prepush/Fast Checks.
+
+## Completed DIRECT connection history controls
+
+`test_ssh_direct_retained_delivery_transition` adds40 actual provider/journal
+controls for the exact9df8→f227 MCP delivery edge. The original source populations,
+terminal/READY custody and typed source/authority fences remain required.
+`test_ssh_native_status_capture_callback` adds two historical temporary-callback
+controls using actual binary child streams through the current collector.
+Both modules run through affected discovery, managed prepush and Fast Checks.
+Their local results do not prove a new native route or platform acceptance.
+
+`test_ssh_direct_ended_source_transition` discovers58 controls through ordinary
+agent-tool discovery, prepush and Fast Checks: the original48 plus ten checkpoint74
+controls. The original23 and25-case closure subclass remain unchanged. New cases
+cover authentic four-provider ENDED dependency transitions, unresolved history and
+future MCP/transport/source-population refusal with actual Git source bytes.
+It exercises the complete provider with actual historical/current source bytes
+and private owned files: same-source completion, finite reviewed predecessor
+transitions, and refusal cases for source populations, terminal intent and READY
+custody. Public Git fixtures pin the old provider, closure and exact reviewed MCP
+and transport bytes. The checkpoint74 edge admits only its enumerated populations;
+unreviewed future source changes remain refused. Run it with
+`test_ssh_direct_nested_channel`, `test_ssh_fresh_nested_channel`,
+`test_ssh_channel_selection`, `test_ssh_channel_mcp_routes` and
+`test_ssh_transport`. Remote kernel replies are an inert declared seam; these
+controls do not establish native SSH recovery, SDK admission or Windows update
+acceptance. Unsupported POSIX coordinators retain58 explicit skips. The b1a bridge
+changes only provider self and the exact reviewed closure pair; future unreviewed
+provider/MCP/closure transitions remain refused.
+
+## Original channel and readonly collection controls
+
+The fixed original6b observation adds15 controls in
+`test_ssh_direct_original6b_observation`. Run it with the seven DIRECT history,
+fresh/direct channel, selection, MCP route, transport and selected-descendant
+modules (200 tests). Its complete-provider controls preserve ENDED-only status,
+old-source invocation, exact additive inventory mapping, original READY custody,
+ordinary DIRECT behavior and changed-input/closing refusals. Copy-generation and
+access-time and concurrent-growth causal controls use owned actual files. Remote replies remain an
+inert child boundary; actual same-original DIRECT/MCP observations are separate.
+
+`test_windows_direct_readonly_checkpoint`, `test_windows_census_child_imports`
+and `test_windows_d32_gateway_imports` add13 routine controls for the fixed
+read-only checkpoint predicate and missing-import collector/gateway failures.
+They execute owned Git fixtures, the complete synthetic census module and the
+complete retained package gateway with declared inert native/process boundaries. Exact
+before/fixed source pins and native failure references remain explicit; these
+controls do not establish live guest readiness or authorize an app mutation.
+
+## Current SSH close dependency controls
+
+After changing `ssh_transport.py`, run `test_ssh_connection_session_close`,
+`test_ssh_connection_session`, `test_ssh_session_close_routes` and
+`test_ssh_session_routes` before the full prepush tier. The graceful close owner
+pins exact reviewed transport bytes; refresh its literal only after reviewing
+that dependency change. A runtime-derived digest is not an admission substitute.
+The unchanged current-source close case provides causal RED/GREEN; altered or
+future bytes and changes during proof/absence remain refused. These63 controls
+are already enrolled in ordinary discovery. Inert master/ps/native boundaries
+and the config-free local `ssh -G` parser do not prove native SSH admission.
+
+## macOS ACL fixture command lifecycle
+
+`DesktopMacBootSessionRecoveryTest` preserves the real everyone-write grant,
+0600 mode and product boot-token rejection. Its owned command helper retains the
+10-second execution deadline and treats timeout/nonzero exit as failures, while
+killing/waiting/reaping and closing streams before token cleanup. The timed-out
+inert-child regression requests that same10-second deadline and substitutes only
+its own100ms wait; authentic prior decisions fail the orphan assertion. The full
+candidate class passes14 tests without skips on macOS. These controls join normal
+`:desktopApp:test` and Fast Checks; other hosts retain explicit Darwin skips.
+Historical chmod stall cause remains UNKNOWN, and complete native macOS installer
+acceptance remains separate.
+
+## Desktop input acquisition failure parity
+
+`DesktopInputResultTest` runs through ordinary `:desktopApp:test` discovery and
+Fast Checks. It covers allocation failure before location/routing owner admission,
+SSH input failure without constructing an action, silent picker cancellation,
+unchanged successful input/controller/revision, and the actual CLI request builder.
+Run it with `DesktopTextTransferTest`, `DesktopCliJsonTest`,
+`DesktopFrontendSshKeyImportTest`, `DesktopLocationCliEndToEndTest`,
+`DesktopRoutingCliEndToEndTest` and
+`DesktopLargeControlTransportTest.cliRoutingImportAndGuiSnapshotKeepLargeCommittedResults`.
+Controlled allocation exceptions exercise the original callback decisions; they
+do not prove real heap exhaustion, native picker/clipboard behavior or dialog
+rendering. Preserve those native GUI acceptance gates.
+
+## Windows update admission and denied input controls
+
+Ordinary `:desktopApp:test` discovers `DesktopWindowsDeniedInputCleanupTest`,
+including real journal capacity, native-error authority, same-owner service
+maintenance, exact object/byte disposal, close-debt retry and actual preparation
+admission. Its explicit syscall model does not replace native UAC/NTFS cleanup.
+`DesktopWindowsInstallAdmissionTest` covers the locked reservation-byte fallback;
+`DesktopWindowsInstallAdmissionNativeTest` checks actual Win32 ranges on an inert
+owned file. The native test skips explicitly outside Windows. Preserve complete
+installed update, ready acknowledgement, original-user return, denial, cold-owner
+recovery and equivalent MCP scenarios as separate acceptance gates.
+
+`DesktopWindowsCoordinatorAdapterTest` includes three return-lease controls:
+terminal gate release before exact-child reconciliation, five uncertain
+publication/result/pending-clear cases retaining gates and witnesses, and
+independent cleanup preserving the first failure. The fixture compiles complete
+production adapter/role classes and uses real semaphores and retained files for
+external facilities. Ordinary desktop tests discover these Windows-only cases;
+they skip explicitly on other hosts. Local C# fixture success does not prove
+Win32 range unlocking, MSI execution or packaged automatic app return.
+`test_windows_msi_public_scenario` also checks that a bound successful protected
+receipt retains the separate target/return/cleanup verification requirements,
+without promoting unbound receipts or authorizing replay.
+
+`test_windows_cp117_historical_package_source` binds the inert historical factory
+to its original public-module source, including exact bytes, pair guards, source
+drift refusal and reference restoration. Current public MCP bindings remain
+unchanged. Run it with the six CP117 historical factory consumer modules after
+changing their current dependencies; source generation is not native admission.
+
+`test_managed_checks_source_freshness` covers stale/missing check-runner source
+before inspection/lease/dry-run, unchanged content after touch, changes between
+commands and final-command drift blocking receipt publication. It runs in normal
+agent-tool discovery, managed prepush and Fast Checks. Pair it with
+`test_mcp_server`, `test_managed_check_lease`, `test_check_output_retention` and
+`test_mcp_check_failure_output` for check-runner changes. It does not prove atomic
+publication or native filesystem authority.
+
+The named-profile `test_windows_guest_input` has33 controls in ordinary agent
+discovery, including seven actual configuration tests/121 decisions. Its valid
+large-frame case exercises dispatch, emitted main, retained collector and a real
+local QMP socket, asserting all five required frames and three actual broker
+packets with exact final Alt+Y. Stdout is finite at18,874,386 bytes; optional
+observations consume that same budget and may exhaust it to UNKNOWN. Win32/proc/
+QGA verdicts remain modeled, and current-source native MCP acceptance stays open.
+Its real retained-FD latch covers collector/foreground rehash serialization;
+separate byte-mutation and named-replacement cases preserve UNKNOWN/non-replay.
+All three methods run through existing discovery and Fast Checks enrollment.
+
+## Native orchestration regressions
+
+`test_android_api35_getter_streaming.py` runs in ordinary agent-tool discovery,
+managed prepush and Fast Checks. Seven real owned-file controls cover full-byte
+hashing without retained bodies, bounds, mutation refusal, parent cleanup and
+the actual public diagnostic/alias wrapper composition. UID and unrelated alias
+fixtures are synthetic; native Android proof and update acceptance remain open.
+POSIX descriptor cases skip explicitly when required APIs are absent.
+
+`test_android_installer_component_bundle.py` also discovers six device-getter
+join controls: complete API29/API35 contexts pass, while foreign-device code,
+unauthorized functions, unstaged modules, foreign globals and altered templates
+refuse. Run these with the three complete-context selectors and the streaming
+module after a getter change. Bundle constructor green does not establish native
+Android state restoration, installation or MCP scenario acceptance.
+
+Getter changes also require the complete outer-transport and JDK-source-context
+modules, plus `test_android_installer_readonly_source_assembly.py`. The latter
+retains the authentic old owner fixture and compares old/current identity
+emission, while source-byte and generation mutations still refuse. These tests
+run in ordinary agent-tool discovery and Fast Checks. Generated native backend
+binders are separate consumers and must select the same authenticated device
+template; unit success does not close their native proof.
+
+`test_android_native_backend_binding.py` runs six routine controls over the
+complete emitted binder and the same strict API35 guard, with actual staged
+public source and owned files. Authentic before/after fixtures retain the native
+consumer failure; foreign functions/globals/modules/templates still refuse and
+API29 remains unchanged. Run both its module and pattern-restricted discovery
+after binder edits to verify exactly six controls, without importing the helper
+fixture's tests into discovery. POSIX cases skip honestly on other systems.
+Owner-admission, routing-backup and packaged-reader tests must also use their
+authentic current or historical catalogue, rather than rebasing old receipts.
+
+`test_android_avd_launch_recovery.py` is another complete factory consumer.
+Its API35 selection must use the staged authenticated getter while preserving
+all13 backend names and28 profiled checks. Run its complete module after getter
+changes; ordinary agent-tool discovery and Fast Checks already include it.
+Historical command source remains intact. This consumer check does not establish
+native timeout recovery, remote process closure or update acceptance.
+
+`test_android_installer_jdk_source_context.py` runs in ordinary agent-tool
+discovery, managed prepush and Fast Checks. Its synthetic-principal descriptor
+fixture stabilizes only external ancestors' volatile directory metadata; actual
+owned-directory and JDK-role mutations must still fail. POSIX descriptor cases
+skip explicitly when the required APIs are absent. These local controls do not
+establish native Linux JDK or Android update/cleanup authority.
+
+Release hygiene first checks tracked and untracked source whitespace with
+`scripts/check_source_whitespace.py` and its temporary-repository regressions.
+It also runs `scripts/check_python_platform_contracts.py` and its tests,
+`scripts/test_native_fixture_preflight_script.py`, and
+`scripts/test_linux_scheduled_refresh_scenario.py`. They exercise absent platform
+APIs, fixture admission, public command ordering, accepted-operation timeouts,
+listener changes and cleanup ownership before expensive guest scenarios.
+The normal `agent_tools/tests` discovery covers artifact equivalence, configured
+VM baselines, durable batch recovery and acceptance evidence aggregation. These
+checks do not replace native package, traffic, installer or visual acceptance.
+
+`agent_tools/tests/test_historical_fixture_checkout_bytes.py` uses real Git with
+Windows line-ending conversion enabled to verify exact historical `.source`
+fixtures and all fifteen manifest-pinned persistent parser/task-root inputs retain
+their recorded bytes and lengths. An unprotected text control must actually change
+from LF to CRLF. It runs in ordinary discovery and Windows
+package CI; the fixture attributes disable text conversion without changing the
+preserved source or its historical hashes.
+
+`scripts/test_packaged_cli_harness.py` also runs
+`PersistentSourceGenerationTest` in ordinary release hygiene and Windows package
+CI. It replays an exact recorded Windows held/named ctime split against the real
+binder using owned file bytes, while checking all generation fields, content
+changes and strict non-Windows equality. Each API retains its full opening and
+closing baseline. These metadata/parser-output controls do not replace actual
+Windows parser, package or update acceptance.
+
+Windows package CI also executes the actual generated replacement-task ordering
+control from `test_windows_cp117_source_campaign`: a newly active runtime or
+installer must refuse before any counted uninstall. This uses no-effect command
+stubs; real Windows MSI acceptance remains separate.
+
+Windows package CI runs explicit PowerShell parser/reflection cases from
+`test_windows_cp117_server_read_binding`, including the native FileRow
+PSObject-to-string argument conversion regression. Ordinary Linux discovery
+runs the complete module, including the saved POSIX AuthorityCapture fixture.
+The Windows selection keeps actual native coverage without invoking Arch-only
+descriptor admission on the Windows runner.
+It also runs the ordinary-account constructor/parser and native SID/sharing
+regressions from `test_windows_secondary_ordinary_read` and
+`test_windows_tertiary_guest_stage`. A preceding step requires native Windows
+PowerShell so a missing interpreter cannot turn these checks into skipped GREEN.
+
+## Validation Tiers
+
+Use the smallest tier that gives meaningful coverage for the touched boundary.
+
+| Tier | When To Use | Checks |
+| --- | --- | --- |
+| Minimum local | Documentation-only changes, one-file pure logic changes, or early iteration before a larger check | `git diff --check` plus the mapped check set from Quick Mapping |
+| Expanded boundary | A patch crosses shared/platform, status/localization, runtime/config, or packaging boundaries | Run every mapped command for the touched rows and adjacent owner tests named in Common Combined Checks |
+| Full fast guardrails | Before pushing broad behavior, localization, runtime, agent lifecycle, or release workflow changes | `git diff --check`, release/docs hygiene, agent tool tests, theme/visual comparator checks, localization/status checks, the Gradle command from CI Shortcut, then `python3 scripts/test_desktop_sdk_independence.py` |
+| Manual or risky | Real VPN interruption, emulator/device VPN permission, tray/window-manager behavior, Windows UAC, VM packaging, reboot/autostart | Run only when the touched area requires it; get approval before interrupting VPN and report the closest automated coverage |
+
+If a mapped check cannot run because the environment lacks an Android SDK, emulator, VM, network access, or platform host, run the closest non-risky local check and report the missing prerequisite explicitly.
+
+## Quick Mapping
+
+| Touched Area | Run |
+| --- | --- |
+| Native fixture manifests, staging and rollback drivers | Run the corresponding `scripts/test_native_fixture_manifest.py`, `scripts/test_native_fixture_archive.py`, `scripts/test_native_fixture_payload.py`, `scripts/test_macos_rollback_fixture.py`, `scripts/test_macos_fixture_processes.py` and `scripts/test_windows_prompt_observation.py` suites (also in release hygiene). Keep native package acceptance separate from fixture-unit results. |
+| Native fixture completion receipts | `scripts/test_native_fixture_run.py` executes real POSIX children, nonzero exits and competing receipt claims in routine hygiene; Windows explicitly skips this POSIX-only runner. |
+| QGA fixture observations | `scripts/test_native_fixture_qga.py` uses actual Unix sockets to cover stalled collectors, stale-response synchronization, bounded/fragmented replies, and read-only file operations. Windows skips this Unix transport suite. Keep guest-exec mutations outside this reader and never replay an installer after observation timeout. |
+| Windows native output receipts | `scripts/test_windows_native_fixture.py` runs real PowerShell children and checks empty/nonempty output plus direct exit codes; Windows behavioral cases explicitly skip where PowerShell is unavailable. |
+| Android nondebuggable x86 fixture | `scripts/test_android_native_fixture_build_type.py` guards release inheritance, ABI replacement and production hook sources in release hygiene. Also build `:app:assembleNativeFixture` and independently inspect APK ABI, debuggable flag, signer and version before native use. |
+| Scheduled-refresh native traffic observer | `python3 scripts/test_desktop_scheduled_refresh_fixture.py` (also included in release hygiene); retain the installed-package scheduled refresh with overlapping traffic evidence. A terminal refresh failure is recorded separately from traffic continuity. |
+| `shared/model/` | `./gradlew :shared:model:desktopTest` |
+| Shared control DTOs, protocol codec, registry or command grammar | `./gradlew :shared:model:desktopTest :shared:core:desktopTest`; add affected desktop/Android adapter tests when wiring dispatch |
+| GUI/CLI controller lifecycle, authentication or launchers | Shared control and affected platform tests, then public-CLI tests from each affected native package in disposable environments; see [cli.md](../../../cli.md) |
+| Shared typed status helpers or status models | `./scripts/status_catalog_tool.py check` and `./gradlew :shared:model:desktopTest :shared:ui:desktopTest` |
+| Status domain facade call-site migration | `./scripts/status_catalog_tool.py check` and `./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest` |
+| Structured status renderer, dynamic status parser, or benchmark status rendering | `./scripts/status_catalog_tool.py check` and `./gradlew :shared:ui:desktopTest` |
+| Shared settings/location mutation status helpers | `./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest` |
+| `shared/core/` parsing, refresh, selection, shared config builders, config-independent logic | `./gradlew :shared:core:desktopTest` |
+| `shared/ui/` Kotlin or localization catalogs | `./scripts/check_localization.py` and `./gradlew :shared:ui:desktopTest` |
+| Shared/platform UI theme | `python3 scripts/check_ui_theme.py`, `python3 scripts/test_visual_regression.py`, `./gradlew :shared:ui:desktopTest`, and affected platform compile/test |
+| Visual manifest, comparator, capture, review, VM bootstrap, or baselines | `python3 scripts/check_ui_theme.py`, `python3 scripts/test_visual_regression.py`, `python3 scripts/test_visual_platform.py`, `python3 scripts/test_visual_review.py`, agent tool tests, docs/release hygiene; run matching agent capture/verify when the platform is in scope |
+| Android UI-only code | `./gradlew :app:compileDebugKotlin` |
+| Android profile/import action orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Android connection command/lifecycle orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Android Find Best command orchestration | `./gradlew :shared:core:desktopTest :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Android installed-app loading/effect orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Android location mutation, selection, import/export, or location benchmark orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Android routing draft/import/save orchestration | `./gradlew :shared:core:desktopTest :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Android manual subscription refresh orchestration | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Android background subscription refresh status mapping | `./gradlew :shared:core:desktopTest :shared:ui:desktopTest :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Android settings or diagnostics orchestration | `./gradlew :shared:core:desktopTest :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Android application JNI/string storage | `./gradlew :app:testDebugUnitTest` builds the real host JNI library and runs constrained-heap/allocator regressions; install pinned SDK tools from [native-runtime-artifacts.md](../../../native-runtime-artifacts.md), then verify API29/API35 packaged behavior |
+| Android VPN/config/runtime code | `./gradlew :app:compileDebugKotlin` and `./gradlew :app:testDebugUnitTest`; add relevant `app/src/androidTest` tests when practical |
+| Android instrumentation tests or runner/signature wiring | `./gradlew :app:verifyDebugAndroidTestSignatures` compiles tests and checks actual JUnit bytecode before packaging or connected execution. `python3 scripts/test_android_instrumentation_signatures.py` exercises compiler dependencies and invalid/valid signatures without an emulator. Both run in Fast Checks and pre-push; keep the exact native scenario. |
+| Disposable full-VPN integration harness | `python3 scripts/test_vpn_integration_fixture.py`, `./gradlew :desktopApp:test :app:compileDebugAndroidTestKotlin`, then dispatch `VPN Integration` with `profile=all` only on hosted disposable runners |
+| Root/module Gradle configuration and Android SDK lookup | `python3 scripts/test_desktop_sdk_independence.py` configures the real desktop task graph with an unavailable SDK; also run affected Android compilation/tests. Included after build setup in Fast Checks and pre-push. |
+| QMP fixture input admission | `python3 scripts/test_capture_visual_windows_qemu.py` verifies capability negotiation before keys, interleaved events, and error propagation using a bounded fake server; release hygiene runs it. Native account authentication remains separate. |
+| Private QEMU fixture assets | `python3 scripts/test_native_fixture_qemu_assets.py` verifies that missing VGA ROMs, changed bytes and escaping symlinks are rejected before VM startup; release hygiene runs it. Native device realization and memory restore remain separate checks. |
+| Android SDK/AVD admission | `python3 scripts/test_android_avd_sdk_preflight.py` checks wrong-root symlink rejection for creation, launch-only admission without avdmanager, real wrapper root selection, private AVD environment and exact image metadata. Release hygiene runs it; the executable shell-wrapper scenario explicitly skips on Windows. |
+| GitHub workflow parser | `python3 scripts/check_workflow_syntax.py` runs checksum-pinned actionlint over all workflows; `python3 scripts/test_check_workflow_syntax.py` reproduces invalid runner-context placement with the real parser and verifies executable-cache integrity. Both run in release hygiene without an optional installed-tool skip. |
+| Windows batch-logon fixture admission | `python scripts/test_windows_task_admission.py` executes the PowerShell helper with injected denied/successful native outcomes and token cleanup. Mandatory in Windows Desktop Package; requires PowerShell and fails if absent. Real account admission and MSI execution remain separate disposable-guest gates. |
+| Windows same-source MSI fixtures | `python3 scripts/test_windows_update_fixture_workflow.py` checks the manual dev-only fixture workflow, canonical target version, pinned build setup and restricted artifact/provenance upload. Release hygiene runs it. Hosted pair creation and native installation remain separate gates. |
+| Windows installer Gradle graph | `python3 scripts/test_windows_packaging_graph.py` verifies task discovery, prepared-image dependencies, native-helper producer failure, bundled-runtime input invalidation and verified staging before EXE/MSI in a minimal real Gradle fixture. Included after build setup in Fast Checks and pre-push. |
+| Desktop service, tray, runtime, lifecycle, autostart, Windows elevation | `./gradlew :desktopApp:test` |
+| Desktop service construction, dependency graph, or testing factory | `./gradlew :desktopApp:test` |
+| Desktop workspace restore/sync/persist mapping | `./gradlew :desktopApp:test` |
+| Desktop runtime status detail assembly | `./gradlew :desktopApp:test` |
+| Desktop diagnostics/export status mapping | `./gradlew :desktopApp:test` |
+| Desktop settings/dialog/autostart orchestration | `./gradlew :desktopApp:test` |
+| Android or desktop self-update flow | `./gradlew :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin` |
+| Arch update bundle | `./scripts/package_arch_desktop_update.sh` and `./scripts/test_arch_desktop_update.sh <bundle>` |
+| Desktop connection command/resume/shutdown orchestration | `./gradlew :desktopApp:test` |
+| Desktop active-connection naming, selected-location toggle, or subscription-source validation helpers | `./gradlew :desktopApp:test` |
+| Desktop subscription refresh orchestration | `./gradlew :desktopApp:test` |
+| Desktop per-location benchmark orchestration | `./gradlew :desktopApp:test` |
+| Desktop package metadata or bundled runtime extraction | Relevant package script and package smoke tests |
+| Linux packaging | `./scripts/package_linux_desktop.sh` |
+| Windows packaging | `./scripts/package_windows_desktop_vm.sh` when a VM is available, or `.\scripts\package_windows_desktop.ps1` on Windows |
+| macOS packaging | `./scripts/package_macos_desktop.sh` on macOS |
+| Documentation only | `git diff --check` and `./scripts/check_docs_hygiene.sh` |
+| `agent_tools/`, `.codex/config.toml`, or `.github/required-workflows.json` | `python3 agent_tools/affected_agent_tests.py --run`, `./scripts/check_docs_hygiene.sh`, `./scripts/check_release_hygiene.sh`, and `git diff --check`; the complete managed pre-push tier selects affected agent consumers when lifecycle or CI behavior changes |
+| Release workflow/package guardrails | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, agent tool tests, visual comparator tests, and `git diff --check` |
+
+The `VPN Integration` workflow has two profiles. `core` runs fast deterministic contracts and is advisory on `dev`; `all` additionally runs full traffic on an Android emulator, Windows, Arch Linux, Ubuntu, and Linux Mint, including Linux update install/relaunch. Release readiness accepts only explicit exhaustive VPN success plus a complete exact-SHA agent visual receipt and matching commit status. Never run the full desktop probe on a machine carrying an active VPN connection; its environment opt-in is reserved for disposable runners. Visual capture uses only isolated agent-owned environments or eligible GitHub-hosted ephemeral fallbacks with synthetic fixtures.
+
+`TEST-001` in [contracts.md](../../../contracts.md) applies to every distinct failure type found in VM, emulator, native/package, manual, visual, and integration testing. Preserve original failure evidence and relevant unfixed source/file beforeimages before editing. Workers may first implement and test reversible quick fixes within explicit file and environment ownership without coordinator micro-approval; scope, runtime-interruption authorization, unknown-outcome non-replay, and source/artifact provenance gates remain binding. Once the flow works, report the finite encountered failure types, known or unresolved causes, and proposed regression coverage. Then implement each required causal reproducer, run the same test on an isolated owned copy of preserved unfixed source for actual RED and on the fix for GREEN, and wire it into the relevant routine suite above before integration, push, or completion; proposed coverage alone does not satisfy TEST-001. Preserve and rerun the original native scenario against the fixed artifact without reverting shared or live native state for RED. Kotlin regressions belong in the ordinary shared/desktop/Android unit-test tasks; constrained-heap regressions must run without a device or privileged runtime. New standalone script regressions must be wired into routine hygiene/pre-push and applicable CI, not left as optional commands. Record failing/passing evidence and the suite mapping alongside the native finding. Keep native verification for OS behavior that a host regression cannot faithfully reproduce; a skipped native test is not early regression coverage. Reproducible infrastructure failures require fixture, script, or workflow-contract regressions too.
+
+`DesktopCliStreamPipeTest` runs in ordinary desktop tests. It closes real child
+stdout/stderr readers while log history remains empty, and also verifies healthy
+pipes and regular files keep following. Keep the native ADB/package scenarios;
+a throwing printer mock cannot reproduce closure during a suppressed empty poll.
+
+`DesktopSearchCancellationCliTest` exercises public Find Best/benchmark cancellation
+through the real operation owner and service cleanup, including delayed actual-runtime
+recovery, failed recovery, unknown outcomes and preservation of pending selection.
+`DesktopFrontendInstanceTest` exercises automatic public-QUIT-to-frontend closure
+through authenticated endpoints; normal-quit gate/receiver/sender tests reject
+mismatched identities, retain response-loss retries and distinguish unknown from
+confirmed process exit. These run in ordinary desktop tests; keep the installed
+package and live-traffic scenarios as separate native acceptance.
+
+`test_macos_packaging_jdk_preflight.py` runs in release hygiene. It checks actual
+JVM property parsing, selected-launcher arguments, known Homebrew packaging
+rejection, Java major and native architecture. `test_desktop_update_fixture.py`
+verifies rejection precedes build-directory creation and native build execution.
+Its Linux missing-`objcopy` regression also rejects an absent `binutils`
+prerequisite before creating immutable stage outputs or invoking Gradle. This
+covers the Fedora native `jlink` failure; keep the package build replay as native
+evidence alongside the routine script test.
+Compose's own packaging vendor check remains enabled; passing this focused
+preflight is not blanket approval of other JDK distributions.
+
+`scripts/test_windows_broker_fixture_observer.py` runs in release hygiene. Its
+portable tests exercise the actual read-only ready/exit consumers: auxiliary
+console children cannot replace the captured runtime PID/generation/hash, and a
+retained process handle's generation and exit signal are checked before an image
+query that can fail after exit. Unavailable observations remain unknown. Two
+additional Windows-native cases inspect the current process and an inert child;
+these must execute on Windows and are explicit skips on other hosts.
+The self-image smoke compares filesystem identity so a Python executable hardlink
+alias does not fail on path spelling. Two portable cases use real files to accept
+the same inode and reject identical bytes in a different file. This changes only
+the smoke assertion; captured broker admission continues to require its exact path.
+
+Desktop update fixture setup uses `require_selected_location` before ON and
+`require_active_runtime` before an installer scenario; add does not select.
+`fixture_proxy_arguments` derives JVM proxy properties from the captured server
+ready manifest. The existing `test_desktop_update_fixture.py` routine selection
+covers missing/wrong stable selection, disconnected runtime and dynamic proxy
+port derivation so these setup mistakes fail before another native attempt.
+
+`scripts/test_native_fixture_signal.py` runs in routine hygiene. Its partial-write
+and staged-path collision regressions ensure native readers see complete fixed
+acknowledgments and failed exclusive creation never deletes another file. Signals
+publish through an exclusive atomic hard link; publication uncertainty retains
+staging, and cleanup failure does not erase known publication. Keep the real
+Windows callback RED/GREEN and the scoped TUN scenario: portable tests do not
+establish privileged runtime readiness.
+
+Desktop SSH runtime regressions exercise A start, committed key B import, failed
+candidate start and recovery reading A's captured private key. They also assert
+candidate cleanup after validation failure and preserve the committed credential.
+The focused selection includes DesktopProxyRuntimeManagerTest,
+DesktopHomeSshPersistenceTest, DesktopGuardedSshKeyTest, DesktopSshCliTest and
+DesktopFrontendSshKeyImportTest; native JVM launch uses frozen inputs and explicit
+preflight. DesktopRuntimeRestoreCredentialTest and DesktopRuntimeRestoreLeaseTest
+exercise successful intermediate B, post-start persistence failure, retained A key
+bytes and closing a restore handle while it waits behind another transition.
+DesktopRuntimeMutationTransactionTest, DesktopSubscriptionRefreshServiceTest and
+DesktopFindBestServiceTest check terminal release and unresolved-outcome retention.
+DesktopOperationProgressTest and DesktopOperationRetainedInputsTest exercise the
+actual operation owner across unknown/native-confirmed completion, ended uncertain
+actions, returned uncertain codes, cleanup failure and explicit terminal retry.
+Unknown results must retain their exact inputs without replay; cleanup failure must
+not erase known committed success. Keep these in the routine desktop test tier.
+These run in the routine desktop test tier. Native Find Best/SSH traffic recovery
+remains a separate acceptance requirement; inert child adapters do not prove it.
+
+Android SingBoxConfigFactoryParityTest includes the causal API29 TCP stack guard.
+Keep the nondebuggable APK comparison with a separate-UID raw TCP probe and native
+TUN/outbound correlation on API29/API35; the fast emitted-config assertion catches
+stack regressions but does not replace real traffic or background lifecycle checks.
+
+DesktopWindowsOutputNativeTest runs by default in the Windows desktop test tier
+using the repository-pinned modern .NET SDK, direct dotnet execution and the actual
+broker/config/original-user/publication sources. Its17 native cases cover retained
+file-handle rewinds, complete large-input copies, console and file log destinations,
+mixed CACHE/OUTPUT descriptors, duplicate destinations, late writes and publication
+conflicts. Foreign platforms explicitly skip this Windows-only test. Missing SDK
+on Windows is a failed prerequisite. Preserve the actual runtime log-semantics and
+packaged privileged-helper scenarios alongside this inert native regression.
+
+`scripts/test_native_jvm_tests.py` exercises the reusable JVM launch gate before
+JUnit dispatch. A failed native image/path probe or missing success marker cannot
+launch the suite; test failures and literal argv survive successful admission.
+With Java tools available, it compiles `NativeJvmPreflight.java` for Java17 and
+checks the actual interpreter identity, readable dependency, missing dependency
+and wrong-image rejection. Set `JAVA_HOME` to the selected real JDK; an unusable
+configured toolchain fails rather than silently substituting another JDK.
+Native bundles include the compiled probe and use `run_native_jvm_tests` under
+their intended user after verifying all artifact hashes. Keep the selected Java
+and dependency bundle immutable across the separate probe and JUnit launches;
+this fixture gate does not secure a concurrently replaced interpreter. The probe changes no
+permissions and cannot establish runtime/VPN or installed-package acceptance.
+For an owned JRE-only guest, `VPN_CONTROL_NATIVE_JVM_PROBE_CLASSES` may point to
+the hash-verified frozen probe directory to run the three actual Java checks;
+record compilation on the build host separately from execution in the guest.
+
+For a native JUnit 4 selection, export `VPN_CONTROL_NATIVE_TEST_CLASSPATH` from the
+verified frozen host test bundle (including its test classes and JUnit dependency),
+then run `"$JAVA_HOME/bin/java" -cp "$VPN_CONTROL_NATIVE_TEST_CLASSPATH"
+com.kardinal.vpncontrol.desktop.NativeExecutionJUnitGate <fully.qualified.TestClass>`.
+The test-only gate emits JSON counts plus `NATIVE_JUNIT_EXECUTION_GATE_OK` only when
+at least one test ran and there were zero ignored tests, assumption failures, and
+failures; any other result has a nonzero exit and cannot certify native execution.
+
+`scripts/test_android_ssh_fixture.py` checks the actual fixture log consumer:
+fresh log/receipt claims before spawn, startup marker and same-read authentication,
+replacement/truncation/missing log rejection, retained child identity on unknown
+startup and post-spawn receipt-write failure, and live-handle authentication observation. These portable fake-process
+tests run in routine hygiene. Actual `sshd -E` and owner-only mode verification
+belong to the owned POSIX fixture; Windows execution does not certify POSIX modes
+or ACLs. The setup-only CLI receipt is correlation data, never kill authority or
+proof of later authentication. Keep the real A/B traffic scenario and current
+log observer alive together; historical log bytes cannot certify a new attempt.
+
+`scripts/test_native_python_tests.py` runs in release hygiene. Its real child-process
+regression catches Windows path backslashes being interpreted as Python escapes
+before a VM is needed. The reusable `native_python_request` builder supplies paths
+through argv, changes only the child PATH, preserves test failure exits/evidence,
+and rejects empty suites. Native fixture drivers use it with a verified interpreter
+and tool directories in their owned guest; it does not provision tools or establish
+their provenance. Keep the native Windows launch as a separate acceptance check.
+
+`scripts/test_android_no_update_tls_preflight.py` also runs in release hygiene.
+It exercises the actual disposable-fixture driver: exact APK/OFF baseline,
+Android legacy CA filename, staging-only relabeling, failed setup rollback,
+changed-zygote cleanup retention, and nonzero cleanup failures with evidence.
+It also covers an acknowledged staging push followed by a lost mount response:
+retain the possibly mounted source until authoritative unmount reconciliation.
+These tests do not establish Android trust or installation behavior; retain the
+nondebuggable API29/API35 native scenarios. Relabel only newly created, validated
+staging entries to the captured certificate-store context; never change system
+certificate files, SELinux policy/enforcement, or host trust.
+
+`scripts/test_android_installer_lifecycle.py` runs in release hygiene. Exercise
+the real argument-to-action path so both `--continue-file` and
+`--handoff-ready-file` reach the installer callback. Successful replacement runs
+must durably capture the original controller/operation/receipt/session before OS
+approval, then reconcile that exact receipt through the replacement owner without
+querying its old in-memory operation. Cover two TTY prompts, distinct private file
+callbacks, foreign pre-approval owners, typed session IDs, bounded unknown outcomes,
+artifact identity and cleanup. This tests fixture coordination, not OS confirmation
+or installer recovery; retain the API29/API35 native cases.
+
+`scripts/test_android_subscription_refresh_lifecycle.py` runs in release hygiene.
+It checks the public add/refresh/wait/delete sequence, owner binding, an initially
+empty subscription cache, explicit fetch evidence, original source restoration,
+and retention after an uncertain mutation. These fixture regressions do not prove
+device network trust, runtime recovery, or scheduled refresh; retain native cases.
+
+`scripts/test_macos_rollback_fixture.py` also covers explicit receipt authority:
+machine receipts must use the protected /Library root, user-local receipts use the
+specified owner home, and failures never fall back across authorities. Candidate
+flag changes require the retained exact identity. The ordinary owner predicate
+uses the shared process-role parser so sudo/launchctl wrappers do not become extra
+owners. Keep Windows-path/mocked Unix-identity vectors in this portable fixture
+suite and native protected machine rollback as a separate gate.
+
+`scripts/test_macos_fixture_owner_launch.py` runs in release hygiene. The actual
+launcher checks the active console identity and GUI bootstrap session before an
+ordinary-user owner is launched through `launchctl asuser`; failed preflight must
+not start an owner. Remote macOS paths use POSIX semantics on every host. Retain
+the native headless `INTERACTION_REQUIRED` scenario separately from Aqua prompt
+and delayed-cancellation acceptance.
+
+`scripts/test_linux_vpn_fixture_guard.py` runs in release hygiene. The native
+Linux fixture inspects the exact extracted runtime binary with `findmnt` and
+`getcap`: a capability xattr does not confer privileges on a `nosuid` mount.
+Reject unavailable/malformed mount evidence, `nosuid`, `noexec`, capabilities for
+a different path, and missing effective/permitted capabilities before VPN start.
+A local HTTP regression verifies explicit DNS resolution while preserving the
+synthetic Host header; use the same probe builder for the native TUN fixture.
+These checks establish fixture prerequisites, not real TUN or traffic acceptance.
+
+## Common Combined Checks
+
+Localization patch:
+
+```bash
+./scripts/check_localization.py
+./gradlew :shared:ui:desktopTest
+./gradlew :app:compileDebugKotlin
+```
+
+Shared core behavior patch:
+
+```bash
+./gradlew :shared:core:desktopTest
+./gradlew :app:compileDebugKotlin
+```
+
+Subscription refresh behavior patch:
+
+```bash
+./gradlew :shared:core:desktopTest
+./gradlew :desktopApp:test
+./gradlew :app:testDebugUnitTest
+```
+
+Subscription source add/delete/rename/activation patch:
+
+```bash
+./gradlew :shared:core:desktopTest
+./gradlew :desktopApp:test
+./gradlew :shared:ui:desktopTest
+```
+
+Selection/remap behavior patch:
+
+```bash
+./gradlew :shared:core:desktopTest
+./gradlew :desktopApp:test
+./gradlew :app:testDebugUnitTest
+```
+
+Desktop runtime patch:
+
+```bash
+./gradlew :desktopApp:test
+```
+
+Desktop service extraction patch:
+
+```bash
+./gradlew :desktopApp:test
+```
+
+Structured status/localization patch:
+
+```bash
+./scripts/status_catalog_tool.py check
+./scripts/check_localization.py
+./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest
+```
+
+Android VPN/config patch:
+
+```bash
+./gradlew :app:compileDebugKotlin
+./gradlew :app:testDebugUnitTest
+```
+
+If the Android patch changes actual generated `sing-box` config shape, also run or update:
+
+```bash
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.data.SingBoxConfigFactoryInstrumentedTest
+```
+
+If the patch changes shared outbound/TLS/transport generation, also update or inspect:
+
+```text
+shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxOutboundBuilderTest.kt
+app/src/test/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryParityTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactoryTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigParityTest.kt
+app/src/androidTest/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryInstrumentedTest.kt
+```
+
+If the patch changes shared DNS, route rules, domain bypass, direct CIDRs, or rule-set generation, also update or inspect:
+
+```text
+shared/core/src/commonTest/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilderTest.kt
+app/src/test/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryParityTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactoryTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigParityTest.kt
+app/src/androidTest/java/com/kardinal/vpncontrol/data/SingBoxConfigFactoryInstrumentedTest.kt
+```
+
+Import/export UI patch:
+
+```bash
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.ui.ImportExportActionsInstrumentedTest
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.ui.ImportExportErrorInstrumentedTest
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.ui.ImportExportMenuVisibilityInstrumentedTest
+```
+
+Protocol parser patch:
+
+```bash
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.data.ProxyParserInstrumentedTest
+./gradlew :shared:core:desktopTest
+```
+
+## Android Instrumentation
+
+Run Android instrumentation only on the explicitly assigned device or emulator:
+
+```bash
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592
+```
+
+Prerequisites:
+
+- Reidentify the owned device in `adb devices`; replace the example serial above.
+- The debug build can be installed on that device.
+- VPN permission prompts may still require manual interaction for tests that exercise real VPN flows.
+
+The launcher uses AGP's early `ANDROID_SERIAL` device-provider filter. Do not use
+Gradle's `--serial` option with AGP 8.7.3: its later filter mutates an immutable
+device list and fails before instrumentation starts. The release-hygiene regression
+`test_android_instrumented_launcher.py` verifies one-device selection, invalid
+serial rejection and failure/cancellation propagation without retry. A successful
+launcher can still report a failing instrumented test; retain that native result.
+
+Run local protocol smoke tests only when local fixture servers are available:
+
+```bash
+python3 scripts/run_android_instrumented_tests.py --serial emulator-5592 \
+  --class com.kardinal.vpncontrol.data.LocalProtocolSmokeInstrumentedTest
+```
+
+See `agent_docs/smoke-android.md` for fixture ports and the Trojan opt-in flag.
+
+## Manual Or Risky Checks
+
+Do not run checks that stop the currently active VPN unless the user approves the interruption.
+
+Manual checks are still needed for:
+
+- Real Android VPN permission and traffic behavior outside the hosted emulator.
+- Real desktop VPN mode on the supported end-user Linux and Windows environments.
+- Windows UAC/elevation behavior.
+- Tray integration on the target window manager.
+- Autostart after real reboot.
+- Live subscription/provider behavior.
+
+When a manual check is skipped, state the reason and name the closest automated coverage that ran.
+
+The desktop SDK-independence check configures a real Gradle graph. Run it after
+JDK/Gradle setup and the ordinary build tier (managed prepush and Fast Checks),
+not in dependency-free release hygiene. Its copied project deliberately omits
+local SDK settings while reusing the prepared Gradle dependency cache.
+
+The Windows admission diagnostic behavior suite compiles and executes Java17
+stubs, so `scripts/test_windows_install_admission_diagnostic.py` runs after JDK
+setup in Fast Checks and Windows packaging, and in managed prepush. It is not
+part of dependency-free hygiene. Native Windows reruns must also exercise Unicode
+arguments/classpaths and exact packaged JARs; host stub results do not establish
+Windows ACL or launcher admission behavior. The public package smoke retains its
+original failure even if the additional diagnostic fails.
+
+`scripts/test_packaged_cli_harness.py` also executes the preserved Windows
+persistent-ready parser and task-root causal fixtures with owned inert children.
+Release hygiene, managed prepush, Fast Checks and Windows packaging discover
+these controls. Native PowerShell is required on Windows; elsewhere the controls
+explicitly skip when `pwsh` is unavailable. Local PowerShell7 execution does not
+replace Windows5.1 or native installer acceptance. The portable exact-path
+artifact-equivalence controls belong to ordinary agent-tool test discovery.
+
+`DesktopAppUpdatePersistenceTest` uses the actual constructed AppService update
+callback, real loopback check/download and workspace store. Its causal assertion
+detects durable workspace replacements from transient update state, while checking
+verified package bytes, progress, READY state, configuration and revision. Ordinary
+desktop tests, managed prepush and Fast Checks discover it without an OS skip.
+Native GUI polling, heartbeat timing and installer return still need platform
+acceptance against the fixed installed baseline and target packages.
+
+`scripts/test_fixture_environment.py` belongs in routine release hygiene alongside
+the desktop update-fixture and Linux VM preparation suites. These checks cover
+effective JDK selection, canonical QEMU arguments, and read-only source extraction;
+they do not replace package installation and receipt recovery in disposable guests.
+
+`scripts/test_jpackage_launcher_harness.py` runs in release hygiene on every host.
+The actual Linux-only `scripts/test_jpackage_launcher.py --jdk "$JAVA_HOME"` runs
+after JDK setup and before the Linux package build. It builds a minimal native
+launcher with no application inputs and requires exact stdout, empty stderr and
+exit zero. This catches the observed Arch JDK child abort even when its parent
+exits zero; the same-patch Temurin comparison passed. Retain installed-package
+checks as well: a clean minimal launcher does not establish application behavior.
+
+`scripts/test_arch_public_update.py` exercises real bundle and JAR contents in
+routine hygiene. The native public installer driver accepts `--arch-source-fixture`
+with `--require-same-source-recovery` for bundle-installed Arch bases. Use the
+supported `/opt/vpn-control/bin/vpn-control` installation path: the driver rejects
+alternate paths before owner startup or authorization, matching the privileged
+Arch adapter. `test_linux_public_install_harness.py` exercises both early rejection
+and continued full verification for the supported path in routine hygiene. It verifies
+the installed tree against the immutable base archive before owner startup;
+DEB/RPM scenarios still require package-manager ownership. Keep harness source
+hashes distinct from the immutable package fingerprint when testing older packages.
+Use `linux_public_install_fixture.py setup` for target-user fixture directories;
+existing foreign-owned ancestors fail admission without chmod/chown. Its `keytool`
+subcommand explicitly forwards the public CA store environment through sudo and
+runs as the target user. `test_linux_public_install_fixture.py` covers these setup
+boundaries in routine hygiene; it does not replace native authorization/install tests.
+
+`agent_tools.tests.test_linux_public_install_negative` discovers three quick
+cases from `scripts/test_linux_public_install_negative.py` in the ordinary
+agent-tool/prepush suite. Actual public-install harness and HTTP responder run
+with owned temporary files and harmless child processes. A corrupt wire stops
+before install and retains the original raw terminal; an honest control reaches
+the harness recovery assertions. Both perform explicit test cleanup. A fresh
+Python child verifies import search-path restoration and real harness identity.
+CLI checksum/install/status, package ownership and OS/TTY boundaries are
+simulated. These tests do not establish product checksum handling, settings
+preservation or native authorization/install acceptance. POSIX flow cases skip
+honestly on Windows; the import isolation case is portable.
+
+The opt-in `scripts/test_macos_install_enospc.py` runs in the macOS package job
+using its assigned temporary fixture directory. It injects ENOSPC after a partial
+write through the production worker's receipt and package-capture paths, requires
+the original PREPARING receipt to survive, and verifies real admission rejects a
+second attempt with BUSY. A no-fault control exercises successful publication.
+Its copyfile EIO probe calls the same staging helper as the coordinator and proves
+the injector ran once. It verifies base identity, failed receipt bytes/metadata,
+admission release and native input cleanup. An isolated mutation ignoring the
+production copy failure must fail this test; a duplicated fixture predicate is
+not causal coverage. The partial staging tree remains explicit retained evidence.
+These are component persistence tests; they do not replace a full machine install
+or resolve an existing uncertain job. Routine hygiene launches them with explicit
+skips outside an assigned macOS fixture.
+
+For Windows admission changes, the native coverage inventory includes both
+`DesktopWindowsInstallAdmissionTest` and `DesktopWindowsInstallAdmissionNativeTest`,
+as well as the native source/process/worker tests. Before a parity checkpoint,
+run the complete `:desktopApp:test` suite in the assigned Windows VM from the
+actual checkpoint source, record all skips, and retain its XML results. A focused
+selection is useful during iteration but did miss an unchanged fixture that
+supplied nonexistent launcher files after physical admission began pinning them.
+The fixture must represent real files; do not weaken missing-file rejection to
+make an obsolete test setup pass.
+
+Native Android domain readback uses `android_routing_evidence.routing_domain_evidence`
+from `scripts/android_routing_evidence.py`. Mutation results use `data.direct-domains`;
+inspection results use `data.routing.rules.direct_domain_suffixes`. The routine
+six-test harness covers both shapes, explicit empty data, malformed/ambiguous
+results, and duplicate-domain order. Never default an absent field to an empty
+list when making a persistence claim. Controller epoch replacement may reset the
+reported revision to zero; compare actual committed payload and owner identity.
+For full transfer-document comparison use `routing_documents_equal`: it ignores
+only generated `exported_at`, preserves every rule and unknown field, and rejects
+incomplete documents. Do not compare export timestamps as persisted settings.
+The same routine script covers changed rules, versions and additional fields.
+
+## Cancellation And Native Fixture Regressions
+
+`DesktopUpdateCancellationTest` is part of ordinary `:desktopApp:test` and the
+applicable package/integration CI selections. Besides real stalled HTTP, its
+`cancelledManifestBodyIOExceptionRemainsCancellation` regression forces socket-close
+IOException after caller cancellation without network timing; TEST-001 evidence is
+in the current WIP ledger. Keep ordinary HTTP failure reporting covered as well.
+
+Release hygiene executes `test_macos_aqua_authorization_correlation.py` directly:
+actual process parsing, unmatched/ambiguous prompt rejection, successful public
+receipt envelopes and unknown installed state. The observer never sends credentials
+or treats a click/process observation as authoritative authorization. A subprocess
+regression removes `os.getuid` before launching the real parser/correlation suite,
+reproducing Windows' missing Unix API on every host without skipping these tests.
+
+`macos_fixture_frontend.py` closes one reidentified fixture frontend by PID using
+SSH and its guest Aqua session. The release-hygiene test checks exact argument
+separation, positive identities, the close button and explicit unknown outcome on
+transport timeout. The helper never selects a frontmost app, retries a timeout or
+kills a frontend. Before use, confirm the assigned disposable guest and a visible
+window; a windowless close-to-tray process is not a failed-close reproduction.
+
+`test_windows_native_helpers.py` also exercises verified app-image staging and
+inspection of both fixed helpers, including missing-broker and byte/policy mismatch
+rejection. It also covers missing/malformed runtime authority, changed generated
+source, and changed/duplicate packaged runtime resources. Passing these data-only tests
+does not certify the NativeAOT role execution, packaged wiring or MSI replacement.
+The Windows package workflow builds both pinned NativeAOT projects before the app
+image. Extracted and installed MSI checks verify both manifest/PE records, execute
+the installer helper's nonmutating `validate-only` probe and require the broker to
+reject missing arguments and a mismatched compiled runtime digest before admission.
+The producer hashes the prepared bundled AMD64 runtime into generated build output;
+the broker project fails without that authority, and Gradle tracks the runtime as
+an input. Native installer/UAC/recovery scenarios remain separate acceptance requirements.
+
+On Windows, `DesktopWindowsCoordinatorNativeAdmissionTest` and
+`DesktopWindowsOriginalUserLaunchTest` always compile their actual C# fixtures with
+the repository-pinned `.NET` SDK in `native/windows/global.json` under the selected
+JDK test run. The original-user fixture enables the NativeAOT analyzer with warnings
+as errors, catching unsupported marshaling APIs before full package publication.
+Before its interactive opt-in gate, the original-user fixture also runs the actual
+self-image pin from a private current-user apphost directory. It verifies exact
+image identity, permits the bound user and rejects an unrelated principal. This
+requires no desktop shell, UAC, installer role or system-directory mutation.
+Its clean restore uses only the official NuGet feed for the pinned SDK's analyzer
+package; an unavailable dependency is a failed prerequisite, not a skipped pass.
+The coordinator's ProgramData ACL/process-authority probe additionally
+requires `VPN_CONTROL_NATIVE_COORDINATOR_ADMISSION=1` in an owned disposable admin
+VM. The original interactive-token proof additionally requires
+`VPN_CONTROL_NATIVE_ORIGINAL_USER_LAUNCH=1` in an owned interactive VM (or JVM property
+`vpn.control.native.interactiveOriginalUser=true` when invoking JUnit directly). Both
+opt-ins skip by default; neither proves the distinct administrator case, which
+remains a manual required check.
+
+`test_android_fixture_preflight.py` runs in release hygiene. It reproduces the
+fixture inspection that cleared an uncaptured selection and requires a final,
+authoritatively stopped, explicitly unselected state before switching source scope.
+The helper returns the observed controller/revision for the actual mutation guard;
+it does not authorize replay after owner replacement or restore a lost selection.
+
+`scripts/test_android_update_fixture.py` imports
+`AndroidUpdateFixtureCertificateSanTest`, so its existing release-hygiene entry also
+runs the Android update-fixture certificate-SAN regressions: a CN-only leaf is
+rejected before evidence creation, while a DNS-SAN leaf serves the hostname-verifying
+client.
+
+`DesktopWindowsBrokerEntrypointTest` runs three native compiler fixtures for missing,
+mismatched and matching compiled runtime authority without launching a runtime.
+`DesktopWindowsMutableBrokerNativeTest` includes metadata, configuration and commit
+ordering checks in ordinary Windows tests. Its two inert-child pipe cases require
+`VPN_CONTROL_TEST_SCOPED_BROKER_MUTABLE=1` only in the assigned disposable VM. They
+cover post-exit cache publication, repeated admission and a9MiB configuration,
+retaining protected journals when cleanup is unproven. Record exact Java wrapper
+execution as well as native source tests; neither enables the production broker.
+
+The early Windows package checks run `test_windows_native_helper_builder.ps1` with
+Windows PowerShell, matching the Gradle producer's shell. Private inert executables
+exercise the actual producer with explicit paths and duplicate applications in
+both PATH orders. This catches application discovery joining several executable
+paths into one invalid command before the expensive native build starts.
+
+Android disposable HTTPS fixture transport regressions run through
+`test_android_fixture_transport.py` in release hygiene. They model adbd restart
+loss of reverse mappings and preserve unrelated route/proxy ownership through
+setup, cleanup failure and retry. Native callers must additionally reidentify the
+owned AVD and check mappings before any setup-time adbd restart. Public product
+commands always run with verified UID2000.
+
+`test_android_fixture_trust.py` uses the development host's OpenSSL executable to
+verify legacy Android CA subject-hash naming with an ephemeral certificate and
+checks the namespace command separator without mounting anything. The fixture
+helper never installs host trust. Windows byte-bound native policy/loader inputs
+have explicit LF Git attributes; `test_windows_native_helpers.py` exercises a real
+`core.autocrlf=true` checkout and verifies exact bytes, in addition to producer and
+Kotlin fixture agreement.
+
+`DesktopMacAuthorizationLifetimeTest` and `DesktopMacUpdateServiceTest` cover late exact rejection, receipt-authority conflicts,
+retryable cleanup and owner-only maintenance. These are ordinary desktop tests;
+retain packaged late-denial verification separately, including active traffic.
+
+### Compose frontend process exit
+
+`DesktopComposeApplicationExitTest` runs the production frontend application
+boundary in a child JVM and verifies that the enclosing cleanup executes. It
+creates no window, product workspace, controller, or VPN runtime. The actual
+Compose application still reads screen configuration, so Linux hosts without
+`DISPLAY` require `xvfb` and `xauth`; the test uses `xvfb-run -a` and does not skip
+when the prerequisite is missing. Fast Checks installs both packages. This quick
+regression belongs to ordinary desktop tests and prepush; retain the packaged
+normal-close/immediate-show traffic scenario as separate native evidence.
+
+### Isolated native update package builds
+
+The desktop fixture builder's `build --confirm-owned-native-host-build` permits
+build-only package capture on an authorized native build host. It preserves the
+same clean source snapshot, runtime identity, native architecture, package hash
+and base/target executable-content checks as the guest build path. The original
+`--confirm-owned-disposable-guest` build option remains supported. Host build
+confirmation is not accepted by serving, recovery, offload authorization or
+finalization commands; it does not authorize host installation or test CA trust.
+Use `--discard-completed-builds` only through the builder, which verifies retained
+artifacts before discarding each generated stage. The option is covered by the
+routine desktop update fixture test suite.
+
+### HTTPS fixture address-family admission
+
+Routine `test_https_subscription_relay_fixture.py` covers an IPv6-first resolver
+with a real IPv4 TLS client and SOCKS forwarding through the same fixture.
+`test_vpn_integration_fixture.py` preserves IPv6-only fallback and rejects any
+non-loopback resolution. Use the installed JVM for native resolver diagnostics;
+a system JVM alone does not establish the packaged runtime behavior.
+
+### Owned macOS VM resource monitor
+
+Run `python3 scripts/test_macos_vm_resource_monitor.py` (included in release
+hygiene). POSIX cases use synthetic processes to verify separate child sessions,
+continued work after observer-group termination, pressure-stop receipts and
+unknown-outcome preservation. Windows skips the POSIX process cases explicitly
+and still runs portable admission checks. Launch the real monitor in a retained
+foreground execution session; do not background it with `nohup ... &`. Keep the
+exact session handle and private evidence directory. A missing monitor receipt
+is an unknown outcome, not permission to boot another copy or replay installation.
+
+### Scoped native fixture preparation
+
+Routine release hygiene runs `test_windows_fixture_stage_acl.py` and
+`test_guest_build_connect_proxy.py`. The former rejects incomplete/truncated QGA
+captures and missing recipient rights, and guards generated typed-SID ACL setup.
+Native PowerShell parsing, actual file inheritance and unchanged package hashes
+remain required. The latter covers peer/destination admission, HTTP CONNECT
+framing, opaque byte forwarding, partial writes, half-close and strict buffer
+bounds, plus certificate-verified repository preflight failure. A passing fake
+transport does not certify the guest network or a successful package build.
+
+`test_linux_public_install_fixture.py` simulates Linux metadata explicitly when
+the host is Windows; its Windows-stat regression must still reject foreign owners.
+Do not interpret host Windows permission bits as Linux target directory modes.
+
+The Linux public-install harness also replays polkit's multiple-account selector.
+Only an explicitly authorized exact account may produce a numbered response;
+selection never admits password input. The native driver must retain the original
+PTY master and wait for the subsequent password/echo-disable gate.
+
+`test_guest_fixture_input.py` runs in routine release hygiene. It exercises the
+actual generated verify-and-exec argv against empty, stale and missing guest
+helpers, proving the probe sentinel is not launched after a dropped transfer.
+The verifier itself is an argument, not another unverified transferred file.
+The completion-runner suite also compares malformed generated Python without
+and with `native_fixture_run.sh`, retaining failure receipts without invoking ADB.
+
+The Android fixture preflight selection checks every global proxy component,
+including PAC and exclusions. Its lifecycle regression must reject a stale
+component even when `http_proxy=null`, before any fixture mutation. Keep the
+full disabled baseline in the native receipt and verify effective network state
+after cleanup; settings storage alone does not prove cached routing has changed.
+
+The desktop update fixture suite rejects missing Git, source archives and Git
+subdirectories before creating output. The Android fixture preflight suite admits
+retained terminal history while rejecting active/unknown/foreign-owner records;
+a terminal restart-required flag does not itself indicate active work.
+
+### Native MCP workflow regressions
+
+`test_android_qualified_cli_observation` exercises the full observer with owned
+inert children, real output retention and declared source/profile/HEAD seams.
+Its30 controls include late output after observation timeout, post-retention
+source/profile/HEAD drift, actual registered FastMCP request/JSON serialization
+and a fresh isolated CLI process forwarding an owned identity JSON. Selected
+routing rejects access to current private configuration in these inert controls;
+default routing remains covered. POSIX custody controls skip on unsupported
+coordinators. Full API35 status/operations must still be retested natively through
+MCP against the qualified image. These checks do not qualify API29, installers,
+actions, uncertain leases or final-source Android acceptance.
+
+`test_native_owner_gui_preparation_admission` runs eight portable controls in
+ordinary agent-tool discovery. It executes the actual transfer-root observer
+against modeled Linux metadata and the real registry selection against inert
+registered locations. Missing or unsafe roots stop before the GUI probe; exactly
+correlated preparation locations resolve identical receipt bytes without changing
+registry defaults. Remote guest ownership, display admission and full GUI/traffic
+cleanup still require direct native proof and matching MCP retesting.
+
+`DesktopNativeVisualCaptureTest.windowsForeignSystemPropertiesDialogRejectsFrameBeforeAndAfterCapture`
+uses the real capture guard with injected inert dismissal for modeled Windows
+titles, including when the provider is hosted on Linux or macOS. It runs in
+ordinary desktop tests and hosted native capture. Real Windows dismissal remains
+separate and is used only at the actual Windows capture boundary. The portable
+control does not prove secure OS surface capture.
+
+Run `python3 -m unittest discover -s agent_tools/tests -t .` for private SSH profile
+validation, strict host-key routing, actual fake-SSH timeout/quoting behavior,
+canonical staged-input isolation, resource planning, and public MCP/CLI dispatch.
+This suite is already included in managed prepush. These checks do not substitute
+for a live authenticated probe, measured host admission, or native product tests.
+
+Native acceptance helper changes also run `scripts/test_linux_fixture_runtime_config.py`,
+`scripts/test_release_hygiene_runner.py`,
+`scripts/test_guest_build_connect_proxy.py` and `scripts/test_windows_prompt_observation.py`.
+All are wired into release hygiene. Independent hygiene failures are aggregated;
+cancellation still stops the runner. Unit results never replace installed-package evidence.
+
+Optional macOS immutable-update pair workflow changes run
+`scripts/test_macos_update_fixture_workflow.py`,
+`scripts/test_record_macos_fixture_signing.py`, and
+`scripts/test_setup_macos_signing.py` through release hygiene. The signing helper's
+real Bash/shebang fixture checks are POSIX-only; macOS/Linux run them, while
+Windows reports explicit skips. Workflow dispatch produces test artifacts only
+and does not replace guest installation/recovery acceptance.
+
+## Retained DIRECT wrapper transition controls
+
+`test_ssh_direct_retained_wrapper_transition` adds36 ordinary discovery controls
+for the exact public71431848 provider and reviewed60634→9df8 Android observation
+wrapper edge. Actual protected TempFS journals and the complete provider prove
+local reporting of authentic original positive ENDED without a child or write,
+new connection-only preparation after qualified ended history, and refusals for
+live/unknown/missing/malformed/altered history, credentials/inventory/source drift,
+READY custody, typed fields, unobserved populations and closing races. The four
+already reviewed predecessor populations retain their finite gates. The module
+is included automatically in ordinary agent-tool discovery, prepush and Fast
+Checks. Run it with the completed DIRECT history modules above. POSIX-only
+coordinator controls retain36 explicit skips elsewhere. Declared inert remote
+replies only seed the fixtures: these tests do not prove current connectivity,
+new native connection qualification, SDK admission or Windows acceptance.
+
+## DIRECT local refusal reason controls
+
+`test_ssh_direct_route_local_reason` adds 22 controls through ordinary agent-tool
+unittest discovery, managed prepush and Fast Checks. The actual protected local
+provider and `direct.route_options` reproduce inventory/source binding refusal,
+absent intent and unavailable gateway prompt without an SSH child. The route
+retains a `ChannelUnknown` with only the existing four closed local reasons;
+private text, malformed values, unexpected fields and unsafe action flags
+refuse. Ordinary ready routing and remote UNKNOWN diagnostics retain their
+existing behavior. The actual MCP route preserves the bounded local reason
+without a server schema change. Unsupported POSIX coordinators skip these 22
+controls. Run with the retained-wrapper, direct-channel, selector, MCP-route and
+transport modules. The original Android masked exception was not retained;
+these local reproductions prove the constructor defect, not its native cause.
+
+### Original Android host-status capture and Linux holder parsing
+
+Routine discovery includes `test_android_original_host_status` (9 controls),
+`test_android_original_host_wire` (6 controls), and the measured headless memory
+cases in `test_arch_qemu_holder_census`. These controls preserve exact original
+records, fixed decoded/wire bounds, private binary retention, source/bundle and
+lease custody, finite JSON and explicit unsupported-platform skips. Native
+DIRECT/MCP equivalence remains required; collector checks alone do not close
+Android installer acceptance or complete Linux VM resource admission.
+
+## API35 current CLI process epoch
+
+Run `python3 -m unittest agent_tools.tests.test_android_current_cli_process_epoch`
+for the exact captured stat guard and its three immutable fixtures. The same8
+controls produce one original ValueError RED, then8 GREEN with no skips, including
+absent-fcntl execution. Mutable resource counters retain the same epoch; PID,
+comm, parent, start ticks, closing PID/boot and malformed stat are refused.
+Ordinary discovery and affected dependency selection must include this module.
+Native21-record current facts are engineering observations, not installer
+retirement, package certificate, routing equality or full parity acceptance.
+
+## Protected rich Linux resource consumer
+
+Run `test_ssh_tmux_resource_admission`, `test_tmux_resource_routes`,
+`test_native_engineering_tmux_future` and `test_native_engineering_entrypoint`
+through `python3 -m unittest agent_tools.tests.<module>`. Canonical36 checks cover
+actual emitted executable census, independent EACCES refusal, preserved16KiB
+command limit, stdin-only fixed privileged collection, source closing and immutable
+engineering context. Whole native DIRECT is separately verified; lacking a fresh
+reservation must refuse MCP admission, and excessive capacity must remain refused.
+Tests never authorize reservation release or new build allocation.

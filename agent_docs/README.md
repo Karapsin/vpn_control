@@ -14,7 +14,7 @@ This is the authoritative entry point for developer and agent documentation. Sta
 | Translation debt or historical audit follow-up | `localization-untranslated-audit.md`, `localization.md` | Current catalogs first; use the audit only as historical context | Localization mapped check set |
 | Shared UI behavior, layout, or theme | `contracts.md`, `state-ownership.md`, `visual-regression.md`, `test-matrix.md` | `shared/ui/`, platform roots, scene manifest, affected capture drivers | `python3 scripts/check_ui_theme.py`, `./gradlew :shared:ui:desktopTest`; add platform compile/test if callbacks or state shape change |
 | Desktop lifecycle, tray, autostart, reconnect | `desktop-lifecycle.md`, `state-ownership.md`, `desktop-runtime-troubleshooting.md` | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/` | `./gradlew :desktopApp:test` |
-| GUI/CLI parity, control protocol, headless commands, Android ADB | `cli.md`, `contracts.md`, `state-ownership.md` | shared control DTOs/codecs, desktop CLI/controller, Android control adapters | Shared model/core tests plus affected platform tests; native public-CLI package tests for launcher/transport changes |
+| GUI/CLI parity, control protocol, headless commands, Android ADB | [Current WIP](work-in-progress.md), [active execution brief](parity-solo-plan.md), `cli.md`; then applicable contracts/state ownership | shared control DTOs/codecs, desktop CLI/controller, Android control adapters | Shared model/core tests plus affected platform tests; native public-CLI package tests for launcher/transport changes |
 | Desktop runtime failure, VPN stopped, proxy not ready | `runtime-troubleshooting.md`, `desktop-runtime-troubleshooting.md`, `platform-matrix.md` | Redacted desktop preflight snippets, runtime logs/configs, desktop runtime services | Read-only preflight first; then `./gradlew :desktopApp:test` if code changed |
 | Android runtime failure or VPN config issue | `contracts.md`, `runtime-troubleshooting.md`, `sing-box-development.md` | Exported Android diagnostics, `app/src/main/java/com/kardinal/vpncontrol/data/`, `app/src/androidTest/` config tests | `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin`; add instrumentation when config shape changes |
 | Protocol, parser, subscription import | `contracts.md`, `sing-box-development.md`, `architecture.md` | parsers and outbound/config builders in `shared/core/`, Android/desktop parity tests | `./gradlew :shared:core:desktopTest`; add platform config tests when shape changes |
@@ -51,11 +51,38 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | `macos-release.md` | macOS signing and notarization setup. |
 | `visual-regression.md` | Agent-owned scene capture, local VM/hosted fallback, baseline, review, receipt, and release-gate operations. |
 | `work-in-progress.md` | Current intentional multi-bucket work: owners, verified checkpoint, next actions and remaining gates. |
-| `parity-continuation-plan.md` | Detailed continuation brief for completing remaining GUI/CLI parity with MCP, subagents, native evidence and exact-SHA delivery. |
-| `parity-failure-regressions.md` | Failure causes, quick regression coverage, native evidence, and remaining prevention gaps. |
+| `parity-solo-plan.md` | Active bounded execution brief: Linux → Windows → Android, macOS native/visual deferred; subagents allowed by updated human instruction. |
+| `parity-continuation-plan.md` | Superseded-brief pointer; September 28 instructions remain preserved in the archive. |
+| `parity-failure-regressions.md` | Compact active failure-to-test index, unresolved enrollment and links to complete causal records. |
 | `parity-history.md` | Historical GUI/CLI parity evidence and design notes; superseded snapshots, not current completion claims. |
 | `parity-native-history.md` | Historical native parity runs and artifact evidence; consult work-in-progress for current gates. |
 | `parity-checkpoint-history.md` | Preserved intermediate checkpoint ledger through 2026-09-08; superseded by the current work-in-progress ledger. |
+
+## Focused procedures and historical records
+
+Current guidance is [WIP](work-in-progress.md) and [execution brief](parity-solo-plan.md).
+Historical snapshots remain discoverable for explicit historical/custody questions;
+old current/active headings do not supersede these routes.
+
+| Doc | Purpose |
+| --- | --- |
+| `tools/lifecycle-and-api.md` | Precise startup/delivery/API and RAG procedures, reached from the compact tool guide. |
+| `tools/visual-and-platform-evidence.md` | Fixed source/artifact/visual/native evidence procedures and strict custody schemas. |
+| `tools/parity-worker-recipes.md` | Detailed recipes; fixed historical CP117 commands require original custody and never authorize replay. |
+| `testing/agent-custody-regressions.md` | Agent-tool/source/custody regression details and source-bounded counts. |
+| `testing/product-package-regressions.md` | Product/package regression details and native limits. |
+| `testing/ci-shortcut.md` | Durable CI path selection and complete check gates. |
+| `testing/native-acceptance.md` | DIRECT/MCP native acceptance criteria, matrix and skips. |
+| `testing/native-regressions.md` | Precise routine native-harness regression procedures and OS limits. |
+| `testing/migration-manifest.md` | Original test-matrix line/heading/blob custody map. |
+| `archive/parity/README.md` | Historical parity index; evidence stays at original private locations. |
+| `archive/parity/2026-10-14/work-in-progress-through-3944739.md` | Complete historical WIP through the investigation source. |
+| `archive/parity/2026-10-14/failure-regressions-through-3944739.md` | Complete causal ledger including unresolved proposals. |
+| `archive/parity/2026-10-14/september-continuation-brief.md` | Preserved superseded September brief. |
+| `archive/parity/2026-10-14/test-matrix-original.md` | Preserved original validation guide/results. |
+| `archive/parity/2026-10-14/tool-guide-original.md` | Preserved original full API/recipe guide. |
+| `archive/parity/2026-10-14/migration-manifest.md` | Root docs: every original heading/anchor, blob and relative-link repair. |
+| `archive/parity/2026-10-14/tool-migration-manifest.md` | Tool guide line ranges, snapshot/blob and preservation report. |
 
 User-facing install and configuration instructions stay in `../README.md` and `../docs/`.
 
