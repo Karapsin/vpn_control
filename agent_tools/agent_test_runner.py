@@ -25,6 +25,50 @@ import unittest
 
 MODULE = re.compile(r"agent_tools\.tests\.test_[a-zA-Z0-9_]+\Z")
 HEX = re.compile(r"[0-9a-f]{64}\Z")
+RUNNER_SELF_INPUT = "@loaded-runner"
+RUNNER_SELF_PATH = "agent_tools/agent_test_runner.py"
+
+
+def _runner_generation(path: Path) -> tuple:
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise ValueError("Loaded runner must be an ordinary source file")
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+# A typed self-input avoids embedding this file's own digest in its registry.
+# Resolve only to the complete immutable implementation read at import, never
+# to a newly observed root file. Private isolation dispatch rechecks generation.
+_runner_frame = getattr(sys, "_getframe", None)
+_RUNNER_EXECUTING_CODE = _runner_frame().f_code if callable(_runner_frame) else None
+del _runner_frame
+_RUNNER_SOURCE_PATH = Path(__file__).absolute()
+_RUNNER_SOURCE_GENERATION = _runner_generation(_RUNNER_SOURCE_PATH)
+_RUNNER_SOURCE_BYTES = _RUNNER_SOURCE_PATH.read_bytes()
+if _runner_generation(_RUNNER_SOURCE_PATH) != _RUNNER_SOURCE_GENERATION:
+    raise ValueError("Loaded runner source changed during capture")
+_RUNNER_SOURCE_SHA256 = hashlib.sha256(_RUNNER_SOURCE_BYTES).hexdigest()
+
+
+def resolved_sources(root: Path, sources: dict[str, str]) -> dict[str, str]:
+    result = dict(sources)
+    for relative, expected in sources.items():
+        if expected == RUNNER_SELF_INPUT:
+            if not _RUNNER_IMPLEMENTATION_MATCH:
+                raise ValueError("Loaded runner implementation differs from captured source")
+            if relative != RUNNER_SELF_PATH or (root.resolve() / relative) != _RUNNER_SOURCE_PATH:
+                raise ValueError("Runner self-input requires the exact loaded source path")
+            if (_runner_generation(_RUNNER_SOURCE_PATH) != _RUNNER_SOURCE_GENERATION
+                    or digest(_RUNNER_SOURCE_PATH) != _RUNNER_SOURCE_SHA256
+                    or _runner_generation(_RUNNER_SOURCE_PATH) != _RUNNER_SOURCE_GENERATION):
+                raise ValueError("Loaded runner source generation changed")
+            result[relative] = _RUNNER_SOURCE_SHA256
+        elif not isinstance(expected, str) or not HEX.fullmatch(expected):
+            raise ValueError("Invalid reviewed source pin")
+    return result
+
+
 # Both codec tests execute only stdlib AST/codec prefixes before native effects.
 # Encoder tests call only a pure bounded in-memory helper; docs fixtures pass
 # an owned TemporaryDirectory explicitly to every writer. A changed reviewed
@@ -103,16 +147,18 @@ def write_json(path: Path, value: dict) -> None:
 
 def sources_match(root: Path, sources: dict[str, str]) -> bool:
     try:
-        return bool(sources) and all(digest(root / path) == expected for path, expected in sources.items())
-    except OSError:
+        return bool(sources) and all(digest(root / path) == expected
+                                     for path, expected in resolved_sources(root, sources).items())
+    except (OSError, ValueError):
         return False
 
 
 def source_context(root: Path, leaf: Path, sources: dict[str, str]) -> Path:
     """Freeze only reviewed inputs; codec tests reread producers per test."""
+    resolved = resolved_sources(root, sources)
     context = leaf / "sources"
     context.mkdir(mode=0o700)
-    for relative, expected in sources.items():
+    for relative, expected in resolved.items():
         path = Path(relative)
         if path.is_absolute() or ".." in path.parts or not HEX.fullmatch(expected):
             raise ValueError("Invalid reviewed source")
@@ -141,6 +187,8 @@ def source_context(root: Path, leaf: Path, sources: dict[str, str]) -> Path:
         destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)
         os.close(fd)
+    # Retain the self-input generation bracket across all source copies.
+    resolved_sources(root, sources)
     return context
 
 
@@ -208,6 +256,10 @@ def worker_groups(root: Path, modules: list[str]) -> list[tuple[bool, list[str]]
     serial = []
     for name in modules:
         sources = ISOLATED_SOURCES.get(name)
+        if sources and any(isinstance(expected, str) and expected.startswith("@") for expected in sources.values()):
+            # A stale or invalid runtime self-input is a source refusal, never
+            # permission to run a serial consumer against changed infrastructure.
+            resolved_sources(root, sources)
         reviewed = bool(sources) and sources_match(root, sources)
         (isolated if reviewed else serial).append(name)
     return [(True, [name]) for name in isolated] + ([(False, serial)] if serial else [])
@@ -495,8 +547,13 @@ def run_plan(plan: dict, directory: Path, *, stream=sys.stderr) -> dict:
     private_directory(directory)
     write_json(directory / "plan.json", {**plan, "moduleHashes": module_hashes})
     groups = worker_groups(root, plan["modules"])
-    reviewed_sources = {relative: expected for isolated, modules in groups if isolated
-                        for name in modules for relative, expected in ISOLATED_SOURCES[name].items()}
+    # Keep every original declaration for closing. A merged hash inventory
+    # cannot demote a typed runner-generation constraint from another group.
+    reviewed_constraints = [dict(ISOLATED_SOURCES[name]) for isolated, modules in groups if isolated
+                            for name in modules]
+    reviewed_sources = {relative: expected for sources in reviewed_constraints
+                        for relative, expected in sources.items()}
+    reviewed_hashes = resolved_sources(root, reviewed_sources)
     started = time.monotonic()
     active = []
     completed = []
@@ -519,9 +576,10 @@ def run_plan(plan: dict, directory: Path, *, stream=sys.stderr) -> dict:
                 leaf = directory / ("worker-%04d" % next_group)
                 leaf.mkdir(mode=0o700)
                 child_plan = {**plan, "modules": modules}
-                isolation = ISOLATED_SOURCES[modules[0]] if isolated else None
-                if isolation is not None:
-                    source_context(root, leaf, isolation)
+                declared = ISOLATED_SOURCES[modules[0]] if isolated else None
+                isolation = resolved_sources(root, declared) if declared is not None else None
+                if declared is not None:
+                    source_context(root, leaf, declared)
                 write_json(leaf / "plan.json", {"plan": child_plan, "isolationSources": isolation})
                 env = os.environ.copy()
                 fixture_root, fixture_pin = worker_fixture_root(root, leaf, child_plan)
@@ -532,7 +590,10 @@ def run_plan(plan: dict, directory: Path, *, stream=sys.stderr) -> dict:
                 out = create_file(leaf / "stdout.txt")
                 err = create_file(leaf / "stderr.txt")
                 try:
-                    process = subprocess.Popen([sys.executable, "-B", str(Path(__file__).resolve()), "--worker-plan", str(leaf / "plan.json"),
+                    worker_source = (leaf / "sources" / RUNNER_SELF_PATH
+                                     if isolation is not None and RUNNER_SELF_PATH in isolation
+                                     else Path(__file__).resolve())
+                    process = subprocess.Popen([sys.executable, "-B", str(worker_source), "--worker-plan", str(leaf / "plan.json"),
                                                 "--worker-dir", str(leaf)], cwd=root, env=env,
                                                stdout=out, stderr=err, start_new_session=True)
                 finally:
@@ -604,13 +665,13 @@ def run_plan(plan: dict, directory: Path, *, stream=sys.stderr) -> dict:
                     stream.write(chunk)
     try:
         changed = (any(digest(root / (name.replace(".", "/") + ".py")) != expected for name, expected in module_hashes.items())
-                   or any(digest(root / relative) != expected for relative, expected in reviewed_sources.items()))
+                   or any(not sources_match(root, sources) for sources in reviewed_constraints))
     except OSError:
         changed = True
     incomplete = cancellation[0] or infrastructure_error is not None or len(completed) != len(groups) or changed or any(x["state"] != "complete" or not x["sessionAbsent"] or x["descendantLeak"] or not x["fixtureRootRemoved"] for x in records)
     state = "cancelled" if cancellation[0] else "incomplete" if incomplete else "failed" if worker_failure else "complete"
     report = {"schemaVersion": 1, "state": state, "successful": state == "complete", "sourceFingerprint": plan["sourceFingerprint"],
-              "moduleHashes": module_hashes, "reviewedSourceHashes": reviewed_sources, "counts": total, "timings": timings, "workers": records,
+              "moduleHashes": module_hashes, "reviewedSourceHashes": reviewed_hashes, "counts": total, "timings": timings, "workers": records,
               "maxWorkers": plan["maxWorkers"], "startedMonotonic": started, "endedMonotonic": time.monotonic(),
               "replayAllowed": False, "infrastructureError": infrastructure_error}
     write_json(directory / "report.json", report)
@@ -713,6 +774,14 @@ def main(argv=None) -> int:
         print("Agent unittest runner refused: " + type(error).__name__, file=sys.stderr)
         return 2
     return 0 if result["successful"] else 130 if result["state"] == "cancelled" else 1
+
+
+# Compare the actual executing module frame, including compiler-generated
+# annotation code. A cached pyc cannot qualify a different implementation.
+_RUNNER_IMPLEMENTATION_MATCH = (
+    _RUNNER_EXECUTING_CODE is not None
+    and _RUNNER_EXECUTING_CODE == compile(_RUNNER_SOURCE_BYTES, str(_RUNNER_SOURCE_PATH), "exec", dont_inherit=True)
+)
 
 
 if __name__ == "__main__":

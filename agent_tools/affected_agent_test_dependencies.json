@@ -7,7 +7,8 @@
         "469fe841617aab2d8ea835c7f579534c1401934b001b3e82b07d0deed328f381",
         "51f4561a3c34a61725b58eb3539db36c95094b0593421055282969f6dfefdcaa",
         "746376a5a4bc935b9e02a828df7d54941baa6a4010002ee93e8354eb43d4e9c1",
-        "87d819fbe4a94e9e3a590ca34c74f13ab189782794fa6a7a96f9bcbe2f830c88"
+        "87d819fbe4a94e9e3a590ca34c74f13ab189782794fa6a7a96f9bcbe2f830c88",
+        "0e9aa5efc2d6f44e69714dae05ccb985e330d2c311c0f50aa7dd762a852cdbdd"
       ]
     },
     "agent_tools/android_installer_component_bundle.py": {
@@ -71,6 +72,49 @@
       "scopes": [],
       "sourceSha256": [
         "758df05a4f089a0f21636bb6aee5f128e38721ab12e21c2a93c1a94eb767505d"
+      ]
+    },
+    "agent_tools/tests/fixtures/runner_self_input/mcp_import_before.source": {
+      "reason": "Exact f227 import-time prefix is executed as agent_tools.mcp_server in an owned package; only captured selector and check-runner source readers run. Full f227 beforeimage provenance is retained; no unrelated adapter routes execute.",
+      "scopes": [
+        "agent_tools/docs_assistant.py",
+        "agent_tools/local_build_environment.py",
+        "agent_tools/managed_check_lease.py",
+        "agent_tools/check_output_retention.py",
+        "agent_tools/affected_agent_tests.py",
+        "agent_tools/affected_agent_test_dependencies.json",
+        "agent_tools/agent_test_runner.py"
+      ],
+      "sourceSha256": [
+        "88cd8e169c468e248b46f4a2e6a2f8b601a7b7b5aa719e06e6b80511eb5800d6"
+      ]
+    },
+    "agent_tools/tests/fixtures/runner_self_input/runner_code_auth_before.source": {
+      "reason": "Transparent execution of selected, validated test inputs; those test modules are the selection graph roots.",
+      "scopes": [],
+      "sourceSha256": [
+        "42051da3f8a0ed744006853e009d570a5cd7a602ea1c3be6a93041210d181ccf"
+      ]
+    },
+    "agent_tools/tests/fixtures/runner_self_input/runner_generation_before.source": {
+      "reason": "Transparent execution of selected, validated test inputs; those test modules are the selection graph roots.",
+      "scopes": [],
+      "sourceSha256": [
+        "fd382d712542d6002489f4717f013e1c02ea5ab67a5f69a0101083d6c044611d"
+      ]
+    },
+    "agent_tools/tests/fixtures/runner_self_input/runner_merge_before.source": {
+      "reason": "Transparent execution of selected, validated test inputs; those test modules are the selection graph roots.",
+      "scopes": [],
+      "sourceSha256": [
+        "c14933128e44428af71c96a455876b2a43e21f58e7ad54eec0d0a3699a2bcff7"
+      ]
+    },
+    "agent_tools/tests/fixtures/runner_self_input/runner_original.source": {
+      "reason": "Transparent execution of selected, validated test inputs; those test modules are the selection graph roots.",
+      "scopes": [],
+      "sourceSha256": [
+        "87d819fbe4a94e9e3a590ca34c74f13ab189782794fa6a7a96f9bcbe2f830c88"
       ]
     },
     "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.android-wrapper-reviewed.py.gz": {
@@ -192,6 +236,46 @@
         "5cdef7bba517354e0f0b8b2fb1d432216b1b8da936bb91e97464a034a7483d34",
         "1f8ca14cebea13fc8a6d420dff75b1350878ea128a372867ef54dadec1169be3",
         "0495792e1a5f7f16a58fcee3d8967dfe0fab48e0e82bba31968a18ebc144a186"
+      ]
+    },
+    "agent_tools/tests/test_agent_test_runner_self_input.py": {
+      "reason": "Owned current049 runner-test fixture helpers copy the exact finite MCP/runner source context; historical loaders and source rewrites stay inside owned local roots. These tests execute actual current worker/source consumers, never native actors.",
+      "scopes": [
+        "agent_tools/affected_agent_test_dependencies.json",
+        "agent_tools/affected_agent_tests.py",
+        "agent_tools/agent_test_runner.py",
+        "agent_tools/check_output_retention.py",
+        "agent_tools/docs_assistant.py",
+        "agent_tools/local_build_environment.py",
+        "agent_tools/managed_check_lease.py",
+        "agent_tools/mcp_server.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/ssh_channel_selection.py",
+        "agent_tools/ssh_connection_recovery.py",
+        "agent_tools/ssh_connection_session.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_expired_recovery_retirement.py",
+        "agent_tools/ssh_fresh_nested_channel.py",
+        "agent_tools/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/ssh_nested_socket_retirement.py",
+        "agent_tools/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/ssh_recovery_adoption.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/__init__.py",
+        "agent_tools/tests/test_ssh_connection_session.py",
+        "agent_tools/tests/test_ssh_direct_nested_channel.py",
+        "agent_tools/tests/test_ssh_fresh_nested_channel.py",
+        "agent_tools/tests/fixtures/runner_self_input/mcp_import_before.source",
+        "agent_tools/tests/fixtures/runner_self_input/runner_code_auth_before.source",
+        "agent_tools/tests/fixtures/runner_self_input/runner_generation_before.source",
+        "agent_tools/tests/fixtures/runner_self_input/runner_merge_before.source",
+        "agent_tools/tests/fixtures/runner_self_input/runner_original.source"
+      ],
+      "sourceSha256": [
+        "293f697a8a3ec26bc20469bdfffcd247e72ec5bff092f75079767aca38e21a85"
       ]
     },
     "agent_tools/tests/test_android_api35_proxy_stage_diagnostic.py": {

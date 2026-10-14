@@ -33,7 +33,36 @@ Installer, machine-wide VPN, reboot and recovery effects sharing a guest seriali
 its sole operator may batch independent read-only observations. Local collector
 GREEN or diagnostic success does not close a product acceptance scenario.
 
-## Current continuation — 2026-10-14,02:12 Moscow
+## Current continuation — 2026-10-14,05:06 Moscow
+
+Root is integrating three independently reviewed follow-up packets on clean
+`f7619faa89af9fb5fbabca89e12c2145382ce4c4`: eight runner/self-input paths,
+three SSH fixture-custody paths and three Android owner-admission paths.
+Beforeimages and authenticated postimages are retained in
+`.runtime/root-reviewed-followup-integration-4ff0eb5d-0aba-494f-bc95-19a5984268c2`.
+The combined68 focused controls pass. First managed validation completed6319
+tests with one stale downstream owner-source pin failure and166 explicit skips;
+all owned workers were reaped and fixture roots removed. The corrected consumer
+passes the identical criterion and all21 module tests. Its one-line pin change
+is included in the coherent batch; fresh managed validation and checkpoint
+delivery remain pending. No new parallel group is admitted. The requested
+six optimizations were delivered through9be1a05; their platform hold is cleared.
+The RPi concurrency increase was withdrawn by the user and remains unchanged.
+
+Windows owns CP117: the new owner0d06 has a genuine public OFF response from
+original CLI1988, while its strict closing remains UNKNOWN/native image error31.
+Linux owns Fedora2340 and shared-route selection: direct RPM success is proved;
+baseline restorationa8 is complete; the negative worker has not been submitted.
+Readonly88010 proves unchanged state. A capture-root replacement regression is
+being repaired locally before another effect. Android owns API35/5682: original
+214f's certificate was recovered and validated without replay; installer0dd and
+its lease remain UNKNOWN/held. Its next genuine snapshot is being assembled.
+macOS remains on the previously documented storage hold. Root owns canonical
+files and delivery; workers own ignored source packets and their named guests.
+Canonical edits serialize with every worker's native source-capture bracket.
+Full22-group/217-scenario/249-scene acceptance and final exact-SHA CI remain open.
+
+## Historical continuation — 2026-10-14,02:12 Moscow
 
 HEAD/origin/dev are `93e0b97248bf2945e72ef0d5989acdf4a7870266`, product2.2.9.
 The40-path checkpoint passed17 managed commands, including6288 agent tests

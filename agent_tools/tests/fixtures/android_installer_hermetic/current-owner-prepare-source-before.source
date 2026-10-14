@@ -1,0 +1,14 @@
+def prepare_source(receipt:dict,prepared:dict,request:dict)->str:
+ """Local source assembly only; the sole operator executes the reviewed result."""
+ if type(request)is not dict or set(request)!=_KEYS or request.get('device')!='android-api35' or type(request.get('expectedApi'))is not int or request['expectedApi']!=35:raise ValueError('owner_admission_request_unknown')
+ for module,sha in ((bundle,BUNDLE_SHA),(command,COMMAND_SHA)):
+  snapshot=availability._snapshot(Path(module.__file__).absolute())
+  if hashlib.sha256(snapshot[1]).hexdigest()!=sha:raise ValueError('owner_admission_source_changed')
+  prepared['snapshots'][Path(module.__file__).absolute()]=snapshot
+ getter=command.readonly._assignment(ast.parse(prepared['program']),'GETTER');launch=command.readonly._assignment(ast.parse(prepared['program']),'LAUNCH')
+ if request.get('host')!='archlinux' or request.get('sourceSha')!=bundle._PRODUCT_SHA or request.get('packageSha256')!=getter['packageSha256'] or request.get('expectedAvd')!=launch['avd'] or request.get('reservation')!=launch['intent']['reservation'] or launch.get('device')!='api35':raise ValueError('owner_admission_request_unknown')
+ own=Path(__file__).absolute();snap=availability._snapshot(own);prepared['snapshots'][own]=snap
+ source=bundle.carrier_source(receipt,prepared,request['correlationId'])
+ template=command.readonly._assignment(ast.parse(snap[1]),'_REMOTE')
+ suffix='\ncopy=__import__("copy")\ntypes=__import__("types")\nre=__import__("re")\nbase64=__import__("base64")\nPath=__import__("pathlib").Path\nOWNER_ADMISSION_KEYS='+repr(_KEYS)+'\nOWNER_ADMISSION_SOURCE_SHA='+repr(hashlib.sha256(snap[1]).hexdigest())+'\n'+template+'\nOWNER_ADMISSION_RESULT=owner_admission_run(COMPONENT_RECEIPT,globals(),'+repr(request)+')\n'
+ result=source+suffix;compile(result,'<fixed-api35-current-owner-admission>','exec');command.readonly.guard(prepared);return result

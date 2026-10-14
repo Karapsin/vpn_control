@@ -420,7 +420,7 @@ class LocalCandidateControls(unittest.TestCase):
     @unittest.skipUnless(_POSIX_RECEIPT_CAPABLE, 'actual receipt writer requires POSIX UID/GID, descriptor APIs and O_DIRECTORY/O_NOFOLLOW')
     def test_actual_owner_subclass_virtual_capture_and_independent_timing_begin(self):
         dependency = ROOT / 'agent_tools' / 'android_api35_current_owner_admission.py'
-        dependency_sha = '06daf9b5d00dccd6095b95c2a1af0d310c2519224fe6a79d428c7392592107ea'
+        dependency_sha = '0248c94bf6f21a4ab697bd9333654678c0278247da6f14b6dd098858210dc516'
         owner_raw = dependency.read_bytes()
         self.assertEqual(dependency_sha, hashlib.sha256(owner_raw).hexdigest())
         outer = ast.parse(owner_raw)

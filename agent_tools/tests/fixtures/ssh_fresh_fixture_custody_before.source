@@ -1,0 +1,11 @@
+def setUp(self):
+        # Private fixture base avoids shared macOS T directory link churn.
+        real_temporary=tempfile.TemporaryDirectory
+        private_base=real_temporary(prefix='vcf-',dir=Path('/tmp').resolve())
+        self.addCleanup(private_base.cleanup);base=Path(private_base.name)
+        with mock.patch.object(tempfile,'TemporaryDirectory',side_effect=lambda *a,**kw:real_temporary(*a,**{**kw,'dir':base})):
+            self.f=fixtures.SessionTests(methodName='runTest');self.f.setUp()
+        self.addCleanup(self.f.doCleanups)
+        self.f.config['hosts']['archlinux']['password']='inert private sentinel';self.f.write_config();self.f.ready()
+        self.root=self.f.root;self.corr='b'*32;self.raw={};self.calls=[];self.real_popen=subprocess.Popen
+        self.stdout=json.dumps({'state':'unknown','correlationId':self.corr}).encode();self.stderr=b'';self.rc=3

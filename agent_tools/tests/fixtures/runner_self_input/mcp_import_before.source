@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import asyncio
+import functools
+from datetime import date
+import hashlib
+import importlib
+import importlib.util
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+from typing import Any, Sequence
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+_MCP_BOOT_TIME_NS = time.time_ns()
+# Direct CLI/MCP execution has no package context.  Make the checked-in
+# package available so fixed adapters can use qualified imports rather than
+# resolving same-named guest fixture helpers from an inherited script path.
+if not __package__ and str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+docs_assistant = importlib.import_module(
+    f"{__package__}.docs_assistant" if __package__ else "docs_assistant"
+)
+local_build_environment = importlib.import_module(
+    f"{__package__}.local_build_environment" if __package__ else "local_build_environment"
+)
+managed_check_lease = importlib.import_module(f"{__package__ or 'agent_tools'}.managed_check_lease")
+check_output_retention = importlib.import_module(f"{__package__ or 'agent_tools'}.check_output_retention")
+_SELECTOR_IMPORT_BYTES = {
+    path: path.read_bytes()
+    for path in (Path(__file__).resolve().with_name("affected_agent_tests.py"),
+                 Path(__file__).resolve().with_name("affected_agent_test_dependencies.json"))
+}
+_SELECTOR_IMPORT_DIGESTS = {path: hashlib.sha256(raw).hexdigest() for path, raw in _SELECTOR_IMPORT_BYTES.items()}
+_SELECTOR_SOURCE_PATH = Path(__file__).resolve().with_name("affected_agent_tests.py")
+_SELECTOR_MODULE_NAME = f"{__package__ or 'agent_tools'}.affected_agent_tests"
+# Execute the captured source itself: a timestamp-valid .pyc cannot qualify old
+# executed policy under a newer source digest. Relative imports retain identity.
+_SELECTOR_SPEC = importlib.util.spec_from_file_location(_SELECTOR_MODULE_NAME, _SELECTOR_SOURCE_PATH)
+affected_agent_tests = importlib.util.module_from_spec(_SELECTOR_SPEC)
+sys.modules[_SELECTOR_MODULE_NAME] = affected_agent_tests
+exec(compile(_SELECTOR_IMPORT_BYTES[_SELECTOR_SOURCE_PATH], str(_SELECTOR_SOURCE_PATH), "exec"), affected_agent_tests.__dict__)
+setattr(sys.modules[__package__ or "agent_tools"], "affected_agent_tests", affected_agent_tests)
+_SELECTOR_IMPORT_CHANGED = (
+    any(hashlib.sha256(path.read_bytes()).hexdigest() != digest for path, digest in _SELECTOR_IMPORT_DIGESTS.items())
+    or affected_agent_tests.LOADED_SELECTOR_SOURCE_SHA256 != _SELECTOR_IMPORT_DIGESTS[Path(affected_agent_tests.__file__).resolve()]
+    or affected_agent_tests.LOADED_DEPENDENCY_MANIFEST_SHA256 != _SELECTOR_IMPORT_DIGESTS[affected_agent_tests.DEPENDENCY_MANIFEST.resolve()]
+)
+
+# A daemon can outlive edits to the check runner or its imported dependencies.
+# Bind the loaded implementation, rather than treating current disk bytes as
+# proof that this process is executing them.
+_CHECK_RUNNER_SOURCE_DIGESTS = {
+    path: hashlib.sha256(path.read_bytes()).hexdigest()
+    for path in (
+        Path(__file__).resolve(),
+        Path(local_build_environment.__file__).resolve(),
+        Path(managed_check_lease.__file__).resolve(),
+        Path(check_output_retention.__file__).resolve(),
+        Path(affected_agent_tests.__file__).resolve(),
+        affected_agent_tests.DEPENDENCY_MANIFEST.resolve(),
+        Path(__file__).resolve().with_name("agent_test_runner.py"),
+    )
+}
+_CHECK_RUNNER_SOURCE_DIGESTS.update(_SELECTOR_IMPORT_DIGESTS)
+_CHECK_RUNNER_SOURCE_DIGESTS[affected_agent_tests.DEPENDENCY_MANIFEST.resolve()] = affected_agent_tests.LOADED_DEPENDENCY_MANIFEST_SHA256
+

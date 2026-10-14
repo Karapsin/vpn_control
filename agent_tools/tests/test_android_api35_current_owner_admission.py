@@ -50,10 +50,10 @@ class AdmissionTests(unittest.TestCase):
   self.assertEqual(before,self.log.read_bytes())
   self.assertEqual(guard.expected,guard._physical())
  def test_wrong_bundle_source_refuses_before_factory_or_native_reader(self):
-  from unittest.mock import patch
   before=self.log.read_bytes() if self.log.exists() else b''
-  with patch.object(admission,'BUNDLE_SHA','0'*64):
-   with self.assertRaisesRegex(ValueError,'owner_admission_source_changed'):admission.prepare_source(self.helper.receipt,{},self.request)
+  receipt=copy.deepcopy(self.helper.receipt)
+  receipt['files']['agent_tools/android_installer_component_bundle.py']['sha256']='0'*64
+  with self.assertRaisesRegex(ValueError,'component_bundle_file_changed'):admission.prepare_source(receipt,{},self.request)
   self.assertEqual(before,self.log.read_bytes() if self.log.exists() else b'')
  def test_actual_constructor_root_worker_under_user_owned_receiver(self):
   from unittest import mock
@@ -205,20 +205,26 @@ class FactoryTests(unittest.TestCase):
   admission.command=component_command(history,admission.command)
   helper=fixture.BundleTests();helper.setUp()
   try:
-   prepared=history.prepare();prepared,_=admission.command.prepare(history.root,prepared,'android-api35')
+   prepared=history.prepare()
+   # The upstream ledger is historical; the emitted stage reader is the actual
+   # current API35 producer, matching the current bundle's closed API35 guard.
+   tree=ast.parse(prepared['program'])
+   stage=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='getter_stage')
+   old_stage=next(n for n in ast.parse(history.getter._GETTER.replace('__GETTER__','{}')).body if isinstance(n,ast.FunctionDef)and n.name=='getter_stage')
+   self.assertEqual(ast.dump(stage),ast.dump(old_stage))
+   current_stage=next(n for n in ast.parse(observer._GETTER.replace('__GETTER__','{}')).body if isinstance(n,ast.FunctionDef)and n.name=='getter_stage')
+   tree.body[tree.body.index(stage)]=current_stage
+   prepared['program']=ast.unparse(ast.fix_missing_locations(tree))+'\n'
+   prepared,_=admission.command.prepare(history.root,prepared,'android-api35')
    tree=ast.parse(prepared['program']);getter=admission.command.readonly._assignment(tree,'GETTER');launch=admission.command.readonly._assignment(tree,'LAUNCH')
    request={'host':'archlinux','device':'android-api35','correlationId':CORR,'sourceSha':admission.bundle._PRODUCT_SHA,'expectedAvd':launch['avd'],'expectedApi':35,'packageSha256':getter['packageSha256'],'reservation':launch['intent']['reservation']}
-   # Current changed bundle stays incompatible with the frozen consumer.
+   # Actual current canonical factory and actual complete TempFS receipt.
+   receipt=helper.receipt
+   archive=Path(__file__).parent/'fixtures/android_installer_hermetic/current-owner-prepare-source-before.source'
+   before_scope={**vars(admission)}
+   exec(compile(archive.read_bytes(),'<preserved-current-owner-factory-before>','exec'),before_scope)
    with self.assertRaisesRegex(ValueError,'owner_admission_source_changed'):
-    admission.prepare_source(helper.receipt,prepared,request)
-   from agent_tools.tests.fixtures import historical_source
-   archive=Path(__file__).parent/'fixtures/android_installer_hermetic/component-bundle.source'
-   raw=archive.read_bytes();destination=history.root/'agent_tools/android_installer_component_bundle.py';destination.write_bytes(raw)
-   compatible=historical_source.load(destination,admission.BUNDLE_SHA)
-   source_file=helper.source_root/'agent_tools/android_installer_component_bundle.py'
-   source_file.write_bytes(raw)
-   receipt=compatible.prepare(helper.source_root,helper.root/'compatible-stage',compatible.reviewed_tree(helper.source_root)['treeSha256'])
-   admission.bundle=compatible
+    before_scope['prepare_source'](receipt,prepared,request)
    source=admission.prepare_source(receipt,prepared,request);code=compile(source,'<complete-api35-owner-carrier>','exec',dont_inherit=True)
    case=AdmissionTests();case.setUp()
    try:
@@ -232,3 +238,43 @@ class FactoryTests(unittest.TestCase):
    self.assertIn(Path(admission.__file__).absolute(),prepared['snapshots']);self.assertEqual('owner_admission_run',next(value.co_name for value in code.co_consts if isinstance(value,types.CodeType) and value.co_name=='owner_admission_run'))
    self.assertEqual(1,sum(isinstance(n,ast.ClassDef) and n.name=='OwnerAdmissionGuard' for n in ast.parse(source).body))
   finally:helper.tearDown()
+
+ def current_factory_inputs(self):
+  from agent_tools import android_api35_coldboot_product_observation as observer
+  from agent_tools.tests.fixtures.android_api35_historical_context import install
+  from agent_tools.tests.fixtures.android_remaining_hermetic import component_command
+  history=install(self,globals(),'admission')
+  admission.command=component_command(history,admission.command)
+  helper=fixture.BundleTests();helper.setUp();self.addCleanup(helper.tearDown)
+  prepared=history.prepare();tree=ast.parse(prepared['program'])
+  stage=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='getter_stage')
+  old=next(n for n in ast.parse(history.getter._GETTER.replace('__GETTER__','{}')).body if isinstance(n,ast.FunctionDef)and n.name=='getter_stage')
+  self.assertEqual(ast.dump(stage),ast.dump(old))
+  tree.body[tree.body.index(stage)]=next(n for n in ast.parse(observer._GETTER.replace('__GETTER__','{}')).body if isinstance(n,ast.FunctionDef)and n.name=='getter_stage')
+  prepared['program']=ast.unparse(ast.fix_missing_locations(tree))+'\n'
+  prepared,_=admission.command.prepare(history.root,prepared,'android-api35')
+  tree=ast.parse(prepared['program']);getter=admission.command.readonly._assignment(tree,'GETTER');launch=admission.command.readonly._assignment(tree,'LAUNCH')
+  request={'host':'archlinux','device':'android-api35','correlationId':CORR,'sourceSha':admission.bundle._PRODUCT_SHA,'expectedAvd':launch['avd'],'expectedApi':35,'packageSha256':getter['packageSha256'],'reservation':launch['intent']['reservation']}
+  return history,helper,prepared,request
+ def test_actual_complete_foreign_bundle_epoch_refuses(self):
+  history,helper,prepared,request=self.current_factory_inputs()
+  path=helper.source_root/'agent_tools/android_installer_component_bundle.py';path.write_bytes(path.read_bytes()+b'\n# foreign staged epoch\n')
+  receipt=admission.bundle.prepare(helper.source_root,helper.root/'foreign-stage',admission.bundle.reviewed_tree(helper.source_root)['treeSha256'])
+  admission.bundle.load(receipt)
+  with self.assertRaisesRegex(ValueError,'owner_admission_source_changed'):admission.prepare_source(receipt,prepared,request)
+ def test_actual_copied_command_source_drift_refuses(self):
+  history,helper,prepared,request=self.current_factory_inputs()
+  path=Path(admission.command.__file__)
+  self.assertIn(history.root,path.parents);path.write_bytes(path.read_bytes()+b'\n# command source drift\n')
+  with self.assertRaisesRegex(ValueError,'owner_admission_source_changed'):admission.prepare_source(helper.receipt,prepared,request)
+ def test_actual_current_factory_crossed_inputs_refuse(self):
+  history,helper,prepared,request=self.current_factory_inputs()
+  for key,value in [('host','foreign'),('expectedAvd','foreign'),('packageSha256','0'*64),('sourceSha','0'*40),('reservation',{'foreign':True}),('device','android-api29'),('expectedApi',29)]:
+   crossed={**request,key:value}
+   with self.subTest(key=key),self.assertRaisesRegex(ValueError,'owner_admission_request_unknown'):admission.prepare_source(helper.receipt,prepared,crossed)
+ def test_actual_current_owner_snapshot_closing_drift_refuses(self):
+  history,helper,prepared,request=self.current_factory_inputs()
+  admission.prepare_source(helper.receipt,prepared,request)
+  path=Path(admission.__file__);self.assertIn(history.root,path.parents)
+  path.write_bytes(path.read_bytes()+b'\n# owner source closing drift\n')
+  with self.assertRaisesRegex(ValueError,'component_source_changed'):admission.command.readonly.guard(prepared)

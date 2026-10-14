@@ -26,7 +26,9 @@ class FreshChannelTests(unittest.TestCase):
     def setUp(self):
         # Private fixture base avoids shared macOS T directory link churn.
         real_temporary=tempfile.TemporaryDirectory
-        private_base=real_temporary(prefix='vcf-',dir=Path('/tmp').resolve())
+        fixture_parent=(Path(tempfile.gettempdir()).resolve()
+                        if os.environ.get('VPN_CONTROL_TEST_RUNTIME_ROOT') else Path('/tmp').resolve())
+        private_base=real_temporary(prefix='vcf-',dir=fixture_parent)
         self.addCleanup(private_base.cleanup);base=Path(private_base.name)
         with mock.patch.object(tempfile,'TemporaryDirectory',side_effect=lambda *a,**kw:real_temporary(*a,**{**kw,'dir':base})):
             self.f=fixtures.SessionTests(methodName='runTest');self.f.setUp()

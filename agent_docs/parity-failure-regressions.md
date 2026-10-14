@@ -1,5 +1,42 @@
 # Parity Failure-to-Regression Ledger
 
+## Reviewed follow-up integration — 2026-10-14,05:06
+
+The runner's import-time MCP reader consumes the runner itself. A literal digest
+inside the same source cannot supply that self-input. Its typed loaded-runner
+input binds actual executing code, complete bytes and file generation; workers
+execute the frozen copy. Actual cached-code and inode exchanges fail before the
+fix. A second causal case proves that merging group hashes lost a generation
+constraint at closing; retaining every group's declarations passes both orders.
+Nine routine controls and independent review are retained in
+`.runtime/runner-self-input-routine-packet-72fbcad8-6588-4be4-969f-fb3ff62be4d9`
+and `.runtime/runner-self-input-corrected-review-e0b983df-1ae2-4f25-8786-0ad9d9d0f63b`.
+
+The fresh-SSH test setup created fixtures outside its managed worker root.
+The actual interrupted child escapes cleanup before the fix; three controls
+pass with the existing managed temporary root, including a foreign-generation
+cleanup refusal. Packet:
+`.runtime/slow-group-isolation-review-59c3e576-41ee-4020-91f4-0fd064e77498/packet`.
+
+Android current-owner source preparation held a historical bundle digest and
+rejected the genuine current complete receipt. The real bundle loader now derives
+the authenticated input identity while command and byte-equality guards remain.
+The preserved function produces the same factory error; the actual fixed owner
+module passes29 controls. Packet:
+`.runtime/android-native-successor-32d06f17-7738-4e95-8460-13b909d2a586/current-owner-identity-derived-6c3f7981-d4b2-4f50-8644-57f1f25b5c9b/routine-candidate`.
+These corrections are routine/MCP dependencies. Full native scenarios and their
+matching MCP retests remain required; no new concurrency admission is inferred.
+
+The first managed run completed6319 tests with one failure and166 skips: the
+physical-batch subclass consumer still required the old06daf owner source hash.
+The actual assertion refused current0248 before subclass execution. Its one-line
+pin correction preserves that exact assertion and all later virtual-capture and
+independent timing checks. The identical test changes from RED to GREEN; its
+whole21-test module passes. Dependency resolution remains unchanged. Evidence:
+`.runtime/physical-successor-diagnostic-aaa874f8-bb72-4b1d-8de9-e38cc1cb0b44`.
+Root retained the original managed outcome and consumer before applying the fix;
+a fresh final managed run is required, rather than repairing the failed receipt.
+
 ## Linked actor and isolated import coverage — 2026-10-14,02:12
 
 The original Android actor caller passed dictionary keys into a tuple helper,

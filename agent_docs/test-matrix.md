@@ -1,5 +1,17 @@
 # Test Matrix
 
+## Runner self-input, SSH fixture custody and Android owner admission
+
+Run `python3 -m unittest agent_tools.tests.test_agent_test_runner_self_input agent_tools.tests.test_ssh_fresh_fixture_custody agent_tools.tests.test_android_api35_current_owner_admission agent_tools.tests.test_agent_test_runner`
+for this combined integration. The self-input controls execute frozen workers,
+cached-code/source mismatches, source generation exchanges and both mixed-group
+closing orders. The custody controls execute actual setup and generation-aware
+cleanup; the owner controls invoke the real complete bundle factory and its
+receipt/source guards. Preserved beforeimages supply causal RED. Ordinary
+discovery and exact dependency declarations enroll the controls. Missing POSIX
+capabilities skip the applicable descriptor/process tests explicitly. These
+checks do not qualify new concurrent groups or complete native acceptance.
+
 ## Original actor identity and isolated package markers
 
 Run `python3 -m unittest agent_tools.tests.test_android_original_actor_pin_shape`

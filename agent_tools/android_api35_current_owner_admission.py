@@ -155,7 +155,13 @@ def owner_admission_run(receipt,backend,request):
 def prepare_source(receipt:dict,prepared:dict,request:dict)->str:
  """Local source assembly only; the sole operator executes the reviewed result."""
  if type(request)is not dict or set(request)!=_KEYS or request.get('device')!='android-api35' or type(request.get('expectedApi'))is not int or request['expectedApi']!=35:raise ValueError('owner_admission_request_unknown')
- for module,sha in ((bundle,BUNDLE_SHA),(command,COMMAND_SHA)):
+ # The existing loader authenticates the complete immutable staged tree.
+ # carrier_source below independently requires these exact bundle/command
+ # bytes to equal the executing canonical factory sources. No caller hash
+ # assertion or historical constant selects a dependency epoch.
+ loaded=bundle.load(receipt)
+ bundle_raw=loaded['agent_tools/android_installer_component_bundle.py']
+ for module,sha in ((bundle,hashlib.sha256(bundle_raw).hexdigest()),(command,COMMAND_SHA)):
   snapshot=availability._snapshot(Path(module.__file__).absolute())
   if hashlib.sha256(snapshot[1]).hexdigest()!=sha:raise ValueError('owner_admission_source_changed')
   prepared['snapshots'][Path(module.__file__).absolute()]=snapshot
