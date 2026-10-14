@@ -26,7 +26,8 @@ lease release, credential/trust change or host VPN interruption is part of clean
 
 ## Optimization milestone and parity handoff
 
-The adopted scope is selector calculation reuse only. One invocation builds
+The adopted scope is selector calculation reuse plus exact tool-source checkout
+preservation. One invocation builds
 immutable lookup indexes, analyzes each old/new source version once and selects
 consumers through reverse edges with a shared forward consumption closure. Fresh
 source fingerprints, old/new import union, reviewed loader hashes, deterministic
@@ -55,6 +56,22 @@ Existing selector controls and new real-Git/reuse controls preserve removed
 imports, deletions/renames, cycles, colliding aliases, script ownership, reviewed
 non-Python inputs, source changes and refusal order. Complete measurements and
 beforeimages are retained under `.runtime/agent-tools-optimization-2026-10-14/`.
+
+The first optimization checkpoint `41da3612c012f98f1e2358e68d81a2e40ce18676`
+failed Windows Desktop Package run `38571387487` during reviewed dependency
+selection. Real Git `core.autocrlf=true` changed 41 of 55 reviewed loader sources
+and caused 40 source-hash refusals, including the exact runner line405 refusal.
+The bounded attributes repair preserves every Python tool Git blob without
+normalizing source or changing any of the 68 accepted pins; all 55 source byte
+comparisons and validators then pass. A second causal control demonstrates that
+attribute-only changes previously selected zero agent consumers; the repaired
+selector recognizes this actual dependency and selects 449 baseline consumers.
+The new checkout/tamper controls run in ordinary affected checks, managed prepush,
+Fast Checks and the native Windows managed-check stage. All 82 focused controls
+pass. Evidence and unfixed beforeimages are retained in
+`.runtime/agent-tools-optimization-2026-10-14/windows-selection-failure/`.
+New content-bound validation and a new exact-SHA Windows rerun remain required;
+the failed checkpoint is not a delivered milestone.
 
 Android compilation/carrier changes remain measured candidates, unadopted:
 five local hook derivation runs measured median 55.776 ms before and 12.552 ms

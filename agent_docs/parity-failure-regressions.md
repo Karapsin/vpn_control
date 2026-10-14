@@ -85,6 +85,22 @@ queries and keeps explicit history queries discoverable. The same5-test suite gi
 three RED failures on preserved code and5 GREEN on the fix, including cache-version
 refresh. Evidence: `.runtime/docs-cleanup-2026-10-14/rag/`; native gates remain unchanged.
 
+## Optimization checkout failure and causal coverage
+
+Windows package run `38571387487` at `41da3612c012f98f1e2358e68d81a2e40ce18676`
+refused the runner's reviewed dynamic import at line405. Original logs and source
+beforeimages are in
+`.runtime/agent-tools-optimization-2026-10-14/windows-selection-failure/`.
+Actual Git autocrlf checkout reproduces the same RED refusal; the exact-blob
+attributes repair gives GREEN for all 55 reviewed loaders without changing the
+68 accepted pins. `test_reviewed_source_checkout_bytes` also requires an
+unprotected CRLF control, unchanged historical bytes and continued tamper refusal.
+The actual attribute-only selector control gives RED0 → GREEN449 consumers;
+`.gitattributes` is now recognized as an agent input. Routine affected checks,
+managed prepush, Fast Checks and the native Windows managed-check stage enroll
+the new test. Full native installer acceptance remains separate; new exact-SHA
+Windows package CI must rerun the original failed stage before delivery.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

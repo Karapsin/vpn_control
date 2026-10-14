@@ -5,6 +5,10 @@ visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
 /desktopApp/native/windows/InstallHelper/loader.manifest text eol=lf
 /desktopApp/native/windows/VpnBroker/loader.manifest text eol=lf
 
+# Tool loaders and their preserved Python beforeimages authenticate exact bytes.
+# Keep Git blobs intact when Windows enables automatic line-ending conversion.
+/agent_tools/**/*.py -text
+
 # Historical source fixtures retain the exact bytes named by their provenance.
 /agent_tools/tests/fixtures/**/*.source -text
 /agent_tools/tests/fixtures/android_component_legacy/provenance.json text eol=lf

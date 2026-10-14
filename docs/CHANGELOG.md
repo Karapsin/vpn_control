@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Isolate the Windows PowerShell CI oracle from inherited PowerShell Core module paths.
 - Correct the Windows original-user fixture admission-check expectation after completed-input cleanup.
 - Reuse agent-test inventory, source analysis and dependency traversal with unchanged selection safety.
+- Preserve byte-authenticated Python tools in Windows checkouts and validate attribute changes.
 
 ## 2.2.10 - 2026-10-14
 

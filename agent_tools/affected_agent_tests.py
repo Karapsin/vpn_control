@@ -116,7 +116,7 @@ def is_document(path):
 
 
 def potentially_agent_input(path):
-    return path.startswith(("agent_tools/", "scripts/", ".github/workflows/")) or path in {".github/required-workflows.json", ".codex/config.toml"}
+    return path.startswith(("agent_tools/", "scripts/", ".github/workflows/")) or path in {".github/required-workflows.json", ".codex/config.toml", ".gitattributes"}
 
 
 def is_python_source(path):
