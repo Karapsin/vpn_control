@@ -1,5 +1,8 @@
 import pathlib
+import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -7,6 +10,63 @@ import check_source_whitespace as checker
 
 
 class SourceWhitespaceTest(unittest.TestCase):
+    def test_actual_fast_checks_boundary_preserves_only_authenticated_archives(self):
+        repository = pathlib.Path(__file__).resolve().parents[1]
+        workflow = pathlib.Path(os.environ.get(
+            "SOURCE_WHITESPACE_WORKFLOW", repository / ".github/workflows/fast-checks.yml"))
+        lines = workflow.read_text(encoding="utf-8").splitlines()
+        start = lines.index("      - name: Check whitespace")
+        run = next(i for i in range(start + 1, len(lines))
+                   if lines[i].lstrip().startswith("run:"))
+        command = lines[run].split("run:", 1)[1].strip()
+        if command == "|":
+            body = []
+            for line in lines[run + 1:]:
+                if line and not line.startswith("          "):
+                    break
+                body.append(line[10:] if line else "")
+            command = "\n".join(body)
+        names = tuple(checker.HISTORICAL_BYTE_ARCHIVES)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / "scripts").mkdir()
+            shutil.copy2(repository / "scripts/check_source_whitespace.py",
+                         root / "scripts/check_source_whitespace.py")
+            for name in names:
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((repository / name).read_bytes())
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+
+            def check(expected, path=None):
+                env = dict(os.environ, PATH=str(pathlib.Path(sys.executable).parent)
+                           + os.pathsep + os.environ.get("PATH", os.defpath))
+                result = subprocess.run(["bash", "-c", command], cwd=root, env=env,
+                                        capture_output=True, text=True)
+                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
+                if path is not None:
+                    self.assertIn(path, result.stdout + result.stderr)
+
+            check(0)
+            for name in names:
+                with self.subTest(archive=name):
+                    target = root / name
+                    original = target.read_bytes()
+                    target.write_bytes(original + b"# changed authenticated bytes\n")
+                    check(1, name)
+                    target.write_bytes(original)
+            # Exact bytes at an unlisted path remain ordinary source, as do
+            # both tracked and not-yet-staged source edits.
+            (root / "unlisted.source").write_bytes((root / names[0]).read_bytes())
+            subprocess.run(["git", "add", "unlisted.source"], cwd=root, check=True)
+            check(1, "unlisted.source")
+            (root / "unlisted.source").write_bytes(b"ordinary source\n")
+            (root / "new.py").write_bytes(b"ordinary source \n")
+            check(1, "new.py")
+            (root / "new.py").write_bytes(b"ordinary source\n")
+            check(0)
+
     def test_untracked_source_is_checked_before_staging(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)

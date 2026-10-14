@@ -165,20 +165,7 @@ jobs:
         run: ./scripts/check_docs_hygiene.sh
 
       - name: Check whitespace
-        run: |
-          if git grep -nI -E '[[:blank:]]$' -- \
-            ':!*.png' \
-            ':!*.jpg' \
-            ':!*.jpeg' \
-            ':!*.webp' \
-            ':!*.ico' \
-            ':!*.aar' \
-            ':!*.so' \
-            ':!*.exe' \
-            ':!*.msi' \
-            ':!*.dmg'; then
-            exit 1
-          fi
+        run: python3 scripts/check_source_whitespace.py
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5

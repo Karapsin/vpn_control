@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Harden retained Android JSON and actor regression coverage, and isolate frozen test package imports.
 - Bind isolated checks to loaded runner sources and owned fixtures; derive Android owner admission from verified bundles.
 - Update the physical-batch regression to the verified Android owner source.
+- Preserve authenticated historical source fixtures in CI whitespace checks.
 
 ## 2.2.9 - 2026-10-13
 
