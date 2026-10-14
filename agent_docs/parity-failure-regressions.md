@@ -58,6 +58,16 @@ unexpected commands and retains the poisoned-PATH causal RED/GREEN control.
 The original four fixture bytes/hashes and whole-whitespace failure evidence remain intact.
 Final delivery still requires new content-bound prepush and all five new exact-SHA CI successes.
 
+The next Windows run passed those prerequisites, then its PowerShell5.1 manifest
+oracle failed at `Get-FileHash`. The `pwsh` → Python → `powershell.exe` chain inherits
+PS7 module paths; the exact original competing path was unobserved. The test-only
+repair removes case-insensitive `PSModulePath` from that child environment while
+preserving the parent and PS7 route. Real inert-child environment controls give
+four RED cases on the preserved helper and six GREEN cases on the fix; they stop
+before any PowerShell/hash result and fabricate no success receipt. The unchanged
+209-file hash/count/size/tree oracle remains required in Windows exact-SHA CI.
+Evidence: `.runtime/docs-cleanup-2026-10-14/windows-hash-oracle/`.
+
 Current custody retrieval still promoted historical instructions after prose moves.
 One narrow RAG classification repair demotes archived/retained history for ordinary
 queries and keeps explicit history queries discoverable. The same5-test suite gives

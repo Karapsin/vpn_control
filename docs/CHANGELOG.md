@@ -7,6 +7,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Prefer current agent guidance while retaining explicit historical evidence retrieval.
 - Run the CI whitespace regression without a platform shell dependency.
+- Isolate the Windows PowerShell CI oracle from inherited PowerShell Core module paths.
 
 ## 2.2.10 - 2026-10-14
 

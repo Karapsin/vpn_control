@@ -8,7 +8,8 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+from unittest import mock
 from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -494,9 +495,15 @@ class WindowsHashtableSumTest(unittest.TestCase):
             (root / "count.ps1").write_text(WindowsHashtableSumTest.MANIFEST_ARRAY_COUNT, encoding="utf-8")
             (root / "iteration.ps1").write_text(WindowsHashtableSumTest.MANIFEST_ARRAY_ITERATION, encoding="utf-8")
             (root / "control.ps1").write_text(WindowsHashtableSumTest.MANIFEST_ARRAY_CONTROL, encoding="utf-8")
+            child_env = dict(os.environ)
+            if PureWindowsPath(CLEANUP_POWERSHELL).name.lower() == "powershell.exe":
+                # pwsh -> Python -> Windows PowerShell retains the Core module
+                # path. Let this 5.1 child reconstruct its own compatible paths.
+                child_env = {key: value for key, value in child_env.items()
+                             if key.upper() != "PSMODULEPATH"}
             completed = subprocess.run(
                 [CLEANUP_POWERSHELL, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(root / "control.ps1"), "-Windows51", str(int(windows51))],
-                capture_output=True, text=True, timeout=20,
+                capture_output=True, text=True, timeout=20, env=child_env,
             )
             print(completed.stdout, end="")
             if completed.returncode != 0:
@@ -505,6 +512,53 @@ class WindowsHashtableSumTest(unittest.TestCase):
             if summary["pass"] != 7 or summary["skip"] != 0 or summary["nativeActions"] != 0:
                 raise AssertionError(summary)
             return summary
+
+    def test_manifest_array_windows51_child_rebuilds_module_path_only(self):
+        class LaunchObserved(Exception):
+            pass
+
+        real_run = subprocess.run
+        observer = (
+            "import os,sys,json;print(json.dumps({"
+            "'argv':sys.argv[1:],"
+            "'modulePaths':{k:v for k,v in os.environ.items() if k.upper()=='PSMODULEPATH'},"
+            "'sentinel':os.environ.get('VPN_FIXTURE_ENV_SENTINEL')}))"
+        )
+        parent = {key: value for key, value in os.environ.items()
+                  if key.upper() != "PSMODULEPATH"}
+        for executable, windows51 in ((r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", False),
+                                      (r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", True),
+                                      (r"C:\Program Files\PowerShell\7\pwsh.exe", False)):
+            for key in ("PSModulePath", "PsMoDuLePaTh"):
+                with self.subTest(executable=executable, key=key, windows51=windows51):
+                    def observe_launch(argv, **options):
+                        self.assertEqual(argv[:5], [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-File"])
+                        self.assertEqual(argv[6:], ["-Windows51", str(int(windows51))])
+                        self.assertTrue(Path(argv[5]).is_file())
+                        # Execute an inert child using the actual launch env.
+                        # Stop before PowerShell; never author hash/pass receipts.
+                        observed = real_run([sys.executable, "-c", observer, *argv],
+                                            env=options.get("env"), capture_output=True,
+                                            text=True, timeout=20)
+                        self.assertEqual(observed.returncode, 0, observed.stderr)
+                        raise LaunchObserved(observed.stdout)
+
+                    inherited = dict(parent, VPN_FIXTURE_ENV_SENTINEL="owned-observer")
+                    inherited[key] = r"C:\Program Files\PowerShell\7\Modules"
+                    with mock.patch.dict(os.environ, inherited, clear=True):
+                        unchanged_parent = dict(os.environ)
+                        with mock.patch.dict(globals(), {"CLEANUP_POWERSHELL": executable}), mock.patch.object(subprocess, "run", observe_launch):
+                            with self.assertRaises(LaunchObserved) as caught:
+                                self._run_manifest_array_control(windows51=windows51)
+                        self.assertEqual(dict(os.environ), unchanged_parent)
+                    observed = json.loads(str(caught.exception))
+                    self.assertEqual(observed["argv"][0], executable)
+                    self.assertEqual(observed["sentinel"], "owned-observer")
+                    if executable.endswith("powershell.exe"):
+                        self.assertEqual(observed["modulePaths"], {})
+                    else:
+                        self.assertEqual(list(observed["modulePaths"].values()),
+                                         [r"C:\Program Files\PowerShell\7\Modules"])
 
     @unittest.skipUnless(CLEANUP_POWERSHELL, "requires actual PowerShell and real filesystem/hash iteration")
     def test_actual_manifest_array_assignment_preserves_full_hash_iteration(self):
