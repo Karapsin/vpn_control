@@ -16,7 +16,7 @@ from typing import Any, Sequence
 DEFAULT_INDEX_DIR = ".rag_index"
 DEFAULT_MAX_CHARS = 2400
 DEFAULT_OVERLAP_CHARS = 250
-INDEX_VERSION = 1
+INDEX_VERSION = 2
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 TOKEN_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
 STOPWORDS = {
@@ -409,6 +409,12 @@ def _metadata_boost(question: str, chunk: DocChunk) -> float:
     heading_tokens = set(tokenize(chunk.heading))
     boost = min(0.15, 0.03 * len(tokens & path_tokens))
     boost += min(0.15, 0.03 * len(tokens & heading_tokens))
+    if chunk.source_type == "agent_history":
+        # Keep preserved evidence searchable without promoting old action headings
+        # over current guidance. Explicit history queries retain their normal route.
+        if tokens & {"history", "historical", "archive", "archived"}:
+            return boost + 0.35
+        return boost - 0.65
     agent_tokens = {"agent", "mcp", "rag", "workflow", "check", "release", "development"}
     if tokens & agent_tokens:
         if chunk.source_type == "agent_tools":
@@ -425,6 +431,10 @@ def _search_text(chunk: DocChunk) -> str:
 
 
 def _source_type(path: str) -> str:
+    if path.startswith("agent_docs/archive/") or (
+        path.startswith("agent_docs/") and path.endswith("-history.md")
+    ):
+        return "agent_history"
     if path.startswith("agent_docs/") or path == "AGENTS.md":
         return "agent_docs"
     if path.startswith("agent_tools/"):

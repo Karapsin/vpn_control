@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Prefer current agent guidance while retaining explicit historical evidence retrieval.
+
 ## 2.2.10 - 2026-10-14
 
 - Keep Windows fixture dispatch inputs compatible with the existing update workflow checks.
