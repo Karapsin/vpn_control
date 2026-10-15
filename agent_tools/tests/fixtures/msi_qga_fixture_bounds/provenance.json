@@ -1,0 +1,17 @@
+{
+  "kind": "exact-unfixed-native148-local-harness",
+  "sourcePath": "agent_tools/tests/test_windows_msi_base_prepare.py",
+  "sourceBytes": 182555,
+  "sourceSha256": "3d12e15989a804b23cc322c2482c5d5ff66a38e1146449edde8548ef5e41b73b",
+  "helperStartLine": 153,
+  "helperEndLine": 206,
+  "helperBytes": 2837,
+  "helperSha256": "ffeed8ba83fe80a92dc87a4f3d1c3168334a2bc81d8464c430a204fabdf82f8c",
+  "readerStartLine": 175,
+  "readerEndLine": 179,
+  "readerBytes": 182,
+  "readerSha256": "142b4f66c31007ee273bbd1f04781c52c21302aeaa40638e747dd9359c41aa75",
+  "extraction": "ast.get_source_segment(exact full UTF-8 source,node) plus one LF; executable component bytes unchanged",
+  "original308Cause": "unproven",
+  "nativeLinuxAcceptance": "pending"
+}

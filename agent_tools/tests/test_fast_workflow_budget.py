@@ -18,6 +18,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -98,13 +99,40 @@ def workflow_limits(source):
         raise ValueError('Unknown workflow deadline structure')
     step = []
     tail = []
+    retention_steps = 0
     for line in body[step_starts[0] + 1:]:
         if line.startswith('      - '):
             break
         step.append(line)
-    for line in body[step_starts[0] + 1:]:
+    for tail_index in range(step_starts[0] + 1, len(body)):
+        line = body[tail_index]
         if line.startswith('      - name: '):
-            tail.append(line.removeprefix('      - name: '))
+            name = line.removeprefix('      - name: ')
+            if name == 'Retain public agent shard evidence':
+                retention_steps += 1
+                if retention_steps != 1:
+                    raise ValueError('Duplicate public retention step')
+                end = next((index for index in range(tail_index + 1, len(body))
+                            if body[index].startswith('      - ')), len(body))
+                actual = [item for item in body[tail_index:end] if item.strip()]
+                expected = '''      - name: Retain public agent shard evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-0
+          path: |
+            .rag_index/agent-ci-evidence-0/plan.json
+            .rag_index/agent-ci-evidence-0/events.jsonl
+            .rag_index/agent-ci-evidence-0/summary.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7'''.splitlines()
+                if actual != expected:
+                    raise ValueError('Unexpected public retention step')
+                continue
+            tail.append(name)
+    if retention_steps != (1 if source == CURRENT else 0):
+        raise ValueError('Required public retention step unavailable')
     limits = [int(match[1]) for line in step
               if (match := re.fullmatch(r'        timeout-minutes: ([1-9][0-9]*)', line))]
     if (len(limits) > 1 or limits and not 1 <= limits[0] <= 360
@@ -286,6 +314,34 @@ class FastWorkflowBudgetTests(unittest.TestCase):
         self.assertEqual(before['tailSteps'], current['tailSteps'])
         self.assertIn('Run fast unit tests', current['tailSteps'])
         self.assertIn('Verify Android instrumentation signature guard', current['tailSteps'])
+
+    def test_preserved_tail_reader_reproduces_the_same_assertion_then_current_passes(self):
+        folder = Path(__file__).with_name('fixtures') / 'agent_ci_shards'
+        metadata = json.loads((folder / 'provenance.json').read_bytes())
+        row = next(item for item in metadata['files'] if item['path'] == 'budget.before.source')
+        raw = (folder / 'budget.before.source').read_bytes()
+        self.assertEqual(row['sourceBytes'], len(raw))
+        self.assertEqual(row['sourceSha256'], hashlib.sha256(raw).hexdigest())
+        functions = [node for node in ast.parse(raw).body if isinstance(node, ast.FunctionDef)
+                     and node.name == 'workflow_limits']
+        self.assertEqual(1, len(functions))
+        namespace = dict(globals())
+        exec(compile(ast.Module(body=functions, type_ignores=[]), str(folder / 'budget.before.source'), 'exec'), namespace)
+        case = type(self)('test_existing_build_and_validation_tail_stays_after_agent_phase')
+        legacy = unittest.TestResult()
+        with mock.patch.dict(globals(), {'workflow_limits': namespace['workflow_limits']}):
+            case.run(legacy)
+        self.assertEqual(1, legacy.testsRun)
+        self.assertEqual(1, len(legacy.failures))
+        self.assertEqual([], legacy.errors)
+        self.assertIn('Retain public agent shard evidence', legacy.failures[0][1])
+        current = unittest.TestResult()
+        type(self)('test_existing_build_and_validation_tail_stays_after_agent_phase').run(current)
+        self.assertEqual(1, current.testsRun)
+        self.assertTrue(current.wasSuccessful(), current.failures + current.errors)
+        print(json.dumps({'event': 'budget-retention-causal', 'beforeSourceSha256': row['sourceSha256'],
+                          'samePositive': 'test_existing_build_and_validation_tail_stays_after_agent_phase',
+                          'beforeFailures': len(legacy.failures), 'currentFailures': len(current.failures)}, sort_keys=True))
 
 
 if __name__ == '__main__':

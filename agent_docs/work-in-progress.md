@@ -187,6 +187,105 @@ preserved and is not replayed. Final metadata, a new source freeze, fresh tool a
 staging qualification, managed prepush and all five exact-SHA workflows follow
 the runner fixture correction. No prior VM or connection is restored.
 
+The next delivery, `308172ff07e7246a02129ec436193ed9bc81f44e`, passed
+all 17 managed prepush checks (6,702 agent tests, 187 skips, zero failures/errors)
+and was pushed with a clean worktree. Windows then passed the native core,
+collector, loader bootstrap and fingerprint groups, including the actual
+Python 3.12.10 creation/change clock RED/GREEN discriminator. The historical
+archive group passed eight cases but errored in two retained-context controls:
+their POSIX-only dependency import legitimately leaves `closure.base=None` on
+Windows, before the intended source-mismatch predicate can run. The complete
+original Windows log and 64 exact commit beforeimages remain in
+`.runtime/mcp-ci-308172ff-evidence-2026-10-15/windows-failure/`.
+
+The same two original methods reproduced those exact errors under only that
+missing-dependency state on Python 3.12.15 and 3.14.3. Supplying the actual current
+producer for each negative case preserves its real filename, mismatched full
+source hash and strict `package-fixed-source` assertion; its original reference
+and bytes are restored on success or exception. A new routine control runs both
+cases from the unavailable dependency state and checks restoration. The same two
+assertions and all eleven module controls then passed on both runtimes without
+skips or leaks. Production code, all historical source/authority pins and finite
+dependency scopes remain unchanged. Local causal evidence is in that failure
+packet's `local-causal-v1/`; its private harness syntax error is retained separately
+and is not project RED. The original remote runs remain untouched. Fresh final
+metadata, managed validation and all five workflows for the next exact pushed SHA
+remain required; the failed Windows run is never relabeled successful.
+
+Android, Linux and macOS subsequently passed that same SHA. macOS reran the
+original resource-monitor scenario twice, with all fifteen checks passing each
+time. Fast Checks exceeded its explicit fifty-minute agent-test phase after the
+27-test serial close gate. Its complete log has no terminal worker report or
+per-test progress identifying the slow or stalled test, so the cause remains
+unknown. All five original terminal results, annotations, exact beforeimages and
+the source-derived serial topology remain in
+`.runtime/mcp-ci-308172ff-evidence-2026-10-15/`; this SHA is a failed delivery.
+
+The follow-up gives only explicit hosted CI calls two deterministic complementary
+shards in separate checkouts. Complete global selection and unknown-dependency
+refusals precede partitioning; default managed checks, include selection, runner
+isolation pins and the existing time bounds remain unchanged. A final job requires
+both current-attempt parents to succeed and verifies source-bound complete,
+disjoint coverage. Bounded public progress omits private identities, reasons and
+raw output; missing closure, source drift, cancellation and incomplete evidence
+cannot produce a successful receipt. The retained serial selector and original
+workflow support a physical scaled workload counterfactual. This demonstrates
+partition throughput, not the unobserved cause of the hosted timeout.
+
+Static inspection also found an unbounded EOF receive loop and teardown in the
+inert local QGA test fixture. The repair adds absolute work and cleanup deadlines,
+EOF and line bounds, and cleanup through exact owned handles. The original
+28-case native method and production dispatcher remain unchanged. Its preserved
+reader regression requires an actual physical EOF witness before the completion
+watchdog, distinguishing causal failure from startup delay. Original helper
+beforeimages and independent reviews remain in the same packet's
+`native148-bounds/`. On both Python 3.12.15 and 3.14.3 the preserved reader produced
+the sole expected failure after verified kernel EOF, all ten fixed controls
+passed without skips, and the original 105-test module passed with eleven
+platform skips. Every owned child and log handle closed; source closing matched.
+
+The first CI-focused run exposed two test issues: an undeclared optional YAML
+import and an old tail oracle counting the new public artifact step as build
+work. Exact failed source and logs remain in `fast-timeout/shard-repair/focused-v1/`.
+The corrected strict standard-library reader runs with site packages disabled;
+the tail reader admits only the entire exact public uploader block. Actual
+preserved-source RED/current-source GREEN pairs cover both failures without
+changing the original validation assertions. Both runtimes passed 53 focused
+checks, including the serial deadline RED/two-checkout GREEN, cancellation,
+privacy, unknown dependencies and current-attempt coverage. The selector and
+runner input slice also passed 98 checks per runtime, and workflow syntax passed.
+All source brackets and owned resources closed. Evidence is in `focused-v2/` and
+the execution packet's `final-integration-v14/`.
+
+Native Linux acceptance, final metadata, fresh managed prepush and all five
+workflows for the next exact pushed SHA remain required. No old VM or connection
+is restored; the user's identified client remains untouched.
+
+Managed prepush v14 stopped at its first whitespace check because the workflow
+had one extra blank line at EOF. No test worker started; the SDK closed with
+unchanged source. The complete failed check and exact workflow remain in
+`prepush-final-v14/`. The same check reproduced RED before removing that single
+blank line and passed GREEN afterward. Fresh final receipts follow this edit.
+
+Managed prepush v15 found four failures in the old workflow reader's single-job
+assumption. Its 3,414 partial observations comprise 3,399 successes, eleven skips
+and those four failures; no final unittest aggregate or passing receipt exists.
+The owned runner was cancelled once and fully closed before edits, with unchanged
+source. Its final report, partial timings, original sources and closing evidence
+remain in `prepush-final-v15/`. A static review also identified the discovery
+fixture's missing copy of the new evidence helper.
+
+The original two test files then reproduced the exact five failures on Python
+3.12.15 and 3.14.3; the original compiler-order counterfactual still passed.
+The clean causal evidence and full beforeimages remain in
+`.runtime/mcp-fast-interpreter-order-failure-2026-10-15/red-v2/`.
+An earlier harness cache-prefix failure is retained separately and is not project
+RED. The fixes scope the reader to explicit jobs, reject duplicate local labels,
+admit only the exact two first-shard suffixes and complete public uploader, and
+copy the one missing helper. Original action equality and source guards remain
+intact; checks now also cover preparation in both shard jobs. Fresh focused GREEN,
+final managed validation and all five exact-SHA workflows follow this checkpoint.
+
 The current repair plan and copyable prompt are:
 
 - `.runtime/mcp-repair-handoff-2026-10-15/plan.md`

@@ -155,6 +155,15 @@ HEAD, omit consumers, or use an unrequested full-suite fallback. Full selector,
 parallelism, output-custody and receipt rules remain in
 [the test procedure](../agent_docs/tools/lifecycle-and-api.md#tests).
 
+Fast Checks uses two fresh Ubuntu checkouts with explicit paired
+`--shard-index 0|1 --shard-count 2` arguments after complete global selection.
+Its optional `--ci-evidence-dir` records bounded public progress and requires
+`--run`, an explicit shard and a new output directory. Pooled worker evidence
+requires POSIX; the final coverage job verifies both successful current-attempt
+receipts and their exact disjoint union. Private worker output stays local.
+The default managed checks and Windows `--include` retain their existing paths;
+managed prepush writes its own content-bound receipt.
+
 ## Recipe Index
 
 | Need | Focused procedure |

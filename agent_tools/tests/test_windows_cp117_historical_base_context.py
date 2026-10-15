@@ -71,6 +71,22 @@ def assert_current_package_body(case, family):
 
 
 @contextmanager
+def current_base_prerequisite(case, closure):
+    """Supply the real mismatched producer for an inert source-refusal case."""
+    path = Path(current_base.__file__).resolve()
+    case.assertEqual(Path(__file__).resolve().parents[1] / 'windows_msi_base_prepare.py', path)
+    raw = path.read_bytes()
+    case.assertNotEqual(BASE_SHA, hashlib.sha256(raw).hexdigest())
+    original_reference = closure.base
+    try:
+        with patch.object(closure, 'base', current_base):
+            yield
+    finally:
+        case.assertIs(original_reference, closure.base)
+        case.assertEqual(raw, path.read_bytes())
+
+
+@contextmanager
 def observed_source_descriptors(path):
     """Observe real opens in this loader namespace; stdlib OS calls stay intact."""
     from agent_tools import source_module_loader
@@ -109,8 +125,10 @@ class HistoricalBaseContextTests(unittest.TestCase):
                                 for name, value in current_namespace.items()))
 
     def test_retained_original_context_reproduces_the_package_source_refusal(self):
-        with self.assertRaisesRegex(ValueError, '^package-fixed-source$'):
-            assert_installed_body(self, before_context())
+        closure = context.diagnostic().owner.guest.recovery.authority.closure
+        with current_base_prerequisite(self, closure):
+            with self.assertRaisesRegex(ValueError, '^package-fixed-source$'):
+                assert_installed_body(self, before_context())
 
     def test_current_producer_keeps_its_explicit_historical_package_scope(self):
         closure = current_installed.precise.owner.guest.recovery.authority.closure
@@ -129,8 +147,39 @@ class HistoricalBaseContextTests(unittest.TestCase):
                                 for name, value in current_namespace.items()))
 
     def test_retained_current_package_context_refuses_the_incomplete_family(self):
-        with self.assertRaisesRegex(ValueError, '^package-fixed-source$'):
-            assert_current_package_body(self, before_context())
+        closure = current_installed.precise.owner.guest.recovery.authority.closure
+        with current_base_prerequisite(self, closure):
+            with self.assertRaisesRegex(ValueError, '^package-fixed-source$'):
+                assert_current_package_body(self, before_context())
+
+    def test_source_refusals_restore_an_unavailable_coordinator_dependency(self):
+        cases = (
+            ('test_retained_original_context_reproduces_the_package_source_refusal',
+             context.diagnostic().owner.guest.recovery.authority.closure),
+            ('test_retained_current_package_context_refuses_the_incomplete_family',
+             current_installed.precise.owner.guest.recovery.authority.closure),
+        )
+        for method, closure in cases:
+            with self.subTest(method=method):
+                original_reference = closure.base
+                try:
+                    # Windows imports legitimately leave this POSIX coordinator
+                    # dependency unavailable. No global platform state changes.
+                    with patch.object(closure, 'base', None):
+                        result = unittest.TestResult()
+                        unittest.TestSuite([type(self)(method)]).run(result)
+                        self.assertEqual(1, result.testsRun)
+                        self.assertEqual([], result.errors)
+                        self.assertEqual([], result.failures)
+                        self.assertEqual([], result.skipped)
+                        self.assertIsNone(closure.base)
+                        with self.assertRaisesRegex(RuntimeError, '^inert prerequisite failure$'):
+                            with current_base_prerequisite(self, closure):
+                                self.assertIs(current_base, closure.base)
+                                raise RuntimeError('inert prerequisite failure')
+                        self.assertIsNone(closure.base)
+                finally:
+                    self.assertIs(original_reference, closure.base)
 
     def test_archive_keeps_actual_named_file_and_function_origin(self):
         raw = retained_sources()

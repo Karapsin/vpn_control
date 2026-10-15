@@ -1,0 +1,54 @@
+def _run_dispatch_absent_program(replies, *, program=base._DIAGNOSTIC):
+    """Execute the embedded absent-dispatch observer against bounded QGA replies."""
+    if not Path("/proc/self/stat").is_file():
+        return None
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        socket_path = str(root / "qga.sock")
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(socket_path)
+        server.listen(1)
+        ticks = Path("/proc/self/stat").read_text().split()[21]
+        stage = root / "windows-cp117" / "windows-msi-base" / CORR
+        stage.mkdir(mode=0o700, parents=True)
+        for parent in (root / "windows-cp117", root / "windows-cp117" / "windows-msi-base"):
+            parent.chmod(0o700)
+        binding = {"socketPath": socket_path, "pid": os.getpid(), "startTicks": int(ticks),
+                   "sourceSha": SOURCE, "sourceFingerprint": PAIR["sourceFingerprint"],
+                   "receiptArtifactId": ARTIFACT, "baseArtifactId": ARTIFACT,
+                   "targetArtifactId": ARTIFACT, "commandSha256": "0" * 64,
+                   "expectedSid": "S-1-5-21-1-2-3-1002"}
+        (stage / "binding.json").write_text(json.dumps(binding))
+
+        def receive(connection):
+            data = bytearray()
+            while not data.endswith(b"\n"):
+                data.extend(connection.recv(4096))
+            return bytes(data)
+
+        def qga_replies():
+            for expected, reply in replies:
+                connection, _ = server.accept()
+                with connection:
+                    sync = json.loads(receive(connection)[1:])
+                    connection.sendall(b"\xff" + json.dumps({"return": sync["arguments"]["id"]}).encode() + b"\n")
+                    request = json.loads(receive(connection))
+                    if request["execute"] != expected:
+                        raise AssertionError((request["execute"], expected))
+                    connection.sendall(json.dumps({"return": reply}).encode() + b"\n")
+
+        worker = threading.Thread(target=qga_replies)
+        worker.start()
+        try:
+            command = [__import__("sys").executable, "-c", program, str(root), "windows-cp117", CORR,
+                       socket_path, str(os.getpid()), ticks, SOURCE, PAIR["sourceFingerprint"], ARTIFACT,
+                       ARTIFACT, ARTIFACT, "0" * 64, "S-1-5-21-1-2-3-1002"]
+            completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        finally:
+            worker.join(timeout=5)
+            server.close()
+        if worker.is_alive():
+            raise AssertionError("QGA observer did not finish")
+        if completed.returncode != 0:
+            raise AssertionError(completed.stderr.decode())
+        return json.loads(completed.stdout)

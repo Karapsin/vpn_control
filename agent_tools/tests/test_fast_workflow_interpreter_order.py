@@ -36,18 +36,65 @@ PROFILE_FUNCTIONS = {
 }
 
 
-def steps(source):
+def steps(source, job="fast-checks"):
+    sections = list(re.finditer(r"^jobs:\s*$", source, re.MULTILINE))
+    if len(sections) != 1:
+        raise AssertionError("Expected one workflow jobs mapping")
+    source = source[sections[0].end():]
+    jobs = list(re.finditer(r"^  ([A-Za-z_][A-Za-z0-9_-]*):\s*$", source, re.MULTILINE))
+    selected = [index for index, match in enumerate(jobs) if match.group(1) == job]
+    if len(selected) != 1:
+        raise AssertionError("Expected one workflow job: " + job)
+    index = selected[0]
+    source = source[jobs[index].end():jobs[index + 1].start() if index + 1 < len(jobs) else len(source)]
     matches = list(re.finditer(r"^      - name: (.+)$", source, re.MULTILINE))
+    labels = [match.group(1) for match in matches]
+    if len(labels) != len(set(labels)):
+        raise AssertionError("Duplicate workflow step in job: " + job)
     return [(match.group(1), source[match.start():matches[index + 1].start()
                                    if index + 1 < len(matches) else len(source)])
             for index, match in enumerate(matches)]
 
 
-def position(source, name):
-    names = [label for label, _ in steps(source)]
+def position(source, name, job="fast-checks"):
+    names = [label for label, _ in steps(source, job)]
     if names.count(name) != 1:
         raise AssertionError("Expected one workflow step: " + name)
     return names.index(name)
+
+
+def original_agent_step(body):
+    suffix = " --shard-index 0 --shard-count 2 --ci-evidence-dir .rag_index/agent-ci-evidence-0"
+    original = []
+    commands = 0
+    for line in body.splitlines(keepends=True):
+        content = line.rstrip("\r\n")
+        if content.lstrip().startswith("python agent_tools/affected_agent_tests.py "):
+            if not content.endswith(suffix):
+                raise AssertionError("Unknown first-shard command change")
+            commands += 1
+            line = content[:-len(suffix)] + line[len(content):]
+        original.append(line)
+    if commands != 2:
+        raise AssertionError("Expected both original affected-test commands")
+    return "".join(original)
+
+
+def admit_public_uploader(body):
+    expected = '''      - name: Retain public agent shard evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-0
+          path: |
+            .rag_index/agent-ci-evidence-0/plan.json
+            .rag_index/agent-ci-evidence-0/events.jsonl
+            .rag_index/agent-ci-evidence-0/summary.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7'''
+    if body.strip() != expected.strip():
+        raise AssertionError("Unknown public evidence retention action")
 
 
 def before_workflow():
@@ -146,27 +193,37 @@ class WorkflowInterpreterOrderTests(unittest.TestCase):
     def test_reordering_retains_every_original_action_and_check(self):
         original = dict(steps(before_workflow()))
         current = dict(steps(self.workflow.read_text()))
-        self.assertEqual(set(original) | {"Install qemu-img for agent fixtures"}, set(current))
+        self.assertEqual(set(original) | {"Install qemu-img for agent fixtures", "Retain public agent shard evidence"}, set(current))
+        admit_public_uploader(current["Retain public agent shard evidence"])
         for name, body in original.items():
-            self.assertEqual(body.strip(), current[name].strip(), name)
+            actual = original_agent_step(current[name]) if name == "Test affected agent tools" else current[name]
+            self.assertEqual(body.strip(), actual.strip(), name)
 
     def test_prepared_runtime_and_dependencies_precede_all_python_hygiene(self):
         source = self.workflow.read_text()
-        prepared = position(source, "Set up Python 3.12")
-        installed = position(source, "Install agent tool dependencies")
-        self.assertLess(prepared, installed)
-        for name in ("Check release hygiene", "Check documentation hygiene", "Check whitespace",
-                     "Test affected agent tools"):
-            self.assertLess(installed, position(source, name), name)
-        action = dict(steps(source))["Set up Python 3.12"]
-        self.assertIn("uses: actions/setup-python@v5", action)
-        self.assertIn('python-version: "3.12"', action)
+        for job in ("fast-checks", "agent-tests-shard-1"):
+            prepared = position(source, "Set up Python 3.12", job)
+            installed = position(source, "Install agent tool dependencies", job)
+            self.assertLess(prepared, installed)
+            names = ("Check release hygiene", "Check documentation hygiene", "Check whitespace",
+                     "Test affected agent tools") if job == "fast-checks" else ("Test affected agent tools",)
+            for name in names:
+                self.assertLess(installed, position(source, name, job), name)
+            action = dict(steps(source, job))["Set up Python 3.12"]
+            self.assertIn("uses: actions/setup-python@v5", action)
+            self.assertIn('python-version: "3.12"', action)
+        self.assertLess(position(source, "Set up Python 3.12", "agent-test-coverage"),
+                        position(source, "Require actual complete disjoint shard coverage", "agent-test-coverage"))
+        coverage_action = dict(steps(source, "agent-test-coverage"))["Set up Python 3.12"]
+        self.assertIn("uses: actions/setup-python@v5", coverage_action)
+        self.assertIn('python-version: "3.12"', coverage_action)
 
     def test_qemu_img_is_installed_before_actual_agent_fixture_selection(self):
         source = self.workflow.read_text()
         name = "Install qemu-img for agent fixtures"
-        self.assertLess(position(source, name), position(source, "Test affected agent tools"))
-        self.assertIn("sudo apt-get install -y --no-install-recommends qemu-utils", dict(steps(source))[name])
+        for job in ("fast-checks", "agent-tests-shard-1"):
+            self.assertLess(position(source, name, job), position(source, "Test affected agent tools", job))
+            self.assertIn("sudo apt-get install -y --no-install-recommends qemu-utils", dict(steps(source, job))[name])
 
     def test_actual_guard_accepts_producer_compiled_by_prepared_runtime(self):
         record = actual_guard_for_order(self.workflow.read_text())
@@ -188,6 +245,21 @@ class WorkflowInterpreterOrderTests(unittest.TestCase):
         self.assertEqual(1, len(result.failures))
         self.assertIn("Automatic transport executing source changed.", result.failures[0][1])
         self.assertIn("'accepted' != 'refused'", result.failures[0][1])
+
+    def test_job_boundaries_duplicates_and_unapproved_action_changes_refuse(self):
+        source = self.workflow.read_text()
+        self.assertEqual(1, sum(name == "Set up Python 3.12" for name, body in steps(source)))
+        with self.assertRaisesRegex(AssertionError, "Expected one workflow job"):
+            steps(source, "missing-job")
+        with self.assertRaisesRegex(AssertionError, "Expected one workflow job"):
+            steps(source.replace("  agent-tests-shard-1:", "  fast-checks:", 1))
+        with self.assertRaisesRegex(AssertionError, "Duplicate workflow step"):
+            steps(source.replace("      - name: Check release hygiene", "      - name: Set up Python 3.12", 1))
+        current = dict(steps(source))
+        with self.assertRaisesRegex(AssertionError, "Unknown first-shard command"):
+            original_agent_step(current["Test affected agent tools"].replace("--shard-index 0", "--shard-index 1", 1))
+        with self.assertRaisesRegex(AssertionError, "Unknown public evidence"):
+            admit_public_uploader(current["Retain public agent shard evidence"].replace("/plan.json", "/stdout.txt", 1))
 
 
 if __name__ == "__main__":

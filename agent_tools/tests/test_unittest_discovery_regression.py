@@ -44,7 +44,7 @@ class Case(unittest.TestCase):
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text)
-            for name in ("affected_agent_tests.py", "affected_agent_test_dependencies.json", "agent_test_runner.py"):
+            for name in ("affected_agent_tests.py", "affected_agent_test_dependencies.json", "agent_test_runner.py", "agent_ci_evidence.py"):
                 (root / "agent_tools" / name).write_bytes((ROOT / "agent_tools" / name).read_bytes())
 
             def run(command, env=None):

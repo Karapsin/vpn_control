@@ -65,6 +65,16 @@ class Selection:
         return result
 
 
+def shard_selection(selection, index, count):
+    """Partition the complete already-validated plan, never dependency discovery."""
+    if type(index) is not int or type(count) is not int or count != 2 or index not in (0, 1):
+        raise SelectionError("CI shards require index 0 or 1 and count 2")
+    modules = tuple(sorted(selection.modules))
+    if len(modules) != len(set(modules)):
+        raise SelectionError("Duplicate global test module")
+    return Selection(selection.baseline, selection.changed, modules[index::count], selection.total_modules)
+
+
 def git(root, *args):
     result = subprocess.run(["git", "-C", str(root), *args], capture_output=True)
     if result.returncode:
@@ -715,7 +725,15 @@ def main(argv=None):
     parser.add_argument("--audit", action="store_true", help="Intentional full suite audit")
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--include", nargs="+", help="Run only these existing CI test IDs when their agent module is affected; explicit script IDs remain product checks")
+    parser.add_argument("--shard-index", type=int, help="Explicit hosted CI bucket, 0 or 1")
+    parser.add_argument("--shard-count", type=int, help="Explicit hosted CI bucket count, currently 2")
+    parser.add_argument("--ci-evidence-dir", type=Path, help="New public CI evidence directory; requires explicit shard and --run")
     args = parser.parse_args(argv)
+    sharded = args.shard_index is not None or args.shard_count is not None
+    if sharded and (args.shard_index not in (0, 1) or args.shard_count != 2 or args.include is not None):
+        parser.error("Both shard arguments require count 2, index 0 or 1, and no --include")
+    if args.ci_evidence_dir is not None and (not sharded or not args.run):
+        parser.error("Public CI evidence requires explicit shards and --run")
     try:
         if hashlib.sha256(Path(__file__).read_bytes()).hexdigest() != LOADED_SELECTOR_SOURCE_SHA256 or hashlib.sha256(DEPENDENCY_MANIFEST.read_bytes()).hexdigest() != LOADED_DEPENDENCY_MANIFEST_SHA256:
             raise SelectionError("Agent test selector or dependency metadata changed after loading")
@@ -725,7 +743,30 @@ def main(argv=None):
         print(json.dumps({"ok": False, "selectionError": str(error)}), file=sys.stderr)
         return 2
     print(json.dumps(selection.as_dict(), indent=2), flush=True)
+    global_selection = selection
+    if sharded:
+        selection = shard_selection(selection, args.shard_index, args.shard_count)
+        print(json.dumps({"shardIndex": args.shard_index, "shardCount": args.shard_count,
+                          "assignedModules": list(selection.modules)}, sort_keys=True), flush=True)
     if args.run:
+        evidence = None
+        if args.ci_evidence_dir is not None:
+            # The explicit CI branch alone needs the public projector. Existing
+            # MCP/default/include dispatch and copied-source closures stay exact.
+            if __package__:
+                from .agent_ci_evidence import Evidence, plan_value
+            else:
+                from agent_ci_evidence import Evidence, plan_value
+            try:
+                head = git(args.root, "rev-parse", "HEAD").decode().strip()
+                public_plan = plan_value(baseline=selection.baseline, head=head, fingerprint=fingerprint,
+                                         modules=list(global_selection.modules), index=args.shard_index,
+                                         run_id=os.environ.get("GITHUB_RUN_ID", "local"),
+                                         attempt=os.environ.get("GITHUB_RUN_ATTEMPT", "1"))
+                evidence = Evidence(args.ci_evidence_dir, public_plan)
+            except (OSError, ValueError, KeyError, TypeError):
+                print("Public CI evidence admission refused", file=sys.stderr)
+                return 2
         python = test_interpreter(args.root)
         commands = selection.commands(python)
         if args.include is not None:
@@ -734,16 +775,32 @@ def main(argv=None):
             commands = [[python, "-m", "unittest", *ids]] if ids else []
         if snapshot(args.root) != fingerprint:
             print("Repository changed after selection; regenerate the test plan", file=sys.stderr)
+            if evidence is not None:
+                evidence.finish(2, False)
             return 2
         for command in commands:
+            modules = list(command[3:])
             if args.include is None:
                 command = prepare_run(args.root, command, fingerprint)
             else:
                 command = serial_command(args.root, command, fingerprint)
-            result = subprocess.run(command, cwd=args.root)
-            if result.returncode:
-                return result.returncode
-        if snapshot(args.root) != fingerprint:
+            if evidence is None:
+                code = subprocess.run(command, cwd=args.root).returncode
+            else:
+                report_dir = Path(command[command.index("--report-dir") + 1]) if "--report-dir" in command else None
+                try:
+                    code = evidence.run(command, args.root, modules, report_dir)
+                except (OSError, ValueError, KeyError, TypeError):
+                    print("Public CI evidence collection failed", file=sys.stderr)
+                    code = 2
+            if code:
+                if evidence is not None:
+                    evidence.finish(code, snapshot(args.root) == fingerprint)
+                return code
+        unchanged = snapshot(args.root) == fingerprint
+        if evidence is not None and not evidence.finish(0, unchanged):
+            return 2
+        if not unchanged:
             print("Repository changed during selected tests; no valid completed check", file=sys.stderr)
             return 2
     return 0

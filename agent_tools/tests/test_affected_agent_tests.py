@@ -367,7 +367,7 @@ class WorkflowExecutionTests(unittest.TestCase):
         self.workflow_source=os.environ.get("AGENT_SELECTION_WORKFLOW_SOURCE")
         GitSelectionTests.setUp(self)
         tools=Path(__file__).resolve().parents[1]
-        for name in ('affected_agent_tests.py','affected_agent_test_dependencies.json','agent_test_runner.py'):
+        for name in ('affected_agent_tests.py','affected_agent_test_dependencies.json','agent_test_runner.py','agent_ci_evidence.py'):
             shutil.copy2(tools/name,self.root/'agent_tools'/name)
         self.write('.gitignore','.rag_index/\n__pycache__/\n')
         self.write('agent_tools/tests/test_leaf.py','import unittest\nfrom agent_tools import leaf\nclass Case(unittest.TestCase):\n def test_value(self): self.assertGreater(leaf.value,0)\n')

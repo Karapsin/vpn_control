@@ -1,5 +1,86 @@
 {
   "loaders": {
+    "agent_tools/agent_ci_evidence.py": {
+      "reason": "Explicit CI-only projector reads only the freshly allocated runner directory and explicit public artifact inputs. Its bounded nofollow readers and private-field filtering introduce no repository source discovery or source execution. Runtime report, timing and artifact files are owned invocation data, not additional repository authority.",
+      "scopes": [],
+      "sourceSha256": [
+        "d6786781dc488184090f40949ebaef32bd09220b55007211e334059c2c8f6c43"
+      ]
+    },
+    "agent_tools/tests/fixtures/agent_ci_shards/selector.before.source": {
+      "reason": "Exact complete selector from failed commit 308172ff is copied only into a generated inert tiny Git checkout for the physical scaled workload counterfactual. Its dependency declaration is the explicit current manifest copied alongside it; this retained selector grants no current MCP, remote or product authority.",
+      "scopes": [
+        "agent_tools/affected_agent_test_dependencies.json"
+      ],
+      "sourceSha256": [
+        "d0bd4965aa76a4562ef95a4f69553186df4aa6f365da0ec568d438a5b08224f0"
+      ]
+    },
+    "agent_tools/tests/fixtures/agent_ci_shards/wiring.before.source": {
+      "reason": "Complete byte-authenticated failed wiring test from the uncommitted H0311 candidate is compiled only in an isolated no-site child to prove its missing optional YAML dependency. Its finite original workflow inputs remain explicit; it is neither a current test loader nor source authority for MCP or product work.",
+      "scopes": [
+        ".github/workflows/fast-checks.yml",
+        "agent_tools/tests/fixtures/agent_ci_shards/workflow.before.yml",
+        "agent_tools/tests/fixtures/agent_ci_shards/provenance.json"
+      ],
+      "sourceSha256": [
+        "a370eae9d81cf38e14c306ee4bd816d21336f8582e719932e725319eff2cef57"
+      ]
+    },
+    "agent_tools/tests/fixtures/agent_ci_shards/budget.before.source": {
+      "reason": "Exact complete original budget test is retained only for AST extraction of its workflow_limits helper and the unchanged original tail assertion. The bounded counterfactual consumes the same four explicit workflow and managed-limit inputs; it adds no dispatcher, remote or current-source authority.",
+      "scopes": [
+        ".github/workflows/fast-checks.yml",
+        "agent_tools/mcp_server.py",
+        "agent_tools/tests/fixtures/fast_workflow_budget/before.yml",
+        "agent_tools/tests/fixtures/fast_workflow_budget/provenance.json"
+      ],
+      "sourceSha256": [
+        "1e7985f1c1ae168b3887eda7ad9ec348fd4c039bfe8b002711a0e508b36b7a62"
+      ]
+    },
+    "agent_tools/tests/test_agent_ci_evidence.py": {
+      "reason": "Finite projector controls consume only the actual current projector and runner. Malformed reports, event privacy, disjoint current-attempt receipts, FIFO refusal and cancellation use newly generated owned files or inert local child tests; no repository source is dynamically selected beyond these two explicit inputs and no prior invocation is reused.",
+      "scopes": [
+        "agent_tools/agent_ci_evidence.py",
+        "agent_tools/agent_test_runner.py"
+      ],
+      "sourceSha256": [
+        "7fbf5c7663ae815f1cef57a570b4813a5796bef0f2f47becd2b34fcaf1e29fa8",
+        "83a1392a48fc19bad97fb1c5b292a3875bc4b3a4e468a4daddf583cd8e2799f2"
+      ]
+    },
+    "agent_tools/tests/test_agent_ci_shards.py": {
+      "reason": "Physical CLI controls copy only the explicit current selector, manifest, runner and projector into fresh inert Git checkouts. The source-bound original selector and workflow are exact provenance inputs for unchanged scaled deadlines; saved producers, reports and readiness markers are owned generated data. Global unknown dependency refusal, source drift, disjoint coverage and default dispatch guards remain strict.",
+      "scopes": [
+        "agent_tools/affected_agent_tests.py",
+        "agent_tools/affected_agent_test_dependencies.json",
+        "agent_tools/agent_test_runner.py",
+        "agent_tools/agent_ci_evidence.py",
+        ".github/workflows/fast-checks.yml",
+        "agent_tools/tests/fixtures/agent_ci_shards/selector.before.source",
+        "agent_tools/tests/fixtures/agent_ci_shards/workflow.before.yml",
+        "agent_tools/tests/fixtures/agent_ci_shards/provenance.json"
+      ],
+      "sourceSha256": [
+        "af4b9cd76d085cac6f3a6340f264e5695f3ad616236b3a4fd0ff0d494ea45aef",
+        "903e4f3334cc19433be1d1ab6bc002a87f796adcda6c097a818a3969161e17b7"
+      ]
+    },
+    "agent_tools/tests/test_fast_agent_shards.py": {
+      "reason": "Source-bound workflow regression reads the current Fast Checks workflow, exact original workflow/provenance, its actual current test and the retained failed wiring test. Its saved isolated no-site child exercises the same positive with the authentic missing-YAML beforeimage and standard-library fix. Static controls verify both audit branches, source selection, current-attempt artifacts, parent acceptance and the entire unchanged original validation tail without CI or product dispatch.",
+      "scopes": [
+        ".github/workflows/fast-checks.yml",
+        "agent_tools/tests/fixtures/agent_ci_shards/workflow.before.yml",
+        "agent_tools/tests/fixtures/agent_ci_shards/provenance.json",
+        "agent_tools/tests/test_fast_agent_shards.py",
+        "agent_tools/tests/fixtures/agent_ci_shards/wiring.before.source"
+      ],
+      "sourceSha256": [
+        "a370eae9d81cf38e14c306ee4bd816d21336f8582e719932e725319eff2cef57",
+        "fb5788387d21e0eff51fa965a8894cbd54295b0f5df3e36a38fe28f1d2e35c40"
+      ]
+    },
     "agent_tools/agent_test_runner.py": {
       "reason": "Transparent execution of selected, validated test inputs; those test modules are the selection graph roots.",
       "scopes": [],
@@ -778,11 +859,14 @@
         ".github/workflows/fast-checks.yml",
         "agent_tools/mcp_server.py",
         "agent_tools/tests/fixtures/fast_workflow_budget/before.yml",
-        "agent_tools/tests/fixtures/fast_workflow_budget/provenance.json"
+        "agent_tools/tests/fixtures/fast_workflow_budget/provenance.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/budget.before.source",
+        "agent_tools/tests/fixtures/agent_ci_shards/provenance.json"
       ],
       "sourceSha256": [
         "d9af6ce627c06d7d186cf9e42324fc9ad1a749c9a2a6210954d6dcfe56e17bed",
-        "1e7985f1c1ae168b3887eda7ad9ec348fd4c039bfe8b002711a0e508b36b7a62"
+        "1e7985f1c1ae168b3887eda7ad9ec348fd4c039bfe8b002711a0e508b36b7a62",
+        "8867140e0c41e838e8e44a7af19684b0076d72854796f2dedbf6bece34ecb1f0"
       ]
     },
     "agent_tools/tests/test_fast_workflow_interpreter_order.py": {
@@ -797,7 +881,8 @@
         "agent_tools/tests/fixtures/fast_workflow_interpreter_order/provenance.json"
       ],
       "sourceSha256": [
-        "053aa4f9869106d41b7225386571e68a276e5a31135039e85763a552f076ebf9"
+        "053aa4f9869106d41b7225386571e68a276e5a31135039e85763a552f076ebf9",
+        "6ed66c5a1f99afe5cf30bfddeb4c58e2cc8a919fa0f4edee9d4a32b5872bcf9d"
       ]
     },
     "agent_tools/tests/test_gateway_tmux_routes.py": {
@@ -910,6 +995,19 @@
       ],
       "sourceSha256": [
         "16d4b39a7e8664076a8995d07beaa9cd830d639caff8c6860a27a4236681be2c"
+      ]
+    },
+    "agent_tools/tests/test_msi_qga_fixture_bounds.py": {
+      "reason": "Exact preserved nested receive bytes are verified against the retained complete inert helper and compiled only in a saved owned child; the current reader is extracted only from the explicitly imported fixture module. Real AF_UNIX/socketpair calls establish physical EOF before the completion watchdog. Remaining controls invoke the same local fixture execution core with bounded owned resources; no guest, platform, remote endpoint or native producer is dynamically selected.",
+      "scopes": [
+        "agent_tools/tests/test_msi_qga_fixture_bounds.py",
+        "agent_tools/tests/test_windows_msi_base_prepare.py",
+        "agent_tools/tests/fixtures/msi_qga_fixture_bounds/helper.before.source",
+        "agent_tools/tests/fixtures/msi_qga_fixture_bounds/receive.before.fragment",
+        "agent_tools/tests/fixtures/msi_qga_fixture_bounds/provenance.json"
+      ],
+      "sourceSha256": [
+        "5a413f59008e24687a253a56bbf3b886a12918c4716987df7aa615a791d63edb"
       ]
     },
     "agent_tools/tests/test_native_catalogue_automatic.py": {
@@ -1316,7 +1414,8 @@
       ],
       "sourceSha256": [
         "e373010900974281360e5155fe03c35c4df0ea4b85662d30f2873628f11e55f9",
-        "84f2c5837947d65d2a8ba8697ebc35afc59507c52498d9696cd92245fa7d71c2"
+        "84f2c5837947d65d2a8ba8697ebc35afc59507c52498d9696cd92245fa7d71c2",
+        "939a328170f938f857031ff1a49d6d064033d8487b4d4c93422d9f3bcfd31a8d"
       ]
     },
     "agent_tools/tests/test_windows_cp117_publisher_boundary_context.py": {
@@ -1636,6 +1735,7 @@
   "nonPythonResources": {
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/guest_progress/before.source": "1b8f18fa406f513f36dd773c33da1e398fb143b7c9d47213a955a262e11079d2",
+    "agent_tools/tests/fixtures/msi_qga_fixture_bounds/receive.before.fragment": "142b4f66c31007ee273bbd1f04781c52c21302aeaa40638e747dd9359c41aa75",
     "agent_tools/tests/fixtures/windows_cp117_publisher_boundary/publisher_boundary.before.fragment": "86cbb8440a5dc0e34f5172db40428412cb7e4c7dcf6bff176db8ac4538f2974b",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-loss.source": "24001dcaed1e666438e18497abde4594b6f3121b28c339a569b11955da0d3a21",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-restored.source": "dc4ea223703ea8b16faa07d1b6d231d45b30d078f09e4e1e4954241a3be9efa6",

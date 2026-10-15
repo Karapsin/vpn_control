@@ -10,6 +10,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Make native MCP fixture clocks and timeout dispatch deterministic.
 - Make MCP startup and tooling fixtures reproducible across Python runtimes.
 - Declare complete MCP startup inputs in isolated runner checks.
+- Make historical source refusal tests supply their producer explicitly.
+- Make agent CI reproducible with isolated shards and bounded evidence.
+- Keep sharded agent CI clean under repository whitespace checks.
+- Update agent CI fixtures for isolated workflow jobs.
 
 ## 2.2.11 - 2026-10-15
 

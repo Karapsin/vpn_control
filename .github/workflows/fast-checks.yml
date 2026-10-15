@@ -185,10 +185,23 @@ jobs:
           AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
         run: |
           if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
-            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 0 --shard-count 2 --ci-evidence-dir .rag_index/agent-ci-evidence-0
           else
-            python agent_tools/affected_agent_tests.py --run
+            python agent_tools/affected_agent_tests.py --run --shard-index 0 --shard-count 2 --ci-evidence-dir .rag_index/agent-ci-evidence-0
           fi
+
+      - name: Retain public agent shard evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-0
+          path: |
+            .rag_index/agent-ci-evidence-0/plan.json
+            .rag_index/agent-ci-evidence-0/events.jsonl
+            .rag_index/agent-ci-evidence-0/summary.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Check fixed UI theme and visual comparator
         run: |
@@ -242,3 +255,82 @@ jobs:
 
       - name: Verify Android instrumentation signature guard
         run: python scripts/test_android_instrumentation_signatures.py
+
+  agent-tests-shard-1:
+    name: Agent Tools Shard 2
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install agent tool dependencies
+        run: python -m pip install --disable-pip-version-check -r agent_tools/requirements-mcp.txt
+
+      - name: Install qemu-img for agent fixtures
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-utils
+
+      - name: Test affected agent tools
+        timeout-minutes: 50
+        env:
+          AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}
+          AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
+        run: |
+          if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run --shard-index 1 --shard-count 2 --ci-evidence-dir .rag_index/agent-ci-evidence-1
+          else
+            python agent_tools/affected_agent_tests.py --run --shard-index 1 --shard-count 2 --ci-evidence-dir .rag_index/agent-ci-evidence-1
+          fi
+
+      - name: Retain public agent shard evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-1
+          path: |
+            .rag_index/agent-ci-evidence-1/plan.json
+            .rag_index/agent-ci-evidence-1/events.jsonl
+            .rag_index/agent-ci-evidence-1/summary.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
+  agent-test-coverage:
+    name: Verify Agent Shard Coverage
+    if: always()
+    needs: [fast-checks, agent-tests-shard-1]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch first current-attempt public receipt
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-0
+          path: .rag_index/agent-ci-evidence-0
+
+      - name: Fetch second current-attempt public receipt
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-1
+          path: .rag_index/agent-ci-evidence-1
+
+      - name: Require actual complete disjoint shard coverage
+        env:
+          FIRST_SHARD_RESULT: ${{ needs.fast-checks.result }}
+          SECOND_SHARD_RESULT: ${{ needs.agent-tests-shard-1.result }}
+        run: python agent_tools/agent_ci_evidence.py --verify .rag_index/agent-ci-evidence-0 .rag_index/agent-ci-evidence-1 --parent-results "$FIRST_SHARD_RESULT" "$SECOND_SHARD_RESULT" --run-id "${{ github.run_id }}" --run-attempt "${{ github.run_attempt }}" --head "${{ github.sha }}"

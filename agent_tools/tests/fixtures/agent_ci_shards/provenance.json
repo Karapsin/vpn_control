@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "308172ff07e7246a02129ec436193ed9bc81f44e",
+  "failure": "GitHub affected-agent step exceeded its unchanged 50-minute limit; actual worker progress was unavailable. Scaled local workload proves partition completion, not the unknown hosted timeout cause.",
+  "files": [
+    {
+      "path": "selector.before.source",
+      "sourcePath": "agent_tools/affected_agent_tests.py",
+      "sourceSha256": "d0bd4965aa76a4562ef95a4f69553186df4aa6f365da0ec568d438a5b08224f0",
+      "sourceBytes": 40771
+    },
+    {
+      "path": "workflow.before.yml",
+      "sourcePath": ".github/workflows/fast-checks.yml",
+      "sourceSha256": "aaa9f71db566d9d7eb795feff9afa70410056f4e52d8c71e423ea26245e0a730",
+      "sourceBytes": 9959
+    },
+    {
+      "path": "wiring.before.source",
+      "sourcePath": "agent_tools/tests/test_fast_agent_shards.py",
+      "sourceSha256": "a370eae9d81cf38e14c306ee4bd816d21336f8582e719932e725319eff2cef57",
+      "sourceBytes": 6394,
+      "sourceCommit": null,
+      "sourceFingerprint": "0311d0c7e7690688a073e7741bfb29b8eac5c797ab6d5142cd5b9d4da440219e",
+      "capture": "Exact full file from the failed frozen focused run; no source alteration."
+    },
+    {
+      "path": "budget.before.source",
+      "sourcePath": "agent_tools/tests/test_fast_workflow_budget.py",
+      "sourceSha256": "1e7985f1c1ae168b3887eda7ad9ec348fd4c039bfe8b002711a0e508b36b7a62",
+      "sourceBytes": 13910,
+      "sourceCommit": "308172ff07e7246a02129ec436193ed9bc81f44e",
+      "sourceFingerprint": "0311d0c7e7690688a073e7741bfb29b8eac5c797ab6d5142cd5b9d4da440219e",
+      "capture": "Exact full file from the failed frozen focused run; no source alteration."
+    }
+  ]
+}

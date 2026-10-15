@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -150,6 +151,140 @@ def _run_qga_status_program(status_value, *, program=base._STATUS):
         return json.loads(completed.stdout)
 
 
+def _receive_dispatch_qga_line(connection, deadline, cancelled=None):
+    """Read one physical fixture line under a shared absolute deadline."""
+    data = bytearray()
+    while not data.endswith(b"\n"):
+        if cancelled is not None and cancelled.is_set():
+            raise RuntimeError("QGA fixture cancelled")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("QGA fixture line deadline")
+        connection.settimeout(min(0.1, remaining))
+        try:
+            chunk = connection.recv(min(4096, 32769 - len(data)))
+        except socket.timeout:
+            continue
+        if not chunk:
+            raise EOFError("unexpected QGA fixture EOF")
+        data.extend(chunk)
+        if len(data) > 32768:
+            raise ValueError("QGA fixture line exceeds 32768 bytes")
+    return bytes(data)
+
+
+def _run_dispatch_absent_fixture(server, replies, command, *, budget_seconds=30):
+    """Bound work to 30s plus at most 3s cleanup of exact owned handles."""
+    if type(budget_seconds) not in (int, float) or not 0 < budget_seconds <= 30:
+        raise ValueError("Invalid QGA fixture budget")
+    if sum(len(os.fsencode(word)) + 1 for word in command) > 60000:
+        raise ValueError("QGA fixture command exceeds 60000 bytes")
+    deadline = time.monotonic() + budget_seconds
+    cancelled = threading.Event()
+    finished = threading.Event()
+    errors = []
+
+    def qga_replies():
+        try:
+            for expected, reply in replies:
+                while True:
+                    if cancelled.is_set():
+                        return
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError("QGA fixture accept deadline")
+                    server.settimeout(min(0.1, remaining))
+                    try:
+                        connection, _ = server.accept()
+                        break
+                    except socket.timeout:
+                        continue
+                with connection:
+                    sync = json.loads(_receive_dispatch_qga_line(connection, deadline, cancelled)[1:])
+                    connection.sendall(b"\xff" + json.dumps({"return": sync["arguments"]["id"]}).encode() + b"\n")
+                    request = json.loads(_receive_dispatch_qga_line(connection, deadline, cancelled))
+                    if request["execute"] != expected:
+                        raise AssertionError((request["execute"], expected))
+                    connection.sendall(json.dumps({"return": reply}).encode() + b"\n")
+            finished.set()
+        except Exception as error:
+            errors.append(error)
+
+    worker = threading.Thread(target=qga_replies)
+    process = None
+    completed = None
+    failure = None
+    cleanup_errors = []
+    worker.start()
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate(timeout=max(0, deadline - time.monotonic()))
+        completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    except BaseException as error:
+        failure = error
+    finally:
+        try:
+            if process is not None and process.poll() is None:
+                try:
+                    process.kill()  # Only the exact child handle created above.
+                except BaseException as error:
+                    cleanup_errors.append(error)
+                try:
+                    stdout, stderr = process.communicate(timeout=1)
+                    if isinstance(failure, subprocess.TimeoutExpired):
+                        failure.output, failure.stderr = stdout, stderr
+                except BaseException as error:
+                    cleanup_errors.append(error)
+                try:
+                    process.wait(timeout=1)
+                except BaseException as error:
+                    cleanup_errors.append(error)
+        except BaseException as error:
+            cleanup_errors.append(error)
+        finally:
+            try:
+                if process is not None:
+                    for stream in (process.stdout, process.stderr):
+                        if stream is not None:
+                            try:
+                                stream.close()
+                            except BaseException as error:
+                                cleanup_errors.append(error)
+            finally:
+                cancelled.set()
+                try:
+                    server.close()
+                except BaseException as error:
+                    cleanup_errors.append(error)
+                try:
+                    worker.join(timeout=1)
+                except BaseException as error:
+                    cleanup_errors.append(error)
+    cleanup = {"childReaped": process is None or process.poll() is not None,
+               "threadTerminal": not worker.is_alive(), "serverClosed": server.fileno() == -1,
+               "childPipesClosed": process is None or all(stream is None or stream.closed
+                                                         for stream in (process.stdout, process.stderr))}
+    if not all(cleanup.values()):
+        primary = failure
+        failure = AssertionError("QGA fixture cleanup incomplete: " + json.dumps(cleanup, sort_keys=True))
+        failure.fixture_primary_error = primary
+    if failure is None and cleanup_errors:
+        failure = cleanup_errors[0]
+    if failure is None and errors:
+        failure = errors[0]
+    if failure is None and not finished.is_set():
+        failure = AssertionError("QGA fixture replies incomplete")
+    if failure is not None:
+        failure.fixture_cleanup = cleanup
+        failure.fixture_cleanup_errors = cleanup_errors
+        failure.fixture_thread_errors = errors
+        if completed is not None:
+            failure.fixture_child_result = completed
+        raise failure
+    completed.fixture_cleanup = cleanup
+    return completed
+
+
 def _run_dispatch_absent_program(replies, *, program=base._DIAGNOSTIC):
     """Execute the embedded absent-dispatch observer against bounded QGA replies."""
     if not Path("/proc/self/stat").is_file():
@@ -172,35 +307,10 @@ def _run_dispatch_absent_program(replies, *, program=base._DIAGNOSTIC):
                    "expectedSid": "S-1-5-21-1-2-3-1002"}
         (stage / "binding.json").write_text(json.dumps(binding))
 
-        def receive(connection):
-            data = bytearray()
-            while not data.endswith(b"\n"):
-                data.extend(connection.recv(4096))
-            return bytes(data)
-
-        def qga_replies():
-            for expected, reply in replies:
-                connection, _ = server.accept()
-                with connection:
-                    sync = json.loads(receive(connection)[1:])
-                    connection.sendall(b"\xff" + json.dumps({"return": sync["arguments"]["id"]}).encode() + b"\n")
-                    request = json.loads(receive(connection))
-                    if request["execute"] != expected:
-                        raise AssertionError((request["execute"], expected))
-                    connection.sendall(json.dumps({"return": reply}).encode() + b"\n")
-
-        worker = threading.Thread(target=qga_replies)
-        worker.start()
-        try:
-            command = [__import__("sys").executable, "-c", program, str(root), "windows-cp117", CORR,
-                       socket_path, str(os.getpid()), ticks, SOURCE, PAIR["sourceFingerprint"], ARTIFACT,
-                       ARTIFACT, ARTIFACT, "0" * 64, "S-1-5-21-1-2-3-1002"]
-            completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        finally:
-            worker.join(timeout=5)
-            server.close()
-        if worker.is_alive():
-            raise AssertionError("QGA observer did not finish")
+        command = [__import__("sys").executable, "-c", program, str(root), "windows-cp117", CORR,
+                   socket_path, str(os.getpid()), ticks, SOURCE, PAIR["sourceFingerprint"], ARTIFACT,
+                   ARTIFACT, ARTIFACT, "0" * 64, "S-1-5-21-1-2-3-1002"]
+        completed = _run_dispatch_absent_fixture(server, replies, command)
         if completed.returncode != 0:
             raise AssertionError(completed.stderr.decode())
         return json.loads(completed.stdout)

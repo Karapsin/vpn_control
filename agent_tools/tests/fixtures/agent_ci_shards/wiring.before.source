@@ -1,0 +1,109 @@
+"""Validate actual CI jobs and receipt wiring against the retained full tail."""
+import shlex
+import unittest
+from pathlib import Path
+
+import yaml
+
+from agent_tools.tests import test_agent_ci_shards as fixture
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class FastAgentShardWorkflowTests(unittest.TestCase):
+    def workflow(self):
+        return yaml.safe_load((ROOT / '.github/workflows/fast-checks.yml').read_bytes())
+
+    def named(self, job, name):
+        steps = [step for step in job['steps'] if step.get('name') == name]
+        self.assertEqual(1, len(steps), name)
+        return steps[0]
+
+    def test_both_fresh_hosted_jobs_have_identical_admission_and_unchanged_limits(self):
+        jobs = self.workflow()['jobs']
+        agent = [jobs['fast-checks'], jobs['agent-tests-shard-1']]
+        phases = []
+        for index, job in enumerate(agent):
+            self.assertEqual('ubuntu-latest', job['runs-on'])
+            self.assertEqual(90, job['timeout-minutes'])
+            self.assertNotIn('strategy', job)
+            steps = job['steps']
+            checkout = self.named(job, 'Checkout')
+            self.assertEqual({'fetch-depth': 0}, checkout['with'])
+            python = self.named(job, 'Set up Python 3.12')
+            self.assertEqual('3.12', python['with']['python-version'])
+            dependency = self.named(job, 'Install agent tool dependencies')
+            qemu = self.named(job, 'Install qemu-img for agent fixtures')
+            phase = self.named(job, 'Test affected agent tools')
+            phases.append(phase)
+            self.assertEqual(50, phase['timeout-minutes'])
+            self.assertLess(steps.index(checkout), steps.index(python))
+            self.assertLess(steps.index(python), steps.index(dependency))
+            self.assertLess(steps.index(dependency), steps.index(phase))
+            self.assertLess(steps.index(qemu), steps.index(phase))
+            commands = [shlex.split(line.strip()) for line in phase['run'].splitlines()
+                        if line.strip().startswith('python agent_tools/affected_agent_tests.py ')]
+            self.assertEqual(2, len(commands))
+            audit, affected = commands
+            self.assertEqual(['python', 'agent_tools/affected_agent_tests.py', '--baseline', '$AGENT_TEST_BASELINE', '--audit', '--run'], audit[:6])
+            self.assertEqual(['python', 'agent_tools/affected_agent_tests.py', '--run'], affected[:3])
+            tail = ['--shard-index', str(index), '--shard-count', '2', '--ci-evidence-dir', '.rag_index/agent-ci-evidence-%d' % index]
+            self.assertEqual(tail, audit[6:])
+            self.assertEqual(tail, affected[3:])
+            self.assertNotIn('--include', phase['run'])
+        self.assertEqual(phases[0]['env'], phases[1]['env'])
+        self.assertEqual("${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}", phases[0]['env']['AGENT_TEST_BASELINE'])
+        self.assertEqual("${{ inputs.audit_agent_tests && '1' || '' }}", phases[0]['env']['AUDIT_AGENT_TESTS'])
+
+    def test_entire_original_build_tail_remains_once_in_its_original_job(self):
+        original = yaml.safe_load(fixture.retained('workflow.before.yml'))['jobs']['fast-checks']['steps']
+        start = next(index for index, step in enumerate(original) if step.get('name') == 'Test affected agent tools')
+        tail = original[start + 1:]
+        jobs = self.workflow()['jobs']
+        current = jobs['fast-checks']['steps']
+        self.assertEqual(tail, [step for step in current if any(step.get('name') == old.get('name') for old in tail)])
+        for old in tail:
+            owners = [name for name, job in jobs.items() for step in job['steps'] if step.get('name') == old.get('name')]
+            self.assertEqual(['fast-checks'], owners)
+
+    def test_uploads_only_fixed_public_files_from_this_run_and_attempt(self):
+        jobs = self.workflow()['jobs']
+        names = []
+        for index, key in enumerate(('fast-checks', 'agent-tests-shard-1')):
+            step = self.named(jobs[key], 'Retain public agent shard evidence')
+            self.assertEqual('always()', step['if'])
+            self.assertEqual('actions/upload-artifact@v4', step['uses'])
+            options = step['with']
+            name = 'agent-test-shard-${{ github.run_id }}-${{ github.run_attempt }}-%d' % index
+            self.assertEqual(name, options['name'])
+            names.append(name)
+            expected = ['.rag_index/agent-ci-evidence-%d/%s' % (index, name)
+                        for name in ('plan.json', 'events.jsonl', 'summary.json')]
+            self.assertEqual(expected, options['path'].splitlines())
+            self.assertEqual('error', options['if-no-files-found'])
+            self.assertIs(True, options['include-hidden-files'])
+        coverage = jobs['agent-test-coverage']
+        self.assertEqual('always()', coverage['if'])
+        self.assertEqual({'fast-checks', 'agent-tests-shard-1'}, set(coverage['needs']))
+        downloads = [step for step in coverage['steps'] if step.get('uses') == 'actions/download-artifact@v4']
+        self.assertEqual(names, [step['with']['name'] for step in downloads])
+        self.assertEqual(['.rag_index/agent-ci-evidence-0', '.rag_index/agent-ci-evidence-1'], [step['with']['path'] for step in downloads])
+
+    def test_coverage_verifier_requires_actual_parents_and_current_invocation(self):
+        job = self.workflow()['jobs']['agent-test-coverage']
+        step = self.named(job, 'Require actual complete disjoint shard coverage')
+        self.assertEqual({'FIRST_SHARD_RESULT': '${{ needs.fast-checks.result }}',
+                          'SECOND_SHARD_RESULT': '${{ needs.agent-tests-shard-1.result }}'}, step['env'])
+        argv = shlex.split(step['run'])
+        self.assertEqual(['python', 'agent_tools/agent_ci_evidence.py', '--verify',
+                          '.rag_index/agent-ci-evidence-0', '.rag_index/agent-ci-evidence-1',
+                          '--parent-results', '$FIRST_SHARD_RESULT', '$SECOND_SHARD_RESULT',
+                          '--run-id', '${{ github.run_id }}', '--run-attempt', '${{ github.run_attempt }}',
+                          '--head', '${{ github.sha }}'], argv)
+        self.assertFalse(any(step.get('continue-on-error') for step in job['steps']))
+        self.assertNotIn('continue-on-error', job)
+
+
+if __name__ == '__main__':
+    unittest.main()
