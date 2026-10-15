@@ -11,6 +11,9 @@ from agent_tools import android_api35_remaining_proxy_status_routes as route
 
 class RemainingProxyStatusMcpTests(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_routes
+        from agent_tools import android_api35_remaining_proxy_status_routes
+        bind_routes(self, server, android_api35_remaining_proxy_status_routes)
         patch = mock.patch.object(server, '_MCP_BOOT_TIME_NS', 2**63-1)
         patch.start()
         self.addCleanup(patch.stop)

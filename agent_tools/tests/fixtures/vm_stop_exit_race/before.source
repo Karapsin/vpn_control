@@ -1,0 +1,64 @@
+"""Stop only original, fully reidentified deployment actors; never replay."""
+
+
+def _closed_instance(spec,context,read,process,birth):
+    intent=read('stop-intent.json')
+    if (type(intent)is not dict or set(intent)!={'schemaVersion','deploymentId','hostBootId','qemu','swtpm','beforeObservation'}
+            or intent['schemaVersion']!=1 or intent['deploymentId']!=spec['deploymentId'] or intent['hostBootId']!=context['hostBootId']):
+        raise ValueError('instance_stop_intent')
+    def absent(row):
+        try:start=birth(row['pid'])
+        except FileNotFoundError:return True
+        except ValueError as error:
+            if str(error)=='instance_process_dead':return True
+            raise
+        if start!=row['startTicks']:return True
+        process(row);return False
+    for name in ('qemu','swtpm'):
+        row=read(name+'-started.json')
+        if row!=intent[name]:raise ValueError('instance_stop_actor_changed')
+        if not absent(row):raise ValueError('instance_stop_incomplete')
+    return {'qemu':{k:intent['qemu'][k] for k in ('pid','startTicks')},
+            'swtpm':{k:intent['swtpm'][k] for k in ('pid','startTicks')},
+            'positiveAbsence':True,'productReady':False}
+
+
+def _stop_instance(spec,context,observed,read,process,birth,qmp,save,closing):
+    import os,signal,time
+    # observed validates the immutable root/spec/setup/boot, process births,
+    # executable/argv, disk/firmware holders, asset generations and socket peers.
+    before=observed();qemu=read('qemu-started.json');tpm=read('swtpm-started.json')
+    process(qemu);process(tpm);closing()
+    save('stop-intent.json',{'schemaVersion':1,'deploymentId':spec['deploymentId'],'hostBootId':context['hostBootId'],
+                           'qemu':qemu,'swtpm':tpm,'beforeObservation':before})
+    def absent(row):
+        try:start=birth(row['pid'])
+        except FileNotFoundError:return True
+        except ValueError as error:
+            if str(error)=='instance_process_dead':return True
+            raise
+        if start!=row['startTicks']:return True
+        process(row);return False
+    def wait(row,seconds):
+        deadline=time.monotonic()+seconds
+        while not absent(row):
+            if time.monotonic()>=deadline:raise ValueError('instance_stop_incomplete')
+            time.sleep(.05)
+    acknowledged=False
+    try:qmp('quit');acknowledged=True
+    except (OSError,ValueError):pass
+    # A lost quit response is retained as such. Only positive absence closes
+    # resources; never send another quit or fall back to a QEMU signal.
+    save('stop-quit-observation.json',{'responseClosed':acknowledged})
+    wait(qemu,20);closing()
+    signalled=False
+    if not absent(tpm):
+        fd=os.pidfd_open(tpm['pid'],0)
+        try:
+            process(tpm);closing()
+            signal.pidfd_send_signal(fd,signal.SIGTERM,None,0);signalled=True
+        finally:os.close(fd)
+    wait(tpm,5);closing()
+    value=_closed_instance(spec,context,read,process,birth)
+    save('stop-result.json',{**value,'quitResponseClosed':acknowledged,'tpmSignalSubmitted':signalled})
+    return value

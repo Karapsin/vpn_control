@@ -1,190 +1,212 @@
-# Current GUI/CLI parity work
+# Current MCP repair work; Windows parity deferred
 
-## Current next action and human scope
+The user deferred the Windows parity plan on 2026-10-15 and requested the
+MCP/tooling repair described below. The later instructions in the active chat
+permit subagents and authorize stopping all prior unknown or historical test VM
+sessions and SSH connections before fresh validation. Preserve disks, fixtures,
+source edits, original evidence and durable job/lease records; no purge or replay
+is authorized. Do not resume Windows product acceptance, H14, visuals or the original
+Windows plan without the user resuming it. Linux, Android and macOS product-native
+and visual work also remains deferred. No release.
 
-Documentation cleanup delivered clean `dev` at
-`a4f52a35459af3129ed02ca33e2045631f29ca59` (product `2.2.10`); fresh managed
-exact-SHA checks confirmed all five required workflows successful. The current
-task is a bounded agent-tool optimization milestone before parity resumes:
-reuse selector inventory/analysis/traversals, compare the actual capability
-surface, and measure Android compilation/carrier candidates before adoption.
-The implementation owner holds `agent_tools/affected_agent_tests.py` and its
-new equivalence controls; the coordinator owns this ledger, validation and
-delivery. Read-only workers own separate ignored characterization/measurement
-directories. No native guest/emulator operator or original-job custody is
-transferred by this task. The implementation plan is
-`.runtime/agent-tools-optimization-2026-10-14/plan.md`.
-Resume [the active execution brief](parity-solo-plan.md) after this milestone's
-clean exact-SHA development delivery and fresh MCP startup.
-Platform order: Linux → Windows → Android (API35, then API29), one platform at a time.
-The user subsequently allowed subagents; bounded assistance requires explicit file
-ownership and one operator per environment. Global TEST-003 remains unchanged.
-macOS native/visual acceptance is **USER-DEFERRED**; macOS package CI remains required.
-In-scope completion and full four-platform acceptance are separate claims.
-No release, native acceptance, original-job replay, guest lifecycle action,
-lease release, credential/trust change or host VPN interruption is part of cleanup.
+The current repair plan and copyable prompt are:
 
-## Optimization milestone and parity handoff
+- `.runtime/mcp-repair-handoff-2026-10-15/plan.md`
+- `.runtime/mcp-repair-handoff-2026-10-15/next-agent-prompt.md`
 
-The adopted scope is selector calculation reuse plus exact tool-source checkout
-preservation. One invocation builds
-immutable lookup indexes, analyzes each old/new source version once and selects
-consumers through reverse edges with a shared forward consumption closure. Fresh
-source fingerprints, old/new import union, reviewed loader hashes, deterministic
-refusals and the public API remain required. No native procedure changed, so this
-milestone grants no native acceptance and does not refresh artifact provenance.
+The original Windows plan remains preserved at
+`.runtime/windows-only-handoff-2026-10-14/plan.md`.
+The previous detailed WIP and capsule are retained in the new handoff's
+`before-handoff/` directory. Full evidence remains in
+`.runtime/agent-tool-reproducibility-audit-2026-10-15/`.
 
-Baseline characterization records 12 actual serialized MCP tools, 517 CLI VM
-choices and 39 SSH choices, with separate batch allowlists. Before/after capability
-inventories and all historical fixture bytes match. The selector source digest
-changes; an already-loaded check daemon correctly refuses it as stale. Use fresh
-MCP startup or the documented fresh-process managed check route.
+## Repair snapshot before final validation and delivery
 
-Differential controls cover all 1,191 Python dependency sources, 2,709 catalogue
-paths and 511 tests (7,547 edges), with no edge or selection mismatches. The
-representative selector-change traversal visits 807,933 edges before and 11,762
-after. Five comparable instrumented selections measured median 46.338 seconds
-before and 8.151 seconds after (82.4% less), selecting the same 448 of 511 modules.
-AST parses fell from 1,853 to 1,191 and whole-tree walks from 8,980 to 1,188;
-inventory construction fell from 1,188 (inferred baseline count) to one directly
-counted construction. A separate plain-process control measured 47.352 to
-8.185 seconds; single peak-RSS observations were 183.34 and 173.75 MB, which
-establish no memory-growth observation rather than a statistical memory claim.
-The parse-reuse cost regression fails on the preserved baseline (nine parses
-where six suffice) and passes on the patch. All 80 focused controls pass.
-Existing selector controls and new real-Git/reuse controls preserve removed
-imports, deletions/renames, cycles, colliding aliases, script ownership, reviewed
-non-Python inputs, source changes and refusal order. Complete measurements and
-beforeimages are retained under `.runtime/agent-tools-optimization-2026-10-14/`.
+Dirty dev work is based on `e167a73ee8acd7fbb9844380dc12f310f537d0e6`.
+The original full audit is terminal FAILED: 7,074 tests, 177 failures, 62 errors,
+189 skips; all owned audit workers closed. Its failures and the four later focused
+failures remain preserved. Current focused CP117 (324 tests, 75 Windows-only
+skips), SSH/tmux/keeper (269), residual/native routes (52), source loader (13)
+and dependency selector checks pass after reviewed repairs. The selector also
+applies every matching finite declaration to statically resolved source readers;
+an explicit declaration cannot silently disappear when a loader becomes static.
+These focused results
+do not replace the final affected selection, intentional full audit or prepush.
+The old MCP process's unresolved Linux loader reflects stale loaded declarations;
+fresh selection also exposed missing archival mappings. Finite reviewed mappings
+and source-mutation refusal tests repair the latter without widening authority.
 
-The first optimization checkpoint `41da3612c012f98f1e2358e68d81a2e40ce18676`
-failed Windows Desktop Package run `38571387487` during reviewed dependency
-selection. Real Git `core.autocrlf=true` changed 41 of 55 reviewed loader sources
-and caused 40 source-hash refusals, including the exact runner line405 refusal.
-The bounded attributes repair preserves every Python tool Git blob without
-normalizing source or changing any of the 68 accepted pins; all 55 source byte
-comparisons and validators then pass. A second causal control demonstrates that
-attribute-only changes previously selected zero agent consumers; the repaired
-selector recognizes this actual dependency and selects 449 baseline consumers.
-The new checkout/tamper controls run in ordinary affected checks, managed prepush,
-Fast Checks and the native Windows managed-check stage. All 82 focused controls
-pass. Evidence and unfixed beforeimages are retained in
-`.runtime/agent-tools-optimization-2026-10-14/windows-selection-failure/`.
-New content-bound validation and a new exact-SHA Windows rerun remain required;
-the failed checkpoint is not a delivered milestone.
+Both original hosted fixture builds succeeded. DIRECT collection verified;
+MCP build run 38698053628 is complete but its original artifact is not collected.
+Neither validates current dirty source. At this snapshot, no final version bump, final managed
+prepush, task commit/push or current-SHA CI has occurred.
 
-The next checkpoint `a7a13d395357f6feeb256e419dd1d84f4d07d3d4` passed the
-Windows source-selection/checkout controls, then run `38578867402` exposed a
-distinct fingerprint-test expectation failure. Its positive prepush assertion
-ignored the existing unsupported private-retention gate on Windows. The native
-log retains only `ok=false`; the real-child capability reproducer identifies
-`unsupported_private_retention` with exit0 and no receipt. The preserved original
-test gives RED under the same retainer-only Windows capability seam; the corrected
-test gives GREEN, preserving actual child streams and refusal. Supported POSIX
-still requires exact private output bytes and the unchanged source fingerprint;
-Windows and missing-API POSIX require failure and no validation receipt. Production
-retention code is unchanged. All 35 module controls pass locally (one existing
-optional-client dependency skip in the base interpreter); native Windows CI must
-rerun the original stage. Evidence is in the `second-attempt/` subdirectory of the
-same retained failure packet.
+The owned secured Windows deployment 71872a25-5f16-496f-957f-8b1133eccf7a
+has no app installed and productReady=false. All six prior QEMU guests and their
+TPM are stopped; the historical SSH tunnel and its autostart job are stopped.
+The expanded closure includes SSHFS mounts and the old ADB server. The old tunnel
+LaunchAgent and both SSHFS keepers have persistent autostart disabled; their
+definitions remain preserved. Closed things must not be restored. Fixture files,
+original outcomes and reservation bytes stay
+preserved. Historical disk cleanup is already complete; do not repeat it. The
+host VPN and service infrastructure remain intact. Closure evidence is under
+`.runtime/session-reset-2026-10-15/` and
+`.runtime/session-keeper-no-restore-2026-10-15/final-state.json`.
 
-Android compilation/carrier changes remain measured candidates, unadopted:
-five local hook derivation runs measured median 55.776 ms before and 12.552 ms
-with an inert cache experiment (nine compilations/parses to two, nine fresh source
-snapshots retained). This is not complete guard or native timing. A complete
-carrier size experiment measured 1,840,856 to 801,601 bytes (56.45% less), but its
-decoder was never admitted/executed and lacks qualification. Neither experiment
-is a production speedup. An owned-descriptor reproduction confirmed `_close`
-abandons later descriptors after EBADF; its original source and reproducer remain
-preserved for the separate native-consuming correctness batch.
+## Current ownership and evidence
 
-Before adopting those Android changes, finish complete namespace/custody/error
-controls and full API35/API29 DIRECT scenarios, then matching MCP retests under
-TEST-001/002. Installer0dd remains UNKNOWN with its lease held and replay forbidden.
-Do not promote the unqualified cache/carrier experiment or replace old pins.
-Git-read/fingerprint work and Windows/Linux routing/transport changes remain
-bounded backlog; none is needed to resume parity after this milestone's verified
-delivery. Continue Linux → Windows → API35 → API29 from fresh source/fixture
-admission, preserving the original custody rows below. macOS native/visual remains
-USER-DEFERRED; normal macOS package CI still applies.
+This intentionally spans source loading/selection, saved-file SSH transfer,
+argument-driven VM infrastructure, observer/ownership guards, route fixtures,
+causal tests, Windows CI enrollment and agent procedure documentation. Product
+code, native runtime binaries and deferred product acceptance stay outside scope.
+The coordinator owns this ledger, final scope review, versioning and delivery.
+Separate workers own dependency declarations, CP117 route fixtures, SSH/tmux
+fixtures and pin chains, residual audit tests, and environment session closure.
+An independent reader reviews the full public tool surface. Source edits began
+only after the original audit's three workers were reaped, their sessions absent,
+fixture roots removed, and a fresh local census found no active test bracket.
 
-## Source, delivery and acceptance accounting
+Current execution evidence is `.runtime/mcp-repair-execution-2026-10-15/`.
+The original handoff/audit evidence remains unchanged. Focused checks precede a
+final source freeze, affected selection and intentional full audit; the final
+managed prepush receipt must follow the final content and version edit.
 
-- Reconciliation source: clean `dev` / `origin/dev` at
-  `3944739d3f33983dbd7a23ac0b8cf00aa20107aa`, product `2.2.9` (2026-10-14).
-  This is the delivered investigation baseline, not the cleanup's eventual SHA.
-- At that exact SHA, Fast Checks and Windows Desktop Package failed; Android,
-  Linux and macOS packages succeeded. Cleanup repairs only confirmed hygiene/event
-  decoding prerequisites and the demonstrated current-versus-history retrieval gap.
-- Cleanup delivery is `a4f52a35459af3129ed02ca33e2045631f29ca59`; its private record is
-  `.runtime/docs-cleanup-2026-10-14/delivery.json`. A commit or local validation alone
-  never establishes successful exact-SHA CI. Managed `git_workflow` checks against
-  the actual SHA are the live delivery authority; this capsule is source-bounded.
-- Optimization content is in the containing commit; obtain its actual SHA/version
-  with fresh startup and verify its exact required workflows. Its final private
-  measurement/delivery record is
-  `.runtime/agent-tools-optimization-2026-10-14/delivery.json`.
-- Read-only `matrix-status` at reconciliation: **0 passed, 18 open, 4 historical**
-  groups, 22 total / 217 scenario memberships, 1 retracted receipt. All 217 memberships
-  lack accepted current-source full-native evidence. This measures acceptance
-  accounting, not feature absence or newly executed native tests.
-- Four macOS groups contain 35 memberships; the other 18 contain 182. Shared scenarios
-  can still include deferred macOS applicability. Requirements and evidence statuses
-  remain unchanged; no full four-platform completion is claimed.
+Focused repair evidence:
 
-## Recorded original custody and next safe action
+- `.runtime/mcp-repair-cp117-routes-2026-10-15/repair-evidence.json`: route mocks,
+  oversized self-source harness, exact historical labels and sealed context;
+  original harness RED and current GREEN, with production guards retained.
+- `.runtime/mcp-repair-ssh-2026-10-15/summary.json`: frozen/current authority,
+  current tmux pin chain, explicit account/home fixtures, keeper closure source
+  graph and invalid-host configuration reads; causal RED/GREEN and no native effects.
+- `.runtime/mcp-repair-residual-tests-2026-10-15/summary.json`: sticky temporary
+  ancestor seam, explicit timestamp pyc, AST route namespace, finite route mocks
+  and complete captured policy copies; actual before/fix outcomes retained.
+- `.runtime/mcp-repair-handoff-2026-10-15/dependency-repair/summary.json`: finite
+  dependency declarations and unknown/mutated-source refusal, with actual RED/GREEN.
+- `.runtime/agent-tool-reproducibility-audit-2026-10-15/cached-recovery-custody/causal-receipt.json`:
+  three cached recovery/probe imports replaced by request-scoped source loading;
+  identical RED/GREEN assertions cover seven routes and closing drift.
 
-All native facts below are recorded/historical. Idle/interrupted chats do not prove
-remote termination. Cleanup read chat status and retained evidence only; it did not
-contact guests or transfer operation ownership. Freshly reconcile original handles
-and source/package qualification before effects.
+The macOS historical staging start is fenced because it implicitly selected a
+previous Tart guest/account. Its separate explicit-context staging path has 43
+passing controls, including physical current-Mac filesystem and boot observations,
+bounded transfer/capture and artifact closing. It neither starts/restores a guest
+nor establishes deferred product acceptance. Evidence is
+`.runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/test-evidence.json`.
 
-### Android original installer unknown lease
+Fresh SSH channels take an explicit configured host and isolate new journals by
+that host. Historical global journals retain original read/closure authority only;
+UNKNOWN correlations cannot be replayed or adopted. Channel selection follows
+the actual configured aliases and refuses unavailable explicit selections.
 
-Original installer0dd remains UNKNOWN, lease held, no retirement certificate and
-replay forbidden. Local holder closure cannot release the remote lease. Its exact
-retained proof and next safe action are in the Android row and evidence locators below.
+Automatic oversized SSH programme handling passed 38 canonical focused checks
+with no skips and six actual causal RED/GREEN pairs.
+The existing operation owner selects saved-file transfer before submitting a
+generated Python carrier that would exceed 60,000 bytes. A private immutable plan
+binds source, route and configuration; bounded chunks carry the complete file,
+then a short filename/hash loader executes it once with the original stdin.
+Ambiguous failures remain UNKNOWN. Unsupported oversized forms refuse before
+effects. This is internal transport for existing admitted operations, not new
+arbitrary remote execution authority. Native transfer validation and the full
+audit follow this snapshot; old sessions are never restored for these checks.
+Evidence is
+`.runtime/mcp-repair-execution-2026-10-15/ssh-automatic-program/evidence-owned-final.json`
+and `canonical-final-after-loader.log` in the same directory.
 
-| Platform | Recorded custody / limitation | One next action after cleanup delivery |
-| --- | --- | --- |
-| Linux / Fedora2340 | Later whole settlement: controller `a9659a65-e0af-42c1-b904-74c013d95b58`, operation `f1e73bba-c7ec-4713-a1e9-7541de49370b`, job `9f2ad96a-3c82-4e05-b8d3-da3ac6b55ea5`: CANCELLED/130, bound NOT_STARTED, unchanged base, owner exit and scoped workspace removal. Original incomplete capture remains UNKNOWN. Later denial/drain preparation interrupted before another timed server. Preserve Ubuntu2307 ON and unrelated claims. | Reconstruct the whole reviewed pending delta against canonical source and map missing regressions before admitting another complete direct case. |
-| Windows / CP117 | Recorded controller `15d2c63f-3341-436f-997f-5ff81eaa5db4`, rev0/OFF/responding window; H14 STAGED, `serverStarted=false`. Complete caller exceeded unchanged 60,000-character bound; no check/download/install submitted. Retained quit177b has ACK/natural actor exits; CLI closing UNKNOWN. Original f52 UNKNOWN. | Reconcile original quit177b/unknown histories through retained records, then finish complete bounded caller before starting H14's timer. |
-| Android / API35 | Installer0dd UNKNOWN, lease held, no retirement certificate, replay forbidden. Reconciliation `a96b695e-d61b-4bbf-8077-c7892be23a77`: native1/transport0, authenticated source closing/local holders0, semantic UNKNOWN after `census_ancestry_changed`; exact changed field unretained; secondary missing `traceback`. Parent release/holders0 is not remote installer lease release. | Read exact retained output and map genuine traceback packet into canonical routine coverage; preserve ancestry guards and lease before fresh admission. |
-| macOS | Native/visual USER-DEFERRED; old installer histories/storage observations historical. | Preserve custody; run required macOS package CI for development delivery. |
+The final generic SSH slice passed 157 checks with no skips; the original keeper
+slice passed 40. Evidence is `.runtime/mcp-generic-channel-context-2026-10-15/summary.json`
+and `.runtime/mcp-keeper-legacy-fence-2026-10-15/summary.json`.
+The standalone source loader now authenticates its custody primitive before
+executing it. An actual preserved-source RED proves the previous symlink ordering
+failure; 26 focused checks and three compatibility checks pass. Four native
+Windows checks skip locally and are enrolled in Windows package CI. Evidence is
+`.runtime/mcp-source-loader-bootstrap-2026-10-15/summary.json`.
 
-Linux9be, Androidd32 and Windows41ec artifacts retain original identities.
-Documentation/tool regression changes do not relabel them or grant final native
-acceptance. DIRECT and matching MCP full scenarios remain required under TEST-001/002/004/005.
+Fresh MCP checks exercised all 12 tools and the inert native transfer passed
+DIRECT and MCP with unchanged original records and no restored sessions. The
+first full audit then stopped at its serial close gate because reviewed current
+dependency pins still named the transport before automatic submission. That
+failure and all beforeimages remain in
+`.runtime/mcp-repair-execution-2026-10-15/full-audit-v4/`. Reviewing 14 current SHA
+bindings across 11 files restored the current chain; 206 checks completed, with one
+expected skip for absent historical state. Historical source and authority pins
+remain unchanged. Evidence is
+`.runtime/mcp-current-pin-refresh-2026-10-15/summary.json`.
 
-## Evidence locators and cleanup ownership
+The native execution catalogue also needed the one new fixed automatic helper
+declared. Actual preserved-source RED and GREEN cover the original future driver,
+held-helper capture and unknown/missing dependency refusals. Its 22 checks and a
+59-check entrypoint/close/resource slice pass. Final selector controls pass 102
+checks; 1,505 current/baseline source versions have no unresolved mappings. The
+affected plan selects 499 of 556 modules; the intentional audit covers all 556.
+Evidence is `.runtime/mcp-native-catalogue-automatic-2026-10-15/summary.json`
+and `.runtime/mcp-repair-handoff-2026-10-15/dependency-repair/final-summary-v3.json`.
 
-- Exact custody paths and original CI logs/fixture beforeimages:
-  `.runtime/parity-evidence/solo-handoff-2026-10-14/investigation.md` and its `evidence/manifest.json`.
-- Linux proof: `.runtime/linux-native-successor-48540b40-a60d-4e26-8a0b-309fe1a272ba/`;
-  pending review: `.runtime/linux-compact-final-review-203e3bf4-ab1a-4711-91cd-99f742342ab1/`.
-  Compact/cache beforeimages are not a patch against current canonical source.
-- Windows staging/callers: `.runtime/windows-direct-batch-a026-c0d047db-463a-4ea3-a35c-eac38e9efa49/`.
-- Android proof: `.runtime/android-native-successor-32d06f17-7738-4e95-8460-13b909d2a586/next-current-owner-retirement-read-catalogue-50bb2a56-10d5-4899-9fd4-e41d0bb03591/continuous-original6b-final-state-successor/attempt-630659c9d77b45d69daa20dd9745c2e9/`.
-  Cleanup rehashed `same-original-terminal-proof.public.json`
-  (`24da1ba84ac8f65337b409e405bce29c1943f39a2c83f5295e72db92db7ba101`) and
-  `final-public.json` (`619817dae95a65bf489cbc35df4dc748e30d57640262a91683a2e6425897e4ca`).
-- Cleanup coordinator owns migration, confirmed CI/RAG fixes, validation and dev
-  delivery; subagents have bounded file ownership. No guest operator/remote cleanup
-  custody was reassigned. Existing original receipts remain intact, subject to fresh observation.
-- Cleanup inventory/beforeimages/receipts: `.runtime/docs-cleanup-2026-10-14/`;
-  CI causal records: `.runtime/parity-evidence/docs-cleanup-ci-prerequisites-2026-10-14/`.
-  Local command-name/cwd census and latest original chats identified no open native
-  source-capture bracket; MCP servers remain running. This does not settle remote
-  unknowns or authorize killing unrelated processes.
+The next intentional audit passed its 27-test serial close gate. Its 555-module
+pool completed 7,228 tests with 22 failures, seven errors and 191 skips; all three
+workers closed, and source was unchanged. All 24 modules that failed in the
+original handoff audit passed in that run. The 29 additional failures came from
+stale fixtures: an empty selected route, incomplete private SSH inventories,
+iteration of guarded oversized plans, an inline PNG producer hitting the command
+bound, a process-wide Windows platform mock, a missing authentic original host
+producer, a formerly restricted valid host alias, and an oversized inert diagnostic
+bootstrap shared by the gateway reconciliation tests. The unfixed sources and
+complete failure logs remain in
+`.runtime/mcp-repair-execution-2026-10-15/full-audit-v5/`.
 
-## Routing and remaining gates
+Eleven exact original cases reproduced RED before the test-only repairs and
+passed GREEN afterward. The expanded 11-module slice then passed 352 tests with
+21 justified platform skips; all 29 audit failure identities and the new
+oversized-diagnostic non-dispatch control passed. This retained the historical
+compression/source assertions, source and ownership guards, and 60,000-byte
+command limit. Two existing finite dependency declarations gained reviewed current
+test hashes without changing their scopes or dropping historical versions.
+The final parser reviewed 1,513 source versions with no errors, and 102 selector
+checks passed. Evidence is `.runtime/mcp-audit-v5-fixture-focused/` and
+`.runtime/mcp-repair-execution-2026-10-15/original-failure-reconciliation-v2.json`.
+At this checkpoint, the final native qualification, version note, managed prepush
+and exact-SHA delivery verification still follow; none of these earlier results
+is a final prepush or CI receipt. Prior VMs and connections remain closed.
 
-Use [failure index](parity-failure-regressions.md), [test selection](test-matrix.md)
-and [tool guide](../agent_tools/README.md). History is in the
-[archive index](archive/parity/README.md); [migration manifest](archive/parity/2026-10-14/migration-manifest.md)
-maps original headings/anchors/Git blobs. Evidence stays at original private paths.
-The [superseded September brief](parity-continuation-plan.md) grants no current action.
+The subsequent automatic SSH qualification executed its saved program with the
+expected exit 23, complete stdin and both output EOFs; its remote journal verifier
+exited 0. The private collector then counted its authority file as a fourth wire
+event. That original UNKNOWN and all beforeimages remain unchanged. A separate
+read-only inspection validated the three exact events and source closing without
+any replay or new connection. The exact preserved collector fragment reproduced
+RED, and the same positive assertion passed with explicit event admission. Its
+nine routine controls and 38 automatic-program peer checks passed without skips.
+An earlier wrapper import failure is retained separately and is not causal RED.
+The final dependency parser reviewed 1,515 source versions with no errors; all
+102 selector checks passed and the plan selects 500 of 557 modules. Evidence is
+`.runtime/mcp-native-automatic-closure-2026-10-15/`. Final stage qualification,
+managed prepush and exact-SHA delivery remain separate gates.
 
-Next parity implementation starts against verified cleanup delivery, refreshes
-matrix/custody and updates this capsule in place. Old passing counts, collector
-GREEN, package builds and historical receipts do not close open native groups.
+Review then found a POSIX permission assumption in the synthetic collector test
+wrapper. Its preserved code reproduced RED with an isolated writable Windows
+mode projection; the pure input fixture passed the same assertion, and all 47
+collector and automatic-program checks passed without skips. The exact original
+fragment and production custody guards remain unchanged. This routine collector
+module is also enrolled in native Windows package CI. Evidence is
+`.runtime/mcp-wire-evidence-windows-portability-2026-10-15/`. The first final
+prepush was intentionally cancelled before this edit: all owned workers closed,
+its 1,212 partial test observations had no failure, and no successful receipt is
+claimed. A new final prepush is required.
+
+Final native staging and refusal checks completed under their recorded source
+bracket. A separate strict census found two interactive SSH connections; the
+user's explicit instruction to close all connections authorized their exact
+identity closure. The subsequent census found no VM/SSH actors or SSHFS mounts,
+with keepers disabled and prior records unchanged. Original failed census
+observations remain failed; their original cause was not recorded, and no later
+observation rewrites them. Nothing was restored. Evidence is
+`.runtime/mcp-native-final-2026-10-15/final-native-v6-closure.json`.
+
+Never change captured source/policy/dependencies while a tool/native/test source
+bracket is active. Inspect original terminal/closing receipts before any replay.
+For every failure, preserve original evidence and unfixed source, obtain actual
+causal RED/GREEN and enroll required coverage without weakening production guards.
+Finish the MCP repair with reviewed scope, version_bump, fresh managed prepush,
+explicit reviewed paths and origin/dev push, then all five required workflows
+green for that exact SHA. No release or main merge.

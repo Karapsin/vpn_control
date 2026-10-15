@@ -1,0 +1,190 @@
+"""File-first publication for a reviewed Windows caller on the Arch host.
+
+The receiver stages bytes only. It does not execute the caller, start a server,
+adopt a channel, or change an application's operation identity.
+"""
+from __future__ import annotations
+
+import hashlib
+import inspect
+import json
+import re
+from pathlib import Path
+
+MAX_SOURCE_BYTES = 8 * 1024 * 1024
+CHUNK_BYTES = 65536
+GATEWAY_SOURCE = Path(__file__).with_name("ssh_source_file_gateway.source")
+GATEWAY_SHA256 = "17ea428f8dc8be814f7906dc478dcb67a4119015a2e48d1ba754a8855598f17b"
+
+
+def receive_source(correlation: str, stream, temporary_root=None) -> dict:
+    """Create a private, exclusive stage and retain complete streamed bytes.
+
+    A failed/interrupted upload retains its partial files under the original
+    correlation. It cannot be restarted or published as a verified stage.
+    """
+    import hashlib
+    import json
+    import os
+    import re
+    import stat
+    import pwd
+    import tempfile
+
+    if temporary_root is None:
+        temporary_root = os.path.realpath(tempfile.gettempdir())
+    if not isinstance(correlation, str) or not re.fullmatch("[0-9a-f]{32}", correlation):
+        raise ValueError("source_stage_correlation")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    root_fd = os.open(temporary_root, flags)
+    directory_fd = source_fd = None
+    leaf = "vpn-control-windows-caller-" + correlation
+    try:
+        root_info = os.fstat(root_fd)
+        if not stat.S_ISDIR(root_info.st_mode) or (
+            not (root_info.st_uid == os.geteuid() and not root_info.st_mode & 0o022)
+            and not (root_info.st_uid == 0 and root_info.st_mode & stat.S_ISVTX)
+        ):
+            raise ValueError("source_stage_parent")
+        # Validate bounded metadata before making any remote filesystem state.
+        header = stream.readline(4097)
+        if not header.endswith(b"\n") or len(header) > 4096:
+            raise ValueError("source_stage_header")
+        def pairs(items):
+            result = {}
+            for key, value in items:
+                if key in result:
+                    raise ValueError("source_stage_duplicate")
+                result[key] = value
+            return result
+        value = json.loads(header, object_pairs_hook=pairs)
+        if type(value) is not dict or set(value) != {"bytes", "sha256"}:
+            raise ValueError("source_stage_metadata")
+        size, digest = value["bytes"], value["sha256"]
+        if (type(size) is not int or not 0 < size <= 8388608
+                or type(digest) is not str or not re.fullmatch("[0-9a-f]{64}", digest)):
+            raise ValueError("source_stage_metadata")
+        os.mkdir(leaf, 0o700, dir_fd=root_fd)
+        directory_fd = os.open(leaf, flags, dir_fd=root_fd)
+        identity = os.fstat(directory_fd)
+        if identity.st_uid != os.geteuid() or stat.S_IMODE(identity.st_mode) != 0o700:
+            raise ValueError("source_stage_owner")
+        source_fd = os.open("caller.py", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                            0o600, dir_fd=directory_fd)
+        consumed, actual = 0, hashlib.sha256()
+        while consumed < size:
+            chunk = stream.read(min(65536, size - consumed))
+            if not chunk:
+                raise ValueError("source_stage_truncated")
+            consumed += len(chunk)
+            actual.update(chunk)
+            view = memoryview(chunk)
+            while view:
+                count = os.write(source_fd, view)
+                if count <= 0:
+                    raise ValueError("source_stage_short_write")
+                view = view[count:]
+        if stream.read(1):
+            raise ValueError("source_stage_trailing")
+        if actual.hexdigest() != digest:
+            raise ValueError("source_stage_digest")
+        os.fsync(source_fd)
+        os.close(source_fd)
+        source_fd = None
+        # Reread the physical file, rather than treating a sender's hash as proof.
+        read_fd = os.open("caller.py", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                          dir_fd=directory_fd)
+        try:
+            info = os.fstat(read_fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1
+                    or info.st_size != size):
+                raise ValueError("source_stage_file")
+            verification = hashlib.sha256()
+            while chunk := os.read(read_fd, 65536):
+                verification.update(chunk)
+            after = os.fstat(read_fd)
+            def generation(item):
+                return (item.st_dev, item.st_ino, item.st_mode, item.st_uid, item.st_gid,
+                        item.st_nlink, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
+            if verification.hexdigest() != digest or generation(after) != generation(info):
+                raise ValueError("source_stage_file_changed")
+        finally:
+            os.close(read_fd)
+        current = os.stat(leaf, dir_fd=root_fd, follow_symlinks=False)
+        if (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino):
+            raise ValueError("source_stage_directory_changed")
+        receipt = {"state": "staged", "correlationId": correlation,
+                   "path": temporary_root.rstrip("/") + "/" + leaf + "/caller.py",
+                   "bytes": size, "sha256": digest, "uid": os.geteuid(),
+            "principal": pwd.getpwuid(os.geteuid()).pw_name,
+            "temporaryRoot": temporary_root,
+                   "sourceExecuted": False, "replayAllowed": False}
+        receipt_fd = os.open("receipt.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory_fd)
+        try:
+            body = (json.dumps(receipt, sort_keys=True) + "\n").encode()
+            view = memoryview(body)
+            while view:
+                count = os.write(receipt_fd, view)
+                if count <= 0:
+                    raise ValueError("source_stage_receipt_write")
+                view = view[count:]
+            os.fsync(receipt_fd)
+        finally:
+            os.close(receipt_fd)
+        os.fsync(directory_fd)
+        os.fsync(root_fd)
+        return receipt
+    finally:
+        for fd in (source_fd, directory_fd, root_fd):
+            if fd is not None:
+                os.close(fd)
+
+
+def source_payload(source: bytes) -> bytes:
+    """Frame the complete previously saved source; never put it in an argv."""
+    if type(source) is not bytes or not 0 < len(source) <= MAX_SOURCE_BYTES:
+        raise ValueError("source_stage_source")
+    # This is source publication, so malformed Python fails locally too.
+    compile(source.decode("utf-8", "strict"), "saved Windows caller", "exec")
+    return (json.dumps({"bytes": len(source), "sha256": hashlib.sha256(source).hexdigest()},
+                       sort_keys=True).encode() + b"\n" + source)
+
+
+def receiver_program(correlation: str) -> str:
+    """Small fixed bootstrap; the complete caller arrives on standard input."""
+    if type(correlation) is not str or not re.fullmatch("[0-9a-f]{32}", correlation):
+        raise ValueError("source_stage_correlation")
+    source = ("import sys,json\n" + inspect.getsource(receive_source)
+              + "\ntry:\n result=receive_source(" + repr(correlation)
+              + ",sys.stdin.buffer)\n"
+              + "except ValueError as error:\n"
+              + " reason=str(error)\n"
+              + " if not reason.startswith('source_stage_'):raise\n"
+              + " print(json.dumps({'state':'refused','reason':reason,'correlationId':"
+              + repr(correlation) + ",'sourceExecuted':False,'replayAllowed':False}),flush=True)\n"
+              + " raise SystemExit(64)\n"
+              + "except FileExistsError:\n"
+              + " print(json.dumps({'state':'refused','reason':'source_stage_exists','correlationId':"
+              + repr(correlation) + ",'sourceExecuted':False,'replayAllowed':False}),flush=True)\n"
+              + " raise SystemExit(64)\n"
+              + "print(json.dumps(result,sort_keys=True),flush=True)\n")
+    compile(source, "Windows caller file receiver", "exec")
+    return source
+
+
+def gateway_program(saved_source: bytes) -> bytes:
+    """Render the proved stage-only gateway driver from checked-in source."""
+    source_payload(saved_source)
+    template = GATEWAY_SOURCE.read_bytes()
+    if hashlib.sha256(template).hexdigest() != GATEWAY_SHA256:
+        raise ValueError("source_stage_gateway_changed")
+    text = template.decode("utf-8", "strict")
+    if text.count("PROBE = None\n") != 1 or text.count("RECEIVER = None\n") != 1:
+        raise ValueError("source_stage_gateway_shape")
+    text = text.replace("PROBE = None\n", "PROBE=" + repr(saved_source.decode("utf-8", "strict")) + "\n")
+    text = text.replace("RECEIVER = None\n", "RECEIVER=" + repr(receiver_program("00" * 16)) + "\n")
+    raw = text.encode()
+    source_payload(raw)
+    return raw

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "fragmentSha256": "02ad6e1176c1687a627e7fc4fafe73bd0339c74f830f55872efd1662b0f6152a",
+  "fullSourceSha256": "056a792ee17e581f9310fda9298e3d2fa0d9ac84e8c7b438506e7562f3ce4efd",
+  "failure": "A connected TPM stream retains its bound path beside its listening socket; the original observer requires one path row and rejects the live instance.",
+  "nativeEvidence": "original-observer-diagnosis-v1.log and original-socket-diagnosis-v1.log in the private reproducibility audit; original start/status remain UNKNOWN."
+}

@@ -174,10 +174,44 @@ class ProxyObservationTest(unittest.TestCase):
         config=ssh.SshConfig(root,{'gateway':gateway,'archlinux':target})
         source=probe.remote_source();packet=json.dumps({'artifact':'A'*30000})
         def size(carrier):
-            argv=ssh.build_ssh_argv(config,'archlinux',60,command=('python3','-I','-B','-c',carrier,'diagnose','/fixture','archlinux','api35',CORR,packet))
+            # Historical exec-argument measurement only; this raw constructor
+            # cannot submit. Current public planning is checked separately below.
+            argv=ssh._build_ssh_argv(config,'archlinux',60,command=('python3','-I','-B','-c',carrier,'diagnose','/fixture','archlinux','api35',CORR,packet))
             return max(len(x.encode()) for x in argv)
         self.assertGreaterEqual(size('exec('+repr(source)+')'),131072)
         self.assertLess(size(probe.source_carrier(source)),131072)
+        # The current public builder requires real owned configuration before
+        # binding an oversized command; construction must never create a child.
+        from agent_tools import ssh_automatic_program as automatic
+        with tempfile.TemporaryDirectory() as directory:
+            owned=Path(directory).resolve();owned.chmod(0o700)
+            key,known=owned/'inert-key',owned/'inert-known'
+            for path in (key,known):path.write_bytes(b'PUBLIC_INERT_FIXTURE\n');path.chmod(0o600)
+            hosts={'gateway':{'host':'192.0.2.50','port':22,'user':'user',
+                    'identityFile':str(key),'knownHostsFile':str(known)},
+                   'archlinux':{'host':'example.invalid','port':22,'user':'user',
+                    'identityFile':str(key),'knownHostsFile':'/fixture/known-hosts',
+                    'transport':'nested','gateway':'gateway','remoteHostAlias':'archlinux',
+                    'remoteConfigFile':'/fixture/ssh-config'}}
+            inventory=owned/'.vm-hosts.local.json'
+            inventory.write_text(json.dumps({'schemaVersion':1,'hosts':hosts}));inventory.chmod(0o600)
+            command=('python3','-I','-B','-c','exec('+repr(source)+')',
+                     'diagnose','/fixture','archlinux','api35',CORR,packet)
+            with patch.object(subprocess,'Popen',side_effect=AssertionError('public builder submitted a child')) as child:
+                if automatic.coordinator_capable():
+                    physical=ssh.load_config(owned)
+                    planned=ssh.build_ssh_argv(physical,'archlinux',60,command=command)
+                    self.assertIsInstance(planned,automatic.PlannedArgv)
+                    self.assertGreater(automatic.command_bytes(planned.original_argv),60000)
+                    with self.assertRaisesRegex(automatic.AutomaticProgramError,'oversized_argv_requires_automatic_submission'):
+                        list(planned)
+                else:
+                    if os.name=='nt':
+                        with self.assertRaisesRegex(ssh.SshConfigError,'unsupported on Windows'):
+                            ssh.load_config(owned)
+                    with self.assertRaisesRegex(automatic.AutomaticProgramError,'automatic_unsupported_coordinator'):
+                        ssh.build_ssh_argv(config,'archlinux',60,command=command)
+                child.assert_not_called()
         code=probe.source_carrier("result='bounded decoded fixed source'")
         scope={};exec(code,scope);self.assertEqual('bounded decoded fixed source',scope['result'])
 

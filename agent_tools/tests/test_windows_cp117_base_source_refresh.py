@@ -2711,3 +2711,14 @@ class DirectFixtureServerReadTests(HistoryCase):
     original(directory)
    with patch.object(publisher,'fsync_probe_directory',side_effect=check),patch.object(publisher.platform,'system',return_value='causal-hardlink-only'):publisher.write_private_ready_json(p,{'public':True})
    self.assertEqual(observed,[2]);self.assertEqual(p.stat().st_nlink,1);self.assertEqual(json.loads(p.read_bytes()),{'public':True})
+
+
+# Whole historical factories are executed only against the two checkout-bound
+# source labels. Native admission and private-file guards remain unchanged.
+def setUpModule():
+    from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import inert_repository_source_reads
+    global _historical_source_reads
+    _historical_source_reads=inert_repository_source_reads();_historical_source_reads.__enter__()
+
+def tearDownModule():
+    _historical_source_reads.__exit__(None,None,None)

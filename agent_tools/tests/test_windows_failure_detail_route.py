@@ -7,6 +7,13 @@ from agent_tools import mcp_server, native_failure_evidence
 
 
 class WindowsFailureDetailRouteTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'native_failure_evidence',
+        )
+
     def test_bounded_stage_cause_reaches_signature_and_receipt(self):
         guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         guard.start(); self.addCleanup(guard.stop)

@@ -264,7 +264,7 @@ def _run_fixed(root: str | Path, host_alias: str, timeout_seconds: int) -> bytes
         raise ValueError("Configured read-only Arch transport is unavailable")
     command = ("python3", "-c", "exec(" + repr(_REMOTE_PROGRAM) + ")")
     argv = ssh_transport.build_ssh_argv(config, host_alias, timeout_seconds, command=command)
-    completed = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    completed = ssh_transport.run_ssh(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                timeout=timeout_seconds + 1, check=False)
     if completed.returncode != 0 or len(completed.stdout) > _MAX_OUTPUT_BYTES:
         raise ValueError("Read-only Linux VM inventory is unavailable")

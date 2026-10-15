@@ -1,0 +1,9 @@
+{
+  "sourcePath": "agent_tools/native_execution_context.py",
+  "sourceSha256": "eb3bd4d0da9a1310a20a1565823b9f1d4f2af23ae98944b770bc1bfa58eb4309",
+  "sourceSize": 25214,
+  "sourceFixture": "before.source",
+  "authority": "Complete current unmodified catalogue captured before finite automatic transport dependency repair.",
+  "originalFailureEvidence": ".runtime/mcp-current-pin-refresh-2026-10-15/frozen-green/tests.log",
+  "cause": "ssh_transport late automatic helper import absent from repository-owned exact dynamic dependency map."
+}

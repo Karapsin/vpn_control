@@ -18,11 +18,16 @@ from agent_tools import linux_package_fixture_build as build
 from agent_tools.tests.fixtures.tmux_reviewed_build import reviewed_tool_sources
 
 
-def remote_program(program, payload, handler):
+def remote_program(program, payload, handler, *, account_home=None):
     fake=types.ModuleType('subprocess');fake.run=handler
     fake.PIPE=subprocess.PIPE;fake.DEVNULL=subprocess.DEVNULL;fake.TimeoutExpired=subprocess.TimeoutExpired
     result=io.StringIO()
-    with mock.patch.dict('sys.modules',{'subprocess':fake}),mock.patch('sys.stdin',types.SimpleNamespace(buffer=io.BytesIO(session.canonical(payload)))),contextlib.redirect_stdout(result):
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.dict('sys.modules',{'subprocess':fake}))
+        stack.enter_context(mock.patch('sys.stdin',types.SimpleNamespace(buffer=io.BytesIO(session.canonical(payload)))))
+        stack.enter_context(contextlib.redirect_stdout(result))
+        if account_home is not None:
+            stack.enter_context(mock.patch('pwd.getpwuid',return_value=types.SimpleNamespace(pw_dir=str(account_home))))
         exec(compile(program,'<fixed-stage>','exec'),{'__name__':'diagnostic'})
     return json.loads(result.getvalue())
 
@@ -30,7 +35,7 @@ def remote_program(program, payload, handler):
 class StageTests(unittest.TestCase):
     def test_actual_clone_timeout_vs_exact_fetch(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp);root.chmod(0o700)
+            home=Path(tmp);home.chmod(0o700);root=home/old.REMOTE_ROOT_NAME;root.mkdir(mode=0o700)
             req=old.purpose(recovery.OLD_REQUEST)
             tools=reviewed_tool_sources()
             payload={'request':req,'build':base64.b64encode(tools['linux_package_fixture_build.py']['raw']).decode(),
@@ -47,22 +52,22 @@ class StageTests(unittest.TestCase):
                     (root/req['correlationId']/'source'/'agent_tools').mkdir()
                     self.assertEqual(kw['env']['GIT_LFS_SKIP_SMUDGE'],'1')
                 return types.SimpleNamespace(stdout=req['sourceSha'].encode(),returncode=0)
-            old_program=old._STAGE.replace(old.REMOTE_ROOT,str(root))
-            with self.assertRaises(subprocess.TimeoutExpired):remote_program(old_program,payload,handler)
+            old_program=old._STAGE
+            with self.assertRaises(subprocess.TimeoutExpired):remote_program(old_program,payload,handler,account_home=home)
             self.assertFalse((root/req['correlationId']/'stage-ready.json').exists())
             # Different fresh correlation only, never retry old consumed job.
             req={**req,'correlationId':'f947e7c3-fdbd-44dd-9b65-03bcb2ed4820'};payload['request']=req
-            program=recovery.STAGE_V2.replace(old.REMOTE_ROOT,str(root))
+            program=recovery.STAGE_V2
             with mock.patch.object(session,'preflight',return_value={}):
                 # Generated stage imports its own reviewed tool, so replace only
                 # final preflight function invocation in inert fixture.
                 program=program.replace("proof=namespace['preflight'](job,source,request)","proof={'source':{},'parent':{},'job':{}}")
-                result=remote_program(program,payload,handler)
+                result=remote_program(program,payload,handler,account_home=home)
             self.assertEqual(result['state'],'staged')
             self.assertTrue((root/req['correlationId']/'stage-ready.json').exists())
             self.assertEqual(sum('fetch' in a for a,_ in calls),1)
             self.assertFalse(any('--remote-run' in a for a,_ in calls))
-            with self.assertRaises(FileExistsError):remote_program(program,payload,handler)
+            with self.assertRaises(FileExistsError):remote_program(program,payload,handler,account_home=home)
             self.assertEqual(sum('fetch' in a for a,_ in calls),1)
 
     def test_fixed_flat_command_and_no_arbitrary_source(self):

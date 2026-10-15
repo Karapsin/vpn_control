@@ -28,7 +28,7 @@ from typing import Any, Mapping
 
 _ROLES = {"ubuntu-fresh": ("ubuntu", 2330), "ubuntu-update": ("ubuntu", 2331),
           "arch-update": ("arch", 2332), "arch-rollback": ("arch", 2333)}
-_HOST_ROOT = Path("/home/kardinal/.vpn-control-parity-prepare")
+_HOST_ROOT = ((Path(__import__("pwd").getpwuid(os.getuid()).pw_dir) if os.name=="posix" else Path.home())/".vpn-control-parity-prepare")
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
@@ -609,23 +609,47 @@ def _host_capacity(*, proc_root: Path = Path("/proc")) -> dict[str, int]:
           "Host QEMU memory admission is incomplete")
     guests = 0
     reserved = 0
-    for entry in proc_root.iterdir():
+    entries = list(proc_root.iterdir())
+    _need(len(entries) <= 8192, "Host process inventory exceeds bound")
+    for entry in entries:
         if not entry.name.isdecimal():
             continue
         try:
-            comm = (entry / "comm").read_text(encoding="ascii").strip()
+            before = (entry / "stat").read_text(encoding="ascii").rsplit(")", 1)[1].split()
+            try:
+                executable = os.path.basename(os.readlink(entry / "exe"))
+            except FileNotFoundError:
+                if not entry.exists():
+                    continue
+                after = (entry / "stat").read_text(encoding="ascii").rsplit(")", 1)[1].split()
+                _need(before[19] == after[19] and
+                      ((before[0] == after[0] == "Z") or
+                       (int(before[6]) & int(after[6]) & 0x00200000)),
+                      "Host process executable is unavailable")
+                continue
         except FileNotFoundError:
             if not entry.exists():
                 continue
             raise RemotePreparationError("Host process inventory changed")
         except OSError as error:
             raise RemotePreparationError("Host process inventory is unreadable") from error
-        if not comm.startswith("qemu-system-"):
+        except (ValueError, IndexError, UnicodeError) as error:
+            raise RemotePreparationError("Host process identity is invalid") from error
+        if not executable.startswith("qemu-system-"):
             continue
         try:
+            executable_identity = os.stat(entry / "exe")
             raw = (entry / "cmdline").read_bytes()
+            after = (entry / "stat").read_text(encoding="ascii").rsplit(")", 1)[1].split()
+            current_executable = os.stat(entry / "exe")
         except OSError as error:
             raise RemotePreparationError("Host QEMU command is unreadable") from error
+        identity = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_gid,
+                              s.st_size, s.st_mtime_ns, s.st_ctime_ns, s.st_nlink)
+        _need(before[19] == after[19] and before[3] == after[3] and
+              identity(executable_identity) == identity(current_executable) and
+              os.path.basename(os.readlink(entry / "exe")) == executable,
+              "Host QEMU identity changed")
         argv = [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part]
         _need(0 < len(raw) <= 16384 and argv.count("-m") == 1,
               "Host QEMU allocation is unknown")
@@ -675,7 +699,7 @@ def run_host_worker(role: str, correlation: str, *, root: Path = _HOST_ROOT) -> 
     _need(state["state"] == "running" and state["phase"] == "submitted",
           "Host worker state is not the one-shot submission")
     distribution, port = _ROLES[role]
-    tree = Path("/home/kardinal/vpn-control-install-vm-parity-" + role)
+    tree = (Path(__import__("pwd").getpwuid(os.getuid()).pw_dir)/("vpn-control-install-vm-parity-" + role))
     _need(not tree.exists() and not tree.is_symlink(), "Host QEMU role tree already exists")
     manifest = json.loads(_read_private(job / "manifest.json", 64 * 1024))
     transfer = _read_private(job / "transfer.tar", _MAX_TRANSFER)
@@ -758,7 +782,7 @@ _REMOTE_SUBMIT = r'''import hashlib,importlib.util,io,json,os,stat,sys,tarfile
 from pathlib import Path
 role,correlation,source,digest,size,artifacts=sys.argv[1:]
 if role not in ('ubuntu-fresh','ubuntu-update','arch-update','arch-rollback') or not 0<int(size)<=3221225472:raise ValueError('identity')
-root=Path('/home/kardinal/.vpn-control-parity-prepare')
+root=(Path(__import__('pwd').getpwuid(os.getuid()).pw_dir)/'.vpn-control-parity-prepare')
 root.mkdir(mode=0o700,exist_ok=True)
 info=root.lstat()
 if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('root')
@@ -781,7 +805,7 @@ print(json.dumps(module.host_submit(data,role,correlation,source,json.loads(arti
 _REMOTE_STATUS = r'''import importlib.util,json,os,stat,sys
 from pathlib import Path
 role,correlation=sys.argv[1:]
-root=Path('/home/kardinal/.vpn-control-parity-prepare')
+root=(Path(__import__('pwd').getpwuid(os.getuid()).pw_dir)/'.vpn-control-parity-prepare')
 candidate=root/('candidate-'+correlation+'.py')
 info=candidate.lstat()
 if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600:raise ValueError('candidate')
@@ -803,14 +827,14 @@ class FixedRemoteDriver:
         raw, _ = prep.transfer_bundle(self.root, request, admitted)
         config = ssh_transport.load_config(self.root)
         host = config.hosts.get("archlinux")
-        _need(host is not None and host.user == "kardinal" and host.password is None,
+        _need(host is not None and host.password is None,
               "Fixed Linux preparation host is unavailable")
         command = ("python3", "-I", "-B", "-c", _REMOTE_SUBMIT,
                    request.guest_role, request.correlation_id, request.source_sha,
                    hashlib.sha256(raw).hexdigest(), str(len(raw)),
                    json.dumps(dict(request.artifact_ids), sort_keys=True, separators=(",", ":")))
         argv = ssh_transport.build_ssh_argv(config, "archlinux", 60, command=command)
-        done = self.runner(argv, input=raw, stdout=subprocess.PIPE,
+        done = ssh_transport.run_ssh(argv, runner=self.runner, input=raw, stdout=subprocess.PIPE,
                            stderr=subprocess.DEVNULL, timeout=1800)
         _need(done.returncode == 0 and len(done.stdout) <= 4096,
               "Fixed Linux preparation submission is uncertain")
@@ -823,12 +847,12 @@ class FixedRemoteDriver:
         from agent_tools import ssh_transport
         config = ssh_transport.load_config(self.root)
         host = config.hosts.get("archlinux")
-        _need(host is not None and host.user == "kardinal" and host.password is None,
+        _need(host is not None and host.password is None,
               "Fixed Linux preparation host is unavailable")
         command = ("python3", "-I", "-B", "-c", _REMOTE_STATUS,
                    request.guest_role, request.correlation_id)
         argv = ssh_transport.build_ssh_argv(config, "archlinux", 30, command=command)
-        done = self.runner(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=35)
+        done = ssh_transport.run_ssh(argv, runner=self.runner, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=35)
         _need(done.returncode == 0 and len(done.stdout) <= 16384,
               "Fixed Linux preparation status is unavailable")
         result = json.loads(done.stdout)

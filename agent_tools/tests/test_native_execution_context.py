@@ -53,6 +53,9 @@ class NativeExecutionContextTest(unittest.TestCase):
             seen.add(relative);source=ROOT/relative;destination=self.coordinator/relative
             destination.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(source,destination)
             if source.suffix!='.py':continue
+            # The real catalogue follows only these repository-owned dynamic
+            # edges. Capture their complete source and static imports as well.
+            pending.extend('agent_tools/'+name+'.py' for name in context._DYNAMIC.get(relative,()))
             for node in ast.walk(ast.parse(source.read_bytes())):
                 dependencies=[]
                 if isinstance(node,ast.Import):dependencies=[a.name for a in node.names]

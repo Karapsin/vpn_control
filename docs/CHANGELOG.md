@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.11 - 2026-10-15
 
 - Prefer current agent guidance while retaining explicit historical evidence retrieval.
 - Run the CI whitespace regression without a platform shell dependency.
@@ -12,6 +12,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Reuse agent-test inventory, source analysis and dependency traversal with unchanged selection safety.
 - Preserve byte-authenticated Python tools in Windows checkouts and validate attribute changes.
 - Verify fingerprint receipts only with supported private retention and preserve unsupported-platform refusal.
+- Make MCP source loading, input-driven fixtures and automatic SSH transfers reproducible.
+- Validate explicit SSH wire events separately from their authority evidence.
+- Keep SSH evidence fixtures portable and verify their causal controls in Windows CI.
 
 ## 2.2.10 - 2026-10-14
 

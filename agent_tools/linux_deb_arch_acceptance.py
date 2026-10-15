@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
@@ -160,15 +160,22 @@ def _fixture(intent: Intent, captured: Mapping[str, Mapping[str, Any]]) -> dict[
             "packageType": package_type}
 
 
+def role_tree_path(value:Any,role:str)->bool:
+    """Lexical shape only; the live observer anchors it to the authenticated home."""
+    if type(value)is not str or len(value.encode())>4096 or any(ord(c)<32 or ord(c)==127 for c in value):return False
+    path=PurePosixPath(value)
+    return (path.is_absolute() and not value.startswith('//') and str(path)==value and '..' not in path.parts
+            and path.name=='vpn-control-install-vm-parity-'+role)
+
+
 def _guest_manifest(intent: Intent, captured: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
     value = _json_artifact(captured["guestManifest"], 8192)
     required = {"schemaVersion", "host", "profile", "distribution", "guestRole", "sourceSha",
                 "tree", "sshPort", "qemuPid", "qemuStartTicks", "diskDevice", "diskInode", "pristine"}
-    expected_tree = "/home/kardinal/vpn-control-install-vm-parity-" + intent.guest_role
     if (set(value) != required or value.get("schemaVersion") != 1 or value.get("host") != "archlinux"
             or value.get("profile") != intent.profile or value.get("distribution") != intent.distribution
             or value.get("guestRole") != intent.guest_role or value.get("sourceSha") != intent.source_sha
-            or value.get("tree") != expected_tree or value.get("sshPort") != intent.guest_port
+            or not role_tree_path(value.get("tree"),intent.guest_role) or value.get("sshPort") != intent.guest_port
             or value.get("pristine") is not True
             or any(type(value.get(key)) is not int or value[key] <= 0 for key in
                    ("qemuPid", "qemuStartTicks", "diskDevice", "diskInode"))):

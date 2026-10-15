@@ -1,0 +1,70 @@
+{
+  "sourceCommit": "e167a73ee8acd7fbb9844380dc12f310f537d0e6",
+  "role": "Complete immutable v1 graph used only for historical transition controls; never current native admission",
+  "sources": [
+    {
+      "path": "ssh_direct_nested_channel.py",
+      "sourceSha256": "5b82a0a63fbd2fbc44aa4203c76060ede36236a11cdc8399e186bf7c69cc2ff3"
+    },
+    {
+      "path": "ssh_fresh_nested_channel.py",
+      "sourceSha256": "a89b78915104aca50a6f5bbd1f7c9e9961248f308c10014572c6c77f702da603"
+    },
+    {
+      "path": "ssh_transport.py",
+      "sourceSha256": "00bcf88a41031ee11bd356dafc2ceda5ef609fa10471c9f9ed710fa084596db4"
+    },
+    {
+      "path": "ssh_connection_session.py",
+      "sourceSha256": "dba4466d09aff57787cb008edcd044bc1cb4c3a22f4325c6a41efebe230a0720"
+    },
+    {
+      "path": "ssh_connection_recovery.py",
+      "sourceSha256": "9c1d6389c73c9c11950dea434ac5bcb743d2382e6d510b916f774a37b68f4963"
+    },
+    {
+      "path": "private_inventory_lock.py",
+      "sourceSha256": "d6ce7b228059470b4792c47e4562017235cad26ae6666c2a899dd459887358b8"
+    },
+    {
+      "path": "native_review_source_closure.py",
+      "sourceSha256": "0fac471b05e0e784913f5508a5d90b279fbc48c96751b83082d1f9c14cef95ae"
+    },
+    {
+      "path": "check_output_retention.py",
+      "sourceSha256": "02d602b0d49ac77bbd84ca573c88c7f85b0f0622557d4cbd17cd85da2fc910c2"
+    },
+    {
+      "path": "ssh_nested_socket_owned_home_observation.py",
+      "sourceSha256": "9e595d01d4cccc319ed573788ced30ba168a49fe69e2217d50668278c5cde91f"
+    },
+    {
+      "path": "ssh_nested_socket_noninteractive_observation.py",
+      "sourceSha256": "3ca002e128e0b887db78f39881955de6581d1d01f5dae2d8e34ba0ddbbde08f9"
+    },
+    {
+      "path": "ssh_nested_socket_retirement.py",
+      "sourceSha256": "356985224da09aa4306e0c018b5afd92a86f018312df34bc68685d7da6188731"
+    },
+    {
+      "path": "ssh_nested_socket_route_diagnostic.py",
+      "sourceSha256": "d23217e1c64f3fd74fb049a721945885acabb3e82774a2eeb3ee32870d736160"
+    },
+    {
+      "path": "ssh_recovery_adoption.py",
+      "sourceSha256": "cb07b4c3ea864adb3f18a2509a19d6844c60ef0f61b500d58c9fe5c8c41d1775"
+    },
+    {
+      "path": "ssh_channel_inventory_diagnostics.py",
+      "sourceSha256": "9152ea074b39f89c2fae4f0c8b02246c5e264abcc10d08c7bc4d27c2c1012c35"
+    },
+    {
+      "path": "ssh_channel_selection.py",
+      "sourceSha256": "cfee5d8b6c1de7de71ab44585f4b322d4bc943de8e5144940a46305f7091c226"
+    },
+    {
+      "path": "mcp_server.py",
+      "sourceSha256": "f2270ebb2cfd63066d84807b67b1d577b0acd1e90852ac397cf4f05d53c06f9c"
+    }
+  ]
+}

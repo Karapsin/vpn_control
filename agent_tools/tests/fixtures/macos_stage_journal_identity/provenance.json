@@ -1,0 +1,13 @@
+{
+  "sourcePath": "agent_tools/macos_fixture_stage.py",
+  "sourceSha256": "29400c9579eb1f92408216009bb430cd10a27e26f892479cc735784b96d6fee3",
+  "fragmentSha256": "29400c9579eb1f92408216009bb430cd10a27e26f892479cc735784b96d6fee3",
+  "failure": "Coherent other-correlation intent/programme/adapter/complete bytes copied into the queried journal were adopted by status and collection.",
+  "regression": "agent_tools.tests.test_macos_fixture_stage.ExplicitContextLifecycleTests.test_coherent_other_correlation_journal_cannot_be_adopted_by_readers",
+  "redEvidence": ".runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/journal-identity-red.log",
+  "boundedDefaultRegression": "agent_tools.tests.test_macos_fixture_stage.BoundedTransportTests.test_production_transport_default_bounds_output_and_retains_metadata",
+  "boundedDefaultRedEvidence": ".runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/bounded-default-causal-red.log",
+  "greenEvidence": ".runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/full-green-v1.log",
+  "routineSuite": "python3 agent_tools/affected_agent_tests.py --run",
+  "nativeLimit": "No Tart, VM, package installation or product acceptance. Local macOS tests execute only inert temporary fixture bytes under the current account home."
+}

@@ -16,6 +16,11 @@ CORRELATION = "11111111-1111-4111-8111-111111111111"
 
 class WindowsMsiBaseTerminalRouteTest(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'windows_msi_base_prepare',
+        )
         source_guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         source_guard.start(); self.addCleanup(source_guard.stop)
 

@@ -54,7 +54,7 @@ class WindowsFixtureWorkflowTest(unittest.TestCase):
     def request(self):
         return {'sourceSha': SHA, 'baseVersion': '2.1.19', 'correlationId': CORR}
 
-    def test_equal_installed_base_dispatches_only_from_a_fresh_idle_exact_product(self):
+    def test_source_bound_build_dispatches_without_requiring_a_guest(self):
         with tempfile.TemporaryDirectory() as tmp, \
              patch.object(base_prepare, 'readiness', return_value={
                  'state': 'ready', 'code': 'READY',
@@ -67,7 +67,7 @@ class WindowsFixtureWorkflowTest(unittest.TestCase):
             self.assertTrue((root / '.runtime/windows-msi-fixture-dispatch' /
                              (CORR + '.json')).is_file())
 
-    def test_newer_base_accepts_observed_product_version_mismatch(self):
+    def test_build_never_observes_the_historical_product_version(self):
         with tempfile.TemporaryDirectory() as tmp, \
              patch.object(base_prepare, 'readiness', return_value={
                  'state': 'blocked', 'code': 'PRODUCT_VERSION',
@@ -77,52 +77,22 @@ class WindowsFixtureWorkflowTest(unittest.TestCase):
             runner = Runner([(0, SHA + '\n'), (0, '')])
             result = fixture.dispatch(root, self.request(), runner=runner)
             self.assertEqual('submitted', result['state'])
-            observe.assert_called_once_with(root, {
-                'host': 'archlinux', 'expectedCurrentVersion': '2.1.19'})
+            observe.assert_not_called()
             self.assertTrue((root / '.runtime/windows-msi-fixture-dispatch' /
                              (CORR + '.json')).is_file())
             self.assertEqual(1, sum(call[:3] == ['gh', 'workflow', 'run']
                                     for call in runner.calls))
 
-    def test_unknown_or_busy_installed_version_never_dispatches(self):
-        for inventory in (
-            {'state': 'unknown', 'installedVersion': None},
-            {'state': 'blocked', 'code': 'PRODUCT_VERSION', 'installedVersion': '2.1.17',
-             'productCount': 1, 'activeCount': 1, 'ownedExplorerCount': 1},
-            {'state': 'blocked', 'code': 'PRODUCT_VERSION', 'installedVersion': '2.1.17',
-             'productCount': 1, 'activeCount': 0, 'ownedExplorerCount': 0},
-        ):
-            with self.subTest(inventory=inventory), tempfile.TemporaryDirectory() as tmp, \
-                 patch.object(base_prepare, 'readiness', return_value=inventory):
-                root = Path(tmp)
-                runner = Runner([])
-                with self.assertRaisesRegex(ValueError, 'Fresh idle CP117'):
-                    fixture.dispatch(root, self.request(), runner=runner)
-                self.assertFalse((root / '.runtime').exists())
-                self.assertEqual(1, len(runner.calls))
-                self.assertTrue(runner.calls[0][-1].endswith(':gradle.properties'))
 
-    def test_equal_installed_base_refuses_ambiguous_or_active_inventory(self):
-        inventories = (
-            {'state': 'blocked', 'code': 'PRODUCT_VERSION', 'installedVersion': '2.1.19',
-             'productCount': 1, 'activeCount': 0, 'activeProcesses': [], 'ownedExplorerCount': 1},
-            {'state': 'ready', 'code': 'READY', 'installedVersion': '2.1.19',
-             'productCount': 1, 'activeCount': 1, 'activeProcesses': [{'kind': 'msiexec'}],
-             'ownedExplorerCount': 1},
-            {'state': 'ready', 'code': 'READY', 'installedVersion': '2.1.19',
-             'productCount': 1, 'activeCount': 0, 'activeProcesses': [{'kind': 'vpn-control'}],
-             'ownedExplorerCount': 1},
-        )
-        for inventory in inventories:
-            with self.subTest(inventory=inventory), tempfile.TemporaryDirectory() as tmp, \
-                 patch.object(base_prepare, 'readiness', return_value=inventory):
-                runner = Runner([])
-                with self.assertRaisesRegex(ValueError, 'Fresh idle CP117|fresh idle CP117 product'):
-                    fixture.dispatch(Path(tmp), self.request(), runner=runner)
-                self.assertEqual(1, len(runner.calls))
-                self.assertTrue(runner.calls[0][-1].endswith(':gradle.properties'))
 
-    def test_equal_installed_base_requires_a_newer_target_from_the_pinned_source(self):
+    def test_absent_or_busy_guest_cannot_affect_package_only_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(base_prepare,'readiness',side_effect=AssertionError('no guest observation'))as observe:
+            runner=Runner([(0,SHA+'\n'),(0,'')])
+            self.assertEqual('submitted',fixture.dispatch(Path(tmp),self.request(),runner=runner)['state'])
+            observe.assert_not_called()
+            self.assertEqual(1,sum(call[:3]==['gh','workflow','run']for call in runner.calls))
+
+    def test_base_requires_a_newer_target_from_the_pinned_source(self):
         with tempfile.TemporaryDirectory() as tmp, \
              patch.object(base_prepare, 'readiness') as observe:
             def runner(argv):

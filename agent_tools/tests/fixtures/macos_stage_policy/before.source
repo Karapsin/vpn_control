@@ -1,0 +1,146 @@
+def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    """Dispatch only existing fixed adapters; batches cannot invoke arbitrary tools."""
+    if surface == "vm" and action.startswith("windows-"):
+        retired = windows_vm_setup_policy.refusal(action,inputs)
+        if retired is not None:
+            return retired
+    vm_actions = {"artifact-verify", "bundle-verify", "environment-status", "credential-status",
+                  "windows-credential-probe-start", "windows-credential-probe-status",
+                  "windows-vm-swtpm-repair-preflight", "windows-vm-swtpm-repair-start", "windows-vm-swtpm-repair-status",
+                  "windows-vm-swtpm-owner-observe",
+                  "scenario-start", "scenario-status", "scenario-resume", "scenario-collect",
+                  "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect"}
+    ssh_actions = {"inventory", "probe", "job-status", "android-observe"}
+    if surface == "vm" and action in vm_actions:
+        return _vm_workflow_impl(action, inputs)
+    if surface == "ssh" and action in ssh_actions:
+        if set(inputs) - {"host", "timeout_seconds", "identity", "device"}:
+            raise ValueError("Fixed SSH adapter received unsupported fields.")
+        return _ssh_workflow_impl(action=action, **inputs)
+    raise ValueError("Native batch adapter is not allowlisted.")
+
+
+@_core_source_request
+def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    """Manage verified artifacts, reservations, bundles and fixed resumable preflight scenarios."""
+    if action.startswith("windows-"):
+        retired = windows_vm_setup_policy.refusal(action,inputs)
+        if retired is not None:
+            return retired
+    if action in {"windows-input-start", "windows-input-observe", "windows-input-join",
+                  "windows-input-decision", "windows-input-finish"}:
+        return _vm_workflow_impl(action, inputs)
+    if action in {"source-review-close", "baseline-source-inventory"}:
+        # Metadata/source reads must not write native failure evidence on refusal.
+        return _vm_workflow_impl(action, inputs)
+    if action in {"windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status",
+                  "windows-vm-disk-probe-start", "windows-vm-disk-probe-status",
+                  "windows-vm-fresh-start", "windows-vm-fresh-status",
+                  "windows-vm-optical-boot-start", "windows-vm-optical-close-start",
+                  "windows-vm-optical-attempt2-start",
+                  "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt3-start",
+                  "windows-vm-optical-current-screen-start",
+                  "linux-package-fixture-build-start", "linux-package-fixture-build-collect",
+                  "linux-guest-park-start", "macos-machine-server-stop-start",
+                  "android-endpoint-admission-start",
+                  "android-endpoint-admission-cleanup", "android-installer-dispatch-start",
+                  "android-installer-callback-handoff-ready", "android-installer-callback-continue",
+                  "android-installer-abort-prelaunch", "android-installer-reconcile"}:
+        try:
+            return _native_response("vm_workflow", action, _vm_workflow_impl(action, inputs),
+                                    inputs if isinstance(inputs, dict) else {})
+        except Exception:
+            # A local intent may have been written before any transport or
+            # response-handling exception. Never expose a traceback, lose its
+            # correlation, or suggest replaying the one-shot download.
+            is_optical_close = action in {"windows-vm-optical-close-start",
+                                          "windows-vm-optical-attempt2-close-start"}
+            is_optical_current = action == "windows-vm-optical-current-screen-start"
+            correlation = inputs.get("closureCorrelationId" if is_optical_close else
+                                     "observationCorrelationId" if is_optical_current else
+                                     "correlationId") if isinstance(inputs, dict) else None
+            valid = isinstance(correlation, str) and _valid_uuid(correlation)
+            status_action = ("windows-vm-optical-attempt2-close-status" if action == "windows-vm-optical-attempt2-close-start"
+                             else "windows-vm-optical-current-screen-status" if is_optical_current
+                             else "windows-vm-optical-attempt3-status" if action == "windows-vm-optical-attempt3-start"
+                             else "windows-vm-optical-attempt2-status" if action == "windows-vm-optical-attempt2-start"
+                             else "windows-vm-optical-close-status" if is_optical_close
+                             else "android-endpoint-admission-status" if action.startswith("android-endpoint-admission")
+                             else "android-installer-callback-status-handoff-ready" if action == "android-installer-callback-handoff-ready"
+                             else "android-installer-callback-status-continue" if action == "android-installer-callback-continue"
+                             else "android-installer-dispatch-status" if action.startswith("android-installer-")
+                             else "windows-vm-optical-boot-status" if action == "windows-vm-optical-boot-start"
+                             else "linux-guest-park-status" if action == "linux-guest-park-start"
+                             else "macos-machine-server-stop-status" if action == "macos-machine-server-stop-start"
+                             else "linux-package-fixture-build-status" if action.startswith("linux-package-fixture-build")
+                             else "windows-vm-driver-fetch-status" if action.startswith("windows-vm-driver-fetch")
+                             else "windows-vm-disk-probe-status" if action.startswith("windows-vm-disk-probe")
+                             else "windows-vm-fresh-status")
+            is_driver = action.startswith("windows-vm-driver-fetch")
+            is_fresh = action.startswith("windows-vm-fresh")
+            is_optical = action == "windows-vm-optical-boot-start"
+            is_optical_attempt2 = action == "windows-vm-optical-attempt2-start"
+            is_optical_attempt3 = action == "windows-vm-optical-attempt3-start"
+            is_linux_build = action.startswith("linux-package-fixture-build")
+            is_guest_park = action == "linux-guest-park-start"
+            is_mac_stop = action == "macos-machine-server-stop-start"
+            is_android_endpoint = action.startswith("android-endpoint-admission")
+            is_android_installer = action.startswith("android-installer-")
+            status_inputs = ({"correlationId": correlation} if is_linux_build or is_guest_park or is_mac_stop or is_android_endpoint or is_android_installer else
+                             {"host": "archlinux", "observationCorrelationId": correlation,
+                              "timeoutSeconds": 120} if is_optical_current else
+                             {"host": "archlinux", "closureCorrelationId": correlation,
+                              "timeoutSeconds": 120} if is_optical_close else
+                             {"host": "archlinux", "correlationId": correlation,
+                              "timeoutSeconds": 120}) if valid else None
+            if (is_optical_attempt2 or is_optical_attempt3) and status_inputs is not None:
+                closure = inputs.get("closureCorrelationId")
+                valid_closure = (closure == "b76bfd72-2d7b-459a-91da-a063e35c8007" if is_optical_attempt2 else
+                                 isinstance(closure, str) and _valid_uuid(closure) and closure != correlation and
+                                 closure not in {"ca76aff1-b67b-47cf-9e82-e61b1fe76ebb",
+                                                 "b76bfd72-2d7b-459a-91da-a063e35c8007",
+                                                 "98b4f1e0-968c-455b-a85b-d87490f5b256",
+                                                 "3d03016b-1848-4626-a7e6-4e2ef44b904f"})
+                if valid_closure:
+                    status_inputs["closureCorrelationId"] = inputs["closureCorrelationId"]
+                else:
+                    status_inputs = None
+            status_read = ({"tool": "vm_workflow", "action": status_action,
+                            "inputs": status_inputs} if status_inputs is not None else None)
+            return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                    "reason": "driver-fetch-boundary-unknown" if is_driver else
+                              "windows-optical-boot-boundary-unknown" if is_optical else
+                              "windows-optical-attempt2-boundary-unknown" if is_optical_attempt2 else
+                              "windows-optical-attempt3-boundary-unknown" if is_optical_attempt3 else
+                              "windows-optical-current-screen-boundary-unknown" if is_optical_current else
+                              "windows-optical-close-boundary-unknown" if is_optical_close else
+                              "linux-package-fixture-build-boundary-unknown" if is_linux_build else
+                              "linux-guest-park-boundary-unknown" if is_guest_park else
+                              "mac-server-stop-boundary-unknown" if is_mac_stop else
+                              "android-endpoint-boundary-unknown" if is_android_endpoint else
+                              "android-installer-boundary-unknown" if is_android_installer else
+                              "windows-fresh-setup-boundary-unknown" if is_fresh else
+                              "windows-disk-probe-boundary-unknown",
+                    **({"closureCorrelationId" if is_optical_close else
+                        "observationCorrelationId" if is_optical_current else
+                        "correlationId": correlation} if valid else {}),
+                    "replayAllowed": False, "nativeActionAllowed": False,
+                    "productAction": False,
+                    "nextAction": {"kind": ("observe-existing-driver-fetch" if is_driver else
+                                            "observe-existing-optical-boot" if is_optical else
+                                            "observe-existing-optical-attempt2" if is_optical_attempt2 else
+                                            "observe-existing-optical-attempt3" if is_optical_attempt3 else
+                                            "observe-existing-optical-current-screen" if is_optical_current else
+                                            "observe-existing-optical-close" if is_optical_close else
+                                            "observe-existing-linux-build" if is_linux_build else
+                                            "observe-existing-guest-park" if is_guest_park else
+                                            "observe-existing-mac-server-stop" if is_mac_stop else
+                                            "observe-existing-android-endpoint" if is_android_endpoint else
+                                            "observe-existing-android-installer" if is_android_installer else
+                                            "observe-existing-windows-vm" if is_fresh else
+                                            "observe-existing-disk-probe") if valid else "inspect-evidence",
+                                   "reason": "one-shot native fixture outcome is uncertain",
+                                   "replayAllowed": False, "requiresFreshEvidence": True,
+                                   **({"action": status_read} if status_read else {})}}
+    return _native_response("vm_workflow", action, _vm_workflow_impl(action, inputs), inputs if isinstance(inputs, dict) else {})
+

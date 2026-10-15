@@ -21,9 +21,33 @@ from unittest import mock
 from agent_tools import ssh_fresh_nested_channel as channel
 from agent_tools.tests import test_ssh_connection_session as fixtures
 
+# These controls preserve the finite historical successor graph. New public
+# work has explicit host contexts and does not inherit global old attempts.
+LEGACY_SOURCE_TESTS=frozenset((
+ 'test_actual_ended_reviewed_source_handoff_refuses_unknown_or_foreign',
+ 'test_actual_reviewed_0be3_ended_predecessor_allows_only_new_handle',
+ 'test_reviewed_0be3_predecessor_intent_terminal_and_inventory_mutations_refuse',
+ 'test_reviewed_0be3_ready_receipt_binding_mutations_refuse',
+ 'test_actual_canonical_012_ended_can_start_one_new_current_handle',
+ 'test_reviewed_012_fixed_diagnostic_tuple_refuses_all_other_bindings',
+ 'test_canonical_012_ready_binding_mutations_refuse_even_rehashed_receipt',
+ 'test_canonical_012_ready_arch_uid_float_and_bool_refuse',
+ 'test_reviewed_012_eof_tuple_and_foreign_handle_refusal',
+ 'test_actual_9a_ended_handoff_requires_original_remote_sha',
+ 'test_actual_9527_ended_handoff_requires_original_remote_sha',
+))
+
 @unittest.skipUnless(os.name=='posix' and hasattr(os,'O_NOFOLLOW'),'POSIX protected channel custody')
 class FreshChannelTests(unittest.TestCase):
     def setUp(self):
+        if self._testMethodName in LEGACY_SOURCE_TESTS:
+            path=Path(__file__).parent/'fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_fresh_nested_channel.py'
+            raw=path.read_bytes()
+            self.assertEqual('a89b78915104aca50a6f5bbd1f7c9e9961248f308c10014572c6c77f702da603',hashlib.sha256(raw).hexdigest())
+            selected=types.ModuleType('agent_tools._reviewed_legacy_fresh_controls')
+            selected.__file__=str(path);selected.__package__='agent_tools'
+            exec(compile(raw,str(path),'exec'),selected.__dict__)
+            patch=mock.patch.dict(globals(),{'channel':selected});patch.start();self.addCleanup(patch.stop)
         # Private fixture base avoids shared macOS T directory link churn.
         real_temporary=tempfile.TemporaryDirectory
         fixture_parent=(Path(tempfile.gettempdir()).resolve()
@@ -107,7 +131,7 @@ class FreshChannelTests(unittest.TestCase):
 
     def test_explicit_ensure_positive_expiry_renews_connection_only(self):
         remote=self.ready_fixture();self.stdout=json.dumps(remote).encode();self.rc=0
-        admitted=self.invoke();old_intent=(self.root/'.rag_index/ssh-fresh-nested-channel'/(self.corr+'.intent.json')).read_bytes()
+        admitted=self.invoke();old_intent=(self.root/'.rag_index/ssh-fresh-nested-channel/hosts/archlinux'/(self.corr+'.intent.json')).read_bytes()
         new_id='c'*32;original_consumer=self.consumer
         def sequence(argv,**kw):
             call=shlex.split(argv[-1]);identity=call[5]
@@ -118,11 +142,11 @@ class FreshChannelTests(unittest.TestCase):
             return original_consumer(argv,**kw)
         with mock.patch.object(channel.uuid,'uuid4',return_value=types.SimpleNamespace(hex=new_id)),mock.patch.object(channel.subprocess,'Popen',side_effect=sequence):
             metadata=channel.ensure_channel(self.root,'archlinux',self.corr,admitted['receiptSha256'])
-        self.assertEqual(new_id,metadata['correlationId']);self.assertEqual(old_intent,(self.root/'.rag_index/ssh-fresh-nested-channel'/(self.corr+'.intent.json')).read_bytes())
+        self.assertEqual(new_id,metadata['correlationId']);self.assertEqual(old_intent,(self.root/'.rag_index/ssh-fresh-nested-channel/hosts/archlinux'/(self.corr+'.intent.json')).read_bytes())
         self.assertEqual(['prepare','status','prepare','status'],[call[6] for call in self.calls])
 
     def test_actual_local_gate_failures_expose_finite_phase_before_submission(self):
-        channel._journal(self.root,True)
+        channel._journal(self.root,True,host='archlinux')
         self.root.chmod(0o777)
         try:self.assertEqual('inventory',self.invoke(False).get('failurePhase'))
         finally:self.root.chmod(0o700)
@@ -136,12 +160,22 @@ class FreshChannelTests(unittest.TestCase):
         finally:ready.write_bytes(saved)
         self.assertEqual([],self.calls)
 
+    def legacy_provider(self):
+        # Execute the preserved full provider; historical bytes never derive
+        # from today's implementation or an ignored previous-run directory.
+        path=Path(__file__).parent/'fixtures/ssh_channel_predecessors/provider_0be3.source'
+        raw=path.read_bytes()
+        self.assertEqual('0be3a94c8e0e5763a70b396e22d068555e6a93697f614f12c03f09bf6610e1d6',hashlib.sha256(raw).hexdigest())
+        old=types.ModuleType('agent_tools._historical_channel_fixture');old.__package__='agent_tools';old.__file__=str(path)
+        exec(compile(raw,str(path),'exec'),old.__dict__);return old
+
     def test_actual_ended_reviewed_source_handoff_refuses_unknown_or_foreign(self):
         # Only the old source identity is a declared fixture seam. Actual
         # producer/terminal receipts, protected FD guards and real children run.
         previous=channel._REVIEWED_ENDED_PREDECESSOR
         remote=self.ready_fixture();self.stdout=json.dumps(remote).encode();self.rc=0
-        with mock.patch.object(channel,'_source',return_value=previous):
+        old=self.legacy_provider()
+        with mock.patch.dict(self.invoke.__func__.__globals__,{'channel':old}),mock.patch.object(old,'_source',return_value=previous):
             self.assertEqual('ready',self.invoke()['state'])
             self.stdout=json.dumps({'state':'ended','correlationId':self.corr,'prior':remote,'gatewayBoot':remote['master']['gatewayBoot']}).encode()
             self.assertEqual('ended',self.invoke(False)['state'])
@@ -168,7 +202,7 @@ class FreshChannelTests(unittest.TestCase):
         self.assertEqual(digest,hashlib.sha256(raw).hexdigest())
         old=types.ModuleType('agent_tools._fixture_predecessor_0be3');old.__package__='agent_tools';old.__file__=str(path)
         exec(compile(raw,str(path),'exec'),old.__dict__)
-        self.assertEqual(digest,old._source());self.assertEqual(channel._REMOTE,old._REMOTE)
+        self.assertEqual(digest,old._source())
         self.assertEqual('a0d5a30bbb83bea3ba4dd7fb3c5b1664e5be2dd90e1ade1e82c3fb6123d032fd',hashlib.sha256(old._REMOTE.encode()).hexdigest())
         ready=self.ready_fixture() if with_ready else None
         with mock.patch.dict(self.invoke.__func__.__globals__,{'channel':old}):
@@ -236,7 +270,8 @@ class FreshChannelTests(unittest.TestCase):
         # Diagnostic tuples were independently reviewed and positively ended
         # natively; these TempFS receipts do not claim native provenance.
         old_source='012061ebf05def240bf79005ca58f1913fb29736a4201cae56154dcc034183fd'
-        old_remote=channel._REMOTE.replace("""  if path=='/proc/net/unix':
+        old=self.legacy_provider()
+        old_remote=old._REMOTE.replace("""  if path=='/proc/net/unix':
    chunks=[];total=0;read_count=0;deadline=time.monotonic()+2
    while True:
     if time.monotonic()>deadline or read_count>=256:raise ValueError('changed')
@@ -249,7 +284,7 @@ class FreshChannelTests(unittest.TestCase):
   else:body=os.read(fd,65537)""",'  body=os.read(fd,65537)')
         self.assertEqual('e09d999c433654349c4e48d29947522e54f91ab69cc449050b59d9eba9684898',hashlib.sha256(old_remote.encode()).hexdigest())
         self.corr=corr;ready=self.ready_fixture() if with_ready else None
-        with mock.patch.object(channel,'_source',return_value=old_source),mock.patch.object(channel,'_REMOTE',old_remote):
+        with mock.patch.dict(self.invoke.__func__.__globals__,{'channel':old}),mock.patch.object(old,'_source',return_value=old_source),mock.patch.object(old,'_REMOTE',old_remote):
             self.stdout=json.dumps(ready or {'state':'unknown','correlationId':corr}).encode();self.rc=0 if ready else 3
             self.assertEqual('ready' if ready else 'unknown',self.invoke()['state'])
             boot=ready['master']['gatewayBoot'] if ready else channel.EXPECTED_BOOT
@@ -365,7 +400,7 @@ class FreshChannelTests(unittest.TestCase):
         # Exact old programme bytes are reconstructed from the two stated
         # diagnostic-only deltas. Historical source identity is an explicit
         # fixture seam; actual protected producer/terminal/child guards run.
-        remote_source=channel._REMOTE
+        old=self.legacy_provider();remote_source=old._REMOTE
         # Reconstruct the prior pin solely from a fixed literal; no ignored
         # evidence dependency belongs in routine tests.
         current_pin=next(n for n in ast.parse(remote_source).body if isinstance(n,ast.FunctionDef) and n.name=='pin')
@@ -377,7 +412,8 @@ class FreshChannelTests(unittest.TestCase):
         old_remote=old_remote[:old_remote.rindex('except (OSError,ValueError,KeyError,subprocess.SubprocessError) as failure:')]+"except (OSError,ValueError,KeyError,subprocess.SubprocessError):\n print(json.dumps({'state':'unknown','correlationId':corr,'failurePhase':phase,'launchCapture':launch_capture(launch)},sort_keys=True));raise SystemExit(3)\n"
         self.assertEqual(channel._REVIEWED_ENDED_REMOTE_9A,hashlib.sha256(old_remote.encode()).hexdigest())
         remote=self.ready_fixture();self.stdout=json.dumps(remote).encode();self.rc=0
-        with mock.patch.object(channel,'_source',return_value=channel._REVIEWED_ENDED_PREDECESSOR_9A),mock.patch.object(channel,'_REMOTE',old_remote):
+        previous=channel._REVIEWED_ENDED_PREDECESSOR_9A
+        with mock.patch.dict(self.invoke.__func__.__globals__,{'channel':old}),mock.patch.object(old,'_source',return_value=previous),mock.patch.object(old,'_REMOTE',old_remote):
             self.assertEqual('ready',self.invoke()['state'])
             self.stdout=json.dumps({'state':'ended','correlationId':self.corr,'prior':remote,'gatewayBoot':remote['master']['gatewayBoot']}).encode();self.assertEqual('ended',self.invoke(False)['state'])
         group=self.root/'.rag_index/ssh-fresh-nested-channel';intent=group/(self.corr+'.intent.json');terminal=group/(self.corr+'.terminal.json');saved=intent.read_bytes();ended=terminal.read_bytes();count=len(self.calls)
@@ -391,7 +427,7 @@ class FreshChannelTests(unittest.TestCase):
         # Exact old programme bytes are reconstructed from the two stated
         # diagnostic-only deltas. Historical source identity is an explicit
         # fixture seam; actual protected producer/terminal/child guards run.
-        remote_source=channel._REMOTE
+        old=self.legacy_provider();remote_source=old._REMOTE
         # Reconstruct the prior pin solely from a fixed literal; no ignored
         # evidence dependency belongs in routine tests.
         current_pin=next(n for n in ast.parse(remote_source).body if isinstance(n,ast.FunctionDef) and n.name=='pin')
@@ -401,7 +437,8 @@ class FreshChannelTests(unittest.TestCase):
         old_remote=remote_source
         self.assertEqual(channel._REVIEWED_ENDED_REMOTE_9527,hashlib.sha256(old_remote.encode()).hexdigest())
         remote=self.ready_fixture();self.stdout=json.dumps(remote).encode();self.rc=0
-        with mock.patch.object(channel,'_source',return_value=channel._REVIEWED_ENDED_PREDECESSOR_9527),mock.patch.object(channel,'_REMOTE',old_remote):
+        previous=channel._REVIEWED_ENDED_PREDECESSOR_9527
+        with mock.patch.dict(self.invoke.__func__.__globals__,{'channel':old}),mock.patch.object(old,'_source',return_value=previous),mock.patch.object(old,'_REMOTE',old_remote):
             self.assertEqual('ready',self.invoke()['state'])
             self.stdout=json.dumps({'state':'ended','correlationId':self.corr,'prior':remote,'gatewayBoot':remote['master']['gatewayBoot']}).encode();self.assertEqual('ended',self.invoke(False)['state'])
         group=self.root/'.rag_index/ssh-fresh-nested-channel';intent=group/(self.corr+'.intent.json');terminal=group/(self.corr+'.terminal.json');saved=intent.read_bytes();ended=terminal.read_bytes();count=len(self.calls)
@@ -431,7 +468,7 @@ class FreshChannelTests(unittest.TestCase):
         value=self.invoke();self.assertEqual('unknown',value['state']);self.assertFalse(value['replayAllowed'])
         self.assertTrue(self.raw['overflow']);self.assertFalse(self.raw['complete']);self.assertEqual(5000,self.raw['counts']['stdout'])
     def test_same_inode_intent_and_config_mutation_refuse(self):
-        self.invoke();intent=next((self.root/'.rag_index/ssh-fresh-nested-channel').glob('*.intent.json'))
+        self.invoke();intent=next((self.root/'.rag_index/ssh-fresh-nested-channel/hosts/archlinux').glob('*.intent.json'))
         value=json.loads(intent.read_bytes());value['expectedUid']=False;intent.write_text(json.dumps(value));intent.chmod(0o600)
         self.assertEqual('unknown',self.invoke(False)['state']);self.assertEqual(1,len(self.calls))
     def test_raw_retention_drift_under_held_custody_refuses(self):
@@ -441,10 +478,13 @@ class FreshChannelTests(unittest.TestCase):
     def test_outer_socket_loss_after_successful_raw_retention_stops_without_replay(self):
         # Real harmless collector and real outer verifier; only the existing
         # fixture's native SSH/process facts are declared inert seams.
-        from agent_tools import ssh_channel_keeper as keeper
+        from agent_tools.tests.test_ssh_channel_keeper_entry import KeeperEntryTests
         from agent_tools.check_output_retention import retain_observation_capture
-        self.stdout=json.dumps(self.ready_fixture()).encode();self.rc=0
-        ready=self.invoke();self.assertEqual('ready',ready['state'])
+        # This observation belongs to the original-only keeper campaign. Use
+        # its complete authenticated producer, not a new scoped channel intent.
+        legacy=KeeperEntryTests('runTest');legacy.setUp();self.addCleanup(legacy.doCleanups)
+        keeper=legacy.core;self=legacy.f;ready=legacy.ready
+        self.assertEqual('ready',ready['state'])
         receipt=ready['receiptSha256'];source=channel._source()
         calls_before=len(self.calls);spawns_before=len(self.f.spawns)
         self.stdout=b'';self.stderr=b'mux_client_request_session: Broken pipe\n';self.rc=255

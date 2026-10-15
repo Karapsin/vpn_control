@@ -6,6 +6,13 @@ from agent_tools.native_next_action import next_action
 
 
 class NativeNextActionTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'native_failure_evidence',
+        )
+
     def test_public_ssh_wrapper_preserves_fixed_recovery_guidance(self):
         from agent_tools import mcp_server, native_failure_evidence
         result = {"tool": "ssh_workflow", "host": "guest", "status": "nested_master_absent",

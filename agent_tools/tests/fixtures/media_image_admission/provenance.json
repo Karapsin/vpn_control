@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "f0637ea2febcef63b976409bab69b1155a400d9ad8e2c34be9f987ab9d44038b",
+  "failureEvidence": "guest-admission-terminal-read-v1.log",
+  "failure": "requested Windows 11 Pro, actual EnterpriseEval build26200"
+}

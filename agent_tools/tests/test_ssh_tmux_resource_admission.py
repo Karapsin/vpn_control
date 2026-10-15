@@ -56,7 +56,7 @@ class ResourceTests(unittest.TestCase):
    with self.assertRaises(ValueError):r.load(self.root,REQUEST,self.root/'foreign')
  def test_host_program_fixed_no_arbitrary_payload(self):
   program=r.host_program();compile(program,'<fixed>','exec')
-  self.assertIn("fixed='/home/kardinal/.vpn-control-mcp-fixtures'",program);self.assertIn('vms!=vms2',program);self.assertNotIn('subprocess',program);self.assertNotIn('os.system',program)
+  self.assertIn("principal=pwd.getpwuid(int(sudo_uid))",program);self.assertIn('vms!=vms2',program);self.assertNotIn('subprocess',program);self.assertNotIn('os.system',program)
 
  def test_stage_and_release_refresh_host_and_binding_drift_blocks_effect(self):
   self.prepare()
@@ -103,9 +103,41 @@ class ResourceTests(unittest.TestCase):
   original_import=builtins.__import__
   def imports(name,*args,**kwargs):return fakeos if name=='os' else original_import(name,*args,**kwargs)
   fakebuiltins={**vars(builtins),'__import__':imports,'open':lambda path,*args,**kwargs:builtins.open(mapped(path),*args,**kwargs)}
-  output=io.StringIO();program=r.host_program().replace("if s.st_uid!=1000:",'if s.st_uid!='+str(os.getuid())+':').replace("FIXED_BOOT='25515f23-b966-4c3a-ae63-d38452375578'",'FIXED_BOOT='+repr(REQUEST['correlationId'])).replace("fixed='/home/kardinal/.vpn-control-mcp-fixtures'",'fixed='+repr(str(self.root)))
+  fakepwd=types.SimpleNamespace(getpwuid=lambda uid:types.SimpleNamespace(pw_uid=os.getuid(),pw_dir=str(self.root)))
+  real_join=fakeos.path.join
+  fakeos.environ={**os.environ,'SUDO_UID':str(os.getuid())}
+  fakeos.path.join=lambda parent,leaf:str(self.root) if parent==str(self.root) and leaf=='.vpn-control-mcp-fixtures' else real_join(parent,leaf)
+  def imports(name,*args,**kwargs):return fakeos if name=='os' else fakepwd if name=='pwd' else original_import(name,*args,**kwargs)
+  fakebuiltins['__import__']=imports
+  output=io.StringIO();program=r.host_program()
   with mock.patch('sys.stdin',types.SimpleNamespace(buffer=io.BytesIO(b'{}'))),redirect_stdout(output):exec(program,{'__builtins__':fakebuiltins})
   value=json.loads(output.getvalue());self.assertTrue(value['inventoryComplete']);self.assertEqual(1,len(value['vms']));self.assertEqual(2*1024**3,value['vms'][0]['configuredMemoryBytes']);self.assertEqual(456,value['vms'][0]['startTicks']);self.assertNotIn('command',value['vms'][0])
+
+ def test_prior_instance_bound_program_fails_same_new_epoch_control(self):
+  import hashlib,types
+  path=Path(__file__).parent/'fixtures/resource_instance/before.source';raw=path.read_bytes()
+  self.assertEqual('a4b43bf9b62db221c2a81e88affee722f84325b25235ece3d1544efac4a8e50f',hashlib.sha256(raw).hexdigest())
+  old=types.ModuleType('agent_tools._resource_before');old.__package__='agent_tools';old.__file__=str(path)
+  exec(compile(raw,str(path),'exec'),old.__dict__)
+  # The immutable predecessor requires its actual whole host producer. Its
+  # exact source pin remains unchanged when today's transport wrapper evolves.
+  host_path=path.with_name('native_host.before.source');host_raw=host_path.read_bytes()
+  provenance=json.loads(host_path.with_name('native_host.provenance.json').read_bytes())
+  self.assertEqual(old.HOST_SHA,provenance['sourceSha256'])
+  self.assertEqual(old.HOST_SHA,hashlib.sha256(host_raw).hexdigest())
+  prior_host=types.ModuleType('agent_tools._resource_before_native_host')
+  prior_host.__package__='agent_tools';prior_host.__file__=str(host_path)
+  exec(compile(host_raw,str(host_path),'exec'),prior_host.__dict__)
+  old.host=prior_host
+  for module,expect_failure in ((old,True),(r,False)):
+   fixture=ResourceTests('runTest');fixture.setUp()
+   try:
+    method=fixture.test_generated_host_program_reads_full_qemu_memory_and_safe_disk
+    with mock.patch.dict(method.__func__.__globals__,{'r':module}):
+     if expect_failure:
+      with self.assertRaisesRegex(ValueError,'resource_host_unknown'):method()
+     else:method()
+   finally:fixture.doCleanups()
 
  def test_generated_resource_program_keeps_actual_exe_eacces_unknown(self):
   self.unreadable_qemu_exe=True;self.fixture_comm='qemu-system-x86'

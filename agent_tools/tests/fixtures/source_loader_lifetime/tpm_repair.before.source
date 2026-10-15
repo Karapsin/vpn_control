@@ -1,0 +1,36 @@
+import json,subprocess,sys
+HOST='archlinux';PACKAGE='swtpm';VERSION='0.10.2-1';REPOSITORY='extra';MODE=__MODE__;CORR=__CORR__
+def emit(state,signature=False,integrity=False,active=False):
+ print(json.dumps({'schemaVersion':1,'host':HOST,'correlationId':CORR,'state':state,'package':PACKAGE,'version':VERSION,'pacmanSignatureVerified':signature,'packageIntegrityVerified':integrity,'activeSwtpmProcesses':active},separators=(',',':'),sort_keys=True))
+def run(argv,output=False):
+ return subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE if output else subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30,check=False,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
+def installed():
+ r=run(['/usr/bin/pacman','-Q',PACKAGE],True)
+ return r.returncode==0 and len(r.stdout)<=128 and r.stdout.decode('utf-8','strict').strip()==PACKAGE+' '+VERSION
+def active():
+ # Process names are bounded and never emitted; any failure fails closed.
+ r=run(['/usr/bin/pgrep','-x','swtpm'],True)
+ return True if r.returncode==0 else False if r.returncode==1 else None
+try:
+ running=active()
+ if running is None: emit('process-census-unavailable');raise SystemExit
+ if running: emit('active-swtpm-processes',active=True);raise SystemExit
+ if MODE=='start':
+  # Recheck both package facts before accepting private input.  A separate
+  # observer may have repaired it after this operation's preflight.
+  if not installed(): emit('package-not-exact');raise SystemExit
+  if run(['/usr/bin/pacman','-Qkk',PACKAGE]).returncode==0: emit('already-healthy',integrity=True);raise SystemExit
+  secret=sys.stdin.buffer.read(513)
+  if not 1<=len(secret)<=512 or b'\0' in secret: raise ValueError()
+  # Do not add --needed: exact same-version reinstall must be signed.
+  r=subprocess.run(['/usr/bin/sudo','-S','-p','','--','/usr/bin/pacman','-S','--noconfirm',REPOSITORY+'/'+PACKAGE+'='+VERSION],input=secret,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=180,check=False,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
+  if r.returncode: emit('transaction-failed');raise SystemExit
+  signature=True
+ else: signature=False
+ if not installed(): emit('package-not-exact',signature);raise SystemExit
+ running=active()
+ if running is None: emit('process-census-unavailable',signature);raise SystemExit
+ if running: emit('active-swtpm-processes',signature,active=True);raise SystemExit
+ integrity=run(['/usr/bin/pacman','-Qkk',PACKAGE]).returncode==0
+ emit('verified' if integrity else 'integrity-failed',signature,integrity)
+except (OSError,ValueError,UnicodeDecodeError,subprocess.TimeoutExpired): emit('unknown')

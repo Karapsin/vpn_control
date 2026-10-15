@@ -287,7 +287,7 @@ class NativeScenarioSshDriver:
         argv = ssh_transport.build_ssh_argv(config, host, self.timeout_seconds, command=command, ssh_binary=self.ssh_binary)
         connection = ssh_transport.connection_host(config, host)
         def run(environment=None):
-            return subprocess.run(argv, input=payload, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            return ssh_transport.run_ssh(argv, input=payload, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                   timeout=self.timeout_seconds + 2, env=environment, check=False)
         try:
             if connection.password is not None:

@@ -138,6 +138,11 @@ class JobObservation:
 
 
 def _run_probe(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
+    with ssh_transport.automatic_submission(argv) as submitted:
+        return _run_probe_submitted(submitted, timeout_seconds)
+
+
+def _run_probe_submitted(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
     """Run one SSH observer while retaining at most ``MAX_OUTPUT_BYTES``."""
     try:
         process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,

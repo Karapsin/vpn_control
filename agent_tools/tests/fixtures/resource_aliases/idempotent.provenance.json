@@ -1,0 +1,12 @@
+{
+  "beforeSha256": "c3941cd772de103c371356e9625dc6d64be3e9cc643943414f3087e392d68536",
+  "capture": "Original current working-tree source captured before implementing alias-union repair on 2026-10-15",
+  "dirtySource": true,
+  "evidenceDirectory": ".runtime/mcp-repair-residual-tests-2026-10-15/",
+  "failureType": "Idempotent reservation discarded newly observed resource aliases; later B-only admission forgot existing A claim",
+  "routineSuite": "agent_tools.tests.test_resource_alias_reservations",
+  "schemaVersion": 1,
+  "scope": "Local private temporary reservation files only; no host observation, VM, SSH, job, lease, release or replay",
+  "sourceBaseSha": "e167a73ee8acd7fbb9844380dc12f310f537d0e6",
+  "sourcePath": "agent_tools/native_environment.py"
+}

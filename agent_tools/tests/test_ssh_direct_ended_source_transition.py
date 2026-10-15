@@ -13,7 +13,10 @@ if fixture_owner.COORDINATOR_CAPABLE:
     from agent_tools.native_review_source_closure import _Held
 
 FIXTURES=Path(__file__).with_name('fixtures')/'ssh_direct_ended_v1'
-CURRENT_PROVIDER_SOURCE=Path(channel.__file__) if fixture_owner.COORDINATOR_CAPABLE else None
+# Archival transition predicates bind the entire reviewed v1 graph. The current
+# v2 programme has different peer/source authority and must not be substituted
+# into these historical observations. Current v2 has its own provider controls.
+CURRENT_PROVIDER_SOURCE=FIXTURES/'reviewed_optimizer/ssh_fresh_nested_channel.py' if fixture_owner.COORDINATOR_CAPABLE else None
 CURRENT_MCP_SOURCE=CURRENT_PROVIDER_SOURCE.with_name('mcp_server.py') if CURRENT_PROVIDER_SOURCE else None
 def historical(name,expected):
     body=gzip.decompress((FIXTURES/name).read_bytes())
@@ -34,6 +37,8 @@ class ProviderEndedHistoryTests(unittest.TestCase):
         self.source=self.root/'owned-provider-source';self.source.mkdir(mode=0o700)
         for name in direct._SOURCE_NAMES:
             shutil.copyfile(Path(direct.__file__).with_name(name),self.source/name)
+        for name in ('ssh_direct_nested_channel.py','ssh_transport.py'):
+            (self.source/name).write_bytes(CURRENT_PROVIDER_SOURCE.with_name(name).read_bytes())
         self.provider_path=self.source/'ssh_fresh_nested_channel.py'
         self.provider_path.write_bytes(PROVIDER_BEFORE)
         (self.source/'mcp_server.py').write_bytes(MCP_BEFORE)
@@ -46,7 +51,11 @@ class ProviderEndedHistoryTests(unittest.TestCase):
     def result(self):return self.owner.result
     @result.setter
     def result(self,value):self.owner.result=value
-    def invoke(self,*args,**kwargs):return self.owner.invoke(*args,**kwargs)
+    def invoke(self,*args,**kwargs):
+        # Compare inert transport bytes against this selected historical/current
+        # producer, rather than assuming the latest shared wire programme.
+        with mock.patch.object(self.owner,'expected_remote',self.module._REMOTE):
+            return self.owner.invoke(*args,**kwargs)
     def assert_legacy_unchanged(self):return self.owner.assert_legacy_unchanged()
     def load(self):
         name='agent_tools._owned_provider_'+str(id(self))
@@ -77,6 +86,16 @@ class ProviderEndedHistoryTests(unittest.TestCase):
         self.assertEqual('unknown',value['state']);self.assertEqual(count,len(self.calls))
         self.assertFalse((self.journal/(self.new+'.intent.json')).exists());self.assertEqual(fd,len(os.listdir('/dev/fd')))
         self.assert_legacy_unchanged()
+    def test_current_provider_cannot_replay_an_unresolved_original_v1_history(self):
+        self.seed();(self.journal/(self.corr+'.terminal.json')).unlink();before=len(self.calls)
+        self.provider_path.write_bytes(Path(channel.__file__).read_bytes());self.module=self.load()
+        # Exact original handles retain original non-replay; a new explicit
+        # context does not inherit this unrelated global UNKNOWN.
+        value=self.invoke(corr=self.corr)
+        self.assertEqual('unknown',value['state']);self.assertEqual(before,len(self.calls))
+        self.assertEqual({name:body for name,body in self.before.items() if name!='terminal'},{name:(self.journal/(self.corr+'.'+name+'.json')).read_bytes() for name in self.before if name!='terminal'})
+        self.assertFalse((self.journal/(self.corr+'.terminal.json')).exists());self.assert_legacy_unchanged()
+
     def test_actual_equal_source_ended_then_new_intent(self):
         # Seed with the actual selected provider so this is same-source on both modes.
         self.provider_path.write_bytes(CURRENT_PROVIDER_SOURCE.read_bytes());self.module=self.load()

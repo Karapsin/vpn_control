@@ -314,9 +314,9 @@ def _run_ssh(config: Any, host: str, command: tuple[str, ...], payload: bytes | 
         if connection.password is not None:
             with tempfile.TemporaryDirectory(prefix="vpn-control-askpass-") as directory:
                 _, env = ssh_transport._askpass_environment(connection.password, Path(directory))
-                done = subprocess.run(argv, input=payload, capture_output=True, timeout=timeout + 1, env=env, check=False)
+                done = ssh_transport.run_ssh(argv, input=payload, capture_output=True, timeout=timeout + 1, env=env, check=False)
         else:
-            done = subprocess.run(argv, input=payload, capture_output=True, timeout=timeout + 1, check=False)
+            done = ssh_transport.run_ssh(argv, input=payload, capture_output=True, timeout=timeout + 1, check=False)
     except (OSError, subprocess.TimeoutExpired): return None
     if done.returncode != 0 or len(done.stdout) > _MAX_OUTPUT: return None
     return done.stdout

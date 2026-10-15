@@ -22,6 +22,11 @@ class EquivalenceMcpRouteTest(unittest.TestCase):
                "targetSourceSHA": "c" * 40, "reviewerAttestation": "reviewed"}
 
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'native_acceptance_matrix',
+        )
         patch = mock.patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         patch.start(); self.addCleanup(patch.stop)
 

@@ -74,9 +74,10 @@ def qemu_claim(pid):
  before=ticks(pid)
  if before is None:return 'gone',None
  try:
-  comm=open('/proc/%d/comm'%pid).read().strip()
+  executable=os.path.basename(os.readlink('/proc/%d/exe'%pid))
+  executable_identity=os.stat('/proc/%d/exe'%pid)
  except OSError:return 'uncertain',None
- if not comm.startswith('qemu-system-'):return 'other',None
+ if not executable.startswith('qemu-system-'):return ('other',None) if ticks(pid)==before else ('uncertain',None)
  try:
   exe=os.path.basename(os.readlink('/proc/%d/exe'%pid))
   argv=open('/proc/%d/cmdline'%pid,'rb').read().split(b'\0')
@@ -96,7 +97,8 @@ def qemu_claim(pid):
     if held.st_dev==disk.st_dev and held.st_ino==disk.st_ino:disk_owned=True
  except (OSError,IndexError):return 'uncertain',None
  after=ticks(pid)
- if after!=before:return 'uncertain',None
+ identity=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_nlink)
+ if after!=before or identity(os.stat('/proc/%d/exe'%pid))!=identity(executable_identity) or os.path.basename(os.readlink('/proc/%d/exe'%pid))!=executable:return 'uncertain',None
  if not stat.S_ISREG(disk.st_mode) or not disk_owned or len(sockets)!=1 or 'socket:['+sockets[0]+']' not in links.values():return 'uncertain',None
  return 'match',before
 def running():

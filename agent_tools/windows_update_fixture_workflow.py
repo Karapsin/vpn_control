@@ -112,29 +112,6 @@ def _source_workflow_contract(root, source, runner):
         "Exact-source Windows artifact does not bind fixture correlation")
 
 
-def _require_newer_than_installed(root, base_version, target_version):
-    """Observe the owned CP117 installation before spending a hosted build."""
-    from . import windows_msi_base_prepare
-
-    observed = windows_msi_base_prepare.readiness(
-        root, {"host": "archlinux", "expectedCurrentVersion": base_version})
-    installed = observed.get("installedVersion") if isinstance(observed, dict) else None
-    _require(isinstance(installed, str) and VERSION_PATTERN.fullmatch("vpnControlVersion=" + installed)
-             and (observed.get("state"), observed.get("code")) in
-                 {("ready", "READY"), ("blocked", "PRODUCT_VERSION")}
-             and observed.get("productCount") == 1
-             and observed.get("activeCount") == 0
-             and observed.get("ownedExplorerCount") == 1,
-             "Fresh idle CP117 installed version is unavailable")
-    base = parse_version(base_version)
-    current = parse_version(installed)
-    if base > current:
-        return
-    _require(base == current
-             and target_version > base
-             and (observed.get("state"), observed.get("code")) == ("ready", "READY")
-             and observed.get("activeProcesses") == [],
-             "Fixture baseVersion must be newer than installed CP117 version, or exactly match a fresh idle CP117 product")
 
 
 def dispatch(root, request: Mapping, runner=None):
@@ -154,7 +131,8 @@ def dispatch(root, request: Mapping, runner=None):
     match = VERSION_PATTERN.search(tracked.stdout) if tracked.returncode == 0 else None
     _require(match is not None and parse_version(base) < parse_version(match.group(1)),
              "Fixture baseVersion must precede tracked target version")
-    _require_newer_than_installed(root, base, parse_version(match.group(1)))
+    # Building immutable packages has no guest effects. Installation admission
+    # separately qualifies the selected deployment's current version/processes.
     _source_workflow_contract(root, source, runner)
     path = _journal_path(root, correlation, create=True)
     intent = {"schemaVersion": 1, "workflow": WORKFLOW, "repository": REPOSITORY,

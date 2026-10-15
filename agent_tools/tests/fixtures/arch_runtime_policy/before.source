@@ -1,0 +1,118 @@
+"""Finite Windows deployment producer; all instance data comes from VmSpec."""
+from __future__ import annotations
+import inspect,json
+from .native_vm_spec import FreshWindowsVmSpec
+
+_REASONS=frozenset(('root_exists','parent_unsafe','kvm_unavailable','memory_headroom','disk_headroom','vnc_owned','asset_identity','binary_unavailable','package_integrity','host_unsupported','observation_unknown'))
+
+
+def _remote_main():
+    import hashlib,json,os,pathlib,shutil,socket,stat,subprocess
+    held=[];pins=[]
+    def reject(reason):raise ValueError(reason)
+    def generation(info):return (info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+    def pin(path,size=None,digest=None,limit=128*1024**2,executable=False):
+        if os.path.realpath(path)!=path:reject('asset_identity')
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);info=os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or not 0<info.st_size<=limit or info.st_mode&0o022
+                or size is not None and info.st_size!=size or executable and not os.access(path,os.X_OK)):reject('asset_identity')
+        h=hashlib.sha256();total=0
+        while True:
+            raw=os.read(fd,1024**2)
+            if not raw:break
+            h.update(raw);total+=len(raw)
+            if total>limit:reject('asset_identity')
+        if total!=info.st_size or digest is not None and h.hexdigest()!=digest:reject('asset_identity')
+        value={'path':path,'bytes':total,'sha256':h.hexdigest(),'generation':list(generation(info))}
+        pins.append((fd,path,generation(info)));return value
+    def closing():
+        for fd,path,expected in pins:
+            if generation(os.fstat(fd))!=expected or generation(os.stat(path,follow_symlinks=False))!=expected:reject('asset_identity')
+    def run(argv,limit=65536):
+        p=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15,check=False,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
+        if len(p.stdout)>limit or len(p.stderr)>limit:reject('package_integrity')
+        return p
+    try:
+        root=pathlib.Path(SPEC['root']);parent=root.parent
+        current=pathlib.Path('/')
+        for component in parent.parts[1:]:
+            current=current/component;info=os.lstat(current)
+            if not stat.S_ISDIR(info.st_mode):reject('parent_unsafe')
+        info=os.lstat(parent)
+        if info.st_uid!=os.geteuid() or info.st_mode&0o022:
+            if not (info.st_uid==0 and info.st_mode&stat.S_ISVTX):reject('parent_unsafe')
+        if os.path.lexists(root):reject('root_exists')
+        try:fd=os.open('/dev/kvm',os.O_RDWR|os.O_CLOEXEC);os.close(fd)
+        except OSError:reject('kvm_unavailable')
+        binaries={}
+        for name in ('qemu-system-x86_64','qemu-img','swtpm','virt-fw-vars','pacman'):
+            path=shutil.which(name,path='/usr/bin:/bin')
+            if path is None:reject('binary_unavailable')
+            binaries[name]=pin(os.path.realpath(path),executable=True)
+        packages={}
+        for name in ('qemu-system-x86','qemu-img','swtpm','edk2-ovmf','virt-firmware'):
+            result=run([binaries['pacman']['path'],'-Q',name],1024)
+            parts=result.stdout.decode('utf-8','strict').split()
+            if result.returncode or len(parts)!=2 or parts[0]!=name:reject('package_integrity')
+            integrity=run([binaries['pacman']['path'],'-Qkk',name])
+            # This initial implementation admits complete installed integrity.
+            # Runtime ownership exceptions must be independently policy-proven.
+            if integrity.returncode:reject('package_integrity')
+            packages[name]=parts[1]
+        listing=run([binaries['pacman']['path'],'-Ql','swtpm'])
+        policies={}
+        if listing.returncode:reject('package_integrity')
+        for line in listing.stdout.decode('utf8','strict').splitlines():
+            package,_,path=line.partition(' ')
+            if package=='swtpm' and path.startswith(('/usr/lib/tmpfiles.d/','/usr/lib/sysusers.d/')) and not path.endswith('/'):
+                if len(policies)>=8:reject('package_integrity')
+                pin(path,limit=16384)
+                with open(path) as stream:policies[path]=stream.read(16385)
+        assets={}
+        for name,value in SPEC['assets'].items():
+            assets[name]=pin(value['path'],size=value['bytes'],digest=value['sha256'],limit=8*1024**3)
+        with open('/proc/meminfo') as stream:memory=stream.read(16385)
+        if len(memory)>16384:reject('observation_unknown')
+        available=next(int(line.split()[1])*1024 for line in memory.splitlines() if line.startswith('MemAvailable:'))
+        if available<(SPEC['memoryMiB']+SPEC['headroomMiB'])*1024**2:reject('memory_headroom')
+        free=shutil.disk_usage(parent).free
+        if free<(SPEC['diskGiB']+8)*1024**3:reject('disk_headroom')
+        sockets=[]
+        try:
+            for family,host in ((socket.AF_INET,'127.0.0.1'),(socket.AF_INET6,'::1')):
+                s=socket.socket(family);sockets.append(s)
+                if family==socket.AF_INET6:s.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,1)
+                try:s.bind((host,SPEC['vncPort']))
+                except OSError:reject('vnc_owned')
+        finally:
+            for s in sockets:s.close()
+        closing()
+        # The complete private observation retains byte identities locally on
+        # the coordinator. Public DTO projection is bounded and non-authorizing.
+        print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'qualified','reason':None,'uid':os.geteuid(),'availableMemoryBytes':available,'freeDiskBytes':free,'packages':packages,'swtpmPolicies':policies,'assetHashes':{k:v['sha256'] for k,v in assets.items()},'binaryHashes':{k:v['sha256'] for k,v in binaries.items()},'nativeActionAllowed':False,'replayAllowed':False},sort_keys=True))
+    except (OSError,ValueError,KeyError,TypeError,StopIteration,subprocess.SubprocessError) as error:
+        reason=str(error) if type(error)is ValueError and str(error) in REASONS else 'observation_unknown'
+        print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'blocked','reason':reason,'nativeActionAllowed':False,'replayAllowed':False},sort_keys=True))
+    finally:
+        for fd in held:os.close(fd)
+
+
+def program(spec:FreshWindowsVmSpec,mode:str)->bytes:
+    if mode!='preflight':raise ValueError('unsupported_deployment_mode')
+    body='SPEC='+repr(spec.as_dict())+'\nMODE='+repr(mode)+'\nREASONS='+repr(tuple(sorted(_REASONS)))+'\n'+inspect.getsource(_remote_main)+'\n_remote_main()\n'
+    compile(body,'saved Windows VM producer','exec');return body.encode()
+
+
+def validate_result(spec,mode,value):
+    base={'schemaVersion','deploymentId','mode','state','reason','nativeActionAllowed','replayAllowed'}
+    if (type(value)is not dict or type(value.get('schemaVersion'))is not int or value['schemaVersion']!=1
+            or value.get('deploymentId')!=spec.deployment_id or value.get('mode')!=mode
+            or value.get('nativeActionAllowed')is not False or value.get('replayAllowed')is not False):raise ValueError('deployment_response_identity')
+    if value['state']=='blocked':
+        if set(value)!=base or value['reason'] not in _REASONS:raise ValueError('deployment_response_blocker')
+    elif value['state']=='qualified':
+        if (set(value)!=base|{'uid','availableMemoryBytes','freeDiskBytes','packages','swtpmPolicies','assetHashes','binaryHashes'} or value['reason'] is not None
+                or any(type(value[k])is not int or value[k]<0 for k in ('uid','availableMemoryBytes','freeDiskBytes'))
+                or value['assetHashes']!={k:v['sha256'] for k,v in spec.as_dict()['assets'].items()}):raise ValueError('deployment_response_qualification')
+    else:raise ValueError('deployment_response_state')
+    return dict(value)

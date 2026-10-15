@@ -79,7 +79,7 @@ class ExactFetchDriver(old.TmuxArchDriver):
                     unused, env = ssh_transport._askpass_environment(connection.password, Path(askpass))
                 need(self._transport()[1] == original_transport, "transport_changed")
                 if guard: guard()
-                process = subprocess.Popen(argv, cwd=self.root, stdin=subprocess.PIPE, stdout=out, stderr=err,
+                process = ssh_transport.popen_ssh(argv, cwd=self.root, stdin=subprocess.PIPE, stdout=out, stderr=err,
                                            env=env, preexec_fn=limits)
                 try:
                     process.communicate(input=input_bytes, timeout=95)
@@ -107,16 +107,17 @@ class ExactFetchDriver(old.TmuxArchDriver):
                 err_pin = session.read(stderr, MAX_RESPONSE)[1]
                 session.write_once(capsule / "receipt.json", session.canonical({
                     "schemaVersion": 1, "requestSha256": hashlib.sha256(input_bytes).hexdigest(),
-                    "argvSha256": hashlib.sha256(session.canonical(argv)).hexdigest(),
+                    "argvSha256": ssh_transport.argv_sha256(argv),
                     "exitCode": None if process is None else process.returncode,
                     "timedOut": timed_out, "stdoutPin": out_pin, "stderrPin": err_pin,
                     "replayAllowed": False}))
             except (OSError, ValueError):
                 pass  # Raw private streams survive; no missing capsule promotes authority.
+            ssh_transport.finish_ssh(process,failed=timed_out)
 
 # Only fresh current-source jobs select this separately reviewed provider. The
 # historical ExactFetchDriver and its original intent/capture pins stay strict.
-CURRENT_ADAPTER_SHA = "6f2109d961d585dfeca7f4493604cff722558a0a2a53b04ad5e3fe5e0f0578a3"
+CURRENT_ADAPTER_SHA = "b61177cf4e9c2fcfaec0fca4aa5974bbc98eec1ca1f96fd4889898dffc19428a"
 
 class CurrentExactFetchDriver(ExactFetchDriver):
     def _snapshot(self, request, *, admission=False):
@@ -228,7 +229,7 @@ def _local(driver):
     config,_=driver._transport()
     argv=ssh_transport.build_ssh_argv(config,'archlinux',10,command=old.command(old._STAGE))
     need(receipt['requestSha256']==hashlib.sha256(session.canonical(payload)).hexdigest() and
-         receipt['argvSha256']==hashlib.sha256(session.canonical(argv)).hexdigest(),'original_query_changed')
+         receipt['argvSha256']==ssh_transport.argv_sha256(argv),'original_query_changed')
     need(session.private_dir(capture)==identity,'capture_changed')
     return job,{'original':original,'intentPin':session.read(job/'tmux-adapter-intent.json')[1],
                 'jobIdentity':session.private_dir(job),'captureIdentity':identity,'capturePins':values,'companionSource':old.blob(Path(__file__).resolve())[1]}

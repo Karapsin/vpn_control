@@ -25,6 +25,15 @@ def ready():
 
 
 class ChannelMcpRouteTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'check_output_retention',
+            'ssh_channel_selection',
+            'ssh_fresh_nested_channel',
+        )
+
     def invoke(self, method, result, **kwargs):
         with mock.patch.object(channel, method, return_value=result) as provider:
             value = server._ssh_workflow_impl("connection-channel-" + method,
@@ -97,7 +106,9 @@ class ChannelMcpRouteTests(unittest.TestCase):
 
     def test_invalid_inputs_do_not_reach_provider(self):
         for method in ("prepare", "status", "ensure"):
-            for extra in ({"host": "other"}, {"timeout_seconds": True},
+            # Valid aliases reach provider configuration validation. Only an
+            # invalid alias is rejected at this public input-schema boundary.
+            for extra in ({"host": "../other"}, {"timeout_seconds": True},
                           {"transfer": {}}, {"device": "api35"},
                           {"identity": {"correlationId": HEX}},
                           {"identity": {"correlationId": CORR, "command": "unsafe"}}):
@@ -196,6 +207,15 @@ class ChannelMcpRouteTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "posix", "POSIX held capture")
 class ChannelCaptureTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'check_output_retention',
+            'ssh_channel_selection',
+            'ssh_fresh_nested_channel',
+        )
+
     def test_actual_binary_collector_is_retained_before_provider_projection(self):
         marker = b"PRIVATE_CAPTURE\x00\xff\r\nFAIL: private.native.identity\n"
         def provider(root, host, correlation, *, _private_capture=None):
@@ -229,7 +249,7 @@ class ChannelCaptureTests(unittest.TestCase):
 
     def test_actual_provider_retention_failure_refuses_without_parse_or_selection(self):
         fixture = self.fixture()
-        from agent_tools import check_output_retention as retention
+        retention = server.check_output_retention
         with mock.patch.object(server, "REPO_ROOT", fixture.root), mock.patch.object(channel.subprocess, "Popen", side_effect=fixture.consumer), mock.patch.object(retention, "retain_observation_capture", side_effect=OSError("PRIVATE_STORAGE")), mock.patch.object(selection, "select_channel") as select:
             value = server._ssh_workflow_impl("connection-channel-prepare", host="archlinux",
                     identity={"correlationId": str(__import__("uuid").UUID(fixture.corr))})
@@ -241,7 +261,7 @@ class ChannelCaptureTests(unittest.TestCase):
 
     def test_actual_provider_closes_held_source_guard_after_raw_retention(self):
         fixture = self.fixture()
-        from agent_tools import check_output_retention as retention
+        retention = server.check_output_retention
         real = retention.retain_observation_capture
         def retain_and_drift(*args, **kwargs):
             result = real(*args, **kwargs)

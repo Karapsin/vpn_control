@@ -529,6 +529,14 @@ def _python_command(program: str, *arguments: str) -> tuple[str, ...]:
 
 def _bounded_run(argv: list[str], payload: bytes | StreamPayload | None, timeout_seconds: int) -> tuple[int, bytes]:
     try:
+        with ssh_transport.automatic_submission(argv) as submitted:
+            return _bounded_run_submitted(submitted, payload, timeout_seconds)
+    except ValueError as error:
+        raise SshTransferError(str(error)) from error
+
+
+def _bounded_run_submitted(argv: list[str], payload: bytes | StreamPayload | None, timeout_seconds: int) -> tuple[int, bytes]:
+    try:
         process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     except OSError as error:
         raise SshTransferError("ssh_unavailable") from error

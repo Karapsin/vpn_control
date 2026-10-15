@@ -14,8 +14,8 @@ class GatewayTmuxRoutes(unittest.TestCase):
     corr = '691bd32a-4ea6-42a6-a3a2-e28b8d3498ec'
 
     def setUp(self):
-        patch = mock.patch.object(server, '_MCP_BOOT_TIME_NS', 2**63-1)
-        patch.start(); self.addCleanup(patch.stop)
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        self.real_agent_module=bind_cached_routes(self,server,'ssh_gateway_tmux_master_ssh','ssh_gateway_tmux_reconciliation_status')
 
     def test_fixed_dispatch_and_finite_projection(self):
         for action, method, result in (
@@ -38,7 +38,8 @@ class GatewayTmuxRoutes(unittest.TestCase):
         helper.observe.return_value = result
         with mock.patch.object(server, '_agent_module', return_value=helper) as load:
             value = server._ssh_workflow_impl('gateway-tmux-reconciliation-status', 'archlinux')
-        load.assert_called_once_with('ssh_gateway_tmux_reconciliation_status')
+        self.assertEqual(1,sum(call.args==('ssh_gateway_tmux_reconciliation_status',) for call in load.call_args_list))
+        self.assertTrue(all(call.args[0] in ('ssh_transport','ssh_gateway_tmux_reconciliation_status') for call in load.call_args_list))
         helper.observe.assert_called_once_with(server.REPO_ROOT)
         self.assertTrue(value['ok'])
         self.assertEqual('adopted', value['state'])
@@ -50,7 +51,7 @@ class GatewayTmuxRoutes(unittest.TestCase):
                 value = server._ssh_workflow_impl('gateway-tmux-reconciliation-status',
                                                   **{'host':'archlinux', **edit})
                 self.assertFalse(value['ok'])
-                load.assert_not_called()
+                self.assertFalse(any(call.args==('ssh_gateway_tmux_reconciliation_status',) for call in load.call_args_list))
 
     def test_reconciliation_status_rejects_private_or_capability_fields(self):
         valid = {'state':'adopted', 'replayAllowed':False,
@@ -80,14 +81,14 @@ class GatewayTmuxRoutes(unittest.TestCase):
                 self.assertFalse(value['ok']); self.assertEqual('unknown',value['state'])
                 self.assertNotIn('secret-marker',str(value))
 
-    def test_stale_source_rejects_before_operation(self):
-        with mock.patch.object(server, '_MCP_BOOT_TIME_NS', 0), mock.patch.object(adapter, 'operate') as call:
+    def test_loaded_code_mismatch_rejects_before_operation(self):
+        with mock.patch.object(server,'_agent_module',side_effect=self.real_agent_module), mock.patch.object(server, '_MCP_EXECUTING_CODE', None), mock.patch.object(adapter, 'operate') as call:
             result=server._ssh_workflow_impl('gateway-tmux-prepare','archlinux',identity={'correlationId':self.corr})
             self.assertFalse(result['ok']);call.assert_not_called()
 
-    def test_reconciliation_stale_source_before_observation(self):
+    def test_reconciliation_loaded_code_mismatch_before_observation(self):
         from agent_tools import ssh_gateway_tmux_reconciliation_status as helper
-        with mock.patch.object(server, '_MCP_BOOT_TIME_NS', 0), \
+        with mock.patch.object(server,'_agent_module',side_effect=self.real_agent_module), mock.patch.object(server, '_MCP_EXECUTING_CODE', None), \
                 mock.patch.object(helper, 'observe') as call:
             result = server._ssh_workflow_impl('gateway-tmux-reconciliation-status', 'archlinux')
         self.assertFalse(result['ok']); call.assert_not_called()
@@ -125,6 +126,8 @@ source=Path(sys.argv[1]);sys.path.insert(0,str(source.parent))
 spec=importlib.util.spec_from_file_location('gateway_cli_server',source)
 s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
 from agent_tools import ssh_gateway_tmux_master_ssh as a
+original=s._agent_module
+s._agent_module=lambda name:a if name=='ssh_gateway_tmux_master_ssh' else original(name)
 with mock.patch.object(a,'operate',return_value={'available':True,'reason':'available','nativeActionAllowed':False}) as call:
  code=s.main(['ssh-workflow','gateway-tmux-availability','--host','archlinux'])
  assert call.call_count==1

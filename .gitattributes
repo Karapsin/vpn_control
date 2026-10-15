@@ -8,11 +8,20 @@ visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
 # Tool loaders and their preserved Python beforeimages authenticate exact bytes.
 # Keep Git blobs intact when Windows enables automatic line-ending conversion.
 /agent_tools/**/*.py -text
+/agent_tools/ssh_source_file_gateway.source -text
 
 # Historical source fixtures retain the exact bytes named by their provenance.
 /agent_tools/tests/fixtures/**/*.source -text
+/agent_tools/tests/fixtures/native_wire_event_evidence/*.fragment -text
 /agent_tools/tests/fixtures/android_component_legacy/provenance.json text eol=lf
 
 # Frozen persistent-task fixtures retain their manifest-pinned source bytes.
 /scripts/testdata/windows-persistent-ready-parser/** -text
 /scripts/testdata/windows-persistent-taskroot/** -text
+
+/agent_tools/tests/fixtures/setup_process_capture/*.ps1 -text
+
+/agent_tools/tests/fixtures/setup_child_exit/*.ps1 -text
+/agent_tools/tests/fixtures/setup_msi_phase/*.ps1 -text
+
+agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text

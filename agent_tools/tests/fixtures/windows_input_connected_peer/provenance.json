@@ -1,0 +1,5 @@
+{
+  "fragmentSha256": "900e08f6a8e393b04e9b406d29ce1d6db3cc0843c3cb7bfc3cddd7aa8c95e91d",
+  "moduleSha256": "d5b4a3716d116acfd409a0cc943a3ddef4938e11f8570f3d26fcdd1b12d6d78f",
+  "issue": "Public input RPC and QMP connect did not authenticate the connected kernel peer; pathname/listener checks alone cannot bind a replaced socket."
+}

@@ -10,6 +10,13 @@ from agent_tools import mcp_server
 
 
 class WindowsMsiTransferEndpointTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'windows_msi_transfer_endpoint',
+        )
+
     correlation = endpoint._CORRELATION
 
     def _admission(self):

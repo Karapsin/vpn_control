@@ -23,7 +23,7 @@ from . import windows_vm_virt_firmware_install as credentials
 
 need = old.need
 CORRELATION = closure.CORRELATION
-DIAGNOSTIC_SOURCE_SHA = "42d431e8ca4ef49c1157ae30dacef27c801e90e58df994d1f9296f69ff5243e7"
+DIAGNOSTIC_SOURCE_SHA = "03bfeef02852dbec326273b2364b616e144ce60be241504b02b8bd7a179a08d1"
 MAX_STDOUT = 16 * 1024
 MAX_STDERR = 64 * 1024
 
@@ -233,10 +233,10 @@ def _observe(root, program_factory, validator):
         need(_sources(root) == sources, "terminal_authority_changed")
     authority = {"phase": "status", "snapshot": snapshot, "sources": sources,
                  "transport": transport, "local": {"privilegedTerminalCensus": True},
-                 "argvSha256": hashlib.sha256(session.canonical(argv)).hexdigest()}
+                 "argvSha256": ssh_transport.argv_sha256(argv)}
     def launch():
         full_guard()
-        return adapter.subprocess.Popen(argv, cwd=root, stdin=adapter.subprocess.PIPE,
+        return ssh_transport.popen_ssh(argv, cwd=root, stdin=adapter.subprocess.PIPE,
                                         stdout=adapter.subprocess.PIPE, stderr=adapter.subprocess.PIPE, bufsize=0)
     outcome, capsule = adapter._capture(root, authority=authority, launch=launch, payload=secret,
                                         guard=full_guard)

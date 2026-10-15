@@ -20,7 +20,7 @@ from . import ssh_transport
 
 need = old.need
 CORRELATION = closure.CORRELATION
-CLOSURE_SHA = "2372a3beda92a5d0b2d7d2a6802e5c6c595b190a24405e1da8e080bac11a1ddc"
+CLOSURE_SHA = "f8d49f05186f441594f28e59e2922b0145ac1bdfe363fcfbaf8d6510e0306304"
 
 _DIAGNOSTIC = r'''
 if set(payload)!={'action','request','stagePin','anchorPin'} or payload['action']!='status':raise ValueError('diagnostic_fixed_request_required')
@@ -130,8 +130,8 @@ def observe(root, correlation_id=CORRELATION):
             need(current_job == job and current_snapshot == snapshot, 'diagnostic_authority_changed')
         def launch():
             guard()
-            return adapter.subprocess.Popen(argv, cwd=root, stdin=adapter.subprocess.PIPE, stdout=adapter.subprocess.PIPE, stderr=adapter.subprocess.PIPE, bufsize=0)
-        authority = {'phase':'status','snapshot':snapshot,'sources':sources,'transport':transport,'local':{'diagnostic':True},'argvSha256':hashlib.sha256(session.canonical(argv)).hexdigest()}
+            return ssh_transport.popen_ssh(argv, cwd=root, stdin=adapter.subprocess.PIPE, stdout=adapter.subprocess.PIPE, stderr=adapter.subprocess.PIPE, bufsize=0)
+        authority = {'phase':'status','snapshot':snapshot,'sources':sources,'transport':transport,'local':{'diagnostic':True},'argvSha256':ssh_transport.argv_sha256(argv)}
         outcome, capsule = adapter._capture(root, authority=authority, launch=launch, payload=session.canonical(payload), guard=guard)
         need(outcome['state'] == 'captured', 'diagnostic_transport_unknown')
         receipt_raw, receipt_pin = closure.pipe._read(capsule/'receipt.json'); need(receipt_pin == outcome['receiptPin'], 'diagnostic_capture_changed')

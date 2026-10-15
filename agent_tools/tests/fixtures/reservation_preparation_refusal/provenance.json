@@ -1,0 +1,6 @@
+{
+  "source": "agent_tools/windows_vm_deploy.py",
+  "sourceSha256": "631a8e179cd9182c5985c5fe9b4dd4b217b67d69123f574756796e0da4fd4160",
+  "failure": "Memory admission correctly refused a fresh preparation before native VM submission but surfaced only as an uncaught exception/UNKNOWN at the caller.",
+  "nativeEvidence": "oobe-fixed-direct-create-v1 exception and original reservation closing in the private reproducibility audit; no reservation/start intent/native VM was created."
+}

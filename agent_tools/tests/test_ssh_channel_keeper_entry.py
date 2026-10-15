@@ -1,5 +1,5 @@
 """Source/local controls only, real TempFS/OS child, synthetic channel reply."""
-import base64,contextlib,io,json,os,subprocess,sys,unittest,uuid
+import base64,builtins,contextlib,hashlib,io,json,os,subprocess,sys,types,unittest,uuid
 from pathlib import Path
 from unittest import mock
 from agent_tools.tests import test_ssh_fresh_nested_channel as channel_fixtures
@@ -7,24 +7,74 @@ from agent_tools import (private_inventory_lock as private, ssh_fresh_nested_cha
                         ssh_channel_keeper as core, ssh_channel_keeper_entry as entry,
                         mcp_server as server)
 REPO=Path(entry.__file__).resolve().parents[1]
+ORIGINAL_PRODUCER_SHA='a306827faef4dcdc28c49fc757056dfc8f61c1729b55857594187f6ad18a791f'
 @unittest.skipUnless(os.name=='posix' and hasattr(os,'O_NOFOLLOW') and hasattr(os,'getsid'),
                      'POSIX held custody, exact local process identity and OS flock')
 class KeeperEntryTests(unittest.TestCase):
  def setUp(self):
   self.f=channel_fixtures.FreshChannelTests('runTest');self.f.setUp();self.addCleanup(self.f.doCleanups)
   self.root=self.f.root;self.now=0.;self.emitted=[]
-  self.provider=channel;self.core=core;self.entry=entry;self.server=server
+  self.server=server
   folder=self.root/'agent_tools';folder.mkdir();(folder/'__init__.py').write_text('')
-  # Owned source copies contain actual canonical bytes. Only path placement is a
-  # fixture seam; module identity, _source and generated remote remain genuine.
-  for name in entry.NAMES:(folder/name).write_bytes((REPO/'agent_tools'/name).read_bytes())
-  for obj,name,value in [(entry,'ROOT',self.root),(entry,'SOURCE_FILES',{n:folder/n for n in entry.NAMES}),
+  # The keeper is original-only: its immutable fixed UID/boot and global journal
+  # belong to the complete captured pre-namespace producer, not today's generic
+  # new-channel producer. Execute genuine old bytes and compute their real hash.
+  fixture=Path(__file__).parent/'fixtures/keeper_legacy_original'
+  raw=(fixture/'provider.before.source').read_bytes()
+  provenance=json.loads((fixture/'provenance.json').read_bytes())
+  self.assertEqual(ORIGINAL_PRODUCER_SHA,provenance['sourceSha256'])
+  self.assertEqual(ORIGINAL_PRODUCER_SHA,hashlib.sha256(raw).hexdigest())
+  for name in entry.NAMES:
+   (folder/name).write_bytes(raw if name=='ssh_fresh_nested_channel.py' else (REPO/'agent_tools'/name).read_bytes())
+  replacements={}
+  def load(stem):
+   source=folder/(stem+'.py');name='agent_tools._keeper_fixture_'+uuid.uuid4().hex
+   module=types.ModuleType(name);module.__package__='agent_tools';module.__file__=str(source)
+   def importing(name,globals=None,locals=None,fromlist=(),level=0):
+    if name=='' and level==1:
+     package=builtins.__import__(name,globals,locals,fromlist,level)
+     return types.SimpleNamespace(**{item:replacements.get(item,getattr(package,item)) for item in fromlist})
+    return builtins.__import__(name,globals,locals,fromlist,level)
+   module.__builtins__={**vars(builtins),'__import__':importing};sys.modules[name]=module
+   self.addCleanup(sys.modules.pop,name,None)
+   exec(compile(source.read_bytes(),str(source),'exec'),module.__dict__)
+   replacements[stem]=module;return module
+  self.provider=load('ssh_fresh_nested_channel');self.core=load('ssh_channel_keeper');self.entry=load('ssh_channel_keeper_entry')
+  self.assertEqual(provenance['sourceSha256'],self.provider._source())
+  self.assertIs(self.provider,self.core.original);self.assertIs(self.provider,self.entry.channel)
+  self.assertIs(self.core,self.entry.core);self.assertEqual(self.provider._source(),self.core.SOURCE_SHA)
+  # Only existing fixture IO points at the original provider. Product source,
+  # receipt authority, generated remote programme and manifest pins stay real.
+  for obj,name,value in [(channel_fixtures,'channel',self.provider),
                          (server,'REPO_ROOT',self.root),(server,'AGENT_TEST_PYTHON',sys.executable)]:
    patch=mock.patch.object(obj,name,value);patch.start();self.addCleanup(patch.stop)
   self.f.stdout=json.dumps(self.f.ready_fixture()).encode();self.f.rc=0
   with mock.patch.object(self.provider.subprocess,'Popen',side_effect=self.consumer):self.ready=self.provider.prepare(self.root,'archlinux',self.f.corr)
   self.assertEqual('ready',self.ready['state']);self.receipt=self.ready['receiptSha256']
   self.source=self.entry.source_snapshot(self.root,self.f.corr)['sourceManifestSha256']
+ def test_original_fixture_manifest_uses_executed_captured_producer(self):
+  fixture=Path(__file__).parent/'fixtures/keeper_legacy_original'
+  digest=ORIGINAL_PRODUCER_SHA
+  self.assertEqual(digest,hashlib.sha256((fixture/'provider.before.source').read_bytes()).hexdigest())
+  self.assertEqual(digest,self.provider._source());self.assertEqual(digest,self.core.SOURCE_SHA)
+  self.assertIs(self.provider,self.entry.channel);self.assertIs(self.provider,self.core.original)
+  manifest=json.loads(self.entry.source_path(self.root,self.f.corr).read_bytes())
+  path=self.root/'agent_tools/ssh_fresh_nested_channel.py'
+  self.assertEqual(digest,manifest['inputs'][str(path)]['sha256'])
+  self.assertEqual(digest,hashlib.sha256(path.read_bytes()).hexdigest())
+  self.assertEqual(self.root/'.rag_index/ssh-fresh-nested-channel',self.provider._journal(self.root,False))
+  with contextlib.ExitStack() as stack:
+   guard=self.core.bind_receipt(self.root,self.f.corr,self.receipt,stack);guard()
+ def test_original_keeper_rejects_changed_arch_identity_with_valid_receipt_hash(self):
+  path=self.provider._journal(self.root,False)/(self.f.corr+'.ready.json')
+  original=path.read_bytes()
+  for key,value in [('uid',self.provider.EXPECTED_UID+1),('boot',str(uuid.uuid4()))]:
+   changed=json.loads(original);changed['result']['arch'][key]=value
+   raw=json.dumps(changed,sort_keys=True,separators=(',',':')).encode();path.write_bytes(raw)
+   receipt=hashlib.sha256(raw).hexdigest()
+   with self.subTest(field=key),contextlib.ExitStack() as stack,self.assertRaisesRegex(ValueError,'receipt_binding'):
+    self.core.bind_receipt(self.root,self.f.corr,receipt,stack)
+  path.write_bytes(original)
  def consumer(self,argv,**kwargs):
   if argv[0]=='/bin/ps':return self.f.real_popen(argv,**kwargs)
   return self.f.consumer(argv,**kwargs)
@@ -86,7 +136,7 @@ class KeeperEntryTests(unittest.TestCase):
   path=self.root/'agent_tools/ssh_channel_keeper_entry.py';path.write_text('from pathlib import Path\nPath('+repr(str(marker))+').write_text("executed")\nraise ValueError("PUBLIC_MARKER")\n');sys.modules.pop(name,None)
   try:
    with mock.patch.object(agent_tools,'__path__',[str(self.root/'agent_tools')]),mock.patch.object(self.server,'_run',side_effect=AssertionError('no child expected')):value=self.server._ssh_channel_keeper_workflow('connection-channel-keep','archlinux',1800,self.identity(),None,None)
-   self.assertFalse(marker.exists());self.assertEqual('unknown',value['state'])
+   self.assertFalse(marker.exists());self.assertEqual('blocked',value['state'])
   finally:
    sys.modules.pop(name,None)
    if saved is not None:sys.modules[name]=saved
@@ -157,13 +207,52 @@ class KeeperEntryTests(unittest.TestCase):
    with contextlib.redirect_stdout(out):self.invoke(emit=lambda v:print(json.dumps(v),flush=True))
    raw=out.getvalue().encode();retained=output_capture(0,raw,b'');return {'ok':True,'returncode':0,'completionOutput':retained}
   identity=self.identity();file=self.root/'identity.json';file.write_text(json.dumps(identity))
-  with mock.patch.object(self.server,'_run',side_effect=runner),contextlib.redirect_stdout(io.StringIO()) as stdout:
+  original=self.server._agent_module
+  # This is the dispatch unit seam: the authentic entry and its complete held
+  # manifest live in this owned TempFS, where the synthetic child writes results.
+  route=lambda name:self.entry if name=='ssh_channel_keeper_entry' else original(name)
+  # Original internal dispatch keeps its exact child envelope/custody checks.
+  authenticated=self.entry.SourceGuard(self.root,self.f.corr,self.source)
+  try:
+   with mock.patch.object(self.server,'_run',side_effect=runner):
+    value=self.server._keeper_dispatch_authenticated(self.entry,authenticated.held,
+                                                     'connection-channel-keep',self.f.corr,identity)
+  finally:authenticated.close()
+  self.assertEqual('completed',value['state']);self.assertEqual(1,len(seen))
+  # Public new work is retired; the exact original status reader stays available.
+  with mock.patch.object(self.server,'_keeper_authenticated_entry',side_effect=AssertionError('retired new work must not load sources')),contextlib.redirect_stdout(io.StringIO()) as stdout:
    status=self.server.main(['ssh-workflow','connection-channel-keep','--host','archlinux','--timeout-seconds','1800','--identity-file',str(file)])
-  value=json.loads(stdout.getvalue());self.assertEqual(0,status);self.assertEqual('completed',value.get('state',value.get('result',{}).get('state')));self.assertEqual(1,len(seen))
-  value=self.server.ssh_workflow('connection-channel-keep-status','archlinux',15,identity);self.assertEqual('completed',value['state'])
+  value=json.loads(stdout.getvalue());self.assertEqual(1,status);self.assertEqual('blocked',value['state'])
+  with mock.patch.object(self.server,'_agent_module',side_effect=route):
+   value=self.server.ssh_workflow('connection-channel-keep-status','archlinux',15,identity)
+  self.assertEqual('completed',value['state'])
+ def test_valid_new_keeper_actions_retire_before_source_loading_or_child(self):
+  for action,timeout,identity in [('connection-channel-keeper-source',15,{'correlationId':self.identity()['correlationId']}),
+                                  ('connection-channel-keep',1800,self.identity())]:
+   with self.subTest(action=action),mock.patch.object(self.server,'_keeper_authenticated_entry',side_effect=AssertionError('retired new work must not load sources')),mock.patch.object(self.server,'_run',side_effect=AssertionError('retired new work must not launch')):
+    value=self.server._ssh_channel_keeper_workflow(action,'archlinux',timeout,identity,None,None)
+    self.assertEqual('blocked',value['state']);self.assertEqual('historical_channel_keeper_new_work_retired',value['reason'])
+    self.assertFalse(value['nativeActionAllowed']);self.assertFalse(value['replayAllowed'])
+ def test_retired_source_and_original_reader_invalid_envelopes_stay_unknown(self):
+  source={'correlationId':self.identity()['correlationId']}
+  cases=[('connection-channel-keeper-source','archlinux',0,source,None,None),
+         ('connection-channel-keeper-source','archlinux',61,source,None,None),
+         ('connection-channel-keeper-source','archlinux',True,source,None,None),
+         ('connection-channel-keeper-source','archlinux',15,{**source,'path':'forbidden'},None,None),
+         ('connection-channel-keeper-source','other',15,source,None,None),
+         ('connection-channel-keeper-source','archlinux',15,source,{},None),
+         ('connection-channel-keeper-source','archlinux',15,source,None,'device'),
+         ('connection-channel-keep-status','archlinux',15,{**self.identity(),'receiptSha256':'bad'},None,None)]
+  for arguments in cases:
+   with self.subTest(arguments=arguments),mock.patch.object(self.server,'_keeper_authenticated_entry',side_effect=AssertionError('must not load sources')),mock.patch.object(self.server,'_run',side_effect=AssertionError('must not launch')):
+    value=self.server._ssh_channel_keeper_workflow(*arguments)
+    self.assertEqual('unknown',value['state']);self.assertFalse(value['nativeActionAllowed']);self.assertFalse(value['replayAllowed'])
  def test_dispatch_invalid_limits_private_fields_never_launch(self):
-  for timeout,identity,transfer in [(60,self.identity(),None),(1800,{**self.identity(),'command':'forbidden'},None),(1800,self.identity(),{})]:
-   with mock.patch.object(self.server,'_run',side_effect=AssertionError('must not launch')):result=self.server.ssh_workflow('connection-channel-keep','archlinux',timeout,identity,transfer)
+  for timeout,identity,transfer in [(60,self.identity(),None),(True,self.identity(),None),
+                                    (1800,{**self.identity(),'command':'forbidden'},None),(1800,self.identity(),{}),
+                                    (1800,{**self.identity(),'receiptSha256':'bad'},None),
+                                    (1800,{**self.identity(),'sourceManifestSha256':'bad'},None)]:
+   with mock.patch.object(self.server,'_keeper_authenticated_entry',side_effect=AssertionError('must not load sources')),mock.patch.object(self.server,'_run',side_effect=AssertionError('must not launch')):result=self.server.ssh_workflow('connection-channel-keep','archlinux',timeout,identity,transfer)
    self.assertEqual('unknown',result['state']);self.assertFalse(result['nativeActionAllowed']);self.assertFalse(result['replayAllowed'])
  def test_actual_child_cached_import_refuses_late_named_marker(self):
   marker=self.root/'marker';path=self.root/'agent_tools/ssh_channel_keeper_entry.py';source=self.entry.SourceGuard(self.root,self.f.corr,self.source)

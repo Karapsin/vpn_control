@@ -345,9 +345,29 @@ class ArchQemuHolderCensusTest(unittest.TestCase):
 
     def test_privileged_program_matches_actual_reviewed_direct_source(self):
         import hashlib
-        self.assertEqual(hashlib.sha256(census._privileged_program().encode()).hexdigest(),
-                         '68a29151a50dd071801097991eff538f6379f5ad0ababfc7abfc829f6938f665')
-        with patch.object(census, '_REMOTE', census._REMOTE + '# changed'):
+        import types
+        import agent_tools
+        from agent_tools import native_host_observation as current_host
+        # This retired boot-pinned shortcut retains its actual original host
+        # producer. A new current transport wrapper cannot become old authority.
+        folder = Path(__file__).parent / 'fixtures/resource_instance'
+        source = folder / 'native_host.before.source'
+        raw = source.read_bytes()
+        provenance = json.loads((folder / 'native_host.provenance.json').read_bytes())
+        self.assertEqual('a6b36ab56709b5c98bfff03f895af6b0f4ea2e8c64b6b158d70166d69d099d12',
+                         provenance['sourceSha256'])
+        self.assertEqual(census._PRIVILEGED_HOST_SOURCE_SHA256, hashlib.sha256(raw).hexdigest())
+        original = types.ModuleType('agent_tools._arch_census_original_host')
+        original.__package__ = 'agent_tools'
+        original.__file__ = str(source)
+        exec(compile(raw, str(source), 'exec'), original.__dict__)
+        with patch.object(agent_tools, 'native_host_observation', original):
+            self.assertEqual(hashlib.sha256(census._privileged_program().encode()).hexdigest(),
+                             '68a29151a50dd071801097991eff538f6379f5ad0ababfc7abfc829f6938f665')
+            with patch.object(census, '_REMOTE', census._REMOTE + '# changed'):
+                with self.assertRaisesRegex(ValueError, 'privileged_source_changed'):
+                    census._privileged_program()
+        if hashlib.sha256(Path(current_host.__file__).read_bytes()).hexdigest() != census._PRIVILEGED_HOST_SOURCE_SHA256:
             with self.assertRaisesRegex(ValueError, 'privileged_source_changed'):
                 census._privileged_program()
 

@@ -122,7 +122,7 @@ def _remote_linux_refresh(root: Path, host: str, expected_url: str, timeout: int
         argv = ssh_transport.build_ssh_argv(config, host, timeout, command=command)
         connection = ssh_transport.connection_host(config, host)
         def run(environment: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
-            return subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            return ssh_transport.run_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, env=environment,
                                   timeout=timeout + 2, check=False)
         if connection.password is not None:
@@ -153,7 +153,7 @@ def _remote_linux_static(root: Path, host: str, input_bytes: bytes, timeout: int
             command=("python3", "-c", f"exec({source!r})", "--static-admission"))
         connection = ssh_transport.connection_host(config, host)
         def run(environment: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
-            return subprocess.run(argv, input=input_bytes, stdout=subprocess.PIPE,
+            return ssh_transport.run_ssh(argv, input=input_bytes, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, env=environment, timeout=timeout + 2, check=False)
         if connection.password is not None:
             with tempfile.TemporaryDirectory(prefix="vpn-control-fixture-static-") as temporary:
@@ -192,7 +192,7 @@ def _remote_root_status(root: Path, host: str, remote_root: PurePosixPath, timeo
             command=("python3", "-c", f"exec({_REMOTE_ROOT!r})", str(remote_root)))
         connection = ssh_transport.connection_host(config, host)
         def run(environment: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
-            return subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            return ssh_transport.run_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, env=environment, timeout=timeout + 2, check=False)
         if connection.password is not None:
             with tempfile.TemporaryDirectory(prefix="vpn-control-fixture-root-") as temporary:

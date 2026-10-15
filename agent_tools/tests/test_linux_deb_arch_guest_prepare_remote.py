@@ -88,7 +88,11 @@ class RemotePreparationTest(unittest.TestCase):
                                            "SwapTotal:       4194304 kB\nSwapFree:        4194304 kB\n")
             guest = proc / "123"
             guest.mkdir()
-            (guest / "comm").write_text("qemu-system-x86\n")
+            (guest / "comm").write_text("7\n")
+            (guest / "stat").write_text("123 (7) S " + "0 " * 18 + "777\n")
+            binary = proc / "qemu-system-x86_64"
+            binary.write_bytes(b"inert executable identity")
+            (guest / "exe").symlink_to(binary)
             (guest / "cmdline").write_bytes(b"qemu-system-x86_64\0-m\0" + b"6144\0")
             observed = subject._host_capacity(proc_root=proc)
             self.assertEqual(1, observed["runningQemuCount"])

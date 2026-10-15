@@ -27,7 +27,7 @@ _REQUIRED_SCRIPTS = frozenset('scripts/'+name for name in (
 # Only these known check-output/lifetime helpers are unrelated to the fixed
 # native build procedure. A new unknown tool file is never silently excluded.
 _UNRELATED = frozenset({'agent_tools/managed_check_lease.py','agent_tools/check_output_retention.py'})
-_DYNAMIC = {'agent_tools/ssh_transport.py': frozenset({'ssh_connection_session','ssh_channel_selection'})}
+_DYNAMIC = {'agent_tools/ssh_transport.py': frozenset({'ssh_connection_session','ssh_channel_selection','ssh_automatic_program'})}
 
 class ExecutionContextError(ValueError):
     pass

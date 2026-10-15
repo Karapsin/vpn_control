@@ -14,6 +14,12 @@ OLD = "c32cb108-4d48-407e-9153-40774559ba50"
 
 class WindowsCampaignRoutesTest(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'windows_cp117_campaign_rebase',
+            'windows_cp117_campaign_status',
+        )
         guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         guard.start(); self.addCleanup(guard.stop)
 

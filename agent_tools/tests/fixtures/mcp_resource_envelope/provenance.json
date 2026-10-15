@@ -1,0 +1,6 @@
+{
+  "source": "agent_tools/windows_vm_resources.py",
+  "sourceSha256": "c54d35230547f6c79dd33e3d09b6b710ec493bc7bc2f44d1b6af4b60e4d83e5a",
+  "failure": "The strict native resource DTO reader rejects a complete MCP result envelope (including nextAction). The old operator passed that envelope directly, blocking closure before any reserve/release submit.",
+  "nativeEvidence": "original03-reservation-release-v1/v2/v3 retained typed failure and pre-submit records; corrected complete closure passed v4 and original04-v1 with all other rows unchanged."
+}

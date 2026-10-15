@@ -1,0 +1,15 @@
+def owns(pid,path,is_socket=False):
+        fdlist=os.listdir('/proc/'+str(pid)+'/fd');require(len(fdlist)<=8192,'instance_fd_capacity')
+        if is_socket:
+            with open('/proc/net/unix') as f:raw=f.read(1024**2+1)
+            require(len(raw)<=1024**2,'instance_socket_capacity')
+            matches=[r.split()[6] for r in raw.splitlines()[1:] if len(r.split())>=8 and r.split()[-1]==str(path)]
+            require(len(matches)==1,'instance_socket_identity');target='socket:['+matches[0]+']'
+            require(any(os.readlink('/proc/'+str(pid)+'/fd/'+n)==target for n in fdlist),'instance_socket_owner')
+        else:
+            identity=private(path);found=False
+            for n in fdlist:
+                try:info=os.stat('/proc/'+str(pid)+'/fd/'+n)
+                except FileNotFoundError:continue
+                if (info.st_dev,info.st_ino)==(identity.st_dev,identity.st_ino):found=True
+            require(found,'instance_disk_owner')

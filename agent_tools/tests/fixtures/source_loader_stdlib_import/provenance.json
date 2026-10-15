@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "4e887b03de3e21ae655c7762c561d727cad691af251bd7f08515b4112a2347dc",
+  "failureEvidence": "current-media-direct-v2/exception.private.txt",
+  "failure": "importlib snapshot omitted newly imported stdlib submodule metadata"
+}

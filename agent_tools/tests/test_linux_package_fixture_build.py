@@ -21,6 +21,15 @@ REQUEST = {"sourceSha": SOURCE, "baseVersion": "2.2.0",
 
 
 class LinuxPackageFixtureBuildTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'linux_package_fixture_build',
+            'native_build_timing',
+            'ssh_transport',
+        )
+
     def _built(self, root):
         fingerprint = "b" * 64
         code = "c" * 64

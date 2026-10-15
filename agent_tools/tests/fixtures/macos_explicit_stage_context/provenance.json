@@ -1,0 +1,13 @@
+{
+  "sourcePath": "agent_tools/macos_fixture_guest_stage.py",
+  "sourceSha256": "8267607128bffcf2d63f281271d606487f8e138025e4727a3cfe7921068e1eea",
+  "fragmentSha256": "8267607128bffcf2d63f281271d606487f8e138025e4727a3cfe7921068e1eea",
+  "failure": "The original stage command uses the historical Tart guest and permits no explicit account, home or boot-session admission for fresh fixture work.",
+  "scope": "Preserved full old module, never invoked against Tart; command construction only.",
+  "redEvidence": ".runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/causal-red-command.log",
+  "regression": "agent_tools.tests.test_macos_fixture_stage.ExplicitContextCommandTests.test_new_guest_versions_and_root_are_carried_without_historical_defaults",
+  "redSourceEnvironment": "VPN_MACOS_FIXTURE_STAGE_SOURCE=agent_tools/tests/fixtures/macos_explicit_stage_context/before.source",
+  "nativeLimit": "No Tart, VM, package installation or product acceptance. Local macOS tests execute only inert temporary fixture bytes under the current account home.",
+  "greenEvidence": ".runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/full-green-v1.log",
+  "routineSuite": "python3 agent_tools/affected_agent_tests.py --run"
+}

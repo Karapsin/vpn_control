@@ -4,6 +4,7 @@ Only the control process boundary is redirected to an inert local Python child;
 no test sends SSH, a signal, a remote payload, or changes original session files.
 """
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -11,6 +12,7 @@ import sys
 import time
 import unittest
 from types import SimpleNamespace
+import types
 from unittest import mock
 
 from agent_tools import private_inventory_lock as inventory
@@ -21,6 +23,23 @@ from agent_tools.tests.test_ssh_connection_session import SessionTests
 
 @unittest.skipUnless(os.name == 'posix', 'POSIX only')
 class CloseTests(SessionTests):
+    def test_preserved_transport_pin_blocks_current_source_fixed_pin_closes_original(self):
+        folder=Path(__file__).parent/'fixtures/transport_close_pin'
+        raw=(folder/'before.source').read_bytes();metadata=json.loads((folder/'provenance.json').read_bytes())
+        self.assertEqual(metadata['sourceSha256'],hashlib.sha256(raw).hexdigest())
+        before=types.ModuleType('agent_tools._close_pin_before');before.__package__='agent_tools'
+        before.__file__=str(folder/'before.source')
+        exec(compile(raw,before.__file__,'exec'),before.__dict__)
+        ready=self.ready();original={p.name:p.read_bytes() for p in self.journal().iterdir()}
+        with self.control(ready,''):
+            self.assertEqual('unknown',before.close(self.root,'archlinux',ready['receiptSha256'])['state'])
+            self.assertEqual([],self.controls)
+            self.assertFalse(close._paths(self.root,'archlinux',ready['receiptSha256'])[3].exists())
+            self.assertEqual('exit_sent',close.close(self.root,'archlinux',ready['receiptSha256'])['state'])
+        with self.absence():
+            self.assertEqual('closed',close.status(self.root,'archlinux',ready['receiptSha256'])['state'])
+        self.assertEqual(original,{p.name:p.read_bytes() for p in self.journal().iterdir()})
+
     def spawn(self, argv, diagnostic, guard=None):
         # Represent the real immutable launch record omitted by the general
         # session fixture's inert spawn implementation.

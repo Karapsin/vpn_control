@@ -29,9 +29,13 @@ from . import linux_package_fixture_build as build
 from . import ssh_tmux_session as session
 from . import ssh_transport
 
-TOOL_SHA = "d2d878b2f89b56020a0a20b76236dda0b826384c4159c9a47aaaaf0af0e910c3"
+TOOL_SHA = "6fae107abb444ef300a124a754796961d206495143ea4ce522ff4aa1a60c58c7"
 BUILD_SHA = session.REVIEWED_BUILD_SHA256
-REMOTE_ROOT = "/home/kardinal/.vpn-control-linux-package-fixture"
+# Compatibility for immutable original-job observers; fresh factories below use
+# the authenticated remote account's home and REMOTE_ROOT_NAME only.
+LEGACY_REMOTE_ROOT = "/home/kardinal/.vpn-control-linux-package-fixture"
+REMOTE_ROOT = LEGACY_REMOTE_ROOT
+REMOTE_ROOT_NAME = ".vpn-control-linux-package-fixture"
 MAX_RESPONSE = 2 * 1024**2
 
 
@@ -155,7 +159,7 @@ from uuid import UUID
 if str(UUID(corr))!=corr:raise SystemExit(31)
 raw_build=base64.b64decode(payload['build'],validate=True);raw_tool=base64.b64decode(payload['tool'],validate=True)
 if hashlib.sha256(raw_build).hexdigest()!='BUILD_DIGEST' or hashlib.sha256(raw_tool).hexdigest()!='TOOL_DIGEST':raise SystemExit(32)
-root=pathlib.Path('FIXED_ROOT');root.mkdir(mode=0o700,exist_ok=True)
+root=pathlib.Path(__import__('pwd').getpwuid(os.getuid()).pw_dir)/'FIXED_ROOT';root.mkdir(mode=0o700,exist_ok=True)
 if root.is_symlink() or not stat.S_ISDIR(root.lstat().st_mode) or root.stat().st_uid!=os.getuid() or stat.S_IMODE(root.stat().st_mode)!=0o700:raise SystemExit(33)
 job=root/corr;job.mkdir(mode=0o700)
 def create(path,raw):
@@ -183,7 +187,7 @@ proof=namespace['preflight'](job,source,request)
 value={'request':request,'proof':proof,'toolPin':namespace['read'](job/'tmux-tool.py',131072)[1]}
 pin=namespace['write_once'](job/'stage-ready.json',namespace['canonical'](value))
 print(json.dumps({'state':'staged','correlationId':corr,'stagePin':pin},separators=(',',':')))
-'''.replace("BUILD_DIGEST", BUILD_SHA).replace("TOOL_DIGEST", TOOL_SHA).replace("FIXED_ROOT", REMOTE_ROOT)
+'''.replace("BUILD_DIGEST", BUILD_SHA).replace("TOOL_DIGEST", TOOL_SHA).replace("FIXED_ROOT", REMOTE_ROOT_NAME)
 
 _ACTION = r'''
 import hashlib,json,os,pathlib,stat,sys
@@ -192,7 +196,7 @@ if action not in ('prepare','release','status','collect'):raise SystemExit(31)
 from uuid import UUID
 corr=request['correlationId']
 if str(UUID(corr))!=corr:raise SystemExit(31)
-job=pathlib.Path('FIXED_ROOT')/corr;source=job/'source';path=job/'tmux-tool.py'
+job=(pathlib.Path(__import__('pwd').getpwuid(os.getuid()).pw_dir)/'FIXED_ROOT')/corr;source=job/'source';path=job/'tmux-tool.py'
 fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
 try:
  info=os.fstat(fd);raw=os.read(fd,131073)
@@ -208,7 +212,7 @@ elif action=='status':result=ns['status'](job,source,payload['anchorPin'])
 else:result=ns['collect'](job,source,payload['anchorPin'],payload['terminalPin'],payload['offset'],payload['limit'],payload['resultPin'])
 if ns['read'](job/'stage-ready.json')[1]!=ready_pin or ns['read'](path,131072)[1]!=ready['toolPin'] or ns['private_dir'](job.parent)!=ready['proof']['parent'] or ns['private_dir'](job)!=ready['proof']['job'] or ns['source_pin'](source,request)!=ready['proof']['source']:raise SystemExit(33)
 print(json.dumps(result,sort_keys=True,separators=(',',':')))
-'''.replace("FIXED_ROOT", REMOTE_ROOT).replace("TOOL_DIGEST", TOOL_SHA)
+'''.replace("FIXED_ROOT", REMOTE_ROOT_NAME).replace("TOOL_DIGEST", TOOL_SHA)
 
 
 def command(program):
@@ -319,7 +323,7 @@ class TmuxArchDriver:
                     unused, env = ssh_transport._askpass_environment(connection.password, Path(askpass))
                 need(self._transport()[1] == original_transport, "transport_changed")
                 if guard: guard()
-                process = subprocess.Popen(argv, cwd=self.root, stdin=subprocess.PIPE, stdout=out, stderr=err,
+                process = ssh_transport.popen_ssh(argv, cwd=self.root, stdin=subprocess.PIPE, stdout=out, stderr=err,
                                            env=env, preexec_fn=limits)
                 try:
                     process.communicate(input=input_bytes, timeout=95)
@@ -347,12 +351,13 @@ class TmuxArchDriver:
                 err_pin = session.read(stderr, MAX_RESPONSE)[1]
                 session.write_once(capsule / "receipt.json", session.canonical({
                     "schemaVersion": 1, "requestSha256": hashlib.sha256(input_bytes).hexdigest(),
-                    "argvSha256": hashlib.sha256(session.canonical(argv)).hexdigest(),
+                    "argvSha256": ssh_transport.argv_sha256(argv),
                     "exitCode": None if process is None else process.returncode,
                     "timedOut": timed_out, "stdoutPin": out_pin, "stderrPin": err_pin,
                     "replayAllowed": False}))
             except (OSError, ValueError):
                 pass  # Raw private streams survive; no missing capsule promotes authority.
+            ssh_transport.finish_ssh(process,failed=timed_out)
 
     def availability(self):
         value = self._query(_AVAILABILITY, {})

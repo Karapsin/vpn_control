@@ -276,15 +276,10 @@ for name in module._VM_NATIVE_ADAPTERS:
 result = module.vm_workflow("fixture-preflight", {preflight_request!r})
 assert result["tool"] == "vm_workflow", result
 assert "AttributeError" not in str(result), result
-batch_module = importlib.import_module("agent_tools.native_scenario_batch")
-class VerifyOnlyBatch:
-    def __init__(self, *_args, **_kwargs): pass
-    def plan(self, request):
-        batch_module._plan(request)
-        return {{"state": "planned"}}
-batch_module.NativeScenarioBatch = VerifyOnlyBatch
-result = module.vm_workflow("batch-plan", {batch_request!r})
-assert result["state"] == "planned", result
+# Invalid request exercises the real import and parser without substituting a
+# cached canonical class for the source-backed adapter's implementation.
+result = module.vm_workflow("batch-plan", {{}})
+assert result["ok"] is False, result
 assert "AttributeError" not in str(result), result
 '''
         result = subprocess.run(

@@ -22,6 +22,9 @@ REQUEST = {
 
 class AndroidConsentGrantRouteTests(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_routes
+        from agent_tools import android_consent_grant_acceptance, android_obsolete_consent_denial
+        bind_routes(self, server, android_consent_grant_acceptance, android_obsolete_consent_denial)
         patcher = mock.patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         patcher.start()
         self.addCleanup(patcher.stop)

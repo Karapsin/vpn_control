@@ -82,3 +82,28 @@ class HistoricalFactoryTestCase(unittest.TestCase):
         stack = ExitStack()
         self.addCleanup(stack.close)
         self.historical_provider = stack.enter_context(historical_factories())
+
+
+@contextmanager
+def inert_repository_source_reads():
+    """Resolve two sealed-factory source labels on this checkout, only in tests.
+
+    Historical programmes contain an author's absolute workspace labels. Those
+    are inert fixture data, not current paths or native admission. All other
+    source/private-record reads retain the production nofollow/generation guard.
+    """
+    from agent_tools import windows_cp117_bound_absence_completion as binding
+    from agent_tools import windows_fixture_credentials, windows_update_fixture_server
+    historical=Path('/Users/karapsin_de/Nextcloud/projects/vpn_control/agent_tools')
+    actual={historical/Path(module.__file__).name:Path(module.__file__).resolve()
+            for module in (windows_fixture_credentials,windows_update_fixture_server)}
+    original=binding._read_bound_file
+    def read(path,private=False,retain_bytes=False):
+        supplied=Path(path)
+        # This is an explicit fixed-source IO seam for inert emission tests.
+        # Private inputs, intents, arbitrary source names and native code never map.
+        if not private and supplied in actual:
+            supplied=actual[supplied]
+        return original(supplied,private=private,retain_bytes=retain_bytes)
+    with patch.object(binding,'_read_bound_file',side_effect=read):
+        yield

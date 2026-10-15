@@ -71,8 +71,8 @@ def _guard_slot_values(context: CurrentGuestContext) -> dict[str, str]:
         raise ValueError('GUARD_CONTEXT_PROFILE')
     if type(context.ordinary_sid) is not str or not re.fullmatch(r'S-1-5-21-(?:[0-9]+-){3}[0-9]+', context.ordinary_sid):
         raise ValueError('GUARD_CONTEXT_SID')
-    # This fragment preserves the assigned ordinary FilteredAdmin session policy.
-    if type(context.session_id) is not int or context.session_id != 1:
+    # Token policy remains explicit; the session comes from current admission.
+    if type(context.session_id) is not int or not 0 < context.session_id <= 16383:
         raise ValueError('GUARD_CONTEXT_SESSION_POLICY')
     if type(context.boot_utc) is not str or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}Z', context.boot_utc):
         raise ValueError('GUARD_CONTEXT_BOOT')
@@ -132,11 +132,28 @@ def _guard_slot_values(context: CurrentGuestContext) -> dict[str, str]:
     }
 
 
-def render_unbound_current_guest_guard(context: CurrentGuestContext) -> str:
+def _guard_token_values(policy):
+    # Select one exact ordinary token class; full/elevated administrators and
+    # inconsistent membership/type combinations never qualify.
+    if type(policy) is not transport.WindowsInputTokenPolicy:
+        raise ValueError('GUARD_TOKEN_POLICY')
+    values = (policy.kind, policy.elevation, policy.elevation_type, policy.admin_member, policy.admin_enabled)
+    if (type(policy.kind) is not str or type(policy.elevation) is not int
+            or type(policy.elevation_type) is not int or type(policy.admin_member) is not bool
+            or type(policy.admin_enabled) is not bool or values not in (
+                ('ordinaryFilteredAdmin', 0, 3, True, False),
+                ('ordinaryStandardUser', 0, 1, False, False))):
+        raise ValueError('GUARD_TOKEN_POLICY')
+    return {'TOKEN_TYPE': str(policy.elevation_type),
+            'ADMIN_MEMBER': str(policy.admin_member),
+            'ADMIN_MEMBER_CSHARP': str(policy.admin_member).lower()}
+
+
+def render_unbound_current_guest_guard(context: CurrentGuestContext, token_policy) -> str:
     # Only the embedded, fixed template is accepted. Actual binding is joined later.
     if hashlib.sha256(CURRENT_GUEST_GUARD_TEMPLATE.encode('utf-8')).hexdigest() != CURRENT_GUEST_GUARD_TEMPLATE_SHA256:
         raise ValueError('GUARD_TEMPLATE_SOURCE')
-    values = _guard_slot_values(context)
+    values = {**_guard_slot_values(context), **_guard_token_values(token_policy)}
     body = CURRENT_GUEST_GUARD_TEMPLATE
     for key, value in values.items():
         body = body.replace('__CTX_'+key+'__', value)
@@ -154,7 +171,7 @@ def configured_task_root(context: CurrentGuestContext, planned_correlation: str)
     return str(PureWindowsPath(_guard_path(context.task_parent_directory)) / ('install-operation-'+planned_correlation))
 
 CURRENT_GUEST_GUARD_ORIGINAL_SHA256 = 'c8e6b921c0cc88cedf0826a7658429cbd84619a59fbcf4f4dc7d24bfd49d5f77'
-CURRENT_GUEST_GUARD_TEMPLATE_SHA256 = '8954d4a84de4ee84af9cabda2e11e97fd595eec764d1d27aa3f4df2776a5197f'
+CURRENT_GUEST_GUARD_TEMPLATE_SHA256 = '5c04984b733531ea9529b2490f265d203b849bd07080e6c985e0c43b6d336d20'
 CURRENT_GUEST_GUARD_TEMPLATE = r"""$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $b='__CURRENT_BINDING__'|ConvertFrom-Json
 $ErrorActionPreference='Stop';Add-Type -TypeDefinition @'
@@ -181,7 +198,7 @@ public static class Cp117OwnerToken {
   IntPtr p=OpenProcess(0x1000,false,pid),t=IntPtr.Zero;if(p==IntPtr.Zero)throw new Win32Exception(Marshal.GetLastWin32Error());
   try {long c,e,k,u;if(!GetProcessTimes(p,out c,out e,out k,out u)||c!=creation)throw new InvalidOperationException("process-generation");
    if(!OpenProcessToken(p,10,out t))throw new Win32Exception(Marshal.GetLastWin32Error());
-   using(WindowsIdentity id=new WindowsIdentity(t)){if(id.User.Value!="__CTX_SID__"||Info(t,20)!=0||Info(t,18)!=3||__CTX_SESSION_CSHARP__)throw new InvalidOperationException("impersonation-token");}
+   using(WindowsIdentity id=new WindowsIdentity(t)){bool[] admin=Admin(t);if(id.User.Value!="__CTX_SID__"||Info(t,20)!=0||Info(t,18)!=__CTX_TOKEN_TYPE__||admin[0]!=__CTX_ADMIN_MEMBER_CSHARP__||admin[1]||__CTX_SESSION_CSHARP__)throw new InvalidOperationException("impersonation-token");}
    return WindowsIdentity.Impersonate(t);
   }finally{if(t!=IntPtr.Zero)CloseHandle(t);CloseHandle(p);}
  }
@@ -199,14 +216,14 @@ public static class Cp117OwnerToken {
 '@ -ReferencedAssemblies @('System','System.Core')
 $cli='__CTX_CLI_PATH__';$gui='__CTX_GUI_PATH__';
 function CurrentGui {
-$expected=__CTX_ROLE_ROWS__;$seen=@();foreach($r in $expected){$p=$null;try{$path=if($r.cli){$cli}else{$gui};$p=Get-Process -Id $r.pid;$null=$p.Handle;$t=[Cp117OwnerToken]::Read($p.Id,$r.birth);$x=Get-CimInstance Win32_Process -Filter ('ProcessId='+$r.pid);if($p.HasExited -or $p.StartTime.ToFileTimeUtc() -ne $r.birth -or $p.Path -ine $path -or $t[0] -cne $b.originalSid -or $t[1] -cne '0' -or $t[2] -cne '3' -or $t[3] -cne 'True' -or $t[4] -cne 'False' -or __CTX_SESSION_TOKEN__ -or -not $x -or $x.ParentProcessId -ne $r.parent){throw 'CURRENT_PERSISTENT_ROLE_WITNESS'};$seen+=@{pid=$p.Id;parentPid=$x.ParentProcessId;birth=$r.birth;cimUtc=$x.CreationDate.ToUniversalTime().ToString('o');role=$(if($r.cli){'persistentCLI'}else{'GUIFrontend'})}}finally{if($p){$p.Dispose()}}};return @{ownerMode='persistentServe';ownerPid=__CTX_OWNER_PID__;ownerBirth=__CTX_OWNER_BIRTH__;chain=$seen;sid=$b.originalSid;__CTX_SESSION_ROW__;elevationType=3;guiAttached=$true}
+$expected=__CTX_ROLE_ROWS__;$seen=@();foreach($r in $expected){$p=$null;try{$path=if($r.cli){$cli}else{$gui};$p=Get-Process -Id $r.pid;$null=$p.Handle;$t=[Cp117OwnerToken]::Read($p.Id,$r.birth);$x=Get-CimInstance Win32_Process -Filter ('ProcessId='+$r.pid);if($p.HasExited -or $p.StartTime.ToFileTimeUtc() -ne $r.birth -or $p.Path -ine $path -or $t[0] -cne $b.originalSid -or $t[1] -cne '0' -or $t[2] -cne '__CTX_TOKEN_TYPE__' -or $t[3] -cne '__CTX_ADMIN_MEMBER__' -or $t[4] -cne 'False' -or __CTX_SESSION_TOKEN__ -or -not $x -or $x.ParentProcessId -ne $r.parent){throw 'CURRENT_PERSISTENT_ROLE_WITNESS'};$seen+=@{pid=$p.Id;parentPid=$x.ParentProcessId;birth=$r.birth;cimUtc=$x.CreationDate.ToUniversalTime().ToString('o');role=$(if($r.cli){'persistentCLI'}else{'GUIFrontend'})}}finally{if($p){$p.Dispose()}}};return @{ownerMode='persistentServe';ownerPid=__CTX_OWNER_PID__;ownerBirth=__CTX_OWNER_BIRTH__;chain=$seen;sid=$b.originalSid;__CTX_SESSION_ROW__;elevationType=__CTX_TOKEN_TYPE__;guiAttached=$true}
 }
 $null=CurrentGui
 Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public static class ChainToken{[DllImport("kernel32.dll",SetLastError=true)]public static extern IntPtr OpenProcess(uint a,bool i,uint p);[DllImport("advapi32.dll",SetLastError=true)]public static extern bool OpenProcessToken(IntPtr p,uint a,out IntPtr t);[DllImport("advapi32.dll",SetLastError=true)]public static extern bool GetTokenInformation(IntPtr t,int c,IntPtr b,uint n,out uint r);[DllImport("kernel32.dll")]public static extern bool CloseHandle(IntPtr h);}'
 function Info($token,[int]$kind){$buf=[Runtime.InteropServices.Marshal]::AllocHGlobal(4);try{[uint32]$count=0;if(-not[ChainToken]::GetTokenInformation($token,$kind,$buf,4,[ref]$count)-or $count -ne 4){throw 'TOKEN_INFO'};return [Runtime.InteropServices.Marshal]::ReadInt32($buf)}finally{[Runtime.InteropServices.Marshal]::FreeHGlobal($buf)}}
 $explorer=Get-Process -Id __CTX_CONSOLE_PID__ -ErrorAction Stop;if($explorer.StartTime.ToFileTimeUtc() -ne __CTX_CONSOLE_BIRTH__ -or __CTX_SESSION_CONSOLE__){throw 'CONSOLE_BIRTH'}
 $ph=[ChainToken]::OpenProcess(0x1000,$false,__CTX_CONSOLE_PID__);$token=[IntPtr]::Zero;if($ph -eq [IntPtr]::Zero){throw 'CONSOLE_PROCESS'}
-try{if(-not[ChainToken]::OpenProcessToken($ph,10,[ref]$token)){throw 'CONSOLE_TOKEN'};$identity=[Security.Principal.WindowsIdentity]::new($token);try{$sid=$identity.User.Value;$enabled=[Security.Principal.WindowsPrincipal]::new($identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator);$elevated=Info $token 20;$type=Info $token 18;if($sid -cne $b.originalSid -or $enabled -or $elevated -ne 0 -or $type -ne 3){throw 'FILTERED_TOKEN_CHANGED'}}finally{$identity.Dispose()}}finally{if($token -ne [IntPtr]::Zero){[ChainToken]::CloseHandle($token)|Out-Null};[ChainToken]::CloseHandle($ph)|Out-Null}
+try{if(-not[ChainToken]::OpenProcessToken($ph,10,[ref]$token)){throw 'CONSOLE_TOKEN'};$identity=[Security.Principal.WindowsIdentity]::new($token);try{$sid=$identity.User.Value;$enabled=[Security.Principal.WindowsPrincipal]::new($identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator);$elevated=Info $token 20;$type=Info $token 18;if($sid -cne $b.originalSid -or $enabled -or $elevated -ne 0 -or $type -ne __CTX_TOKEN_TYPE__){throw 'ORDINARY_TOKEN_CHANGED'};$consoleToken=[Cp117OwnerToken]::Read(__CTX_CONSOLE_PID__,__CTX_CONSOLE_BIRTH__);if($consoleToken[3] -cne '__CTX_ADMIN_MEMBER__' -or $consoleToken[4] -cne 'False'){throw 'ORDINARY_TOKEN_MEMBERSHIP_CHANGED'}}finally{$identity.Dispose()}}finally{if($token -ne [IntPtr]::Zero){[ChainToken]::CloseHandle($token)|Out-Null};[ChainToken]::CloseHandle($ph)|Out-Null}
 $owner=Get-Process -Id __CTX_OWNER_PID__ -ErrorAction Stop;$launcher=Get-Process -Id __CTX_OWNER_WRAPPER_PID__ -ErrorAction Stop;[Console]::Out.WriteLine((@{state='CURRENT_TYPED_GETPROCESS_BIRTHS';explorer__CTX_CONSOLE_PID__=$explorer.StartTime.ToFileTimeUtc();owner__CTX_OWNER_PID__=$owner.StartTime.ToFileTimeUtc();launcher__CTX_OWNER_WRAPPER_PID__=$launcher.StartTime.ToFileTimeUtc();source='GetProcess.StartTime.ToFileTimeUtc';effects=$false}|ConvertTo-Json -Compress));if($owner.StartTime.ToFileTimeUtc() -ne __CTX_OWNER_BIRTH__ -or $launcher.StartTime.ToFileTimeUtc() -ne __CTX_OWNER_WRAPPER_BIRTH__ -or __CTX_SESSION_OWNER__){throw 'ORIGINAL_OWNER_BIRTH'}
 Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;public static class ChainConsent{[StructLayout(LayoutKind.Sequential)]public struct FT{public uint lo,hi;}[DllImport("kernel32.dll",SetLastError=true)]public static extern IntPtr OpenProcess(uint access,bool inherit,uint pid);[DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]public static extern bool QueryFullProcessImageName(IntPtr process,uint flags,StringBuilder path,ref uint size);[DllImport("kernel32.dll",SetLastError=true)]public static extern bool GetProcessTimes(IntPtr process,out FT creation,out FT exit,out FT kernel,out FT user);[DllImport("kernel32.dll",SetLastError=true)]public static extern bool ProcessIdToSessionId(uint pid,out uint session);[DllImport("kernel32.dll")]public static extern bool CloseHandle(IntPtr handle);}'
 function Read-CurrentConsentIdentity([uint32]$pidValue){$handle=[ChainConsent]::OpenProcess(0x1000,$false,$pidValue);if($handle -eq [IntPtr]::Zero){throw 'CONSENT_NATIVE_HANDLE'};try{$path=[Text.StringBuilder]::new(32768);[uint32]$size=32768;$c=[ChainConsent+FT]::new();$e=[ChainConsent+FT]::new();$k=[ChainConsent+FT]::new();$u=[ChainConsent+FT]::new();[uint32]$session=0;if(-not[ChainConsent]::QueryFullProcessImageName($handle,0,$path,[ref]$size)-or -not[ChainConsent]::GetProcessTimes($handle,[ref]$c,[ref]$e,[ref]$k,[ref]$u)-or -not[ChainConsent]::ProcessIdToSessionId($pidValue,[ref]$session)){throw 'CONSENT_NATIVE_METADATA'};$image=$path.ToString();$signature=Get-AuthenticodeSignature -LiteralPath $image -ErrorAction Stop;$signer=if($signature.SignerCertificate){$signature.SignerCertificate.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false)}else{$null};return @{pid=$pidValue;sessionId=$session;birth=([uint64]$c.hi*4294967296+[uint64]$c.lo).ToString();image=$image;imageSha256=(Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash.ToLowerInvariant();signatureStatus=[string]$signature.Status;signerName=$signer;signerThumbprint=if($signature.SignerCertificate){$signature.SignerCertificate.Thumbprint}else{$null}}}finally{[ChainConsent]::CloseHandle($handle)|Out-Null}}
@@ -489,8 +506,8 @@ def decision_events(decision, stage, binding_sha, frame_sha):
             for name, down in sequence]
 
 
-def guard_command(context, binding):
-    source = render_unbound_current_guest_guard(context)
+def guard_command(context, binding, token_policy):
+    source = render_unbound_current_guest_guard(context, token_policy)
     literal = _json(binding).decode('ascii')
     if "'" in literal or source.count('__CURRENT_BINDING__') != 1:
         raise ValueError('INPUT_GUARD_BINDING')
@@ -615,7 +632,7 @@ def _input_schema(action, inputs):
 
 def build_remote_program(profile, context, correlation, context_sha):
     # PROFILE/CONTEXT come from the held configured record, never MCP inputs.
-    guard = render_unbound_current_guest_guard(context)
+    guard = render_unbound_current_guest_guard(context, profile.token_policy)
     profile_values = asdict(profile)
     for name, value in tuple(profile_values.items()):
         if isinstance(value, (Path, PureWindowsPath)) or hasattr(value, 'as_posix'):
@@ -1012,7 +1029,7 @@ def dispatch(root, action, inputs):
 
 _REMOTE_RUNTIME = r"""# Fixed source-only remote fragment; producer supplies audited source/prefix globals.
 # PROFILE/PARAMETERS/CONTEXT/GUARD_SOURCE and source digests are not stdin selectors.
-import base64,hashlib,json,os,re,secrets,socket,stat,sys,tempfile,gzip,time,select
+import base64,hashlib,json,os,re,secrets,socket,stat,sys,tempfile,gzip,time,select,struct
 from pathlib import PureWindowsPath
 QEMU_PID=str(PROFILE['qemu_pid']);QEMU_TICKS=str(PROFILE['qemu_start_ticks'])
 QGA_SOCKET=PROFILE['qga_socket_path'];QMP_SOCKET=PROFILE['qmp_socket_path'];LEAF=os.path.dirname(QGA_SOCKET)
@@ -1031,6 +1048,11 @@ def live(sock,pid,ticks):
   except OSError:pass
  return any(len(f)==8 and f[6] in inodes and f[7]==os.fsencode(sock) for f in (line.split() for line in open('/proc/net/unix','rb')))
 
+def verify_peer(client,sock):
+ peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+ if peer[:2]!=(int(QEMU_PID),PROFILE['qemu_uid']):raise ValueError('QEMU_CONNECTED_PEER')
+ identity()
+
 def call(sock,command,args,_deadline=None):
  received=bytearray();primary=None
  deadline=min(time.monotonic()+20,_deadline) if _deadline is not None else time.monotonic()+20
@@ -1044,7 +1066,7 @@ def call(sock,command,args,_deadline=None):
  def send(data):
   budget();c.sendall(data)
  try:
-  budget();c.connect(sock);sid=secrets.randbits(63)
+  budget();c.connect(sock);verify_peer(c,sock);sid=secrets.randbits(63)
   send(b'\xff'+json.dumps({'execute':'guest-sync-delimited','arguments':{'id':sid}},separators=(',',':')).encode()+b'\n')
   for i in range(8192):
    x=receive();received.extend(x)
@@ -1127,6 +1149,9 @@ def validate_globals():
  if not valid_uuid(PROFILE['host_boot_id']) or QGA_SOCKET==QMP_SOCKET or any(type(PROFILE[k])is not str or not os.path.isabs(PROFILE[k])for k in ('qga_socket_path','qmp_socket_path')):raise ValueError('PROFILE_SOCKETS_BOOT')
  for value in (PROFILE['qemu_argv_sha256'],PROFILE['native_context_sha256'],CONTEXT_SHA256,GUARD_SHA256,GUARD_TEMPLATE_SHA256):
   if type(value)is not str or re.fullmatch('[0-9a-f]{64}',value)is None:raise ValueError('SOURCE_DIGEST')
+ policy=PROFILE['token_policy']
+ if type(policy)is not dict or set(policy)!={'kind','elevation','elevation_type','admin_member','admin_enabled'}:raise ValueError('PROFILE_TOKEN_POLICY')
+ if type(policy['kind'])is not str or type(policy['elevation'])is not int or type(policy['elevation_type'])is not int or type(policy['admin_member'])is not bool or type(policy['admin_enabled'])is not bool or (policy['kind'],policy['elevation'],policy['elevation_type'],policy['admin_member'],policy['admin_enabled'])not in (('ordinaryFilteredAdmin',0,3,True,False),('ordinaryStandardUser',0,1,False,False)):raise ValueError('PROFILE_TOKEN_POLICY')
  if CONTEXT_SHA256!=PROFILE['native_context_sha256']:raise ValueError('CONFIGURED_CONTEXT_SOURCE')
  # CONTEXT is the source-pinned decoded expected facts; raw context file digest is
  # supplied separately. No canonical-JSON rehash is represented as native proof.
@@ -1135,7 +1160,7 @@ def validate_globals():
  for name in ('owner_wrapper','owner','frontend'):
   role=CONTEXT[name]
   if type(role)is not dict or set(role)!={'pid','parent_pid','birth'} or any(type(role[k])is not int or role[k]<=0 for k in role):raise ValueError('CONTEXT_ROLE')
- if CONTEXT['ordinary_sid']!=PROFILE['expected_sid'] or type(CONTEXT['session_id'])is not int or CONTEXT['session_id']!=PROFILE['session_id'] or CONTEXT['session_id']!=1 or CONTEXT['install_directory']!=PROFILE['installed_root'] or CONTEXT['task_parent_directory']!=TASK_PARENT:raise ValueError('CONFIGURED_CONTEXT')
+ if CONTEXT['ordinary_sid']!=PROFILE['expected_sid'] or type(CONTEXT['session_id'])is not int or CONTEXT['session_id']!=PROFILE['session_id'] or not 0<CONTEXT['session_id']<=16383 or CONTEXT['install_directory']!=PROFILE['installed_root'] or CONTEXT['task_parent_directory']!=TASK_PARENT:raise ValueError('CONFIGURED_CONTEXT')
  if not valid_uuid(CONTEXT['owner_controller_id']):raise ValueError('CONTEXT_CONTROLLER')
  for k in ('console_pid','console_birth','package_bytes'):
   if type(CONTEXT[k])is not int or CONTEXT[k]<=0:raise ValueError('CONTEXT_INTEGER')
@@ -1167,7 +1192,7 @@ def validate_binding(binding,request,ack):
 
 def identity():
  s=open('/proc/'+QEMU_PID+'/stat','rb').read().split();argv=open('/proc/'+QEMU_PID+'/cmdline','rb').read();boot=open('/proc/sys/kernel/random/boot_id').read().strip();image=os.readlink('/proc/'+QEMU_PID+'/exe')
- if len(s)<22 or s[3]!=str(PROFILE['qemu_parent_pid']).encode() or s[21]!=QEMU_TICKS.encode() or os.stat('/proc/'+QEMU_PID).st_uid!=PROFILE['qemu_uid'] or hashlib.sha256(argv).hexdigest()!=PROFILE['qemu_argv_sha256'] or boot!=PROFILE['host_boot_id'] or os.path.basename(image)!='qemu-system-x86_64' or not live(QMP_SOCKET,QEMU_PID,QEMU_TICKS) or not live(QGA_SOCKET,QEMU_PID,QEMU_TICKS) or os.fsencode(QMP_SOCKET)not in argv or os.fsencode(QGA_SOCKET)not in argv or b'id=owned-qga'not in argv:raise ValueError('QEMU_SOCKET_IDENTITY')
+ if len(s)<22 or s[3]!=str(PROFILE['qemu_parent_pid']).encode() or s[21]!=QEMU_TICKS.encode() or os.stat('/proc/'+QEMU_PID).st_uid!=PROFILE['qemu_uid'] or hashlib.sha256(argv).hexdigest()!=PROFILE['qemu_argv_sha256'] or boot!=PROFILE['host_boot_id'] or os.path.basename(image)!='qemu-system-x86_64' or not live(QMP_SOCKET,QEMU_PID,QEMU_TICKS) or not live(QGA_SOCKET,QEMU_PID,QEMU_TICKS) or os.fsencode(QMP_SOCKET)not in argv or os.fsencode(QGA_SOCKET)not in argv:raise ValueError('QEMU_SOCKET_IDENTITY')
  return [s[0].decode(),s[3].decode(),s[21].decode(),PROFILE['qemu_uid'],image,hashlib.sha256(argv).hexdigest(),boot]
 
 class BindingUnavailable(ValueError):pass
@@ -1210,7 +1235,7 @@ def current_guest_guard(binding):
  for key,wanted in (('explorer'+str(CONTEXT['console_pid']),CONTEXT['console_birth']),('owner'+str(CONTEXT['owner']['pid']),CONTEXT['owner']['birth']),('launcher'+str(CONTEXT['owner_wrapper']['pid']),CONTEXT['owner_wrapper']['birth'])):
   if type(rows[0].get(key))is not int or rows[0][key]!=wanted:raise ValueError('GUEST_GUARD_TYPED_BIRTH')
  row=rows[1]
- if row.get('state')!='CURRENT_BOUND_GUEST_GREEN' or row.get('jobId')!=binding['jobId'] or row.get('sid')!=CONTEXT['ordinary_sid'] or row.get('sessionId')!=CONTEXT['session_id'] or row.get('consolePid')!=CONTEXT['console_pid'] or row.get('ownerPid')!=CONTEXT['owner']['pid'] or row.get('ownerBirth')!=CONTEXT['owner']['birth'] or row.get('boot')!=CONTEXT['boot_utc'] or row.get('elevated')!=0 or row.get('elevationType')!=3 or row.get('effects')is not False or row.get('helperActors')!=[]:raise ValueError('GUEST_GUARD_PROJECTION')
+ if row.get('state')!='CURRENT_BOUND_GUEST_GREEN' or row.get('jobId')!=binding['jobId'] or row.get('sid')!=CONTEXT['ordinary_sid'] or row.get('sessionId')!=CONTEXT['session_id'] or row.get('consolePid')!=CONTEXT['console_pid'] or row.get('ownerPid')!=CONTEXT['owner']['pid'] or row.get('ownerBirth')!=CONTEXT['owner']['birth'] or row.get('boot')!=CONTEXT['boot_utc'] or type(row.get('elevated'))is not int or row['elevated']!=0 or type(row.get('elevationType'))is not int or row['elevationType']!=PROFILE['token_policy']['elevation_type'] or row.get('effects')is not False or row.get('helperActors')!=[]:raise ValueError('GUEST_GUARD_PROJECTION')
  return row,body_sha
 
 def perform_current_stage(decision,stage,binding,ack,prior_consent,opening,frame_reader,send,capture_directory):
@@ -1252,7 +1277,7 @@ def main():
  try:
   validate_globals();validate_parameters(PARAMETERS)
   opening=identity();directory=tempfile.mkdtemp(prefix='agent-secondary-key-chain-',dir=LEAF);os.chmod(directory,0o700);wire=os.open(directory+'/original-wire.private',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600);partial_wire=os.open(directory+'/partial-wire.private',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
-  c=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);c.settimeout(10);c.connect(QMP_SOCKET);reader=c.makefile('rb');next_id=1
+  c=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);c.settimeout(10);c.connect(QMP_SOCKET);verify_peer(c,QMP_SOCKET);reader=c.makefile('rb');next_id=1
   def response(wanted):
    for _ in range(32):
     raw=reader.readline(32769)

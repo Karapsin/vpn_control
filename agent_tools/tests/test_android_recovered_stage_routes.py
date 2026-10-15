@@ -11,6 +11,12 @@ ACTION = "android-recovered-endpoint-stage-collect"
 
 class RecoveredStageRouteTests(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'android_endpoint_admission',
+            'android_recovered_endpoint_stage_cleanup',
+        )
         patch = mock.patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         patch.start(); self.addCleanup(patch.stop)
 

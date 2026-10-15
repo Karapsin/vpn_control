@@ -29,7 +29,7 @@ class RetainedDeliveryTransitionTests(prior.RetainedWrapperTransitionTests):
     def test_new_connection_has_actual_working_direct_route_only(self):
         f=self.f;value=f.invoke(corr=f.new);self.assertEqual('ready',value['state'])
         before=len(f.calls);fds=len(os.listdir('/dev/fd'))
-        with mock.patch.object(subprocess,'Popen',side_effect=f.owner.consumer):
+        with mock.patch.object(f.owner,'expected_remote',f.module._REMOTE),mock.patch.object(subprocess,'Popen',side_effect=f.owner.consumer):
             route=direct.route_options(f.root,'archlinux',f.new,value['receiptSha256'])
         self.assertEqual(f.new,route['correlationId']);self.assertEqual(value['receiptSha256'],route['receiptSha256'])
         self.assertEqual(('-S','/tmp/vpn-channel-'+f.new+'/m','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false'),route['innerOptions'])

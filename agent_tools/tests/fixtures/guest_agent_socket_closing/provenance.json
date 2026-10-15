@@ -1,0 +1,6 @@
+{
+  "owner": "agent_tools/windows_vm_instance.py",
+  "sourceSha256": "f4be0d5773d36b6f09e75fecfcc298444175f4e22989fc987c41a8a007e55ba0",
+  "function": "guest_state",
+  "fragmentSha256": "3f7e794a6e18fd08133b8f4a789eca9be867dfe0f55f541e32d3d7d491e7b36d"
+}

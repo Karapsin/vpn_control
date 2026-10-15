@@ -29,7 +29,7 @@ CollectionError=AdapterError
 need=old.need
 MAX_STDOUT=2*1024**2
 MAX_STDERR=65536
-PIPE_SHA='3988f5b997b26c231599d9f92093ae20d144d25d853d4ad71e0821b6b1b5278d'
+PIPE_SHA='9e5d5e629c03c7cdefb42882f2d4459c7bcbafcb27455a407340e64b9d1d27f8'
 BaseDriver=recovery.CurrentExactFetchDriver if recovery is not None else object
 
 def _capsule(root):return pipe._capsule(root)
@@ -99,6 +99,7 @@ def _capture(root,*,authority,launch,payload,guard,timeout_seconds=95):
         out_pin=_write_once(capsule/'stdout',bytes(stdout));err_pin=_write_once(capsule/'stderr',bytes(stderr))
         receipt={'schemaVersion':1,'intentPin':intent,'stdoutPin':out_pin,'stderrPin':err_pin,'exitCode':code,'capped':capped,'timedOut':timed_out,'stdinBytesWritten':written,'failure':failure,'replayAllowed':False}
         receipt_pin=_write_once(capsule/'receipt.json',session.canonical(receipt))
+        ssh_transport.finish_ssh(process,failed=failure is not None)
     return {'state':'captured' if code==0 and failure is None and written==len(payload) else 'unknown','receiptPin':receipt_pin,'replayAllowed':False,'nativeActionAllowed':False},capsule
 
 
@@ -171,9 +172,9 @@ class McpTmuxDriver(BaseDriver):
                 seal_raw,seal_pin=pipe._read(job/'tmux-mcp-adapter-birth-seal.json');need(json.loads(seal_raw)=={'birthPin':pin} and seal_pin==local['birthSealPin'],'adapter_birth_changed');current_local['birthSealPin']=seal_pin
             need((current_phase,current_snapshot,current_local)==(phase,snapshot,local),'query_authority_changed')
             if guard:guard()
-        authority={'phase':phase,'snapshot':snapshot,'sources':sources,'transport':transport,'local':local,'argvSha256':hashlib.sha256(session.canonical(argv)).hexdigest()}
+        authority={'phase':phase,'snapshot':snapshot,'sources':sources,'transport':transport,'local':local,'argvSha256':ssh_transport.argv_sha256(argv)}
         def launch():
-            exact_guard();return subprocess.Popen(argv,cwd=self.root,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
+            exact_guard();return ssh_transport.popen_ssh(argv,cwd=self.root,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
         outcome,capsule=_capture(self.root,authority=authority,launch=launch,payload=session.canonical(payload),guard=exact_guard)
         need(outcome['state']=='captured','transport_unknown')
         raw,pin=pipe._read(capsule/'receipt.json');need(pin==outcome['receiptPin'],'capture_receipt_changed');receipt=json.loads(raw)

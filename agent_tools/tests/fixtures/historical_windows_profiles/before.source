@@ -1,0 +1,56 @@
+"""Retire attempt-specific VM constructors while retaining original observers.
+
+These entry points describe purged historical fixtures, not reusable defaults.
+Their implementations remain intact for preserved-source causal tests and the
+original status/collection paths. No old job or reservation is rewritten.
+"""
+from __future__ import annotations
+
+RETIRED_SETUP_ACTIONS = frozenset((
+    'windows-parallel-vm-copy-start',
+    'windows-vm-disk-probe-start',
+    'windows-vm-driver-fetch-start',
+    'windows-vm-fresh-preflight',
+    'windows-vm-fresh-screen-start',
+    'windows-vm-fresh-start',
+    'windows-vm-optical-attempt2-close-preflight',
+    'windows-vm-optical-attempt2-close-start',
+    'windows-vm-optical-attempt2-preflight',
+    'windows-vm-optical-attempt2-start',
+    'windows-vm-optical-attempt3-preflight',
+    'windows-vm-optical-attempt3-start',
+    'windows-vm-optical-boot-preflight',
+    'windows-vm-optical-boot-start',
+    'windows-vm-optical-close-preflight',
+    'windows-vm-optical-close-start',
+    'windows-vm-optical-current-screen-preflight',
+    'windows-vm-optical-current-screen-start',
+    'windows-vm-secureboot-clone-preflight',
+    'windows-vm-secureboot-fresh-preflight',
+    'windows-vm-secureboot-fresh-start',
+    'windows-vm-setup-install-ack-preflight',
+    'windows-vm-setup-install-ack-start',
+    'windows-vm-setup-install-focus-preflight',
+    'windows-vm-setup-install-focus-start',
+    'windows-vm-setup-install-next-preflight',
+    'windows-vm-setup-install-next-start',
+    'windows-vm-setup-keyboard-next-preflight',
+    'windows-vm-setup-keyboard-next-start',
+    'windows-vm-setup-language-next-preflight',
+    'windows-vm-setup-language-next-start',
+    'windows-vm-swtpm-repair-preflight',
+    'windows-vm-swtpm-repair-start',
+    'windows-vm-virt-firmware-admission',
+    'windows-vm-virt-firmware-install-preflight',
+    'windows-vm-virt-firmware-install-start',
+))
+
+
+def refusal(action):
+    if action not in RETIRED_SETUP_ACTIONS:
+        return None
+    return {"tool": "vm_workflow", "ok": False, "state": "blocked",
+            "reason": "historical_windows_vm_setup_retired",
+            "action": action, "nativeActionAllowed": False,
+            "replayAllowed": False, "productAction": False,
+            "nextAction": "windows-vm-deploy-preflight"}

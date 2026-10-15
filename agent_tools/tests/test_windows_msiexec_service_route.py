@@ -13,6 +13,11 @@ from agent_tools import mcp_server, windows_msiexec_service_diagnostic as observ
 
 class WindowsMsiexecServiceRouteTest(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'windows_msiexec_service_diagnostic',
+        )
         source_guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         source_guard.start(); self.addCleanup(source_guard.stop)
 

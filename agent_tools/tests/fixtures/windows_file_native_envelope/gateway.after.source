@@ -1,0 +1,231 @@
+import errno,fcntl,pwd,selectors,termios,pty
+"""Private fixed caller's PTY collector. A timeout never closes a live PTY."""
+import errno, fcntl, os, pty, re, selectors, subprocess, termios, time
+CAP=32768
+class Custody:
+    def __init__(self, child, master, slave, stdout, secret, admitted_keys):
+        self.child=child; self.master=master; self.slave=slave; self.stdout=stdout
+        self.secret=secret; self.keys=tuple(os.fsencode(k) for k in admitted_keys)
+        self.selector=selectors.DefaultSelector(); self.raw={'stdout':bytearray(),'tty':bytearray()}
+        self.counts={'stdout':0,'tty':0}; self.eof={'stdout':False,'tty':False}
+        self.sent=False; self.refusal=None; self.timeout=False; self.closed=False
+        for fd,name in ((master,'tty'),(stdout.fileno(),'stdout')):
+            os.set_blocking(fd,False);self.selector.register(fd,selectors.EVENT_READ,name)
+    def _close_slave(self):
+        if self.slave is not None: os.close(self.slave); self.slave=None
+    def _step(self, seconds):
+        if self.child.poll() is not None:self._close_slave()
+        for key,_ in self.selector.select(seconds):
+            name=key.data
+            try: chunk=os.read(key.fd,4096)
+            except BlockingIOError:continue
+            except OSError as exc:
+                if name=='tty' and exc.errno==errno.EIO:chunk=b''
+                else:self.refusal=self.refusal or 'capture_read';self.selector.unregister(key.fd);self.eof[name]=True;continue
+            if not chunk:self.eof[name]=True;self.selector.unregister(key.fd);continue
+            self.counts[name]+=len(chunk); left=CAP-len(self.raw[name]);self.raw[name].extend(chunk[:max(left,0)])
+            if self.counts[name]>CAP:self.refusal=self.refusal or 'capture_overflow'
+            if name!='tty':continue
+            wire=bytes(self.raw['tty'])
+            prompts=list(re.finditer(rb"Enter passphrase for key '([^'\r\n]{1,2048})': ?",wire))
+            if len(prompts)>1:self.refusal=self.refusal or 'extra_prompt'
+            if prompts and not self.sent and self.refusal is None:
+                prompt=prompts[0]
+                if prompt.group(1) not in self.keys or wire[:prompt.start()].strip():self.refusal='foreign_prompt'
+                elif self.slave is None or termios.tcgetattr(self.slave)[3]&(termios.ECHO|termios.ECHONL):self.refusal='echo_enabled'
+                else:
+                    if not isinstance(self.secret,bytes) or not 0<len(self.secret)<=512 or any(c in self.secret for c in (b'\n',b'\r',b'\0')):self.refusal='secret_shape'
+                    else:
+                        payload=self.secret+b'\n';written=os.write(self.master,payload)
+                        if written!=len(payload):self.refusal='credential_write'
+                        self.sent=True;self.secret=None;self._close_slave()
+            if (b'assword:' in wire or b'Are you sure' in wire or b'yes/no' in wire) and not prompts:self.refusal=self.refusal or 'foreign_prompt'
+    def observe(self,seconds):
+        end=time.monotonic()+seconds
+        while not (self.child.poll() is not None and all(self.eof.values())):
+            left=end-time.monotonic()
+            if left<=0:self.timeout=True;break
+            self._step(min(.05,left))
+        complete=self.child.poll() is not None and all(self.eof.values())
+        if complete:self.close_terminal()
+        return {'pid':self.child.pid,'returnCode':self.child.poll(),'complete':complete,
+                'timeout':self.timeout,'refusal':self.refusal,'credentialSent':self.sent,
+                'counts':dict(self.counts),'eof':dict(self.eof)}
+    def finish_naturally(self):
+        while not (self.child.poll() is not None and all(self.eof.values())):self._step(.05)
+        self.close_terminal()
+    def close_terminal(self):
+        if self.child.poll() is None:raise ValueError('live_child_custody')
+        if not self.closed:
+            self._close_slave(); self.selector.close();os.close(self.master);self.stdout.close();self.closed=True;self.secret=None
+
+def start_fixed(argv, secret, admitted_keys):
+    master,slave=pty.openpty();attrs=termios.tcgetattr(slave);attrs[3]&=~(termios.ECHO|termios.ECHONL);termios.tcsetattr(slave,termios.TCSANOW,attrs)
+    def session():
+        os.setsid();fcntl.ioctl(slave,termios.TIOCSCTTY,0)
+    env=dict(os.environ)
+    for key in ('SSH_ASKPASS','SSH_ASKPASS_REQUIRE','VPN_CONTROL_SSH_PASSWORD_FILE','DISPLAY'):env.pop(key,None)
+    env['TERM']='dumb'
+    try:child=subprocess.Popen(argv,stdin=subprocess.PIPE,stderr=slave,stdout=subprocess.PIPE,env=env,preexec_fn=session,close_fds=True)
+    except BaseException:os.close(master);os.close(slave);raise
+    return Custody(child,master,slave,child.stdout,secret,admitted_keys)
+
+def owned_home_identity(value):
+    if not isinstance(value,str) or '%' in value or '..' in value.split('/') or any(ord(c)<32 for c in value):raise ValueError('effective_key_not_literal')
+    if value.startswith('~/'):
+        home=Path(pwd.getpwuid(os.getuid()).pw_dir)
+        if not home.is_absolute():raise ValueError('effective_home_unknown')
+        info=os.lstat(home)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode&0o022:raise ValueError('effective_home_foreign')
+        return {'path':str(home/value[2:]),'home':str(home),'homePin':generation(info)}
+    if value.startswith('~') or not Path(value).is_absolute():raise ValueError('effective_key_unknown')
+    return {'path':value,'home':None,'homePin':None}
+
+def generation(info):
+    return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,
+            info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+
+def parent_guard(chain):
+    for index,(fd,name,pin) in enumerate(chain):
+        named=os.stat('/',follow_symlinks=False) if index==0 else os.stat(name,dir_fd=chain[index-1][0],follow_symlinks=False)
+        if generation(os.fstat(fd))!=pin or generation(named)!=pin or not stat.S_ISDIR(named.st_mode):
+            raise ValueError('route_parent_changed')
+
+def file_pin(path, *, body=False, private=False):
+    path=Path(path)
+    if not path.is_absolute() or '..' in path.parts:raise ValueError('route_parent_unsafe')
+    chain=[];leaf=-1
+    try:
+        flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW
+        try:
+            fd=os.open('/',flags);chain.append((fd,None,generation(os.fstat(fd))))
+            for name in path.parent.parts[1:]:
+                fd=os.open(name,flags,dir_fd=chain[-1][0]);chain.append((fd,name,generation(os.fstat(fd))))
+        except OSError as exc:raise ValueError('route_parent_unsafe') from exc
+        final=os.fstat(chain[-1][0])
+        if final.st_uid!=os.getuid() or final.st_mode&0o022:raise ValueError('route_parent_unsafe')
+        parent_guard(chain)
+        before=os.stat(path.name,dir_fd=chain[-1][0],follow_symlinks=False)
+        if not stat.S_ISREG(before.st_mode) or before.st_uid!=os.getuid() or before.st_nlink!=1 or before.st_mode&0o022 or private and stat.S_IMODE(before.st_mode)!=0o600:
+            raise ValueError('route_file_unsafe')
+        pin={'generation':generation(before),'parents':[{'name':name,'generation':meta} for _,name,meta in chain]}
+        if body:
+            leaf=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=chain[-1][0])
+            if generation(os.fstat(leaf))!=pin['generation']:raise ValueError('route_file_changed')
+            parent_guard(chain)
+            chunks=[];total=0
+            while True:
+                chunk=os.read(leaf,65536)
+                if not chunk:break
+                chunks.append(chunk);total+=len(chunk)
+                if total>1048576:raise ValueError('route_file_unbounded')
+            raw=b''.join(chunks)
+            if len(raw)!=before.st_size or generation(os.fstat(leaf))!=pin['generation']:raise ValueError('route_file_changed')
+            pin.update(bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),
+                       unsupportedConfigDirectives=any(re.match(rb'\s*(include|match)\b',line,re.I) for line in raw.splitlines()))
+        if generation(os.stat(path.name,dir_fd=chain[-1][0],follow_symlinks=False))!=pin['generation']:raise ValueError('route_file_changed')
+        parent_guard(chain)
+        return pin
+    finally:
+        if leaf>=0:os.close(leaf)
+        for fd,_,_ in reversed(chain):os.close(fd)
+
+def ssh_options(spec):
+    return ['ssh','-T','-F',spec['configFile'],'-S',spec['controlPath'],'-o','ControlMaster=no','-o','ControlPersist=no',
+            '-o','ClearAllForwardings=yes','-o','PermitLocalCommand=no','-o','UpdateHostKeys=no','-o','ProxyCommand=none']
+
+def effective_route(spec):
+    result=subprocess.run([*ssh_options(spec),'-G',spec['remoteHostAlias']],capture_output=True,timeout=5)
+    if result.returncode!=0 or len(result.stdout)>65536 or result.stderr:raise ValueError('effective_route_unknown')
+    values={}
+    for line in result.stdout.decode('utf-8',errors='strict').splitlines():
+        name,_,value=line.partition(' ')
+        if name=='identityfile':values.setdefault(name,[]).append(value)
+    keys=values.get('identityfile',[])
+    if not keys:raise ValueError('effective_key_unknown')
+    identities=[owned_home_identity(p) for p in keys]
+    keys=[item['path'] for item in identities]
+    homes={item['home']:item['homePin'] for item in identities if item['home'] is not None}
+    existing={p:file_pin(p,private=True) for p in keys if os.path.lexists(p)}
+    if not existing:raise ValueError('effective_key_unavailable')
+    for home,pin in homes.items():
+        if generation(os.lstat(home))!=pin:raise ValueError('effective_home_changed')
+    return {'effectiveSha256':hashlib.sha256(result.stdout).hexdigest(),'keyMetadata':existing,'ownedHomePins':homes}
+
+
+import base64,hashlib,json,os,re,shlex,stat,subprocess,sys,time;from pathlib import Path
+PROBE=""
+
+def reject_pairs(pairs):
+    value={}
+    for k,v in pairs:
+        if k in value:raise ValueError('duplicate')
+        value[k]=v
+    return value
+
+def bounded_envelope(stream, seconds=5):
+    fd=stream.fileno();os.set_blocking(fd,False);sel=selectors.DefaultSelector();sel.register(fd,selectors.EVENT_READ)
+    raw=bytearray();end=time.monotonic()+seconds
+    try:
+        while True:
+            left=end-time.monotonic()
+            if left<=0:raise ValueError('input_deadline')
+            if not sel.select(min(.05,left)):continue
+            chunk=os.read(fd,min(4097-len(raw),4096))
+            if not chunk:break
+            raw.extend(chunk)
+            if len(raw)>4096:raise ValueError('input_cap')
+        return json.loads(bytes(raw),object_pairs_hook=reject_pairs)
+    finally:sel.close()
+
+
+def private_inner(custody,secret_bytes):
+    streams={}
+    for name in ('stdout','tty'):
+        raw=bytes(custody.raw[name])
+        if len(raw)>CAP:raise ValueError('inner_capture_cap')
+        redactions=raw.count(secret_bytes) if secret_bytes else 0
+        if secret_bytes:raw=raw.replace(secret_bytes,b'\0'*len(secret_bytes))
+        streams[name]={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'redactions':redactions,'base64':base64.b64encode(raw).decode('ascii')}
+    return streams
+import threading
+RECEIVER = 'import sys,json\ndef receive_source(correlation: str, stream, temporary_root="/tmp") -> dict:\n    """Create a private, exclusive stage and retain complete streamed bytes.\n\n    A failed/interrupted upload retains its partial files under the original\n    correlation. It cannot be restarted or published as a verified stage.\n    """\n    import hashlib\n    import json\n    import os\n    import re\n    import stat\n\n    if not isinstance(correlation, str) or not re.fullmatch("[0-9a-f]{32}", correlation):\n        raise ValueError("source_stage_correlation")\n    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW\n    root_fd = os.open(temporary_root, flags)\n    directory_fd = source_fd = None\n    leaf = "vpn-control-windows-caller-" + correlation\n    try:\n        root_info = os.fstat(root_fd)\n        if not stat.S_ISDIR(root_info.st_mode) or (\n            root_info.st_uid != os.geteuid()\n            and not (root_info.st_uid == 0 and root_info.st_mode & stat.S_ISVTX)\n        ):\n            raise ValueError("source_stage_parent")\n        # Validate bounded metadata before making any remote filesystem state.\n        header = stream.readline(4097)\n        if not header.endswith(b"\\n") or len(header) > 4096:\n            raise ValueError("source_stage_header")\n        def pairs(items):\n            result = {}\n            for key, value in items:\n                if key in result:\n                    raise ValueError("source_stage_duplicate")\n                result[key] = value\n            return result\n        value = json.loads(header, object_pairs_hook=pairs)\n        if type(value) is not dict or set(value) != {"bytes", "sha256"}:\n            raise ValueError("source_stage_metadata")\n        size, digest = value["bytes"], value["sha256"]\n        if (type(size) is not int or not 0 < size <= 8388608\n                or type(digest) is not str or not re.fullmatch("[0-9a-f]{64}", digest)):\n            raise ValueError("source_stage_metadata")\n        os.mkdir(leaf, 0o700, dir_fd=root_fd)\n        directory_fd = os.open(leaf, flags, dir_fd=root_fd)\n        identity = os.fstat(directory_fd)\n        if identity.st_uid != os.geteuid() or stat.S_IMODE(identity.st_mode) != 0o700:\n            raise ValueError("source_stage_owner")\n        source_fd = os.open("caller.py", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,\n                            0o600, dir_fd=directory_fd)\n        consumed, actual = 0, hashlib.sha256()\n        while consumed < size:\n            chunk = stream.read(min(65536, size - consumed))\n            if not chunk:\n                raise ValueError("source_stage_truncated")\n            consumed += len(chunk)\n            actual.update(chunk)\n            view = memoryview(chunk)\n            while view:\n                count = os.write(source_fd, view)\n                if count <= 0:\n                    raise ValueError("source_stage_short_write")\n                view = view[count:]\n        if stream.read(1):\n            raise ValueError("source_stage_trailing")\n        if actual.hexdigest() != digest:\n            raise ValueError("source_stage_digest")\n        os.fsync(source_fd)\n        os.close(source_fd)\n        source_fd = None\n        # Reread the physical file, rather than treating a sender\'s hash as proof.\n        read_fd = os.open("caller.py", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,\n                          dir_fd=directory_fd)\n        try:\n            info = os.fstat(read_fd)\n            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()\n                    or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1\n                    or info.st_size != size):\n                raise ValueError("source_stage_file")\n            verification = hashlib.sha256()\n            while chunk := os.read(read_fd, 65536):\n                verification.update(chunk)\n            after = os.fstat(read_fd)\n            def generation(item):\n                return (item.st_dev, item.st_ino, item.st_mode, item.st_uid, item.st_gid,\n                        item.st_nlink, item.st_size, item.st_mtime_ns, item.st_ctime_ns)\n            if verification.hexdigest() != digest or generation(after) != generation(info):\n                raise ValueError("source_stage_file_changed")\n        finally:\n            os.close(read_fd)\n        current = os.stat(leaf, dir_fd=root_fd, follow_symlinks=False)\n        if (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino):\n            raise ValueError("source_stage_directory_changed")\n        receipt = {"state": "staged", "correlationId": correlation,\n                   "path": temporary_root.rstrip("/") + "/" + leaf + "/caller.py",\n                   "bytes": size, "sha256": digest, "uid": os.geteuid(),\n                   "sourceExecuted": False, "replayAllowed": False}\n        receipt_fd = os.open("receipt.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,\n                             0o600, dir_fd=directory_fd)\n        try:\n            body = (json.dumps(receipt, sort_keys=True) + "\\n").encode()\n            view = memoryview(body)\n            while view:\n                count = os.write(receipt_fd, view)\n                if count <= 0:\n                    raise ValueError("source_stage_receipt_write")\n                view = view[count:]\n            os.fsync(receipt_fd)\n        finally:\n            os.close(receipt_fd)\n        os.fsync(directory_fd)\n        os.fsync(root_fd)\n        return receipt\n    finally:\n        for fd in (source_fd, directory_fd, root_fd):\n            if fd is not None:\n                os.close(fd)\n\nprint(json.dumps(receive_source(\'00000000000000000000000000000000\',sys.stdin.buffer),sort_keys=True),flush=True)\n'
+def stage_main():
+ custody=None; writer=None; secret_bytes=None
+ try:
+  corr,config_file,profile,source_sha=sys.argv[1:]
+  if re.fullmatch('[0-9a-f]{32}',corr)is None or source_sha!=_DECODED_SOURCE_SHA:raise ValueError('source_binding')
+  request=bounded_envelope(sys.stdin.buffer)
+  if type(request)is not dict or set(request)!={'passphrase'}:raise ValueError('request_shape')
+  secret=request.pop('passphrase')
+  if type(secret)is not str or not 0<len(secret.encode())<=512 or any(c in secret for c in ('\r','\n','\0')):raise ValueError('secret_shape')
+  config_file=config_file or str(Path.home()/'.ssh/config')
+  spec={'configFile':config_file,'controlPath':'none','remoteHostAlias':profile}
+  config_pin=file_pin(config_file,body=True);route_pin=effective_route(spec)
+  if config_pin['unsupportedConfigDirectives']:raise ValueError('config_dependencies')
+  def guard():
+   if file_pin(config_file,body=True)!=config_pin or effective_route(spec)!=route_pin:raise ValueError('config_or_keys_changed')
+  guard()
+  command='python3 -I -B -c \'import os,sys,stat,hashlib\npath,expected,size=sys.argv[1:4];size=int(size);sys.argv=[\'"\'"\'saved_gateway\'"\'"\',*sys.argv[4:]]\nfd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\ntry:\n info=os.fstat(fd)\n if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1 or info.st_size!=size:raise ValueError(\'"\'"\'saved_driver_metadata\'"\'"\')\n raw=b\'"\'"\'\'"\'"\'\n while len(raw)<=size:\n  chunk=os.read(fd,min(65536,size+1-len(raw)))\n  if not chunk:break\n  raw+=chunk\n if len(raw)!=size or hashlib.sha256(raw).hexdigest()!=expected:raise ValueError(\'"\'"\'saved_driver_hash\'"\'"\')\n scope={\'"\'"\'__name__\'"\'"\':\'"\'"\'__main__\'"\'"\',\'"\'"\'__file__\'"\'"\':path,\'"\'"\'_DECODED_SOURCE_SHA\'"\'"\':expected}\n try:exec(compile(raw.decode(\'"\'"\'utf-8\'"\'"\',\'"\'"\'strict\'"\'"\'),path,\'"\'"\'exec\'"\'"\'),scope)\n finally:\n  after=os.fstat(fd);physical=os.stat(path,follow_symlinks=False)\n  if (physical.st_dev,physical.st_ino)!=(info.st_dev,info.st_ino) or (after.st_size,after.st_mtime_ns,after.st_ctime_ns)!=(info.st_size,info.st_mtime_ns,info.st_ctime_ns) or hashlib.sha256(os.pread(fd,size,0)).hexdigest()!=expected:raise ValueError(\'"\'"\'saved_driver_changed\'"\'"\')\nfinally:os.close(fd)\n\' /tmp/vpn-control-windows-caller-66aa42062bd8481cae3220c541b73ce5/caller.py b13c1892e9ead105046c465e7b78642a8dfee380ea04a5777cca11132f0964eb 6546'
+  argv=['ssh','-T','-F',config_file,'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=none','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','IdentityAgent=none','-o','PreferredAuthentications=publickey','-o','PasswordAuthentication=no','-o','KbdInteractiveAuthentication=no','-o','ConnectTimeout=10',profile,command]
+  secret_bytes=secret.encode();custody=start_fixed(argv,secret_bytes,route_pin['keyMetadata']);secret=None
+  payload=b''
+  write_errors=[]
+  def write():
+   try:custody.child.stdin.write(payload);custody.child.stdin.flush()
+   except BaseException as e:write_errors.append(type(e).__name__)
+   finally:custody.child.stdin.close()
+  writer=threading.Thread(target=write,daemon=True);writer.start();result=custody.observe(60)
+  if not result['complete'] or result['refusal'] or result['returnCode']!=0:raise ValueError('source_transfer_unverified')
+  writer.join(1)
+  if writer.is_alive() or write_errors:raise ValueError('source_writer_unclosed')
+  value=json.loads(bytes(custody.raw['stdout']),object_pairs_hook=reject_pairs)
+  if type(value)is not dict or value.get('schemaVersion')!=1 or value.get('host')!='archlinux':raise ValueError('source_run_identity')
+  guard()
+  print(json.dumps({'state':'observed','correlationId':corr,'run':value,'capture':result,'_operatorPrivateCapture':private_inner(custody,secret_bytes),'nativeActionAllowed':False,'replayAllowed':False},sort_keys=True),flush=True)
+  return 0
+ except BaseException as e:
+  print(json.dumps({'state':'unknown','correlationId':locals().get('corr'),'errorClass':type(e).__name__,'reason':str(e) if type(e)is ValueError and re.fullmatch('[a-z_]{1,64}',str(e)) else 'unclassified','capture':custody.observe(.01) if custody else None,'_operatorPrivateCapture':private_inner(custody,secret_bytes) if custody else None,'nativeActionAllowed':False,'replayAllowed':False},sort_keys=True),flush=True)
+  if custody is not None and not custody.closed:custody.finish_naturally()
+  return 3
+if __name__=='__main__':sys.exit(stage_main())

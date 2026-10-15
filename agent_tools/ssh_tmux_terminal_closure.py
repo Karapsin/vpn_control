@@ -29,7 +29,7 @@ if os.name=='posix':
 else:pipe=fcntl=None
 need=old.need
 CORRELATION='86fcac2e-2fb5-47a8-bf1e-eb62d4accfd0'
-ADAPTER_SHA='87b76515a48ef34102349e083de467bf0b934498706dc30f5801d585b1616fec'
+ADAPTER_SHA='0f0d41ad25edcde8189de82bc22ad62b2c4a241912bbc4f19891f8882b5e68b2'
 
 
 def _sources(root):
@@ -134,8 +134,8 @@ def fixed_query(root,program,payload,guard,snapshot=None):
   current=_sources(root);current[str(Path(resource.__file__).absolute())]=pipe._read(Path(resource.__file__).absolute(),262144,False)[1]
   need(current==sources and driver._transport()[1]==transport,'closure_route_changed');guard()
  def launch():
-  close_guard();return adapter.subprocess.Popen(argv,cwd=root,stdin=adapter.subprocess.PIPE,stdout=adapter.subprocess.PIPE,stderr=adapter.subprocess.PIPE,bufsize=0)
- authority={'phase':'status','snapshot':snapshot,'sources':sources,'transport':transport,'local':{},'argvSha256':hashlib.sha256(session.canonical(argv)).hexdigest()}
+  close_guard();return ssh_transport.popen_ssh(argv,cwd=root,stdin=adapter.subprocess.PIPE,stdout=adapter.subprocess.PIPE,stderr=adapter.subprocess.PIPE,bufsize=0)
+ authority={'phase':'status','snapshot':snapshot,'sources':sources,'transport':transport,'local':{},'argvSha256':ssh_transport.argv_sha256(argv)}
  outcome,capsule=adapter._capture(root,authority=authority,launch=launch,payload=session.canonical(payload),guard=close_guard)
  need(outcome['state']=='captured','closure_transport_unknown')
  raw,pin=pipe._read(capsule/'receipt.json');need(pin==outcome['receiptPin'],'closure_capture_changed');record=json.loads(raw)

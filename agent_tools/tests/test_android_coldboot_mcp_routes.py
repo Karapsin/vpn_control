@@ -9,6 +9,11 @@ from agent_tools import android_coldboot_product_routes as routes
 from agent_tools import android_api35_large_routing_routes as large_routes
 
 class RegistrationTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_routes
+        from agent_tools import android_coldboot_product_routes, android_api35_large_routing_routes
+        bind_routes(self, server, android_coldboot_product_routes, android_api35_large_routing_routes)
+
     def test_registered_api35_route_dispatches_once(self):
         response = {'tool': 'vm_workflow', 'ok': True, 'currentRoutingVerified': True,
                     'productAdmitted': False, 'acceptanceComplete': False}

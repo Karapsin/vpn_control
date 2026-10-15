@@ -1,0 +1,265 @@
+"""Finite Windows deployment producer; all instance data comes from VmSpec."""
+from __future__ import annotations
+import inspect,json,re
+from .native_vm_spec import FreshWindowsVmSpec
+from .arch_package_integrity import swtpm_runtime_owner_accepted
+
+_REASONS=frozenset(('root_exists','parent_unsafe','kvm_unavailable','memory_headroom','disk_headroom','vnc_owned','asset_identity','binary_unavailable','package_integrity','host_unsupported','observation_unknown','policy_observation_unknown','resource_observation_unknown'))
+
+
+def _remote_main():
+    import hashlib,json,os,pathlib,pwd,grp,re,shutil,socket,stat,subprocess
+    held=[];pins=[]
+    def reject(reason):raise ValueError(reason)
+    def generation(info):return (info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+    def pin(path,size=None,digest=None,limit=128*1024**2,executable=False):
+        if os.path.realpath(path)!=path:reject('asset_identity')
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);info=os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or not 0<info.st_size<=limit or info.st_mode&0o022
+                or size is not None and info.st_size!=size or executable and not os.access(path,os.X_OK)):reject('asset_identity')
+        h=hashlib.sha256();total=0
+        while True:
+            raw=os.read(fd,1024**2)
+            if not raw:break
+            h.update(raw);total+=len(raw)
+            if total>limit:reject('asset_identity')
+        if total!=info.st_size or digest is not None and h.hexdigest()!=digest:reject('asset_identity')
+        value={'path':path,'bytes':total,'sha256':h.hexdigest(),'generation':list(generation(info))}
+        pins.append((fd,path,generation(info)));return value
+    def closing():
+        for fd,path,expected in pins:
+            if generation(os.fstat(fd))!=expected or generation(os.stat(path,follow_symlinks=False))!=expected:reject('asset_identity')
+    def run(argv,limit=65536):
+        p=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15,check=False,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
+        if len(p.stdout)>limit or len(p.stderr)>limit:reject('package_integrity')
+        return p
+    try:
+        root=pathlib.Path(SPEC['root']);parent=root.parent
+        current=pathlib.Path('/')
+        for component in parent.parts[1:]:
+            current=current/component;info=os.lstat(current)
+            if not stat.S_ISDIR(info.st_mode):reject('parent_unsafe')
+        info=os.lstat(parent)
+        if info.st_uid!=os.geteuid() or info.st_mode&0o022:
+            if not (info.st_uid==0 and info.st_mode&stat.S_ISVTX):reject('parent_unsafe')
+        if os.path.lexists(root):reject('root_exists')
+        try:fd=os.open('/dev/kvm',os.O_RDWR|os.O_CLOEXEC);os.close(fd)
+        except OSError:reject('kvm_unavailable')
+        binaries={}
+        for name in ('qemu-system-x86_64','qemu-img','swtpm','virt-fw-vars','pacman','xorriso'):
+            path=shutil.which(name,path='/usr/bin:/bin')
+            if path is None:reject('binary_unavailable')
+            binaries[name]=pin(os.path.realpath(path),executable=True)
+        packages={}
+        owner=run([binaries['pacman']['path'],'-Qoq',binaries['xorriso']['path']],1024)
+        owner_name=owner.stdout.decode('utf-8','strict').strip()
+        if owner.returncode or re.fullmatch('[a-z0-9][a-z0-9@+_.-]{0,127}',owner_name)is None:reject('package_integrity')
+        for name in dict.fromkeys(('qemu-system-x86','qemu-img','swtpm','edk2-ovmf','virt-firmware',owner_name)):
+            result=run([binaries['pacman']['path'],'-Q',name],1024)
+            parts=result.stdout.decode('utf-8','strict').split()
+            if result.returncode or len(parts)!=2 or parts[0]!=name:reject('package_integrity')
+            integrity=run([binaries['pacman']['path'],'-Qkk',name])
+            if integrity.returncode:
+                if name!='swtpm':reject('package_integrity')
+                policy_path='/usr/lib/tmpfiles.d/swtpm.conf';pin(policy_path,limit=16384)
+                with open(policy_path) as stream:policy=stream.read(16385)
+                rows=[line.split() for line in policy.splitlines() if line.strip() and not line.lstrip().startswith('#')]
+                if len(rows)!=1 or len(rows[0])<5:reject('package_integrity')
+                uid=pwd.getpwnam(rows[0][3]).pw_uid;gid=grp.getgrnam(rows[0][4]).gr_gid
+                path='/var/lib/swtpm-localca';fd=os.open(path,getattr(os,'O_PATH',os.O_RDONLY)|os.O_DIRECTORY|os.O_NOFOLLOW)
+                held.append(fd);metadata=os.fstat(fd);pins.append((fd,path,generation(metadata)))
+                if not swtpm_runtime_owner_accepted(integrity.returncode,integrity.stdout,integrity.stderr,policy,
+                        {'mode':metadata.st_mode,'uid':metadata.st_uid,'gid':metadata.st_gid},uid,gid):reject('package_integrity')
+            packages[name]=parts[1]
+        listing=run([binaries['pacman']['path'],'-Ql','swtpm'])
+        policies={}
+        if listing.returncode:reject('package_integrity')
+        for line in listing.stdout.decode('utf8','strict').splitlines():
+            package,_,path=line.partition(' ')
+            if package=='swtpm' and path.startswith(('/usr/lib/tmpfiles.d/','/usr/lib/sysusers.d/')) and not path.endswith('/'):
+                if len(policies)>=8:reject('package_integrity')
+                pin(path,limit=16384)
+                with open(path) as stream:policies[path]=stream.read(16385)
+        assets={}
+        for name,value in SPEC['assets'].items():
+            assets[name]=pin(value['path'],size=value['bytes'],digest=value['sha256'],limit=8*1024**3)
+        with open('/proc/meminfo') as stream:memory=stream.read(16385)
+        if len(memory)>16384:reject('observation_unknown')
+        available=next(int(line.split()[1])*1024 for line in memory.splitlines() if line.startswith('MemAvailable:'))
+        if available<(SPEC['memoryMiB']+SPEC['headroomMiB'])*1024**2:reject('memory_headroom')
+        free=shutil.disk_usage(parent).free
+        if free<(SPEC['diskGiB']+8)*1024**3:reject('disk_headroom')
+        sockets=[]
+        try:
+            for family,host in ((socket.AF_INET,'127.0.0.1'),(socket.AF_INET6,'::1')):
+                s=socket.socket(family);sockets.append(s)
+                if family==socket.AF_INET6:s.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,1)
+                try:s.bind((host,SPEC['vncPort']))
+                except OSError:reject('vnc_owned')
+        finally:
+            for s in sockets:s.close()
+        closing()
+        # The complete private observation retains byte identities locally on
+        # the coordinator. Public DTO projection is bounded and non-authorizing.
+        print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'qualified','reason':None,'uid':os.geteuid(),'availableMemoryBytes':available,'freeDiskBytes':free,'packages':packages,'swtpmPolicies':policies,'assetHashes':{k:v['sha256'] for k,v in assets.items()},'binaryHashes':{k:v['sha256'] for k,v in binaries.items()},'nativeActionAllowed':False,'replayAllowed':False},sort_keys=True))
+    except (OSError,ValueError,KeyError,TypeError,StopIteration,subprocess.SubprocessError) as error:
+        reason=str(error) if type(error)is ValueError and str(error) in REASONS else 'observation_unknown'
+        print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'blocked','reason':reason,'nativeActionAllowed':False,'replayAllowed':False},sort_keys=True))
+    finally:
+        for fd in held:os.close(fd)
+
+
+def _apply_host_policy():
+    import hashlib,json,os,pwd,grp,re,stat,subprocess,tempfile
+    def read(path,limit):
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            before=os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode) or before.st_uid!=0 or before.st_mode&0o022 or not 0<before.st_size<=limit:raise ValueError('policy_source')
+            raw=os.read(fd,limit+1);after=os.fstat(fd);named=os.stat(path,follow_symlinks=False)
+            shape=lambda v:(v.st_dev,v.st_ino,v.st_uid,v.st_gid,v.st_mode,v.st_size,v.st_mtime_ns,v.st_ctime_ns)
+            if len(raw)!=before.st_size or shape(before)!=shape(after) or shape(before)!=shape(named):raise ValueError('policy_source_changed')
+            return raw,shape(before)
+        finally:os.close(fd)
+    def query():
+        p=subprocess.run(['/usr/bin/pacman','-Qkk','swtpm'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
+        if len(p.stdout)>8192 or len(p.stderr)>8192:raise ValueError('policy_package_capture')
+        return p
+    def no_tpm():
+        rows=os.listdir('/proc')
+        if len(rows)>8192:raise ValueError('policy_process_capacity')
+        for name in rows:
+            if not name.isdigit():continue
+            base='/proc/'+name
+            try:
+                with open(base+'/stat') as stream:before=stream.read(8192).rsplit(')',1)[1].split()
+                try:exe=os.readlink(base+'/exe')
+                except FileNotFoundError:
+                    if before[0]=='Z' or int(before[6])&0x200000:continue
+                    if not os.path.lexists(base):continue
+                    raise
+                if os.path.basename(exe) in ('swtpm','swtpm_setup','swtpm_localca','swtpm_cert'):raise ValueError('policy_tpm_active')
+                with open(base+'/stat') as stream:after=stream.read(8192).rsplit(')',1)[1].split()
+                if before[19]!=after[19]:raise ValueError('policy_process_changed')
+            except FileNotFoundError:
+                if os.path.lexists(base):raise
+    fd=-1
+    try:
+        if os.geteuid()!=0:raise ValueError('policy_privilege')
+        no_tpm();original=query()
+        policy,pin=read('/usr/lib/tmpfiles.d/swtpm.conf',16384)
+        rows=[line.split() for line in policy.decode('utf8','strict').splitlines() if line.strip() and not line.lstrip().startswith('#')]
+        if len(rows)!=1 or rows[0][:3]!=['z','/var/lib/swtpm-localca','0750'] or len(rows[0])!=5:raise ValueError('policy_directive')
+        uid=pwd.getpwnam(rows[0][3]).pw_uid;gid=grp.getgrnam(rows[0][4]).gr_gid
+        path='/var/lib/swtpm-localca';fd=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        before=os.fstat(fd)
+        if before.st_uid not in (0,uid) or before.st_gid!=gid or stat.S_IMODE(before.st_mode)!=0o750:raise ValueError('policy_metadata')
+        allowed=swtpm_runtime_owner_accepted(original.returncode,original.stdout,original.stderr,policy.decode(),{'mode':before.st_mode,'uid':before.st_uid,'gid':before.st_gid},uid,gid)
+        if original.returncode and not allowed:raise ValueError('policy_package_integrity')
+        evidence=tempfile.mkdtemp(prefix='vpn-control-host-policy-');os.chmod(evidence,0o700)
+        def save(name,value):
+            file=os.open(evidence+'/'+name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+            try:
+                raw=(json.dumps(value,sort_keys=True)+'\n').encode();offset=0
+                while offset<len(raw):offset+=os.write(file,raw[offset:])
+                os.fsync(file)
+            finally:os.close(file)
+        save('before.json',{'deploymentId':SPEC['deploymentId'],'directory':path,'dev':before.st_dev,'ino':before.st_ino,'uid':before.st_uid,'gid':before.st_gid,'mode':before.st_mode,'policySha256':hashlib.sha256(policy).hexdigest(),'packageReturnCode':original.returncode})
+        no_tpm()
+        if read('/usr/lib/tmpfiles.d/swtpm.conf',16384)!=(policy,pin):raise ValueError('policy_source_changed')
+        named=os.stat(path,follow_symlinks=False)
+        if (named.st_dev,named.st_ino,named.st_uid,named.st_gid,named.st_mode)!=(before.st_dev,before.st_ino,before.st_uid,before.st_gid,before.st_mode):raise ValueError('policy_metadata_changed')
+        if before.st_uid!=uid:os.fchown(fd,uid,-1);os.fsync(fd)
+        after=os.fstat(fd);named=os.stat(path,follow_symlinks=False);result=query()
+        if ((named.st_dev,named.st_ino,named.st_uid,named.st_gid,named.st_mode)!=(after.st_dev,after.st_ino,uid,gid,before.st_mode)
+                or not swtpm_runtime_owner_accepted(result.returncode,result.stdout,result.stderr,policy.decode(),{'mode':after.st_mode,'uid':after.st_uid,'gid':after.st_gid},uid,gid)):raise ValueError('policy_closing_unknown')
+        value={'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'policy-applied','reason':None,'beforeUid':before.st_uid,'uid':uid,'metadataOnly':True,'policySha256':hashlib.sha256(policy).hexdigest(),'evidenceDirectory':evidence,'nativeActionAllowed':False,'replayAllowed':False}
+        save('after.json',value);print(json.dumps(value,sort_keys=True))
+    except (OSError,ValueError,KeyError,IndexError,subprocess.SubprocessError):
+        print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'blocked','reason':'policy_observation_unknown','nativeActionAllowed':False,'replayAllowed':False},sort_keys=True))
+    finally:
+        if fd>=0:os.close(fd)
+
+
+def _peer_main():
+    import json,os,sys,uuid
+    try:
+        platform=sys.platform
+        if platform not in ('linux','darwin','win32'):raise ValueError('peer_platform')
+        boot=None
+        if platform=='linux':
+            with open('/proc/sys/kernel/random/boot_id') as stream:boot=stream.read(128).strip()
+            if str(uuid.UUID(boot))!=boot:raise ValueError('peer_boot')
+        value={'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'peer-observed','reason':None,
+               'platform':platform,'hostBootId':boot,'nativeActionAllowed':False,'replayAllowed':False}
+    except (OSError,ValueError):
+        value={'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'blocked','reason':'resource_observation_unknown','nativeActionAllowed':False,'replayAllowed':False}
+    print(json.dumps(value,separators=(',',':')))
+
+
+def program(spec:FreshWindowsVmSpec,mode:str,*,setup=None,context=None)->bytes:
+    if mode in ('start','status'):
+        from . import windows_vm_resources as resources,windows_vm_unattend as unattended,windows_vm_instance as instance,windows_vm_hardware as hardware
+        setup=unattended.parse_setup(setup)
+        if type(context)is not dict or set(context)!={'hostBootId','pending'}:raise ValueError('deployment_context')
+        import uuid
+        if type(context['hostBootId'])is not str or str(uuid.UUID(context['hostBootId']))!=context['hostBootId'] or type(context['pending'])is not list:raise ValueError('deployment_context')
+        body=(resources.definitions()+'\nfrom xml.etree import ElementTree as ET\n'
+              +'\nSPEC='+repr(spec.as_dict())+'\nMODE='+repr(mode)+'\nSETUP='+repr(setup)+'\nCONTEXT='+repr(context)+'\n'
+              +'FIELDS='+repr(unattended.FIELDS)+'\nINITIALIZE='+repr(unattended.INITIALIZE)+'\nREASONS='+repr(tuple(sorted(_REASONS)))+'\n'
+              +inspect.getsource(unattended.parse_setup)+'\n'+inspect.getsource(unattended.answer_file)+'\n'
+              +inspect.getsource(swtpm_runtime_owner_accepted)+'\n'+inspect.getsource(_remote_main)+'\n'
+              +inspect.getsource(resources._main)+'\n_resource_main=_main\n'
+              +inspect.getsource(resources.measurement)+'\nresource_measurement=measurement\n'
+              +inspect.getsource(hardware.qemu_argv)+'\n'+inspect.getsource(instance._vm_main)+'\n_vm_main()\n')
+        compile(body,'saved Windows VM instance','exec');return body.encode()
+    if mode=='peer':
+        body='SPEC='+repr(spec.as_dict())+'\nMODE='+repr(mode)+'\n'+inspect.getsource(_peer_main)+'\n_peer_main()\n'
+        compile(body,'saved deployment peer observation','exec');return body.encode()
+    if mode=='host-resources':
+        from . import windows_vm_resources as resources
+        body=resources.definitions()+'\nSPEC='+repr(spec.as_dict())+'\nMODE='+repr(mode)+'\n'+inspect.getsource(resources._main)+'\n_main()\n'
+        compile(body,'saved Windows host resources','exec');return body.encode()
+    if mode not in ('preflight','host-policy-apply'):raise ValueError('unsupported_deployment_mode')
+    body=inspect.getsource(swtpm_runtime_owner_accepted)+'\nSPEC='+repr(spec.as_dict())+'\nMODE='+repr(mode)+'\nREASONS='+repr(tuple(sorted(_REASONS)))+'\n'+inspect.getsource(_remote_main if mode=='preflight' else _apply_host_policy)+('\n_remote_main()\n' if mode=='preflight' else '\n_apply_host_policy()\n')
+    compile(body,'saved Windows VM producer','exec');return body.encode()
+
+
+def validate_result(spec,mode,value):
+    base={'schemaVersion','deploymentId','mode','state','reason','nativeActionAllowed','replayAllowed'}
+    if (type(value)is not dict or type(value.get('schemaVersion'))is not int or value['schemaVersion']!=1
+            or value.get('deploymentId')!=spec.deployment_id or value.get('mode')!=mode
+            or value.get('nativeActionAllowed')is not False or value.get('replayAllowed')is not False):raise ValueError('deployment_response_identity')
+    if mode=='host-policy-apply' and value['state']=='policy-applied':
+        if (set(value)!=base|{'beforeUid','uid','metadataOnly','policySha256','evidenceDirectory'}
+                or value['metadataOnly']is not True or any(type(value[k])is not int or not 0<=value[k]<2**32 for k in ('beforeUid','uid'))):raise ValueError('policy_response')
+        return dict(value)
+    if value['state']=='blocked':
+        if set(value)!=base or value['reason'] not in _REASONS:raise ValueError('deployment_response_blocker')
+    elif value['state']=='unknown' and mode in ('start','status'):
+        if (set(value)!=base|{'failurePhase','failureClass','failureCheck'} or value['reason']!='instance_effect_or_observation_unknown'
+                or value['failurePhase'] not in ('resources','principal','preflight','credentials','create','firmware','disk','seed','tpm','qemu','first-boot','observation')
+                or value['failureClass'] not in ('OSError','ValueError','KeyError','TypeError','SubprocessError')
+                or value['failureCheck'] is not None and (type(value['failureCheck'])is not str or re.fullmatch('instance_[a-z_]{1,64}',value['failureCheck']) is None)):
+            raise ValueError('deployment_instance_unknown')
+    elif value['state']=='booted-observed' and mode in ('start','status'):
+        if set(value)!=base|{'qemu','swtpm','qemuStatus','guestAgentReady','ordinarySessionObserved','osName','productReady'} or value['reason']is not None:raise ValueError('deployment_instance_response')
+        for key in ('qemu','swtpm'):
+            if type(value[key])is not dict or set(value[key])!={'pid','startTicks'} or any(type(x)is not int or x<=0 for x in value[key].values()):raise ValueError('deployment_instance_process')
+        if (type(value['qemuStatus'])is not str or type(value['guestAgentReady'])is not bool or type(value['ordinarySessionObserved'])is not bool or
+                value['osName']is not None and (type(value['osName'])is not str or not 0<len(value['osName'])<=256) or value['productReady']is not False):raise ValueError('deployment_instance_response')
+    elif value['state']=='resources-observed' and mode=='host-resources':
+        from . import windows_vm_resources as resources
+        resources.measurement(value)
+    elif value['state']=='peer-observed' and mode=='peer':
+        import uuid
+        if set(value)!=base|{'platform','hostBootId'} or value['reason']is not None or value['platform']not in ('linux','darwin','win32'):raise ValueError('resource_peer_response')
+        if value['platform']=='linux':
+            if type(value['hostBootId'])is not str or str(uuid.UUID(value['hostBootId']))!=value['hostBootId']:raise ValueError('resource_peer_boot')
+        elif value['hostBootId']is not None:raise ValueError('resource_peer_boot')
+    elif value['state']=='qualified':
+        if (set(value)!=base|{'uid','availableMemoryBytes','freeDiskBytes','packages','swtpmPolicies','assetHashes','binaryHashes'} or value['reason'] is not None
+                or any(type(value[k])is not int or value[k]<0 for k in ('uid','availableMemoryBytes','freeDiskBytes'))
+                or value['assetHashes']!={k:v['sha256'] for k,v in spec.as_dict()['assets'].items()}):raise ValueError('deployment_response_qualification')
+    else:raise ValueError('deployment_response_state')
+    return dict(value)

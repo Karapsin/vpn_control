@@ -8,6 +8,13 @@ from agent_tools import tmux_workflow_routes as routes
 
 
 class TmuxRoutes(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'tmux_workflow_routes',
+        )
+
     def test_registered_mcp_adapter_dispatches_availability(self):
         with mock.patch.object(routes.adapter, 'operate', return_value={'available': True, 'reason': 'available', 'nativeActionAllowed': False}) as call:
             result = server._vm_workflow_impl('linux-package-tmux-availability', {})

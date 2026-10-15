@@ -30,16 +30,22 @@ class TmuxDisconnectRoutes(unittest.TestCase):
                          [call[0] for call in probe.method_calls])
         self.assertFalse(value['productAcceptance'])
 
-    def test_invalid_inputs_never_load_or_submit(self):
+    def test_invalid_inputs_never_load_probe_or_submit(self):
         for edit in ({'host': 'foreign'}, {'identity': None}, {'identity': {}},
                      {'identity': {**self.identity, 'command': 'id'}},
                      {'identity': {**self.identity, 'hop': 'foreign'}},
                      {'identity': {**self.identity, 'correlationId': '../bad'}},
                      {'device': 'api35'}, {'transfer': {}}, {'timeout_seconds': True}):
-            with self.subTest(edit=edit), mock.patch.object(server, '_agent_module') as load:
+            original=server._agent_module
+            def configuration_only(name):
+                self.assertEqual('ssh_transport',name)
+                return original(name)
+            with self.subTest(edit=edit), mock.patch.object(server, '_agent_module',side_effect=configuration_only) as load, \
+                    mock.patch.object(subprocess,'Popen',side_effect=AssertionError('invalid input must not probe or submit')):
                 value = server._ssh_workflow_impl('tmux-disconnect-probe',
                     **{'host': 'archlinux', 'identity': dict(self.identity), **edit})
-                self.assertFalse(value['ok']); load.assert_not_called()
+                self.assertFalse(value['ok'])
+                self.assertEqual([mock.call('ssh_transport')],load.call_args_list)
 
     def test_unknown_prepare_never_releases_or_disconnects(self):
         probe = mock.Mock(); probe.prepare.return_value = {'state': 'unknown', 'replayAllowed': False}

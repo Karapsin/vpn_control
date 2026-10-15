@@ -121,7 +121,7 @@ class Collector:
 def _transport(argv,secret,collector,record):
     process=None;wire=0;deadline=time.monotonic()+1250;stderr=bytearray()
     try:
-        process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        process=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         process.stdin.write(secret);process.stdin.close();secret=b'';streams={process.stdout:'out',process.stderr:'err'}
         while streams:
             left=deadline-time.monotonic()
@@ -150,6 +150,7 @@ def _transport(argv,secret,collector,record):
             for stream in (process.stdin,process.stdout,process.stderr):stream.close()
         record['stderrBytes']=len(stderr);record['stderrSha256']=hashlib.sha256(stderr).hexdigest()
         if stderr:collector.capture.create('ssh-stderr.private',bytes(stderr[:1048576]));os.fsync(collector.capture.fd)
+        ssh_transport.finish_ssh(process)
 
 
 def _raw_chunks(record,limit=33554433):

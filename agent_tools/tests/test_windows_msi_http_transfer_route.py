@@ -13,6 +13,12 @@ from agent_tools import windows_msi_base_prepare as base
 
 class WindowsMsiHttpTransferRouteTest(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'windows_msi_base_prepare',
+            'windows_msi_http_transfer',
+        )
         source_guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         source_guard.start(); self.addCleanup(source_guard.stop)
 

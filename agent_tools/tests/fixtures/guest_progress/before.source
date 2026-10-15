@@ -1,0 +1,30 @@
+$ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18'){throw 'FIXTURE_SYSTEM_REQUIRED'}
+$os=Get-CimInstance Win32_OperatingSystem
+$computer=Get-CimInstance Win32_ComputerSystem
+$version=Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+$state=Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\Setup'
+$image=Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State'
+$user=Get-LocalUser -Name $ExpectedUser
+$admin=Get-LocalUser -Name $ExpectedAdministrator
+$admins=@(Get-LocalGroupMember -SID 'S-1-5-32-544' | ForEach-Object {$_.SID.Value})
+$users=@(Get-LocalGroupMember -SID 'S-1-5-32-545' | ForEach-Object {$_.SID.Value})
+$profile=Get-CimInstance Win32_UserProfile -Filter ("SID='"+$user.SID.Value+"'")
+$service=Get-CimInstance Win32_Service -Filter "Name='qemu-ga'"
+$task=Get-ScheduledTask -TaskName 'VpnControlFixtureInitialize'
+$taskInfo=Get-ScheduledTaskInfo -TaskName 'VpnControlFixtureInitialize'
+$logs=Join-Path $env:ProgramData 'VpnControlFixture'
+$ready=$null
+if(Test-Path -LiteralPath (Join-Path $logs 'ready.json')){$ready=Get-Content -LiteralPath (Join-Path $logs 'ready.json') -Raw | ConvertFrom-Json}
+$result=[ordered]@{
+ nonce=$OperationId
+ fixturePrincipal=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+ os=[ordered]@{caption=$os.Caption;version=$os.Version;bootTime=$os.LastBootUpTime.ToUniversalTime().ToString('o');productName=$version.ProductName;editionId=$version.EditionID;displayVersion=$version.DisplayVersion;build=$version.CurrentBuildNumber;ubr=$version.UBR;locale=(Get-WinSystemLocale).Name}
+ computer=[ordered]@{name=$computer.Name;loggedOn=$computer.UserName;partOfDomain=$computer.PartOfDomain}
+ user=[ordered]@{name=$user.Name;sid=$user.SID.Value;enabled=$user.Enabled;isAdministrator=($admins -contains $user.SID.Value);isUsersMember=($users -contains $user.SID.Value);profileRoot=$profile.LocalPath}
+ administrator=[ordered]@{name=$admin.Name;sid=$admin.SID.Value;enabled=$admin.Enabled;isAdministrator=($admins -contains $admin.SID.Value)}
+ setup=[ordered]@{systemSetupInProgress=$state.SystemSetupInProgress;oobeInProgress=$state.OOBEInProgress;imageState=$image.ImageState;taskState=[string]$task.State;taskResult=$taskInfo.LastTaskResult;ready=$ready}
+ guestAgent=[ordered]@{state=$service.State;startMode=$service.StartMode;path=$service.PathName;pid=$service.ProcessId}
+}
+[Console]::WriteLine(($result | ConvertTo-Json -Depth 8 -Compress))

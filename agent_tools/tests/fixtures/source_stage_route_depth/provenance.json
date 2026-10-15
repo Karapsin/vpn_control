@@ -1,0 +1,7 @@
+{
+  "path": "agent_tools/ssh_source_file_stage_direct.py",
+  "sourceSha256": "e5c26215fbd8375a5189f3b732c30450cc622e656ce439a548b4497210ea0bd0",
+  "capturedAtUnix": 1792052723.249273,
+  "role": "Full unfixed implementation. A configured3hop route passes ultimate outer gateway plus immediate-gateway-only target profile to the stage driver; actual inert subprocess submission is preserved before repair.",
+  "evidence": ".runtime/source-stage-route-depth-2026-10-15"
+}

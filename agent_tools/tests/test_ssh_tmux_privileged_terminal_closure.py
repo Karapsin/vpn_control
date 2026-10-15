@@ -94,14 +94,14 @@ class PrivilegedTerminalCensusTests(unittest.TestCase):
     def test_actual_inherited_owner_prefix_rejects_root_before_status_then_owner_admits(self):
         payload, _code, Paths, Hash, _proxy, output = self._fixture()
         owner = privileged.owner_program()
-        with mock.patch("pathlib.Path", Paths.Path), mock.patch.dict(sys.modules, {"hashlib": Hash}), \
+        with mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch.dict(sys.modules, {"hashlib": Hash}), \
              mock.patch.object(sys, "stdin", types.SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))), \
              mock.patch.object(sys, "stdout", output), mock.patch("os.getuid", return_value=0), \
              self.assertRaises(SystemExit) as rejected:
             exec(owner, {})
         self.assertEqual(32, rejected.exception.code)
         admitted = io.StringIO()
-        with mock.patch("pathlib.Path", Paths.Path), mock.patch.dict(sys.modules, {"hashlib": Hash}), \
+        with mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch.dict(sys.modules, {"hashlib": Hash}), \
              mock.patch.object(sys, "stdin", types.SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))), \
              mock.patch.object(sys, "stdout", admitted):
             exec(owner, {})
@@ -114,7 +114,7 @@ class PrivilegedTerminalCensusTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name)
-        remote = root / "remote"
+        remote = root / old.REMOTE_ROOT_NAME
         job = remote / privileged.CORRELATION
         source = job / "source"
         source.mkdir(parents=True)
@@ -188,6 +188,7 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
                 if text.startswith(prefix):
                     return remote / text[len(prefix):].lstrip("/")
                 return local_path(path)
+        Paths.home = root
         real_sha = hashlib.sha256
         class Hash:
             @staticmethod
@@ -202,10 +203,12 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
 
     def _execute(self, fixture, *, expect_exit=None):
         payload, code, Paths, Hash, proxy, output = fixture
-        context = (mock.patch("pathlib.Path", Paths.Path), mock.patch.dict(sys.modules, {"hashlib": Hash}),
+        context = (mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch.dict(sys.modules, {"hashlib": Hash}),
                    mock.patch.object(sys, "stdin", types.SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))),
                    mock.patch.object(sys, "stdout", output))
-        with context[0], context[1], context[2], context[3], mock.patch("os.geteuid", return_value=0):
+        with contextlib.ExitStack() as stack:
+            for manager in context:stack.enter_context(manager)
+            stack.enter_context(mock.patch("os.geteuid", return_value=0))
             if expect_exit is None:
                 exec(code, {"os": proxy})
             else:
@@ -224,7 +227,7 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
             if str(path).endswith("/992/cwd"):
                 raise PermissionError(13, "nondumpable")
             return native_readlink(path, *args, **kwargs)
-        with mock.patch("pathlib.Path", Paths.Path), mock.patch.dict(sys.modules, {"hashlib": Hash}), \
+        with mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch.dict(sys.modules, {"hashlib": Hash}), \
              mock.patch.object(sys, "stdin", types.SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))), \
              mock.patch.object(sys, "stdout", denied_output), mock.patch("os.readlink", side_effect=denied):
             exec(diagnostic.remote_program(), {})
@@ -342,7 +345,7 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
             return types.SimpleNamespace(returncode=0, stdout=inner.getvalue().encode(), stderr=b"")
         fake.run = run
         outer = types.SimpleNamespace(buffer=io.BytesIO())
-        with mock.patch("pathlib.Path", Paths.Path), mock.patch.dict(sys.modules, {"hashlib": Hash, "subprocess": fake}), \
+        with mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch.dict(sys.modules, {"hashlib": Hash, "subprocess": fake}), \
              mock.patch("os.geteuid", return_value=0), \
              mock.patch.object(sys, "stdin", types.SimpleNamespace(buffer=io.BytesIO(b"PRIVATE\n"))), \
              mock.patch.object(sys, "stdout", outer):
@@ -379,7 +382,7 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
                     return types.SimpleNamespace(returncode=0, stdout=output.getvalue().encode(), stderr=b"")
                 fake.run = run
                 outer = types.SimpleNamespace(buffer=io.BytesIO())
-                with mock.patch("pathlib.Path", Paths.Path), mock.patch.dict(sys.modules, {"hashlib": Hash, "subprocess": fake}), \
+                with mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch.dict(sys.modules, {"hashlib": Hash, "subprocess": fake}), \
                      mock.patch.object(sys, "stdin", types.SimpleNamespace(buffer=io.BytesIO(b"PRIVATE\n"))), \
                      mock.patch.object(sys, "stdout", outer):
                     if closing_drift:
@@ -414,7 +417,7 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
             def flush(self): pass
         outer = Stream()
         errors = Stream()
-        with mock.patch("pathlib.Path", Paths.Path), mock.patch.dict(sys.modules, {"hashlib": Hash, "subprocess": fake}), \
+        with mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch.dict(sys.modules, {"hashlib": Hash, "subprocess": fake}), \
              mock.patch.object(sys, "stdin", types.SimpleNamespace(buffer=io.BytesIO(b"PRIVATE\n"))), \
              mock.patch.object(sys, "stdout", outer), mock.patch.object(sys, "stderr", errors):
             with self.assertRaises(SystemExit) as stopped:
@@ -438,7 +441,7 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
             if path == "cwd":
                 raise PermissionError(13, "denied")
             return native_readlink(path, *args, **kwargs)
-        with mock.patch("pathlib.Path", Paths.Path), mock.patch("os.geteuid", return_value=0), \
+        with mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch("os.geteuid", return_value=0), \
              mock.patch("os.readlink", side_effect=denied), contextlib.redirect_stdout(out), \
              self.assertRaises(SystemExit) as stopped:
             exec(code, {})
@@ -458,12 +461,12 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
                  "replayAllowed": False, "nativeActionAllowed": False, "workspaceProof": False}
         code = privileged.ROOT_CENSUS.replace("FIXED_CORRELATION", repr(privileged.CORRELATION)).replace("OWNER_FACT", repr(facts))
         output = io.StringIO()
-        with mock.patch("pathlib.Path", Paths.Path), mock.patch("os.geteuid", return_value=0), contextlib.redirect_stdout(output):
+        with mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch("os.geteuid", return_value=0), contextlib.redirect_stdout(output):
             exec(code, {})
         self.assertEqual("complete-root-census", json.loads(output.getvalue())["state"])
         (item / "fd" / "occupied").write_bytes(b"x")
         refused = io.StringIO()
-        with mock.patch("pathlib.Path", Paths.Path), mock.patch("os.geteuid", return_value=0), contextlib.redirect_stdout(refused), \
+        with mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch("os.geteuid", return_value=0), contextlib.redirect_stdout(refused), \
              self.assertRaises(SystemExit) as stopped:
             exec(code, {})
         self.assertEqual(0, stopped.exception.code)
@@ -473,7 +476,7 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
         second = code.rfind(marker)
         post_maps = code[:second] + "   (pathlib.Path('/proc/992')/'maps').write_bytes(b'changed')\n" + code[second:]
         refused = io.StringIO()
-        with mock.patch("pathlib.Path", Paths.Path), mock.patch("os.geteuid", return_value=0), contextlib.redirect_stdout(refused), \
+        with mock.patch("pathlib.Path", Paths.Path), mock.patch("pwd.getpwuid",return_value=types.SimpleNamespace(pw_dir=str(Paths.home))), mock.patch("os.geteuid", return_value=0), contextlib.redirect_stdout(refused), \
              self.assertRaises(SystemExit) as stopped:
             exec(post_maps, {})
         self.assertEqual(0, stopped.exception.code)

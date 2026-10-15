@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
-from agent_tools import native_execution_context as context
+from agent_tools import native_execution_context as context,mcp_server as current_server
 from agent_tools.tests import test_native_engineering_entrypoint as fixture
 
 class NativeEngineeringMcpRouteTest(unittest.TestCase):
@@ -18,6 +18,7 @@ class NativeEngineeringMcpRouteTest(unittest.TestCase):
             if name=='tmux_workflow_routes':return SimpleNamespace(dispatch=lambda root,action,inputs:{'legacy':True})
             raise AssertionError('Unsupported native module')
         ns={'__package__':'agent_tools','importlib':importlib,'REPO_ROOT':Path('/unused'),
+            '_native_source_request':current_server._native_source_request,
             '_agent_module':module,'_error':lambda tool,message:{'tool':tool,'ok':False,'error':message}}
         exec(compile(ast.Module(body=[node],type_ignores=[]),str(path),'exec'),ns)
         return ns['_vm_workflow_impl']

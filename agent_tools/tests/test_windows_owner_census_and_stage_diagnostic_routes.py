@@ -20,6 +20,15 @@ CORRELATION = "11111111-1111-4111-8111-111111111111"
 
 class WindowsObservationRoutesTest(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'windows_msi_owner_census',
+            'windows_msi_owner_diagnostic',
+            'windows_msi_owner_liveness',
+            'windows_update_fixture_stage',
+            'windows_update_fixture_stage_recovery',
+        )
         source_guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         source_guard.start(); self.addCleanup(source_guard.stop)
 

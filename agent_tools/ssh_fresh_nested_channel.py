@@ -247,7 +247,9 @@ try:
  probe=subprocess.run(ssh+['-T','-S',control,'-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false','-o','BatchMode=yes',profile,"python3 -I -B -c 'import json,os;from pathlib import Path;print(json.dumps({\"uid\":os.getuid(),\"boot\":Path(\"/proc/sys/kernel/random/boot_id\").read_text().strip()},sort_keys=True))'"],capture_output=True,timeout=10)
  if probe.returncode!=0 or probe.stderr or len(probe.stdout)>4096:raise ValueError('route_unknown')
  arch=json.loads(probe.stdout)
- if set(arch)!={'uid','boot'} or type(arch['uid'])is not int or arch['uid']!=1000 or arch['boot']!='25515f23-b966-4c3a-ae63-d38452375578':raise ValueError('arch_identity')
+ if (type(arch)is not dict or set(arch)!={'uid','boot'} or type(arch['uid'])is not int
+     or not 0<=arch['uid']<2**32 or type(arch['boot'])is not str
+     or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',arch['boot']) is None):raise ValueError('arch_identity')
  phase='master_closing'
  if snapshot()!=first:raise ValueError('closing_master')
  result={'state':'ready','correlationId':corr,'master':first,'arch':arch,'controlPath':control}
@@ -301,13 +303,60 @@ def _public(state='unknown',**fields):
     return {'state':state,'nativeActionAllowed':False,'replayAllowed':False,**fields}
 def _corr(value):
     if not isinstance(value,str) or re.fullmatch('[0-9a-f]{32}',value) is None:raise ValueError('correlation')
-def _journal(root,create,direct=False):
+def _host(value):
+    if type(value)is not str or re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,63}',value) is None:raise ValueError('host')
+    return value
+def _journal(root,create,direct=False,*,host=None):
+    """Omitted host addresses immutable original journals only."""
     group=root/'.rag_index';session._directory(group)
     path=group/('ssh-direct-nested-channel' if direct else 'ssh-fresh-nested-channel')
     if create:
         try:path.mkdir(mode=0o700)
         except FileExistsError:pass
-    session._directory(path);return path
+    session._directory(path)
+    if host is not None:
+        _host(host)
+        for name in ('hosts',host):
+            path=path/name
+            if create:
+                try:path.mkdir(mode=0o700)
+                except FileExistsError:pass
+            session._directory(path)
+    return path
+
+def _context_journal(root,host,correlation_id,create,direct=False):
+    """Resolve an exact original handle, or create this explicit host context.
+
+    A correlation belongs to one provider/host namespace. A new correlation
+    does not consume another context's old UNKNOWN as construction input.
+    """
+    _host(host);_corr(correlation_id);matches=[]
+    for mode in (False,True):
+        base=Path(root)/'.rag_index'/('ssh-direct-nested-channel' if mode else 'ssh-fresh-nested-channel')
+        if not os.path.lexists(base):continue
+        with private.Directory(base) as directory:
+            if os.path.lexists(base/(correlation_id+'.intent.json')):matches.append((base,None,mode))
+            hosts=base/'hosts'
+            if os.path.lexists(hosts):
+                with private.Directory(hosts) as contexts:
+                    aliases=os.listdir(contexts.fd)
+                    if len(aliases)>8192:raise ValueError('channel_context_bound')
+                    for alias in aliases:
+                        _host(alias)
+                        with private.Directory(hosts/alias) as candidate:
+                            if os.path.lexists(candidate.path/(correlation_id+'.intent.json')):
+                                matches.append((candidate.path,alias,mode))
+            directory.guard()
+    if matches:
+        if len(matches)!=1:raise ValueError('channel_context_conflict')
+        path,alias,mode=matches[0]
+        if mode!=direct or alias is not None and alias!=host:raise ValueError('channel_context_conflict')
+        with private.Directory(path) as directory,private.Snapshot(directory,correlation_id+'.intent.json') as intent:
+            value=json.loads(intent.body,object_pairs_hook=transport._reject_duplicate_keys)
+            if type(value)is not dict or value.get('host')!=host or value.get('correlationId')!=correlation_id:raise ValueError('channel_context_conflict')
+            intent.guard()
+        return path
+    return _journal(Path(root),create,direct,host=host)
 
 def _collect(argv,payload,timeout):
     if not isinstance(payload,bytes) or not 0<len(payload)<=4096:raise ValueError('input_bound')
@@ -338,6 +387,14 @@ def _master_shape(value):
     if not stat.S_ISDIR(directory[2]) or stat.S_IMODE(directory[2])!=0o700 or directory[3]!=actor['uid']:return False
     if not isinstance(value['listenerInode'],str) or re.fullmatch('[1-9][0-9]*',value['listenerInode'])is None:return False
     return isinstance(value['gatewayBoot'],str) and re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',value['gatewayBoot']) is not None
+
+
+def _peer_shape(value):
+    """Observed over the authenticated route; no prior machine identity."""
+    return (type(value)is dict and set(value)=={'uid','boot'}
+            and type(value['uid'])is int and 0<=value['uid']<2**32
+            and type(value['boot'])is str
+            and re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',value['boot']) is not None)
 
 
 def _ended_012_intent(value,current,prior_id):
@@ -523,10 +580,87 @@ def _retained_direct_ended(stack,directory,held,previous,current):
     guard();return guard
 
 
+def _capsule_bodies(intent):
+    bodies={'remote':_REMOTE.encode(),'ssh_fresh_nested_channel.py':Path(__file__).read_bytes()}
+    if intent.get('transportMode')=='direct':
+        for name in intent['directSourcePins']:bodies[name]=Path(__file__).with_name(name).read_bytes()
+    return bodies
+
+
+def _save_capsules(directory,intent):
+    expected={'remote':intent['remoteSourceSha256'],'ssh_fresh_nested_channel.py':intent['sourceSha256'],**intent.get('directSourcePins',{})}
+    for name,body in _capsule_bodies(intent).items():
+        if hashlib.sha256(body).hexdigest()!=expected[name]:raise ValueError('source_changed')
+        filename=intent['correlationId']+'.'+name+'.source'
+        fd=os.open(filename,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory.fd)
+        try:
+            offset=0
+            while offset<len(body):offset+=os.write(fd,body[offset:])
+            os.fsync(fd)
+        finally:os.close(fd)
+    os.fsync(directory.fd)
+
+
+def _retained_v2_terminal(stack,directory,held,value,host):
+    """Archived byte custody permits ENDED observation, never old execution/READY.
+
+    A new tool revision need not list the previous revision's SHA in source.
+    Missing/unknown records still block a second launch without replay.
+    """
+    keys={'version','host','correlationId','sourceSha256','remoteSourceSha256','inventory','outerReceiptSha256','expectedUid','expectedBoot'}
+    direct=value.get('transportMode')=='direct'
+    if direct:keys=(keys-{'outerReceiptSha256'})|{'outerAuthoritySha256','transportMode','directSourcePins'}
+    if (set(value)!=keys or type(value['version'])is not int or value['version']!=2 or value['host']!=host
+            or value['expectedUid'] is not None or value['expectedBoot'] is not None):return None
+    corr=value['correlationId'];_corr(corr)
+    if held.name!=corr+'.intent.json':return None
+    if not os.path.lexists(directory.path/(corr+'.terminal.json')):return None
+    source_pins=value.get('directSourcePins',{})
+    if direct:
+        from . import ssh_direct_nested_channel as direct_channel
+        if type(source_pins)is not dict or set(source_pins)!=set(direct_channel._SOURCE_NAMES):return None
+        if source_pins['ssh_fresh_nested_channel.py']!=value['sourceSha256']:return None
+    inventory=value['inventory'];outer=value['outerAuthoritySha256' if direct else 'outerReceiptSha256']
+    if (type(inventory)is not dict or set(inventory)!={'generation','size','sha256'}
+            or type(inventory['generation'])is not list or len(inventory['generation'])!=9
+            or any(type(x)is not int for x in inventory['generation'])
+            or type(inventory['size'])is not int or not 0<inventory['size']<=1048576):return None
+    hashes={'remote':value['remoteSourceSha256'],'ssh_fresh_nested_channel.py':value['sourceSha256'],**source_pins}
+    if any(type(x)is not str or re.fullmatch('[0-9a-f]{64}',x)is None for x in [outer,inventory['sha256'],*hashes.values()]):return None
+    snapshots=[]
+    for name,digest in hashes.items():
+        part=stack.enter_context(private.Snapshot(directory,corr+'.'+name+'.source'))
+        if part.digest!=digest:return None
+        snapshots.append(part)
+    terminal=stack.enter_context(private.Snapshot(directory,corr+'.terminal.json'))
+    ended=json.loads(terminal.body,object_pairs_hook=transport._reject_duplicate_keys)
+    if (type(ended)is not dict or set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'}
+            or ended['state']!='ended' or ended['correlationId']!=corr or ended['intentSha256']!=held.digest
+            or type(ended['gatewayBoot'])is not str
+            or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None):return None
+    if ended['receiptSha256'] is None:
+        if os.path.lexists(directory.path/(corr+'.ready.json')):return None
+    else:
+        ready=stack.enter_context(private.Snapshot(directory,corr+'.ready.json'))
+        receipt=json.loads(ready.body,object_pairs_hook=transport._reject_duplicate_keys)
+        if (ended['receiptSha256']!=ready.digest or type(receipt)is not dict or set(receipt)!={'intent','result'}
+                or json.dumps(receipt['intent'],sort_keys=True)!=json.dumps(held.pin(),sort_keys=True)):return None
+        prior=receipt['result']
+        if (type(prior)is not dict or set(prior)!={'state','correlationId','master','arch','controlPath'}
+                or prior['state']!='ready' or prior['correlationId']!=corr or prior['controlPath']!='/tmp/vpn-channel-'+corr+'/m'
+                or not _peer_shape(prior['arch']) or not _master_shape(prior['master'])
+                or prior['master']['gatewayBoot']!=ended['gatewayBoot']):return None
+        snapshots.append(ready)
+    snapshots.extend((held,terminal))
+    def guard():
+        for part in snapshots:part.guard()
+    guard();return guard
+
+
 def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inventory_diagnostic=None,*,direct=False):
     phase='input'
     try:
-        if host!=HOST:return _public()
+        _host(host)
         _corr(correlation_id);root=Path(root).resolve(strict=True)
         if _private_capture is not None and not callable(_private_capture):raise ValueError('private_capture')
         if _private_inventory_diagnostic is not None and not callable(_private_inventory_diagnostic):raise ValueError('private_inventory_diagnostic')
@@ -539,12 +673,16 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             gateway=transport.connection_host(config,target.gateway)
             if gateway.password is not None:return _public(reason='outer_prompt_unavailable')
             phase='channel_journal'
-            source_sha=_source();journal=_journal(root,prepare,direct)
+            source_sha=_source()
+            try:journal=_context_journal(root,host,correlation_id,prepare,direct)
+            except FileNotFoundError:
+                if not prepare:return _public(reason='intent_absent')
+                raise
             channel_dir=stack.enter_context(private.Directory(journal))
             path=journal/(correlation_id+'.intent.json')
             if direct:
                 from . import ssh_direct_nested_channel as direct_channel
-                direct_guard=stack.enter_context(direct_channel.Guard(root))
+                direct_guard=stack.enter_context(direct_channel.Guard(root,host=host))
                 outer_receipt=direct_guard.authority_sha
                 prefix,endpoint=direct_channel.outer_prefix(config,gateway)
                 options=['-S','none','-o','ControlMaster=no','-o','ControlPersist=no']
@@ -557,13 +695,14 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                 prefix,endpoint=session._outer_prefix(config,gateway)
                 if prefix[1:3]!=['-F','/dev/null'] or options[2:]!=['-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false']:return _public()
             phase='intent'
-            intent={'version':1,'host':host,'correlationId':correlation_id,'sourceSha256':source_sha,
+            intent={'version':2,'host':host,'correlationId':correlation_id,'sourceSha256':source_sha,
                     'remoteSourceSha256':hashlib.sha256(_REMOTE.encode()).hexdigest(),'inventory':config_source.pin(),
-                    'outerReceiptSha256':outer_receipt,'expectedUid':EXPECTED_UID,'expectedBoot':EXPECTED_BOOT}
+                    'outerReceiptSha256':outer_receipt,'expectedUid':None,'expectedBoot':None}
             if direct:
                 intent['transportMode']='direct'
                 intent['outerAuthoritySha256']=intent.pop('outerReceiptSha256')
                 intent['directSourcePins']=direct_guard.source_pins
+            retired_guards=[]
             existing=os.path.lexists(path)
             action='status'
             if prepare and not existing:
@@ -577,18 +716,24 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                     if set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'} or ended['state']!='ended' or ended['correlationId']!=prior_id:return _public()
                     old_intent=stack.enter_context(private.Snapshot(channel_dir,name))
                     old_value=json.loads(old_intent.body,object_pairs_hook=transport._reject_duplicate_keys)
+                    if old_value.get('version')==2:
+                        retained=_retained_v2_terminal(stack,channel_dir,old_intent,old_value,host)
+                        if retained is None:return _public()
+                        retained();retired_guards.append(retained);continue
+                    legacy_current={**intent,'version':1,'expectedUid':EXPECTED_UID,'expectedBoot':EXPECTED_BOOT,
+                                    'remoteSourceSha256':_REVIEWED_ENDED_REMOTE_0BE3}
                     if ended['intentSha256']!=old_intent.digest or (old_value.get('sourceSha256') not in (source_sha,_REVIEWED_ENDED_PREDECESSOR,_REVIEWED_ENDED_PREDECESSOR_9A,_REVIEWED_ENDED_PREDECESSOR_9527,_REVIEWED_ENDED_PREDECESSOR_012,_REVIEWED_ENDED_PREDECESSOR_0BE3) and not (direct and old_value.get('sourceSha256') in (_REVIEWED_ENDED_DIRECT_PROVIDER,_REVIEWED_ENDED_DIRECT_INVENTORY_PROVIDER,_REVIEWED_ENDED_DIRECT_CLOSURE_PROVIDER,_REVIEWED_ENDED_DIRECT_CHECKPOINT74_PROVIDER,_REVIEWED_ENDED_DIRECT_WRAPPER_PROVIDER,_REVIEWED_ENDED_DIRECT_DELIVERY_PROVIDER))) or (not direct and old_value.get('inventory')!=config_source.pin()):return _public()
-                    if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9A and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9A):return _public()
-                    if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9527 and (set(old_value)!=set(intent) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9527):return _public()
+                    if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9A and (set(old_value)!=set(legacy_current) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9A):return _public()
+                    if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_9527 and (set(old_value)!=set(legacy_current) or old_value.get('remoteSourceSha256')!=_REVIEWED_ENDED_REMOTE_9527):return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_012:
-                        if not _ended_012_intent(old_value,intent,prior_id) or not isinstance(ended['gatewayBoot'],str) or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None:return _public()
+                        if not _ended_012_intent(old_value,legacy_current,prior_id) or not isinstance(ended['gatewayBoot'],str) or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None:return _public()
                     if old_value.get('sourceSha256')==_REVIEWED_ENDED_PREDECESSOR_0BE3:
-                        if not _ended_0be3_intent(old_value,intent,prior_id) or type(ended['gatewayBoot'])is not str or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None:return _public()
+                        if not _ended_0be3_intent(old_value,legacy_current,prior_id) or type(ended['gatewayBoot'])is not str or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None:return _public()
                     if direct:
-                        prior_expected={**intent,'correlationId':prior_id,'inventory':old_value.get('inventory'),'outerAuthoritySha256':old_value.get('outerAuthoritySha256')}
+                        prior_expected={**legacy_current,'correlationId':prior_id,'inventory':old_value.get('inventory'),'outerAuthoritySha256':old_value.get('outerAuthoritySha256')}
                         pin=old_value.get('inventory');binding=old_value.get('outerAuthoritySha256')
                         if not _ended_direct_intent_matches(old_value,prior_expected) or type(pin)is not dict or set(pin)!={'generation','size','sha256'} or type(pin['generation'])is not list or len(pin['generation'])!=9 or any(type(x)is not int for x in pin['generation']) or type(pin['size'])is not int or pin['size']<=0 or type(pin['sha256'])is not str or re.fullmatch('[0-9a-f]{64}',pin['sha256'])is None or type(binding)is not str or re.fullmatch('[0-9a-f]{64}',binding)is None:return _public()
-                    if direct and ended['receiptSha256'] is None and (old_value.get('directSourcePins')!=intent['directSourcePins'] or os.path.lexists(journal/(prior_id+'.ready.json'))):return _public()
+                    if direct and ended['receiptSha256'] is None and (old_value.get('directSourcePins')!=legacy_current['directSourcePins'] or os.path.lexists(journal/(prior_id+'.ready.json'))):return _public()
                     if ended['receiptSha256'] is not None:
                         old_ready=stack.enter_context(private.Snapshot(channel_dir,prior_id+'.ready.json'))
                         old_result=json.loads(old_ready.body,object_pairs_hook=transport._reject_duplicate_keys)
@@ -600,7 +745,8 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                         old_ready.guard()
                     old_intent.guard();terminal.guard()
                 if not target.password:return _public(reason='credential_unavailable')
-                session._create(path,intent,parent_fd=channel_dir.fd);action='prepare'
+                session._create(path,intent,parent_fd=channel_dir.fd)
+                _save_capsules(channel_dir,intent);action='prepare'
             if not os.path.lexists(path):return _public(reason='intent_absent')
             held=stack.enter_context(private.Snapshot(channel_dir,path.name));actual=json.loads(held.body,object_pairs_hook=transport._reject_duplicate_keys)
             # The launch outer receipt remains historical. A positively admitted
@@ -611,6 +757,13 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             expected={**intent,binding_key:original_outer}
             original_observation=None
             if actual!=expected or (direct and original_outer!=outer_receipt):
+                if not prepare and actual.get('version')==2:
+                    retained=_retained_v2_terminal(stack,channel_dir,held,actual,host)
+                    if retained is not None:
+                        presented.guard();ownership.guard();config_source.guard();channel_dir.guard();retained()
+                        if direct:direct_guard.guard()
+                        if _source()!=source_sha:raise ValueError('source_changed')
+                        return _public('ended',correlationId=correlation_id)
                 retained=_retained_direct_ended(stack,channel_dir,held,actual,intent) if direct and not prepare and original_outer==outer_receipt else None
                 if retained:
                     # Report the immutable original terminal; no SSH, publication,
@@ -623,6 +776,8 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                     original_observation=_original6b_status_admission(root,stack,channel_dir,config_source,held,actual,intent,direct_guard)
                 if original_observation is None:return _public(reason='intent_binding_changed')
             def guard():
+                for retired_guard in retired_guards:retired_guard()
+                if _context_journal(root,host,correlation_id,False,direct)!=journal:raise ValueError('channel_context_changed')
                 presented.guard();ownership.guard();config_source.guard();held.guard();channel_dir.guard()
                 if _source()!=source_sha or asdict(transport.load_config(root))!=asdict(config):raise ValueError('source_or_config_changed')
                 if direct:direct_guard.guard()
@@ -680,7 +835,7 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             expected_control='/tmp/vpn-channel-'+correlation_id+'/m'
             if (set(result)!={'state','correlationId','master','arch','controlPath'} or result['state']!='ready' or
                     result['correlationId']!=correlation_id or result['controlPath']!=expected_control or
-                    result['arch']!={'uid':EXPECTED_UID,'boot':EXPECTED_BOOT}):return _public(correlationId=correlation_id)
+                    not _peer_shape(result['arch'])):return _public(correlationId=correlation_id)
             if not _master_shape(result['master']):return _public()
             receipt={'intent':held.pin(),'result':result}
             receipt_path=journal/(correlation_id+'.ready.json')
@@ -714,7 +869,8 @@ def route_options(root:Path|str,host:str,correlation_id:str,receipt_sha256:str)-
     The old application job identity is independent of this connection metadata.
     """
     _corr(correlation_id)
-    if host!=HOST or not isinstance(receipt_sha256,str) or re.fullmatch('[0-9a-f]{64}',receipt_sha256) is None:raise ValueError('receipt')
+    _host(host)
+    if not isinstance(receipt_sha256,str) or re.fullmatch('[0-9a-f]{64}',receipt_sha256) is None:raise ValueError('receipt')
     result=status(root,host,correlation_id)
     if result.get('state')!='ready':
         refusal={**result,'correlationId':correlation_id} if result.get('state')=='unknown' else _public(correlationId=correlation_id)
@@ -741,11 +897,11 @@ def ensure_channel(root:Path|str,host:str,correlation_id:str,receipt_sha256:str|
     """
     try:
         _corr(correlation_id)
-        if host!=HOST:return _public()
+        _host(host)
         if receipt_sha256 is not None:
             if not isinstance(receipt_sha256,str) or re.fullmatch('[0-9a-f]{64}',receipt_sha256) is None:return _public()
             root_path=Path(root).resolve(strict=True)
-            with private.Directory(_journal(root_path,False)) as directory:
+            with private.Directory(_context_journal(root_path,host,correlation_id,False)) as directory:
                 with private.Snapshot(directory,correlation_id+'.ready.json') as held:
                     if held.digest!=receipt_sha256:return _public()
                     held.guard()

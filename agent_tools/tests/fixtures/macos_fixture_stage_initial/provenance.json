@@ -1,0 +1,19 @@
+{
+  "sourcePath": "agent_tools/macos_fixture_stage.py",
+  "fragmentSha256": "c8efa4a3d58dc1fd2dd0b269ea9fe3cbc515fd8066d4f6f02ef0eac7833b4b0e",
+  "sourceSha256": "c8efa4a3d58dc1fd2dd0b269ea9fe3cbc515fd8066d4f6f02ef0eac7833b4b0e",
+  "failureTypes": [
+    "_Held without context-manager exit used as with context",
+    "Generated programme/bootstrap invalid for-loop syntax"
+  ],
+  "redEvidence": ".runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/initial-causal-red-v2.log",
+  "regressions": [
+    "agent_tools.tests.test_macos_fixture_stage.ExplicitContextLifecycleTests.test_complete_start_and_collection_do_not_submit_again",
+    "agent_tools.tests.test_macos_fixture_stage.LocalMacosGuestProgramTests.test_actual_saved_program_repairs_both_files_and_inspects_original_only"
+  ],
+  "scope": "Exact first observed generic module beforeimage; local inert current-account files only, no Tart or product acceptance.",
+  "inputSchemaEnvironment": "VPN_MACOS_FIXTURE_STAGE_TEST_INPUT_SCHEMA=initial-no-receipt",
+  "greenEvidence": ".runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/full-green-v1.log",
+  "routineSuite": "python3 agent_tools/affected_agent_tests.py --run",
+  "nativeLimit": "No Tart, VM, package installation or product acceptance. Local macOS tests execute only inert temporary fixture bytes under the current account home."
+}

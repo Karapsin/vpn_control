@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "1d6b8985ab3b7030b3de4c157b67c36cd5a151a1fd520e2400604e69eb7ebb44",
+  "failureEvidence": "native-setup-controls-terminal-read-v2.log; native-setup-retry-original-read-direct-v1.log",
+  "failure": "Nested script exit74 only sets LASTEXITCODE; caller continued and returned process0, while exact installer call evidence remains single called;"
+}

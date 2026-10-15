@@ -6,6 +6,13 @@ from agent_tools import native_response_diagnostics as diagnostics
 
 
 class NativeResponseDiagnosticsTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'native_response_diagnostics',
+        )
+
     def test_unlisted_reason_and_phase_tokens_never_enter_public_basis(self):
         for action in ("fixture-read", "android-endpoint-admission-status",
                        "connection-channel-status", "linux-rpm-workspace-cleanup-status"):

@@ -1,0 +1,42 @@
+def call(sock,command,args,_deadline=None):
+ received=bytearray();primary=None
+ deadline=min(time.monotonic()+20,_deadline) if _deadline is not None else time.monotonic()+20
+ c=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+ def budget():
+  remaining=deadline-time.monotonic()
+  if remaining<=0:raise TimeoutError('collection-deadline')
+  c.settimeout(min(20,remaining))
+ def receive():
+  budget();return c.recv(1)
+ def send(data):
+  budget();c.sendall(data)
+ try:
+  budget();c.connect(sock);sid=secrets.randbits(63)
+  send(b'\xff'+json.dumps({'execute':'guest-sync-delimited','arguments':{'id':sid}},separators=(',',':')).encode()+b'\n')
+  for i in range(8192):
+   x=receive();received.extend(x)
+   if x==b'\xff':break
+  else:raise ValueError()
+  def line():
+   raw=bytearray()
+   for i in range(262144):
+    x=receive();received.extend(x)
+    if x==b'\n':
+     os.write(wire,bytes(raw)+b'\n');os.fsync(wire);return json.loads(raw)
+    if not x:raise ValueError()
+    raw.extend(x)
+   raise ValueError()
+  if line().get('return')!=sid:raise ValueError()
+  send(json.dumps({'execute':command,'arguments':args},separators=(',',':')).encode()+b'\n')
+  result=line()
+  if 'return' not in result:raise ValueError()
+  return result['return']
+ except BaseException as error:
+  primary=error;raise
+ finally:
+  try:
+   os.write(partial_wire,bytes(received));os.fsync(partial_wire)
+  except OSError as error:
+   if primary is None:raise
+   primary.readonlyQgaCaptureFailure={'stage':'raw_capture','errorClass':type(error).__name__,'errno':error.errno}
+  finally:c.close()

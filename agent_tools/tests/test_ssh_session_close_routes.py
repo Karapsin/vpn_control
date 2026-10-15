@@ -17,6 +17,11 @@ class SessionCloseRoutes(unittest.TestCase):
     identity = {"receiptSha256": "a" * 64}
 
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'ssh_connection_session_close',
+        )
         patch = mock.patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         patch.start(); self.addCleanup(patch.stop)
 
@@ -59,6 +64,8 @@ source=Path(sys.argv[1]);sys.path.insert(0,str(source.parent))
 spec=importlib.util.spec_from_file_location('close_cli_server',source)
 s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
 from agent_tools import ssh_connection_session_close as close
+real_adapter=s._agent_module
+s._agent_module=lambda name:close if name=='ssh_connection_session_close' else real_adapter(name)
 output={'state':'closed','host':'archlinux','receiptSha256':'a'*64,'replayAllowed':False}
 with mock.patch.object(close,'status',return_value=output) as call:
  result=s.main(['ssh-workflow','connection-session-close-status','--host','archlinux','--identity-file',sys.argv[2]])

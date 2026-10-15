@@ -69,6 +69,11 @@ class MacMachineReceiptsTest(unittest.TestCase):
             # The host temp path has unrelated ancestors; retain the exact
             # receipt-file checks while adapting only its fixed guest root.
             code = code.replace("index>=3", "index>=999")
+            # The isolated host worker lives under a root-owned sticky temp
+            # ancestor. Only that unrelated host ancestor policy is adapted;
+            # original guest/file ownership, symlink and generation checks stay.
+            self.assertEqual(1,code.count('info.st_mode & 0o022'))
+            code = code.replace('info.st_mode & 0o022','(info.st_mode & 0o022 and not (info.st_uid==0 and info.st_mode & stat.S_ISVTX))')
             args = ["python3", "-c", code, SOURCE, CORRELATION, "server-stop"]
             self.assertEqual(subprocess.run(args, capture_output=True).returncode, 0)
             link = parent / "duplicate.json"

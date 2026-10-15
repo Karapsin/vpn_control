@@ -40,7 +40,7 @@ class WindowsVmSwtpmRepairTest(unittest.TestCase):
         def command(argv, **_kwargs):
             if argv[:3] == ["/usr/bin/pacman", "-Q", "swtpm"]:
                 return SimpleNamespace(returncode=0, stdout=b"swtpm 0.10.2-1\n")
-            if argv == ["/usr/bin/pgrep", "-x", "swtpm"]:
+            if argv == ["/usr/bin/python3", "-I", "-B", "-c", repair._CENSUS_COMMAND]:
                 return SimpleNamespace(returncode=1, stdout=b"")
             if argv == ["/usr/bin/pacman", "-Qkk", "swtpm"]:
                 return SimpleNamespace(returncode=1, stdout=b"")
@@ -60,7 +60,7 @@ class WindowsVmSwtpmRepairTest(unittest.TestCase):
             calls.append(argv)
             if argv[:3] == ["/usr/bin/pacman", "-Q", "swtpm"]:
                 return SimpleNamespace(returncode=0, stdout=b"swtpm 0.10.2-1\n")
-            if argv == ["/usr/bin/pgrep", "-x", "swtpm"]:
+            if argv == ["/usr/bin/python3", "-I", "-B", "-c", repair._CENSUS_COMMAND]:
                 return SimpleNamespace(returncode=1, stdout=b"")
             if argv == ["/usr/bin/pacman", "-Qkk", "swtpm"]:
                 qkk_calls += 1
@@ -83,7 +83,7 @@ class WindowsVmSwtpmRepairTest(unittest.TestCase):
             calls.append(argv)
             if argv[:3] == ["/usr/bin/pacman", "-Q", "swtpm"]:
                 return SimpleNamespace(returncode=0, stdout=b"swtpm 0.10.2-1\n")
-            if argv == ["/usr/bin/pgrep", "-x", "swtpm"]:
+            if argv == ["/usr/bin/python3", "-I", "-B", "-c", repair._CENSUS_COMMAND]:
                 return SimpleNamespace(returncode=1, stdout=b"")
             return SimpleNamespace(returncode=0, stdout=b"")
         output = io.StringIO()
@@ -101,7 +101,7 @@ class WindowsVmSwtpmRepairTest(unittest.TestCase):
         program = self._program("start"); calls: list[list[str]] = []
         def command(argv, **_kwargs):
             calls.append(argv)
-            return SimpleNamespace(returncode=0 if argv == ["/usr/bin/pgrep", "-x", "swtpm"] else 1,
+            return SimpleNamespace(returncode=0 if argv == ["/usr/bin/python3", "-I", "-B", "-c", repair._CENSUS_COMMAND] else 1,
                                    stdout=b"")
         output = io.StringIO()
         with mock.patch("subprocess.run", side_effect=command), contextlib.redirect_stdout(output):

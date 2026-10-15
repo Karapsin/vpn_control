@@ -1,0 +1,7 @@
+{
+  "reason": "Named input guard admits only filtered administrator; fresh standard account cannot pass",
+  "sources": {
+    "input.before.source": "c8c5a9997af5eb412b41176e70db62f2da83494d3f25707e9f43c21daa07238c",
+    "transport.before.source": "fd11af3b950695dbd08d632cf24cfcd4d6794ab7ba71ea4ba90a916b18322f65"
+  }
+}

@@ -9,6 +9,9 @@ class TlsMcpRouteTests(unittest.TestCase):
              'baseArtifactId':'sha256-'+'b'*64,'targetArtifactId':'sha256-'+'c'*64,
              'sourceRoot':'/private/clean-source'}
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_routes
+        from agent_tools import android_fixture_tls_routes
+        bind_routes(self, server, android_fixture_tls_routes)
         patch=mock.patch.object(server,'_MCP_BOOT_TIME_NS',2**63-1)
         patch.start();self.addCleanup(patch.stop)
     def output(self):

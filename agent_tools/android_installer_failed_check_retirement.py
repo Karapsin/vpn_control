@@ -6,6 +6,7 @@ then release_fenced while retaining that lock. Caller-supplied assertions are
 not native evidence. The original installer outcome is always unknown.
 """
 from __future__ import annotations
+from . import ssh_transport
 
 import hashlib
 import json
@@ -1337,7 +1338,7 @@ def diagnostic_transport(argv: list[str], receipt_path: Path, binding: dict, tim
     limits = {"stdout": 16384, "stderr": 65536}
     failure = None; code = None; process = None; oversized = False; reap = "not-started"; reap_failure = None
     try:
-        process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = ssh_transport.popen_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         handles = {process.stdout: "stdout", process.stderr: "stderr"}
         deadline = time.monotonic() + timeout
         while handles:
@@ -1373,13 +1374,14 @@ def diagnostic_transport(argv: list[str], receipt_path: Path, binding: dict, tim
                     try: stream.close()
                     except OSError: reap_failure = "pipe-close-failed"
     evidence = {"schema": 1, "kind": "android-proxy-service-local-transport", "binding": binding,
-        "argvSha256": hashlib.sha256(_canonical(argv)).hexdigest(), "argvByteSizes": [len(word.encode()) for word in argv],
+        "argvSha256": ssh_transport.argv_sha256(argv), "argvByteSizes": ssh_transport.argv_byte_sizes(argv),
         "exit": code, "exception": failure, "originalOutcome": "unknown", "oversized": oversized, "processReap": reap, "reapFailure": reap_failure}
     for name, raw in streams.items():
         evidence[name] = {"observedBytes": len(raw), "complete": failure is None,
             "sha256": hashlib.sha256(raw).hexdigest(), "base64": base64.b64encode(raw[:limits[name]]).decode(),
             "truncated": len(raw) > limits[name]}
     _save(receipt_path, evidence)
+    ssh_transport.finish_ssh(process,failed=failure is not None or reap_failure is not None)
     return code, bytes(streams["stdout"]) if failure is None else b""
 
 def _diagnose_failed_admission(root: Path | str, admission_correlation_id: str,

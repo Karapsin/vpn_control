@@ -1,0 +1,5 @@
+{
+  "android_proxy_recovery": "            proxy_recovery = importlib.import_module(f\"{__package__}.android_proxy_recovery\" if __package__ else \"android_proxy_recovery\")\n",
+  "windows_credential_probe_ssh": "            probe = importlib.import_module(f\"{__package__}.windows_credential_probe_ssh\" if __package__ else \"windows_credential_probe_ssh\")\n",
+  "windows_credential_recovery_ssh": "            recovery = importlib.import_module(f\"{__package__}.windows_credential_recovery_ssh\" if __package__ else \"windows_credential_recovery_ssh\")\n"
+}

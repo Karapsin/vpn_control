@@ -1,0 +1,11 @@
+{
+  "producerSource": "agent_tools/ssh_fresh_nested_channel.py",
+  "capturedFrom": ".runtime/mcp-generic-channel-context-2026-10-15/before/ssh_fresh_nested_channel.py",
+  "sourceSha256": "a306827faef4dcdc28c49fc757056dfc8f61c1729b55857594187f6ad18a791f",
+  "purpose": "Authentic pre-namespace original-only keeper producer, with fixed UID/boot and legacy global journal. The fixture executes the full captured bytes; no source identity constants are rewritten.",
+  "fixtureSeams": [
+    "Copy exact producer bytes into an owned temporary source root under the original logical filename.",
+    "Use synthetic channel transport and Linux proc DTOs from existing local fixture, with all file, process, source and receipt custody active."
+  ],
+  "authority": "Historical test source only; production never imports this fixture."
+}

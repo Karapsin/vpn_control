@@ -12,6 +12,13 @@ from agent_tools import ssh_acceptance_observation_routes as routes
 
 
 class AcceptanceRouteIntegration(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'ssh_acceptance_observation_routes',
+        )
+
     def test_public_cli_accepts_fixed_actions(self):
         for action in routes.ACTIONS:
             with self.subTest(action=action), mock.patch.object(server, 'ssh_workflow', return_value={'ok': True}) as call:
@@ -37,6 +44,8 @@ sys.path.insert(0,str(Path(source).parent))
 spec=importlib.util.spec_from_file_location('fresh_acceptance_server',source)
 server=importlib.util.module_from_spec(spec);spec.loader.exec_module(server)
 from agent_tools import ssh_acceptance_observation_routes as routes
+real_adapter=server._agent_module
+server._agent_module=lambda name:routes if name=='ssh_acceptance_observation_routes' else real_adapter(name)
 with mock.patch.object(routes,'dispatch',return_value={'ok':True,'replayAllowed':False}) as call:
  result=server._ssh_workflow_impl('android-availability','archlinux',device='api35')
  assert call.call_count==1

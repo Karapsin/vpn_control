@@ -65,6 +65,11 @@ def response(method, state):
 
 class WindowsParallelCopyRoutes(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'windows_parallel_vm_prepare_transport',
+        )
         boot = mock.patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         boot.start(); self.addCleanup(boot.stop)
         self.request = {"host": "archlinux", "correlationId": CORRELATION, "timeoutSeconds": 60}
@@ -186,6 +191,11 @@ class WindowsParallelCopyRoutes(unittest.TestCase):
         for method in ("start", "status"):
             with mock.patch.object(transport, method, side_effect=ValueError("copy-already-submitted private")) as call:
                 value = self.invoke(method, public=True)
+            if method == 'start':
+                call.assert_not_called()
+                self.assertEqual('historical_windows_vm_setup_retired',value['reason'])
+                self.assertFalse(value['replayAllowed'])
+                continue
             call.assert_called_once()
             self.assertFalse(value["ok"]);self.assertEqual(value["state"], "unknown")
             self.assertNotIn("private", json.dumps(value))

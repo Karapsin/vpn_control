@@ -1,0 +1,7 @@
+{
+  "path": "agent_tools/ssh_source_file_stage_direct.py",
+  "sourceSha256": "d23d5eae4dd958c0f91ba1a08946ac49b8ad2f05c182ecdb3cf88c184b8f1ead",
+  "capturedAtUnix": 1792052860.564309,
+  "role": "Unfixed retained_receipt lacks coordinator capability admission, so absent POSIX APIs escape as AttributeError instead of finite unsupported.",
+  "evidence": ".runtime/source-stage-receipt-capability-2026-10-15"
+}

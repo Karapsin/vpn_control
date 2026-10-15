@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "observedFailure": "Oversized generated Python command reaches shared SSH subprocess boundary without saved-file staging and violates the 60000-byte command bound.",
+  "capturedFrom": "Dirty dev worktree before automatic-program implementation; independent inherited repairs preserved",
+  "sourceHead": "e167a73ee8acd7fbb9844380dc12f310f537d0e6",
+  "beforeimages": {
+    "ssh_transfer.py": {
+      "path": "agent_tools/tests/fixtures/ssh_automatic_program/ssh_transfer.py.before.source",
+      "sha256": "9cf7b7042cc7a113beb85c2782842a9a3fc0f87663d61fc8a3c6e216318327b9",
+      "bytes": 40597
+    },
+    "ssh_transport.py": {
+      "path": "agent_tools/tests/fixtures/ssh_automatic_program/ssh_transport.py.before.source",
+      "sha256": "232d13c4faefa79585ecc3d18efb2c59aa09aa22a76ef93f0eab70ef4ebab50b",
+      "bytes": 40998
+    },
+    "ssh_automatic_program.py.stage-failure": {
+      "path": "agent_tools/tests/fixtures/ssh_automatic_program/stage_failure.before.source",
+      "sha256": "9fa32eb472e1e924052c8f08099cf917cc047dbeb8e187882f68db11cd81d412",
+      "bytes": 20092
+    },
+    "ssh_automatic_program.py.residual-args": {
+      "path": "agent_tools/tests/fixtures/ssh_automatic_program/residual_args.before.source",
+      "sha256": "0b407c484956aee805441b47d3725beca4976942c7796cdbe05669df4550ae95",
+      "bytes": 25941
+    },
+    "ssh_transport.py.residual-args": {
+      "path": "agent_tools/tests/fixtures/ssh_automatic_program/residual_transport.before.source",
+      "sha256": "1cdf7d597a07eaebeeda0df5d1c537209b16d17cbcb37f0036d7257475428908",
+      "bytes": 44302
+    },
+    "ssh_automatic_program.py.custody-preexec": {
+      "path": "agent_tools/tests/fixtures/ssh_automatic_program/custody_preexec.before.source",
+      "sha256": "3f239cb6622f5c280ff17238549c567efbf4b4ab6310415548e7e169907c0b61",
+      "bytes": 28782
+    }
+  },
+  "causalTest": "agent_tools.tests.test_ssh_automatic_program.AutomaticProgramTests.test_shared_owner_stages_oversized_program_automatically",
+  "nativeScope": "Local real child/fake SSH boundary only. No network, VM, product acceptance, or historical environment.",
+  "stageFailure": "Automatic stage client discarded actual child stdout/stderr and terminal observation on nonzero transport outcome.",
+  "residualArgsFailure": "Unsupported oversized residual argv only refused after saved source journal and remote upload.",
+  "custodyPreexecFailure": "Fixed transitive custody source executed before nofollow/regular/currentUID/generation validation in direct path."
+}

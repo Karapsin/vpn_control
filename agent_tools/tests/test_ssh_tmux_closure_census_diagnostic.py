@@ -119,7 +119,7 @@ class DiagnosticTests(unittest.TestCase):
         """Run unmodified inherited prefix/tail bytes against only inert file/proc bodies."""
         payload={'action':'status','request':diagnostic.old.purpose(diagnostic.closure.pipe.REQUEST),'stagePin':diagnostic.closure.pipe.STAGE,'anchorPin':diagnostic.closure.pipe.ANCHOR}
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp);remote=root/'remote';job=remote/diagnostic.CORRELATION;source=job/'source';source.mkdir(parents=True);proc=root/'proc';proc.mkdir();item=proc/'992';item.mkdir();fields=[b'S']+[b'0']*20;fields[19]=b'2078693';(item/'stat').write_bytes(b'992 (stage) '+b' '.join(fields));(item/'cmdline').write_bytes(b'python\0')
+            root=Path(tmp);remote=root/diagnostic.old.REMOTE_ROOT_NAME;job=remote/diagnostic.CORRELATION;source=job/'source';source.mkdir(parents=True);proc=root/'proc';proc.mkdir();item=proc/'992';item.mkdir();fields=[b'S']+[b'0']*20;fields[19]=b'2078693';(item/'stat').write_bytes(b'992 (stage) '+b' '.join(fields));(item/'cmdline').write_bytes(b'python\0')
             tool="""import json\nPIN={'generation':[1], 'sha256':'a'*64}\nREQ="""+repr(payload['request'])+"""\nSTAGE="""+repr(payload['stagePin'])+"""\nANCHOR="""+repr(payload['anchorPin'])+"""\nTERM="""+repr(diagnostic.closure.pipe.TERMINAL)+"""\ndef private_dir(path): return {'private':str(path)}\ndef read(path,limit=None):\n raw=path.read_bytes()\n if path.name=='stage-ready.json': return raw,STAGE\n if path.name=='tmux-tool.py': return raw,PIN\n return raw,PIN\ndef source_pin(source,request): return PIN\ndef status(job,source,anchor): return {'state':'terminal','correlationId':REQ['correlationId'],'exitCode':0,'terminalPin':TERM,'artifactVerification':'required','replayAllowed':False}\ndef _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}\n"""
             tool_path=job/'tmux-tool.py';tool_path.write_text(tool);tool_path.chmod(0o600)
             drift_tool=tool.replace("def source_pin(source,request): return PIN", "COUNT=0\ndef source_pin(source,request):\n global COUNT;COUNT+=1;return PIN if COUNT==1 else {'generation':[2],'sha256':'b'*64}")
@@ -141,13 +141,13 @@ class DiagnosticTests(unittest.TestCase):
                 def sha256(self,raw):
                     if raw in (tool.encode(),drift_tool.encode()):return types.SimpleNamespace(hexdigest=lambda:diagnostic.old.TOOL_SHA)
                     return real_sha(raw)
-            with mock.patch('pathlib.Path',Paths.Path),mock.patch.dict(sys.modules,{'hashlib':Hash()}),mock.patch.object(sys,'stdin',types.SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))),mock.patch.object(sys,'stdout',output):
+            with mock.patch('pathlib.Path',Paths.Path),mock.patch('pwd.getpwuid',return_value=types.SimpleNamespace(pw_dir=str(root))),mock.patch.dict(sys.modules,{'hashlib':Hash()}),mock.patch.object(sys,'stdin',types.SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))),mock.patch.object(sys,'stdout',output):
                 exec(diagnostic.remote_program(),{'os':proxy})
             rows=output.getvalue().splitlines();self.assertEqual(1,len(rows));value=json.loads(rows[0])
             self.assertEqual('process-cwd-error',value['phase']);self.assertFalse(value['workspaceProof'])
             # The source is stable through dispatch, then changes only for the
             # inherited old tail guard.  It must refuse before the sole emit.
             tool_path.write_text(drift_tool);drift_output=io.StringIO()
-            with mock.patch('pathlib.Path',Paths.Path),mock.patch.dict(sys.modules,{'hashlib':Hash()}),mock.patch.object(sys,'stdin',types.SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))),mock.patch.object(sys,'stdout',drift_output):
+            with mock.patch('pathlib.Path',Paths.Path),mock.patch('pwd.getpwuid',return_value=types.SimpleNamespace(pw_dir=str(root))),mock.patch.dict(sys.modules,{'hashlib':Hash()}),mock.patch.object(sys,'stdin',types.SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))),mock.patch.object(sys,'stdout',drift_output):
                 with self.assertRaises(SystemExit) as refused:exec(diagnostic.remote_program(),{'os':proxy})
             self.assertEqual(33,refused.exception.code);self.assertEqual('',drift_output.getvalue())

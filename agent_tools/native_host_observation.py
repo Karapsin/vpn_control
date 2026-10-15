@@ -228,6 +228,11 @@ def _measurement(payload: Mapping[str, Any], timestamp: int, identity: dict[str,
 
 
 def _run(argv: list[str], timeout_seconds: int) -> bytes:
+    with ssh_transport.automatic_submission(argv) as submitted:
+        return _run_submitted(submitted, timeout_seconds)
+
+
+def _run_submitted(argv: list[str], timeout_seconds: int) -> bytes:
     try:
         process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     except OSError as error:

@@ -1,0 +1,5 @@
+{
+  "sourcePath": "agent_tools/windows_update_fixture_workflow.py",
+  "sourceSha256": "ebb636c93b106341812682d713ff76f16be64c4633b52a5f91a5fd92fc69ecac",
+  "issue": "Package-only hosted build admission still requires historical CP117 installed product and guest readiness; fresh argument-only VM cannot build its own base/target pair"
+}

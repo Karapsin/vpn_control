@@ -278,10 +278,12 @@ class NativeOwnerGuiLifecycleSshDriver(native_scenario_ssh.NativeScenarioSshDriv
         def run(environment=None):
             options={'input':payload,'stdout':subprocess.PIPE,'stderr':subprocess.DEVNULL,
                 'timeout':self.timeout_seconds+2,'env':environment,'check':False}
-            # Configuration/askpass/output/argv setup is complete before this
-            # joined closing immediately at the actual original dispatch.
-            held.finish();held.finish()
-            return subprocess.run(argv,**options)
+            def submit(submitted, **submitted_options):
+                # Configuration/askpass/output/argv setup is complete before this
+                # joined closing immediately at the actual original dispatch.
+                held.finish();held.finish()
+                return subprocess.run(submitted,**submitted_options)
+            return ssh_transport.run_ssh(argv,runner=submit,**options)
         try:
             if connection.password is not None:
                 import tempfile

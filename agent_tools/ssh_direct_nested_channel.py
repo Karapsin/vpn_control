@@ -44,11 +44,11 @@ def validated_unknown(value):
     return _dependencies()[1].validated_unknown(value)
 
 class Guard:
-    def __init__(self,root):
+    def __init__(self,root,host="archlinux"):
         session,channel,_Held=_dependencies();self.session=session
-        self.root=Path(root).resolve(strict=True);self.held=_Held();self.closed=False
+        self.root=Path(root).resolve(strict=True);self.host=host;self.held=_Held();self.closed=False
         try:
-            self.config,self.outer,self.authority=session._snapshot(self.root,channel.HOST)
+            self.config,self.outer,self.authority=session._snapshot(self.root,self.host)
             self.authority_sha=hashlib.sha256(session._json(self.authority)).hexdigest()
             self.source_pins={}
             for name in _SOURCE_NAMES:
@@ -66,7 +66,7 @@ class Guard:
         except BaseException:self.close();raise
     def guard(self):
         self.held.finish();self.held.final_identity_pass()
-        config,outer,authority=self.session._snapshot(self.root,'archlinux')
+        config,outer,authority=self.session._snapshot(self.root,self.host)
         if authority!=self.authority or asdict(config)!=asdict(self.config):raise ValueError('generation')
         self.held.finish();self.held.final_identity_pass()
     def close(self):
@@ -98,7 +98,8 @@ def status(root,host,correlation_id,*,_private_capture=None,_private_inventory_d
 def route_options(root,host,correlation_id,receipt_sha256):
     session,channel,_Held=_dependencies()
     channel._corr(correlation_id)
-    if host!=channel.HOST or type(receipt_sha256)is not str or re.fullmatch('[0-9a-f]{64}',receipt_sha256)is None:raise ValueError('receipt')
+    if type(host)is not str or re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,63}',host)is None:raise ValueError('host')
+    if type(receipt_sha256)is not str or re.fullmatch('[0-9a-f]{64}',receipt_sha256)is None:raise ValueError('receipt')
     result=status(root,host,correlation_id)
     if result.get('state')!='ready':
         refusal={**result,'correlationId':correlation_id} if result.get('state')=='unknown' else channel._public(correlationId=correlation_id)

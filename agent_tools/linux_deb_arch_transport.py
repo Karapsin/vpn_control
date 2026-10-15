@@ -176,7 +176,7 @@ except Exception:
 
 _HOST_PROGRAM = r'''import json,os,socket,stat,subprocess,sys
 manifest=json.loads(sys.argv[1]); role=manifest['guestRole']; distro,port=__ROLE_MAP__[role]
-tree='/home/kardinal/vpn-control-install-vm-parity-'+role
+tree=os.path.join(__import__('pwd').getpwuid(os.getuid()).pw_dir,'vpn-control-install-vm-parity-'+role)
 def safe(path,kind):
  cur='/'
  try:
@@ -289,7 +289,7 @@ class FixedLiveObserver:
                 preparation["nativeWorkerSha256"], preparation["rollbackWorkerSha256"])) + ")",
                        json.dumps(dict(guest), sort_keys=True, separators=(",", ":")))
             argv = ssh_transport.build_ssh_argv(config, _HOST, 25, command=command)
-            done = self.runner(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=27)
+            done = ssh_transport.run_ssh(argv, runner=self.runner, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=27)
             if done.returncode != 0 or len(done.stdout) > 4096:
                 return {"ready": False}
             value = json.loads(done.stdout)

@@ -17,6 +17,11 @@ from agent_tools import android_installer_dispatch
 
 
 class AndroidDocumentRetryTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_routes
+        from agent_tools import android_document_retry
+        bind_routes(self, mcp_server, android_document_retry)
+
     def test_identical_request_bytes_and_identity_are_required(self):
         first = retry._request_bytes("request-id", "owner-id", 1, "large input")
         self.assertEqual(first, retry._request_bytes("request-id", "owner-id", 1, "large input"))

@@ -1,0 +1,6 @@
+{
+  "owner": "agent_tools/windows_vm_deploy.py",
+  "sourceSha256": "12dbd4afdbaff67e4c7a1f94140afa5919f5bde5198411bd0cd12cab06ecb8fa",
+  "failure": "ValueError credential_path before _execute start",
+  "originalDeploymentId": "31851211-f1e4-4a87-b1af-5f1c5d831614"
+}

@@ -14,6 +14,11 @@ from agent_tools import mcp_server
 
 
 class AndroidDocumentRetryUnknownTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_routes
+        from agent_tools import android_document_retry_unknown
+        bind_routes(self, mcp_server, android_document_retry_unknown)
+
     def test_remote_proof_rejects_any_transfer_or_phase(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); os.chmod(root, 0o700)

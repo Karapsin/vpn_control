@@ -6,6 +6,14 @@ from agent_tools import ssh_connection_session as session
 
 
 class SessionRoutes(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'ssh_connection_session',
+            'ssh_transport',
+        )
+
     def test_prepare_dispatches_fixed_helper(self):
         receipt = {'state':'ready','host':'archlinux','receiptSha256':'a'*64,'created':False}
         with mock.patch.object(transport,'_session_module',return_value=session), mock.patch.object(session,'prepare',return_value=receipt) as call:

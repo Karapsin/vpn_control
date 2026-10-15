@@ -1,0 +1,563 @@
+"""Explicit-context, non-replayable file-mode preparation in an already running guest.
+
+This helper neither creates nor starts a VM. Programme bytes travel on Tart's
+documented stdin attachment, are saved in bounded chunks, and execute by filename.
+The old fixed-guest adapter remains an independent historical reader.
+"""
+from __future__ import annotations
+
+from contextlib import closing, contextmanager, ExitStack
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import stat
+import subprocess
+import sys
+from typing import Any, Mapping
+from uuid import UUID
+
+from . import private_inventory_lock as private
+from .native_review_source_closure import _Held
+
+_LOADED_CODE = sys._getframe().f_code
+_LOADED_BYTES = Path(__file__).read_bytes()
+if _LOADED_CODE != compile(_LOADED_BYTES, __file__, "exec", dont_inherit=True, optimize=sys.flags.optimize):
+    raise ValueError("fixture_stage_loaded_source_changed")
+_LOADED_SHA = hashlib.sha256(_LOADED_BYTES).hexdigest()
+MAX_COMMAND_BYTES = 60_000
+MAX_PROGRAM_BYTES = 8 * 1024 * 1024
+CHUNK_BYTES = 65_536
+MAX_OUTPUT_BYTES = 65_536
+TIMEOUT_SECONDS = 180
+_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
+_SHA = re.compile(r"[0-9a-f]{64}\Z")
+_VERSION = re.compile(r"([1-9]|1[0-9])\.(0|[1-9]|1[0-9])\.(0|[1-9]|1[0-9])\Z")
+
+
+def _canonical(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+
+
+def _uuid(value):
+    if type(value) is not str or str(UUID(value)) != value:
+        raise ValueError("fixture_stage_correlation_invalid")
+    return value
+
+
+def _absolute(value):
+    if (type(value) is not str or not value.startswith("/") or len(value.encode()) > 4096
+            or "\\" in value or any(ord(char) < 32 for char in value)
+            or any(part in ("", ".", "..") for part in value.split("/")[1:])):
+        raise ValueError("fixture_stage_path_invalid")
+    return PurePosixPath(value)
+
+
+def _request(value: Mapping[str, Any]):
+    fields = {"schemaVersion", "correlationId", "sourceSha", "fixtureReceiptArtifactId", "environmentContext", "guestRoot",
+              "baseVersion", "targetVersion", "baseSha256", "baseSizeBytes", "targetSha256", "targetSizeBytes"}
+    if type(value) is not dict or set(value) != fields or type(value["schemaVersion"]) is not int or value["schemaVersion"] != 1:
+        raise ValueError("fixture_stage_request_invalid")
+    _uuid(value["correlationId"])
+    if type(value["sourceSha"]) is not str or re.fullmatch(r"[0-9a-f]{40}", value["sourceSha"]) is None:
+        raise ValueError("fixture_stage_source_invalid")
+    if type(value["fixtureReceiptArtifactId"]) is not str or re.fullmatch(r"sha256-[0-9a-f]{64}", value["fixtureReceiptArtifactId"]) is None:
+        raise ValueError("fixture_stage_receipt_invalid")
+    context = value["environmentContext"]
+    if (type(context) is not dict or set(context) != {"provider", "vmName", "guestUser", "guestUid", "guestHome", "guestBootSessionUuid"}
+            or context["provider"] != "tart" or type(context["provider"]) is not str
+            or any(type(context[key]) is not str or not _NAME.fullmatch(context[key]) for key in ("vmName", "guestUser"))
+            or type(context["guestUid"]) is not int or not 0 < context["guestUid"] < 2**32):
+        raise ValueError("fixture_stage_context_invalid")
+    _uuid(context["guestBootSessionUuid"])
+    home = _absolute(context["guestHome"])
+    guest = _absolute(value["guestRoot"])
+    if home == PurePosixPath("/") or guest == home or home not in guest.parents:
+        raise ValueError("fixture_stage_root_outside_home")
+    versions = []
+    for label in ("base", "target"):
+        version, digest, size = (value[label + suffix] for suffix in ("Version", "Sha256", "SizeBytes"))
+        if (type(version) is not str or not _VERSION.fullmatch(version)
+                or type(digest) is not str or not _SHA.fullmatch(digest)
+                or type(size) is not int or not 0 < size <= 1024**3):
+            raise ValueError("fixture_stage_artifact_invalid")
+        versions.append(tuple(map(int, version.split("."))))
+    if versions[1] <= versions[0]:
+        raise ValueError("fixture_stage_version_order_invalid")
+    return json.loads(_canonical(value))
+
+
+def _require_coordinator():
+    if os.name != "posix" or not all(hasattr(os, name) for name in ("O_NOFOLLOW", "O_DIRECTORY", "pread", "getuid")):
+        raise ValueError("fixture_stage_coordinator_unsupported")
+
+
+# Identical context/descriptor primitives are used by the saved verifier and its
+# fixed transport bootstrap. No previous guest, account, home, UID or boot is a default.
+_COMMON = r'''
+import hashlib,json,os,pathlib,pwd,stat,subprocess,sys,time,uuid
+REQUEST=json.loads(sys.argv[1]);MODE=sys.argv[2];CONTEXT=REQUEST['environmentContext']
+if MODE not in ('mutate','inspect'):raise ValueError('stage_mode_invalid')
+def canonical(value):return (json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode()
+def identity():
+ account=pwd.getpwuid(os.getuid());named=pwd.getpwnam(CONTEXT['guestUser'])
+ if (os.geteuid()!=os.getuid() or os.getuid()!=CONTEXT['guestUid'] or account.pw_uid!=named.pw_uid
+     or account.pw_name!=CONTEXT['guestUser'] or account.pw_dir!=CONTEXT['guestHome']
+     or named.pw_dir!=CONTEXT['guestHome']):raise ValueError('stage_guest_identity_changed')
+ result=subprocess.run(['/usr/sbin/sysctl','-n','kern.bootsessionuuid'],capture_output=True,timeout=5,check=False)
+ if result.returncode or result.stderr or len(result.stdout)>128:raise ValueError('stage_guest_boot_unavailable')
+ value=result.stdout.decode('ascii').strip().lower()
+ if str(uuid.UUID(value))!=value or value!=CONTEXT['guestBootSessionUuid']:raise ValueError('stage_guest_boot_changed')
+ return (account.pw_uid,account.pw_name,account.pw_dir,value)
+def structural(info):return (info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid)
+def generation(info):return structural(info)+(info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+HELD=[]
+def directory(path,private=False):
+ path=pathlib.Path(path)
+ if not path.is_absolute() or any(part in ('.','..')for part in path.parts):raise ValueError('stage_directory_invalid')
+ chain=[];fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);chain.append((fd,None,structural(os.fstat(fd))))
+ try:
+  for name in path.parts[1:]:
+   fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=chain[-1][0]);info=os.fstat(fd)
+   if info.st_uid not in (0,CONTEXT['guestUid']) or info.st_mode&0o022:os.close(fd);raise ValueError('stage_directory_owner_changed')
+   chain.append((fd,name,structural(info)))
+  final=os.fstat(chain[-1][0])
+  if final.st_uid!=CONTEXT['guestUid'] or private and stat.S_IMODE(final.st_mode)!=0o700:raise ValueError('stage_directory_owner_changed')
+  HELD.append(chain);guard();return chain[-1][0]
+ except BaseException:
+  if chain in HELD:HELD.remove(chain)
+  for fd,_,_ in reversed(chain):os.close(fd)
+  raise
+def guard():
+ for chain in HELD:
+  for index,(fd,name,pin)in enumerate(chain):
+   named=os.stat('/',follow_symlinks=False)if index==0 else os.stat(name,dir_fd=chain[index-1][0],follow_symlinks=False)
+   if structural(os.fstat(fd))!=pin or structural(named)!=pin or not stat.S_ISDIR(named.st_mode):raise ValueError('stage_directory_changed')
+def read(parent,name,limit):
+ fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
+ try:
+  before=os.fstat(fd)
+  if (not stat.S_ISREG(before.st_mode)or before.st_uid!=CONTEXT['guestUid']or before.st_nlink!=1
+      or stat.S_IMODE(before.st_mode)!=0o600 or not 0<before.st_size<=limit):raise ValueError('stage_record_invalid')
+  raw=b''
+  while len(raw)<=limit:
+   block=os.read(fd,min(65536,limit+1-len(raw)))
+   if not block:break
+   raw+=block
+  if len(raw)!=before.st_size or generation(os.fstat(fd))!=generation(before)or generation(os.stat(name,dir_fd=parent,follow_symlinks=False))!=generation(before):raise ValueError('stage_record_changed')
+  guard();return raw,generation(before)
+ finally:os.close(fd)
+def write_once(parent,name,raw):
+ guard();fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=parent)
+ try:
+  offset=0
+  while offset<len(raw):
+   count=os.write(fd,raw[offset:offset+65536])
+   if count<=0:raise ValueError('stage_write_incomplete')
+   offset+=count
+  os.fsync(fd)
+ finally:os.close(fd)
+ os.fsync(parent)
+ if read(parent,name,len(raw)+1)[0]!=raw:raise ValueError('stage_write_changed')
+def close():
+ for chain in reversed(HELD):
+  for fd,_,_ in reversed(chain):os.close(fd)
+ HELD.clear()
+OPENING_IDENTITY=identity()
+'''
+
+_GUEST_CODE = _COMMON + r'''
+stage=pathlib.Path(sys.argv[3]);root=pathlib.Path(REQUEST['guestRoot'])
+if stage!=root/'.mcp-fixture-stage'/REQUEST['correlationId']:raise ValueError('stage_programme_path_invalid')
+files=[]
+try:
+ root_fd=directory(root,True);stage_fd=directory(stage,True)
+ intent_raw,_=read(stage_fd,'intent.json',16384);intent=json.loads(intent_raw)
+ programme,programme_pin=read(stage_fd,'program.py',8388608)
+ if (set(intent)!={'request','programmeSha256'}or intent['request']!=REQUEST
+     or hashlib.sha256(programme).hexdigest()!=intent['programmeSha256']):raise ValueError('stage_programme_binding_changed')
+ if MODE=='inspect':
+  if read(root_fd,'.mcp-fixture-stage-owner.json',16384)[0]!=canonical(REQUEST)or read(stage_fd,'effect-intent.json',16384)[0]!=canonical(REQUEST):raise ValueError('stage_effect_binding_unavailable')
+ def checked(label):
+  parent=directory(root/'pair'/'packages'/label,True);name='vpn-control-'+REQUEST[label+'Version']+'.dmg'
+  fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
+  try:
+   before=os.fstat(fd)
+   if (not stat.S_ISREG(before.st_mode)or before.st_uid!=CONTEXT['guestUid']or before.st_nlink!=1
+       or before.st_size!=REQUEST[label+'SizeBytes']or stat.S_IMODE(before.st_mode)not in(0o444,0o644)):raise ValueError('stage_package_invalid')
+   def verify(expected_mode=None):
+    info=os.fstat(fd);named=os.stat(name,dir_fd=parent,follow_symlinks=False)
+    if (info.st_dev,info.st_ino,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns)!=(before.st_dev,before.st_ino,before.st_uid,before.st_gid,before.st_nlink,before.st_size,before.st_mtime_ns)or generation(info)!=generation(named):raise ValueError('stage_package_changed')
+    if expected_mode is not None and stat.S_IMODE(info.st_mode)!=expected_mode:raise ValueError('stage_package_mode_unverified')
+    os.lseek(fd,0,os.SEEK_SET);digest=hashlib.sha256();count=0;deadline=time.monotonic()+120
+    while True:
+     if time.monotonic()>deadline:raise ValueError('stage_package_read_timeout')
+     block=os.read(fd,min(65536,REQUEST[label+'SizeBytes']+1-count))
+     if not block:break
+     count+=len(block);digest.update(block)
+     if count>REQUEST[label+'SizeBytes']:raise ValueError('stage_package_size_changed')
+    if count!=REQUEST[label+'SizeBytes']or digest.hexdigest()!=REQUEST[label+'Sha256']or generation(os.fstat(fd))!=generation(info)or generation(os.stat(name,dir_fd=parent,follow_symlinks=False))!=generation(info):raise ValueError('stage_package_digest_changed')
+    guard()
+   verify();return (fd,verify)
+  except BaseException:os.close(fd);raise
+ for label in('base','target'):files.append(checked(label))
+ if identity()!=OPENING_IDENTITY:raise ValueError('stage_identity_changed')
+ if MODE=='mutate':
+  # Persistent target ownership blocks a second correlation even after a lost
+  # response. An uncertain operation is inspect-only, never submitted again.
+  write_once(root_fd,'.mcp-fixture-stage-owner.json',canonical(REQUEST))
+  write_once(stage_fd,'effect-intent.json',canonical(REQUEST))
+  for fd,verify in files:verify()
+  if identity()!=OPENING_IDENTITY:raise ValueError('stage_identity_changed')
+  for fd,_ in files:os.fchmod(fd,0o444)
+ for fd,verify in files:verify(0o444)
+ if (read(stage_fd,'intent.json',16384)[0]!=intent_raw or read(stage_fd,'program.py',8388608)!=(programme,programme_pin)
+     or read(root_fd,'.mcp-fixture-stage-owner.json',16384)[0]!=canonical(REQUEST)
+     or read(stage_fd,'effect-intent.json',16384)[0]!=canonical(REQUEST)
+     or identity()!=OPENING_IDENTITY):raise ValueError('stage_closing_changed')
+ guard()
+ output={'schemaVersion':1,'correlationId':REQUEST['correlationId'],'sourceSha':REQUEST['sourceSha'],
+         'environmentContext':CONTEXT,'guestRoot':REQUEST['guestRoot'],'files':{label:{'sha256':REQUEST[label+'Sha256'],'sizeBytes':REQUEST[label+'SizeBytes'],'mode':0o444}for label in('base','target')}}
+ sys.stdout.buffer.write(canonical(output));sys.stdout.buffer.flush()
+finally:
+ for fd,_ in files:os.close(fd)
+ close()
+'''
+
+_BOOTSTRAP = _COMMON + r'''
+expected=sys.argv[3];size=int(sys.argv[4]);root=pathlib.Path(REQUEST['guestRoot'])
+if not 0<size<=8388608 or len(expected)!=64:raise ValueError('stage_programme_bound_invalid')
+try:
+ raw=b''
+ while len(raw)<=size:
+  block=sys.stdin.buffer.read(min(65536,size+1-len(raw)))
+  if not block:break
+  raw+=block
+ if len(raw)!=size or hashlib.sha256(raw).hexdigest()!=expected:raise ValueError('stage_programme_transfer_changed')
+ root_fd=directory(root,True)
+ if MODE=='mutate':
+  try:os.mkdir('.mcp-fixture-stage',0o700,dir_fd=root_fd);os.fsync(root_fd)
+  except FileExistsError:pass
+ group=root/'.mcp-fixture-stage';group_fd=directory(group,True)
+ if MODE=='mutate':os.mkdir(REQUEST['correlationId'],0o700,dir_fd=group_fd);os.fsync(group_fd)
+ stage=group/REQUEST['correlationId'];stage_fd=directory(stage,True)
+ binding=canonical({'request':REQUEST,'programmeSha256':expected})
+ if MODE=='mutate':
+  write_once(stage_fd,'program.py',raw);write_once(stage_fd,'intent.json',binding)
+ source,pin=read(stage_fd,'program.py',8388608)
+ if source!=raw or read(stage_fd,'intent.json',16384)[0]!=binding:raise ValueError('stage_programme_binding_changed')
+ if identity()!=OPENING_IDENTITY:raise ValueError('stage_identity_changed')
+ guard();result=subprocess.run([sys.executable,'-I','-B',str(stage/'program.py'),sys.argv[1],MODE,str(stage)],capture_output=True,timeout=150,check=False)
+ if (read(stage_fd,'program.py',8388608)!=(source,pin)or read(stage_fd,'intent.json',16384)[0]!=binding
+     or identity()!=OPENING_IDENTITY):raise ValueError('stage_programme_closing_changed')
+ guard()
+ if result.returncode or result.stderr or not 0<len(result.stdout)<=16384:raise ValueError('stage_verifier_outcome_unknown')
+ sys.stdout.buffer.write(result.stdout);sys.stdout.buffer.flush()
+finally:close()
+'''
+
+
+def _command(request, mode):
+    request = _request(request)
+    if mode not in ("mutate", "inspect"):
+        raise ValueError("fixture_stage_mode_invalid")
+    programme = _GUEST_CODE.encode()
+    if not 0 < len(programme) <= MAX_PROGRAM_BYTES:
+        raise ValueError("fixture_stage_programme_bound")
+    argv = ["tart", "exec", "-i", request["environmentContext"]["vmName"], "/usr/bin/python3", "-I", "-B", "-c",
+            _BOOTSTRAP, _canonical(request).decode(), mode, hashlib.sha256(programme).hexdigest(), str(len(programme))]
+    if sum(len(word.encode()) + 1 for word in argv) > MAX_COMMAND_BYTES:
+        raise ValueError("fixture_stage_command_bound")
+    return argv
+
+
+def _write(directory, name, raw):
+    directory.guard()
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory.fd)
+    try:
+        for offset in range(0, len(raw), CHUNK_BYTES):
+            view = memoryview(raw)[offset:offset + CHUNK_BYTES]
+            while view:
+                count = os.write(fd, view)
+                if count <= 0:
+                    raise ValueError("fixture_stage_write_incomplete")
+                view = view[count:]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.fsync(directory.fd)
+    if raw:
+        with private.Snapshot(directory, name) as written:
+            if written.body != raw:
+                raise ValueError("fixture_stage_write_changed")
+    else:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory.fd)
+        try:
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or info.st_size
+                    or os.read(fd, 1) or private._generation(os.fstat(fd)) != private._generation(info)
+                    or private._generation(os.stat(name, dir_fd=directory.fd, follow_symlinks=False)) != private._generation(info)):
+                raise ValueError("fixture_stage_empty_capture_changed")
+        finally:
+            os.close(fd)
+    directory.guard()
+
+
+@contextmanager
+def _journal(root, correlation, *, create=False):
+    presented = private.PresentedPath(Path(root).absolute())
+    with ExitStack() as held:
+        directory = held.enter_context(private.Directory(presented.canonical))
+        for name in (".rag_index", "macos-fixture-stage", correlation):
+            if create:
+                try:
+                    os.mkdir(name, 0o700, dir_fd=directory.fd)
+                    os.fsync(directory.fd)
+                except FileExistsError:
+                    pass
+            directory.guard()
+            directory = held.enter_context(private.Directory(directory.path / name))
+            if stat.S_IMODE(os.fstat(directory.fd).st_mode) != 0o700:
+                raise ValueError("fixture_stage_journal_not_private")
+        flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK | (os.O_CREAT if create else 0)
+        fd = os.open("lock", flags, 0o600, dir_fd=directory.fd)
+        held.callback(os.close, fd)
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or info.st_size:
+            raise ValueError("fixture_stage_journal_lock_invalid")
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        pin = private._generation(info)
+        def guard():
+            presented.guard(); directory.guard()
+            if private._generation(os.fstat(fd)) != pin or private._generation(os.stat("lock", dir_fd=directory.fd, follow_symlinks=False)) != pin:
+                raise ValueError("fixture_stage_journal_lock_changed")
+        guard()
+        yield directory, guard
+        guard()
+
+
+def _unknown(request):
+    return {"ok": False, "state": "unknown", "correlationId": request["correlationId"],
+            "sourceSha": request["sourceSha"], "environmentContext": request["environmentContext"],
+            "replayAllowed": False, "nativeActionAllowed": False}
+
+
+def _verified(value, request):
+    expected = {"schemaVersion": 1, "correlationId": request["correlationId"], "sourceSha": request["sourceSha"],
+                "environmentContext": request["environmentContext"], "guestRoot": request["guestRoot"],
+                "files": {label: {"sha256": request[label + "Sha256"], "sizeBytes": request[label + "SizeBytes"], "mode": 0o444}
+                          for label in ("base", "target")}}
+    if type(value) is not dict or _canonical(value) != _canonical(expected):
+        raise ValueError("fixture_stage_observation_binding_changed")
+    return value
+
+
+def _intent(directory):
+    with private.Snapshot(directory, "intent.json") as snapshot:
+        intent = json.loads(snapshot.body)
+        if type(intent) is not dict or set(intent) != {"request", "programmeSha256", "adapterSourceSha256"}:
+            raise ValueError("fixture_stage_intent_invalid")
+        request = _request(intent["request"])
+        for name, key in (("program.source", "programmeSha256"), ("adapter.source", "adapterSourceSha256")):
+            with private.Snapshot(directory, name) as source:
+                if source.digest != intent[key]:
+                    raise ValueError("fixture_stage_original_source_changed")
+        snapshot.guard()
+        return intent, request
+
+
+def _collected(directory, request):
+    try:
+        with private.Snapshot(directory, "complete.json") as snapshot:
+            value = _verified(json.loads(snapshot.body), request)
+            return {**_unknown(request), "ok": True, "state": "complete", "observation": value}
+    except FileNotFoundError:
+        return _unknown(request)
+
+
+def _run(directory, guard, request, mode, runner):
+    with closing(_Held()) as source, private.Snapshot(directory, "program.source") as programme:
+        source.read(str(Path(__file__).absolute()), _LOADED_SHA)
+        if programme.body != _GUEST_CODE.encode():
+            raise ValueError("fixture_stage_current_programme_changed")
+        source.finish(); source.final_identity_pass(); programme.guard(); guard()
+        completed = runner(_command(request, mode), input=programme.body,
+                           capture_output=True, timeout=TIMEOUT_SECONDS, check=False)
+        stdout = completed.stdout.encode() if type(completed.stdout) is str else completed.stdout
+        stderr = completed.stderr.encode() if type(completed.stderr) is str else completed.stderr
+        if type(stdout) is not bytes or type(stderr) is not bytes:
+            raise ValueError("fixture_stage_transport_stream_invalid")
+        prefix = mode + "-" + os.urandom(12).hex()
+        _write(directory, prefix + ".stdout", stdout[:MAX_OUTPUT_BYTES])
+        _write(directory, prefix + ".stderr", stderr[:MAX_OUTPUT_BYTES])
+        _write(directory, prefix + ".json", _canonical({"returncode": completed.returncode,
+               "stdoutBytes": len(stdout), "stderrBytes": len(stderr),
+               "stdoutSha256": hashlib.sha256(stdout).hexdigest(), "stderrSha256": hashlib.sha256(stderr).hexdigest(),
+               "captureComplete": max(len(stdout), len(stderr)) <= MAX_OUTPUT_BYTES}))
+        source.finish(); source.final_identity_pass(); programme.guard(); guard()
+        if completed.returncode or stderr or not 0 < len(stdout) <= 16384:
+            return _unknown(request)
+        result = _verified(json.loads(stdout), request)
+        _write(directory, "complete.json", _canonical(result))
+        return _collected(directory, request)
+
+
+def start(root, inputs, *, runner=subprocess.run):
+    request = _request(inputs)  # Refuse invalid context before any journal or transport.
+    _command(request, "mutate")
+    _require_coordinator()
+    with _journal(root, request["correlationId"], create=True) as (directory, guard):
+        try:
+            intent, existing = _intent(directory)
+        except FileNotFoundError:
+            # An incomplete original directory is never reconstructed or replayed.
+            if set(os.listdir(directory.fd)) != {"lock"}:
+                return _unknown(request)
+            _write(directory, "program.source", _GUEST_CODE.encode())
+            _write(directory, "adapter.source", _LOADED_BYTES)
+            _write(directory, "intent.json", _canonical({"request": request,
+                   "programmeSha256": hashlib.sha256(_GUEST_CODE.encode()).hexdigest(), "adapterSourceSha256": _LOADED_SHA}))
+        else:
+            if existing != request:
+                raise ValueError("fixture_stage_correlation_already_bound")
+            return _collected(directory, existing)
+        try:
+            return _run(directory, guard, request, "mutate", runner)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return _unknown(request)
+
+
+def status(root, inputs, *, runner=subprocess.run):
+    if type(inputs) is not dict or set(inputs) != {"correlationId"}:
+        raise ValueError("fixture_stage_status_inputs_invalid")
+    correlation = _uuid(inputs["correlationId"])
+    _require_coordinator()
+    with _journal(root, correlation) as (directory, guard):
+        intent, request = _intent(directory)
+        result = _collected(directory, request)
+        if result["state"] == "complete":
+            return result
+        try:
+            return _run(directory, guard, request, "inspect", runner)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return _unknown(request)
+
+
+def collect(root, inputs):
+    if type(inputs) is not dict or set(inputs) != {"correlationId"}:
+        raise ValueError("fixture_stage_collect_inputs_invalid")
+    correlation = _uuid(inputs["correlationId"])
+    _require_coordinator()
+    with _journal(root, correlation) as (directory, guard):
+        intent, request = _intent(directory)
+        return _collected(directory, request)
+
+
+@contextmanager
+def _package_file(path, digest, size):
+    """Stream package bytes while retaining their exact descriptor/name generation."""
+    path = Path(path).absolute()
+    with private.Directory(path.parent) as parent:
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent.fd)
+        try:
+            before = os.fstat(fd)
+            pin = private._generation(before)
+            if not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or before.st_nlink != 1 or before.st_size != size:
+                raise ValueError("fixture_stage_package_identity_invalid")
+            def guard():
+                parent.guard()
+                if private._generation(os.fstat(fd)) != pin or private._generation(os.stat(path.name, dir_fd=parent.fd, follow_symlinks=False)) != pin:
+                    raise ValueError("fixture_stage_registered_package_changed")
+                actual = hashlib.sha256(); count = 0
+                os.lseek(fd, 0, os.SEEK_SET)
+                while True:
+                    block = os.read(fd, CHUNK_BYTES)
+                    if not block:
+                        break
+                    actual.update(block); count += len(block)
+                    if count > size:
+                        raise ValueError("fixture_stage_registered_package_changed")
+                if count != size or actual.hexdigest() != digest or private._generation(os.fstat(fd)) != pin:
+                    raise ValueError("fixture_stage_registered_package_changed")
+                parent.guard()
+                if private._generation(os.stat(path.name, dir_fd=parent.fd, follow_symlinks=False)) != pin:
+                    raise ValueError("fixture_stage_registered_package_changed")
+            guard()
+            yield guard
+            guard()
+        finally:
+            os.close(fd)
+
+
+def registered_start(root, inputs, *, runner=subprocess.run):
+    """Public admission binds authoritative fixture versions and held registered bytes."""
+    from . import native_artifact_registry as registry
+    request = _request(inputs)
+    _command(request, "mutate")
+    _require_coordinator()
+    expected = {"receipt": (request["fixtureReceiptArtifactId"], "fixture-receipt")}
+    expected.update({label: ("sha256-" + request[label + "Sha256"], "desktop-package") for label in ("base", "target")})
+    with ExitStack() as stack:
+        source = stack.enter_context(closing(_Held()))
+        source.read(str(Path(__file__).absolute()), _LOADED_SHA)
+        records = {}; packages = []
+        for label, (artifact_id, kind) in expected.items():
+            observed = registry.verify_artifact_readonly(root, artifact_id)
+            artifact, location = observed.get("artifact", {}), observed.get("location", {})
+            fingerprint = artifact.get("sourceFingerprint")
+            if (observed.get("verification") != "verified" or artifact.get("platform") != "macos"
+                    or artifact.get("artifactKind") != kind or artifact.get("sourceSha") != request["sourceSha"]
+                    or artifact.get("sha256") != artifact_id[7:] or type(fingerprint) is not str or not _SHA.fullmatch(fingerprint)
+                    or type(location.get("localPath")) is not str):
+                raise ValueError("fixture_stage_registered_artifact_unverified")
+            path = Path(location["localPath"])
+            if label == "receipt":
+                raw = source.read(str(path), artifact_id[7:], max_bytes=1024**2)
+                receipt = json.loads(raw)
+            else:
+                if (artifact.get("size") != request[label + "SizeBytes"]
+                        or path.name != "vpn-control-" + request[label + "Version"] + ".dmg"):
+                    raise ValueError("fixture_stage_registered_artifact_mismatch")
+                packages.append(stack.enter_context(_package_file(path, artifact_id[7:], request[label + "SizeBytes"])))
+            records[label] = observed
+        try:
+            base, target = receipt["builds"]
+            fingerprint = receipt["sourceFingerprint"]
+            code = base["codeFingerprint"]
+            if (type(receipt["schemaVersion"]) is not int or receipt["schemaVersion"] != 1
+                    or receipt["testOnly"] is not True or receipt["productionTrustChanged"] is not False
+                    or type(fingerprint) is not str or not _SHA.fullmatch(fingerprint)
+                    or type(code) is not str or not _SHA.fullmatch(code) or target["codeFingerprint"] != code
+                    or any(records[label]["artifact"]["sourceFingerprint"] != fingerprint for label in records)
+                    or not str(receipt["nativeOs"]).startswith(("macOS-", "Darwin-", "recovered-macos-package"))
+                    or receipt["architecture"] not in ("arm64", "aarch64", "x86_64")):
+                raise ValueError("fixture_stage_receipt_not_authoritative")
+            for label, build in (("base", base), ("target", target)):
+                assets = [asset for asset in build["assets"] if str(asset.get("fileName", "")).endswith(".dmg")]
+                if len(assets) != 1:
+                    raise ValueError("fixture_stage_receipt_package_not_unique")
+                asset = assets[0]
+                if (build["label"] != label or build["version"] != request[label + "Version"]
+                        or build["sourceFingerprint"] != fingerprint or asset["platform"] != "macos"
+                        or asset["architecture"] != receipt["architecture"] or asset["displayVersion"] != build["version"]
+                        or asset["sha256"] != request[label + "Sha256"] or asset["sizeBytes"] != request[label + "SizeBytes"]
+                        or asset["fileName"] != "vpn-control-" + build["version"] + ".dmg"):
+                    raise ValueError("fixture_stage_receipt_package_mismatch")
+            if receipt["manifest"]["assets"] != target["assets"]:
+                raise ValueError("fixture_stage_receipt_manifest_mismatch")
+        except (KeyError, TypeError, IndexError) as error:
+            raise ValueError("fixture_stage_receipt_invalid") from error
+        for guard in packages:
+            guard()
+        source.finish(); source.final_identity_pass()
+        result = start(root, request, runner=runner)
+        for label, (artifact_id, kind) in expected.items():
+            if registry.verify_artifact_readonly(root, artifact_id) != records[label]:
+                raise ValueError("fixture_stage_registered_artifact_changed")
+        for guard in packages:
+            guard()
+        source.finish(); source.final_identity_pass()
+        return result

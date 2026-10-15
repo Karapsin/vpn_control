@@ -485,12 +485,24 @@ class PublisherSuccessorServerTests(HistoryCase):
 
  def test_actual_main_source_pin_ingress_old_refusal_current_gate(self):
   import tempfile,hashlib
+  from unittest.mock import patch
   with tempfile.TemporaryDirectory()as td:
-   p=Path(td).resolve()/'factory.py';p.write_bytes(gzip.decompress(base64.b64decode(PUBLISHER_SUCCESSOR_SERVER_FACTORY_GZIP)));p.chmod(0o600);n=self.factory(p)
-   n['HELPER_SHA']=hashlib.sha256(Path(n['worker'].__file__).read_bytes()).hexdigest();n['READ_BINDING_TEST_SHA']=hashlib.sha256(Path(__file__).read_bytes()).hexdigest();n['TEST_SHA']='6f7556c39bdc8d84484eb7f10a58272e89bc8977b01573808213b2d062dbdbcb'
+   root=Path(td).resolve();p=root/'factory.py';p.write_bytes(gzip.decompress(base64.b64decode(PUBLISHER_SUCCESSOR_SERVER_FACTORY_GZIP)));p.chmod(0o600);n=self.factory(p)
+   # These are complete owned source inputs for the retained digest ingress.
+   # The growing test module is not an input to its own source-bound scenario.
+   # Only cwd is injected; the real nofollow reader, source cap and helper stay.
+   checkout=root/'checkout';tests=checkout/'agent_tools/tests';tests.mkdir(parents=True)
+   readback=tests/'test_windows_cp117_base_source_refresh.py';readback.write_bytes(b'"""Owned readback source input."""\nPUBLIC_READBACK=True\n')
+   binding=tests/'test_windows_cp117_server_read_binding.py';binding_raw=b'"""Owned binding source input."""\nPUBLIC_BINDING=True\n';binding.write_bytes(binding_raw)
+   n['HELPER_SHA']=hashlib.sha256(Path(n['worker'].__file__).read_bytes()).hexdigest();n['READ_BINDING_TEST_SHA']=hashlib.sha256(binding_raw).hexdigest();n['TEST_SHA']='6f7556c39bdc8d84484eb7f10a58272e89bc8977b01573808213b2d062dbdbcb'
    guard=compile(gzip.decompress(base64.b64decode(PUBLISHER_SUCCESSOR_SERVER_PIN_INGRESS_GZIP)),'actual-source-pin-ingress','exec')
-   with self.assertRaisesRegex(ValueError,'readback-source'):exec(guard,n)
-   n['TEST_SHA']=hashlib.sha256(Path(fixture.__file__).read_bytes()).hexdigest();exec(guard,n)
+   with patch.object(Path,'cwd',return_value=checkout):
+    with self.assertRaisesRegex(ValueError,'readback-source'):exec(guard,n)
+    n['TEST_SHA']=hashlib.sha256(readback.read_bytes()).hexdigest();exec(guard,n)
+    # A valid pin does not bypass the real bounded-file admission rule.
+    oversized=b'#'+b'x'*1048576;binding.write_bytes(oversized);n['READ_BINDING_TEST_SHA']=hashlib.sha256(oversized).hexdigest()
+    with self.assertRaisesRegex(ValueError,'source-record'):exec(guard,n)
+    binding.write_bytes(binding_raw);n['READ_BINDING_TEST_SHA']=hashlib.sha256(binding_raw).hexdigest();exec(guard,n)
    self.assertEqual(n['test']['sha256'],n['TEST_SHA']);self.assertEqual(n['helper']['sha256'],n['HELPER_SHA']);self.assertEqual(n['bindingTest']['sha256'],n['READ_BINDING_TEST_SHA'])
  test_actual_native_full_body_parser=fixture.DirectFixtureServerTests.test_actual_complete_server_body_parser
  def test_complete_factory_native_manifest_process_projection_and_scope(self):
@@ -694,3 +706,14 @@ class CompleteStageSavedProofTests(HistoryCase):
     exec(compile(gzip.decompress(base64.b64decode(COMPLETE_STAGE_PROOF_CURRENT_GZIP)),'actual-current-stage-proof','exec'),n)
     proof=n['successor_stage_proof'](root);self.assertEqual(proof['state'],'historical-readonly-stage-positive');self.assertIs(proof['currentVmAdmission'],False);self.assertIs(proof['serverReady'],False)
    finally:oldcap.close();cap.close()
+
+
+# Whole historical factories are executed only against the two checkout-bound
+# source labels. Native admission and private-file guards remain unchanged.
+def setUpModule():
+    from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import inert_repository_source_reads
+    global _historical_source_reads
+    _historical_source_reads=inert_repository_source_reads();_historical_source_reads.__enter__()
+
+def tearDownModule():
+    _historical_source_reads.__exit__(None,None,None)

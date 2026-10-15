@@ -1,0 +1,7 @@
+{
+  "source": "actual guest_admission_direct_v2.py module imports and call primitive",
+  "sourceSha256": "306b1a317d20974c32a5b310eaecc2429c4cbe237478b8a53c522b7ec3d2492b",
+  "fragmentSha256": "daa9ad26a0bfd3fcea639608db1cc04c07569b7ac47b1b9ea6cd937ec3521d00",
+  "failure": "The extracted actual RPC primitive had missing global time/socket/JSON/OS imports. It failed before socket creation and before guest-exec; old acknowledgement is absent and the original intent is retained.",
+  "evidence": "guest-admission-direct-v2 raw source and terminal in private audit; new code must be generated with complete canonical imports and validated late bindings."
+}

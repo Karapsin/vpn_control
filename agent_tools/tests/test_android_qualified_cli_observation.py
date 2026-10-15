@@ -44,6 +44,16 @@ def image_methods(root):
     return env
 
 class QualifiedCliSelectorTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'android_observation',
+            'android_qualified_cli_observation',
+            'ssh_direct_nested_channel',
+            'ssh_transport',
+        )
+
     def test_fixed_selector_only(self):
         qualified.validate_selection("archlinux", "api35", qualified.SELECTOR, 15)
         for selector in (None, "configured", "/tmp/vpn-control", "sha256-" + "a"*64,
@@ -457,6 +467,8 @@ def _routing_bindings(case):
         if value is None:
             value = importlib.import_module("agent_tools." + module_name)
         setattr(case, attribute, value)
+    from agent_tools.tests.route_adapter import bind_routes
+    bind_routes(case,case.server,case.qualified,case.ordinary,case.transport)
 
 
 def _routing_result(route, forwarded):
@@ -577,6 +589,9 @@ def load_config(area):
 qualified.observe=selected
 ordinary.observe=default
 transport.load_config=load_config
+real_adapter=server._agent_module
+route_dependencies={'android_qualified_cli_observation':qualified,'android_observation':ordinary,'ssh_transport':transport}
+server._agent_module=lambda name:route_dependencies[name] if name in route_dependencies else real_adapter(name)
 raise SystemExit(server.main(sys.argv[1:]))
 '''
 

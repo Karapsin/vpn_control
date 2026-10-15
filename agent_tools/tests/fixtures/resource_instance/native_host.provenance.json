@@ -1,0 +1,8 @@
+{
+  "consumer": "Immutable resource_instance/before.source HOST_SHA",
+  "originGitCommit": "e167a73ee8acd7fbb9844380dc12f310f537d0e6",
+  "originGitPath": "agent_tools/native_host_observation.py",
+  "scope": "Complete original host producer for historical causal resource fixture only; production current host pin remains current. No source substitutions or checksum bypass.",
+  "source": "agent_tools/native_host_observation.py",
+  "sourceSha256": "a6b36ab56709b5c98bfff03f895af6b0f4ea2e8c64b6b158d70166d69d099d12"
+}

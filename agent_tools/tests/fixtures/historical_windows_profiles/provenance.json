@@ -1,0 +1,4 @@
+{
+  "sourceSha256": "f8f3dbf7d4e5cce02173478cd0f7844fe63efdcf242720b415f807e0395941a2",
+  "issue": "The VM-only fence still admitted new CP117 MSI/server/campaign submissions and exposed fixed-home/media discovery as reusable."
+}

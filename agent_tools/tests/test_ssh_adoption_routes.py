@@ -5,6 +5,13 @@ from agent_tools import mcp_server as server, ssh_recovery_adoption as helper
 
 
 class AdoptionRouteTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'ssh_recovery_adoption',
+        )
+
     def test_exact_dispatch(self):
         receipt = {"state": "ready", "nextAction": "configured-probe", "replayAllowed": False}
         with mock.patch.object(helper, "adopt", return_value=receipt) as call:

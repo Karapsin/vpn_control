@@ -1,0 +1,9 @@
+{
+  "source": "private complete bootstrap-probe builder",
+  "sourceSha256": "3e43f7cc1931fa8559d787f9ed2b617d7fca7974ccb009e415115c96c2803533",
+  "failures": [
+    "Missing underscore key mapping caused QMP refusal after partial input, before Enter.",
+    "Copying globals from the previous observer can shadow the fresh frame leaf; the failed probe did not reach screendump and the old frame remains retained."
+  ],
+  "evidence": "guest-bootstrap-probe-v1 complete source, native private terminal and diagnostic intent retained; original terminal UNKNOWN is never replayed."
+}

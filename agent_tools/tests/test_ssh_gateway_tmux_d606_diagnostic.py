@@ -1,4 +1,5 @@
 """Fixed read-only d606 proof through real inert owners, children and sockets."""
+import base64
 import json
 import os
 from pathlib import Path
@@ -6,6 +7,7 @@ import shlex
 import subprocess
 import time
 import unittest
+import zlib
 from unittest import mock
 
 from agent_tools import ssh_gateway_tmux_d606_diagnostic as diagnostic
@@ -123,7 +125,16 @@ class DiagnosticCallerTests(adapter_fixtures.GatewayAdapterTests):
         text = Path(diagnostic.__file__).read_text().replace(diagnostic.ORIGINAL_SOURCE_SHA256, owner.sha(self.raw))
         start = text.index('def _parent(pid):'); end = text.index('def _stderr_kind', start)
         text = text[:start]+PARENT+text[end:]
-        self.caller = self.controller/'fixed-diagnostic.py'; self.caller.write_text(text); self.caller.chmod(0o600)
+        self.expanded_caller = text.encode()
+        # The fixed historical reader manually hardens its argv. Keep this
+        # inert positive fixture below the current wire bound while compiling
+        # the exact same substituted diagnostic definitions in the child.
+        # The uncompressed control below proves oversized argv cannot dispatch.
+        encoded = base64.b64encode(zlib.compress(self.expanded_caller, 9)).decode()
+        self.assertEqual(self.expanded_caller, zlib.decompress(base64.b64decode(encoded)))
+        bootstrap = ("import base64,zlib;exec(compile(zlib.decompress(base64.b64decode("
+                     + repr(encoded) + ")),__file__,'exec'))\n")
+        self.caller = self.controller/'fixed-diagnostic.py'; self.caller.write_text(bootstrap); self.caller.chmod(0o600)
         for patch in (mock.patch.object(diagnostic, 'ORIGINAL_SOURCE_SHA256', owner.sha(self.raw)),
                       mock.patch.object(diagnostic, '__file__', str(self.caller))):
             patch.start(); self.addCleanup(patch.stop)
@@ -135,6 +146,7 @@ class DiagnosticCallerTests(adapter_fixtures.GatewayAdapterTests):
             ssh = json.loads(argv[-1]); command = shlex.split(ssh[-1])
             self.assertEqual(['/usr/bin/python3','-I','-B','-c'], command[:4])
             self.assertEqual('gateway.invalid', ssh[-2])
+            self.assertLessEqual(sum(len(word.encode()) + 1 for word in ssh), 60000)
             self.assertNotIn('inert-secret', ' '.join(ssh))
             return self.original_popen([os.sys.executable,'-I','-B','-c',command[4]], **kwargs)
         with mock.patch.object(diagnostic.subprocess, 'Popen', side_effect=launch):
@@ -148,6 +160,29 @@ class DiagnosticCallerTests(adapter_fixtures.GatewayAdapterTests):
         self.assertEqual('ready', proof['public']['originalStatus'])
         self.assertEqual(result['privateProofPin']['sha256'], owner.sha((capsule/'proof.private.json').read_bytes()))
         self.assertFalse(result['adoptionAllowed']); self.assertFalse(result['readyPublicationAllowed'])
+
+    def test_oversized_inert_caller_refuses_before_readonly_transport(self):
+        self.ready_adapter()
+        self.caller.write_bytes(self.expanded_caller)
+        self.launcher.stop()
+        actual = adapter.transport.build_ssh_argv; plans = []
+        def build(*args, **kwargs):
+            argv = actual(*args, **kwargs)
+            self.assertEqual('PlannedArgv', type(argv).__name__)
+            self.assertGreater(sum(len(word.encode()) + 1 for word in argv.original_argv), 60000)
+            plans.append(argv)
+            return argv
+        with mock.patch.object(adapter.transport, 'build_ssh_argv', side_effect=build), \
+             mock.patch.object(diagnostic.subprocess, 'Popen') as submit:
+            result = diagnostic.observe(self.controller)
+        self.assertEqual(1, len(plans))
+        self.assertEqual({'state': 'unknown', 'phase': 'local_original_authority',
+                         'reason': 'diagnostic_unknown', 'replayAllowed': False,
+                         'readyPublicationAllowed': False, 'adoptionAllowed': False}, result)
+        submit.assert_not_called()
+        job = self.controller/'.rag_index/ssh-gateway-tmux-master'/diagnostic.CORRELATION
+        self.assertEqual([], list(job.glob('query-diagnostic-*')))
+        self.assertFalse((self.controller/'.rag_index/ssh-automatic-program').exists())
 
     def test_original_config_drift_blocks_before_readonly_transport(self):
         self.ready_adapter(); self.config.write_bytes(self.config.read_bytes()); before = len(self.calls)

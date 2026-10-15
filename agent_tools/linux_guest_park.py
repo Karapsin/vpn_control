@@ -16,9 +16,10 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol
 
 try:
-    from . import ssh_transport
+    from . import ssh_transport, linux_deb_arch_acceptance as role_paths
 except ImportError:  # pragma: no cover - direct MCP fallback
     import ssh_transport  # type: ignore[no-redef]
+    import linux_deb_arch_acceptance as role_paths
 
 
 _ROLES = {"ubuntu-fresh": ("ubuntu", "fresh-deb-dependencies", 2330),
@@ -59,7 +60,8 @@ class Intent:
         role = raw.get("guestRole")
         _need(isinstance(role, str) and role in _ROLES, "Park role is not fixed")
         distro, profile, port = _ROLES[role]
-        tree = "/home/kardinal/vpn-control-install-vm-parity-" + role
+        tree = guest.get("tree")
+        _need(role_paths.role_tree_path(tree, role), "Park guest tree is invalid")
         _need(all(isinstance(raw.get(k), str) for k in raw) and
               _UUID.fullmatch(raw["correlationId"]) is not None and
               _UUID.fullmatch(raw["preparationCorrelationId"]) is not None and
@@ -315,12 +317,14 @@ class Adapter:
                 "replayAllowed": False}
 
 
-# Executed only on the fixed archlinux SSH alias. All paths, ports, and role
-# names below are fixed; the argument carries only identities to compare.
+# Executed only on the configured Arch role. The authenticated sudo account
+# determines its home; the argument carries original identities to compare.
 _REMOTE = r'''import json,os,pwd,re,shlex,socket,stat,struct,subprocess,sys,time
 mode=sys.argv[1]; intent=json.loads(sys.argv[2]);role=intent['guestRole']
 if os.geteuid()!=0:raise SystemExit(2)
-OWNER=pwd.getpwnam('kardinal').pw_uid;PARK_OWNER=0
+sudo_uid=os.environ.get('SUDO_UID','')
+if re.fullmatch('[0-9]{1,10}',sudo_uid)is None or not 0<=int(sudo_uid)<2**32:raise SystemExit(2)
+account=pwd.getpwuid(int(sudo_uid));OWNER=account.pw_uid;HOME=account.pw_dir;PARK_OWNER=0
 roles={'ubuntu-fresh':2330,'ubuntu-update':2331,'arch-update':2332,'arch-rollback':2333}
 if mode not in ('preflight','start','status') or role not in roles:raise SystemExit(2)
 if set(intent)!={'correlationId','preparationCorrelationId','guestRole','sourceSha','qemuPid','qemuStartTicks','diskDevice','diskInode','qmpInode'}:raise SystemExit(2)
@@ -329,8 +333,8 @@ for key in ('correlationId','preparationCorrelationId'):
  if not re.fullmatch('[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}',intent[key]):raise SystemExit(2)
 for key in ('qemuPid','qemuStartTicks','diskDevice','diskInode','qmpInode'):
  if type(intent[key]) is not int or intent[key]<=0:raise SystemExit(2)
-tree='/home/kardinal/vpn-control-install-vm-parity-'+role;disk=tree+'/task.qcow2';qmp=tree+'/qmp.sock';port=roles[role]
-root='/home/kardinal/.vpn-control-parity-prepare';parkroot='/home/kardinal/.vpn-control-parity-park'
+tree=HOME+'/vpn-control-install-vm-parity-'+role;disk=tree+'/task.qcow2';qmp=tree+'/qmp.sock';port=roles[role]
+root=HOME+'/.vpn-control-parity-prepare';parkroot=HOME+'/.vpn-control-parity-park'
 def safe(path,kind,owner=None):
  cur='/'
  for part in path.strip('/').split('/'):
@@ -365,7 +369,7 @@ def claims():
  receipt=private(job+'/preparation-receipt.json')
  if manifest.get('schemaVersion')!=1 or manifest.get('host')!='archlinux' or manifest.get('guestRole')!=role or manifest.get('qemuPid')!=intent['qemuPid'] or manifest.get('qemuStartTicks')!=intent['qemuStartTicks'] or manifest.get('diskDevice')!=intent['diskDevice'] or manifest.get('diskInode')!=intent['diskInode'] or manifest.get('tree')!=tree or manifest.get('sshPort')!=port or manifest.get('sourceSha')!=intent['sourceSha']:raise ValueError('prep-manifest')
  if receipt.get('schemaVersion')!=1 or receipt.get('state')!='ready' or receipt.get('guestRole')!=role or receipt.get('sourceSha')!=intent['sourceSha'] or receipt.get('correlationId')!=intent['preparationCorrelationId'] or receipt.get('qemu')!={'pid':intent['qemuPid'],'startTicks':intent['qemuStartTicks'],'diskDevice':intent['diskDevice'],'diskInode':intent['diskInode'],'sshPort':port,'tree':tree}:raise ValueError('prep-receipt')
- jobs='/home/kardinal/.vpn-control-parity-jobs'
+ jobs=HOME+'/.vpn-control-parity-jobs'
  if os.path.lexists(jobs):
   safe(jobs,'dir',OWNER)
   path=jobs+'/'+role+'.claim'
@@ -536,7 +540,7 @@ class FixedRemoteDriver:
         command = ("sudo", "-n", "python3", "-I", "-B", "-c", _REMOTE, mode,
                    json.dumps(dict(intent), sort_keys=True, separators=(",", ",")))
         argv = ssh_transport.build_ssh_argv(config, "archlinux", 90, command=command)
-        done = self.runner(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=100)
+        done = ssh_transport.run_ssh(argv, runner=self.runner, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=100)
         _need(done.returncode == 0 and len(done.stdout) <= 2048,
               "Fixed Linux park response is uncertain")
         result = json.loads(done.stdout)

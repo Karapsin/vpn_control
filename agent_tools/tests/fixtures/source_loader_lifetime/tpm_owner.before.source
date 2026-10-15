@@ -1,0 +1,78 @@
+import json,os,stat,time
+TPM_SOCKET=__TPM_SOCKET__;GUEST=__GUEST__;MAX_PROCS=8192;MAX_SWTPM=16;MAX_FDS=8192
+def ticks(pid):
+ try:return int(open('/proc/%d/stat'%pid,encoding='ascii').read(4096).rsplit(')',1)[1].split()[19])
+ except (OSError,ValueError,IndexError):return None
+def visibility():
+ try:
+  if os.readlink('/proc/1/ns/pid')!=os.readlink('/proc/self/ns/pid'):return 'proc-visibility-incomplete'
+  with open('/proc/self/mountinfo',encoding='ascii') as f: rows=f.read(1048576).splitlines()
+  if len(rows)>=65536:return 'proc-visibility-incomplete'
+  proc=[line for line in rows if ' - proc ' in line and line.split(' - ',1)[0].split()[4]=='/proc']
+  if len(proc)!=1:return 'proc-visibility-incomplete'
+  options={token for field in proc[0].replace(' - ',' ').split() for token in field.split(',')}
+  return 'complete' if 'subset=pid' not in options and not any(item.startswith('hidepid=') and item!='hidepid=0' for item in options) else 'proc-visibility-incomplete'
+ except (OSError,IndexError,ValueError):return 'proc-visibility-incomplete'
+def unix():
+ table={}
+ with open('/proc/net/unix',encoding='ascii') as f:
+  data=f.read(1048577)
+ if len(data)>1048576:raise ValueError()
+ for line in data.splitlines()[1:]:
+  fields=line.split()
+  if len(fields)>=7 and fields[6].isdigit():table[int(fields[6])]=fields[7] if len(fields)>=8 else None
+ return table
+def private_receipt(path,limit):
+ info=os.lstat(path)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size<2 or info.st_size>limit:raise ValueError()
+ with open(path,encoding='utf-8') as f:return json.load(f)
+def live_qemu(pid,start):
+ before=ticks(pid)
+ if before!=start:return False
+ try:comm=open('/proc/%d/comm'%pid,encoding='ascii').read(128).strip()
+ except OSError:return False
+ return comm=='qemu-system-x86_64' and ticks(pid)==start
+def task_claim(pid,start):
+ try:
+  guest=os.lstat(GUEST);tpm=os.lstat(GUEST+'/tpm')
+  if not stat.S_ISDIR(guest.st_mode) or not stat.S_ISDIR(tpm.st_mode) or guest.st_uid!=os.geteuid() or tpm.st_uid!=os.geteuid() or stat.S_IMODE(guest.st_mode)!=0o700 or stat.S_IMODE(tpm.st_mode)!=0o700: return False
+  receipt=private_receipt(GUEST+'/swtpm-started.json',256)
+  qemu=private_receipt(GUEST+'/qemu-started.json',256)
+  return receipt=={'pid':pid,'startTicks':start} and type(qemu.get('pid')) is int and qemu['pid']>0 and type(qemu.get('startTicks')) is int and qemu['startTicks']>0 and live_qemu(qemu['pid'],qemu['startTicks'])
+ except (OSError,ValueError,TypeError):return False
+def relationship(pid,start,table):
+ names=os.listdir('/proc/%d/fd'%pid)
+ if len(names)>MAX_FDS:raise ValueError()
+ linked=False;unattributed=False
+ for name in names:
+  link=os.readlink('/proc/%d/fd/%s'%(pid,name))
+  if not link.startswith('socket:[') or not link.endswith(']'):continue
+  inode=int(link[8:-1]);path=table.get(inode)
+  if path==TPM_SOCKET:linked=True
+  elif path is not None:unattributed=True
+ return 'task-owned-swtpm-socket' if linked and task_claim(pid,start) else 'unattributed-vm-or-socket-path' if linked or unattributed else 'no-visible-socket-path'
+try:
+ reason=visibility();complete=reason=='complete';table=unix();items=[];entries=[name for name in os.listdir('/proc') if name.isdecimal()]
+ if len(entries)>MAX_PROCS:raise ValueError('census-capacity')
+ for name in entries:
+  pid=int(name)
+  try: comm=open('/proc/%d/comm'%pid,encoding='ascii').read(128).strip()
+  except FileNotFoundError:
+   if os.path.exists('/proc/%d'%pid):complete=False;reason='process-read-unavailable'
+   continue
+  except OSError:complete=False;reason='process-read-unavailable';continue
+  if comm!='swtpm':continue
+  if len(items)>=MAX_SWTPM:complete=False;reason='census-capacity';break
+  start=ticks(pid)
+  try:
+   uid=os.stat('/proc/%d'%pid).st_uid
+   if start is None or uid<0:raise ValueError()
+   relation=relationship(pid,start,table)
+   if ticks(pid)!=start:raise ValueError()
+   items.append({'pid':pid,'startTicks':start,'uid':uid,'relationship':relation})
+  except (OSError,ValueError):
+   complete=False;reason='fd-census-incomplete';items.append({'pid':pid,'startTicks':start,'uid':None,'relationship':'unattributed-vm-or-socket-path'})
+ print(json.dumps({'schemaVersion':1,'host':'archlinux','censusComplete':complete,'censusReason':None if complete else reason,'observedAtUnixMs':int(time.time()*1000),'processes':items},sort_keys=True,separators=(',',':')))
+except (OSError,ValueError) as error:
+ reason=str(error) if str(error) in ('census-capacity',) else 'census-unavailable'
+ print(json.dumps({'schemaVersion':1,'host':'archlinux','censusComplete':False,'censusReason':reason,'observedAtUnixMs':int(time.time()*1000),'processes':[]},sort_keys=True,separators=(',',':')))

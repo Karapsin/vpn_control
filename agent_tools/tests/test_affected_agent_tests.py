@@ -69,7 +69,11 @@ class DependencySelectionTests(unittest.TestCase):
         self.assertEqual(('agent_tools.tests.test_sdk',),self.plan(['agent_tools/requirements-mcp.txt'],
           {'agent_tools/requirements-mcp.txt':None,'agent_tools/sdk.py':'import mcp','agent_tools/tests/test_sdk.py':'from agent_tools import sdk'}).modules)
     def test_applicable_close_gate_first(self):
-        selection=self.plan(['agent_tools/leaf.py'], {'agent_tools/tests/test_ssh_connection_session_close.py':'from agent_tools import leaf'})
+        path='agent_tools/tests/test_ssh_connection_session_close.py';source='from agent_tools import leaf'
+        # This inert source models command ordering, not the real close module.
+        declaration={'sourceSha256':[hashlib.sha256(source.encode()).hexdigest()],'scopes':['agent_tools/leaf.py']}
+        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{path:declaration}):
+            selection=self.plan(['agent_tools/leaf.py'], {path:source})
         self.assertEqual(['python','-m','unittest','agent_tools.tests.test_ssh_connection_session_close'],selection.commands('python')[0])
         self.assertEqual([],self.plan(['Feature.kt']).commands('python'))
     def test_unrelated_unknown_loader_cannot_silently_lose_consumer(self):
@@ -89,6 +93,32 @@ class DependencySelectionTests(unittest.TestCase):
             additions={'agent_tools/dispatcher.py':text,'agent_tools/tests/test_dispatch.py':'from agent_tools import dispatcher'}
             self.assertEqual(('agent_tools.tests.test_adapter','agent_tools.tests.test_dispatch'),self.plan(['agent_tools/leaf.py'],additions).modules)
             self.assertEqual(('agent_tools.tests.test_other',),self.plan(['agent_tools/other.py'],additions).modules)
+    def test_reviewed_provenance_reader_enrolls_its_finite_source_inputs(self):
+        text="def read(root,row):\n return compile((root/row['fixture']).read_bytes(),'owned','exec')"
+        fixture='agent_tools/tests/fixtures/provenance-selected.source'
+        declaration={'sourceSha256':[hashlib.sha256(text.encode()).hexdigest()],'scopes':[fixture]}
+        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/tests/test_provenance.py':declaration}):
+            self.assertEqual(('agent_tools.tests.test_provenance',),self.plan([fixture],
+                {fixture:'VALUE=1','agent_tools/tests/test_provenance.py':text}).modules)
+    def test_reviewed_static_reader_edits_and_missing_inputs_refuse(self):
+        text="def read(root,row):\n return compile((root/row['fixture']).read_bytes(),'owned','exec')"
+        fixture='agent_tools/tests/fixtures/provenance-selected.source'
+        declaration={'sourceSha256':[hashlib.sha256(text.encode()).hexdigest()],'scopes':[fixture]}
+        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/tests/test_provenance.py':declaration}):
+            with self.assertRaises(selector.SelectionError):
+                self.plan(['agent_tools/leaf.py'],{fixture:'VALUE=1','agent_tools/tests/test_provenance.py':text+'\n# unreviewed reader change\n'})
+            with self.assertRaisesRegex(selector.SelectionError,'Declared dependency is unavailable'):
+                self.plan(['agent_tools/leaf.py'],{'agent_tools/tests/test_provenance.py':text})
+    def test_reviewed_current_and_previous_sources_keep_both_consumers(self):
+        current='from agent_tools import leaf';previous='from agent_tools import other'
+        path='agent_tools/tests/test_versioned.py'
+        declaration={'sourceSha256':[hashlib.sha256(value.encode()).hexdigest() for value in (current,previous)],'scopes':['agent_tools/leaf.py']}
+        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{path:declaration}):
+            self.assertEqual(('agent_tools.tests.test_other','agent_tools.tests.test_versioned'),
+                self.plan(['agent_tools/other.py'],{path:(current,previous)}).modules)
+            declaration['sourceSha256'].pop()
+            with self.assertRaisesRegex(selector.SelectionError,'Reviewed source dependency declaration changed'):
+                self.plan(['agent_tools/other.py'],{path:(current,previous)})
     def test_ordinary_variable_name_is_not_a_module_dependency(self):
         self.assertEqual(('agent_tools.tests.test_adapter',),self.plan(['agent_tools/leaf.py'],{'agent_tools/tests/test_other.py':'leaf=3'}).modules)
     def test_declared_missing_resource_refuses(self):
@@ -102,6 +132,126 @@ class DependencySelectionTests(unittest.TestCase):
         text=selector.read_source('agent_tools/tests/fixtures/frozen.py.gz',raw)
         self.assertEqual(('agent_tools.tests.test_adapter','agent_tools.tests.test_frozen'),self.plan(['agent_tools/leaf.py'],
           {'agent_tools/tests/fixtures/frozen.py.gz':text,'agent_tools/tests/test_frozen.py':"path='fixtures/frozen.py.gz'"}).modules)
+
+class RepairDeclarationTests(unittest.TestCase):
+    """Exercise the real reviewed loader inputs, without importing their code."""
+    def setUp(self):
+        self.root=Path(__file__).resolve().parents[2]
+        self.fixture='agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/'
+        provenance=json.loads((self.root/(self.fixture+'provenance.json')).read_text(encoding='utf-8'))
+        self.graph={self.fixture+row['path'] for row in provenance['sources']}
+        for row in provenance['sources']:
+            self.assertEqual(row['sourceSha256'],hashlib.sha256((self.root/(self.fixture+row['path'])).read_bytes()).hexdigest())
+        self.graph.add(self.fixture+'provenance.json')
+
+    def assert_reviewed(self,path,required):
+        source=(self.root/path).read_text(encoding='utf-8')
+        unrelated='agent_tools/selector_repair_unrelated.py'
+        inventory={path,unrelated,*required}
+        declaration=selector.REVIEWED_DYNAMIC_DEPENDENCIES.get(path,{})
+        for scope in declaration.get('scopes',()):
+            if scope.endswith('/'):
+                inventory.update(str(item.relative_to(self.root)) for item in (self.root/scope).iterdir() if item.is_file())
+            elif not scope.startswith('@'):
+                inventory.add(scope)
+        edges=selector.dependencies(path,source,inventory)
+        self.assertLessEqual(required,edges)
+        self.assertNotIn(unrelated,edges)
+        # An exact review of an opaque source does not authorize future edits.
+        with self.assertRaises(selector.SelectionError):
+            selector.dependencies(path,source+'\n# unreviewed loader change\n',inventory)
+
+    def test_current_linux_worker_review_remains_finite(self):
+        self.assert_reviewed('agent_tools/linux_deb_arch_guest_prepare_remote.py',
+            {'scripts/fixture_environment.py','agent_tools/linux_deb_arch_guest_prepare.py'})
+
+    def test_frozen_mcp_role_consumes_only_reviewed_graph(self):
+        # This MCP file is a held/hash-checked historical role, never the current
+        # executable server. Its finite graph must not use today's dispatcher.
+        self.assert_reviewed(self.fixture+'mcp_server.py',self.graph)
+
+    def test_core_cache_counterfactual_has_reviewed_repository_inputs(self):
+        self.assert_reviewed('agent_tools/tests/test_mcp_core_source.py',
+            {'agent_tools/mcp_server.py',
+             'agent_tools/tests/fixtures/source_loader_lifetime/core_imports.before.source',
+             'agent_tools/tests/fixtures/source_loader_lifetime/core_imports.provenance.json'})
+
+    def test_historical_inventory_has_complete_frozen_source_inputs(self):
+        self.assert_reviewed('agent_tools/tests/test_ssh_direct_ended_inventory_successor.py',self.graph|
+            {'agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/direct_before.py',
+             'agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/fresh_before.py'})
+
+    def test_historical_transition_has_complete_frozen_source_inputs(self):
+        self.assert_reviewed('agent_tools/tests/test_ssh_direct_ended_source_transition.py',self.graph)
+
+    def test_physical_recovery_counterfactual_has_finite_repository_inputs(self):
+        self.assert_reviewed('agent_tools/tests/test_recovery_route_source_custody.py',
+            {'agent_tools/'+name for name in (
+                'mcp_server.py','docs_assistant.py','local_build_environment.py',
+                'managed_check_lease.py','check_output_retention.py',
+                'windows_vm_setup_policy.py','native_workflow_policy.py',
+                'affected_agent_tests.py','affected_agent_test_dependencies.json',
+                'agent_test_runner.py','native_review_source_closure.py','source_module_loader.py',
+                'tests/fixtures/cached_recovery_source/before.json',
+                'tests/fixtures/cached_recovery_source/provenance.json')})
+
+    def test_terminal_closing_counterfactual_has_finite_repository_inputs(self):
+        fixture='agent_tools/tests/fixtures/source_terminal_closing/'
+        self.assert_reviewed('agent_tools/tests/test_source_terminal_closing.py',
+            {fixture+'ssh_fresh_nested_channel.py.before.source',
+             fixture+'ssh_source_file_stage.py.before.source',fixture+'provenance.json'})
+
+    def test_automatic_program_counterfactual_has_finite_repository_inputs(self):
+        fixture='agent_tools/tests/fixtures/ssh_automatic_program/'
+        self.assert_reviewed('agent_tools/tests/test_ssh_automatic_program.py',
+            {'agent_tools/ssh_transport.py','agent_tools/ssh_transfer.py',
+             'agent_tools/ssh_automatic_program.py','agent_tools/native_review_source_closure.py'}|
+            {fixture+name for name in ('provenance.json','ssh_transfer.py.before.source',
+                'ssh_transport.py.before.source','stage_failure.before.source',
+                'residual_args.before.source','residual_transport.before.source',
+                'custody_preexec.before.source')})
+
+    def test_source_bootstrap_counterfactual_has_finite_repository_inputs(self):
+        fixture='agent_tools/tests/fixtures/source_loader_bootstrap/'
+        self.assert_reviewed('agent_tools/tests/test_source_loader_bootstrap.py',
+            {'agent_tools/source_module_loader.py','agent_tools/native_review_source_closure.py',
+             fixture+'before.source',fixture+'provenance.json'})
+
+    def test_preserved_bootstrap_loader_has_finite_fixture_context(self):
+        fixture='agent_tools/tests/fixtures/source_loader_bootstrap/'
+        self.assert_reviewed(fixture+'before.source',
+            {'agent_tools/native_review_source_closure.py',fixture+'provenance.json'})
+
+    def test_preserved_automatic_transports_have_finite_import_contexts(self):
+        fixture='agent_tools/tests/fixtures/ssh_automatic_program/'
+        required={'agent_tools/ssh_connection_session.py','agent_tools/ssh_channel_selection.py'}
+        for name in ('ssh_transport.py.before.source','residual_transport.before.source'):
+            with self.subTest(name=name):
+                self.assert_reviewed(fixture+name,required|
+                    ({'agent_tools/ssh_automatic_program.py'} if name.startswith('residual') else set()))
+
+    def test_native_catalogue_counterfactual_has_finite_repository_inputs(self):
+        fixture='agent_tools/tests/fixtures/native_catalogue_automatic/'
+        self.assert_reviewed('agent_tools/tests/test_native_catalogue_automatic.py',
+            {'agent_tools/native_execution_context.py','agent_tools/native_review_source_closure.py',
+             'agent_tools/ssh_automatic_program.py','agent_tools/tests/test_native_execution_context.py',
+             fixture+'before.source',fixture+'provenance.json'})
+
+    def test_preserved_native_catalogue_uses_exact_current_imports(self):
+        fixture='agent_tools/tests/fixtures/native_catalogue_automatic/'
+        self.assert_reviewed(fixture+'before.source',
+            {'agent_tools/linux_package_fixture_build.py','agent_tools/native_artifact_reuse.py',
+             'agent_tools/native_artifact_registry.py','agent_tools/native_review_source_closure.py',
+             fixture+'provenance.json'})
+
+    def test_old_resource_control_enrolls_authentic_original_host_inputs(self):
+        path='agent_tools/tests/test_ssh_tmux_resource_admission.py'
+        fixture='agent_tools/tests/fixtures/resource_instance/'
+        inputs={fixture+'before.source',fixture+'native_host.before.source',fixture+'native_host.provenance.json'}
+        source=(self.root/path).read_text(encoding='utf-8')
+        edges=selector.dependencies(path,source,{path,*inputs,'agent_tools/unrelated.py'})
+        self.assertLessEqual(inputs,edges)
+        self.assertNotIn('agent_tools/unrelated.py',edges)
 
 class GitSelectionTests(unittest.TestCase):
     def setUp(self):
@@ -308,7 +458,11 @@ class IndependentReviewPolicyControls(unittest.TestCase):
         self.assertEqual((),selector.select_from_sources(sources,{'Feature.kt'}).modules)
     def test_shared_mcp_selects_only_actual_consumers(self):
         sources={'agent_tools/mcp_server.py':'value=1','agent_tools/other.py':'value=2','agent_tools/tests/test_mcp.py':'from agent_tools import mcp_server','agent_tools/tests/test_other.py':'from agent_tools import other'}
-        self.assertEqual(('agent_tools.tests.test_mcp',),selector.select_from_sources(sources,{'agent_tools/mcp_server.py'}).modules)
+        # The synthetic server has its own exact finite declaration; current
+        # production source metadata cannot authorize these fixture bytes.
+        declaration={'sourceSha256':[hashlib.sha256(sources['agent_tools/mcp_server.py'].encode()).hexdigest()],'scopes':[]}
+        with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES,{'agent_tools/mcp_server.py':declaration}):
+            self.assertEqual(('agent_tools.tests.test_mcp',),selector.select_from_sources(sources,{'agent_tools/mcp_server.py'}).modules)
     def test_shared_retention_selects_only_actual_consumers(self):
         sources={'agent_tools/check_output_retention.py':'value=1','agent_tools/other.py':'value=2','agent_tools/tests/test_retention.py':'from agent_tools import check_output_retention','agent_tools/tests/test_other.py':'from agent_tools import other'}
         self.assertEqual(('agent_tools.tests.test_retention',),selector.select_from_sources(sources,{'agent_tools/check_output_retention.py'}).modules)

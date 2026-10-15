@@ -94,7 +94,12 @@ class OsSessionProjectionTest(unittest.TestCase):
         with self.assertRaisesRegex(ssh_transport.SshConfigError,'safe strings'):
             ssh_transport.build_ssh_argv(config,'archlinux',30,command=before)
         seen=[]
-        with patch.object(ssh_transport,'_route_hosts',return_value=[]),patch.object(ssh_transport.os.path,'lexists',return_value=True),patch.object(ssh_transport,'_build_selected_arch_argv',side_effect=lambda config,route,command,*rest:seen.append(command)or ['inert-no-process']):
+        route=[config.hosts['archlinux']]
+        selection=types.SimpleNamespace(selection_present=lambda root,alias:root==ROOT and alias=='archlinux')
+        with patch.object(ssh_transport,'_route_hosts',return_value=route), \
+             patch.object(ssh_transport.os.path,'lexists',return_value=True), \
+             patch.object(ssh_transport,'_selection_module',return_value=selection), \
+             patch.object(ssh_transport,'_build_selected_arch_argv',side_effect=lambda config,route,command,*rest:seen.append(command)or ['inert-no-process']):
             self.assertEqual(ssh_transport.build_ssh_argv(config,'archlinux',30,command=fixed),['inert-no-process'])
         self.assertEqual(seen,[fixed]);self.assertNotIn('\n',fixed[-1]);compile(fixed[-1],'<actual-fixed-bootstrap>','exec')
 

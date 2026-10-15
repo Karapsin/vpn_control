@@ -1,0 +1,26 @@
+import argparse,ast,os,uuid
+from pathlib import Path
+p=argparse.ArgumentParser();p.add_argument('--observer',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
+source=a.observer.read_text();tree=ast.parse(source);main=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='diagnose');last=next(n for n in main.body if isinstance(n,ast.Try));source='\n'.join(source.splitlines()[:last.lineno-1])+'\n'
+leaf='setup-frame-'+uuid.uuid4().hex+'.png';command='powershell.exe -nop -noexit -c "get-service qemu-ga;get-scheduledtask -taskname vpncontrolfixtureinitialize | select state;get-scheduledtaskinfo -taskname vpncontrolfixtureinitialize | fl lastruntime,lasttaskresult;gcim win32_operatingsystem | fl caption,version"'
+source='LEAF='+repr(leaf)+'\nCOMMAND='+repr(command)+'\n'+source
+source+='''    chain();before=observed();save('diagnostic-input-'+LEAF+'.json',{'command':COMMAND,'purpose':'read-only guest bootstrap task/service/OS inspection','replayAllowed':False})
+    def key(codes):qmp('send-key',{'keys':[{'type':'qcode','data':c}for c in codes],'hold-time':10});time.sleep(.025)
+    key(['meta_l','r']);time.sleep(1)
+    symbols={' ':['spc'],'.':['dot'],'-':['minus'],':':['shift','semicolon'],'\\\\':['backslash'],'"':['shift','apostrophe'],';':['semicolon'],'|':['shift','backslash'],',':['comma']}
+    deadline=time.monotonic()+20
+    for char in COMMAND:
+        require(time.monotonic()<deadline,'instance_input_deadline');key(symbols.get(char,[char]))
+    key(['ret']);time.sleep(4)
+    qmp('screendump',{'filename':str(root/LEAF),'format':'png'})
+    s=private(root/LEAF);require(s.st_size<=3*1024**2,'instance_frame_bound')
+    fd=os.open(root/LEAF,os.O_RDONLY|os.O_NOFOLLOW)
+    try:raw=os.read(fd,3*1024**2+1)
+    finally:os.close(fd)
+    require(len(raw)==s.st_size and raw.startswith(b'\\x89PNG\\r\\n\\x1a\\n'),'instance_frame_bytes')
+    process(read('qemu-started.json'));closing()
+    print(json.dumps({'engineeringOnly':True,'frame':LEAF,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'qemu':before['qemu']}))
+diagnose()
+'''
+compile(source,str(a.output),'exec');fd=os.open(a.output,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+with os.fdopen(fd,'w')as f:f.write(source)

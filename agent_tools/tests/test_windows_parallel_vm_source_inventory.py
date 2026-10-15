@@ -48,6 +48,7 @@ class SourceInventoryTest(unittest.TestCase):
         (directory / "fd").mkdir(parents=True)
         (directory / "stat").write_text(str(number) + " (harmless child) " + " ".join(["S"] + ["0"] * 18 + [str(birth)]))
         (directory / "comm").write_text(comm)
+        (directory / "exe").symlink_to("/usr/bin/qemu-system-x86_64" if comm.startswith("qemu-system-") else "/usr/bin/python3")
         (directory / "cmdline").write_bytes(b"python\0")
         return directory
 

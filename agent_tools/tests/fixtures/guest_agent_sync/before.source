@@ -1,0 +1,30 @@
+def guest_state(pid):
+        state={'guestAgentReady':False,'ordinarySessionObserved':False,'osName':None}
+        client=socket.socket(socket.AF_UNIX);client.settimeout(1)
+        try:
+            owns(pid,root/'qga.sock',True);named=os.lstat(root/'qga.sock');client.connect(str(root/'qga.sock'))
+            peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+            require(peer[:2]==(pid,os.geteuid()) and os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_peer')
+            stream=client.makefile('rwb',buffering=0)
+            nonce=int.from_bytes(os.urandom(4),'big')
+            stream.write(b'\xff'+(json.dumps({'execute':'guest-sync-delimited','arguments':{'id':nonce}})+'\n').encode())
+            def receive():
+                line=stream.readline(65537);require(0<len(line)<=65536,'instance_qga_bound')
+                return json.loads(line.lstrip(b'\xff'))
+            require(receive().get('return')==nonce,'instance_qga_sync')
+            def query(command):
+                stream.write((json.dumps({'execute':command})+'\n').encode());response=receive()
+                require('return' in response,'instance_qga_query');return response['return']
+            query('guest-ping');state['guestAgentReady']=True
+            osinfo=query('guest-get-osinfo');name=osinfo.get('pretty-name') or osinfo.get('name')
+            if type(name)is str and 0<len(name)<=256 and not any(ord(c)<32 for c in name):state['osName']=name
+            try:
+                users=query('guest-get-users')
+                if type(users)is list and len(users)<=128:
+                    state['ordinarySessionObserved']=any(type(u)is dict and type(u.get('user'))is str and u['user'].rsplit('\\',1)[-1].casefold()==SETUP['user'].casefold() for u in users)
+            except (OSError,ValueError):pass
+            require(os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_changed')
+        except (OSError,ValueError,KeyError,TypeError):
+            state={'guestAgentReady':False,'ordinarySessionObserved':False,'osName':None}
+        finally:client.close()
+        return state

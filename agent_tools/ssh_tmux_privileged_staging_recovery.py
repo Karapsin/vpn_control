@@ -150,7 +150,7 @@ class PrivilegedDriver(old.TmuxArchDriver):
                     unused, env = ssh_transport._askpass_environment(connection.password, Path(askpass))
                 need(self._transport()[1] == original_transport, "transport_changed")
                 if guard: guard()
-                process = subprocess.Popen(argv, cwd=self.root, stdin=subprocess.PIPE, stdout=out, stderr=err,
+                process = ssh_transport.popen_ssh(argv, cwd=self.root, stdin=subprocess.PIPE, stdout=out, stderr=err,
                                            env=env, preexec_fn=limits)
                 try:
                     process.communicate(input=input_bytes, timeout=95)
@@ -178,12 +178,13 @@ class PrivilegedDriver(old.TmuxArchDriver):
                 err_pin = session.read(stderr, MAX_RESPONSE)[1]
                 session.write_once(capsule / "receipt.json", session.canonical({
                     "schemaVersion": 1, "requestSha256": hashlib.sha256(WRAPPER.encode()).hexdigest(),
-                    "argvSha256": hashlib.sha256(session.canonical(argv)).hexdigest(),
+                    "argvSha256": ssh_transport.argv_sha256(argv),
                     "exitCode": None if process is None else process.returncode,
                     "timedOut": timed_out, "stdoutPin": out_pin, "stderrPin": err_pin,
                     "replayAllowed": False}))
             except (OSError, ValueError):
                 pass  # Raw private streams survive; no missing capsule promotes authority.
+            ssh_transport.finish_ssh(process,failed=timed_out)
 
 
 def validate(value):

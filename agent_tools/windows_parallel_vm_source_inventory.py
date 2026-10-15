@@ -116,12 +116,16 @@ def holder_census(proc, identity, ignored, deadline, source_name):
                 holders.append({"pid": pid, "startTicks": before, "fd": descriptor.name})
                 need(len(holders) <= 64, "holder-bound")
         try:
-            comm = (entry / "comm").read_text(encoding="ascii").strip()
-            if comm.startswith("qemu-system-"):
+            try:
+                executable = os.path.basename(os.readlink(entry / "exe"))
+            except FileNotFoundError:
+                executable = ""  # Kernel threads and exited tasks have no image.
+            if executable.startswith("qemu-system-"):
                 raw = (entry / "cmdline").read_bytes()
                 need(0 < len(raw) <= 65536, "qemu-argv-bound")
                 argv = [os.fsdecode(v) for v in raw.rstrip(b"\0").split(b"\0")]
-                qemu.append({"pid": pid, "startTicks": before, "executable": comm})
+                qemu.append({"pid": pid, "startTicks": before, "executable": executable})
+                need(os.path.basename(os.readlink(entry / "exe")) == executable, "process-executable-changed")
                 need(len(qemu) <= 128, "qemu-bound")
                 if any(source_name in token for token in argv):
                     argv_users.append({"pid": pid, "startTicks": before})

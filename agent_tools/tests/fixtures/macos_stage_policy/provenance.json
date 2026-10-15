@@ -1,0 +1,11 @@
+{
+  "sourcePath": "agent_tools/mcp_server.py",
+  "sourceSha256": "d048044407691f4a683ff1a4d2f8bc03b2ce73d867614a3548ea498769cf7323",
+  "fragmentSha256": "379244a97879de320ad31691d25a0c17b929e46e09a777fdb198e8a919fa87f8",
+  "symbols": [
+    "_native_fixed_dispatch",
+    "vm_workflow"
+  ],
+  "failure": "A new stage correlation dispatches to the implicit historical Tart guest/account.",
+  "evidence": ".runtime/mcp-repair-execution-2026-10-15/macos-stage-policy/causal-red.log"
+}

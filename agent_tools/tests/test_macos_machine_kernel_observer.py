@@ -50,6 +50,11 @@ class MacMachineKernelObserverTest(unittest.TestCase):
                 "root=pathlib.Path('/Users/admin/macos-parity'+source[:7])",
                 f"root=pathlib.Path({str(root)!r})").replace("501", str(os.getuid()))
             original = original.replace("index>=3", "index>=999")
+            # The isolated host worker lives under a root-owned sticky temp
+            # ancestor. Only that unrelated host ancestor policy is adapted;
+            # original guest/file ownership, symlink and generation checks stay.
+            self.assertEqual(1,original.count('info.st_mode & 0o022'))
+            original = original.replace('info.st_mode & 0o022','(info.st_mode & 0o022 and not (info.st_uid==0 and info.st_mode & stat.S_ISVTX))')
             proc_line = "lib=ctypes.CDLL('/usr/lib/libproc.dylib',use_errno=True);fn=lib.proc_pidinfo"
             socket_line = "results=[]"
             def run(mode, kill="esrch", ports=("refused", "refused"), source_code=None):

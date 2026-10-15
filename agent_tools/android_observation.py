@@ -165,6 +165,14 @@ print(json.dumps({"baseline": baseline, "admitted": True, "status": summary(stat
 
 
 def _run_probe(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
+    try:
+        with ssh_transport.automatic_submission(argv) as submitted:
+            return _run_probe_submitted(submitted, timeout_seconds)
+    except ValueError as error:
+        raise RuntimeError(str(error)) from error
+
+
+def _run_probe_submitted(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
     """Run one SSH observer, retaining at most MAX_OUTPUT_BYTES."""
     try:
         process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)

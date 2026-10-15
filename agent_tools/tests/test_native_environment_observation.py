@@ -87,7 +87,8 @@ class NativeEnvironmentObservationTest(unittest.TestCase):
 
     def test_arch_privileged_flag_is_explicit_and_finite(self):
         valid = {'hostAlias': 'archlinux', 'observeHost': True, 'privilegedHost': True, 'timeoutSeconds': 12}
-        self.assertIs(observation._request(valid)['privilegedHost'], True)
+        with self.assertRaisesRegex(observation.NativeEnvironmentObservationError,'retired'):
+            observation._request(valid)
         with mock.patch.object(observation.ssh_transport, 'probe') as probe:
             for change in ({'hostAlias': 'other'}, {'observeHost': False}, {'privilegedHost': 1},
                            {'command': 'x'}, {'password': 'x'}, {'device': 'pixel'},
@@ -111,12 +112,9 @@ class NativeEnvironmentObservationTest(unittest.TestCase):
         with mock.patch.object(observation.ssh_transport, 'probe', return_value=mock.Mock(ok=True, status=observation.ssh_transport.ProbeStatus.OK)), \
              mock.patch.object(observation.native_host_observation, 'observe_host') as ordinary, \
              mock.patch.object(arch_qemu_holder_census, 'observe_privileged', return_value=observation.native_host_observation._unknown(1, 'privileged_capture_unknown', timeout=5)) as privileged:
-            result = observation.observe_environment('.', {'hostAlias': 'archlinux', 'observeHost': True, 'privilegedHost': True, 'timeoutSeconds': 12})
-        ordinary.assert_not_called();privileged.assert_called_once()
-        args, kwargs = privileged.call_args
-        self.assertEqual(args[0], '.');self.assertEqual(set(args[1]), {'host', 'timeoutSeconds'})
-        self.assertEqual(args[1]['host'], 'archlinux');self.assertEqual(kwargs, {})
-        self.assertFalse(result['requestedProbesReady']);self.assertFalse(result['nativeActionAllowed'])
+            with self.assertRaisesRegex(observation.NativeEnvironmentObservationError,'retired'):
+                observation.observe_environment('.', {'hostAlias': 'archlinux', 'observeHost': True, 'privilegedHost': True, 'timeoutSeconds': 12})
+        ordinary.assert_not_called();privileged.assert_not_called()
 
     def test_standalone_import_uses_the_same_fallback_imports(self):
         source = Path(observation.__file__).parent

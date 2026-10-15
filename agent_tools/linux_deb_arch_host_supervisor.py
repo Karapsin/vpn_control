@@ -28,7 +28,7 @@ _ROLE_PORTS = {"ubuntu-fresh": 2330, "ubuntu-update": 2331, "arch-update": 2332,
 _WORKER = r'''import json,os,shlex,stat,subprocess,sys,time
 metadata=json.loads(sys.argv[1]); job=sys.argv[2]
 role=metadata['guestRole']; port=__PORTS__[role]
-tree='/home/kardinal/vpn-control-install-vm-parity-'+role
+tree=os.path.join(__import__('pwd').getpwuid(os.getuid()).pw_dir,'vpn-control-install-vm-parity-'+role)
 stage='/var/lib/vpn-control-parity/'+role
 command=['python3','-B',stage+'/agent_tools/linux_deb_arch_native_driver.py',
  '--run-json',json.dumps(metadata['workerIntent'],sort_keys=True,separators=(',',':')),
@@ -62,7 +62,7 @@ _SUBMIT = r'''import json,os,stat,subprocess,sys,time
 metadata=json.loads(sys.argv[1]); role=metadata.get('guestRole'); corr=metadata.get('correlationId')
 if role not in __PORTS__:raise SystemExit(2)
 if not isinstance(corr,str) or len(corr)!=36 or any(c not in '0123456789abcdef-' for c in corr):raise SystemExit(2)
-tree='/home/kardinal/vpn-control-install-vm-parity-'+role
+tree=os.path.join(__import__('pwd').getpwuid(os.getuid()).pw_dir,'vpn-control-install-vm-parity-'+role)
 if metadata.get('guestPort')!=__PORTS__[role] or metadata.get('tree')!=tree:raise SystemExit(2)
 pid=metadata['guestGeneration']['pid']
 def ticks(pid):
@@ -119,7 +119,7 @@ for name in os.listdir('/proc'):
  if b'qemu-system-x86_64' in other and (disk.encode() in other or
   b'hostfwd=tcp:127.0.0.1:'+str(port).encode()+b'-:22' in other or qmp.encode() in other):raise SystemExit(3)
 if ticks(pid)!=metadata['guestGeneration']['startTicks'] or os.stat(disk).st_ino!=info.st_ino:raise SystemExit(3)
-root='/home/kardinal/.vpn-control-parity-jobs'
+root=os.path.join(__import__('pwd').getpwuid(os.getuid()).pw_dir,'.vpn-control-parity-jobs')
 os.makedirs(root,mode=0o700,exist_ok=True)
 check=os.lstat(root)
 if not stat.S_ISDIR(check.st_mode) or check.st_uid!=os.getuid() or stat.S_IMODE(check.st_mode)!=0o700:raise SystemExit(3)
@@ -146,7 +146,7 @@ print(json.dumps({'state':'submitted','correlationId':corr}))
 _STATUS = r'''import json,os,stat,sys
 role,corr=sys.argv[1:]
 if role not in __PORTS__ or len(corr)!=36 or any(c not in '0123456789abcdef-' for c in corr):raise SystemExit(2)
-root='/home/kardinal/.vpn-control-parity-jobs';job=root+'/'+corr
+root=os.path.join(__import__('pwd').getpwuid(os.getuid()).pw_dir,'.vpn-control-parity-jobs');job=root+'/'+corr
 def owned_dir(path):
  cur='/'
  for part in path.strip('/').split('/'):
@@ -198,7 +198,7 @@ class FixedHostSupervisor:
                 return None
             command = ("python3", "-I", "-B", "-c", "exec(" + repr(_program(program)) + ")", *args)
             argv = ssh_transport.build_ssh_argv(config, _HOST, 30, command=command)
-            done = self.runner(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=32)
+            done = ssh_transport.run_ssh(argv, runner=self.runner, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=32)
             if done.returncode != 0 or len(done.stdout) > 65536:
                 return None
             result = json.loads(done.stdout)

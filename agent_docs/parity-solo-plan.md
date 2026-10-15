@@ -1,18 +1,29 @@
-# Active GUI/CLI parity execution brief
+# Deferred GUI/CLI parity brief; active MCP repair
 
 ## Current route and completion boundary
 
-Start only after documentation cleanup's exact-SHA development delivery is verified.
-Use fresh MCP `prepare_start`, [router](README.md), [current WIP](work-in-progress.md),
+When the user resumes product parity, use fresh MCP `prepare_start`,
+[router](README.md), [current WIP](work-in-progress.md),
 `docs`, `change_impact`, `workflow_status` and read-only `matrix-status`.
 Confirm actual SHA/version and all five required workflows. Historical SHAs are
 source/evidence identities, not reset targets. WIP is the sole current custody ledger.
 
-Finish Linux → Windows → Android (API35, then API29), one platform at a time.
-The original brief requested solo work; the user subsequently allowed subagents.
-Bounded assistance requires explicit file ownership, one guest operator and
-serialized interfering effects. This serial task order does not rewrite TEST-003.
-macOS native/visual is **USER-DEFERRED**; macOS package CI remains required.
+The latest human instruction requires the MCP reproducibility repair in
+`.runtime/mcp-repair-handoff-2026-10-15/plan.md`, permits subagents, and closes all
+prior VM and connection sessions. Closed guests, tunnels, mounts and helpers must
+stay closed; do not restore them for testing. Preserve their disks, original
+evidence and durable job/lease records. Fresh reusable actions must receive their
+VM, connection, account, path and identity context explicitly. Historical records
+remain only in original read/status/diagnostic/closure paths.
+
+Windows caller acceptance, H14 and every platform's product-native/visual work are
+**USER-DEFERRED**. The original Windows plan remains preserved at
+`.runtime/windows-only-handoff-2026-10-14/plan.md`; it is not the active run plan.
+The five standard development workflows are required for the exact repaired SHA.
+The optimizer baseline `e167a73ee8acd7fbb9844380dc12f310f537d0e6` was verified;
+that receipt does not validate current source. Current owners, causal evidence,
+session closures and remaining gates are in WIP. Earlier platform scheduling
+below is historical and supplies no authority to resume deferred work.
 Report in-scope completion separately from full four-platform acceptance and
 from shared scenarios with deferred macOS applicability.
 
@@ -69,7 +80,7 @@ blocker/custody. Completion remains open for required in-scope unknowns.
 
 | Stage | First bounded outcome | Remaining complete scenario families |
 | --- | --- | --- |
-| Linux | Reconstruct whole pending reviewed delta against canonical; map real consumers and missing causal enrollment. Ignored whole-worker candidates cannot overwrite canonical. | RPM denial/protected failure/cancel/drain/wait-loss recovery; DEB dependency/headless/recovery; Arch replace/rollback; CLI/config/documents, headless owner, GUI lifecycle/traffic, pending settings, refresh, Find Best, SSH, progress/cancel, Unicode. Matching MCP and Linux scenes. Preserve Ubuntu2307 ON. |
+| Linux | Reconstruct whole pending reviewed delta against canonical; map real consumers and missing causal enrollment. Ignored whole-worker candidates cannot overwrite canonical. | RPM denial/protected failure/cancel/drain/wait-loss recovery; DEB dependency/headless/recovery; Arch replace/rollback; CLI/config/documents, headless owner, GUI lifecycle/traffic, pending settings, refresh, Find Best, SSH, progress/cancel, Unicode. Matching MCP and Linux scenes. The prior Ubuntu2307 ON requirement is superseded; its closed session must not be restored. |
 | Windows | Reconcile original quit/unknown histories; finish bounded file-based caller before staged server timer. | Real check/download/msiexec/install/next-owner recovery/ordinary GUI return; denial/cancel/failure, requester/admin/locks/storage/OFF/reconnect; ordinary proxy/config, scoped UAC/TUN, CUSTOM, active A/pending B, owner/frontend, autostart/reboot/documents. Matching fixed MCP routes, Windows scenes/real UAC. Never elevate entire app as workaround. |
 | Android API35 → API29 | Resolve original API35 custody; retain installer UNKNOWN/held absent authoritative admission. Map exact traceback packet; diagnose ancestry without weakening nine generation fields. | Nondebuggable compatible signer, authenticated UID2000 ADB without root/run-as; full routing-backup equality; CLI/actions/documents/installer, denial/consent/traffic/stats/Find Best/cancel/rollback, pending settings/refresh/recreation/SSH/ADB loss/watch/stale drafts/large private documents, installer confirmation/success/loss/resume/retention/cleanup/malformed packages. Matching API35 MCP, then sequential API29 native+MCP. Android scenes use API35. |
 
@@ -80,8 +91,8 @@ provenance admission and cannot touch held original inputs merely because reconc
 ## Final source, validation and delivery
 
 Later product/build/critical-tool changes may invalidate earlier acceptance.
-Freeze final source/artifacts and sweep invalidated/missing cases serially
-Linux → Windows → Android. Actual `artifact-reuse-check` and reviewed
+Freeze final source/artifacts and sweep invalidated/missing Windows cases.
+Actual `artifact-reuse-check` and reviewed
 `matrix-equivalence-record` apply only to eligible scope; incomplete DIRECT/MCP
 never becomes full-native and old packages retain original provenance.
 

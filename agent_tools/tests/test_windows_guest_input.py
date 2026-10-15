@@ -54,6 +54,17 @@ def profile(path, digest):
 
 
 class WindowsGuestInputProducerTest(unittest.TestCase):
+    def test_guard_renders_current_session_without_using_the_previous_session_one(self):
+        c=replace(context(),session_id=3)
+        b=dict(binding(),sessionId=3)
+        self.assertEqual(b,input_owner.validate_current_binding(b,ACK,ACK,c))
+        raw,_=input_owner.guard_command(c,b, ssh_transport.WindowsInputTokenPolicy('ordinaryFilteredAdmin',0,3,True,False))
+        self.assertIn('Info(t,12)!=3',raw)
+        self.assertIn('$explorer.SessionId -ne 3',raw)
+        for bad in (True,0,-1,16384):
+            with self.subTest(session=bad),self.assertRaises(ValueError):
+                input_owner.render_unbound_current_guest_guard(replace(c,session_id=bad), ssh_transport.WindowsInputTokenPolicy('ordinaryFilteredAdmin',0,3,True,False))
+
     def test_context_is_selected_by_config_not_positive_caller_flags(self):
         c=context();raw=input_owner._json(asdict(c));p=profile(Path('/not-opened'),hashlib.sha256(raw).hexdigest())
         self.assertEqual(input_owner._context(raw,'synthetic',p),c)
@@ -75,7 +86,7 @@ class WindowsGuestInputProducerTest(unittest.TestCase):
 
     def test_dotted_profile_name_matches_the_existing_configured_selector(self):
         c=replace(context(),profile_name='synthetic.ordinary')
-        self.assertIn('__CURRENT_BINDING__',input_owner.render_unbound_current_guest_guard(c))
+        self.assertIn('__CURRENT_BINDING__',input_owner.render_unbound_current_guest_guard(c, ssh_transport.WindowsInputTokenPolicy('ordinaryFilteredAdmin',0,3,True,False)))
         self.assertEqual(input_owner._input_schema('windows-input-start',{'host':'archlinux','profile':'synthetic.ordinary',
                          'correlationId':CORRELATION})['profile'],'synthetic.ordinary')
 
@@ -91,16 +102,16 @@ class WindowsGuestInputProducerTest(unittest.TestCase):
             with self.assertRaises(ValueError):input_owner.decision_events(value,'focus','b'*64,'a'*64)
 
     def test_actual_guard_template_binding_source_and_argument_cap(self):
-        raw,encoded=input_owner.guard_command(context(),binding())
+        raw,encoded=input_owner.guard_command(context(),binding(), ssh_transport.WindowsInputTokenPolicy('ordinaryFilteredAdmin',0,3,True,False))
         self.assertNotIn('__CURRENT_BINDING__',raw)
         self.assertLessEqual(len('powershell.exe -NoProfile -NonInteractive -EncodedCommand ')+len(encoded),30000)
         self.assertLessEqual(len(raw.encode()),65536)
         wrapper=base64.b64decode(encoded).decode('utf-16le')
         self.assertIn(hashlib.sha256(raw.encode()).hexdigest(),wrapper)
         with patch.object(input_owner,'CURRENT_GUEST_GUARD_TEMPLATE',input_owner.CURRENT_GUEST_GUARD_TEMPLATE+'\n'):
-            with self.assertRaisesRegex(ValueError,'GUARD_TEMPLATE_SOURCE'):input_owner.guard_command(context(),binding())
+            with self.assertRaisesRegex(ValueError,'GUARD_TEMPLATE_SOURCE'):input_owner.guard_command(context(),binding(), ssh_transport.WindowsInputTokenPolicy('ordinaryFilteredAdmin',0,3,True,False))
         with patch.object(input_owner,'compressed_powershell_command',return_value='x'*20000):
-            with self.assertRaisesRegex(ValueError,'INPUT_GUARD_COMMAND_BOUND'):input_owner.guard_command(context(),binding())
+            with self.assertRaisesRegex(ValueError,'INPUT_GUARD_COMMAND_BOUND'):input_owner.guard_command(context(),binding(), ssh_transport.WindowsInputTokenPolicy('ordinaryFilteredAdmin',0,3,True,False))
 
     def test_stdlib_frame_conversion_and_decompression_bounds(self):
         raw=b'P6\n2 1\n255\n\x00\x01\x02\x03\x04\x05'
@@ -204,7 +215,9 @@ def qga(sock,name,args,**kw):
   # Model source-bound native guard projection. Actual C#/Windows is not invoked.
   return {'exited':True,'exitcode':0,'out-data':base64.b64encode(json.dumps(typed).encode()+b'\n'+json.dumps(green).encode()).decode()}
  raise AssertionError(name)
-ns['call']=qga;ns['identity']=lambda:['inert native boundary'];ns['main']();t.join(2);assert not t.is_alive();server.close()
+# This protocol/collector fixture replaces both OS identity boundaries; the
+# connected kernel peer has a separate physical Unix-socket regression.
+ns['call']=qga;ns['identity']=lambda:['inert native boundary'];ns['verify_peer']=lambda _client,_sock:None;ns['main']();t.join(2);assert not t.is_alive();server.close()
 if not options.get('large') and not options.get('sourceBoundary'):
  assert len(keys)==3 and len(guard_calls)==4
  assert [(r['data']['key']['data'],r['data']['down'])for r in keys[-1]]==[('alt',True),('y',True),('y',False),('alt',False)]
@@ -570,7 +583,7 @@ _POWERSHELL=os.environ.get('VPN_CONTROL_TEST_PWSH') or shutil.which('pwsh') or s
 @unittest.skipUnless(_POWERSHELL,'local PowerShell required for exact native guard syntax control')
 class WindowsGuestInputPowerShellSourceTest(unittest.TestCase):
     def test_exact_emitted_native_guard_parser_only(self):
-        body,_=input_owner.guard_command(context(),binding())
+        body,_=input_owner.guard_command(context(),binding(), ssh_transport.WindowsInputTokenPolicy('ordinaryFilteredAdmin',0,3,True,False))
         with tempfile.TemporaryDirectory() as d:
             path=Path(d)/'guard.ps1';path.write_text(body,encoding='utf-8',newline='\n')
             command="$t=$null;$e=$null;[void][Management.Automation.Language.Parser]::ParseFile('"+str(path).replace("'","''")+"',[ref]$t,[ref]$e);if($e.Count){$e|%{$_.ToString()};exit 1};'PARSE_ONLY_NO_NATIVE'"
@@ -610,7 +623,7 @@ class WindowsGuestInputEmittedRuntimeTest(unittest.TestCase):
         self.assertEqual(self.runtime['GUARD_TEMPLATE_SHA256'],input_owner.CURRENT_GUEST_GUARD_TEMPLATE_SHA256)
         row,digest=self.runtime['current_guest_guard'](binding())
         self.assertEqual(row['state'],'CURRENT_BOUND_GUEST_GREEN')
-        body,encoded=input_owner.guard_command(self.c,binding())
+        body,encoded=input_owner.guard_command(self.c,binding(), ssh_transport.WindowsInputTokenPolicy('ordinaryFilteredAdmin',0,3,True,False))
         self.assertEqual(self.calls[0][2]['arg'][-1],encoded)
         self.assertEqual(digest,hashlib.sha256(body.encode()).hexdigest())
         self.assertEqual([c[1] for c in self.calls],['guest-exec','guest-exec-status'])
@@ -699,6 +712,16 @@ def _configured_inventory(profiles=None):
     return {'schemaVersion': 1, 'hosts': {'owned': host}}
 
 class WindowsInputProfileConfigTest(unittest.TestCase):
+
+    def test_profile_paths_and_session_are_explicit_inputs(self):
+        value=_configured_profile();home=r'D:\Profiles\fixture'
+        value.update(sessionId=3,profileRoot=home,
+                     installedRoot=home+r'\AppData\Local\vpn-control',
+                     taskRootParent=home+r'\AppData\Local\VpnControl\owned')
+        conf=self.parse('independent-profile-session',_configured_inventory({'ordinary':value}),accepts=True)
+        selected=conf.hosts['owned'].windows_input_profiles['ordinary']
+        self.assertEqual(3,selected.session_id)
+        self.assertEqual(PureWindowsPath(home),selected.profile_root)
 
     def parse(self, case, raw, *, accepts):
         contents = raw if isinstance(raw, str) else json.dumps(raw, sort_keys=True)

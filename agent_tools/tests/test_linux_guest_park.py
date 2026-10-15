@@ -16,6 +16,7 @@ from unittest.mock import patch
 from agent_tools import linux_guest_park as park
 from agent_tools import linux_deb_arch_guest_prepare as prep
 from agent_tools import native_artifact_registry as registry
+from agent_tools.tests.linux_role_fixture import program as role_program
 
 
 SOURCE = "a" * 40
@@ -114,19 +115,19 @@ class ParkTests(unittest.TestCase):
 
     def test_fake_proc_unreadable_live_process_and_disk_holder_block_terminal(self):
         guest, receipt = self.guest, self.receipt
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=Path('/tmp').resolve()) as directory:
             base = Path(directory).resolve()
-            tree = base / "guest"
+            tree = base / "vpn-control-install-vm-parity-ubuntu-update"
             tree.mkdir(mode=0o700)
             disk = tree / "task.qcow2"
             disk.write_bytes(b"disk")
             disk.chmod(0o600)
             disk_info = disk.stat()
-            prep_root = base / "prep"
+            prep_root = base / ".vpn-control-parity-prepare"
             prep_root.mkdir(mode=0o700)
             prep_job = prep_root / PREP
             prep_job.mkdir(mode=0o700)
-            park_root = base / "park"
+            park_root = base / ".vpn-control-parity-park"
             park_root.mkdir(mode=0o700)
             fake_proc = base / "proc"
             (fake_proc / "net").mkdir(parents=True)
@@ -160,14 +161,7 @@ class ParkTests(unittest.TestCase):
                 "correlationId": PARK, "qemuPid": 42, "qemuStartTicks": 1234,
                 "diskDevice": disk_info.st_dev, "diskInode": disk_info.st_ino,
                 "qmpInode": 99, "ownerRuntimeOff": True, "terminalAbsence": True})
-            source = park._REMOTE.replace("'/home/kardinal/vpn-control-install-vm-parity-'+role", repr(str(tree)))
-            source = source.replace("'/home/kardinal/.vpn-control-parity-prepare'", repr(str(prep_root)))
-            source = source.replace("'/home/kardinal/.vpn-control-parity-park'", repr(str(park_root)))
-            source = source.replace("'/home/kardinal/.vpn-control-parity-jobs'", repr(str(base / "jobs")))
-            source = source.replace("/proc", str(fake_proc))
-            source = source.replace("if os.geteuid()!=0:raise SystemExit(2)", "if False:raise SystemExit(2)")
-            source = source.replace("pwd.getpwnam('kardinal').pw_uid;PARK_OWNER=0",
-                "os.getuid();PARK_OWNER=os.getuid()")
+            source = role_program(park._REMOTE, base, fake_proc, park_root)
             source = source.replace("except Exception:\n print(json.dumps({'state':'unknown'",
                 "except Exception as error:\n print(json.dumps({'reason':str(error),'state':'unknown'")
             def run():
@@ -203,9 +197,9 @@ class ParkTests(unittest.TestCase):
             self.assertIn("if os.geteuid()!=0:raise SystemExit(2)", commands[0][6])
 
     def test_fake_proc_prefix_disk_fd_does_not_admit_qemu(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=Path('/tmp').resolve()) as directory:
             base = Path(directory).resolve()
-            tree = base / "guest"
+            tree = base / "vpn-control-install-vm-parity-ubuntu-update"
             tree.mkdir(mode=0o700)
             disk = tree / "task.qcow2"
             disk.write_bytes(b"exact")
@@ -231,11 +225,7 @@ class ParkTests(unittest.TestCase):
                            "qemuPid": 42, "qemuStartTicks": 1234,
                            "diskDevice": disk.stat().st_dev, "diskInode": disk.stat().st_ino,
                            "qmpInode": qmp.stat().st_ino}
-                source = park._REMOTE.replace("'/home/kardinal/vpn-control-install-vm-parity-'+role", repr(str(tree)))
-                source = source.replace("/proc", str(fake_proc))
-                source = source.replace("if os.geteuid()!=0:raise SystemExit(2)", "if False:raise SystemExit(2)")
-                source = source.replace("pwd.getpwnam('kardinal').pw_uid;PARK_OWNER=0",
-                    "os.getuid();PARK_OWNER=os.getuid()")
+                source = role_program(park._REMOTE, base, fake_proc, base / '.vpn-control-parity-park')
                 source = source.replace("try:\n claims()", "try:\n proc_identity();raise SystemExit(9)\n claims()")
                 source = source.replace("except Exception:\n print(json.dumps({'state':'unknown'",
                     "except Exception as error:\n print(json.dumps({'reason':str(error),'state':'unknown'")

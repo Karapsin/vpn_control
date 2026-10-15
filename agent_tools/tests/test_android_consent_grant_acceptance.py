@@ -824,14 +824,27 @@ class HostAdmissionTest(unittest.TestCase):
    self.assertTrue((f.job/'release').exists());self.assertEqual(json.loads((f.job/'intent.json').read_text()),f.intent)
    with self.assertRaises(FileExistsError):exec(s._SUBMIT,{'__name__':'__main__'})
    self.assertEqual(spawn.call_count,1)
+ def bounded_route_fixture(self,f):
+  # Complete physical inert route for the real pure oversized-carrier builder.
+  # No SSH child is submitted; the observer boundary below remains explicit.
+  root=f.root.resolve();key=root/'inert-key';known=root/'inert-known'
+  for path in (key,known):path.write_bytes(b'PUBLIC_INERT_FIXTURE\n');path.chmod(0o600)
+  f.write(root/'.vm-hosts.local.json',{'schemaVersion':1,'hosts':{'archlinux':{'host':'192.0.2.72','port':22,'user':'owner','identityFile':str(key),'knownHostsFile':str(known)}}})
+  return s.ssh_transport.load_config(root)
+ def assert_bounded_observer_plan(self,argv,f):
+  from agent_tools import ssh_automatic_program as automatic
+  self.assertIsInstance(argv,automatic.PlannedArgv)
+  self.assertGreater(automatic.command_bytes(argv.original_argv),60000)
+  self.assertIn('ConnectTimeout=60',argv.original_argv)
+  self.assertEqual((argv.root,argv.host,argv.timeout_seconds),(str(f.root.resolve()),'archlinux',60))
+ @unittest.skipUnless(os.name=='posix','actual owner-only POSIX route and automatic-carrier source custody')
  def test_fresh_collector_uses_real_bounded_ssh_builder(self):
-  f=self.fixture()
-  host=s.ssh_transport.SshHost(alias='archlinux',host='fixture',port=22,user='owner',identity_file=Path('/key'),known_hosts_file=Path('/known'))
-  config=SimpleNamespace(root=f.root,hosts={'archlinux':host})
+  f=self.fixture();config=self.bounded_route_fixture(f)
   profile={'adb':f.adb,'serial':'emulator-5556'}
-  with mock.patch.object(s,'_route',return_value=(config,profile)),mock.patch.object(s.android_observation,'_run_probe',return_value=(0,json.dumps({'state':'complete','correlationId':C,'freshProof':True}).encode())) as probe:
+  with mock.patch.object(s,'_route',return_value=(config,profile)),mock.patch.object(s.android_observation,'_run_probe',return_value=(0,json.dumps({'state':'complete','correlationId':C,'freshProof':True}).encode())) as probe,mock.patch.object(subprocess,'Popen',side_effect=AssertionError('SSH_CHILD_FORBIDDEN')) as spawn:
    self.assertTrue(s._observe(f.root,f.intent,'collect')['freshProof'])
-   self.assertIn('ConnectTimeout=60',probe.call_args.args[0]);self.assertEqual(probe.call_args.args[1],s._COLLECT_OBSERVER_SECONDS)
+   self.assert_bounded_observer_plan(probe.call_args.args[0],f);self.assertEqual(probe.call_args.args[1],s._COLLECT_OBSERVER_SECONDS)
+   spawn.assert_not_called()
  def test_host_collect_needs_fresh_proof_and_exact_claims(self):
   for changed in (False,True):
    with self.subTest(changed=changed):
@@ -976,12 +989,14 @@ class HostAdmissionTest(unittest.TestCase):
    again=s.reconcile_replacement(f.root,C,binding['readbackCorrelationId'],binding['backupSha256'],binding['owner'],0)
    self.assertEqual(again['state'],'unknown');self.assertEqual(observe.call_args.args[2],'reconcile-replacement-status')
    self.assertEqual(s.reconcile_replacement_collect(f.root,C)['state'],'unknown');self.assertTrue(lease.exists());self.assertTrue(doc.exists())
+ @unittest.skipUnless(os.name=='posix','actual owner-only POSIX route and automatic-carrier source custody')
  def test_observer_budget_covers_all_guarded_full_exports(self):
   self.assertEqual(s._FULL_SNAPSHOT_SECONDS,2640);self.assertEqual(s._RECONCILE_OBSERVER_SECONDS,3*2640+3*135+120)
-  f=self.fixture();host=s.ssh_transport.SshHost(alias='archlinux',host='fixture',port=22,user='owner',identity_file=Path('/key'),known_hosts_file=Path('/known'));config=SimpleNamespace(root=f.root,hosts={'archlinux':host})
-  with mock.patch.object(s,'_route',return_value=(config,{'adb':f.adb,'serial':'emulator-5556'})),mock.patch.object(s.android_observation,'_run_probe',return_value=(0,json.dumps({'state':'unknown','correlationId':C,'reason':'replacement_closure_incomplete'}).encode())) as probe:
+  f=self.fixture();config=self.bounded_route_fixture(f)
+  with mock.patch.object(s,'_route',return_value=(config,{'adb':f.adb,'serial':'emulator-5556'})),mock.patch.object(s.android_observation,'_run_probe',return_value=(0,json.dumps({'state':'unknown','correlationId':C,'reason':'replacement_closure_incomplete'}).encode())) as probe,mock.patch.object(subprocess,'Popen',side_effect=AssertionError('SSH_CHILD_FORBIDDEN')) as spawn:
    s._observe(f.root,f.intent,'reconcile-replacement-status',{'finite':'binding'})
-   self.assertEqual(probe.call_args.args[1],8445);self.assertIn('ConnectTimeout=60',probe.call_args.args[0])
+   self.assertEqual(probe.call_args.args[1],8445);self.assert_bounded_observer_plan(probe.call_args.args[0],f)
+   spawn.assert_not_called()
  def test_cli_error_classifier_projection_rejects_hostile_code(self):
   flags={'nativeActionAllowed':False,'productAction':False}
   for code in ('PRIVATE_SENTINEL',None,[],{}):
@@ -1172,12 +1187,19 @@ class PromptChunkCollectorTest(unittest.TestCase):
     again,_=self.collect(f,obs);self.assertEqual(again['state'],'unknown')
     self.assertEqual(before,{p.name:p.read_bytes() for p in local.iterdir()})
 
+ @unittest.skipUnless(os.name=='posix','actual bounded observer uses POSIX select on its owned child pipe')
  def test_actual_bounded_observer_rejects_whole_65839_byte_png(self):
   import base64
   png=b'\x89PNG\r\n\x1a\n'+b'x'*(65839-8)
   encoded=base64.b64encode(png).decode()
-  with self.assertRaisesRegex(RuntimeError,'oversized_output'):
-   s.android_observation._run_probe([sys.executable,'-I','-c','print('+repr(encoded)+')'],5)
+  # The output-cap regression must reach its actual child, independently of
+  # the unchanged command cap. Transfer the complete local program by file.
+  with tempfile.TemporaryDirectory() as directory:
+   source=Path(directory).resolve()/'emit-png.py';source.write_text('print('+repr(encoded)+')\n');source.chmod(0o600)
+   argv=[sys.executable,'-I',str(source)]
+   self.assertLessEqual(sum(len(part.encode())+1 for part in argv),60000)
+   with self.assertRaisesRegex(RuntimeError,'oversized_output'):
+    s.android_observation._run_probe(argv,5)
  def test_invalid_uuid_or_unrecognized_paths_never_dispatch(self):
   with mock.patch.object(s.android_observation,'_run_probe') as probe:
    for original,obs in (('../foreign',C),(C,'../foreign'),(None,C),(C,None)):

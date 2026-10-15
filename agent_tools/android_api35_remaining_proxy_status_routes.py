@@ -97,7 +97,7 @@ def _decode(output):
 def _transport(argv,credential,record):
     process=None;streams={};deadline=time.monotonic()+690
     try:
-        process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        process=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         process.stdin.write(credential);process.stdin.close();streams={process.stdout:'stdout',process.stderr:'stderr'}
         while streams:
             remaining=deadline-time.monotonic()
@@ -114,6 +114,7 @@ def _transport(argv,credential,record):
             if process.poll() is None:process.kill();process.wait()
             for stream in (process.stdin,process.stdout,process.stderr):
                 if stream is not None:stream.close()
+        ssh_transport.finish_ssh(process)
 
 
 def _directory(root,identifier):

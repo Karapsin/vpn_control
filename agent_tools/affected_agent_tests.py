@@ -228,6 +228,13 @@ def _dependencies(path, source, inventory, indexes, analysis=None):
         error = SelectionError(message + path)
         error.dependencies = set(edges)
         raise error
+    # A reviewed finite map is a source dependency declaration in its own right.
+    # Provenance-selected compile/read paths need these edges even when their
+    # syntax does not otherwise trigger an opaque-loader diagnostic.
+    reviewed = REVIEWED_DYNAMIC_DEPENDENCIES.get(path)
+    reviewed_source = reviewed and hashlib.sha256(source.encode()).hexdigest() in reviewed["sourceSha256"]
+    if reviewed_source:
+        unknown("Reviewed source dependency declaration changed: ")
     for parent in PurePosixPath(path).parents:
         init = str(parent / "__init__.py")
         if init in inventory and init != path:
@@ -516,6 +523,10 @@ def _dependencies(path, source, inventory, indexes, analysis=None):
                     edges.update(resolved)
                 else:
                     unknown("Unresolved dynamic import at line " + str(node.lineno) + ": ")
+    # Existing opaque-loader diagnostics retain their specific reason above.
+    # Stale declarations on otherwise analyzable readers must also refuse.
+    if reviewed and not reviewed_source:
+        unknown("Reviewed source dependency declaration changed: ")
     return edges
 
 
@@ -688,6 +699,15 @@ def prepare_run(root, command, fingerprint):
     return [command[0], str(root / "agent_tools/agent_test_runner.py"), "--plan-file", str(plan), "--report-dir", str(parent / token)]
 
 
+def test_interpreter(root):
+    """Use the same prepared runtime as MCP; CI may use its prepared system Python."""
+    root=Path(root).resolve()
+    for relative in (".agent_venv/bin/python",".agent_venv/Scripts/python.exe"):
+        candidate=root/relative
+        if candidate.is_file() and os.access(candidate,os.X_OK):return str(candidate)
+    return sys.executable
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
@@ -706,11 +726,12 @@ def main(argv=None):
         return 2
     print(json.dumps(selection.as_dict(), indent=2), flush=True)
     if args.run:
-        commands = selection.commands(sys.executable)
+        python = test_interpreter(args.root)
+        commands = selection.commands(python)
         if args.include is not None:
             ids = [name for name in args.include if name.startswith("scripts.") or any(name == module or name.startswith(module + ".") for module in selection.modules)]
             print(json.dumps({"selectedTestIds": ids, "selectedTestIdCount": len(ids)}), flush=True)
-            commands = [[sys.executable, "-m", "unittest", *ids]] if ids else []
+            commands = [[python, "-m", "unittest", *ids]] if ids else []
         if snapshot(args.root) != fingerprint:
             print("Repository changed after selection; regenerate the test plan", file=sys.stderr)
             return 2

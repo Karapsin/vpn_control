@@ -1,0 +1,7 @@
+{
+  "owner": "agent_tools/ssh_fresh_nested_channel.py",
+  "sourceSha256": "ceb33757946d8f8311abbd2ca460a11c5acc07c38b74fa01eae6587c43e0f931",
+  "fragmentSha256": "13bb975fad728b2f81f1c9b05e4a1fa1b40b587234705512ea6d33c5afc24108",
+  "function": "_retained_v2_terminal",
+  "preservedFailureLog": ".runtime/agent-tool-reproducibility-audit-2026-10-15/routing-units-v2.log"
+}

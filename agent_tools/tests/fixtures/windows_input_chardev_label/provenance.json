@@ -1,0 +1,5 @@
+{
+  "fragmentSha256": "e8dd8d01945813c4ea707966aeebd43d7f891460df6ea18471ed8c1a79e1cf32",
+  "moduleSha256": "4dde8bab3e62e00c5490d74595aba609d2d61c514af2adabb4e1eb5fdfc55cdc",
+  "issue": "A fixed owned-qga label rejects a fully argv-hash-bound fresh QEMU whose label is qga."
+}

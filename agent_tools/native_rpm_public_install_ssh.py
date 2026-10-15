@@ -801,11 +801,11 @@ class RpmPublicInstallSshDriver:
         argv = ssh_transport.build_ssh_argv(config, host, self.timeout_seconds, command=command, ssh_binary=self.ssh_binary)
         connection = ssh_transport.connection_host(config, host)
         context = tempfile.TemporaryDirectory(prefix='vpn-rpm-askpass-') if connection.password is not None else nullcontext(None)
-        with context as temporary:
+        with context as temporary, ssh_transport.automatic_submission(argv) as submitted:
             environment = ssh_transport._askpass_environment(connection.password, Path(temporary))[1] if temporary is not None else None
             diagnostic_file = tempfile.TemporaryFile() if diagnostic else None
             try:
-                process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                process = subprocess.Popen(submitted, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                            stderr=diagnostic_file if diagnostic_file is not None else subprocess.DEVNULL,
                                            env=environment)
             except OSError:

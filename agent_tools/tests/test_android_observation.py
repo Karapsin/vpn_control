@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -70,8 +71,16 @@ class AndroidObservationTest(unittest.TestCase):
         # ssh_transport itself rejects native Windows private-inventory reads.
         # The MCP owner supplies the validated profile/configuration; this
         # parser must still classify a bounded observer result on Windows.
-        with mock.patch.object(observation.os, "name", "nt"), mock.patch.object(observation, "_remote_probe", return_value="print('fixed')"), mock.patch.object(observation, "_run_probe", return_value=(0, self.payload())):
-            result = observation.observe(Path("/workspace"), "android", self.profile)
+        root = Path("/workspace")
+        # Replace only these modules' OS views. Mutating the shared os.name
+        # would make pathlib manufacture a foreign concrete path on this host.
+        windows_os = SimpleNamespace(name="nt", path=os.path)
+        with mock.patch.object(observation.ssh_transport, "os", windows_os), mock.patch.object(observation, "os", windows_os):
+            with self.assertRaisesRegex(transport.SshConfigError, "unsupported on Windows"):
+                transport._read_private_config(root / "private-inventory.json")
+            with mock.patch.object(observation, "_remote_probe", return_value="print('fixed')"), mock.patch.object(observation, "_run_probe", return_value=(0, self.payload())) as probe:
+                result = observation.observe(root, "android", self.profile)
+            probe.assert_called_once()
         self.assertEqual((True, "available"), (result["available"], result["outcome"]))
     def test_invalid_profile_rejects_before_transport(self):
         with mock.patch.object(observation.ssh_transport,"load_config") as config:

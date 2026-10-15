@@ -7,6 +7,10 @@ from agent_tools import ssh_tmux_resource_admission as resource
 from agent_tools import mcp_server as server
 REQUEST={'sourceSha':'d32f719a08db57e5d40ce2bf77e0d7c5b42de557','baseVersion':'2.1.19','targetVersion':'2.2.2','correlationId':'d93cd8dd-a62f-480a-abd8-478be5cc1d21'}
 class ResourceRoutes(unittest.TestCase):
+ def setUp(self):
+  from agent_tools.tests.route_adapter import bind_cached_routes
+  bind_cached_routes(self,server,'ssh_tmux_resource_admission','tmux_workflow_routes')
+
  def test_registered_start_must_use_resource_bridge(self):
   with mock.patch.object(resource,'operate',side_effect=ValueError('missing binding')) as gated,mock.patch.object(routes.adapter,'operate') as old:
    result=server._vm_workflow_impl('linux-package-tmux-start',REQUEST)

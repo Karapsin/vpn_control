@@ -20,7 +20,7 @@ class SelectionTests(unittest.TestCase):
         self.f.stdout=json.dumps(self.remote).encode();self.f.rc=0
         self.admitted=self.f.invoke();self.receipt=self.admitted['receiptSha256']
         self.patch=mock.patch.object(subprocess,'Popen',side_effect=self.f.consumer);self.patch.start();self.addCleanup(self.patch.stop)
-        self.group=self.root/'.rag_index/ssh-channel-selection'
+        self.group=self.root/'.rag_index/ssh-channel-selection/hosts/archlinux'
     def select(self):return selection.select_channel(self.root,'archlinux',self.corr,self.receipt)
     def test_genuine_admission_publication_and_readonly_getter(self):
         before=self.f.f.config_path.read_bytes()

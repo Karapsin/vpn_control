@@ -13,6 +13,13 @@ from agent_tools.native_next_action import next_action
 
 
 class RetirementRoutes(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'ssh_connection_session_retirement',
+        )
+
     def test_fresh_script_context_resolves_relative_imports(self):
         source = str(Path(server.__file__).resolve())
         program = '''import importlib.util,json,sys
@@ -22,13 +29,15 @@ source=%r
 sys.path.insert(0,str(Path(source).parent))
 spec=importlib.util.spec_from_file_location('retirement_cli_server',source)
 server=importlib.util.module_from_spec(spec)
-text=Path(source).read_text()
-if sys.argv[1]=='old':
- needle='else "agent_tools.ssh_connection_session_retirement")'
- assert text.count(needle)==1
- text=text.replace(needle,'else "ssh_connection_session_retirement")',1)
-exec(compile(text,source,'exec'),server.__dict__)
-from agent_tools import ssh_connection_session_retirement as retirement
+spec.loader.exec_module(server)
+try:
+ retirement=importlib.import_module('ssh_connection_session_retirement' if sys.argv[1]=='old' else 'agent_tools.ssh_connection_session_retirement')
+except ImportError:
+ assert sys.argv[1]=='old'
+ print(json.dumps({'ok':False,'reason':'unqualified_relative_import'}))
+ raise SystemExit(0)
+real_adapter=server._agent_module
+server._agent_module=lambda name:retirement if name=='ssh_connection_session_retirement' else real_adapter(name)
 receipt={'state':'retired','host':'archlinux','receiptSha256':'a'*64,'replayAllowed':False}
 with mock.patch.object(retirement,'status',return_value=receipt) as call:
  result=server._ssh_workflow_impl('connection-session-retirement-status','archlinux',identity={'receiptSha256':'a'*64})

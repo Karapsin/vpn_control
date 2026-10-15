@@ -1,0 +1,23 @@
+{
+  "sourceSha256": "d7eb860fff2470cd774f7753be7fcdd235af04069556f8e1eb3cff67e172e0be",
+  "fragmentSha256": "6247199f6509cd5e3e14af266ef519b39c9838757bbdef26431336598927ca4a",
+  "segments": [
+    {
+      "firstLine": 31,
+      "lastLine": 33
+    },
+    {
+      "firstLine": 34,
+      "lastLine": 36
+    },
+    {
+      "firstLine": 37,
+      "lastLine": 37
+    },
+    {
+      "firstLine": 38,
+      "lastLine": 38
+    }
+  ],
+  "scope": "Exact complete core-import statements consumed by MCP startup; standard globals and private source files supplied by the physical fixture."
+}

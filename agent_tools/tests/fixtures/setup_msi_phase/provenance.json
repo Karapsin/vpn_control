@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "source": "windows_vm_unattend.py",
+      "file": "windows_vm_unattend.py.before.source",
+      "sha256": "3c5e474ce2604a7d2cb073feb09eb91fa8138f86e4c2aaa6b7dc17ec2b5aaab0"
+    },
+    {
+      "source": "windows_vm_deploy_remote.py",
+      "file": "windows_vm_deploy_remote.py.before.source",
+      "sha256": "0e6fcfe9cf3c2d39d276b732a413b290c66f9baffec0a55cff928f6625b0f2e1"
+    },
+    {
+      "source": "windows_vm_instance.py",
+      "file": "windows_vm_instance.py.before.source",
+      "sha256": "55f3197e1278ca4100e2218072e00e501dbdac87e11e2e8e436bb348c2c8e0c2"
+    }
+  ],
+  "failure": "Fresh Windows setup stalled inside guest-agent MSI while specialize RunSynchronous waited; installer log ends at early RunEngine file security.",
+  "evidence": "setup-frame-return-v1 and setup-log-frame-return-v1 retain complete PNGs and source-bound transports in the private reproducibility audit; original instance and setup disk remain untouched."
+}

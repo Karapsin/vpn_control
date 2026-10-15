@@ -163,8 +163,40 @@ class NativeMuxWrapperTests(unittest.TestCase):
         new=stage.compressed_native_wrapper(source)
         with tempfile.TemporaryDirectory() as tmp:
             config=ssh.SshConfig(Path(tmp),{'gateway':ssh.SshHost('gateway','gateway.example',22,'public',Path('/public/key'),Path('/public/known')),'arch':ssh.SshHost('arch','arch',22,'public',Path('/public/key'),PurePosixPath('/public/known'),transport='nested',gateway='gateway',remote_host_alias='arch',remote_control_path=PurePosixPath('/public/socket'))})
-            before=ssh.build_ssh_argv(config,'arch',command=probe._remote_command(previous))
-            after=ssh.build_ssh_argv(config,'arch',command=probe._remote_command(new))
+            # Historical route-frame measurement only; raw construction cannot submit.
+            before=ssh._build_ssh_argv(config,'arch',command=probe._remote_command(previous))
+            after=ssh._build_ssh_argv(config,'arch',command=probe._remote_command(new))
+            import os
+            from agent_tools import ssh_automatic_program as automatic
+            from unittest.mock import patch
+            owned=Path(tmp).resolve();owned.chmod(0o700)
+            key,known=owned/'inert-key',owned/'inert-known'
+            for path in (key,known):path.write_bytes(b'PUBLIC_INERT_FIXTURE\n');path.chmod(0o600)
+            hosts={'gateway':{'host':'gateway.example','port':22,'user':'public',
+                    'identityFile':str(key),'knownHostsFile':str(known)},
+                   'arch':{'host':'arch','port':22,'user':'public','identityFile':str(key),
+                    'knownHostsFile':'/public/known','transport':'nested','gateway':'gateway',
+                    'remoteHostAlias':'arch','remoteControlPath':'/public/socket'}}
+            inventory=owned/'.vm-hosts.local.json'
+            inventory.write_text(json.dumps({'schemaVersion':1,'hosts':hosts}));inventory.chmod(0o600)
+            with patch.object(subprocess,'Popen',side_effect=AssertionError('public builder submitted a child')) as child:
+                if automatic.coordinator_capable():
+                    physical=ssh.load_config(owned)
+                    planned=ssh.build_ssh_argv(physical,'arch',command=probe._remote_command(previous))
+                    self.assertIsInstance(planned,automatic.PlannedArgv)
+                    self.assertGreater(automatic.command_bytes(planned.original_argv),60000)
+                    with self.assertRaisesRegex(automatic.AutomaticProgramError,'oversized_argv_requires_automatic_submission'):
+                        list(planned)
+                    bounded=ssh.build_ssh_argv(physical,'arch',command=probe._remote_command(new))
+                    self.assertIsInstance(bounded,list)
+                    self.assertLess(automatic.command_bytes(bounded),60000)
+                else:
+                    if os.name=='nt':
+                        with self.assertRaisesRegex(ssh.SshConfigError,'unsupported on Windows'):
+                            ssh.load_config(owned)
+                    with self.assertRaisesRegex(automatic.AutomaticProgramError,'automatic_unsupported_coordinator'):
+                        ssh.build_ssh_argv(config,'arch',command=probe._remote_command(previous))
+                child.assert_not_called()
         self.assertGreater(max(len(x.encode())+1 for x in before),65536)
         self.assertLess(max(len(x.encode())+1 for x in after),32768)
         tree=ast.parse(new);nodes=[]

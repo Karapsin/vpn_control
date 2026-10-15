@@ -11,6 +11,11 @@ from agent_tools import windows_parallel_vm_source_inventory as inventory
 @unittest.skipUnless(hasattr(os, "getuid"), "Arch source observer requires POSIX local ownership")
 class WindowsParallelSourceRoutes(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'windows_parallel_vm_source_inventory',
+        )
         boot = mock.patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         boot.start()
         self.addCleanup(boot.stop)

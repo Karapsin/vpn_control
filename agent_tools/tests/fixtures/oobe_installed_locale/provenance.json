@@ -1,0 +1,6 @@
+{
+  "source": "agent_tools/windows_vm_unattend.py",
+  "sourceSha256": "43ea7a54cd29ff5a40d0917ed918bb04edcf4d033b60fdc40088488e960c6d89",
+  "failure": "Windows PE locale was configured but installed-OS International-Core locale was omitted; fresh fixed-phase VM pauses at region OOBE.",
+  "nativeEvidence": "setup-fixed-frame-return-v2 complete PNG, exact source-bound transfer and original 04ce5d7b VM disk retained."
+}

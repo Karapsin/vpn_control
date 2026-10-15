@@ -19,6 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Sequence
 
+_MCP_EXECUTING_CODE = sys._getframe().f_code
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _MCP_BOOT_TIME_NS = time.time_ns()
 # Direct CLI/MCP execution has no package context.  Make the checked-in
@@ -27,14 +28,34 @@ _MCP_BOOT_TIME_NS = time.time_ns()
 if not __package__ and str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-docs_assistant = importlib.import_module(
-    f"{__package__}.docs_assistant" if __package__ else "docs_assistant"
-)
-local_build_environment = importlib.import_module(
-    f"{__package__}.local_build_environment" if __package__ else "local_build_environment"
-)
-managed_check_lease = importlib.import_module(f"{__package__ or 'agent_tools'}.managed_check_lease")
-check_output_retention = importlib.import_module(f"{__package__ or 'agent_tools'}.check_output_retention")
+_CORE_IMPORT_DIGESTS = {}
+
+
+def _captured_core(name):
+    """Compile actual captured policy bytes, independent of pyc/module caches."""
+    path=Path(__file__).resolve().with_name(name+'.py')
+    descriptor=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))
+    try:
+        before=os.fstat(descriptor);raw=os.read(descriptor,1024**2+1)
+        identity=lambda value:(value.st_dev,value.st_ino,value.st_mode,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
+        if (not 0<len(raw)<=1024**2 or len(raw)!=before.st_size
+                or identity(os.fstat(descriptor))!=identity(before) or identity(os.stat(path,follow_symlinks=False))!=identity(before)):
+            raise ValueError('Core source capture changed')
+    finally:os.close(descriptor)
+    name='_vpn_core_'+str(_MCP_BOOT_TIME_NS)+'_'+name
+    spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec)
+    sys.modules[name]=module
+    exec(compile(raw,str(path),'exec',dont_inherit=True),module.__dict__)
+    _CORE_IMPORT_DIGESTS[path]=hashlib.sha256(raw).hexdigest()
+    return module
+
+
+docs_assistant = _captured_core('docs_assistant')
+local_build_environment = _captured_core('local_build_environment')
+managed_check_lease = _captured_core('managed_check_lease')
+check_output_retention = _captured_core('check_output_retention')
+windows_vm_setup_policy = _captured_core('windows_vm_setup_policy')
+native_workflow_policy = _captured_core('native_workflow_policy')
 _SELECTOR_IMPORT_BYTES = {
     path: path.read_bytes()
     for path in (Path(__file__).resolve().with_name("affected_agent_tests.py"),
@@ -49,7 +70,7 @@ _SELECTOR_SPEC = importlib.util.spec_from_file_location(_SELECTOR_MODULE_NAME, _
 affected_agent_tests = importlib.util.module_from_spec(_SELECTOR_SPEC)
 sys.modules[_SELECTOR_MODULE_NAME] = affected_agent_tests
 exec(compile(_SELECTOR_IMPORT_BYTES[_SELECTOR_SOURCE_PATH], str(_SELECTOR_SOURCE_PATH), "exec"), affected_agent_tests.__dict__)
-setattr(sys.modules[__package__ or "agent_tools"], "affected_agent_tests", affected_agent_tests)
+setattr(importlib.import_module(__package__ or "agent_tools"), "affected_agent_tests", affected_agent_tests)
 _SELECTOR_IMPORT_CHANGED = (
     any(hashlib.sha256(path.read_bytes()).hexdigest() != digest for path, digest in _SELECTOR_IMPORT_DIGESTS.items())
     or affected_agent_tests.LOADED_SELECTOR_SOURCE_SHA256 != _SELECTOR_IMPORT_DIGESTS[Path(affected_agent_tests.__file__).resolve()]
@@ -72,7 +93,22 @@ _CHECK_RUNNER_SOURCE_DIGESTS = {
     )
 }
 _CHECK_RUNNER_SOURCE_DIGESTS.update(_SELECTOR_IMPORT_DIGESTS)
+_CHECK_RUNNER_SOURCE_DIGESTS.update(_CORE_IMPORT_DIGESTS)
 _CHECK_RUNNER_SOURCE_DIGESTS[affected_agent_tests.DEPENDENCY_MANIFEST.resolve()] = affected_agent_tests.LOADED_DEPENDENCY_MANIFEST_SHA256
+
+
+def _core_source_request(function):
+    @functools.wraps(function)
+    def call(*args,**kwargs):
+        def current():
+            try:return all(hashlib.sha256(path.read_bytes()).hexdigest()==sha for path,sha in _CHECK_RUNNER_SOURCE_DIGESTS.items())
+            except OSError:return False
+        unavailable={"tool":function.__name__,"ok":False,"state":"unknown","reason":"loaded_policy_source_changed",
+                     "nativeActionAllowed":False,"replayAllowed":False,"restartRequired":True}
+        if not current():return unavailable
+        result=function(*args,**kwargs)
+        return result if current() else unavailable
+    return call
 
 try:  # The repository tests intentionally run without the optional MCP package.
     from mcp.server.fastmcp import FastMCP
@@ -213,6 +249,7 @@ GLOB_CHARS = set("*?[]{}")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
+@_core_source_request
 def prepare_start(task: str, area: str | None = None) -> dict[str, Any]:
     """Synchronize safely, build the docs index, and route the task."""
     if not task.strip():
@@ -319,6 +356,7 @@ def prepare_start(task: str, area: str | None = None) -> dict[str, Any]:
     }
 
 
+@_core_source_request
 def docs(query: str, mode: str = "search", top_k: int = 3) -> dict[str, Any]:
     """Search or answer from the repository-local documentation index."""
     if mode not in {"search", "ask"}:
@@ -353,6 +391,7 @@ def docs(query: str, mode: str = "search", top_k: int = 3) -> dict[str, Any]:
         return _error("docs", f"Documentation retrieval failed: {exc}")
 
 
+@_core_source_request
 def change_impact(
     task: str,
     area: str | None = None,
@@ -364,22 +403,33 @@ def change_impact(
     selected_area = _infer_area(task, area, [*requested_paths, *changed])
     search = docs(task, mode="search", top_k=4)
     references = search.get("result", {}).get("matches", []) if search.get("ok") else []
+    recommended, selection_blocker = _recommended_check_plan(selected_area)
     return {
-        "ok": True,
+        "ok": selection_blocker is None,
         "tool": "change_impact",
-        "summary": "Change impact collected.",
+        "summary": "Change impact collected." if selection_blocker is None else "Change impact has unavailable check coverage.",
         "result": {
             "area": selected_area,
             "required_instruction_files": _route(task, selected_area),
             "requested_paths": requested_paths,
             "currently_changed_paths": changed,
             "rag_references": references,
-            "recommended_checks": [_display(command) for command in _commands_for(selected_area, "focused")],
+            "recommended_checks": recommended,
+            "check_selection_blocker": selection_blocker,
             "safety": _safety_notes(task, selected_area),
         },
     }
 
 
+def _recommended_check_plan(area: str) -> tuple[list[str], dict[str, str] | None]:
+    """Unavailable dependency coverage blocks planning; it is never zero checks."""
+    try:
+        return [_display(command) for command in _commands_for(area, "focused")], None
+    except affected_agent_tests.SelectionError as error:
+        return [], {"phase": "check-selection", "reason": str(error)[:2000]}
+
+
+@_core_source_request
 def workflow_status(
     task: str | None = None,
     area: str | None = None,
@@ -394,7 +444,11 @@ def workflow_status(
     receipt_valid = bool(receipt and receipt.get("fingerprint") == _snapshot_fingerprint())
     version_requirement = _version_bump_requirement(changed)
     advisory = _advisory_runs(_git_stdout(["rev-parse", "HEAD"]))
+    recommended, selection_blocker = _recommended_check_plan(selected_area)
+    receipt_valid = receipt_valid and selection_blocker is None
     missing = []
+    if selection_blocker is not None:
+        missing.append("Resolve affected-check selection before validation or delivery.")
     if not instructions_read:
         missing.append("Read the required instruction files before editing.")
     if warnings:
@@ -410,7 +464,8 @@ def workflow_status(
             "area": selected_area,
             "changed_paths": changed,
             "required_instruction_files": [] if instructions_read else route,
-            "recommended_checks": [_display(command) for command in _commands_for(selected_area, "focused")],
+            "recommended_checks": recommended,
+            "check_selection_blocker": selection_blocker,
             "docs_index_fresh": not warnings,
             "prepush_receipt_valid": receipt_valid,
             "version_bump_requirement": version_requirement,
@@ -542,6 +597,7 @@ def _run_check_commands(selected_area: str, level: str, commands: list[list[str]
     }
 
 
+@_core_source_request
 def version_bump(
     summary: str | None = None,
     change_type: str = "implementation",
@@ -651,6 +707,7 @@ def version_bump(
     }
 
 
+@_core_source_request
 def release_workflow(action: str = "status") -> dict[str, Any]:
     """Prepare or publish a release only after an explicit user command."""
     if action not in {"status", "merge-dev", "publish"}:
@@ -746,6 +803,7 @@ def _visual_command(arguments: list[str]) -> dict[str, Any]:
     }
 
 
+@_core_source_request
 def visual_workflow(
     action: str,
     target_sha: str | None = None,
@@ -772,6 +830,7 @@ def visual_workflow(
     return _visual_command(arguments)
 
 
+@_core_source_request
 def visual_review(
     target_sha: str,
     platform: str,
@@ -793,6 +852,7 @@ def visual_review(
     return result
 
 
+@_core_source_request
 def git_workflow(
     action: str,
     message: str | None = None,
@@ -1900,7 +1960,7 @@ def _ssh_channel_workflow(action: str, host: str | None, timeout_seconds: int,
     method = action.removeprefix("connection-channel-")
     selected = False
     try:
-        if (host != "archlinux" or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+        if (type(host) is not str or re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,63}', host) is None or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
                 or transfer is not None or device is not None or type(identity) is not dict):
             return unknown
         fields = {"correlationId"}
@@ -1915,7 +1975,7 @@ def _ssh_channel_workflow(action: str, host: str | None, timeout_seconds: int,
         correlation = uuid.UUID(identity["correlationId"]).hex
         unknown = {**unknown, "failurePhase": "parser", "reason": "invalid_channel_result",
                    "correlationId": identity["correlationId"], "requestedCorrelationId": identity["correlationId"]}
-        adapter = importlib.import_module(f"{__package__ or 'agent_tools'}.ssh_fresh_nested_channel")
+        adapter = _agent_module('ssh_fresh_nested_channel')
         source_fingerprint = hashlib.sha256(Path(adapter.__file__).read_bytes()).hexdigest()
         def retain_capture(capture):
             check_output_retention.retain_observation_capture(
@@ -1948,7 +2008,7 @@ def _ssh_channel_workflow(action: str, host: str | None, timeout_seconds: int,
                 return unknown
             unknown = {**unknown, "failurePhase": "selection",
                        "correlationId": str(uuid.UUID(candidate))}
-            selector = importlib.import_module(f"{__package__ or 'agent_tools'}.ssh_channel_selection")
+            selector = _agent_module('ssh_channel_selection')
             publication = selector.select_channel(REPO_ROOT, host, candidate, result["receiptSha256"])
             expected = {"state": "selected", "host": host, "correlationId": candidate,
                         "receiptSha256": result["receiptSha256"]}
@@ -2019,11 +2079,10 @@ def _ssh_channel_workflow(action: str, host: str | None, timeout_seconds: int,
 from contextlib import contextmanager
 import ast,builtins,inspect,types,importlib.abc,importlib.util
 # Trusted shared custody primitive is imported with canonical server startup.
-keeper_source_closure=importlib.import_module(f"{__package__ or 'agent_tools'}.native_review_source_closure")
 _KEEPER_ROLES=('ssh_channel_keeper_entry.py','ssh_channel_keeper.py','ssh_channel_inventory_diagnostics.py','ssh_fresh_nested_channel.py','private_inventory_lock.py','native_review_source_closure.py','check_output_retention.py','ssh_transport.py','ssh_connection_session.py','ssh_connection_recovery.py','ssh_nested_socket_owned_home_observation.py','ssh_channel_selection.py','mcp_server.py','ssh_nested_socket_noninteractive_observation.py','ssh_nested_socket_retirement.py','ssh_nested_socket_route_diagnostic.py','ssh_recovery_adoption.py')
 @contextmanager
 def _keeper_authenticated_entry(corr,digest=None):
-    custody=keeper_source_closure;held=custody._Held();prefix='_keeper_'+uuid.uuid4().hex
+    custody=_agent_module("native_review_source_closure");held=custody._Held();prefix='_keeper_'+uuid.uuid4().hex
     package=types.ModuleType(prefix);package.__path__=[];sys.modules[prefix]=package;finder=None
     try:
         paths={str(REPO_ROOT/'agent_tools'/name) for name in _KEEPER_ROLES}
@@ -2071,7 +2130,7 @@ def _keeper_authenticated_entry(corr,digest=None):
             def find_spec(self,name,path=None,target=None):
                 if name in cached:return importlib.util.spec_from_loader(name,Loader(),origin=cached[name][0])
                 if name.startswith(prefix+'.'):raise ImportError('undeclared_keeper_module')
-        finder=Finder();sys.meta_path.insert(0,finder);entry=importlib.import_module(prefix+'.ssh_channel_keeper_entry');held.finish()
+        finder=Finder();sys.meta_path.insert(0,finder);entry=_agent_module('ssh_channel_keeper_entry');held.finish()
         yield entry,held
     finally:
         if finder is not None:sys.meta_path.remove(finder)
@@ -2088,6 +2147,11 @@ def _ssh_channel_keeper_workflow(action,host,timeout_seconds,identity,transfer,d
         corr=uuid.UUID(identity['correlationId']).hex
         if (action=='connection-channel-keep' and timeout_seconds!=1800) or (action!='connection-channel-keep' and not 1<=timeout_seconds<=60):return unknown
         digest=None if action=='connection-channel-keeper-source' else identity['sourceManifestSha256']
+        if action not in {'connection-channel-keeper-source','connection-channel-keep','connection-channel-keep-status'}:return unknown
+        if digest is not None and (type(digest)is not str or re.fullmatch('[0-9a-f]{64}',digest)is None
+                                   or type(identity['receiptSha256'])is not str or re.fullmatch('[0-9a-f]{64}',identity['receiptSha256'])is None):return unknown
+        if action in {'connection-channel-keeper-source','connection-channel-keep'}:
+            return {**unknown,'state':'blocked','reason':'historical_channel_keeper_new_work_retired'}
         with _keeper_authenticated_entry(corr,digest) as (entry,authenticated):
             return _keeper_dispatch_authenticated(entry,authenticated,action,corr,identity)
     except (OSError,ValueError,TypeError,KeyError,ImportError,subprocess.SubprocessError):return unknown
@@ -2118,14 +2182,14 @@ def _ssh_direct_channel_workflow(action,host,timeout_seconds,identity,transfer,d
     try:
         method=action.removeprefix('connection-direct-channel-')
         fields={'correlationId','receiptSha256'} if method=='select' else {'correlationId'}
-        if host!='archlinux' or type(timeout_seconds)is not int or not 1<=timeout_seconds<=60 or transfer is not None or device is not None or type(identity)is not dict or set(identity)!=fields or not _valid_uuid(identity['correlationId']):return unknown
+        if type(host)is not str or re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,63}',host)is None or type(timeout_seconds)is not int or not 1<=timeout_seconds<=60 or transfer is not None or device is not None or type(identity)is not dict or set(identity)!=fields or not _valid_uuid(identity['correlationId']):return unknown
         corr=uuid.UUID(identity['correlationId']).hex
-        adapter=importlib.import_module(f"{__package__ or 'agent_tools'}.ssh_direct_nested_channel")
+        adapter=_agent_module('ssh_direct_nested_channel')
         if not adapter.coordinator_capable():return unknown
         if method=='select':
             digest=identity['receiptSha256']
             if type(digest)is not str or re.fullmatch('[0-9a-f]{64}',digest)is None:return unknown
-            selector=importlib.import_module(f"{__package__ or 'agent_tools'}.ssh_channel_selection")
+            selector=_agent_module('ssh_channel_selection')
             value=selector.select_channel(REPO_ROOT,host,corr,digest,direct=True)
             expected={'state':'selected','host':host,'correlationId':corr,'receiptSha256':digest}
             return {**unknown,'ok':True,**value} if value==expected else unknown
@@ -2149,15 +2213,59 @@ def _ssh_direct_channel_workflow(action,host,timeout_seconds,identity,transfer,d
     except (OSError,ValueError,TypeError,KeyError,ImportError,AttributeError):return unknown
 
 
+def _native_source_request(function):
+    """Keep shared captured imports alive until the complete native RPC closes."""
+    @functools.wraps(function)
+    def call(*args, **kwargs):
+        loader = importlib.import_module("agent_tools.source_module_loader")
+        try:
+            with loader.request_scope(Path(__file__).resolve().parent):
+                return function(*args, **kwargs)
+        except (ValueError, OSError):
+            return {"tool": "ssh_workflow" if function.__name__.startswith("_ssh") else "vm_workflow",
+                    "ok": False, "state": "unknown", "reason": "native_source_closure_unavailable",
+                    "nativeActionAllowed": False, "replayAllowed": False, "productAction": False}
+    return call
+
+
+@_native_source_request
 def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
     """Inspect configured SSH hosts, recover a nested connection, or transfer owned fixture helpers."""
+    if action == "windows-caller-file-receipt":
+        if (type(host)is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}",host)is None or transfer is not None or device is not None
+                or type(identity) is not dict or set(identity) != {"correlationId"}):
+            return _error("ssh_workflow", "Windows caller receipt requires only its original correlation identity.")
+        try:
+            staging = _agent_module("ssh_source_file_stage_direct")
+            result = staging.retained_receipt(REPO_ROOT, identity["correlationId"],host=host)
+        except (OSError, ValueError, TypeError, KeyError):
+            return {"tool": "ssh_workflow", "ok": False, "state": "unknown",
+                    "reason": "source_stage_receipt_unavailable", "nativeActionAllowed": False,
+                    "sourceExecuted": False, "replayAllowed": False}
+        return {"tool": "ssh_workflow", "ok": result.get("state") == "recorded", **result}
+    if action == "windows-caller-file-stage":
+        if (type(host)is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}",host)is None or identity is not None or device is not None
+                or type(transfer) is not dict
+                or set(transfer) != {"sourceFile", "sourceSha256", "correlationId"}
+                or type(timeout_seconds) is not int or timeout_seconds != 60):
+            return _error("ssh_workflow", "Windows caller staging requires an exact saved-file identity, configured host and fixed 60-second phase observations.")
+        try:
+            staging = _agent_module("ssh_source_file_stage_direct")
+            result = staging.publish(REPO_ROOT, host, transfer["sourceFile"],
+                                     transfer["sourceSha256"], transfer["correlationId"])
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            reason = str(error) if type(error) is ValueError and re.fullmatch("[a-z_]{1,80}", str(error)) else "source_stage_admission"
+            return {"tool": "ssh_workflow", "ok": False, "state": "refused", "reason": reason,
+                    "sourceExecuted": False, "nativeActionAllowed": False, "replayAllowed": False}
+        return {"tool": "ssh_workflow", "ok": result.get("state") == "staged",
+                "nativeActionAllowed": False, **result}
     if action in {"connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status"}:
         return _ssh_channel_keeper_workflow(action,host,timeout_seconds,identity,transfer,device)
     if action in {"connection-channel-prepare", "connection-channel-status", "connection-channel-ensure"}:
         return _ssh_channel_workflow(action, host, timeout_seconds, identity, transfer, device)
     if action in {"connection-direct-channel-prepare","connection-direct-channel-status","connection-direct-channel-select"}:
         return _ssh_direct_channel_workflow(action,host,timeout_seconds,identity,transfer,device)
-    transport = importlib.import_module(f"{__package__}.ssh_transport" if __package__ else "ssh_transport")
+    transport = _agent_module('ssh_transport')
     try:
         if action in {"connection-master-status", "gateway-tmux-status-diagnostic"}:
             unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown",
@@ -2170,7 +2278,7 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
                 if action == "connection-master-status":
                     if identity is not None:
                         return unknown
-                    adapter = importlib.import_module(f"{__package__}.ssh_connection_recovery" if __package__ else "ssh_connection_recovery")
+                    adapter = _agent_module('ssh_connection_recovery')
                     result = adapter.configured_master_fenced_status(REPO_ROOT, host, timeout_seconds)
                     if (type(result) is not dict
                             or set(result) != {"nestedState", "socketState", "failurePhase", "replayAllowed", "launchAllowed", "nativeActionAllowed"}
@@ -2336,7 +2444,7 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
                 return unknown
         if action in {"connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability"}:
             transport._session_module()
-            routes = importlib.import_module(f"{__package__}.ssh_acceptance_observation_routes" if __package__ else "agent_tools.ssh_acceptance_observation_routes")
+            routes = _agent_module('ssh_acceptance_observation_routes')
             return routes.dispatch(REPO_ROOT, action, host, timeout_seconds, identity, transfer, device)
         if action == "inventory":
             return {"ok": True, "tool": "ssh_workflow", "hosts": list(transport.inventory(REPO_ROOT))}
@@ -2377,7 +2485,7 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
             try:
                 # Match the transport's package bootstrap for fresh CLI scripts.
                 transport._session_module()
-                retirement = importlib.import_module(f"{__package__}.ssh_connection_session_retirement" if __package__ else "agent_tools.ssh_connection_session_retirement")
+                retirement = _agent_module('ssh_connection_session_retirement')
                 operation = retirement.retire if action == "connection-session-retire" else retirement.status
                 result = operation(REPO_ROOT, host, identity["receiptSha256"])
             except (OSError, ValueError, TypeError, ImportError):
@@ -2421,14 +2529,14 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
                 return {**unknown, "host": host, "phase": result["phase"]}
             return unknown
         if action == "connection-recover" and host:
-            recovery = importlib.import_module(f"{__package__}.ssh_connection_recovery" if __package__ else "ssh_connection_recovery")
+            recovery = _agent_module('ssh_connection_recovery')
             return {"tool": "ssh_workflow", "host": host, **recovery.recover(REPO_ROOT, host, timeout_seconds)}
         if action == "connection-adopt":
             unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
             if (not isinstance(host, str) or not host or type(timeout_seconds) is not int
                     or not 1 <= timeout_seconds <= 60 or any(value is not None for value in (identity, transfer, device))):
                 return unknown
-            adoption = importlib.import_module(f"{__package__}.ssh_recovery_adoption" if __package__ else "ssh_recovery_adoption")
+            adoption = _agent_module('ssh_recovery_adoption')
             try:
                 result = adoption.adopt(REPO_ROOT, host, timeout_seconds)
             except (OSError, ValueError, TypeError):
@@ -2440,7 +2548,7 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
                 return unknown
             return {"tool": "ssh_workflow", "host": host, "ok": result["state"] == "ready", **result}
         if action in ("forward-open", "forward-status", "forward-close") and host:
-            forward = importlib.import_module(f"{__package__}.ssh_forward" if __package__ else "ssh_forward")
+            forward = _agent_module('ssh_forward')
             if action == "forward-open":
                 result = forward.open_forward(REPO_ROOT, host)
             elif action == "forward-status":
@@ -2449,7 +2557,7 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
                 result = forward.close(REPO_ROOT, identity or {}, host)
             return {"tool": "ssh_workflow", **result}
         if action in ("apk-publish", "apk-status") and host:
-            publisher = importlib.import_module(f"{__package__}.ssh_transfer" if __package__ else "ssh_transfer")
+            publisher = _agent_module('ssh_transfer')
             try:
                 if action == "apk-status":
                     result = publisher.android_apk_stage_status(REPO_ROOT, host, identity or {}, timeout_seconds=timeout_seconds)
@@ -2466,7 +2574,7 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
             if identity is not None:
                 if transfer is not None or type(identity) is not dict or set(identity) != {"cliArtifact"}:
                     return _error("ssh_workflow", "Qualified Android observation requires only cliArtifact.")
-                qualified = importlib.import_module(f"{__package__}.android_qualified_cli_observation" if __package__ else "android_qualified_cli_observation")
+                qualified = _agent_module('android_qualified_cli_observation')
                 try:
                     result = qualified.observe(REPO_ROOT, host, device, identity["cliArtifact"], timeout_seconds)
                     return {"tool": "ssh_workflow", "ok": result.get("available") is True, **result}
@@ -2475,20 +2583,20 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
             configured = transport.load_config(REPO_ROOT).hosts.get(host)
             if configured is None or device not in configured.android_devices:
                 return _error("ssh_workflow", "Unknown configured Android device alias.")
-            observer = importlib.import_module(f"{__package__}.android_observation" if __package__ else "android_observation")
+            observer = _agent_module('android_observation')
             try:
                 result = observer.observe(REPO_ROOT, host, configured.android_devices[device], timeout_seconds)
                 return {"tool": "ssh_workflow", "ok": result.get("available") is True, **result}
             except observer.AndroidObservationError as error:
                 return _error("ssh_workflow", str(error))
         if action == "job-status" and host and identity:
-            jobs = importlib.import_module(f"{__package__}.ssh_jobs" if __package__ else "ssh_jobs")
+            jobs = _agent_module('ssh_jobs')
             try:
                 return {"tool": "ssh_workflow", **jobs.observe(REPO_ROOT, host, identity, timeout_seconds).as_dict()}
             except jobs.SshJobError as error:
                 return _error("ssh_workflow", str(error))
         if action in ("fixture-publish", "fixture-status") and host:
-            publisher = importlib.import_module(f"{__package__}.ssh_transfer" if __package__ else "ssh_transfer")
+            publisher = _agent_module('ssh_transfer')
             try:
                 if action == "fixture-status":
                     result = publisher.status(REPO_ROOT, host, identity or {}, timeout_seconds=timeout_seconds)
@@ -2510,6 +2618,14 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
 
 def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Dispatch only existing fixed adapters; batches cannot invoke arbitrary tools."""
+    if surface == "vm":
+        retired = native_workflow_policy.refusal(action)
+        if retired is not None:
+            return retired
+    if surface == "vm" and action.startswith("windows-"):
+        retired = windows_vm_setup_policy.refusal(action,inputs)
+        if retired is not None:
+            return retired
     vm_actions = {"artifact-verify", "bundle-verify", "environment-status", "credential-status",
                   "windows-credential-probe-start", "windows-credential-probe-status",
                   "windows-vm-swtpm-repair-preflight", "windows-vm-swtpm-repair-start", "windows-vm-swtpm-repair-status",
@@ -2527,34 +2643,185 @@ def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) ->
 
 
 _VM_NATIVE_ADAPTERS = (
-    "windows_guest_input",
-    "native_review_source_closure",
-    "ssh_tmux_disconnect_probe",
-    "ssh_gateway_tmux_master_ssh",
-    "ssh_gateway_tmux_reconciliation_status",
-    "ssh_connection_session_close",
-    "windows_cp117_cp95_task_retire", "windows_cp117_e848_http_task_retire", "windows_cp117_c32_retained_task_retire", "windows_cp117_source_pre_effect_close",
-    "windows_cp117_cp95_retained_tasks", "windows_cp117_e848_http_task",
-    "native_vm_baseline_config", "native_vm_baseline_inventory", "native_acceptance_matrix", "native_fixture_preflight",
-    "native_execution_context", "native_scenario_batch", "native_artifact_reuse", "native_acceptance_overview", "native_scenario_execution",
-    "native_scenario_ssh", "native_artifact_registry", "native_environment",
-    "native_environment_observation", "native_scenario_bundle", "native_next_action",
-    "native_response_diagnostics", "native_build_timing", "native_parity_response_projection",
-    "native_failure_evidence", "macos_installer_recovery", "native_rpm_public_install_adapter",
-    "native_rpm_public_install_ssh", "android_admission_readback", "windows_msi_public_scenario", "windows_vm_swtpm_repair",
-    "linux_update_fixture_workflow", "linux_rpm_fixture_server_lifecycle", "linux_rpm_workspace_recovery", "linux_vm_readonly_inventory", "arch_ai_loop_observe", "arch_qemu_holder_census", "windows_vm_baseline_inventory", "windows_parallel_vm_source_inventory", "windows_parallel_vm_prepare_transport", "windows_vm_secureboot_inventory", "windows_vm_virt_firmware_admission", "windows_vm_virt_firmware_install", "windows_vm_secureboot_clone", "windows_vm_secureboot_fresh", "windows_vm_driver_fetch", "windows_vm_fresh_setup", "windows_vm_optical_boot", "windows_vm_optical_boot_attempt2", "windows_vm_optical_boot_attempt3", "windows_vm_optical_post_collect", "windows_vm_optical_current_screen", "windows_update_fixture_workflow", "windows_update_fixture_server", "linux_rpm_base_prepare", "linux_rpm_protected_job_observe", "linux_owner_public_quit", "windows_msi_base_prepare", "windows_msi_transfer_endpoint", "windows_msi_http_transfer", "windows_msiexec_service_diagnostic",
-    "windows_msi_owner_observe", "windows_msi_owner_census", "windows_msi_owner_diagnostic", "windows_msi_owner_liveness", "windows_msi_stale_lock_recovery", "windows_msi_stale_lock_reconcile", "windows_msi_owner_relaunch", "windows_msi_owner_public_status", "windows_msi_owner_public_status_retry", "windows_msi_owner_public_status_third", "windows_msi_owner_relaunch_quit", "windows_msi_owner_relaunch_quit_v2", "windows_msi_owner_relaunch_quit_v3", "windows_msi_owner_relaunch_quit_v4", "windows_msi_owner_quit_phase_diagnostic", "windows_msi_target_prepare",
-    "windows_update_fixture_stage", "windows_update_fixture_stage_recovery", "windows_update_fixture_http_stage", "windows_update_fixture_guest_create_abort", "windows_update_fixture_download_abort", "windows_update_fixture_download_abort_current", "windows_large_artifact_transfer", "windows_cp117_campaign_rebase", "windows_cp117_e66_successor", "windows_cp117_guest_abort_successor", "windows_cp117_download_abort_successor", "windows_cp117_download_abort_current_successor", "windows_cp117_campaign_status", "windows_cp117_staged_fixture_retire", "windows_cp117_c32_archive_admission", "windows_cp117_c32_host_archive", "windows_cp117_historical_base_archives", "windows_cp117_c32_absence", "windows_cp117_source_campaign", "windows_cp117_guest_agent_recovery", "windows_cp117_guest_agent_recovery_successor", "windows_cp117_retirement_recovery", "windows_fixture_phase_status", "windows_fixture_credentials", "windows_fixture_python_download_preflight", "windows_fixture_python_host_source", "windows_fixture_python_acquire_transfer", "windows_fixture_python_guest_install", "windows_fixture_package_mode_repair", "windows_fixture_server_abort_successor", "windows_fixture_server_second_abort_successor", "windows_fixture_server_resume", "windows_fixture_post_resource_diagnostic", "windows_fixture_acl_preflight",
-    "windows_fixture_owner_network", "windows_fixture_network_probe",
-    "windows_vm_setup_language_next",
-    "windows_vm_setup_keyboard_next",
-    "windows_vm_setup_install_disk_proof",
-    "windows_vm_setup_install_focus",
-    "windows_vm_setup_install_ack",
-    "windows_vm_setup_install_next",
-    "android_package_install", "android_public_inspect", "android_document_acceptance", "android_document_retry", "android_document_retry_unknown", "android_document_recovery", "android_action_acceptance", "android_runtime_acceptance", "android_obsolete_consent_denial", "android_vpn_permission_reset", "android_consent_grant_acceptance", "android_consent_acceptance", "android_native_fixture_lifecycle", "android_endpoint_admission", "android_recovered_endpoint_stage_cleanup", "android_installer_dispatch", "android_cli_stage",
-    "macos_fixture_guest_stage", "macos_machine_server_stop", "linux_guest_park", "linux_package_fixture_build", "linux_deb_arch_guest_prepare", "linux_deb_arch_guest_prepare_remote",
-    "linux_deb_arch_acceptance", "linux_deb_arch_transport", "linux_deb_arch_host_supervisor", "tmux_workflow_routes", "android_coldboot_product_routes", "android_api35_large_routing_routes", "android_fixture_tls_routes", "android_api35_remaining_proxy_status_routes",
+    'android_observation',
+    'android_proxy_recovery',
+    'android_qualified_cli_observation',
+    'ssh_acceptance_observation_routes',
+    'ssh_channel_keeper_entry',
+    'ssh_channel_selection',
+    'ssh_connection_recovery',
+    'ssh_connection_session_retirement',
+    'ssh_direct_nested_channel',
+    'ssh_forward',
+    'ssh_fresh_nested_channel',
+    'ssh_jobs',
+    'ssh_recovery_adoption',
+    'ssh_source_file_stage_direct',
+    'ssh_transfer',
+    'ssh_transport',
+    'windows_guest_input',
+    'windows_credential_recovery_ssh',
+    'windows_credential_probe_ssh',
+    'native_review_source_closure',
+    'ssh_tmux_disconnect_probe',
+    'ssh_gateway_tmux_master_ssh',
+    'ssh_gateway_tmux_reconciliation_status',
+    'ssh_connection_session_close',
+    'windows_cp117_cp95_task_retire',
+    'windows_cp117_e848_http_task_retire',
+    'windows_cp117_c32_retained_task_retire',
+    'windows_cp117_source_pre_effect_close',
+    'windows_cp117_cp95_retained_tasks',
+    'windows_cp117_e848_http_task',
+    'native_vm_baseline_config',
+    'native_vm_baseline_inventory',
+    'native_acceptance_matrix',
+    'native_fixture_preflight',
+    'native_execution_context',
+    'native_scenario_batch',
+    'native_artifact_reuse',
+    'native_acceptance_overview',
+    'native_scenario_execution',
+    'native_scenario_ssh',
+    'native_artifact_registry',
+    'native_environment',
+    'native_environment_observation',
+    'native_scenario_bundle',
+    'native_next_action',
+    'native_response_diagnostics',
+    'native_build_timing',
+    'native_parity_response_projection',
+    'native_failure_evidence',
+    'macos_installer_recovery',
+    'macos_fixture_stage',
+    'native_rpm_public_install_adapter',
+    'native_rpm_public_install_ssh',
+    'android_admission_readback',
+    'windows_msi_public_scenario',
+    'windows_vm_swtpm_repair',
+    'linux_update_fixture_workflow',
+    'linux_rpm_fixture_server_lifecycle',
+    'linux_rpm_workspace_recovery',
+    'linux_vm_readonly_inventory',
+    'arch_ai_loop_observe',
+    'arch_qemu_holder_census',
+    'windows_vm_baseline_inventory',
+    'windows_parallel_vm_source_inventory',
+    'windows_parallel_vm_prepare_transport',
+    'windows_vm_secureboot_inventory',
+    'windows_vm_virt_firmware_admission',
+    'windows_vm_virt_firmware_install',
+    'windows_vm_secureboot_clone',
+    'windows_vm_secureboot_fresh',
+    'windows_vm_driver_fetch',
+    'windows_vm_fresh_setup',
+    'windows_vm_optical_boot',
+    'windows_vm_optical_boot_attempt2',
+    'windows_vm_optical_boot_attempt3',
+    'windows_vm_optical_post_collect',
+    'windows_vm_optical_current_screen',
+    'windows_update_fixture_workflow',
+    'windows_update_fixture_server',
+    'linux_rpm_base_prepare',
+    'linux_rpm_protected_job_observe',
+    'linux_owner_public_quit',
+    'windows_msi_base_prepare',
+    'windows_msi_transfer_endpoint',
+    'windows_msi_http_transfer',
+    'windows_msiexec_service_diagnostic',
+    'windows_msi_owner_observe',
+    'windows_msi_owner_census',
+    'windows_msi_owner_diagnostic',
+    'windows_msi_owner_liveness',
+    'windows_msi_stale_lock_recovery',
+    'windows_msi_stale_lock_reconcile',
+    'windows_msi_owner_relaunch',
+    'windows_msi_owner_public_status',
+    'windows_msi_owner_public_status_retry',
+    'windows_msi_owner_public_status_third',
+    'windows_msi_owner_relaunch_quit',
+    'windows_msi_owner_relaunch_quit_v2',
+    'windows_msi_owner_relaunch_quit_v3',
+    'windows_msi_owner_relaunch_quit_v4',
+    'windows_msi_owner_quit_phase_diagnostic',
+    'windows_msi_target_prepare',
+    'windows_update_fixture_stage',
+    'windows_update_fixture_stage_recovery',
+    'windows_update_fixture_http_stage',
+    'windows_update_fixture_guest_create_abort',
+    'windows_update_fixture_download_abort',
+    'windows_update_fixture_download_abort_current',
+    'windows_large_artifact_transfer',
+    'windows_cp117_campaign_rebase',
+    'windows_cp117_e66_successor',
+    'windows_cp117_guest_abort_successor',
+    'windows_cp117_download_abort_successor',
+    'windows_cp117_download_abort_current_successor',
+    'windows_cp117_campaign_status',
+    'windows_cp117_staged_fixture_retire',
+    'windows_cp117_c32_archive_admission',
+    'windows_cp117_c32_host_archive',
+    'windows_cp117_historical_base_archives',
+    'windows_cp117_c32_absence',
+    'windows_cp117_source_campaign',
+    'windows_cp117_guest_agent_recovery',
+    'windows_cp117_guest_agent_recovery_successor',
+    'windows_cp117_retirement_recovery',
+    'windows_fixture_phase_status',
+    'windows_fixture_credentials',
+    'windows_fixture_python_download_preflight',
+    'windows_fixture_python_host_source',
+    'windows_fixture_python_acquire_transfer',
+    'windows_fixture_python_guest_install',
+    'windows_fixture_package_mode_repair',
+    'windows_fixture_server_abort_successor',
+    'windows_fixture_server_second_abort_successor',
+    'windows_fixture_server_resume',
+    'windows_fixture_post_resource_diagnostic',
+    'windows_fixture_acl_preflight',
+    'windows_fixture_owner_network',
+    'windows_fixture_network_probe',
+    'windows_vm_setup_language_next',
+    'windows_vm_setup_keyboard_next',
+    'windows_vm_setup_install_disk_proof',
+    'windows_vm_setup_install_focus',
+    'windows_vm_setup_install_ack',
+    'windows_vm_setup_install_next',
+    'windows_vm_deploy',
+    'windows_vm_setup_policy',
+    'vm_workflow',
+    'android_package_install',
+    'android_public_inspect',
+    'android_document_acceptance',
+    'android_document_retry',
+    'android_document_retry_unknown',
+    'android_document_recovery',
+    'android_action_acceptance',
+    'android_runtime_acceptance',
+    'android_obsolete_consent_denial',
+    'android_vpn_permission_reset',
+    'android_consent_grant_acceptance',
+    'android_consent_acceptance',
+    'android_native_fixture_lifecycle',
+    'android_endpoint_admission',
+    'android_recovered_endpoint_stage_cleanup',
+    'android_installer_dispatch',
+    'android_cli_stage',
+    'macos_fixture_guest_stage',
+    'macos_machine_server_stop',
+    'linux_guest_park',
+    'linux_package_fixture_build',
+    'linux_deb_arch_guest_prepare',
+    'linux_deb_arch_guest_prepare_remote',
+    'linux_deb_arch_acceptance',
+    'linux_deb_arch_transport',
+    'linux_deb_arch_host_supervisor',
+    'tmux_workflow_routes',
+    'android_coldboot_product_routes',
+    'android_api35_large_routing_routes',
+    'android_fixture_tls_routes',
+    'android_api35_remaining_proxy_status_routes',
+    'windows_cp117_source_projection',
 )
 
 
@@ -2562,17 +2829,13 @@ def _agent_module(name: str) -> Any:
     """Load a fixed native adapter from this repository's package."""
     if name not in _VM_NATIVE_ADAPTERS:
         raise ValueError("Unknown fixed native adapter.")
-    module = importlib.import_module(f"{__package__ or 'agent_tools'}.{name}")
-    source = getattr(module, "__file__", None)
-    if not isinstance(source, str) or not source.endswith(".py"):
-        raise ValueError("Fixed native adapter source is unavailable.")
-    try:
-        modified_ns = Path(source).stat().st_mtime_ns
-    except OSError as error:
-        raise ValueError("Fixed native adapter source is unavailable.") from error
-    if modified_ns > _MCP_BOOT_TIME_NS:
-        raise ValueError("MCP adapter source changed after this server started; use the fresh-process mcp_tool.sh route or restart MCP.")
-    return module
+    current=Path(__file__).read_bytes()
+    if (_MCP_EXECUTING_CODE!=compile(current,__file__,"exec",dont_inherit=True,optimize=sys.flags.optimize)
+            or hashlib.sha256(current).hexdigest()!=_CHECK_RUNNER_SOURCE_DIGESTS[Path(__file__).resolve()]):
+        raise ValueError("MCP source changed; use the fresh-process route or restart MCP.")
+    loader=importlib.import_module(f"{__package__ or 'agent_tools'}.source_module_loader"
+                                   if __package__ in (None,"agent_tools") else "agent_tools.source_module_loader")
+    return loader.adapter(Path(__file__).resolve().parent,name)
 
 
 def _valid_uuid(value: str) -> bool:
@@ -2686,12 +2949,68 @@ def _windows_parallel_copy_result(value: Any, correlation: str, action: str, ada
     return value
 
 
+@_native_source_request
 def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
-    """Validate staged inputs or calculate memory admission; neither action starts a VM."""
-    workflow = importlib.import_module(f"{__package__}.vm_workflow" if __package__ else "vm_workflow")
+    """Dispatch finite native workflows with explicit source and ownership gates."""
     try:
         if not isinstance(inputs, dict):
             return _error("vm_workflow", "VM workflow inputs must be an object.")
+        if action in {'windows-vm-deploy-secure','windows-vm-deploy-secure-status'}:
+            if set(inputs)!={'deploymentId','operationId','credentialFile'} or any(type(v)is not str for v in inputs.values()):
+                return _error('vm_workflow','Secure setup requires deploymentId, operationId and credentialFile.')
+            try:
+                result=_agent_module('windows_vm_deploy').secure(REPO_ROOT,inputs['deploymentId'],inputs['operationId'],inputs['credentialFile'],status_only=action.endswith('-status'))
+                return {'tool':'vm_workflow',**result,'ok':result['state']=='secured-observed','productAction':False,'evidenceClass':'owned-windows-setup-security'}
+            except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError):
+                return {'tool':'vm_workflow','ok':False,'state':'unknown','reason':'deployment_secure_unavailable','nativeActionAllowed':False,'replayAllowed':False,'productAction':False}
+        if action in {'windows-vm-deploy-frame','windows-vm-deploy-frame-collect'}:
+            if set(inputs)!={'deploymentId','operationId'} or any(type(v)is not str for v in inputs.values()):
+                return _error('vm_workflow','Frame capture requires deploymentId and operationId.')
+            try:
+                result=_agent_module('windows_vm_deploy').frame(REPO_ROOT,inputs['deploymentId'],inputs['operationId'],collect=action.endswith('-collect'))
+                return {'tool':'vm_workflow',**result,'ok':result['state']=='frame-read-observed','productAction':False,'evidenceClass':'owned-windows-console-frame'}
+            except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError):
+                return {'tool':'vm_workflow','ok':False,'state':'unknown','reason':'deployment_frame_unavailable','nativeActionAllowed':False,'replayAllowed':False,'productAction':False}
+        if action in {'windows-vm-deploy-qualify','windows-vm-deploy-qualify-status'}:
+            if set(inputs)!={'deploymentId','operationId','credentialFile'} or any(type(v)is not str for v in inputs.values()):
+                return _error('vm_workflow','Qualification requires deploymentId, operationId and credentialFile.')
+            try:
+                result=_agent_module('windows_vm_deploy').qualify(REPO_ROOT,inputs['deploymentId'],inputs['operationId'],inputs['credentialFile'],status_only=action.endswith('-status'))
+                return {'tool':'vm_workflow',**result,'ok':result['state']=='setup-observed','productAction':False,'evidenceClass':'read-only-owned-windows-setup'}
+            except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError):
+                return {'tool':'vm_workflow','ok':False,'state':'unknown','reason':'deployment_qualification_unavailable','nativeActionAllowed':False,'replayAllowed':False,'productAction':False}
+        if action in {'windows-vm-deploy-start','windows-vm-deploy-status','windows-vm-deploy-stop'}:
+            starting=action.endswith('-start')
+            stopping=action.endswith('-stop')
+            required={'spec','setup','credentialFile'} if starting else {'deploymentId','credentialFile'}
+            if (set(inputs)!=required or type(inputs['credentialFile'])is not str or
+                    starting and (type(inputs['spec'])is not dict or type(inputs['setup'])is not dict) or
+                    not starting and type(inputs['deploymentId'])is not str):
+                return _error('vm_workflow','Windows VM start requires spec, setup and credentialFile; status requires deploymentId and credentialFile.')
+            try:
+                deploy=_agent_module('windows_vm_deploy')
+                result=(deploy.start(REPO_ROOT,inputs['spec'],inputs['setup'],inputs['credentialFile']) if starting
+                        else (deploy.stop if stopping else deploy.status)(REPO_ROOT,inputs['deploymentId'],inputs['credentialFile']))
+                return {'tool':'vm_workflow',**result,'ok':(result['state']=='booted-observed' and result['qemuStatus']=='running' or result['state']=='stopped-observed' and result['positiveAbsence'] is True),
+                        'productAction':False,'evidenceClass':'owned-windows-vm-start' if starting else 'owned-windows-vm-stop' if stopping else 'read-only-owned-windows-vm'}
+            except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError):
+                return {'tool':'vm_workflow','ok':False,'state':'unknown','reason':'deployment_start_unavailable' if starting else 'deployment_stop_unavailable' if stopping else 'deployment_status_unavailable',
+                        'nativeActionAllowed':False,'replayAllowed':False,'productAction':False}
+        if action in {"windows-vm-deploy-preflight", "windows-vm-deploy-resources", "windows-vm-deploy-media"}:
+            resource_read=action.endswith('-resources')
+            media_read=action.endswith('-media')
+            if (set(inputs)!=({'spec','credentialFile'} if resource_read else {'spec'}) or type(inputs['spec'])is not dict
+                    or resource_read and type(inputs['credentialFile'])is not str):
+                return _error("vm_workflow", "Windows deployment requires a typed spec and an explicit credential file for the privileged resource read.")
+            try:
+                deploy=_agent_module("windows_vm_deploy")
+                result=(deploy.resources(REPO_ROOT,inputs['spec'],inputs['credentialFile']) if resource_read
+                        else (deploy.installer_media if media_read else deploy.preflight)(REPO_ROOT,inputs['spec']))
+                return {"tool":"vm_workflow","ok":result["state"]==('resources-observed' if resource_read else 'media-observed' if media_read else 'qualified'),**result,
+                        "productAction":False,"evidenceClass":"read-only-deployment-resources" if resource_read else "read-only-installer-media" if media_read else "read-only-deployment-preflight"}
+            except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError):
+                return {"tool":"vm_workflow","ok":False,"state":"unknown","reason":"deployment_preflight_unavailable",
+                        "nativeActionAllowed":False,"replayAllowed":False,"productAction":False}
         if action in {"windows-input-start", "windows-input-observe", "windows-input-join",
                   "windows-input-decision", "windows-input-finish"}:
             return _agent_module("windows_guest_input").dispatch(REPO_ROOT, action, inputs)
@@ -2949,6 +3268,18 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "correlationId": inputs.get("correlationId"),
                         "productAction": False, "nativeActionAllowed": False,
                         "replayAllowed": False}
+        if action in {"macos-fixture-stage-start", "macos-fixture-stage-status", "macos-fixture-stage-collect"}:
+            stage = _agent_module("macos_fixture_stage")
+            try:
+                method = (stage.registered_start if action.endswith("-start") else
+                          stage.status if action.endswith("-status") else stage.collect)
+                result = method(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result, "productAction": False,
+                        "evidenceClass": "explicit-context-fixture-file-modes"}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown",
+                        "reason": "fixture_stage_unavailable", "productAction": False,
+                        "nativeActionAllowed": False, "replayAllowed": False}
         if action in {"macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"}:
             stage = _agent_module("macos_fixture_guest_stage")
             try:
@@ -4277,7 +4608,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 result = campaign.workflow(REPO_ROOT, action.removeprefix("windows-cp117-source-campaign-"), inputs)
             except (ValueError, OSError, KeyError, TypeError):
                 result = {"state": "unknown", "replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
-            from agent_tools import windows_cp117_source_projection as source_projection
+            source_projection = _agent_module("windows_cp117_source_projection")
             projected = source_projection.project(action.removeprefix("windows-cp117-source-campaign-"), result)
             return {"tool": "vm_workflow", **projected, "evidenceClass": "native-campaign"}
         if action == "windows-cp117-campaign-status":
@@ -6867,7 +7198,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 return _error("vm_workflow", "Proxy recovery requires an exact configured host/device and recovery identity.")
             if action == "android-proxy-recover" and (type(inputs["expectedPort"]) is not int or not 1 <= inputs["expectedPort"] <= 65535 or not isinstance(inputs["correlationId"], str)):
                 return _error("vm_workflow", "Proxy recovery requires a task port and opaque correlation.")
-            proxy_recovery = importlib.import_module(f"{__package__}.android_proxy_recovery" if __package__ else "android_proxy_recovery")
+            proxy_recovery = _agent_module("android_proxy_recovery")
             try:
                 if action == "android-proxy-recover":
                     result = proxy_recovery.recover_owned_stale_proxy(REPO_ROOT, inputs["host"], inputs["device"], inputs["expectedPort"], inputs["correlationId"])
@@ -6889,7 +7220,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             timeout = inputs.get("timeoutSeconds", 15)
             if type(timeout) is not int or not 1 <= timeout <= 60:
                 return _error("vm_workflow", "Credential workflow timeout must be between 1 and 60 seconds.")
-            recovery = importlib.import_module(f"{__package__}.windows_credential_recovery_ssh" if __package__ else "windows_credential_recovery_ssh")
+            recovery = _agent_module("windows_credential_recovery_ssh")
             try:
                 if action == "credential-status":
                     result = recovery.credential_status(REPO_ROOT, inputs["host"], inputs["handle"], inputs["correlationId"])
@@ -6909,7 +7240,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             timeout = inputs.get("timeoutSeconds", 15)
             if type(timeout) is not int or not 1 <= timeout <= 60:
                 return _error("vm_workflow", "Credential probe timeout must be between 1 and 60 seconds.")
-            probe = importlib.import_module(f"{__package__}.windows_credential_probe_ssh" if __package__ else "windows_credential_probe_ssh")
+            probe = _agent_module("windows_credential_probe_ssh")
             try:
                 function = probe.start if action.endswith("-start") else probe.status
                 result = function(REPO_ROOT, inputs["host"], inputs["correlationId"], timeout_seconds=timeout)
@@ -8102,6 +8433,8 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 return {"tool": "vm_workflow", "ok": True, **result}
             except (ValueError, OSError, TypeError) as error:
                 return _error("vm_workflow", str(error))
+        if action in {"inspect-input", "admit-plan"}:
+            workflow = _agent_module("vm_workflow")
         if action == "inspect-input":
             result = workflow.inspect_input(inputs.get("input", {}), preflight=inputs.get("preflight"))
         elif action == "admit-plan":
@@ -8114,7 +8447,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         else:
             return _error("vm_workflow", "Unknown VM workflow action.")
         return {"tool": "vm_workflow", **result}
-    except (workflow.VmWorkflowError, ValueError, TypeError, OSError) as error:
+    except (ValueError, TypeError, OSError) as error:
         return _error("vm_workflow", str(error))
 
 
@@ -8252,15 +8585,28 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
     return enriched
 
 
+@_core_source_request
 def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
     """Observe or perform fixed configured SSH fixture actions with durable evidence and safe next steps."""
+    if action == "forward-open":
+        return {"tool": "ssh_workflow", "ok": False, "state": "blocked",
+                "reason": "historical_cp117_forward_open_retired",
+                "nativeActionAllowed": False, "replayAllowed": False}
     result = _ssh_workflow_impl(action, host, timeout_seconds, identity, transfer, device)
     if action in {"connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status"}:return result
     return _native_response("ssh_workflow", action, result, {"host": host, **(transfer or {})})
 
 
+@_core_source_request
 def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Manage verified artifacts, reservations, bundles and fixed resumable preflight scenarios."""
+    retired = native_workflow_policy.refusal(action)
+    if retired is not None:
+        return retired
+    if action.startswith("windows-"):
+        retired = windows_vm_setup_policy.refusal(action,inputs)
+        if retired is not None:
+            return retired
     if action in {"windows-input-start", "windows-input-observe", "windows-input-join",
                   "windows-input-decision", "windows-input-finish"}:
         return _vm_workflow_impl(action, inputs)
@@ -8385,16 +8731,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     subparsers.add_parser("serve")
     ssh_parser = subparsers.add_parser("ssh-workflow")
-    ssh_parser.add_argument("action", choices=("connection-direct-channel-prepare", "connection-direct-channel-status", "connection-direct-channel-select", "connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status", "connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
+    ssh_parser.add_argument("action", choices=("windows-caller-file-stage", "windows-caller-file-receipt", "connection-direct-channel-prepare", "connection-direct-channel-status", "connection-direct-channel-select", "connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status", "connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
     ssh_parser.add_argument("--host")
     ssh_parser.add_argument("--device")
     ssh_parser.add_argument("--timeout-seconds", type=int, default=15)
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "baseline-source-inventory", "matrix-record", "matrix-retract", "matrix-status", "matrix-equivalence-record", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-guest-park-preflight", "linux-guest-park-start", "linux-guest-park-status", "linux-package-fixture-build-preflight", "linux-package-fixture-build-start", "linux-package-fixture-build-status", "linux-package-fixture-build-collect", "linux-package-fixture-build-pre-effect-status", "linux-package-fixture-build-pre-effect-close", "linux-package-fixture-build-terminal-ready-status", "linux-package-fixture-build-terminal-ready-close", "android-api35-large-routing-observe", "android-coldboot-product-api29-observe", "linux-package-tmux-resource-prepare", "linux-package-tmux-availability", "linux-package-tmux-preflight", "linux-package-tmux-start", "linux-package-tmux-status", "linux-package-tmux-collect", "arch-tmux-install-preflight", "arch-tmux-install-start", "arch-tmux-install-status", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-parallel-vm-source-inventory", "windows-parallel-vm-copy-start", "windows-parallel-vm-copy-status", "windows-vm-secureboot-inventory", "windows-vm-virt-firmware-admission", "windows-vm-secureboot-clone-preflight", "windows-vm-secureboot-fresh-preflight", "windows-vm-secureboot-fresh-start", "windows-vm-secureboot-fresh-status", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "windows-vm-optical-boot-preflight", "windows-vm-optical-boot-start", "windows-vm-optical-boot-status", "windows-vm-optical-close-preflight", "windows-vm-optical-close-start", "windows-vm-optical-close-status", "windows-vm-optical-attempt2-preflight", "windows-vm-optical-attempt2-start", "windows-vm-optical-attempt2-status", "windows-vm-optical-attempt2-phase-probe", "windows-vm-optical-attempt2-close-preflight", "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt2-close-status", "windows-vm-optical-attempt3-preflight", "windows-vm-optical-attempt3-start", "windows-vm-optical-attempt3-status", "windows-vm-optical-attempt3-frame-collect", "windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start", "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect", "windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start", "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect", "windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start", "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect", "windows-vm-setup-install-disk-proof", "windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start", "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect", "windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start", "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect", "windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start", "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "windows-fixture-stage-start", "windows-fixture-stage-status", "windows-fixture-stage-collect", "windows-fixture-credentials-start", "windows-fixture-credentials-status", "windows-fixture-credentials-collect", "windows-fixture-server-start", "windows-fixture-server-acl-preflight", "windows-fixture-server-status", "windows-fixture-server-collect", "windows-fixture-server-stop-start", "windows-fixture-server-stop-status", "windows-fixture-server-stop-collect", "windows-fixture-credentials-cleanup-start", "windows-fixture-credentials-cleanup-status", "windows-fixture-credentials-cleanup-collect", "windows-fixture-server-abort-start", "windows-fixture-server-abort-status", "windows-fixture-server-abort-collect", "windows-fixture-server-abort-successor-start", "windows-fixture-server-abort-successor-status", "windows-fixture-server-abort-successor-diagnostic", "windows-fixture-server-resume-no-dispatch-start", "windows-fixture-server-post-resource-diagnostic", "windows-fixture-server-probe-events-acl-diagnostic", "windows-fixture-acl-preflight", "windows-fixture-acl-preflight-status", "windows-fixture-credentials-abort-start", "windows-fixture-credentials-abort-status", "windows-fixture-credentials-abort-collect", "windows-fixture-owner-network-start", "windows-fixture-owner-network-status", "windows-fixture-owner-network-collect", "windows-fixture-network-probe-start", "windows-fixture-network-probe-status", "windows-fixture-network-probe-collect", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-package-install-unknown-proof", "android-package-install-unknown-release", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-document-retry-start", "android-document-retry-status", "android-document-retry-collect", "android-document-retry-recovery-start", "android-document-retry-recovery-status", "android-document-retry-recovery-collect", "android-document-retry-recovery-finalize", "android-document-retry-unknown-diagnose", "android-document-retry-unknown-close", "android-obsolete-consent-denial-collect", "android-consent-grant-prompt-collect", "android-consent-grant-acceptance-start", "android-consent-grant-acceptance-diagnose", "android-consent-grant-acceptance-reconcile", "android-consent-grant-acceptance-reconcile-status", "android-consent-grant-acceptance-reconcile-diagnose", "android-consent-grant-acceptance-status", "android-consent-grant-acceptance-collect", "android-vpn-permission-reset-start", "android-vpn-permission-reset-status", "android-vpn-permission-reset-collect", "android-runtime-acceptance-start", "android-runtime-acceptance-status", "android-runtime-acceptance-collect", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-api35-remaining-proxy-status", "android-fixture-tls-mint", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-endpoint-admission-start", "android-endpoint-admission-status", "android-endpoint-admission-cleanup", "android-endpoint-mount-diagnostic-collect", "android-endpoint-cleanup-readmission", "android-endpoint-cleanup-readmission-status", "android-endpoint-cleanup-readmitted-status", "android-recovered-endpoint-stage-collect", "android-endpoint-cleanup-mount-diagnostic", "android-endpoint-cleanup-readmitted", "android-installer-dispatch-start", "android-installer-dispatch-status", "android-installer-dispatch-collect", "android-installer-callback-handoff-ready", "android-installer-callback-continue", "android-installer-callback-status-handoff-ready", "android-installer-callback-status-continue", "android-installer-abort-prelaunch", "android-installer-reconcile", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-machine-server-stop-start", "macos-machine-server-stop-status", "macos-machine-server-stop-collect", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
+    vm_parser.add_argument("action", choices=("windows-vm-deploy-secure", "windows-vm-deploy-secure-status", "windows-vm-deploy-frame", "windows-vm-deploy-frame-collect", "windows-vm-deploy-qualify", "windows-vm-deploy-qualify-status", "windows-vm-deploy-media", "windows-vm-deploy-preflight", "windows-vm-deploy-start", "windows-vm-deploy-status", "windows-vm-deploy-stop", "windows-vm-deploy-resources", "fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "baseline-source-inventory", "matrix-record", "matrix-retract", "matrix-status", "matrix-equivalence-record", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-guest-park-preflight", "linux-guest-park-start", "linux-guest-park-status", "linux-package-fixture-build-preflight", "linux-package-fixture-build-start", "linux-package-fixture-build-status", "linux-package-fixture-build-collect", "linux-package-fixture-build-pre-effect-status", "linux-package-fixture-build-pre-effect-close", "linux-package-fixture-build-terminal-ready-status", "linux-package-fixture-build-terminal-ready-close", "android-api35-large-routing-observe", "android-coldboot-product-api29-observe", "linux-package-tmux-resource-prepare", "linux-package-tmux-availability", "linux-package-tmux-preflight", "linux-package-tmux-start", "linux-package-tmux-status", "linux-package-tmux-collect", "arch-tmux-install-preflight", "arch-tmux-install-start", "arch-tmux-install-status", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-parallel-vm-source-inventory", "windows-parallel-vm-copy-start", "windows-parallel-vm-copy-status", "windows-vm-secureboot-inventory", "windows-vm-virt-firmware-admission", "windows-vm-secureboot-clone-preflight", "windows-vm-secureboot-fresh-preflight", "windows-vm-secureboot-fresh-start", "windows-vm-secureboot-fresh-status", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "windows-vm-optical-boot-preflight", "windows-vm-optical-boot-start", "windows-vm-optical-boot-status", "windows-vm-optical-close-preflight", "windows-vm-optical-close-start", "windows-vm-optical-close-status", "windows-vm-optical-attempt2-preflight", "windows-vm-optical-attempt2-start", "windows-vm-optical-attempt2-status", "windows-vm-optical-attempt2-phase-probe", "windows-vm-optical-attempt2-close-preflight", "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt2-close-status", "windows-vm-optical-attempt3-preflight", "windows-vm-optical-attempt3-start", "windows-vm-optical-attempt3-status", "windows-vm-optical-attempt3-frame-collect", "windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start", "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect", "windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start", "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect", "windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start", "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect", "windows-vm-setup-install-disk-proof", "windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start", "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect", "windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start", "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect", "windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start", "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "windows-fixture-stage-start", "windows-fixture-stage-status", "windows-fixture-stage-collect", "windows-fixture-credentials-start", "windows-fixture-credentials-status", "windows-fixture-credentials-collect", "windows-fixture-server-start", "windows-fixture-server-acl-preflight", "windows-fixture-server-status", "windows-fixture-server-collect", "windows-fixture-server-stop-start", "windows-fixture-server-stop-status", "windows-fixture-server-stop-collect", "windows-fixture-credentials-cleanup-start", "windows-fixture-credentials-cleanup-status", "windows-fixture-credentials-cleanup-collect", "windows-fixture-server-abort-start", "windows-fixture-server-abort-status", "windows-fixture-server-abort-collect", "windows-fixture-server-abort-successor-start", "windows-fixture-server-abort-successor-status", "windows-fixture-server-abort-successor-diagnostic", "windows-fixture-server-resume-no-dispatch-start", "windows-fixture-server-post-resource-diagnostic", "windows-fixture-server-probe-events-acl-diagnostic", "windows-fixture-acl-preflight", "windows-fixture-acl-preflight-status", "windows-fixture-credentials-abort-start", "windows-fixture-credentials-abort-status", "windows-fixture-credentials-abort-collect", "windows-fixture-owner-network-start", "windows-fixture-owner-network-status", "windows-fixture-owner-network-collect", "windows-fixture-network-probe-start", "windows-fixture-network-probe-status", "windows-fixture-network-probe-collect", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-package-install-unknown-proof", "android-package-install-unknown-release", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-document-retry-start", "android-document-retry-status", "android-document-retry-collect", "android-document-retry-recovery-start", "android-document-retry-recovery-status", "android-document-retry-recovery-collect", "android-document-retry-recovery-finalize", "android-document-retry-unknown-diagnose", "android-document-retry-unknown-close", "android-obsolete-consent-denial-collect", "android-consent-grant-prompt-collect", "android-consent-grant-acceptance-start", "android-consent-grant-acceptance-diagnose", "android-consent-grant-acceptance-reconcile", "android-consent-grant-acceptance-reconcile-status", "android-consent-grant-acceptance-reconcile-diagnose", "android-consent-grant-acceptance-status", "android-consent-grant-acceptance-collect", "android-vpn-permission-reset-start", "android-vpn-permission-reset-status", "android-vpn-permission-reset-collect", "android-runtime-acceptance-start", "android-runtime-acceptance-status", "android-runtime-acceptance-collect", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-api35-remaining-proxy-status", "android-fixture-tls-mint", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-endpoint-admission-start", "android-endpoint-admission-status", "android-endpoint-admission-cleanup", "android-endpoint-mount-diagnostic-collect", "android-endpoint-cleanup-readmission", "android-endpoint-cleanup-readmission-status", "android-endpoint-cleanup-readmitted-status", "android-recovered-endpoint-stage-collect", "android-endpoint-cleanup-mount-diagnostic", "android-endpoint-cleanup-readmitted", "android-installer-dispatch-start", "android-installer-dispatch-status", "android-installer-dispatch-collect", "android-installer-callback-handoff-ready", "android-installer-callback-continue", "android-installer-callback-status-handoff-ready", "android-installer-callback-status-continue", "android-installer-abort-prelaunch", "android-installer-reconcile", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-machine-server-stop-start", "macos-machine-server-stop-status", "macos-machine-server-stop-collect", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
     vm_parser._actions[-1].choices = (*vm_parser._actions[-1].choices,
                                       "source-review-close",
+                                      "macos-fixture-stage-start",
+                                      "macos-fixture-stage-status",
+                                      "macos-fixture-stage-collect",
                                       "windows-input-start",
                                       "windows-input-observe",
                                       "windows-input-join",

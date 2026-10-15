@@ -16,7 +16,7 @@ from . import linux_package_fixture_build as build
 from .private_inventory_lock import Directory
 
 CORRELATION=closure.CORRELATION
-PRIVILEGED_SHA='06012147e33e032eb80536527611ba51c60b127bd8a2b06d7725c55510d05949'
+PRIVILEGED_SHA='01f90d3afa8f107139861b11835f1b1b3d712fe235113dfe5554c40619b441c1'
 MAX_AGE_MS=120000
 
 def _sources(root):

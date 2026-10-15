@@ -86,6 +86,9 @@ def _request(value: Mapping[str, Any]) -> dict[str, Any]:
                 set(value) - {"hostAlias", "observeHost", "privilegedHost", "timeoutSeconds"}):
             raise NativeEnvironmentObservationError("privilegedHost requires the fixed Arch host observation only")
         result["privilegedHost"] = value["privilegedHost"]
+        if result["privilegedHost"]:
+            raise NativeEnvironmentObservationError(
+                "Historical privilegedHost observer is retired; use windows-vm-deploy-resources with explicit spec and credentialFile.")
     return result
 
 
@@ -164,14 +167,7 @@ def observe_environment(root: str | Path, request: Mapping[str, Any]) -> dict[st
             components["host"] = _unknown(time.time_ns() // 1_000_000, "live-linux-host", "deadline_exhausted")
         else:
             try:
-                if requested.get("privilegedHost"):
-                    if __package__:
-                        from . import arch_qemu_holder_census
-                    else:
-                        from agent_tools import arch_qemu_holder_census
-                    observed_host = arch_qemu_holder_census.observe_privileged(root, {"host": "archlinux", "timeoutSeconds": timeout})
-                else:
-                    observed_host = native_host_observation.observe_host(root, requested["hostAlias"], timeout, requested.get("vmIdentity"))
+                observed_host = native_host_observation.observe_host(root, requested["hostAlias"], timeout, requested.get("vmIdentity"))
                 known = observed_host.get("measurementAvailability") == "complete"
                 if "vmIdentity" in requested:
                     known = known and (observed_host.get("vmIdentity") or {}).get("state") == "matched"

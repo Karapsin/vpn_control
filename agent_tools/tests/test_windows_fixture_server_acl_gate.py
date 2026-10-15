@@ -58,6 +58,13 @@ def git_result(source: bytes) -> SimpleNamespace:
 
 
 class FixtureServerAclGateTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'windows_update_fixture_server',
+        )
+
     def test_old_source_is_blocked_before_reservation_role_or_task(self):
         with tempfile.TemporaryDirectory() as tmp, \
              patch.object(server.stage, "status", return_value=staged(OLD)), \

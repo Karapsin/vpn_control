@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "path": "agent_tools/ssh_fresh_nested_channel.py",
+      "fixture": "ssh_fresh_nested_channel.py.before.source",
+      "sourceSha256": "2194d5b28e15658dfd5702756f8dacfdf53db5ce7123d2da1a1852234d0e34d9",
+      "role": "Original full unfixed implementation captured before final source-custody review repair"
+    },
+    {
+      "path": "agent_tools/ssh_source_file_stage.py",
+      "fixture": "ssh_source_file_stage.py.before.source",
+      "sourceSha256": "4522e79dcce8b66b16640d8054fd00a7438e7f4f89ace020a3a0d6de69b41f70",
+      "role": "Original full unfixed implementation captured before final source-custody review repair"
+    }
+  ]
+}

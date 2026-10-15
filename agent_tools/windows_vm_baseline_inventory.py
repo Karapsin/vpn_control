@@ -99,7 +99,7 @@ def qemu():
  for entry in entries:
   if not entry.isdigit():continue
   pid=int(entry)
-  try:name=open('/proc/%d/comm'%pid,encoding='ascii').read().strip()
+  try:name=os.path.basename(os.readlink('/proc/%d/exe'%pid))
   except FileNotFoundError:continue
   except (OSError,UnicodeError):complete=False;continue
   if not name.startswith('qemu-system-'):continue
@@ -114,7 +114,7 @@ def qemu():
    if not raw or len(raw)>32768:complete=False;continue
    argv=[x.decode('utf-8') for x in raw.rstrip(b'\0').split(b'\0')]
   except (OSError,UnicodeError):complete=False;continue
-  if ticks(pid)!=before:complete=False;continue
+  if ticks(pid)!=before or os.path.basename(os.readlink('/proc/%d/exe'%pid))!=name:complete=False;continue
   result.append((pid,before,set(fds),argv))
  return result,complete
 def all_holders(inodes):

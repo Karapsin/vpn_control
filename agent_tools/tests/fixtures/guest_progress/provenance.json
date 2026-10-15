@@ -1,0 +1,8 @@
+{
+  "sourceSha256": "1b8f18fa406f513f36dd773c33da1e398fb143b7c9d47213a955a262e11079d2",
+  "evidence": "guest-admission-terminal-read-v1.log",
+  "originalOperation": "fb0b2cac-b5da-417a-b587-11d414b6ba1d",
+  "exitCode": 0,
+  "stderrBytes": 2055,
+  "kind": "CLIXML progress"
+}

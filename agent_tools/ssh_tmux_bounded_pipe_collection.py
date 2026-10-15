@@ -149,6 +149,7 @@ def _capture(root,*,authority,launch,payload,guard,timeout_seconds=95):
         out_pin=_write_once(capsule/'stdout',bytes(stdout));err_pin=_write_once(capsule/'stderr',bytes(stderr))
         receipt={'schemaVersion':1,'intentPin':intent,'stdoutPin':out_pin,'stderrPin':err_pin,'exitCode':code,'capped':capped,'timedOut':timed_out,'stdinBytesWritten':written,'failure':failure,'replayAllowed':False}
         receipt_pin=_write_once(capsule/'receipt.json',session.canonical(receipt))
+        ssh_transport.finish_ssh(process,failed=failure is not None)
     return {'state':'captured' if code==0 and failure is None and written==len(payload) else 'unknown','receiptPin':receipt_pin,'replayAllowed':False,'nativeActionAllowed':False},capsule
 
 
@@ -163,10 +164,10 @@ def _sources(root):
 # Separate catalogue for fresh MCP jobs. Historical _sources never adopts
 # these successors, and no caller can supply an expected source hash.
 CURRENT_SOURCES={
-    'ssh_tmux_source_staging_recovery.py': '26a1a9f310a3d73b2e053adfdb56df587ae4e682a68b06fa84b6ed4ef441027f',
-    'ssh_tmux_session_ssh.py': '6f2109d961d585dfeca7f4493604cff722558a0a2a53b04ad5e3fe5e0f0578a3',
-    'ssh_tmux_session.py': 'd2d878b2f89b56020a0a20b76236dda0b826384c4159c9a47aaaaf0af0e910c3',
-    'linux_package_fixture_build.py': '95e3749be6f397dfa6d9435c04ec7fda225713bc1b6ec7eeca9736edd43ca966',
+    'ssh_tmux_source_staging_recovery.py': '6624aa898aaced378b4ee56fb18c4c024a028628786b492f0a5d5b45496f28cc',
+    'ssh_tmux_session_ssh.py': 'b61177cf4e9c2fcfaec0fca4aa5974bbc98eec1ca1f96fd4889898dffc19428a',
+    'ssh_tmux_session.py': '6fae107abb444ef300a124a754796961d206495143ea4ce522ff4aa1a60c58c7',
+    'linux_package_fixture_build.py': '5735a594076c28c70483e77012e84265bdc403c0f9d3312d17929caaa02a623e',
 }
 
 def _current_sources(root):
@@ -203,9 +204,9 @@ class _PipeDriver(recovery.ExactFetchDriver):
             if guard:guard()
         connection=ssh_transport.connection_host(config,'archlinux');need(connection.password is None,'password_transport_not_supported')
         def launch():
-            exact_guard();return subprocess.Popen(argv,cwd=self.root,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
+            exact_guard();return ssh_transport.popen_ssh(argv,cwd=self.root,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
         own=sources[str(Path(__file__).absolute())]
-        authority={'sourceSha':REQUEST['sourceSha'],'intentPin':original['coordinator']['records']['intent'],'anchorPin':ANCHOR,'terminalPin':TERMINAL,'action':action,'collectorSourcePin':own,'argvSha256':hashlib.sha256(session.canonical(argv)).hexdigest()}
+        authority={'sourceSha':REQUEST['sourceSha'],'intentPin':original['coordinator']['records']['intent'],'anchorPin':ANCHOR,'terminalPin':TERMINAL,'action':action,'collectorSourcePin':own,'argvSha256':ssh_transport.argv_sha256(argv)}
         receipt,capsule=_capture(self.root,authority=authority,launch=launch,payload=session.canonical(payload),guard=exact_guard)
         need(receipt['state']=='captured','transport_unknown')
         raw,receipt_pin=_read(capsule/'receipt.json');need(receipt_pin==receipt['receiptPin'],'capture_receipt_changed');record=json.loads(raw)

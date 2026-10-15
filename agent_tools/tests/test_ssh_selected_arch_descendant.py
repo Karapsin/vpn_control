@@ -31,6 +31,7 @@ class SelectedArchDescendantTests(unittest.TestCase):
                              outerOptions=['-S','/owned/selected-outer.sock','-o','ProxyCommand=false'],transportMode='direct')
         self.selection = SimpleNamespace(SelectionUnknown=type('SelectionUnknown',(RuntimeError,),{}),
                                          transport=transport,
+                                         selection_present=lambda _root,alias:alias=='archlinux',
                                          selected_route_options=mock.Mock(return_value=self.metadata))
         self.session = SimpleNamespace(SessionUnknown=type('SessionUnknown',(RuntimeError,),{}),transport=SimpleNamespace(load_config=mock.Mock(return_value=self.config),SshConfigError=transport.SshConfigError),
                                        _outer_prefix=mock.Mock(return_value=(['outer-ssh','-F','/owned/outer-config'],'selected-gateway')),

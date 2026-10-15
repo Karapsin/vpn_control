@@ -6,6 +6,9 @@ from agent_tools import android_endpoint_admission as helper
 REQUEST = {"correlationId": "11111111-1111-4111-8111-111111111111", "readmissionCorrelationId": "21111111-1111-4111-8111-111111111111"}
 class EndpointReadmissionRouteTests(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_routes
+        from agent_tools import android_endpoint_admission
+        bind_routes(self, server, android_endpoint_admission)
         p = mock.patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         p.start(); self.addCleanup(p.stop)
     def test_fixed_mount_collection_suppresses_private_path(self):

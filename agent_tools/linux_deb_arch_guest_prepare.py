@@ -402,7 +402,7 @@ def validate_receipt(request: Request, receipt: Mapping[str, Any], fixture: Mapp
             "sshPort": guest.get("sshPort"), "tree": guest.get("tree")}
     _need(receipt.get("qemu") == qemu and all(type(qemu[name]) is int and qemu[name] > 0
           for name in ("pid", "startTicks", "diskDevice", "diskInode", "sshPort")) and
-          qemu["tree"] == "/home/kardinal/vpn-control-install-vm-parity-" + request.guest_role,
+          acceptance.role_tree_path(qemu["tree"],request.guest_role),
           "Preparation QEMU generation differs")
     baseline, safety = receipt.get("baseline"), receipt.get("safety")
     _need(isinstance(baseline, Mapping) and set(baseline) ==

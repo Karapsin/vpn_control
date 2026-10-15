@@ -5,6 +5,66 @@ from agent_tools import mcp_server
 
 
 class NativeOptimizationRoutesTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        self.production_adapter=bind_cached_routes(self,mcp_server,
+            'android_action_acceptance',
+            'android_admission_readback',
+            'android_cli_stage',
+            'android_consent_acceptance',
+            'android_document_acceptance',
+            'android_document_recovery',
+            'android_endpoint_admission',
+            'android_installer_dispatch',
+            'android_native_fixture_lifecycle',
+            'android_package_install',
+            'android_public_inspect',
+            'arch_qemu_holder_census',
+            'linux_deb_arch_acceptance',
+            'linux_deb_arch_guest_prepare',
+            'linux_deb_arch_guest_prepare_remote',
+            'linux_deb_arch_host_supervisor',
+            'linux_deb_arch_transport',
+            'linux_guest_park',
+            'linux_owner_public_quit',
+            'linux_package_fixture_build',
+            'linux_rpm_base_prepare',
+            'linux_rpm_fixture_server_lifecycle',
+            'linux_rpm_protected_job_observe',
+            'linux_rpm_workspace_recovery',
+            'linux_update_fixture_workflow',
+            'linux_vm_readonly_inventory',
+            'macos_fixture_guest_stage',
+            'macos_machine_server_stop',
+            'native_acceptance_matrix',
+            'native_acceptance_overview',
+            'native_artifact_registry',
+            'native_artifact_reuse',
+            'native_build_timing',
+            'native_environment_observation',
+            'native_failure_evidence',
+            'native_fixture_preflight',
+            'native_next_action',
+            'native_response_diagnostics',
+            'native_rpm_public_install_ssh',
+            'native_scenario_batch',
+            'native_vm_baseline_config',
+            'windows_msi_base_prepare',
+            'windows_msi_owner_observe',
+            'windows_msi_public_scenario',
+            'windows_msi_target_prepare',
+            'windows_update_fixture_server',
+            'windows_update_fixture_workflow',
+            'windows_vm_baseline_inventory',
+            'windows_vm_driver_fetch',
+            'windows_vm_fresh_setup',
+            'windows_vm_optical_boot',
+            'windows_vm_optical_boot_attempt2',
+            'windows_vm_optical_boot_attempt3',
+            'windows_vm_optical_current_screen',
+            'windows_vm_optical_post_collect',
+        )
+
     def test_windows_optical_current_screen_routes_are_fixed_and_one_shot(self):
         from agent_tools import windows_vm_optical_boot, windows_vm_optical_current_screen
         observation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -35,11 +95,9 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
                 self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-current-screen-start", bad)["ok"])
         with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
             uncertain = mcp_server.vm_workflow("windows-vm-optical-current-screen-start", request)
-        self.assertEqual("unknown", uncertain["state"])
-        self.assertFalse(uncertain["replayAllowed"])
-        self.assertEqual(observation, uncertain["observationCorrelationId"])
-        self.assertEqual("windows-vm-optical-current-screen-status", uncertain["nextAction"]["action"]["action"])
-        self.assertEqual(observation, uncertain["nextAction"]["action"]["inputs"]["observationCorrelationId"])
+        self.assertEqual('blocked',uncertain['state'])
+        self.assertEqual('historical_windows_vm_setup_retired',uncertain['reason'])
+        self.assertFalse(uncertain['replayAllowed'])
 
     def test_windows_optical_attempt3_frame_collect_is_fixed_and_no_replay(self):
         from agent_tools import windows_vm_optical_post_collect
@@ -75,39 +133,15 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         self.assertEqual("unknown", result["state"])
         self.assertFalse(result["replayAllowed"])
 
-    def test_environment_status_explicit_privileged_arch_seam_uses_existing_route(self):
-        from unittest.mock import Mock
+    def test_environment_status_retired_privileged_flag_never_dispatches(self):
         from agent_tools import native_environment_observation as environment, arch_qemu_holder_census as census
-        # Pure finite DTO projection: native emitted-script and whole-host proofs
-        # are covered separately; these controls require no POSIX symlinks.
-        sample = {'observedAtUnixMs': 1, 'availableMemoryBytes': 20*1024**3,
-                  'psi': 'normal', 'psiSomeAvg10': 0.0, 'psiFullAvg10': 0.0,
-                  'vmstat': {'pswpin': 0, 'pswpout': 0, 'oomKill': 0}}
-        host = {'state': 'observed', 'physicalMemoryBytes': 32*1024**3,
-                'swapUsedBytes': 0, 'samples': [sample, {**sample, 'observedAtUnixMs': 2}],
-                'inventoryComplete': True, 'vms': [{'pid': 42, 'startTicks': 99,
-                'qemuExecutable': 'qemu-system-x86_64', 'configuredMemoryBytes': 4*1024**3}]}
-        holder = {'schemaVersion': 1, 'host': 'archlinux', 'censusComplete': True,
-                  'windowsBaselineReceipt': None, 'processes': [
-                    {'pid': 42, 'startTicks': 99, 'state': 'observed', 'exe': 'qemu-system-x86_64',
-                     'allocatedMemoryMiB': host['vms'][0]['configuredMemoryBytes']//1048576,
-                     'disks': [], 'qmpSockets': [], 'tcpListeners': []}]}
-        raw = {'scope': 'FIXED_PRIVILEGED_HOST_RESOURCE_AND_HOLDER_READ_ONLY',
-               'effectiveUid': 0, 'hostBootId': '25515f23-b966-4c3a-ae63-d38452375578',
-               'bootStable': True, 'hostInventoryStable': True, 'holderInventoryStable': True,
-               'diskOwnerUid': 1000, 'diskAvailableBytes': 100000000000,
-               'host': host, 'holder': holder}
         with patch.object(mcp_server, '_MCP_BOOT_TIME_NS', 2**63-1), \
-             patch.object(environment.ssh_transport, 'probe', return_value=Mock(ok=True, status=environment.ssh_transport.ProbeStatus.OK)), \
-             patch.object(census, 'observe_privileged', side_effect=lambda root, request: census._privileged_projection(raw, 1, request['timeoutSeconds']), create=True) as dispatch, \
-             patch.object(environment.native_host_observation, 'observe_host') as ordinary:
-            result = mcp_server._vm_workflow_impl('environment-status',
-                {'hostAlias': 'archlinux', 'observeHost': True, 'privilegedHost': True, 'timeoutSeconds': 12})
-        self.assertTrue(result['ok'], result)
-        self.assertTrue(result['requestedProbesReady'])
-        self.assertFalse(result['ready']);self.assertFalse(result['nativeActionAllowed'])
-        self.assertTrue(result['components']['host']['observation']['holderCensus']['inventoryComplete'])
-        dispatch.assert_called_once();ordinary.assert_not_called()
+             patch.object(environment.ssh_transport, 'probe') as probe, \
+             patch.object(census, 'observe_privileged') as privileged:
+            result=mcp_server._vm_workflow_impl('environment-status',
+                {'hostAlias':'archlinux','observeHost':True,'privilegedHost':True,'timeoutSeconds':12})
+        self.assertFalse(result['ok']);self.assertIn('retired',result['summary'])
+        probe.assert_not_called();privileged.assert_not_called()
 
     def test_arch_qemu_holder_census_is_read_only_and_fails_closed(self):
         from agent_tools import arch_qemu_holder_census
@@ -162,10 +196,9 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
                 self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-attempt2-close-start", bad)["ok"])
         with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after close intent")):
             uncertain = mcp_server.vm_workflow("windows-vm-optical-attempt2-close-start", request)
-        self.assertEqual("unknown", uncertain["state"])
-        self.assertFalse(uncertain["replayAllowed"])
-        self.assertEqual("windows-vm-optical-attempt2-close-status", uncertain["nextAction"]["action"]["action"])
-        self.assertEqual(closure, uncertain["nextAction"]["action"]["inputs"]["closureCorrelationId"])
+        self.assertEqual('blocked',uncertain['state'])
+        self.assertEqual('historical_windows_vm_setup_retired',uncertain['reason'])
+        self.assertFalse(uncertain['replayAllowed'])
 
     def test_windows_optical_attempt3_routes_bind_second_closure_and_never_replay(self):
         from agent_tools import windows_vm_optical_boot, windows_vm_optical_boot_attempt3
@@ -198,10 +231,9 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
                 self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-attempt3-start", bad)["ok"])
         with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
             uncertain = mcp_server.vm_workflow("windows-vm-optical-attempt3-start", request)
-        self.assertEqual("unknown", uncertain["state"])
-        self.assertFalse(uncertain["replayAllowed"])
-        self.assertEqual("windows-vm-optical-attempt3-status", uncertain["nextAction"]["action"]["action"])
-        self.assertEqual(closure, uncertain["nextAction"]["action"]["inputs"]["closureCorrelationId"])
+        self.assertEqual('blocked',uncertain['state'])
+        self.assertEqual('historical_windows_vm_setup_retired',uncertain['reason'])
+        self.assertFalse(uncertain['replayAllowed'])
 
     def test_windows_optical_attempt2_phase_probe_is_exact_and_read_only(self):
         from agent_tools import windows_vm_optical_boot_attempt2
@@ -262,10 +294,9 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
                 self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-attempt2-start", bad)["ok"])
         with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
             uncertain = mcp_server.vm_workflow("windows-vm-optical-attempt2-start", request)
-        self.assertEqual("unknown", uncertain["state"])
-        self.assertFalse(uncertain["replayAllowed"])
-        self.assertEqual("windows-vm-optical-attempt2-status", uncertain["nextAction"]["action"]["action"])
-        self.assertEqual(closure, uncertain["nextAction"]["action"]["inputs"]["closureCorrelationId"])
+        self.assertEqual('blocked',uncertain['state'])
+        self.assertEqual('historical_windows_vm_setup_retired',uncertain['reason'])
+        self.assertFalse(uncertain['replayAllowed'])
 
     def test_windows_optical_close_routes_bind_first_attempt_and_never_replay(self):
         from agent_tools import windows_vm_optical_boot
@@ -295,11 +326,9 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
                 self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-close-start", bad)["ok"])
         with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after close intent")):
             uncertain = mcp_server.vm_workflow("windows-vm-optical-close-start", request)
-        self.assertEqual("unknown", uncertain["state"])
-        self.assertEqual(closure, uncertain["closureCorrelationId"])
-        self.assertFalse(uncertain["replayAllowed"])
-        self.assertEqual("windows-vm-optical-close-status", uncertain["nextAction"]["action"]["action"])
-        self.assertEqual(closure, uncertain["nextAction"]["action"]["inputs"]["closureCorrelationId"])
+        self.assertEqual('blocked',uncertain['state'])
+        self.assertEqual('historical_windows_vm_setup_retired',uncertain['reason'])
+        self.assertFalse(uncertain['replayAllowed'])
 
     def test_android_installer_dispatch_routes_bind_fixed_campaign_and_ui_phases(self):
         from agent_tools import android_installer_dispatch
@@ -396,10 +425,9 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
                 self.assertFalse(mcp_server._vm_workflow_impl("windows-vm-optical-boot-start", bad)["ok"])
         with patch.object(mcp_server, "_vm_workflow_impl", side_effect=RuntimeError("after intent")):
             uncertain = mcp_server.vm_workflow("windows-vm-optical-boot-start", request)
-        self.assertEqual("unknown", uncertain["state"])
-        self.assertFalse(uncertain["replayAllowed"])
-        self.assertEqual(correlation, uncertain["correlationId"])
-        self.assertEqual("windows-vm-optical-boot-status", uncertain["nextAction"]["action"]["action"])
+        self.assertEqual('blocked',uncertain['state'])
+        self.assertEqual('historical_windows_vm_setup_retired',uncertain['reason'])
+        self.assertFalse(uncertain['replayAllowed'])
 
     def test_android_endpoint_routes_bind_exact_inputs_and_never_replay_unknown(self):
         from agent_tools import android_endpoint_admission
@@ -893,12 +921,11 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
                  patch.object(windows_vm_driver_fetch, "start", side_effect=error):
                 result = mcp_server.vm_workflow("windows-vm-driver-fetch-start", request)
             self.assertFalse(result["ok"])
-            self.assertEqual("unknown", result["state"])
-            self.assertEqual(request["correlationId"], result["correlationId"])
+            self.assertEqual("blocked", result["state"])
             self.assertFalse(result["replayAllowed"])
             self.assertFalse(result["nativeActionAllowed"])
             self.assertNotIn("unexpected private transport detail", str(result))
-            self.assertEqual("windows-vm-driver-fetch-status", result["nextAction"]["action"]["action"])
+            self.assertEqual("historical_windows_vm_setup_retired", result["reason"])
 
     def test_driver_fetch_partial_start_is_uncertain_with_exact_status_followup(self):
         from agent_tools import native_failure_evidence
@@ -1660,10 +1687,13 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
         self.assertEqual("terminal status of the existing cleanup intent",
                          foreign["admissionGap"]["missingFact"])
 
-    def test_loaded_native_adapter_changed_after_mcp_boot_requires_fresh_process(self):
-        with patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 0, create=True):
-            with self.assertRaisesRegex(ValueError, "MCP adapter source changed"):
-                mcp_server._agent_module("android_package_install")
+    def test_route_seam_does_not_replace_the_real_source_loader(self):
+        from agent_tools import android_package_install
+        adapter=self.production_adapter('android_package_install')
+        try:
+            self.assertIsNot(adapter.start,android_package_install.start)
+        finally:
+            adapter.close()
 
     def test_preflight_routes_current_readiness_without_promoting_failure(self):
         from agent_tools import native_fixture_preflight

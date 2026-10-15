@@ -17,6 +17,11 @@ class LinuxCleanSourceRouteTests(unittest.TestCase):
     def setUp(self):
         # Keep actual adapter discovery while isolating source freshness from
         # module edits made by concurrent implementation owners in this suite.
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'linux_package_fixture_build',
+        )
         boot = mock.patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         boot.start()
         self.addCleanup(boot.stop)

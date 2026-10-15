@@ -105,11 +105,12 @@ def _fixed_tart_stopped(name: str) -> bool:
 
 
 def _fixed_qemu_stopped(source: Path) -> bool:
-    """Reject a QEMU process holding this source inode; uncertain census fails."""
+    """Reject every source holder; executable/comm names cannot prove absence."""
     expected = os.stat(source, follow_symlinks=False)
     if sys.platform.startswith("linux"):
         try:
             entries = os.listdir("/proc")
+            _need(len(entries) <= 8192, "Source process inventory is unbounded")
         except OSError as error:
             raise BaselineConfigError("QEMU process inventory is unavailable") from error
         for entry in entries:
@@ -118,16 +119,9 @@ def _fixed_qemu_stopped(source: Path) -> bool:
             pid = int(entry)
             process = Path("/proc") / entry
             try:
-                name = (process / "comm").read_text(encoding="ascii").strip()
-            except FileNotFoundError:
-                continue
-            except (OSError, UnicodeError) as error:
-                raise BaselineConfigError("QEMU process inventory is incomplete") from error
-            if not name.startswith("qemu-system-"):
-                continue
-            try:
                 before = _linux_start_ticks(process)
                 descriptors = os.listdir(process / "fd")
+                _need(len(descriptors) <= 8192, "Source descriptor inventory is unbounded")
                 for descriptor in descriptors:
                     try:
                         info = os.stat(process / "fd" / descriptor)
@@ -152,8 +146,6 @@ def _fixed_qemu_stopped(source: Path) -> bool:
             parts = line.strip().split(None, 1)
             _need(len(parts) == 2 and parts[0].isdigit(), "QEMU process inventory is malformed")
             pid, command = parts
-            if not Path(command).name.startswith("qemu-system-"):
-                continue
             before = _mac_start_time(pid)
             try:
                 opened = subprocess.run(("lsof", "-Fpn", "-p", pid), check=False,

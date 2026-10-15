@@ -1,0 +1,8 @@
+docs_assistant = importlib.import_module(
+    f"{__package__}.docs_assistant" if __package__ else "docs_assistant"
+)
+local_build_environment = importlib.import_module(
+    f"{__package__}.local_build_environment" if __package__ else "local_build_environment"
+)
+managed_check_lease = importlib.import_module(f"{__package__ or 'agent_tools'}.managed_check_lease")
+check_output_retention = importlib.import_module(f"{__package__ or 'agent_tools'}.check_output_retention")

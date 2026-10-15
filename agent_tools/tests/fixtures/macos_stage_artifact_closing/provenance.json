@@ -1,0 +1,13 @@
+{
+  "sourcePath": "agent_tools/macos_fixture_stage.py",
+  "sourceSha256": "7b610cf2c9510ea300e65d7998b2fb51c9fda92aff46fec16a7e35812a1818c1",
+  "fragmentSha256": "7b610cf2c9510ea300e65d7998b2fb51c9fda92aff46fec16a7e35812a1818c1",
+  "failure": "Public registered start detects artifact changed during submission only after pure start persisted complete; collection falsely reports success.",
+  "regression": "agent_tools.tests.test_macos_fixture_stage.RegisteredFixtureAdmissionTests.test_registered_package_change_during_submission_cannot_report_success_or_replay",
+  "redEvidence": ".runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/artifact-closing-red.log",
+  "afterWriteRegression": "agent_tools.tests.test_macos_fixture_stage.RegisteredFixtureAdmissionTests.test_package_change_after_complete_write_retains_negative_closing_evidence_and_never_replays",
+  "afterWriteRedEvidence": ".runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/artifact-after-write-red.log",
+  "greenEvidence": ".runtime/mcp-repair-execution-2026-10-15/macos-generic-stage/full-green-v1.log",
+  "routineSuite": "python3 agent_tools/affected_agent_tests.py --run",
+  "nativeLimit": "No Tart, VM, package installation or product acceptance. Local macOS tests execute only inert temporary fixture bytes under the current account home."
+}

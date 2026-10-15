@@ -1,0 +1,6 @@
+{
+  "source": "agent_tools/windows_vm_lifecycle.py",
+  "sourceSha256": "362626220738f6eaa9dec8f255c5ad5815cfd9882870dfb9d7cf5231a25c9f79",
+  "failure": "Owned TPM exits between birth and process identity reads after SIGTERM; initial stop helper returns UNKNOWN on expected natural death.",
+  "nativeEvidence": "lifecycle-controls-native-v1.log and its full source capsule in private reproducibility audit."
+}

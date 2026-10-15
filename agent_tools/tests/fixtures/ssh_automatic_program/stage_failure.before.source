@@ -1,0 +1,417 @@
+"""Internal automatic file transport for oversized, configured Python carriers.
+
+The builder only binds immutable data. Network submission belongs to the existing
+operation owner, which must already have admitted its original durable intent.
+This module neither invents a route nor retries a submitted/unknown operation.
+"""
+from __future__ import annotations
+
+import base64
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass
+import hashlib
+import json
+import os
+from pathlib import Path
+import selectors
+import stat
+import subprocess
+import time
+import uuid
+import zlib
+
+from . import native_review_source_closure as closure
+
+COMMAND_BYTES = 60000
+CHUNK_BYTES = 65536
+MAX_PROGRAM_BYTES = 8 * 1024 * 1024
+_SOURCE_SHA = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+_CLOSURE_SHA = hashlib.sha256(Path(closure.__file__).read_bytes()).hexdigest()
+
+
+class AutomaticProgramError(ValueError):
+    """No original program may be submitted after this refusal."""
+
+
+def _sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def command_bytes(argv):
+    # Include separators and the whole local argv, so every nested quoted remote
+    # command and each individual exec argument is bounded by this same limit.
+    return sum(len(part.encode("utf-8")) + 1 for part in argv)
+
+
+@dataclass(frozen=True)
+class PlannedArgv:
+    original_argv: tuple[str, ...]
+    command: tuple[str, ...]
+    root: str
+    host: str
+    timeout_seconds: int
+    ssh_binary: str
+    nested_ssh_binary: str
+    correlation: str
+    config_sha: str
+    source_pins: tuple[tuple[str, str], ...]
+    route_sha: str
+
+    def __len__(self):
+        return len(self.original_argv)
+
+    def __getitem__(self, index):
+        # A slice must retain the refusal rather than silently discard custody.
+        if isinstance(index, slice):
+            raise AutomaticProgramError("oversized_argv_requires_automatic_submission")
+        return self.original_argv[index]
+
+    def __iter__(self):
+        raise AutomaticProgramError("oversized_argv_requires_automatic_submission")
+
+
+def _transport():
+    from . import ssh_transport
+    return ssh_transport
+
+
+def _config_sha(config):
+    return _sha(repr(asdict(config)).encode())
+
+
+def _route_sha(config, host):
+    transport = _transport()
+    rows = []
+    for entry in transport._route_hosts(config.hosts, host):
+        if os.path.lexists(config.root / ".rag_index" / "ssh-channel-selection"):
+            selection = transport._selection_module()
+            if selection.selection_present(config.root, entry.alias):
+                rows.append((entry.alias, selection.selected_route_options(config.root, entry.alias, config)))
+    return _sha(_json(rows))
+
+
+def _pins(config, host):
+    transport = _transport()
+    source = Path(transport.__file__)
+    expected = getattr(transport, "_LOADED_SOURCE_SHA", None)
+    if expected is None or _sha(source.read_bytes()) != expected:
+        raise AutomaticProgramError("automatic_transport_source_changed")
+    if _sha(Path(__file__).read_bytes()) != _SOURCE_SHA or _sha(Path(closure.__file__).read_bytes()) != _CLOSURE_SHA:
+        raise AutomaticProgramError("automatic_transport_source_changed")
+    paths = [(str(source), expected), (str(Path(__file__)), _SOURCE_SHA), (str(Path(closure.__file__)), _CLOSURE_SHA)]
+    config_path = transport._private_config_path(config.root)
+    paths.append((str(config_path), _sha(config_path.read_bytes())))
+    outer = transport.connection_host(config, host)
+    if outer.password is not None:
+        raise AutomaticProgramError("automatic_program_requires_key_route")
+    for path in (outer.identity_file, outer.known_hosts_file):
+        if not isinstance(path, Path):
+            raise AutomaticProgramError("automatic_program_local_route_files")
+        paths.append((str(path), _sha(path.read_bytes())))
+    return tuple(paths)
+
+
+def bind(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary, argv):
+    """Pure local binding; ordinary argv remains a plain list."""
+    if command_bytes(argv) <= COMMAND_BYTES:
+        return argv
+    current = _transport().load_config(config.root)
+    if _config_sha(current) != _config_sha(config):
+        raise AutomaticProgramError("automatic_configuration_changed")
+    _program(tuple(command))  # Unsupported carriers refuse before any transport.
+    return PlannedArgv(tuple(argv), tuple(command), str(config.root), host, timeout_seconds,
+                       ssh_binary, nested_ssh_binary, uuid.uuid4().hex,
+                       _config_sha(config), _pins(config, host), _route_sha(config, host))
+
+
+def _program(command):
+    if not command or command[0] not in ("python3", "/usr/bin/python3"):
+        raise AutomaticProgramError("oversized_command_form_unsupported")
+    index = 1
+    while index < len(command) and command[index] in ("-I", "-B", "-u"):
+        index += 1
+    if index + 1 >= len(command) or command[index] != "-c":
+        raise AutomaticProgramError("oversized_command_form_unsupported")
+    raw = command[index + 1].encode("utf-8", "strict")
+    if not 0 < len(raw) <= MAX_PROGRAM_BYTES:
+        raise AutomaticProgramError("automatic_program_size")
+    return command[:index], raw, command[index + 2:]
+
+
+_COMMON = r'''import hashlib,json,os,pwd,stat,subprocess,sys,tempfile
+def identity():
+ p=pwd.getpwuid(os.geteuid())
+ if sys.platform.startswith('linux'):
+  with open('/proc/sys/kernel/random/boot_id') as f:boot=f.read(128).strip()
+ elif sys.platform=='darwin':
+  r=subprocess.run(['/usr/sbin/sysctl','-n','kern.bootsessionuuid'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=3,check=True);boot=r.stdout.decode().strip().lower()
+ else:raise ValueError('automatic_guest_platform')
+ if len(boot)!=36:raise ValueError('automatic_guest_boot')
+ return {'uid':os.geteuid(),'principal':p.pw_name,'home':p.pw_dir,'boot':boot}
+def gen(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def anchored(path):
+ if not path.startswith('/') or any(p in ('','.','..') for p in path.split('/')[1:]):raise ValueError('automatic_path')
+ f=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held=[f]
+ for p in path.split('/')[1:]:
+  f=os.open(p,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=f);held.append(f)
+ return f,held
+def same_path(path,held):
+ f,again=anchored(path)
+ try:
+  if [(os.fstat(x).st_dev,os.fstat(x).st_ino) for x in held]!=[(os.fstat(x).st_dev,os.fstat(x).st_ino) for x in again]:raise ValueError('automatic_ancestry_changed')
+ finally:
+  for x in reversed(again):os.close(x)
+def read_program(directory,size,digest,expected=None):
+ f=os.open('program.source',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory);s=os.fstat(f)
+ try:
+  if not stat.S_ISREG(s.st_mode) or s.st_uid!=os.geteuid() or stat.S_IMODE(s.st_mode)!=0o600 or s.st_nlink!=1 or s.st_size!=size or expected is not None and gen(s)!=expected:raise ValueError('automatic_program_metadata')
+  chunks=[];n=0;h=hashlib.sha256()
+  while n<size:
+   b=os.read(f,min(65536,size-n))
+   if not b:raise ValueError('automatic_program_short')
+   n+=len(b);h.update(b);chunks.append(b)
+  if os.read(f,1) or h.hexdigest()!=digest:raise ValueError('automatic_program_hash')
+  physical=os.stat('program.source',dir_fd=directory,follow_symlinks=False)
+  if gen(os.fstat(f))!=gen(s) or gen(physical)!=gen(s):raise ValueError('automatic_program_changed')
+  return f,s,b''.join(chunks)
+ except BaseException:os.close(f);raise
+def create(directory,name,raw):
+ f=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory)
+ try:
+  view=memoryview(raw)
+  while view:
+   n=os.write(f,view[:65536])
+   if n<=0:raise ValueError('automatic_short_write')
+   view=view[n:]
+  os.fsync(f)
+ finally:os.close(f)
+'''
+
+_RECEIVER = _COMMON + r'''
+corr,size,digest=sys.argv[1:4];size=int(size)
+if len(corr)!=32 or any(x not in '0123456789abcdef' for x in corr) or not 0<size<=8388608 or len(digest)!=64:raise ValueError('automatic_request')
+before=identity();parent=os.path.realpath(tempfile.gettempdir());root,parents=anchored(parent)
+try:
+ s=os.fstat(root)
+ if not (s.st_uid==os.geteuid() and not s.st_mode&0o022 or s.st_uid==0 and s.st_mode&stat.S_ISVTX):raise ValueError('automatic_parent')
+ leaf='vpn-control-auto-'+corr;os.mkdir(leaf,0o700,dir_fd=root);directory=os.open(leaf,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=root)
+ try:
+  ds=os.fstat(directory)
+  if ds.st_uid!=before['uid'] or stat.S_IMODE(ds.st_mode)!=0o700:raise ValueError('automatic_directory')
+  f=os.open('program.source',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory)
+  try:
+   remaining=size
+   while remaining:
+    b=sys.stdin.buffer.read(min(65536,remaining))
+    if not b:raise ValueError('automatic_source_truncated')
+    remaining-=len(b);v=memoryview(b)
+    while v:
+     n=os.write(f,v)
+     if n<=0:raise ValueError('automatic_short_write')
+     v=v[n:]
+   if sys.stdin.buffer.read(1):raise ValueError('automatic_source_trailing')
+   os.fsync(f)
+  finally:os.close(f)
+  f,s,raw=read_program(directory,size,digest);os.close(f)
+  path=parent+'/'+leaf
+  if identity()!=before:raise ValueError('automatic_identity_changed')
+  same_path(parent,parents)
+  if gen(os.stat(leaf,dir_fd=root,follow_symlinks=False))[:5]!=gen(ds)[:5]:raise ValueError('automatic_directory_changed')
+  receipt={'schemaVersion':1,'correlationId':corr,'directory':path,'identity':before,'programSha256':digest,'programBytes':size,'generation':gen(s),'directoryIdentity':gen(ds)[:5]}
+  create(directory,'receipt.json',json.dumps(receipt,sort_keys=True,separators=(',',':')).encode())
+  print(json.dumps(receipt,sort_keys=True,separators=(',',':')))
+ finally:os.close(directory)
+finally:
+ for f in reversed(parents):os.close(f)
+'''
+
+_LOADER = _COMMON + r'''
+expected=json.loads(sys.argv[1]);arguments=sys.argv[2:];path=expected['directory'];before=identity()
+if before!=expected['identity']:raise ValueError('automatic_identity_changed')
+if path!=os.path.realpath(tempfile.gettempdir())+'/vpn-control-auto-'+expected['correlationId']:raise ValueError('automatic_filename')
+directory,parents=anchored(path)
+try:
+ if gen(os.fstat(directory))[:5]!=expected['directoryIdentity'] or stat.S_IMODE(os.fstat(directory).st_mode)!=0o700:raise ValueError('automatic_directory_changed')
+ f,s,raw=read_program(directory,expected['programBytes'],expected['programSha256'],expected['generation'])
+ try:
+  # The claim precedes the single original program execution. An interrupted
+  # loader keeps this claim and cannot be replayed from its saved filename.
+  create(directory,'execution-intent.json',json.dumps(expected,sort_keys=True,separators=(',',':')).encode())
+  same_path(path,parents)
+  if identity()!=before:raise ValueError('automatic_identity_changed')
+  sys.argv=['-c',*arguments]
+  scope={'__name__':'__main__','__package__':None,'__spec__':None,'__builtins__':__builtins__}
+  try:exec(compile(raw,path+'/program.source','exec'),scope)
+  finally:
+   check,after,_=read_program(directory,expected['programBytes'],expected['programSha256'],expected['generation']);os.close(check)
+   if gen(os.fstat(f))!=gen(s) or identity()!=before:raise ValueError('automatic_closing_changed')
+   same_path(path,parents)
+ finally:os.close(f)
+finally:
+ for f in reversed(parents):os.close(f)
+'''
+
+
+def _carrier(program):
+    encoded = base64.b64encode(zlib.compress(program.encode(), 9)).decode()
+    return "import base64,zlib;exec(compile(zlib.decompress(base64.b64decode(" + repr(encoded) + ")), '<automatic-file-transport>', 'exec'))"
+
+
+def _private_directory(path):
+    if not path.exists():
+        path.mkdir(mode=0o700)
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise AutomaticProgramError("automatic_journal_directory")
+
+
+def _write(directory, name, raw):
+    fd = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        view = memoryview(raw)
+        while view:
+            count = os.write(fd, view[:CHUNK_BYTES])
+            if count <= 0:
+                raise AutomaticProgramError("automatic_local_short_write")
+            view = view[count:]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _stage(argv, payload, timeout):
+    """Bounded full-duplex stage only; no original product program executes."""
+    if command_bytes(argv) > COMMAND_BYTES:
+        raise AutomaticProgramError("automatic_bootstrap_command_size")
+    process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
+    selector = selectors.DefaultSelector()
+    output = {"stdout": bytearray(), "stderr": bytearray()}
+    pending = memoryview(payload)
+    sent = 0
+    deadline = time.monotonic() + timeout
+    try:
+        for name in output:
+            pipe = getattr(process, name); os.set_blocking(pipe.fileno(), False)
+            selector.register(pipe, selectors.EVENT_READ, name)
+        os.set_blocking(process.stdin.fileno(), False)
+        selector.register(process.stdin, selectors.EVENT_WRITE, "stdin")
+        while selector.get_map():
+            if time.monotonic() >= deadline:
+                raise AutomaticProgramError("automatic_stage_unknown_timeout")
+            for key, _ in selector.select(min(.1, max(0, deadline - time.monotonic()))):
+                if key.data == "stdin":
+                    try: count = os.write(key.fd, pending[:CHUNK_BYTES])
+                    except BlockingIOError: continue
+                    if count <= 0: raise AutomaticProgramError("automatic_stage_unknown_write")
+                    pending = pending[count:]; sent += count
+                    if not pending:
+                        selector.unregister(key.fileobj); key.fileobj.close()
+                else:
+                    try: block = os.read(key.fd, 4096)
+                    except BlockingIOError: continue
+                    if not block:
+                        selector.unregister(key.fileobj); continue
+                    target = output[key.data]; target.extend(block[:65537-len(target)])
+                    if len(target) > 65536: raise AutomaticProgramError("automatic_stage_unknown_output")
+        code = process.wait(timeout=max(.001, deadline-time.monotonic()))
+        if code != 0 or output['stderr'] or sent != len(payload):
+            raise AutomaticProgramError("automatic_stage_unknown_transport")
+        return bytes(output['stdout'])
+    except BaseException:
+        # This is this call's owned local SSH client only. Remote stage failures
+        # are retained as unknown and are never resubmitted.
+        if process.poll() is None: process.kill()
+        process.wait()
+        raise
+    finally:
+        selector.close()
+        for pipe in (process.stdin, process.stdout, process.stderr):
+            if not pipe.closed: pipe.close()
+
+
+def _raw(argv):
+    if isinstance(argv, PlannedArgv):
+        raise AutomaticProgramError("automatic_bootstrap_command_size")
+    if command_bytes(argv) > COMMAND_BYTES:
+        raise AutomaticProgramError("unbound_oversized_command")
+    return argv
+
+
+@contextmanager
+def automatic_submission(argv):
+    """Stage a bound long carrier before its existing owner's one submission."""
+    if not isinstance(argv, PlannedArgv):
+        yield _raw(argv)
+        return
+    transport = _transport()
+    config = transport.load_config(Path(argv.root))
+    prefix, raw, arguments = _program(argv.command)
+    held = closure._Held()
+    try:
+        for path, digest in argv.source_pins:
+            held.read(path, digest, max_bytes=MAX_PROGRAM_BYTES)
+        def guard():
+            held.finish(); held.final_identity_pass()
+            current = transport.load_config(Path(argv.root))
+            if _config_sha(current) != argv.config_sha or _route_sha(current, argv.host) != argv.route_sha:
+                raise AutomaticProgramError("automatic_configuration_changed")
+            rebuilt = transport.build_ssh_argv(current, argv.host, argv.timeout_seconds, argv.command,
+                                               argv.ssh_binary, argv.nested_ssh_binary)
+            actual = rebuilt.original_argv if isinstance(rebuilt, PlannedArgv) else tuple(rebuilt)
+            if actual != argv.original_argv:
+                raise AutomaticProgramError("automatic_route_changed")
+            held.finish(); held.final_identity_pass()
+        guard()
+        root = Path(argv.root)
+        for path in (root / '.rag_index', root / '.rag_index' / 'ssh-automatic-program'):
+            _private_directory(path)
+        directory = root / '.rag_index' / 'ssh-automatic-program' / argv.correlation
+        # A repeated or interrupted automatic submission is never assigned a
+        # fresh identity. The original operation retains its own admission too.
+        directory.mkdir(mode=0o700)
+        _write(directory, 'program.source', raw)
+        held.read(str(directory / 'program.source'), _sha(raw), max_bytes=MAX_PROGRAM_BYTES)
+        _write(directory, 'intent.json', _json({'schemaVersion':1,'correlationId':argv.correlation,
+                 'host':argv.host,'programSha256':_sha(raw),'programBytes':len(raw),
+                 'originalArgvSha256':_sha(_json(argv.original_argv)), 'replayAllowed':False}))
+        stage_command = (*prefix, '-c', _carrier(_RECEIVER), argv.correlation, str(len(raw)), _sha(raw))
+        stage_argv = _raw(transport.build_ssh_argv(config, argv.host, argv.timeout_seconds, stage_command,
+                                                  argv.ssh_binary, argv.nested_ssh_binary))
+        guard()
+        try:
+            receipt_raw = _stage(stage_argv, raw, max(30, argv.timeout_seconds))
+            guard()
+            receipt = json.loads(receipt_raw)
+            expected = {'schemaVersion','correlationId','directory','identity','programSha256','programBytes','generation','directoryIdentity'}
+            identity = receipt.get('identity') if isinstance(receipt, dict) else None
+            if (not isinstance(receipt, dict) or set(receipt) != expected or receipt['schemaVersion'] != 1
+                    or receipt['correlationId'] != argv.correlation or receipt['programSha256'] != _sha(raw)
+                    or receipt['programBytes'] != len(raw) or not isinstance(identity, dict)
+                    or set(identity) != {'uid','principal','home','boot'}
+                    or type(identity['uid']) is not int or identity['uid'] < 0
+                    or identity['principal'] != config.hosts[argv.host].user
+                    or not isinstance(identity['home'],str) or not identity['home'].startswith('/')
+                    or not isinstance(identity['boot'],str) or len(identity['boot']) != 36
+                    or not isinstance(receipt['generation'], list) or len(receipt['generation']) != 9
+                    or not isinstance(receipt['directoryIdentity'], list) or len(receipt['directoryIdentity']) != 5
+                    or not isinstance(receipt['directory'], str)
+                    or not receipt['directory'].endswith('/vpn-control-auto-'+argv.correlation)):
+                raise AutomaticProgramError('automatic_stage_unknown_receipt')
+            _write(directory, 'staged.json', _json(receipt))
+            submitted = _raw(transport.build_ssh_argv(config, argv.host, argv.timeout_seconds,
+                (*prefix, '-c', _carrier(_LOADER), _json(receipt).decode(), *arguments),
+                argv.ssh_binary, argv.nested_ssh_binary))
+            guard()
+            _write(directory, 'execution-intent.json', _json({'replayAllowed':False,'receiptSha256':_sha(_json(receipt))}))
+            yield submitted
+            guard()
+            _write(directory, 'submission-returned.json', _json({'replayAllowed':False}))
+        except BaseException:
+            _write(directory, 'unknown.json', _json({'state':'unknown','replayAllowed':False}))
+            raise
+    finally:
+        held.close()

@@ -8,6 +8,7 @@ CAPABLE=(direct.coordinator_capable() and hasattr(socket,'AF_UNIX') and Path('/d
 if CAPABLE:
     from agent_tools import ssh_fresh_nested_channel as channel
     from agent_tools.tests import test_ssh_direct_nested_channel as fixtures
+    from agent_tools.tests import test_ssh_direct_ended_source_transition as history
 FIXTURES=Path(__file__).parent/'fixtures'/'ssh_direct_inventory_diagnostic'
 FRESH_BEFORE='f569a8b606d207b4d5a5623cc580216a595f2826ed93ebca5f2ab38cb1a55663'
 DIRECT_BEFORE='99c6ce89cda8431936220be31ea0b6c989b78668d1a155b71cbb98d85c23ce0f'
@@ -25,7 +26,7 @@ class EndedInventorySuccessorTests(unittest.TestCase):
         self.f=fixtures.DirectChannelTests('runTest');self.f.setUp();self.addCleanup(self.f.doCleanups)
         self.old_dir=self.f.root/'old-public-source';self.old_dir.mkdir()
         for name in direct._SOURCE_NAMES:
-            source=Path(direct.__file__).with_name(name)
+            source=history.CURRENT_PROVIDER_SOURCE.with_name(name)
             shutil.copyfile(source,self.old_dir/name)
         for name,fixture,expected in (('ssh_direct_nested_channel.py','direct_before.py',DIRECT_BEFORE),('ssh_fresh_nested_channel.py','fresh_before.py',FRESH_BEFORE)):
             body=(FIXTURES/fixture).read_bytes()
@@ -33,11 +34,17 @@ class EndedInventorySuccessorTests(unittest.TestCase):
             (self.old_dir/name).write_bytes(body)
         self.old_direct=load_public(self.old_dir/'ssh_direct_nested_channel.py','direct')
         self.old_fresh=load_public(self.old_dir/'ssh_fresh_nested_channel.py','fresh')
+        self.reviewed_dir=self.f.root/'reviewed-v1-source';self.reviewed_dir.mkdir()
+        for name in direct._SOURCE_NAMES:
+            shutil.copyfile(history.CURRENT_PROVIDER_SOURCE.with_name(name),self.reviewed_dir/name)
+        self.reviewed_direct=load_public(self.reviewed_dir/'ssh_direct_nested_channel.py','reviewed-direct')
+        self.reviewed_fresh=load_public(self.reviewed_dir/'ssh_fresh_nested_channel.py','reviewed-fresh')
+
     def tearDown(self):
         self.f.doCleanups()
         self.assertEqual(self.fd_before,len(os.listdir('/dev/fd')))
     def old_history(self):
-        with mock.patch.object(agent_tools,'ssh_fresh_nested_channel',self.old_fresh),mock.patch.object(agent_tools,'ssh_direct_nested_channel',self.old_direct),mock.patch.object(subprocess,'Popen',side_effect=self.f.consumer):
+        with mock.patch.object(self.f,'expected_remote',self.old_fresh._REMOTE),mock.patch.object(agent_tools,'ssh_fresh_nested_channel',self.old_fresh),mock.patch.object(agent_tools,'ssh_direct_nested_channel',self.old_direct),mock.patch.object(subprocess,'Popen',side_effect=self.f.consumer):
             ready=self.old_direct.prepare(self.f.root,'archlinux',self.f.corr)
             self.assertEqual('ready',ready['state']);prior=self.f.result
             self.f.result={'state':'ended','correlationId':self.f.corr,'prior':prior,'gatewayBoot':prior['master']['gatewayBoot']}
@@ -48,19 +55,24 @@ class EndedInventorySuccessorTests(unittest.TestCase):
     def successor(self,prior):
         corr='c'*32
         self.f.result={**prior,'correlationId':corr,'controlPath':'/tmp/vpn-channel-'+corr+'/m'}
-        with mock.patch.object(subprocess,'Popen',side_effect=self.f.consumer):return direct.prepare(self.f.root,'archlinux',corr)
+        with mock.patch.object(self.f,'expected_remote',self.reviewed_fresh._REMOTE),mock.patch.object(agent_tools,'ssh_fresh_nested_channel',self.reviewed_fresh),mock.patch.object(agent_tools,'ssh_direct_nested_channel',self.reviewed_direct),mock.patch.object(subprocess,'Popen',side_effect=self.f.consumer):return self.reviewed_direct.prepare(self.f.root,'archlinux',corr)
     def current_intent(self,previous):
-        with direct.Guard(self.f.root) as guard:
-            current={**previous,'sourceSha256':channel._source(),'directSourcePins':dict(guard.source_pins)}
+        with mock.patch.object(agent_tools,'ssh_fresh_nested_channel',self.reviewed_fresh),mock.patch.object(agent_tools,'ssh_direct_nested_channel',self.reviewed_direct),self.reviewed_direct.Guard(self.f.root) as guard:
+            current={**previous,'sourceSha256':self.reviewed_fresh._source(),'directSourcePins':dict(guard.source_pins)}
             guard.guard()
         return current
     def matcher(self):
-        if not self.source_before:return channel._ended_direct_intent_matches
-        raw=(FIXTURES/'fresh_before.py').read_text();tree=ast.parse(raw)
-        node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_ended_direct_intent_matches')
-        namespace=dict(vars(channel))
-        exec(compile(ast.Module(body=[node],type_ignores=[]),'<authentic before matcher AST>','exec'),namespace)
-        return namespace['_ended_direct_intent_matches']
+        subject=self.reviewed_fresh._ended_direct_intent_matches
+        if self.source_before:
+            raw=(FIXTURES/'fresh_before.py').read_text();tree=ast.parse(raw)
+            node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_ended_direct_intent_matches')
+            namespace=dict(vars(self.reviewed_fresh))
+            exec(compile(ast.Module(body=[node],type_ignores=[]),'<authentic before matcher AST>','exec'),namespace)
+            subject=namespace['_ended_direct_intent_matches']
+        def compare(*args):
+            with mock.patch.object(agent_tools,'ssh_fresh_nested_channel',self.reviewed_fresh),mock.patch.object(agent_tools,'ssh_direct_nested_channel',self.reviewed_direct):
+                return subject(*args)
+        return compare
     def test_authentic_matcher_exact_predecessor_and_current_tuple(self):
         directory,saved,prior=self.old_history()
         previous=json.loads(saved[self.f.corr+'.intent.json']);current=self.current_intent(previous)
@@ -75,22 +87,22 @@ class EndedInventorySuccessorTests(unittest.TestCase):
         for target,key,value in (('old','ssh_direct_nested_channel.py','0'*64),('new','ssh_direct_nested_channel.py','0'*64),('old','ssh_transport.py','0'*64),('new','ssh_transport.py','0'*64)):
             left=copy.deepcopy(previous);right=copy.deepcopy(current)
             (left if target=='old' else right)['directSourcePins'][key]=value
-            self.assertFalse(channel._ended_direct_intent_matches(left,right))
+            self.assertFalse(self.matcher()(left,right))
         missing=copy.deepcopy(previous);missing['directSourcePins'].pop('ssh_direct_nested_channel.py')
-        self.assertFalse(channel._ended_direct_intent_matches(missing,current))
+        self.assertFalse(self.matcher()(missing,current))
         foreign=copy.deepcopy(previous);foreign['sourceSha256']='0'*64;foreign['directSourcePins']['ssh_fresh_nested_channel.py']='0'*64
-        self.assertFalse(channel._ended_direct_intent_matches(foreign,current))
-        with mock.patch.object(direct,'__file__',str(self.old_dir/'ssh_direct_nested_channel.py')):
-            self.assertFalse(channel._ended_direct_intent_matches(previous,current))
+        self.assertFalse(self.matcher()(foreign,current))
+        with mock.patch.object(self.reviewed_direct,'__file__',str(self.old_dir/'ssh_direct_nested_channel.py')):
+            self.assertFalse(self.matcher()(previous,current))
     def test_existing_reviewed_provider_mcp_pair_remains_finite(self):
         directory,saved,prior=self.old_history();previous=json.loads(saved[self.f.corr+'.intent.json']);current=self.current_intent(previous)
         previous['sourceSha256']=channel._REVIEWED_ENDED_DIRECT_PROVIDER
         previous['directSourcePins']['ssh_fresh_nested_channel.py']=previous['sourceSha256']
         previous['directSourcePins']['mcp_server.py']='6ca7b4050ee5ca6977ff3948ad22b78350d49007c557ba603b9ab2a6558dc014'
         current['directSourcePins']['mcp_server.py']='5707593229d5fa3c331998a0f6bbc2bae1ca4dff3a94fd4f5f5c8064e07a14d7'
-        self.assertTrue(channel._ended_direct_intent_matches(previous,current))
+        self.assertTrue(self.matcher()(previous,current))
         previous['directSourcePins']['mcp_server.py']='0'*64
-        self.assertFalse(channel._ended_direct_intent_matches(previous,current))
+        self.assertFalse(self.matcher()(previous,current))
     def test_incomplete_or_nonended_history_never_starts_second_consumer(self):
         for failure in ('ready_absent','terminal_unknown'):
             with self.subTest(failure=failure):

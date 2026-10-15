@@ -54,14 +54,40 @@ def _metadata(value,corr,receipt):
     if value['innerOptions'][1]!='/tmp/vpn-channel-'+corr+'/m':raise SelectionUnknown()
     return {key:list(item) if isinstance(item,tuple) else item for key,item in value.items()}
 
-def _group(root,create):
+def _group(root,create,*,host=None):
     path=root/_GROUP
     if create:
         session._directory(root/'.rag_index')
         try:path.mkdir(mode=0o700)
         except FileExistsError:pass
     session._directory(path)
+    if host is not None:
+        channel._host(host)
+        for name in ('hosts',host):
+            path=path/name
+            if create:
+                try:path.mkdir(mode=0o700)
+                except FileExistsError:pass
+            session._directory(path)
     return path
+
+def _selected_directory(root,host):
+    channel._host(host);base=Path(root)/_GROUP
+    if not os.path.lexists(base):return None
+    with private.Directory(base) as directory:
+        hosts=base/'hosts'
+        if os.path.lexists(hosts):
+            with private.Directory(hosts):
+                path=hosts/host
+                if os.path.lexists(path):return path
+        # The original global pointer was exclusively an Arch campaign. It
+        # cannot become construction input for a different explicit context.
+        if host==channel.HOST and any(name!='hosts' for name in os.listdir(directory.fd)):return base
+    return None
+
+def selection_present(root,host):
+    """Filesystem presence only; an existing malformed selection never falls back."""
+    return _selected_directory(Path(root),host) is not None
 
 def _replace(directory,value,old):
     # Only this fixed private pointer is mutable. History stays create-only.
@@ -81,12 +107,13 @@ def select_channel(root,host,correlation_id,receipt_sha256,*,direct=False):
     """Publish selection only after genuine current read-only admission."""
     try:
         channel._corr(correlation_id)
-        if host!=channel.HOST or not isinstance(receipt_sha256,str) or re.fullmatch('[0-9a-f]{64}',receipt_sha256) is None:raise SelectionUnknown()
+        channel._host(host)
+        if not isinstance(receipt_sha256,str) or re.fullmatch('[0-9a-f]{64}',receipt_sha256) is None:raise SelectionUnknown()
         provider=direct_channel if direct else channel
         presented=private.PresentedPath(Path(root).absolute());root=presented.canonical
         with private.Directory(root) as base, private.Snapshot(base,transport.CONFIG_FILENAME) as inventory, ExitStack() as stack:
             source=_sources();metadata=_metadata(provider.route_options(root,host,correlation_id,receipt_sha256),correlation_id,receipt_sha256)
-            group=stack.enter_context(private.Directory(_group(root,True)))
+            group=stack.enter_context(private.Directory(_group(root,True,host=host)))
             lock=stack.enter_context(_Lock(group))
             current=stack.enter_context(private.Snapshot(group,'current.json')) if os.path.lexists(group.path/'current.json') else None
             value={'version':2 if direct else 1,'host':host,'metadata':metadata,'inventory':inventory.pin(),'sources':source}
@@ -119,13 +146,13 @@ def selected_route_options(root,host,config=None):
 
     Existing but malformed/expired selection always raises SelectionUnknown.
     """
-    if host!=channel.HOST:return None
     presented=private.PresentedPath(Path(root).absolute());root=presented.canonical
-    path=root/_GROUP/'current.json'
-    if not os.path.lexists(root/_GROUP):return None
+    group_path=_selected_directory(root,host)
+    if group_path is None:return None
+    path=group_path/'current.json'
     if not os.path.lexists(path):raise SelectionUnknown()
     try:
-        with private.Directory(root) as base, private.Snapshot(base,transport.CONFIG_FILENAME) as inventory, private.Directory(_group(root,False)) as group, private.Snapshot(group,_Lock.name) as lock, private.Snapshot(group,'current.json') as current:
+        with private.Directory(root) as base, private.Snapshot(base,transport.CONFIG_FILENAME) as inventory, private.Directory(group_path) as group, private.Snapshot(group,_Lock.name) as lock, private.Snapshot(group,'current.json') as current:
             if lock.body!=_Lock.body:raise SelectionUnknown()
             private.fcntl.flock(lock.fd,private.fcntl.LOCK_SH|private.fcntl.LOCK_NB)
             pointer=_json(current.body)

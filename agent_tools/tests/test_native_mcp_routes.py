@@ -11,6 +11,24 @@ from agent_tools import mcp_server
 
 
 class NativeRoutesTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'android_observation',
+            'android_proxy_recovery',
+            'native_artifact_registry',
+            'native_review_source_closure',
+            'native_scenario_execution',
+            'native_vm_baseline_inventory',
+            'ssh_connection_recovery',
+            'ssh_forward',
+            'ssh_transfer',
+            'ssh_transport',
+            'windows_credential_probe_ssh',
+            'windows_credential_recovery_ssh',
+        )
+
     def test_baseline_metadata_route_rejects_overrides_before_reader(self):
         from agent_tools import native_vm_baseline_inventory as inventory
         with patch.object(inventory, "configured_source_metadata") as read, \
@@ -104,10 +122,10 @@ class NativeRoutesTest(unittest.TestCase):
                                   credential_status=Mock(return_value={"state": "ready"}),
                                   WindowsCredentialRecoveryError=PrivateError)
         request = {"host": "owned", "correlationId": "00000000-0000-0000-0000-000000000001"}
-        original_import = mcp_server.importlib.import_module
+        original_module = mcp_server._agent_module
         def load(name):
-            return backend if name.endswith("windows_credential_recovery_ssh") else original_import(name)
-        with patch.object(mcp_server.importlib, "import_module", side_effect=load):
+            return backend if name == "windows_credential_recovery_ssh" else original_module(name)
+        with patch.object(mcp_server, "_agent_module", side_effect=load):
             self.assertEqual("submitted", mcp_server.vm_workflow("windows-credential-recover-start", request)["state"])
             backend.start.assert_called_once_with(mcp_server.REPO_ROOT, "owned", request["correlationId"], timeout_seconds=15)
             for forbidden in ("password", "command", "accountName", "expectedSid", "credentialPath"):
@@ -296,6 +314,24 @@ if __name__ == "__main__":
 
 
 class SourceReviewClosureRoutesTest(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'android_observation',
+            'android_proxy_recovery',
+            'native_artifact_registry',
+            'native_review_source_closure',
+            'native_scenario_execution',
+            'native_vm_baseline_inventory',
+            'ssh_connection_recovery',
+            'ssh_forward',
+            'ssh_transfer',
+            'ssh_transport',
+            'windows_credential_probe_ssh',
+            'windows_credential_recovery_ssh',
+        )
+
     def test_source_closure_forwards_explicit_authority_without_native_recording(self):
         from agent_tools import native_review_source_closure as closure
         request = {"manifestPath": "/review.json", "manifestSha256": "a" * 64,
@@ -401,6 +437,10 @@ class SecondAbortFailureProjectionTests(unittest.TestCase):
                     }
                     with patch.object(mcp_server, "_agent_module", side_effect=modules.__getitem__):
                         result = mcp_server.vm_workflow(action, {field: self.correlation})
+                    retired=mcp_server.windows_vm_setup_policy.refusal(action,{field:self.correlation})
+                    if retired is not None:
+                        self.assertEqual([],calls);self.assertEqual(retired,result)
+                        continue
                     self.assertEqual(calls, [(mcp_server.REPO_ROOT, {field: self.correlation})])
                     self.assertNotIn(sentinel, json.dumps(result))
                     self.assertEqual("unknown", result["state"])

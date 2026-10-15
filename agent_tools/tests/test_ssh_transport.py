@@ -118,10 +118,10 @@ class SshTransportTest(unittest.TestCase):
             config = SimpleNamespace(root=root, hosts={"archlinux": object()})
             def selected_failure(*_args):
                 raise SelectionUnknown("controlled-selected-status-unknown")
-            selection = SimpleNamespace(selected_route_options=selected_failure,
+            selection = SimpleNamespace(selected_route_options=selected_failure,selection_present=lambda *_:True,
                                         SelectionUnknown=SelectionUnknown, transport=ssh)
             session = SimpleNamespace(SessionUnknown=SessionUnknown)
-            with mock.patch.object(ssh, "_route_hosts", return_value=[object(), object()]), \
+            with mock.patch.object(ssh, "_route_hosts", return_value=[SimpleNamespace(alias='archlinux'), SimpleNamespace(alias='gateway')]), \
                  mock.patch.object(ssh, "_selection_module", return_value=selection), \
                  mock.patch.object(ssh, "_session_module", return_value=session):
                 with self.assertRaises(ssh.SshConfigError) as raised:

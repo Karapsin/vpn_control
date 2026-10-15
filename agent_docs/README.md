@@ -8,6 +8,7 @@ This is the authoritative entry point for developer and agent documentation. Sta
 | --- | --- | --- | --- |
 | Low-context patch or dirty worktree | `development.md`, `test-matrix.md` | `git status --short`, owner files from `architecture.md` | `git diff --check` plus the mapped test tier |
 | Agent startup, MCP, RAG, commit, or CI finish | `../agent_tools/README.md`, `development.md`, `test-matrix.md` | `.codex/config.toml`, `agent_tools/`, `.github/required-workflows.json` | `python3 agent_tools/affected_agent_tests.py --run` plus the managed pre-push tier for lifecycle changes |
+| Fresh Windows VM or reproducibility review | `tools/lifecycle-and-api.md`, current WIP | `agent_tools/native_vm_spec.py`, `agent_tools/windows_vm_deploy.py`, `agent_tools/windows_vm_setup_policy.py` | Affected agent tests; complete DIRECT creation/setup and matching MCP qualification before product acceptance |
 | Unknown file or ambiguous ownership | `development.md`, `contracts.md`, `architecture.md` | `git diff --name-status`, nearest owner docs, existing tests beside the touched file | `git diff --check`; then use the closest owner row before editing |
 | Documentation-only changes | `development.md`, `test-matrix.md` | Changed docs, links, scripts that validate docs | `git diff --check`, `./scripts/check_docs_hygiene.sh` |
 | Localization, UI labels, status/log text | `localization.md`, `test-matrix.md` | `shared/ui/src/commonMain/resources/i18n/`, `shared/ui/src/commonMain/resources/i18n-status/`, status facades in `shared/model/` | `./scripts/check_localization.py`, `./scripts/status_catalog_tool.py check`, `./gradlew :shared:ui:desktopTest` |
@@ -51,7 +52,7 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | `macos-release.md` | macOS signing and notarization setup. |
 | `visual-regression.md` | Agent-owned scene capture, local VM/hosted fallback, baseline, review, receipt, and release-gate operations. |
 | `work-in-progress.md` | Current intentional multi-bucket work: owners, verified checkpoint, next actions and remaining gates. |
-| `parity-solo-plan.md` | Active bounded execution brief: Linux → Windows → Android, macOS native/visual deferred; subagents allowed by updated human instruction. |
+| `parity-solo-plan.md` | Deferred parity brief; active MCP-only repair allows subagents and keeps prior environments closed. |
 | `parity-continuation-plan.md` | Superseded-brief pointer; September 28 instructions remain preserved in the archive. |
 | `parity-failure-regressions.md` | Compact active failure-to-test index, unresolved enrollment and links to complete causal records. |
 | `parity-history.md` | Historical GUI/CLI parity evidence and design notes; superseded snapshots, not current completion claims. |

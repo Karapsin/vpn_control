@@ -1,0 +1,52 @@
+def _retained_v2_terminal(stack,directory,held,value,host):
+    """Archived byte custody permits ENDED observation, never old execution/READY.
+
+    A new tool revision need not list the previous revision's SHA in source.
+    Missing/unknown records still block a second launch without replay.
+    """
+    keys={'version','host','correlationId','sourceSha256','remoteSourceSha256','inventory','outerReceiptSha256','expectedUid','expectedBoot'}
+    direct=value.get('transportMode')=='direct'
+    if direct:keys=(keys-{'outerReceiptSha256'})|{'outerAuthoritySha256','transportMode','directSourcePins'}
+    if (set(value)!=keys or type(value['version'])is not int or value['version']!=2 or value['host']!=host
+            or value['expectedUid'] is not None or value['expectedBoot'] is not None):return None
+    corr=value['correlationId'];_corr(corr)
+    source_pins=value.get('directSourcePins',{})
+    if direct:
+        from . import ssh_direct_nested_channel as direct_channel
+        if type(source_pins)is not dict or set(source_pins)!=set(direct_channel._SOURCE_NAMES):return None
+        if source_pins['ssh_fresh_nested_channel.py']!=value['sourceSha256']:return None
+    inventory=value['inventory'];outer=value['outerAuthoritySha256' if direct else 'outerReceiptSha256']
+    if (type(inventory)is not dict or set(inventory)!={'generation','size','sha256'}
+            or type(inventory['generation'])is not list or len(inventory['generation'])!=9
+            or any(type(x)is not int for x in inventory['generation'])
+            or type(inventory['size'])is not int or not 0<inventory['size']<=1048576):return None
+    hashes={'remote':value['remoteSourceSha256'],'ssh_fresh_nested_channel.py':value['sourceSha256'],**source_pins}
+    if any(type(x)is not str or re.fullmatch('[0-9a-f]{64}',x)is None for x in [outer,inventory['sha256'],*hashes.values()]):return None
+    snapshots=[]
+    for name,digest in hashes.items():
+        part=stack.enter_context(private.Snapshot(directory,corr+'.'+name+'.source'))
+        if part.digest!=digest:return None
+        snapshots.append(part)
+    terminal=stack.enter_context(private.Snapshot(directory,corr+'.terminal.json'))
+    ended=json.loads(terminal.body,object_pairs_hook=transport._reject_duplicate_keys)
+    if (type(ended)is not dict or set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'}
+            or ended['state']!='ended' or ended['correlationId']!=corr or ended['intentSha256']!=held.digest
+            or type(ended['gatewayBoot'])is not str
+            or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',ended['gatewayBoot']) is None):return None
+    if ended['receiptSha256'] is None:
+        if os.path.lexists(directory.path/(corr+'.ready.json')):return None
+    else:
+        ready=stack.enter_context(private.Snapshot(directory,corr+'.ready.json'))
+        receipt=json.loads(ready.body,object_pairs_hook=transport._reject_duplicate_keys)
+        if (ended['receiptSha256']!=ready.digest or type(receipt)is not dict or set(receipt)!={'intent','result'}
+                or json.dumps(receipt['intent'],sort_keys=True)!=json.dumps(held.pin(),sort_keys=True)):return None
+        prior=receipt['result']
+        if (type(prior)is not dict or set(prior)!={'state','correlationId','master','arch','controlPath'}
+                or prior['state']!='ready' or prior['correlationId']!=corr or prior['controlPath']!='/tmp/vpn-channel-'+corr+'/m'
+                or not _peer_shape(prior['arch']) or not _master_shape(prior['master'])
+                or prior['master']['gatewayBoot']!=ended['gatewayBoot']):return None
+        snapshots.append(ready)
+    snapshots.extend((held,terminal))
+    def guard():
+        for part in snapshots:part.guard()
+    guard();return guard

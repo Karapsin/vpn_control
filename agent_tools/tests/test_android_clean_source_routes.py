@@ -21,6 +21,9 @@ SOURCE_ROOT = "/private/clean-source"
 
 class AndroidCleanSourceRouteTests(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_routes
+        from agent_tools import android_native_fixture_lifecycle
+        bind_routes(self, server, android_native_fixture_lifecycle)
         boot = mock.patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         boot.start()
         self.addCleanup(boot.stop)
@@ -78,6 +81,9 @@ class AndroidEndpointCleanSourceRouteTests(unittest.TestCase):
     }
 
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_routes
+        from agent_tools import android_endpoint_admission
+        bind_routes(self, server, android_endpoint_admission)
         boot = mock.patch.object(server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         boot.start()
         self.addCleanup(boot.stop)

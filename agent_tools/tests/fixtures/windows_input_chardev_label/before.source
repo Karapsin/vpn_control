@@ -1,0 +1,4 @@
+def identity():
+ s=open('/proc/'+QEMU_PID+'/stat','rb').read().split();argv=open('/proc/'+QEMU_PID+'/cmdline','rb').read();boot=open('/proc/sys/kernel/random/boot_id').read().strip();image=os.readlink('/proc/'+QEMU_PID+'/exe')
+ if len(s)<22 or s[3]!=str(PROFILE['qemu_parent_pid']).encode() or s[21]!=QEMU_TICKS.encode() or os.stat('/proc/'+QEMU_PID).st_uid!=PROFILE['qemu_uid'] or hashlib.sha256(argv).hexdigest()!=PROFILE['qemu_argv_sha256'] or boot!=PROFILE['host_boot_id'] or os.path.basename(image)!='qemu-system-x86_64' or not live(QMP_SOCKET,QEMU_PID,QEMU_TICKS) or not live(QGA_SOCKET,QEMU_PID,QEMU_TICKS) or os.fsencode(QMP_SOCKET)not in argv or os.fsencode(QGA_SOCKET)not in argv or b'id=owned-qga'not in argv:raise ValueError('QEMU_SOCKET_IDENTITY')
+ return [s[0].decode(),s[3].decode(),s[21].decode(),PROFILE['qemu_uid'],image,hashlib.sha256(argv).hexdigest(),boot]

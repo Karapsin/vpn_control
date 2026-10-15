@@ -63,6 +63,16 @@
       "sha256": "8dd8a577cc0f34b435a6896b03595c943f0083b048fa857c95ebb1e272dd3e18",
       "size": 25731,
       "source": ".runtime/parity-evidence/windows-public-context-testpin-successor/v11-held-closing-hold/1-public-context.draft.py"
+    },
+    "reviewed-base-test.source": {
+      "sha256": "bee23d9115fde0e1985590988e2e9be2761df32b0aa5e2575af68537791b2c5d",
+      "size": 1044995,
+      "source": "git:e167a73ee8acd7fbb9844380dc12f310f537d0e6:agent_tools/tests/test_windows_cp117_base_source_refresh.py"
+    },
+    "reviewed-server-test.source": {
+      "sha256": "4b6612464904b342ced0602d5fc5177ac7c8f8078506285cc0c45e64d4dba870",
+      "size": 91294,
+      "source": "git:e167a73ee8acd7fbb9844380dc12f310f537d0e6:agent_tools/tests/test_windows_cp117_server_preflight.py"
     }
   }
 }

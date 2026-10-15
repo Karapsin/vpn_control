@@ -19,6 +19,16 @@ if COORDINATOR_CAPABLE:
 
 
 class PortableDirectChannelBoundaryTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'ssh_channel_selection',
+            'ssh_direct_nested_channel',
+            'ssh_fresh_nested_channel',
+            'ssh_transport',
+        )
+
     def test_unsupported_prepare_and_status_refuse_before_private_or_posix_imports(self):
         with mock.patch.object(direct,'coordinator_capable',return_value=False),mock.patch.object(direct,'_dependencies',side_effect=AssertionError('POSIX dependencies opened')):
             expected={'state':'unknown','nativeActionAllowed':False,'replayAllowed':False}
@@ -42,6 +52,14 @@ class PortableDirectChannelBoundaryTests(unittest.TestCase):
 @unittest.skipUnless(COORDINATOR_CAPABLE,'POSIX SSH coordinator with protected FD ancestry, /dev/fd and OpenSSH required')
 class DirectChannelTests(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'ssh_channel_selection',
+            'ssh_direct_nested_channel',
+            'ssh_fresh_nested_channel',
+            'ssh_transport',
+        )
         original=fixtures.fixtures.SessionTests.setUp
         def setup(owner):
             original(owner)
@@ -51,14 +69,14 @@ class DirectChannelTests(unittest.TestCase):
         with mock.patch.object(fixtures.fixtures.SessionTests,'setUp',setup):self.f.setUp()
         self.addCleanup(self.f.doCleanups)
         self.root=self.f.root;self.corr=self.f.corr;self.calls=[]
-        self.real_popen=self.f.real_popen;self.result=self.f.ready_fixture();self.returncode=0
+        self.real_popen=self.f.real_popen;self.result=self.f.ready_fixture();self.returncode=0;self.expected_remote=channel._REMOTE
         self.config_path=self.f.f.config_path;self.legacy=self.root/'.rag_index/ssh-connection-session'
         self.legacy_before={str(p.relative_to(self.legacy)):p.read_bytes() for p in self.legacy.rglob('*') if p.is_file()}
     def consumer(self,argv,**kw):
         self.assertEqual(['-F','/dev/null'],argv[1:3]);self.assertEqual('none',argv[argv.index('-S')+1])
         self.assertIn('ControlMaster=no',argv);self.assertNotIn('inert private sentinel',repr(argv))
         remote=shlex.split(argv[-1]);self.assertEqual(['python3','-I','-B','-c'],remote[:4])
-        call=ast.parse(remote[4],mode='eval').body;self.assertEqual(channel._REMOTE,ast.literal_eval(call.args[0]))
+        call=ast.parse(remote[4],mode='eval').body;self.assertEqual(self.expected_remote,ast.literal_eval(call.args[0]))
         self.calls.append(remote)
         code='import sys,json;body=sys.stdin.buffer.read();assert json.loads(body) in ({},{"passphrase":"inert private sentinel"});sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]));sys.exit(int(sys.argv[2]))'
         return self.real_popen([sys.executable,'-I','-B','-c',code,json.dumps(self.result).encode().hex(),str(self.returncode)],**kw)
@@ -92,7 +110,7 @@ class DirectChannelTests(unittest.TestCase):
         self.assertEqual(1,sum(c[6]=='prepare' for c in self.calls));self.assert_legacy_unchanged()
     def test_secret_only_stdin_full_current_config_controls(self):
         capture={};ready=self.invoke(capture=capture.update);self.assertEqual('ready',ready['state']);self.assertTrue(capture['complete'])
-        intent=json.loads((self.root/'.rag_index/ssh-direct-nested-channel'/(self.corr+'.intent.json')).read_bytes())
+        intent=json.loads((self.root/'.rag_index/ssh-direct-nested-channel/hosts/archlinux'/(self.corr+'.intent.json')).read_bytes())
         self.assertNotIn('inert private sentinel',json.dumps(intent));self.assertEqual('direct',intent['transportMode'])
         before=len(self.calls);self.f.f.config['hosts']['archlinux']['password']='changed secret';self.f.f.write_config()
         self.assertEqual('unknown',self.invoke('status')['state']);self.assertEqual(before,len(self.calls))
@@ -134,7 +152,7 @@ class DirectChannelTests(unittest.TestCase):
         ready=self.invoke();prior=self.result
         self.result={'state':'ended','correlationId':self.corr,'prior':prior,'gatewayBoot':prior['master']['gatewayBoot']}
         self.assertEqual('ended',self.invoke('status')['state'])
-        oldpath=self.root/'.rag_index/ssh-direct-nested-channel'/(self.corr+'.intent.json');old=oldpath.read_bytes()
+        oldpath=self.root/'.rag_index/ssh-direct-nested-channel/hosts/archlinux'/(self.corr+'.intent.json');old=oldpath.read_bytes()
         self.drift_metadata();new='c'*32
         self.result={**prior,'correlationId':new,'controlPath':'/tmp/vpn-channel-'+new+'/m'}
         self.assertEqual('ready',self.invoke(corr=new)['state'])

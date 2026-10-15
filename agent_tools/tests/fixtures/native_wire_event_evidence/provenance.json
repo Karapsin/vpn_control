@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "originalDriver": ".runtime/mcp-native-automatic-final-2026-10-15/qualify_automatic_direct.py",
+  "originalDriverSha256": "c33188b03f40bfd923aa90b850ad0247c7b77b18431bae1476182c203da22033",
+  "originalDriverBytes": 19686,
+  "originalLines": [
+    311,
+    316
+  ],
+  "fragmentSha256": "8f6418f371bbfacba21a2f1235517ba0ee79709864774a70a8f8cdc04998378b",
+  "fragmentBytes": 438,
+  "observedFailure": "glob(wire-*.json) also admits wire-authority.private.json, so three genuine completed stage/execute/verify events become a four-record admission failure after definite original execution and verification.",
+  "sourceHandling": "Exact original fragment preserved unchanged. Original driver, plan, runtime pins, original logs and UNKNOWN remain untouched and nonreplayable.",
+  "independentFixture": "Fixed synthetic qualification, correlation, UID, process map, filenames and code hashes; no prior attempt identity/data required.",
+  "originalInventorySha256": "5b5e1a8eb2009781f371d361aff308a904549fc74733ca8ecfc25e747a7e22a1",
+  "scope": "Pure test-only explicit evidence admission; no production or public API.",
+  "causalAssertion": "NativeWireEventEvidenceTests.test_explicit_trace_survives_authority_filename_collision uses the same acceptance assertion against the exact original collector for RED and the explicit evidence validator for GREEN.",
+  "fragmentFile": "original_collector.before.fragment"
+}

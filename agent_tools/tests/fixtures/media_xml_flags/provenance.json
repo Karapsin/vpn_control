@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "f964d9a43faee9ab91cd1bc6e60d8b01479dbe10be906d2b06c0530292d1aa5b",
+  "failureEvidence": "media-image-reader-direct-v1",
+  "nativeHeader": "media-image-header-probe-v1.log: XML flags 2, size2764, imageCount1"
+}

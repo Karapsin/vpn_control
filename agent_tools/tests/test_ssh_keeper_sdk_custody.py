@@ -17,7 +17,13 @@ PACKAGE_ROOTS=os.pathsep.join(dict.fromkeys(str(Path(p).parent)for p in agent_to
 class _TopologyCase(unittest.TestCase):
  def setUp(self):
   from agent_tools.tests.test_ssh_channel_keeper_entry import KeeperEntryTests
-  self.f=KeeperEntryTests('runTest');self.f.setUp();self.addCleanup(self.f.doCleanups);self.f.invoke()
+  self.f=KeeperEntryTests('runTest');self.f.setUp();self.addCleanup(self.f.doCleanups)
+  # Observe the authentic original fixture graph. Its source hashes are computed
+  # from executing captured producer bytes; current generic channels cannot
+  # confer authority on this historical SDK/keeper observation.
+  for name,value in [('core',self.f.core),('entry',self.f.entry)]:
+   patch=mock.patch.object(m,name,value);patch.start();self.addCleanup(patch.stop)
+  self.f.invoke()
   self.root=self.f.root;self.corr=str(uuid.UUID(self.f.f.corr));self.receipt=self.f.receipt;self.digest=self.f.source
   self.session=self.root/'controlled-sdk';self.session.mkdir(mode=0o700)
   request={'action':'connection-channel-keep','host':'archlinux','timeout_seconds':1800,'identity':{'correlationId':self.corr,'receiptSha256':self.receipt,'sourceManifestSha256':self.digest}}

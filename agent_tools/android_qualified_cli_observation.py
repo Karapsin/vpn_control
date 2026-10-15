@@ -5,6 +5,7 @@ Its reviewed source maps to the already-qualified D32/fae image. This observer
 never installs, changes a global profile, acquires a lease, or retires an actor.
 """
 from __future__ import annotations
+from . import ssh_transport
 import ast
 import base64
 import hashlib
@@ -72,7 +73,7 @@ def _programme(source, profile, correlation):
 
 class OuterCustody:
     def __init__(self,argv,envelope=None):
-        self.child=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        self.child=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         self.selector=selectors.DefaultSelector();self.raw={'stdout':bytearray(),'stderr':bytearray()};self.counts={k:0 for k in self.raw};self.eof={k:False for k in self.raw};self.overflow=False;self.timeout=False;self.closed=False;self.sendError=None
         for name in self.raw:
             fd=getattr(self.child,name).fileno();os.set_blocking(fd,False);self.selector.register(fd,selectors.EVENT_READ,name)
@@ -105,6 +106,7 @@ class OuterCustody:
         if not self.child.stdin.closed:self.child.stdin.close()
         while not (self.child.poll()is not None and all(self.eof.values())):self.step(.05)
         self.selector.close();self.child.stdout.close();self.child.stderr.close();self.closed=True
+        ssh_transport.finish_ssh(self.child,failed=self.timeout or self.overflow or self.sendError is not None)
 
 def _project_observation(value):
     """Use the unchanged canonical parser for full owner-consistency semantics."""

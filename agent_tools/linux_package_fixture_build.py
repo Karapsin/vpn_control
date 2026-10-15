@@ -567,7 +567,7 @@ _BOOTSTRAP = r'''
 import base64,json,os,pathlib,subprocess,sys
 request=json.loads(base64.b64decode(sys.argv[1],validate=True))
 correlation=request['correlationId'];source=request['sourceSha']
-root=pathlib.Path('/home/kardinal/.vpn-control-linux-package-fixture')
+root=pathlib.Path(__import__('pwd').getpwuid(os.getuid()).pw_dir)/'.vpn-control-linux-package-fixture'
 root.mkdir(mode=0o700,exist_ok=True)
 if root.is_symlink() or root.stat().st_uid!=os.getuid() or root.stat().st_mode&0o077:raise SystemExit(31)
 job=root/correlation
@@ -924,7 +924,7 @@ def _local_worker(root: Path, correlation: str) -> None:
                                              command=["python3", "-I", "-B", "-c", fixed_command, encoded])
         archive = job / "result.tar"
         with archive.open("xb") as output, (job / "remote.log").open("xb") as errors:
-            process = subprocess.Popen(argv, cwd=root, stdout=subprocess.PIPE, stderr=errors)
+            process = ssh_transport.popen_ssh(argv, cwd=root, stdout=subprocess.PIPE, stderr=errors)
             try:
                 assert process.stdout is not None
                 _stream_bounded(process.stdout.fileno(), output,
@@ -934,7 +934,12 @@ def _local_worker(root: Path, correlation: str) -> None:
             except Exception:
                 process.kill()
                 process.wait(timeout=10)
+                ssh_transport.finish_ssh(process, failed=True)
                 raise
+            finally:
+                if process.stdout is not None:
+                    process.stdout.close()
+        ssh_transport.finish_ssh(process)
         _need(code == 0, "Remote Linux fixture build did not complete")
         output = job / "output"
         output.mkdir(mode=0o700)

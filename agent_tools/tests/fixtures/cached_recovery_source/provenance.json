@@ -1,0 +1,9 @@
+{
+  "evidencePath": ".runtime/agent-tool-reproducibility-audit-2026-10-15/cached-recovery-custody/mcp_server.before.py",
+  "failure": "Public recovery/probe routes import cached adapters outside the request source capsule, so stale policy can perform new work or report readiness after physical source drift.",
+  "fragmentSha256": "58ff514b8983decc189322d141032bec83c1a88f2f956949696279ae2b268a64",
+  "preservation": "Exact old import statements selected from the original physical server; the causal fixture restores only these statements in a complete copied server, preserving all other source, ownership and validation guards.",
+  "sourceBytes": 659732,
+  "sourcePath": "agent_tools/mcp_server.py",
+  "sourceSha256": "d048044407691f4a683ff1a4d2f8bc03b2ce73d867614a3548ea498769cf7323"
+}

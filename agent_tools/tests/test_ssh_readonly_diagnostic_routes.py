@@ -8,6 +8,10 @@ CORRELATION = "d606e111-5cb6-4436-97c8-b0c38ad35ed8"
 
 
 class ReadonlyDiagnosticRouteTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        bind_cached_routes(self,server,'ssh_connection_recovery')
+
     def test_actual_module_loader_reaches_fixed_readonly_provider(self):
         from agent_tools import ssh_connection_recovery as helper
         receipt = {"nestedState": "absent", "replayAllowed": False,

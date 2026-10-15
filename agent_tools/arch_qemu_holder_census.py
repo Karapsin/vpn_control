@@ -301,7 +301,7 @@ def observe(root: Path | str, request: Mapping[str, Any], *, runner=None) -> dic
                                          command=("python3", "-I", "-B", "-c", fixed_command))
     invoke = runner or subprocess.run
     try:
-        response = invoke(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        response = ssh_transport.run_ssh(argv, runner=invoke, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                           timeout=request["timeoutSeconds"] + 1, check=False)
         if response.returncode != 0 or len(response.stdout) > _MAX_OUTPUT:
             raise ValueError("Arch QEMU census response is unavailable")
@@ -344,7 +344,8 @@ def _privileged_capture(argv, payload, timeout):
     bounded = types.FunctionType(recovery._bounded_socket_query.__code__, namespace)
     namespace = dict(fresh._collect.__globals__)
     namespace['recovery'] = types.SimpleNamespace(_bounded_socket_query=bounded)
-    return types.FunctionType(fresh._collect.__code__, namespace)(argv, payload, timeout)
+    with ssh_transport.automatic_submission(argv) as submitted:
+        return types.FunctionType(fresh._collect.__code__, namespace)(submitted, payload, timeout)
 
 
 def _privileged_projection(raw, timestamp, timeout):

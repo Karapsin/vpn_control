@@ -12,6 +12,11 @@ from agent_tools import arch_ai_loop_observe, mcp_server
 
 class ArchAiLoopObserveRouteTest(unittest.TestCase):
     def setUp(self):
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools import mcp_server as _route_server
+        bind_cached_routes(self,_route_server,
+            'arch_ai_loop_observe',
+        )
         source_guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         source_guard.start()
         self.addCleanup(source_guard.stop)

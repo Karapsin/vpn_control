@@ -74,3 +74,14 @@ class ServerInitialTruncationTests(HistoryCase):
   old=line.replace('projectionTruncated=((([string]$cp117Failure.traceback).Length -gt 4096) -or (([string]$cp117Failure.stdout).Length -gt 2048) -or (([string]$cp117Failure.stderr).Length -gt 2048));','projectionTruncated=$false;')
   script="$ErrorActionPreference='Stop';$cp117Failure=@{traceback=('x'*5000);stdout='';stderr='';phase='source';exceptionType='ValueError';exceptionMessage='PUBLIC'};$cp117FailureFirst=@(('a'*64),'PUBLIC_ID');$cp117FailureAcl=@{Sddl='PUBLIC_SDDL'};$cp117FailureItem=@{Length=5000};"+old+";if($cp117FailureBounded.projectionTruncated -or $cp117FailureBounded.traceback.Length -ne 4096 -or [Text.Encoding]::UTF8.GetByteCount($cp117FailureProjection) -gt 8192){throw 'OLD_INITIAL_FLAG_NOT_RED'};"+line+";if(-not $cp117FailureBounded.projectionTruncated -or $cp117FailureBounded.serverReady){throw 'CURRENT_INITIAL_FLAG_NOT_GREEN'};'INITIAL_TRUNCATION_FLAG_PASS'"
   result=fixture._run_complete_windows_fixture(script,timeout=20);self.assertEqual(result.returncode,0,result.stderr);self.assertIn(b'INITIAL_TRUNCATION_FLAG_PASS',result.stdout)
+
+
+# Whole historical factories are executed only against the two checkout-bound
+# source labels. Native admission and private-file guards remain unchanged.
+def setUpModule():
+    from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import inert_repository_source_reads
+    global _historical_source_reads
+    _historical_source_reads=inert_repository_source_reads();_historical_source_reads.__enter__()
+
+def tearDownModule():
+    _historical_source_reads.__exit__(None,None,None)

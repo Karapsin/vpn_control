@@ -7,8 +7,10 @@ This module never includes passwords in command arguments, exceptions, or probe 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from contextlib import nullcontext
 from enum import Enum
 import json
+import hashlib
 import importlib
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -21,6 +23,9 @@ import tempfile
 from typing import Any, Iterable, Mapping, Sequence
 import uuid
 
+
+_EXECUTING_CODE = sys._getframe().f_code
+_LOADED_SOURCE_SHA = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 CONFIG_FILENAME = ".vm-hosts.local.json"
 CONFIG_SCHEMA_VERSION = 1
@@ -309,7 +314,7 @@ def _windows_input_socket(value: Any, field_name: str) -> PurePosixPath:
 
 
 def _windows_input_path(value: Any, field_name: str) -> PureWindowsPath:
-    if (type(value) is not str or not value.startswith("C:\\") or value != value.strip()
+    if (type(value) is not str or re.match(r"^[A-Za-z]:\\", value) is None or value != value.strip()
             or _CONTROL_RE.search(value) or "/" in value):
         raise SshConfigError(f"{field_name} requires an absolute Windows profile path.")
     parts = value[3:].split("\\")
@@ -372,10 +377,10 @@ def _windows_input_profiles(value: Any) -> dict[str, WindowsInputProfile]:
         sid = profile["expectedSid"]
         if type(sid) is not str or not re.fullmatch(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+", sid):
             raise SshConfigError("Invalid Windows input account SID.")
-        if type(profile["sessionId"]) is not int or profile["sessionId"] != 1:
+        if type(profile["sessionId"]) is not int or not 0 < profile["sessionId"] <= 16383:
             raise SshConfigError("Windows input requires the configured ordinary session.")
-        root_text = "C:\\Users\\" + account
         profile_root = _windows_input_path(profile["profileRoot"], "profileRoot")
+        root_text = str(profile_root)
         installed_root = _windows_input_path(profile["installedRoot"], "installedRoot")
         task_parent = _windows_input_path(profile["taskRootParent"], "taskRootParent")
         task_prefix = root_text + "\\AppData\\Local\\VpnControl\\"
@@ -389,17 +394,17 @@ def _windows_input_profiles(value: Any) -> dict[str, WindowsInputProfile]:
             raise SshConfigError("Invalid Windows input native context digest.")
         policy = profile["tokenPolicy"]
         if (type(policy) is not dict or set(policy) != policy_fields
-                or type(policy["kind"]) is not str or policy["kind"] != "ordinaryFilteredAdmin"
+                or type(policy["kind"]) is not str or policy["kind"] not in {"ordinaryFilteredAdmin", "ordinaryStandardUser"}
                 or type(policy["elevation"]) is not int or policy["elevation"] != 0
-                or type(policy["elevationType"]) is not int or policy["elevationType"] != 3
-                or type(policy["adminMember"]) is not bool or policy["adminMember"] is not True
+                or type(policy["elevationType"]) is not int or policy["elevationType"] != (3 if policy["kind"] == "ordinaryFilteredAdmin" else 1)
+                or type(policy["adminMember"]) is not bool or policy["adminMember"] is not (policy["kind"] == "ordinaryFilteredAdmin")
                 or type(policy["adminEnabled"]) is not bool or policy["adminEnabled"] is not False):
-            raise SshConfigError("Windows input requires the exact ordinary filtered administrator token policy.")
+            raise SshConfigError("Windows input requires an exact non-elevated standard-user or filtered-administrator token policy.")
         result[alias] = WindowsInputProfile(
             environment, qga, qmp, profile["qemuPid"], profile["qemuStartTicks"],
-            profile["qemuParentPid"], profile["qemuUid"], digest, boot_id, account, sid, 1,
+            profile["qemuParentPid"], profile["qemuUid"], digest, boot_id, account, sid, profile["sessionId"],
             profile_root, installed_root, task_parent, context_path, context_digest,
-            WindowsInputTokenPolicy("ordinaryFilteredAdmin", 0, 3, True, False),
+            WindowsInputTokenPolicy(policy["kind"], 0, policy["elevationType"], policy["adminMember"], False),
         )
     return result
 
@@ -573,11 +578,12 @@ def _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary)
     selection=_selection_module()
     session=_session_module()
     try:
-        metadata=selection.selected_route_options(config.root,'archlinux',config)
+        host=route[0].alias
+        metadata=selection.selected_route_options(config.root,host,config)
         if metadata is None or len(route)!=2:raise SshConfigError('Selected SSH channel is unavailable.')
         selected_config=session.transport.load_config(config.root)
         if asdict(selected_config)!=asdict(config):raise SshConfigError('Selected SSH configuration changed.')
-        outer=connection_host(selected_config,'archlinux')
+        outer=connection_host(selected_config,host)
         prefix,endpoint=session._outer_prefix(selected_config,outer)
         # Fixed admitted route; no canonical socket/fresh handshake fallback.
         nested=route[0]
@@ -591,7 +597,7 @@ def _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary)
         raise SshConfigError('Explicitly selected SSH channel is unavailable; observe or renew it explicitly.') from None
 
 
-def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+def _build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
                    command: Sequence[str] = ("true",), ssh_binary: str = "ssh",
                    nested_ssh_binary: str = "ssh") -> list[str]:
     """Build an argv-only OpenSSH invocation. No values are shell-interpolated."""
@@ -604,14 +610,24 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
     ssh_binary = _string(ssh_binary, "ssh executable")
     nested_ssh_binary = _string(nested_ssh_binary, "nested ssh executable")
     route = _route_hosts(config.hosts, host)
-    selected_arch_present = (host=='archlinux' or any(entry.alias=='archlinux' for entry in route)) and os.path.lexists(config.root/'.rag_index'/'ssh-channel-selection')
-    if host=='archlinux' and selected_arch_present:
+    selected_aliases = set()
+    if os.path.lexists(config.root/'.rag_index'/'ssh-channel-selection'):
+        try:
+            selection = _selection_module()
+            selected_aliases = {candidate.alias for candidate in route
+                                if selection.selection_present(config.root,candidate.alias)}
+        except (OSError,ValueError,KeyError,TypeError):
+            raise SshConfigError('Explicitly selected SSH context is unavailable.') from None
+    # Presence at entry determines the route. A disappearing selected pointer
+    # still reaches its refusing reader; a later directory cannot switch routes.
+    def selected_present(alias):return alias in selected_aliases
+    if selected_present(host):
         return _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary)
     # Compose from the destination outward. Each layer quotes one complete argv
     # for the shell used by that layer's OpenSSH remote command, retaining every
     # configured intermediate hop instead of replacing the previous last token.
     for index,nested in enumerate(route[:-1]):
-        if nested.alias=='archlinux' and selected_arch_present:
+        if selected_present(nested.alias):
             # Compose every descendant first, then reuse only admitted Arch authority.
             return _build_selected_arch_argv(config,route[index:],command,ssh_binary,nested_ssh_binary)
         if not nested.remote_host_alias:
@@ -625,7 +641,7 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
                                "-o", f"UserKnownHostsFile={nested.known_hosts_file}",
                                nested.remote_host_alias, shlex.join(command)))
         command = remote_command
-    if route[-1].alias=='archlinux' and selected_arch_present:
+    if selected_present(route[-1].alias):
         return _build_selected_arch_argv(config,route[-1:],command,ssh_binary,nested_ssh_binary)
     target = route[-1]
     argv = [
@@ -654,6 +670,78 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
             raise SshConfigError('Configured outer SSH session is unavailable; inspect its existing receipt.') from None
     argv.extend([target.host, shlex.join(command)])
     return argv
+
+
+def _automatic_module():
+    # A timestamp-valid old pyc or cached canonical module is not source proof.
+    raw = Path(__file__).read_bytes()
+    if _EXECUTING_CODE != compile(raw, __file__, 'exec', dont_inherit=True):
+        raise SshConfigError('Automatic transport executing source changed.')
+    if __package__:
+        module = importlib.import_module(f'{__package__}.ssh_automatic_program')
+    else:
+        module = importlib.import_module('agent_tools.ssh_automatic_program')
+    path = Path(module.__file__)
+    if path.resolve() != Path(__file__).resolve().with_name('ssh_automatic_program.py'):
+        raise SshConfigError('Automatic transport source is unavailable.')
+    if getattr(module, '_EXECUTING_CODE', None) != compile(path.read_bytes(), str(path), 'exec', dont_inherit=True):
+        raise SshConfigError('Automatic program executing source changed.')
+    return module
+
+
+def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+                   command: Sequence[str] = ('true',), ssh_binary: str = 'ssh',
+                   nested_ssh_binary: str = 'ssh') -> list[str]:
+    """Build only; oversized Python carriers require an owned submission."""
+    argv = _build_ssh_argv(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary)
+    if sum(len(part.encode('utf-8')) + 1 for part in argv) <= 60000:
+        return argv
+    automatic = _automatic_module()
+    return automatic.bind(config, host, timeout_seconds, tuple(command),
+                          ssh_binary, nested_ssh_binary, argv)
+
+
+def automatic_submission(argv):
+    """Internal actual-submission boundary; never infer a route from an argv."""
+    if isinstance(argv, list):
+        if sum(len(part.encode('utf-8')) + 1 for part in argv) > 60000:
+            raise SshConfigError('Unbound oversized SSH command refuses submission.')
+        return nullcontext(argv)
+    automatic = _automatic_module()
+    return automatic.automatic_submission(argv)
+
+
+def popen_ssh(argv, **kwargs):
+    """Keep an existing pipe collector's one child and terminal ownership."""
+    if isinstance(argv, list):
+        if sum(len(part.encode('utf-8')) + 1 for part in argv) > 60000:
+            raise SshConfigError('Unbound oversized SSH command refuses submission.')
+        return subprocess.Popen(argv, **kwargs)
+    automatic = _automatic_module()
+    return automatic.SubmittedProcess(argv, **kwargs)
+
+
+def finish_ssh(process, *, failed=False):
+    """Collector-owned terminal custody; ordinary Popen objects need no hook."""
+    if process is not None and type(process).__name__ == 'SubmittedProcess':
+        process.finish(failed=failed or sys.exc_info()[0] is not None)
+
+
+def argv_byte_sizes(argv):
+    raw = argv if isinstance(argv, list) else argv.original_argv
+    return [len(word.encode('utf-8')) for word in raw]
+
+
+def argv_sha256(argv):
+    """Hash original argv for evidence without dropping oversized custody."""
+    raw = argv if isinstance(argv, list) else argv.original_argv
+    return hashlib.sha256(json.dumps(raw, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def run_ssh(argv, *, runner=None, **kwargs):
+    """Keep an existing synchronous runner's stdin/output/exit and one intent."""
+    with automatic_submission(argv) as submitted:
+        return (subprocess.run if runner is None else runner)(submitted, **kwargs)
 
 
 def _sanitized_output(value: str | bytes | None, passwords: Iterable[str]) -> str:

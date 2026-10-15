@@ -84,7 +84,217 @@ The declared service-boundary regression does not claim remote SSH/auth repaired
 
 ## MCP Tools
 
-`ssh_workflow(action="connection-channel-prepare", host="archlinux", identity={"correlationId":"<canonical UUID>"})` creates one isolated configured two-hop connection channel. `connection-channel-status` accepts the same identity and only observes it. `connection-channel-ensure` accepts the identity plus an optional exact `receiptSha256`; it explicitly renews only after positive channel end. These connection-only actions accept no command, path, transfer or device fields. They preserve unknown correlations, return finite phases, hide private route options and never replay application jobs. Current selection publication integration and native equivalence remain pending. A channel UNKNOWN never authorizes another launch: preserve its correlation and observe or diagnose that same channel. Snapshot refusal is not an authentication failure. Use the fresh `mcp_tool.sh ssh-workflow <action> --host archlinux --identity-file <local JSON>` fallback while the running server has cached predecessor code.
+New work takes its environment and connection context explicitly. An original
+operation identity can address its own status, diagnostics or closure; it cannot
+select a default guest, account, home, boot session or source for new work.
+Retired attempt-specific starts fail before dispatch. The current repair's closed
+VMs and connections must stay closed; a status query never restores them.
+
+`macos-fixture-stage-start` prepares only the modes of an already supplied,
+verified fixture pair in an already running Tart guest. It takes schema version 1,
+canonical `correlationId`, full `sourceSha`, `fixtureReceiptArtifactId`, `guestRoot`,
+`baseVersion`, `targetVersion`, and each package's `Sha256` and `SizeBytes` fields
+prefixed with `base` or `target`. Its exact `environmentContext` is
+`provider: "tart"`, `vmName`, `guestUser`, `guestUid`, `guestHome` and
+`guestBootSessionUuid`. There are no previous-guest or account defaults.
+The registered fixture receipt supplies authoritative versions and package
+metadata; both registered DMGs and the receipt remain held through closing.
+The saved helper reobserves the account, home and boot session before accessing
+the owned root, verifies both files before changing either mode, and retains a
+create-only effect intent. `macos-fixture-stage-status` and
+`macos-fixture-stage-collect` take only the original `correlationId`; status may
+inspect the original intent but never repeats the mutation. The historical
+`macos-fixture-guest-stage-start` is retired and its original status/collection
+routes remain. No stage action starts or restores a VM or establishes product
+acceptance. Programme transfer uses stdin in bounded chunks and executes a saved,
+hash-checked filename; the outer command stays within 60,000 bytes.
+
+`vm_workflow` provides argument-driven Windows VM actions:
+
+| Action | Exact inputs | Result scope |
+| --- | --- | --- |
+| `windows-vm-deploy-preflight` | `spec` | Read-only media, dependency, port, disk and KVM checks; no reservation or VM. |
+| `windows-vm-deploy-media` | `spec` | Read the exact ISO's image names, editions, architectures and languages; no VM required. |
+| `windows-vm-deploy-resources` | `spec`, `credentialFile` | Explicit privileged host resource census; no VM effect. |
+| `windows-vm-deploy-start` | `spec`, `setup`, `credentialFile` | Create-only blank VM with capacity reservation and immutable original intent. |
+| `windows-vm-deploy-status` | `deploymentId`, `credentialFile` | Observe the original instance or positive original-actor absence after stop. |
+| `windows-vm-deploy-stop` | `deploymentId`, `credentialFile` | Consume one stop intent after exact original actor reidentification; never replay. |
+| `windows-vm-deploy-qualify` | `deploymentId`, `operationId`, `credentialFile` | One fixed read-only guest setup/account query, with a retained guest PID. |
+| `windows-vm-deploy-qualify-status` | Same qualification inputs | Collect that original PID/terminal; never submit another query. |
+| `windows-vm-deploy-secure` | `deploymentId`, `operationId`, `credentialFile` | After qualification, rotate the setup administrator secret, disable automatic logon/task and remove credential-bearing setup media/caches. |
+| `windows-vm-deploy-secure-status` | Same secure-operation inputs | Collect the original guest operation and finish only its proven post-success media cleanup; never change the password again. |
+| `windows-vm-deploy-frame` | `deploymentId`, `operationId` | Capture one owned console PNG and return a verified private coordinator file. |
+| `windows-vm-deploy-frame-collect` | Same frame inputs | Return that exact saved frame again, without another capture. |
+
+`spec` contains `deploymentId`, configured `host`, absolute new `root`,
+`memoryMiB`, `cpus`, `diskGiB`, `vncPort`, `headroomMiB` and `assets`.
+Assets are exactly `installer`, `drivers`, `firmwareCode`, `firmwareVars`, each
+with an absolute host `path`, exact `bytes` and lowercase `sha256`.
+`setup` contains exact `imageName`, `locale`, ordinary `user` and a distinct
+`administrator`. `credentialFile` is an explicit absolute coordinator path to
+an owner-only single-link credential file; its contents are not MCP arguments.
+Host alias, principal, media paths and VM identity have no prior-attempt defaults.
+Image name and language must both exist in the installer. Start checks them
+before credentials/reservations and again on the held installer before creating
+the root. The coordinator captures all 16 verified source files of pinned
+`pycdlib` 1.14.0 in the saved programme. The Arch host needs no reader package
+installation. The ISO/WIM read uses seeks, with bounded uncompressed XML metadata;
+unsupported or ambiguous formats refuse. A single-image ISO cannot silently
+override the requested edition.
+The host must provide the qualified Arch/KVM dependency profile. Root paths must
+fit Unix socket limits and cannot contain QEMU's comma delimiter.
+
+Complete source is saved before transport, transferred as bounded chunks and
+invoked by its hash-checked filename. Pending/unknown claims remain counted,
+including positively bound host aliases. Reservation consumers of an MCP result
+use `windows_vm_resources.mcp_measurement(value, deploymentId)` to validate the
+explicit envelope and strict native facts separately. That conversion grants no
+freshness or host-action authority. Source beforeimages and original start
+custody are retained before VM effects. A duplicate or uncertain start is never
+replayed. `booted-observed` reports host process facts, not completed Windows
+installation or product acceptance; `productReady` remains false. Native VM
+and product qualification are recorded separately in the current WIP.
+
+Qualification reports actual OS, setup, account groups, profile and service
+facts. `setupReady` also requires the requested image/locale and an observed
+ordinary session. The fixed noninteractive PowerShell source suppresses progress
+records; other stderr and truncated/failed output still refuse. Security setup
+passes the final generated administrator credential through guest stdin, verifies
+it with a native logon, and retains acknowledgement before waiting. Its original
+intent fences all password/media effects. Missing acknowledgement never permits
+replay. It preserves the current ordinary session; a later sign-in uses the
+private generated user credential. These facts do not attest a product token,
+package, GUI/CLI scenario or visual scene.
+
+Frame return has a separate bounded output budget. The command limit stays
+60,000 bytes: only a short filename/hash invocation crosses the command boundary.
+PNG length/hash and source custody must close before the coordinator returns its
+file path. Frame operation IDs are create-only; collection reads the original
+receipt. No arbitrary guest command, source body, remote file path or readiness
+override is accepted by these actions.
+
+`stopped-observed` requires positive absence of both original actor identities.
+Stop preserves the VM root, disk, evidence and reservation. Release the exact own
+reservation only after fresh closure evidence; archive/purge is separate. A lost
+quit response stays recorded as such. Status never repeats quit or a signal.
+UNKNOWN diagnostics contain bounded phase/class/check identifiers, with no raw
+exception text. Reservation admission refusal reports BLOCKED with
+`vmSubmitted=false`, retains preparation evidence and never discards claims.
+Specialize stages a protected SYSTEM task; guest-agent MSI waits for completed
+Windows setup. Installed-OS locale and ordinary autologon are explicit answer-file
+settings; a running QEMU alone does not establish that they completed.
+
+The 36 old Windows VM setup/preflight actions listed in
+`agent_tools/windows_vm_setup_policy.py` return
+`historical_windows_vm_setup_retired`; their original status/collection routes
+remain available. CP117-only `forward-open` and the old boot-pinned
+`environment-status(privilegedHost=true)` shortcut are also retired. Use the
+new resource API with explicit inputs. Fixed historical diagnostics retain their
+original scope and cannot supply admission for a fresh deployment. Fixed historical
+CP117/MSI/fixture new-start and rebase actions also refuse, including
+`windows-msi-base-start-from-transfer`. The two historical HTTP transfer
+multiplexers reject their prepare/stage/listener/download/create/extract submission
+phases; their original status, collection, diagnostics and cleanup remain available.
+A phase argument cannot bypass the new-work fence.
+The hosted `windows-msi-fixture-dispatch` builds packages solely from explicit source,
+base version and correlation inputs. It does not inspect a guest; installation
+admission separately verifies the selected deployment and installed version.
+
+Named Windows input profiles take an explicit validated profile root and
+session ID (1..16383); installed/task roots stay beneath that profile. The
+supported token policies are explicit: `ordinaryFilteredAdmin` requires elevation0,
+elevationType3, administrator membership present but disabled;
+`ordinaryStandardUser` requires elevation0, elevationType1 and no administrator
+membership. All fields retain strict types; mixed or elevated tokens refuse.
+The renderer and every role/console/impersonation check use the selected policy.
+Connected QMP/QGA sockets must have the expected kernel PID/UID and full current
+process identity before any send. Choosing a profile proves neither native
+admission nor completion of a UAC/product operation.
+
+Native adapters now compile captured source bytes into a private package per
+request, including local script dependencies. They bypass cached modules and
+`.pyc` files, keep imported source under physical custody through calls, and
+isolate import-path changes. A changed server requires the fresh-process route;
+ordinary dotted stdlib imports load their requested submodule before the scoped
+`importlib` view is refreshed, while repository imports keep their source custody.
+The custody primitive itself is authenticated before its top-level code executes:
+POSIX holds bounded nofollow file and ancestor descriptors; Windows holds native
+source handles. The bootstrap remains held until the full request takes custody.
+No current file hash is treated as proof of an old executing implementation.
+New v2 nested channel intents retain source capsules for read-only verification
+of positively ended records across revisions. Their authenticated peer identity
+is observed at first readiness and must remain identical; old unknowns never
+become launch authority. Original v1 readers remain scoped to their old evidence.
+
+`ssh_workflow(action="windows-caller-file-stage", host="archlinux",
+timeout_seconds=60, transfer={"sourceFile":"<absolute .runtime file>",
+"sourceSha256":"<SHA256>", "correlationId":"<32 lowercase hex>"})` saves
+and compiles the complete caller and stage-only gateway programme locally before
+submission. It streams bounded chunks through stdin into an exclusive private
+file on Arch, then checks the physical file's size, hash, ownership and generation.
+Both outer commands remain below 60,000 bytes. The existing 8 MiB file ceiling
+also bounds the rendered gateway programme; escaping can make a large caller
+refuse locally. Each phase has a fixed 60-second observation budget. No supplied
+caller is executed and no timed server, application operation or VM is started.
+Partial transfers and unknown outcomes remain under their original correlations;
+no overwrite, replay or selected-channel adoption is offered.
+
+`windows-caller-file-receipt` takes its original configured host alias and only
+`identity={"correlationId":"<original 32 lowercase hex>"}`. It reads preserved
+local custody without connecting. An authentic closing record is required;
+missing closure or retained UNKNOWN cannot become a successful stage. Even a
+recorded stage returns `remoteReadiness: false` and `nativeActionAllowed: false`.
+A separately reviewed short filename invocation must freshly verify the saved
+source, hold it through the original child, retain both complete streams, and
+close its scenario and scoped cleanup before native acceptance is claimed.
+While MCP caches predecessor code, use the fresh-process `mcp_tool.sh
+ssh-workflow` adapter with `--transfer-file` or `--identity-file`. These are two
+narrow actions on the existing SSH tool, not a general remote executor.
+
+Existing operation owners also handle oversized generated Python carriers
+automatically. The SSH builder measures the fully quoted configured route before
+submission. Up to 60,000 bytes uses the existing command path; a larger supported
+`python3 -c` carrier becomes an immutable transfer plan. At the actual submission
+boundary, the owner saves the complete source locally, streams it in chunks of
+at most 65,536 bytes to an exclusive private remote file, and invokes a short
+filename/hash loader. Source size remains limited to 8 MiB. Original arguments,
+stdin, streams, exit status and operation admission remain with the same owner.
+The transfer binds the current configured principal and observed account/home/boot
+session, and revalidates the saved source and connection context through closing.
+Local and remote execution intents are create-only. A partial transfer, timeout,
+disconnect or uncertain execution is retained under the original identity and
+cannot trigger another submission. No stderr phrase, including a command-size
+error, authorizes retry of a possibly submitted operation. Unsupported oversized
+shell, module or privilege forms refuse before transport. This automatic path
+adds no public command executor and starts no VM or historical connection.
+
+`ssh_workflow(action="connection-channel-prepare", host="<configured alias>",
+identity={"correlationId":"<canonical UUID>"})` creates one isolated configured
+two-hop connection channel. `connection-channel-status` accepts the same host and
+identity and only observes it. `connection-channel-ensure` accepts that identity
+plus an optional exact `receiptSha256` and selects only an admitted route.
+The direct prepare/status actions use the same host and correlation schema;
+`connection-direct-channel-select` additionally requires the actual returned
+`receiptSha256`. Timeout is an exact integer in `1..60`. These connection-only
+actions accept no command, path, transfer, device or extra identity fields.
+Host aliases match `[A-Za-z0-9][A-Za-z0-9_.-]{0,63}` and must resolve to a valid
+exactly-two-hop nested peer in the captured configuration. Account, UID and boot
+identity are observed from that authenticated peer. No literal host alias or
+historical UID/boot selects the new operation.
+
+New prepares, including `archlinux`, use host-scoped journals under
+`.rag_index/ssh-fresh-nested-channel/hosts/<host>` or
+`.rag_index/ssh-direct-nested-channel/hosts/<host>`. Selections are also host-scoped
+under `.rag_index/ssh-channel-selection/hosts/<host>`. Correlations must remain
+unique across both providers, hosts and legacy journals. Cross-host/provider
+collisions and duplicate legacy/scoped records refuse. Exact original identifiers
+can read their legacy records only without a scoped conflict; new work never
+adopts or rewrites them. UNKNOWN remains observation-only and cannot authorize
+another launch. Explicit unavailable or malformed selections refuse without a
+fallback connection. Snapshot refusal is not an authentication failure. Use the
+fresh `mcp_tool.sh ssh-workflow <action> --host <configured-alias>
+--identity-file <local JSON>` fallback while the server has cached predecessor
+code. Native connection acceptance remains separate from local fixture tests.
 
 `connection-direct-channel-prepare` explicitly creates a fresh configured gateway
 connection and one owned inner channel when historical outer-session authority
@@ -97,7 +307,9 @@ and source, then lets normal managed workflows reuse only that owned inner socke
 These POSIX coordinator actions accept no arbitrary command, transfer or device.
 Unsupported coordinators return finite UNKNOWN before private admission.
 
-Completed DIRECT history retains its original source and receipts. A finite
+The following historical bridges are original-record compatibility only; they do
+not migrate global history into new host-scoped admission. Completed DIRECT
+history retains its original source and receipts. A finite
 reviewed predecessor bridge permits the known provider/MCP transition only after
 authentic terminal intent and READY custody checks; all other source pins and
 typed intent fields must match. Missing, live, unknown or altered history refuses
@@ -142,15 +354,18 @@ prove actual Windows installation or connection recovery.
 
 ### Receipt-bound channel keeper
 
-The three keeper actions use `host="archlinux"` and reject command, path,
-transfer, device and extra identity fields. The correlation is the canonical UUID
-of an already admitted channel. They never prepare or renew a channel, start a
-new master, or replay an application job.
+The historical keeper actions use `host="archlinux"` and reject command, path,
+transfer, device and extra identity fields. New `connection-channel-keeper-source`
+and `connection-channel-keep` requests are blocked with
+`historical_channel_keeper_new_work_retired`. Their fixed historical peer is not
+reusable construction input. `connection-channel-keep-status` retains only the
+original reader described below; it never prepares or renews a channel, starts a
+master, or replays an application job.
 
 | Action | Exact identity and timeout | Result |
 | --- | --- | --- |
-| `connection-channel-keeper-source` | `{correlationId}`; `timeout_seconds` in `1..60` | Create one source manifest for the fixed public keeper dependencies; return `sourceManifestSha256`. This does not admit a channel. |
-| `connection-channel-keep` | `{correlationId, receiptSha256, sourceManifestSha256}`; `timeout_seconds=1800` | Start one local keeper bound to that exact existing channel receipt and source manifest. |
+| `connection-channel-keeper-source` | `{correlationId}`; `timeout_seconds` in `1..60` | Retired new-work refusal before dispatch. |
+| `connection-channel-keep` | `{correlationId, receiptSha256, sourceManifestSha256}`; `timeout_seconds=1800` | Retired new-work refusal before dispatch. |
 | `connection-channel-keep-status` | The same three identity fields; `timeout_seconds` in `1..60` | Observe only the original keeper intent, process identity and protected terminal result; never start or replay it. |
 
 `receiptSha256` is the exact admitted READY receipt, not a branch, artifact or
@@ -158,7 +373,7 @@ remaining-time claim. Supply identity through the CLI `--identity-file` when
 using `mcp_tool.sh ssh-workflow <action> --host archlinux`; the keep action also
 requires `--timeout-seconds 1800`.
 
-The fixed keeper observes the same channel every 15 seconds, for at most 1800
+The historical fixed keeper observed the same channel every 15 seconds, for at most 1800
 seconds and 120 queries. A gap over 20 seconds stops it, and the final 35 seconds
 are reserved rather than starting another query. It retains the original local
 PID, birth and session identity, each query's raw evidence before parsing, and
@@ -280,7 +495,7 @@ gate; the direct collector's success is recorded separately.
 | `ssh_workflow(action="connection-nested-orphan-archive-status", host="archlinux", identity={"observationId":"0fb841fc-2f24-4eca-ae2b-6cc16f772f28","observationSha256":"522ffc5f5f1a9cb6160ffe5b1989c86837b5662ba6fed3fa869b4d9dd1f27069"})` | Read the immutable owned orphan archive receipt. This historical result does not revalidate current remote state. The corresponding archive action uses the same fixed proof and preserves the consumed one-shot fence; no signals or replay. |
 | `ssh_workflow(action="android-availability", host="archlinux", device="api29")` | Classify configured ADB visibility, including a positively missing or offline device. `api35` is also supported. Optional identity `{"expectedBootId":"…"}` compares an explicitly known host boot. Availability never grants product or lifecycle admission. |
 | `ssh_workflow(action="inventory", host=None, timeout_seconds=15)` | List private host aliases or run a bounded authenticated connectivity probe. |
-| `ssh_workflow(action="forward-open" | "forward-status" | "forward-close", host="archlinux", identity=None)` | Open, observe, or close the one fixed CP117 loopback VNC forward. |
+| `ssh_workflow(action="forward-open" | "forward-status" | "forward-close", host="archlinux", identity=None)` | Opening is retired; observe or close only the original fixed CP117 forward. |
 | `vm_workflow(action, inputs)` | Verify fixture bytes/preflight, maintain native artifact evidence, create fixed scenario bundles, or manage non-authorizing environment reservations. |
 | `prepare_start(task, area=None)` | Safe fetch/sync, branch verification, RAG rebuild, and task routing. |
 | `docs(query, mode="search", top_k=3)` | Search or produce a grounded extractive answer with file-and-line citations. |

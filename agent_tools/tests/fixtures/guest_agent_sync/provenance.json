@@ -1,0 +1,7 @@
+{
+  "source": "agent_tools/windows_vm_instance.py",
+  "sourceSha256": "2ee651d00cabe9735d71d8bdbd22fbe953ab60c8e3c48382c9c9f6d3b0eaa7ac",
+  "fragmentSha256": "19d07967a441f95496bbd2308347cbdac9e75ed2df76d05539b50373bc9ccf4b",
+  "failure": "Running real guest agent emits an initial GenericError for the flush sentinel; the observer treats the first response as the sync reply instead of ignoring input until the delimited matching nonce.",
+  "evidence": "guest-protocol-diagnosis-v2/v3 full source and native terminal; original service running screenshot; current source-bound status false."
+}

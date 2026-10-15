@@ -1,0 +1,7 @@
+{
+  "beforeSha256": "1e024576a1dd142af323a4e09d7ec7da085299c191615ba967b1e578550f5ed0",
+  "afterSha256": "7552d843ba99501f3e735878a48b24d6a842765275aa94411e4729f61ad966c9",
+  "completeParentSha256": "e2f4838c0257415b661b49c3e874d39cf5acfa6891254a79f5064f6160ed879e",
+  "failureEvidence": "native-setup-controls-terminal-read-v1.log; native-setup-original-read-direct-v1.log",
+  "failure": "Parent Refresh discarded terminal exit code; actual child stdout proves old MSI-before failure and fixed-specialize success already occurred."
+}

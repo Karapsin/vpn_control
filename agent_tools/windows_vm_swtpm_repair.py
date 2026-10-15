@@ -29,9 +29,51 @@ CREDENTIAL_RELATIVE_PATH = Path(".codex") / "arch-sudo.local"
 _UUID = re.compile(r"^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$")
 _MAX_CREDENTIAL_BYTES = 512
 
+_PROCESS_CENSUS = r'''import os
+
+def swtpm_processes():
+ if os.readlink('/proc/1/ns/pid')!=os.readlink('/proc/self/ns/pid'):raise ValueError('process_namespace')
+ with open('/proc/self/mountinfo',encoding='ascii') as stream:mounts=stream.read(1024**2+1)
+ if len(mounts)>1024**2:raise ValueError('process_mount_capacity')
+ found=[]
+ for line in mounts.splitlines():
+  before,after=line.split(' - ',1);fields=before.split();tail=after.split()
+  if fields[4]=='/proc':found.append((fields,tail))
+ if len(found)!=1:raise ValueError('process_visibility')
+ fields,tail=found[0];options=set((fields[5]+','+tail[2]).split(','))
+ if tail[0]!='proc' or 'subset=pid' in options or any(v.startswith('hidepid=') and v!='hidepid=0' for v in options):raise ValueError('process_visibility')
+ rows=[];entries=os.listdir('/proc')
+ if len(entries)>8192:raise ValueError('process_capacity')
+ def birth(path):
+  with open(path+'/stat',encoding='ascii') as stream:raw=stream.read(8193)
+  if len(raw)>8192:raise ValueError('process_stat_bound')
+  values=raw.rsplit(')',1)[1].split()
+  return values,int(values[19])
+ for name in entries:
+  if not name.isdigit():continue
+  path='/proc/'+name
+  try:
+   before,start=birth(path)
+   try:executable=os.path.basename(os.readlink(path+'/exe')).removesuffix(' (deleted)')
+   except FileNotFoundError:
+    if not os.path.exists(path):continue
+    after,last=birth(path)
+    if start==last and (before[0]==after[0]=='Z' or int(before[6])&int(after[6])&0x200000):continue
+    raise ValueError('process_executable_unknown')
+   if executable!='swtpm':continue
+   original=os.stat(path+'/exe');after,last=birth(path);current=os.stat(path+'/exe')
+   identity=lambda v:(v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid,v.st_size,v.st_mtime_ns,v.st_ctime_ns,v.st_nlink)
+   if start!=last or identity(original)!=identity(current) or os.path.basename(os.readlink(path+'/exe')).removesuffix(' (deleted)')!=executable:raise ValueError('process_changed')
+   rows.append((int(name),start))
+  except FileNotFoundError:
+   if os.path.exists(path):raise
+ return rows
+'''
+_CENSUS_COMMAND = _PROCESS_CENSUS+"\nimport sys\ntry:sys.exit(0 if swtpm_processes() else 1)\nexcept (OSError,ValueError,IndexError,UnicodeError):sys.exit(2)\n"
+
 # All remote diagnostics are discarded.  This program publishes only a small
 # typed outcome, so sudo/password and pacman messages cannot leak into logs.
-_REMOTE = r'''import json,subprocess,sys
+_REMOTE = 'CENSUS='+repr(_CENSUS_COMMAND)+'\n'+r'''import json,subprocess,sys
 HOST='archlinux';PACKAGE='swtpm';VERSION='0.10.2-1';REPOSITORY='extra';MODE=__MODE__;CORR=__CORR__
 def emit(state,signature=False,integrity=False,active=False):
  print(json.dumps({'schemaVersion':1,'host':HOST,'correlationId':CORR,'state':state,'package':PACKAGE,'version':VERSION,'pacmanSignatureVerified':signature,'packageIntegrityVerified':integrity,'activeSwtpmProcesses':active},separators=(',',':'),sort_keys=True))
@@ -41,8 +83,8 @@ def installed():
  r=run(['/usr/bin/pacman','-Q',PACKAGE],True)
  return r.returncode==0 and len(r.stdout)<=128 and r.stdout.decode('utf-8','strict').strip()==PACKAGE+' '+VERSION
 def active():
- # Process names are bounded and never emitted; any failure fails closed.
- r=run(['/usr/bin/pgrep','-x','swtpm'],True)
+ # The closed executable/generation census ignores mutable process names.
+ r=run(['/usr/bin/python3','-I','-B','-c',CENSUS],True)
  return True if r.returncode==0 else False if r.returncode==1 else None
 try:
  running=active()
@@ -71,7 +113,7 @@ except (OSError,ValueError,UnicodeDecodeError,subprocess.TimeoutExpired): emit('
 
 # This observer examines only the fixed secure-boot fixture's known TPM socket.
 # It never publishes command lines, descriptor targets, or any other path.
-_OWNER_OBSERVE_REMOTE = r'''import json,os,stat,time
+_OWNER_OBSERVE_REMOTE = _PROCESS_CENSUS+'\n'+r'''import json,os,stat,time
 TPM_SOCKET=__TPM_SOCKET__;GUEST=__GUEST__;MAX_PROCS=8192;MAX_SWTPM=16;MAX_FDS=8192
 def ticks(pid):
  try:return int(open('/proc/%d/stat'%pid,encoding='ascii').read(4096).rsplit(')',1)[1].split()[19])
@@ -102,9 +144,11 @@ def private_receipt(path,limit):
 def live_qemu(pid,start):
  before=ticks(pid)
  if before!=start:return False
- try:comm=open('/proc/%d/comm'%pid,encoding='ascii').read(128).strip()
+ try:
+  path='/proc/%d/exe'%pid;before=os.stat(path);name=os.path.basename(os.readlink(path));after=os.stat(path)
+  identity=lambda v:(v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid,v.st_size,v.st_mtime_ns,v.st_ctime_ns,v.st_nlink)
+  return name=='qemu-system-x86_64' and identity(before)==identity(after) and os.path.basename(os.readlink(path))==name and ticks(pid)==start
  except OSError:return False
- return comm=='qemu-system-x86_64' and ticks(pid)==start
 def task_claim(pid,start):
  try:
   guest=os.lstat(GUEST);tpm=os.lstat(GUEST+'/tpm')
@@ -125,18 +169,9 @@ def relationship(pid,start,table):
   elif path is not None:unattributed=True
  return 'task-owned-swtpm-socket' if linked and task_claim(pid,start) else 'unattributed-vm-or-socket-path' if linked or unattributed else 'no-visible-socket-path'
 try:
- reason=visibility();complete=reason=='complete';table=unix();items=[];entries=[name for name in os.listdir('/proc') if name.isdecimal()]
- if len(entries)>MAX_PROCS:raise ValueError('census-capacity')
- for name in entries:
-  pid=int(name)
-  try: comm=open('/proc/%d/comm'%pid,encoding='ascii').read(128).strip()
-  except FileNotFoundError:
-   if os.path.exists('/proc/%d'%pid):complete=False;reason='process-read-unavailable'
-   continue
-  except OSError:complete=False;reason='process-read-unavailable';continue
-  if comm!='swtpm':continue
+ reason=visibility();complete=reason=='complete';table=unix();items=[];entries=swtpm_processes()
+ for pid,start in entries:
   if len(items)>=MAX_SWTPM:complete=False;reason='census-capacity';break
-  start=ticks(pid)
   try:
    uid=os.stat('/proc/%d'%pid).st_uid
    if start is None or uid<0:raise ValueError()

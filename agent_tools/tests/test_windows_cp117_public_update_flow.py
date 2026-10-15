@@ -1405,14 +1405,18 @@ class PublicCurrentContextTestpinTests(unittest.TestCase):
         import tempfile
         from types import SimpleNamespace
         from pathlib import Path
+        from unittest.mock import patch
         from agent_tools import windows_cp117_base_source_refresh as worker
+        from agent_tools.tests.fixtures.windows_cp117_public_context.whole_entry import reviewed_test_sources
         reader=worker.installed.precise.owner.guest.recovery.authority._read_bound_file
-        root=Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as td:
-            entry=Path(td).resolve()/'entry.py';entry.write_text('# owned source only\n');entry.chmod(0o600)
+            root=Path(td).resolve();tests=root/'agent_tools/tests';tests.mkdir(parents=True)
+            for name,raw in zip(('test_windows_cp117_base_source_refresh.py','test_windows_cp117_server_preflight.py'),reviewed_test_sources()):
+                (tests/name).write_bytes(raw)
+            entry=root/'entry.py';entry.write_text('# owned source only\n');entry.chmod(0o600)
             ns={'Path':Path,'__file__':str(entry),'installed':worker.installed,'worker':worker,'HELPER_SHA':reader(Path(worker.__file__))['sha256'],'TEST_SHA':'0'*64,'READ_BINDING_TEST_SHA':'0'*64}
             exec(PUBLIC_CURRENT_CONTEXT_TESTPIN_SOURCE,ns)
-            ns['current_context_testpin_guard']()
+            with patch.object(Path,'cwd',return_value=root):ns['current_context_testpin_guard']()
             old=PUBLIC_CURRENT_CONTEXT_TESTPIN_SOURCE
             import ast
             tree=ast.parse(old)
@@ -1421,7 +1425,7 @@ class PublicCurrentContextTestpinTests(unittest.TestCase):
             comparisons[1].comparators[0]=ast.Name(id='TEST_SHA',ctx=ast.Load())
             comparisons[2].comparators[0]=ast.Name(id='READ_BINDING_TEST_SHA',ctx=ast.Load())
             exec(compile(ast.fix_missing_locations(tree),'<actual-old-context-guard>','exec'),ns)
-            with self.assertRaisesRegex(ValueError,'readback-source'):ns['current_context_testpin_guard']()
+            with patch.object(Path,'cwd',return_value=root),self.assertRaisesRegex(ValueError,'readback-source'):ns['current_context_testpin_guard']()
 
 PUBLIC_RECORDED_STAGE_BODY_SOURCE='def recorded_stage_body_sha(source):\n    tree=ast.parse(source)\n    values={}\n    for node in tree.body:\n        if isinstance(node,ast.Assign):\n            for target in node.targets:\n                if isinstance(target,ast.Name) and target.id in (\'ENCODED\',\'BODY_SHA\'):\n                    if target.id in values:raise ValueError(\'historical-stage-body-duplicate\')\n                    values[target.id]=ast.literal_eval(node.value)\n    if set(values)!= {\'ENCODED\',\'BODY_SHA\'} or any(type(x)is not str for x in values.values()) or len(values[\'BODY_SHA\'])!=64 or any(x not in \'0123456789abcdef\'for x in values[\'BODY_SHA\']):raise ValueError(\'historical-stage-body-schema\')\n    import re,zlib\n    encoded=values[\'ENCODED\']\n    if encoded.startswith("$ErrorActionPreference=\'Stop\';$i=[IO.MemoryStream]::new([Convert]::FromBase64String(\'"):\n        match=re.fullmatch(r"\\$ErrorActionPreference=\'Stop\';\\$i=\\[IO.MemoryStream\\]::new\\(\\[Convert\\]::FromBase64String\\(\'([A-Za-z0-9+/=]+)\'\\)\\);.*\\$v.Length -ne ([1-9][0-9]{0,4}) .* -cne \'([0-9a-f]{64})\'.*",encoded)\n        if match is None or int(match[2])>65536:raise ValueError(\'historical-stage-bootstrap-schema\')\n        decoder=zlib.decompressobj(16+zlib.MAX_WBITS);body=decoder.decompress(base64.b64decode(match[1],validate=True),int(match[2])+1)\n        if not decoder.eof or decoder.unused_data or decoder.unconsumed_tail or len(body)!=int(match[2])or hashlib.sha256(body).hexdigest()!=match[3]:raise ValueError(\'historical-stage-bootstrap-hash\')\n        full=body.decode(\'utf-8\',\'strict\');header,separator,plain=full.partition(\'\\n\')\n        marker=re.fullmatch(r"\\[Console\\]::Out.WriteLine\\(\\(\'CP117-READ ([0-9a-f-]{36}) ([0-9a-f]{64}) \'\\+\\$PID\\)\\)",header)\n        if not separator or marker is None or marker[2]!=values[\'BODY_SHA\']:raise ValueError(\'historical-stage-read-header\')\n        raw=plain.encode(\'utf-16le\')\n    else:\n        raw=base64.b64decode(encoded,validate=True);raw.decode(\'utf-16le\',\'strict\')\n    if not raw or len(raw)>131072 or hashlib.sha256(raw).hexdigest()!=values[\'BODY_SHA\']:raise ValueError(\'historical-stage-body-hash\')\n    return values[\'BODY_SHA\']\n'
 
@@ -1588,3 +1592,14 @@ class PublicCliAliasBindingTests(unittest.TestCase):
         self.assertIs(value['aliasPreserved'],True)
         self.assertIs(value['processCreated'],False)
         self.assertIs(value['nativeAdmission'],False)
+
+
+# Whole historical factories are executed only against the two checkout-bound
+# source labels. Native admission and private-file guards remain unchanged.
+def setUpModule():
+    from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import inert_repository_source_reads
+    global _historical_source_reads
+    _historical_source_reads=inert_repository_source_reads();_historical_source_reads.__enter__()
+
+def tearDownModule():
+    _historical_source_reads.__exit__(None,None,None)

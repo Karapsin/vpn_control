@@ -1,0 +1,301 @@
+"""Input-driven Windows VM operations over saved, hash-checked programmes.
+
+Only this module's finite producers may execute. No public command/source-body
+argument, old channel adoption, old VM path, or instance-specific UID is used.
+"""
+from __future__ import annotations
+import ast,hashlib,inspect,json,os,secrets,shlex,stat,subprocess,time,uuid
+from dataclasses import replace
+from contextlib import ExitStack
+from .private_credential_file import SecretFile
+from pathlib import Path
+from .native_vm_spec import FreshWindowsVmSpec,VmSpecError
+from . import ssh_source_file_stage as files,ssh_source_file_stage_direct as stage
+from . import ssh_direct_nested_channel as direct,ssh_transport as transport
+
+
+def _gateway_main():
+    custody=None;secret_bytes=None
+    try:
+        corr,config_file,profile,source_sha=sys.argv[1:]
+        if re.fullmatch('[0-9a-f]{32}',corr)is None or source_sha!=_DECODED_SOURCE_SHA:raise ValueError('source_binding')
+        request=bounded_envelope(sys.stdin.buffer)
+        expected={'passphrase'}|({'sudo'} if PRIVILEGED else set())|({'payload'} if INPUT_PAYLOAD else set())
+        if type(request)is not dict or set(request)!=expected:raise ValueError('request_shape')
+        secret=request.pop('passphrase')
+        if type(secret)is not str or not 0<len(secret.encode())<=512 or any(c in secret for c in ('\r','\n','\0')):raise ValueError('secret_shape')
+        spec={'configFile':config_file or str(Path.home()/'.ssh/config'),'controlPath':'none','remoteHostAlias':profile}
+        config_pin=file_pin(spec['configFile'],body=True);route_pin=effective_route(spec)
+        if config_pin['unsupportedConfigDirectives'] or route_pin['user']!=PRINCIPAL:raise ValueError('route_identity')
+        def guard():
+            if file_pin(spec['configFile'],body=True)!=config_pin or effective_route(spec)!=route_pin:raise ValueError('config_or_keys_changed')
+        guard()
+        argv=['ssh','-T','-F',spec['configFile'],'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=none','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','IdentityAgent=none','-o','PreferredAuthentications=publickey','-o','PasswordAuthentication=no','-o','KbdInteractiveAuthentication=no','-o','ConnectTimeout=10',profile,COMMAND]
+        secret_bytes=secret.encode();custody=start_fixed(argv,secret_bytes,route_pin['keyMetadata']);secret=None
+        if PRIVILEGED:
+            sudo=request.pop('sudo')
+            if type(sudo)is not str or not 0<len(sudo.encode())<=512 or any(c in sudo for c in ('\r','\n','\0')):raise ValueError('sudo_shape')
+            custody.child.stdin.write(sudo.encode()+b'\n');custody.child.stdin.flush();sudo=None
+        if INPUT_PAYLOAD:
+            payload=request.pop('payload')
+            if type(payload)is not dict:raise ValueError('payload_shape')
+            raw=json.dumps(payload).encode()
+            if not 0<len(raw)<=4096:raise ValueError('payload_bound')
+            custody.child.stdin.write(raw);custody.child.stdin.flush();payload=None;raw=None
+        custody.child.stdin.close();capture=custody.observe(60)
+        if not capture['complete'] or capture['refusal'] or capture['returnCode']!=0:raise ValueError('program_observation_unknown')
+        value=json.loads(bytes(custody.raw['stdout']),object_pairs_hook=reject_pairs)
+        guard()
+        print(json.dumps({'state':'observed','correlationId':corr,'result':value,'capture':capture,'_operatorPrivateCapture':private_inner(custody,secret_bytes)},sort_keys=True),flush=True)
+        return 0
+    except BaseException as error:
+        print(json.dumps({'state':'unknown','correlationId':locals().get('corr'),'errorClass':type(error).__name__,
+                          '_operatorPrivateCapture':private_inner(custody,secret_bytes) if custody else None},sort_keys=True),flush=True)
+        if custody is not None and not custody.closed:custody.finish_naturally()
+        return 3
+
+
+def gateway_program(receipt,privileged=False,input_payload=False):
+    # Reuse the reviewed PTY and authenticated-route helpers as complete source
+    # nodes, with the staging entry point excluded. Execution is this producer's
+    # filename/hash invocation, never a caller-provided command.
+    raw=files.GATEWAY_SOURCE.read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=files.GATEWAY_SHA256:raise ValueError('gateway_source_changed')
+    text=raw.decode();tree=ast.parse(text);entry=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='stage_main')
+    prefix=''.join(text.splitlines(keepends=True)[:entry.lineno-1])
+    if type(privileged)is not bool or type(input_payload)is not bool:raise ValueError('gateway_mode')
+    loader=stage.loader_program(receipt['uid']) if privileged else stage.LOADER
+    command=shlex.join((*(['/usr/bin/sudo','-k','-S','-p','','--'] if privileged else []),'/usr/bin/python3' if privileged else 'python3','-I','-B','-c',loader,receipt['path'],receipt['sha256'],str(receipt['bytes'])))
+    if len(command.encode())>60000:raise ValueError('saved_command_bound')
+    body=prefix+'\nPRIVILEGED='+repr(privileged)+'\nINPUT_PAYLOAD='+repr(input_payload)+'\nCOMMAND='+repr(command)+'\nPRINCIPAL='+repr(receipt['principal'])+'\n'+inspect.getsource(_gateway_main)+"\nif __name__=='__main__':sys.exit(_gateway_main())\n"
+    compile(body,'saved Windows VM gateway','exec');return body.encode()
+
+
+def _runtime_group(root,name):
+    runtime=root/'.runtime';runtime.mkdir(mode=0o700,exist_ok=True)
+    if runtime.is_symlink() or runtime.stat().st_uid!=os.getuid() or runtime.stat().st_mode&0o022:raise ValueError('deployment_runtime_parent')
+    group=runtime/name;group.mkdir(mode=0o700,exist_ok=True)
+    if group.is_symlink() or group.stat().st_uid!=os.getuid() or group.stat().st_mode&0o077:raise ValueError('deployment_journal_owner')
+    return group
+
+
+def _retain_sources(directory,paths,guard):
+    """Retain actual beforeimages before transport or VM effects, never secrets."""
+    target=directory/'sources';target.mkdir(mode=0o700);records=[];total=0
+    for path in dict.fromkeys(paths):
+        descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            before=os.fstat(descriptor);limit=files.MAX_SOURCE_BYTES if path.name=='caller.py' else 2*1024**2
+            if not stat.S_ISREG(before.st_mode) or not 0<before.st_size<=limit:raise ValueError('deployment_source_capsule_bound')
+            chunks=[];size=0
+            while True:
+                block=os.read(descriptor,min(65536,limit+1-size))
+                if not block:break
+                chunks.append(block);size+=len(block)
+                if size>limit:raise ValueError('deployment_source_capsule_bound')
+            generation=lambda v:(v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns)
+            if size!=before.st_size or generation(os.fstat(descriptor))!=generation(before) or generation(os.stat(path,follow_symlinks=False))!=generation(before):raise ValueError('deployment_source_capsule_changed')
+            raw=b''.join(chunks);total+=size
+            if total>32*1024**2:raise ValueError('deployment_source_capsule_bound')
+            stage._retain(target,path.name,raw)
+            records.append({'name':path.name,'sourcePath':str(path),'sha256':hashlib.sha256(raw).hexdigest(),'bytes':size,'generation':generation(before)})
+        finally:os.close(descriptor)
+    guard.guard();stage._retain(target,'manifest.json',{'schemaVersion':1,'sources':records,'sourceClosingBeforeTransfer':True})
+
+
+def _execute(root,spec,mode,*,credential_file=None,setup=None,context=None,payload=None,before_submit=None):
+    """Save the entire fixed producer before transfer; never replay a start."""
+    if not direct.coordinator_capable():raise ValueError('unsupported_deployment_coordinator')
+    from . import windows_vm_deploy_remote as producer
+    root=Path(root).resolve(strict=True);corr=uuid.uuid4().hex
+    group=_runtime_group(root,'windows-vm-deploy')
+    directory=group/corr;directory.mkdir(mode=0o700)
+    privileged=mode in ('host-policy-apply','host-resources','start','status','stop')
+    mutation=mode in ('host-policy-apply','start','stop')
+    if privileged and credential_file is None:raise ValueError('privileged_operation_requires_credential_file')
+    caller=(producer.program(spec,mode,setup=setup,context=context) if mode in ('start','status','stop') else producer.program(spec,mode))
+    sha=hashlib.sha256(caller).hexdigest()
+    stage._retain(directory,'caller.py',caller)
+    stage._retain(directory,'request.json',{'spec':spec.as_dict(),'mode':mode,'correlationId':corr,'callerSha256':sha})
+    if mutation:
+        claim_group={'host-policy-apply':'windows-vm-host-policy','start':'windows-vm-deploy-intents','stop':'windows-vm-deploy-stops'}[mode]
+        claims=root/'.rag_index'/claim_group;claims.mkdir(mode=0o700,exist_ok=True)
+        if claims.is_symlink() or claims.stat().st_uid!=os.getuid() or claims.stat().st_mode&0o077:raise ValueError('policy_claim_owner')
+        if os.path.lexists(claims/(spec.deployment_id+'.intent.json')):raise ValueError('policy_original_exists')
+    with direct.Guard(root,host=spec.host) as guard,ExitStack() as secrets:
+        if privileged:credential=secrets.enter_context(SecretFile(credential_file))
+        paths=[Path(__file__),Path(producer.__file__),Path(stage.__file__),Path(files.__file__),Path(__file__).with_name('native_vm_spec.py'),Path(__file__).with_name('arch_package_integrity.py'),Path(__file__).with_name('private_credential_file.py'),Path(__file__).with_name('source_module_loader.py'),files.GATEWAY_SOURCE,directory/'caller.py']
+        if mode=='host-resources':paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_resources','native_host_observation','ssh_tmux_resource_admission'))
+        if mode in ('start','status','stop'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_resources','native_host_observation','ssh_tmux_resource_admission','windows_vm_unattend','windows_vm_instance','windows_vm_hardware','windows_vm_lifecycle','native_environment'))
+        for path in paths:
+            guard.held.read(str(path),hashlib.sha256(path.read_bytes()).hexdigest())
+        _retain_sources(directory,[*paths,*(Path(direct.__file__).with_name(name) for name in direct._SOURCE_NAMES),Path(stage.capture_module.__file__)],guard)
+        receipt=stage.publish(root,spec.host,str(directory/'caller.py'),sha,corr)
+        if receipt.get('state')!='staged':raise ValueError('deployment_program_not_staged')
+        gateway=gateway_program(receipt,privileged=privileged,input_payload=payload is not None);gateway_sha=hashlib.sha256(gateway).hexdigest()
+        stage._retain(directory,'gateway.py',gateway)
+        guard.held.read(str(directory/'gateway.py'),gateway_sha)
+        target=guard.config.hosts[spec.host];connection=transport.connection_host(guard.config,target.gateway)
+        prefix,endpoint=direct.outer_prefix(guard.config,connection)
+        outer_corr=uuid.uuid4().hex
+        argv=[*prefix,*direct.OUTER_OPTIONS,'-T','-o','ClearAllForwardings=yes','-o','PermitLocalCommand=no','-o','UpdateHostKeys=no',endpoint,shlex.join(('python3','-I','-B','-c',files.receiver_program(outer_corr)))]
+        guard.guard();saved=stage._run(directory,argv,files.source_payload(gateway),'gateway-stage')
+        if (saved.get('state')!='staged' or saved.get('bytes')!=len(gateway) or saved.get('sha256')!=gateway_sha
+                or saved.get('principal')!=connection.user or saved.get('path')!=stage._stage_path(saved,outer_corr)):raise ValueError('deployment_gateway_not_staged')
+        argv[-1]=shlex.join(('python3','-I','-B','-c',stage.LOADER,saved['path'],gateway_sha,str(len(gateway)),outer_corr,str(target.remote_config_file or ''),target.remote_host_alias,gateway_sha))
+        secret=target.password
+        if type(secret)is not str or not 0<len(secret.encode())<=512 or any(c in secret for c in ('\r','\n','\0')):raise ValueError('deployment_credential_shape')
+        request={'passphrase':secret}
+        if payload is not None:request['payload']=payload
+        if privileged:
+            request['sudo']=credential.text;credential.guard()
+        if mutation:stage._retain(claims,spec.deployment_id+'.intent.json',{'spec':spec.as_dict(),'setup':setup,'context':context,'correlationId':corr,'mode':mode,'callerSha256':sha})
+        if before_submit is not None:before_submit()
+        guard.guard();value=stage._run(directory,argv,json.dumps(request).encode(),'native')
+        request.clear()
+        if privileged:credential.guard()
+        secret=None;streams=value.pop('_operatorPrivateCapture',None)
+        if streams is not None:stage._retain(directory,'native-inner-streams.private.json',streams)
+        stage._retain(directory,'native-result.json',value);guard.guard()
+        if value.get('state')!='observed' or value.get('correlationId')!=outer_corr:raise ValueError('deployment_observation_unknown')
+        result=producer.validate_result(spec,mode,value['result'])
+        guard.guard();guard.close();stage._retain(directory,'closing.json',{'sourceClosing':True,'correlationId':corr})
+        return result
+
+
+def preflight(root,request):
+    return _execute(root,FreshWindowsVmSpec.parse(request),'preflight')
+
+
+def resources(root,request,credential_file):
+    return _execute(root,FreshWindowsVmSpec.parse(request),'host-resources',credential_file=credential_file)
+
+
+def _prepare_reservation(root,spec,credential_file):
+    """Observe all claimed aliases; never forget a row after a route rename."""
+    from . import native_environment as environments,windows_vm_resources as facts
+    root=Path(root).resolve(strict=True)
+    with direct.Guard(root,host=spec.host) as authority:
+        with environments._LockedState(root) as locked:
+            rows=json.loads(json.dumps(locked.state['reservations']))
+            original=environments._read_private(locked.path).encode() if locked.path.exists() else b''
+        aliases=sorted({row['hostAlias'] for row in rows}|{spec.host})
+        if len(aliases)>64:raise ValueError('deployment_resource_alias_capacity')
+        initial=resources(root,spec.as_dict(),credential_file)
+        if initial['state']!='resources-observed':raise ValueError('deployment_resources_unknown')
+        selected=[spec.host]
+        for alias in aliases:
+            if alias==spec.host:continue
+            if alias not in authority.config.hosts:raise ValueError('claimed_host_not_configured')
+            peer=_execute(root,replace(spec,host=alias),'peer')
+            if peer['state']!='peer-observed':raise ValueError('claimed_host_peer_unknown')
+            if peer['platform']=='linux' and peer['hostBootId']==initial['hostBootId']:selected.append(alias)
+        observation=initial if len(aliases)==1 else resources(root,spec.as_dict(),credential_file)
+        if observation['state']!='resources-observed' or observation['hostBootId']!=initial['hostBootId']:raise ValueError('deployment_resource_epoch_changed')
+        same_host=environments._host_records(rows,selected)
+        mapping=[{'reservationId':row['id'],'memoryBytes':row['requestedMemoryBytes']} for row in same_host if row['allocationState']=='running']
+        request={'hostAlias':spec.host,'resourceAliases':sorted(selected),'environment':'windows-'+spec.deployment_id,
+                 'operator':'windows-vm-deploy','requestedMemoryBytes':spec.memory_mib*1024**2,
+                 'headroomBytes':spec.headroom_mib*1024**2,'allocationState':'pending',
+                 'measurement':facts.measurement(observation),'runningAllocationMapping':mapping,
+                 'expectedInventorySha256':hashlib.sha256(original).hexdigest()}
+        authority.guard();reservation=environments.reserve_environment(root,request);authority.guard()
+        pending=[{'id':row['id'],'memoryBytes':row['requestedMemoryBytes']} for row in same_host if row['allocationState']=='pending']
+        return {'reservation':reservation,'request':request,'hostBootId':observation['hostBootId'],'pending':pending}
+
+
+def _lease_receipt(prepared,outcome):
+    identity=prepared['reservation']['identity']
+    return {'kind':'active-job','source':'windows-vm-deploy','observedAtUnixMs':time.time_ns()//1_000_000,
+            'outcome':outcome,'reservationId':identity['reservationId'],'reservationToken':identity['token']}
+
+
+def _mark_running(root,spec,prepared,credential_file):
+    from . import native_environment as environments,windows_vm_resources as facts
+    observation=resources(root,spec.as_dict(),credential_file)
+    if observation['state']!='resources-observed' or observation['hostBootId']!=prepared['hostBootId']:raise ValueError('deployment_running_epoch_unknown')
+    request=dict(prepared['request']);request.pop('expectedInventorySha256',None)
+    with environments._LockedState(root) as locked:
+        rows=environments._host_records(locked.state['reservations'],request['resourceAliases'])
+        mapping=[{'reservationId':row['id'],'memoryBytes':row['requestedMemoryBytes']} for row in rows if row['allocationState']=='running']
+        raw=environments._read_private(locked.path).encode()
+    identity=prepared['reservation']['identity']
+    if not any(row['reservationId']==identity['reservationId'] for row in mapping):mapping.append({'reservationId':identity['reservationId'],'memoryBytes':spec.memory_mib*1024**2})
+    request.update(allocationState='running',measurement=facts.measurement(observation),runningAllocationMapping=mapping,
+                   reservationIdentity=identity,observations=[_lease_receipt(prepared,'active')],expectedInventorySha256=hashlib.sha256(raw).hexdigest())
+    return environments.reserve_environment(root,request)
+
+
+def start(root,request,setup,credential_file):
+    """Create one blank instance; the immutable start is never resubmitted."""
+    if not direct.coordinator_capable():raise ValueError('unsupported_deployment_coordinator')
+    from . import windows_vm_unattend as unattended,native_environment as environments
+    root=Path(root).resolve(strict=True);spec=FreshWindowsVmSpec.parse(request);setup=unattended.parse_setup(setup)
+    if os.path.lexists(root/'.rag_index/windows-vm-deploy-intents'/(spec.deployment_id+'.intent.json')):raise ValueError('deployment_original_exists_use_status')
+    with SecretFile(credential_file) as credential:credential.guard()
+    parent=_runtime_group(root,'windows-vm-credentials')
+    directory=parent/spec.deployment_id;directory.mkdir(mode=0o700)
+    for name,prefix in (('user','User8!'),('administrator','Admin8!'),('final-administrator','Final8!')):
+        stage._retain(directory,name+'.secret',(prefix+secrets.token_urlsafe(24)+'\n').encode())
+    prepared=_prepare_reservation(root,spec,credential_file)
+    stage._retain(directory,'reservation.private.json',prepared)
+    def submitting():
+        update=dict(prepared['request']);update.pop('expectedInventorySha256',None)
+        update['observations']=[_lease_receipt(prepared,'unknown')]
+        environments.reserve_environment(root,update)
+    with SecretFile(str(directory/'user.secret')) as user,SecretFile(str(directory/'administrator.secret')) as administrator:
+        result=_execute(root,spec,'start',credential_file=credential_file,setup=setup,
+                        context={'hostBootId':prepared['hostBootId'],'pending':prepared['pending']},
+                        payload={'user':user.text,'administrator':administrator.text},before_submit=submitting)
+        user.guard();administrator.guard()
+    stage._retain(directory,'boot-result.private.json',result)
+    if result['state']=='booted-observed':
+        bound=_mark_running(root,spec,prepared,credential_file)
+        stage._retain(directory,'running-reservation.private.json',bound)
+        result={**result,'reservationId':bound['identity']['reservationId'],'reservationState':'running'}
+    return result
+
+
+def status(root,deployment_id,credential_file):
+    return _original_operation(root,deployment_id,credential_file,'status')
+
+
+def stop(root,deployment_id,credential_file):
+    return _original_operation(root,deployment_id,credential_file,'stop')
+
+
+def _original_operation(root,deployment_id,credential_file,mode):
+    """Read one original instance, with its local immutable intent held throughout."""
+    if not direct.coordinator_capable():raise ValueError('unsupported_deployment_coordinator')
+    if type(deployment_id)is not str or str(uuid.UUID(deployment_id))!=deployment_id:raise ValueError('deployment_identity')
+    from .native_review_source_closure import _Held
+    root=Path(root).resolve(strict=True);path=root/'.rag_index/windows-vm-deploy-intents'/(deployment_id+'.intent.json')
+    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    try:
+        info=os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1 or not 0<info.st_size<=65536:raise ValueError('deployment_intent_metadata')
+        raw=os.read(descriptor,65537)
+        if len(raw)!=info.st_size:raise ValueError('deployment_intent_changed')
+    finally:os.close(descriptor)
+    held=_Held()
+    try:
+        held.read(str(path),hashlib.sha256(raw).hexdigest())
+        value=json.loads(raw,object_pairs_hook=transport._reject_duplicate_keys)
+        if type(value)is not dict or set(value)!={'spec','setup','context','correlationId','mode','callerSha256'} or value['mode']!='start':raise ValueError('deployment_intent_fields')
+        import re
+        if (type(value['correlationId'])is not str or re.fullmatch('[0-9a-f]{32}',value['correlationId'])is None or
+                type(value['callerSha256'])is not str or re.fullmatch('[0-9a-f]{64}',value['callerSha256'])is None):raise ValueError('deployment_intent_source')
+        spec=FreshWindowsVmSpec.parse(value['spec'])
+        if spec.deployment_id!=deployment_id:raise ValueError('deployment_intent_identity')
+        source=held.read(str(root/'.runtime/windows-vm-deploy'/value['correlationId']/'caller.py'),value['callerSha256'],max_bytes=files.MAX_SOURCE_BYTES)
+        wanted={'SPEC':value['spec'],'SETUP':value['setup'],'CONTEXT':value['context'],'MODE':'start'}
+        bindings={}
+        for node in ast.parse(source).body:
+            if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in wanted:
+                name=node.targets[0].id
+                if name in bindings:raise ValueError('deployment_source_binding')
+                bindings[name]=ast.literal_eval(node.value)
+        if bindings!=wanted:raise ValueError('deployment_source_binding')
+        result=_execute(root,spec,mode,credential_file=credential_file,setup=value['setup'],context=value['context'])
+        held.finish();held.final_identity_pass();return result
+    finally:held.close()

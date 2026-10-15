@@ -1,0 +1,120 @@
+"""Pure Windows Setup answer file for an explicitly owned blank VM."""
+import re
+from xml.etree import ElementTree as ET
+
+FIELDS={'imageName','locale','user','administrator'}
+def parse_setup(value):
+    if type(value)is not dict or set(value)!=FIELDS:raise ValueError('setup_fields')
+    if type(value['imageName'])is not str or not re.fullmatch(r'[A-Za-z0-9 ()_-]{1,80}',value['imageName']):raise ValueError('setup_image')
+    if type(value['locale'])is not str or not re.fullmatch('[a-z]{2}-[A-Z]{2}',value['locale']):raise ValueError('setup_locale')
+    names=[value[k] for k in ('user','administrator')]
+    if any(type(n)is not str or not re.fullmatch('[A-Za-z][A-Za-z0-9_-]{0,19}',n) or n.lower() in ('administrator','guest','defaultaccount','wdagutilityaccount') for n in names) or names[0].lower()==names[1].lower():raise ValueError('setup_accounts')
+    return dict(value)
+
+# Specialize only installs the serial driver and stages a protected task.
+# MSI runs as SYSTEM after Setup finishes; graphical autologon stays ordinary.
+INITIALIZE=r'''$ErrorActionPreference='Stop'
+$logs=Join-Path $env:ProgramData 'VpnControlFixture'
+if(Test-Path -LiteralPath $logs){throw 'FIXTURE_DIRECTORY_EXISTS'}
+New-Item -ItemType Directory $logs | Out-Null
+& icacls.exe $logs /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' | Out-Null
+if($LASTEXITCODE -ne 0){throw 'FIXTURE_DIRECTORY_ACL'}
+Start-Transcript -Path (Join-Path $logs 'setup.log') -NoClobber
+$msis=@(Get-Volume | Where-Object DriveLetter | ForEach-Object { Join-Path ($_.DriveLetter+':\') 'guest-agent\qemu-ga-x86_64.msi' } | Where-Object { Test-Path -LiteralPath $_ })
+if($msis.Count -ne 1){throw 'GUEST_AGENT_MEDIA'}
+$driverRoot=Split-Path (Split-Path $msis[0])
+$serial=Join-Path $driverRoot 'vioserial\w11\amd64\vioser.inf'
+if(-not (Test-Path -LiteralPath $serial)){throw 'GUEST_SERIAL_DRIVER'}
+& pnputil.exe /add-driver $serial /install
+if($LASTEXITCODE -notin @(0,3010)){throw 'GUEST_SERIAL_INSTALL'}
+$agent=Join-Path $logs 'qemu-agent.msi'
+Copy-Item -LiteralPath $msis[0] -Destination $agent
+if((Get-FileHash -LiteralPath $agent).Hash -ne (Get-FileHash -LiteralPath $msis[0]).Hash){throw 'GUEST_AGENT_COPY'}
+$script=Join-Path $logs 'install-agent.ps1'
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-agent.ps1') -Destination $script
+if((Get-FileHash -LiteralPath $script).Hash -ne (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'install-agent.ps1')).Hash){throw 'GUEST_SCRIPT_COPY'}
+$action=New-ScheduledTaskAction -Execute (Join-Path $PSHOME 'powershell.exe') -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$script+'"')
+$triggers=@((New-ScheduledTaskTrigger -AtStartup),(New-ScheduledTaskTrigger -AtLogOn))
+$principal=New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest
+$settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+Register-ScheduledTask -TaskName 'VpnControlFixtureInitialize' -Action $action -Trigger $triggers -Principal $principal -Settings $settings | Out-Null
+Stop-Transcript
+'''
+
+INSTALL_AGENT=r'''$ErrorActionPreference='Stop'
+$logs=Join-Path $env:ProgramData 'VpnControlFixture'
+# An early OOBE logon may trigger this task. Never start Windows Installer
+# while setup still owns the machine, and never replay an uncertain installer.
+$deadline=[DateTime]::UtcNow.AddMinutes(15)
+do {
+    $state=Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\Setup'
+    $image=Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State'
+    $ready=($state.SystemSetupInProgress -eq 0 -and $state.OOBEInProgress -eq 0 -and $image.ImageState -eq 'IMAGE_STATE_COMPLETE')
+    if(-not $ready){Start-Sleep -Seconds 2}
+} until($ready -or [DateTime]::UtcNow -ge $deadline)
+if(-not $ready){exit 73}
+$intent=Join-Path $logs 'agent-install-intent.json'
+try {
+    $stream=[IO.File]::Open($intent,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+} catch [IO.IOException] {exit 74}
+try {
+    $raw=[Text.Encoding]::UTF8.GetBytes((@{state='submitted';time=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json -Compress))
+    $stream.Write($raw,0,$raw.Length);$stream.Flush($true)
+} finally {$stream.Dispose()}
+Start-Transcript -Path (Join-Path $logs 'agent-setup.log') -NoClobber
+$agent=Join-Path $logs 'qemu-agent.msi'
+$p=Start-Process msiexec.exe -ArgumentList @('/i',('"'+$agent+'"'),'/qn','/norestart','/l*v',(Join-Path $logs 'qga-install.log')) -PassThru
+if(-not $p.WaitForExit(180000)){throw 'GUEST_AGENT_INSTALL_UNKNOWN'}
+if($p.ExitCode -notin @(0,3010)){throw 'GUEST_AGENT_INSTALL'}
+Set-Service -Name QEMU-GA -StartupType Automatic
+Start-Service -Name QEMU-GA
+@{state='ready';principal=[Security.Principal.WindowsIdentity]::GetCurrent().Name;installerExit=$p.ExitCode;time=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $logs 'ready.json') -Encoding UTF8
+Stop-Transcript
+'''
+
+
+def answer_file(setup,credentials):
+    setup=parse_setup(setup)
+    if type(credentials)is not dict or set(credentials)!={'user','administrator'} or any(type(p)is not str or not re.fullmatch('[A-Za-z0-9!_-]{24,64}',p) for p in credentials.values()):raise ValueError('setup_credentials')
+    ns='urn:schemas-microsoft-com:unattend';wcm='http://schemas.microsoft.com/WMIConfig/2002/State'
+    ET.register_namespace('',ns);ET.register_namespace('wcm',wcm)
+    def node(parent,tag,text=None,**attrs):
+        e=ET.SubElement(parent,'{'+ns+'}'+tag,attrs)
+        if text is not None:e.text=str(text)
+        return e
+    root=ET.Element('{'+ns+'}unattend')
+    def component(settings,name):return node(settings,'component',name=name,processorArchitecture='amd64',publicKeyToken='31bf3856ad364e35',language='neutral',versionScope='nonSxS')
+    winpe=node(root,'settings',pass_='windowsPE');winpe.set('pass','windowsPE');del winpe.attrib['pass_']
+    intl=component(winpe,'Microsoft-Windows-International-Core-WinPE')
+    node(node(intl,'SetupUILanguage'),'UILanguage',setup['locale'])
+    for name in ('InputLocale','SystemLocale','UILanguage','UserLocale'):node(intl,name,setup['locale'])
+    windows=component(winpe,'Microsoft-Windows-Setup');disks=node(windows,'DiskConfiguration')
+    disk=node(disks,'Disk',**{'{'+wcm+'}action':'add'});node(disk,'DiskID',0);node(disk,'WillWipeDisk','true')
+    creates=node(disk,'CreatePartitions')
+    for order,kind,size in ((1,'EFI',260),(2,'MSR',16),(3,'Primary',None)):
+        p=node(creates,'CreatePartition',**{'{'+wcm+'}action':'add'});node(p,'Order',order);node(p,'Type',kind)
+        node(p,'Extend','true') if size is None else node(p,'Size',size)
+    modifies=node(disk,'ModifyPartitions')
+    for order,fmt,label,letter in ((1,'FAT32','System',None),(3,'NTFS','Windows','C')):
+        p=node(modifies,'ModifyPartition',**{'{'+wcm+'}action':'add'});node(p,'Order',1 if order==1 else 2);node(p,'PartitionID',order);node(p,'Format',fmt);node(p,'Label',label)
+        if letter:node(p,'Letter',letter)
+    node(disks,'WillShowUI','OnError')
+    image=node(node(windows,'ImageInstall'),'OSImage');metadata=node(node(image,'InstallFrom'),'MetaData',**{'{'+wcm+'}action':'add'})
+    node(metadata,'Key','/IMAGE/NAME');node(metadata,'Value',setup['imageName'])
+    target=node(image,'InstallTo');node(target,'DiskID',0);node(target,'PartitionID',3);node(image,'WillShowUI','OnError')
+    node(node(windows,'UserData'),'AcceptEula','true');node(node(windows,'DynamicUpdate'),'Enable','false')
+    specialize=node(root,'settings',**{'pass':'specialize'});deploy=component(specialize,'Microsoft-Windows-Deployment')
+    command=node(node(deploy,'RunSynchronous'),'RunSynchronousCommand',**{'{'+wcm+'}action':'add'});node(command,'Order',1)
+    script="powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"$v=@(Get-Volume | Where-Object FileSystemLabel -eq 'VCSETUP'); if($v.Count -ne 1){exit 91}; & ($v[0].DriveLetter+':\\initialize.ps1')\""
+    node(command,'Path',script)
+    oobe=node(root,'settings',**{'pass':'oobeSystem'});shell=component(oobe,'Microsoft-Windows-Shell-Setup');screen=node(shell,'OOBE')
+    node(shell,'TimeZone','UTC')
+    for name in ('HideEULAPage','HideOnlineAccountScreens','HideWirelessSetupInOOBE'):node(screen,name,'true')
+    node(screen,'ProtectYourPC',3)
+    accounts=node(node(shell,'UserAccounts'),'LocalAccounts')
+    for role,group in (('user','Users'),('administrator','Administrators')):
+        account=node(accounts,'LocalAccount',**{'{'+wcm+'}action':'add'});node(account,'Name',setup[role]);node(account,'Group',group)
+        password=node(account,'Password');node(password,'Value',credentials[role]);node(password,'PlainText','true')
+    logon=node(shell,'AutoLogon');node(logon,'Username',setup['user']);node(logon,'Enabled','true');node(logon,'LogonCount',3)
+    password=node(logon,'Password');node(password,'Value',credentials['user']);node(password,'PlainText','true')
+    return ET.tostring(root,encoding='utf-8',xml_declaration=True)

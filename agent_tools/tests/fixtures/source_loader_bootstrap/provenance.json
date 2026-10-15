@@ -1,0 +1,12 @@
+{
+  "baseSha": "e167a73ee8acd7fbb9844380dc12f310f537d0e6",
+  "beforeSha256": "39942d49073906fcbc6d6aec9c9a816ef18d37de4f2b48ca8632c8ebc75864ca",
+  "captureDate": "2026-10-15",
+  "dirtySource": true,
+  "evidenceDirectory": ".runtime/mcp-source-loader-bootstrap-2026-10-15",
+  "failureType": "Closure bootstrap bytes executed before physical source custody; unsafe helper can execute a top-level marker before later refusal",
+  "nativeLimits": "Owned source-tree filesystem controls only; no VM/SSH actions; actual WindowsHeld tests require Windows",
+  "routineSuite": "agent_tools.tests.test_source_loader_bootstrap",
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/source_module_loader.py"
+}

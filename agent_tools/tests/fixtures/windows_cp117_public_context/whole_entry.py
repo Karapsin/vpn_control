@@ -15,6 +15,22 @@ from agent_tools.tests.test_windows_cp117_recovered_login import ScreenTests
 
 HERE=Path(__file__).resolve().parent
 
+def reviewed_test_sources():
+    """Exact complete test inputs required by the retained context authority.
+
+    Live checkout tests evolve independently. These sealed e167 sources keep
+    their original reviewed successor relation and are never executed here.
+    """
+    files=(('reviewed-base-test.source',1044995,'bee23d9115fde0e1985590988e2e9be2761df32b0aa5e2575af68537791b2c5d'),
+           ('reviewed-server-test.source',91294,'4b6612464904b342ced0602d5fc5177ac7c8f8078506285cc0c45e64d4dba870'))
+    result=[]
+    for name,size,sha in files:
+        raw=(HERE/name).read_bytes()
+        if len(raw)!=size or hashlib.sha256(raw).hexdigest()!=sha:
+            raise ValueError('whole-context-reviewed-test-source')
+        result.append(raw)
+    return tuple(result)
+
 def exercise(*, old_guard=False,tamper=False,late_unlink=False,old_closure=False):
     from agent_tools.tests.test_windows_cp117_public_update_flow import PublicConcreteBuilderTests,PublicSavedRecordAdmissionTests,PublicHistoricalStageCompositionTests
     provenance=json.loads((HERE/'provenance.json').read_bytes());bodies={}
@@ -22,7 +38,7 @@ def exercise(*, old_guard=False,tamper=False,late_unlink=False,old_closure=False
         raw=(HERE/name).read_bytes()
         if len(raw)!=pin['size']or hashlib.sha256(raw).hexdigest()!=pin['sha256']:raise ValueError('whole-context-fixture-source')
         bodies[name]=raw
-    seed,_=PublicConcreteBuilderTests().context();repo=HERE.parents[3]
+    seed,_=PublicConcreteBuilderTests().context()
     with tempfile.TemporaryDirectory()as directory:
         root=Path(directory).resolve();base=root/'.runtime/parity-evidence';base.mkdir(parents=True);caps=[];history={}
         def cap(name):
@@ -41,8 +57,8 @@ def exercise(*, old_guard=False,tamper=False,late_unlink=False,old_closure=False
             for source,dest in [('original-base-test.source','original-base-test-ec314.source'),('original-server-test.source','original-server-test-f6d09.source')]:
                 p=archive/dest;p.write_bytes(bodies[source]);p.chmod(0o600)
             (root/'agent_tools/tests').mkdir(parents=True)
-            for name in ('test_windows_cp117_base_source_refresh.py','test_windows_cp117_server_preflight.py'):
-                (root/'agent_tools/tests'/name).write_bytes((repo/'agent_tools/tests'/name).read_bytes())
+            for name,raw in zip(('test_windows_cp117_base_source_refresh.py','test_windows_cp117_server_preflight.py'),reviewed_test_sources()):
+                (root/'agent_tools/tests'/name).write_bytes(raw)
             original_stage=cap('public-original-stage');prior=callers.path/'stage-caller.py';put(callers,prior.name,bodies['original-stage-caller.source'])
             oldvalue=json.loads(bodies['original-stage-result.json']);corr=oldvalue['events'][0]['event']['diagnosticId']
             for index,item in enumerate(oldvalue['events']):item['pin']=put(original_stage,corr+'-event-%d.json'%index,json.dumps(item['event'],sort_keys=True).encode())

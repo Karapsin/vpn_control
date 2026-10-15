@@ -1,0 +1,6 @@
+        wire = []
+        for path in sorted(run.glob('wire-*.json')):
+            raw = path.read_bytes(); pins.read(path,sha(raw),mode=0o600); wire.append(json.loads(raw))
+        if (len(wire) != 3 or sorted(x['kind'] for x in wire) != ['execute','stage','verify']
+                or any(x['commandBytes'] > 60000 or x['maxArgumentBytes'] > 60000 for x in wire)):
+            raise ValueError('actual_wire_command_admission_mismatch')

@@ -9,6 +9,7 @@ job evidence intentionally prevents release rather than being treated as gone.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -161,10 +162,41 @@ def _request(request: Mapping[str, Any]) -> dict[str, Any]:
     state = request.get("allocationState", "pending")
     if state not in ("pending", "running"):
         raise NativeEnvironmentError("allocation state must be pending or running")
+    aliases = request.get("resourceAliases", [host])
+    if (not isinstance(aliases, list) or not 1 <= len(aliases) <= 64 or
+            any(not isinstance(item, str) or not _SAFE_NAME.fullmatch(item) for item in aliases) or
+            len(set(aliases)) != len(aliases) or host not in aliases):
+        raise NativeEnvironmentError("resource aliases must be unique host names including this host")
+    expected_inventory = request.get("expectedInventorySha256")
+    if expected_inventory is not None and (not isinstance(expected_inventory, str) or
+                                           re.fullmatch('[0-9a-f]{64}', expected_inventory) is None):
+        raise NativeEnvironmentError("expected inventory digest is invalid")
     return {"hostAlias": host, "environment": environment, "operator": operator,
             "requestedMemoryBytes": requested, "measurement": measurement,
             "headroomBytes": headroom, "allocationState": state,
-            "runningAllocationMapping": request.get("runningAllocationMapping")}
+            "runningAllocationMapping": request.get("runningAllocationMapping"),
+            "resourceAliases": sorted(aliases), "expectedInventorySha256": expected_inventory}
+
+
+def _host_records(records, aliases):
+    """Count previously bound aliases too; renaming never forgets old claims."""
+    names = set(aliases)
+    groups = []
+    for record in records:
+        group = record.get("resourceAliases", [record["hostAlias"]])
+        if (not isinstance(group, list) or not 1 <= len(group) <= 64 or
+                any(not isinstance(name, str) or not _SAFE_NAME.fullmatch(name) for name in group) or
+                record["hostAlias"] not in group):
+            raise NativeEnvironmentError("stored resource aliases are invalid")
+        groups.append(set(group))
+    while True:
+        before = len(names)
+        for group in groups:
+            if names & group:
+                names.update(group)
+        if len(names) == before:
+            break
+    return [record for record, group in zip(records, groups) if names & group]
 
 
 def _receipt_status(request: Mapping[str, Any]) -> dict[str, Any]:
@@ -285,9 +317,13 @@ def reserve_environment(root: str | Path, request: Mapping[str, Any]) -> dict[st
     receipt = _receipt_status(request)
     with _LockedState(root) as locked:
         assert locked.state is not None
+        if parsed["expectedInventorySha256"] is not None:
+            raw = _read_private(locked.path).encode('utf-8') if locked.path.exists() else b''
+            if hashlib.sha256(raw).hexdigest() != parsed["expectedInventorySha256"]:
+                raise NativeEnvironmentError("reservation inventory changed during host observation")
         records = locked.state["reservations"]
-        same_target = [r for r in records if r["hostAlias"] == parsed["hostAlias"] and r["environment"] == parsed["environment"]]
-        same_host = [r for r in records if r["hostAlias"] == parsed["hostAlias"]]
+        same_host = _host_records(records, parsed["resourceAliases"])
+        same_target = [r for r in same_host if r["environment"] == parsed["environment"]]
         for record in same_target:
             exact = all(record[key] == parsed[key] for key in ("hostAlias", "environment", "operator", "requestedMemoryBytes"))
             if exact:
@@ -310,6 +346,12 @@ def reserve_environment(root: str | Path, request: Mapping[str, Any]) -> dict[st
                     )
                     record["activeJobEvidence"] = job_receipt
                     record["observationMaximumAgeMs"] = receipt["maximumAgeMs"]
+                aliases = sorted(set(record.get("resourceAliases", [record["hostAlias"]])) |
+                                 set(parsed["resourceAliases"]))
+                if len(aliases) > 64:
+                    raise NativeEnvironmentError("stored resource alias union exceeds the supported bound")
+                if len(aliases) > 1 or "resourceAliases" in record:
+                    record["resourceAliases"] = aliases
                 record["lastObservation"] = receipt
                 locked.save()
                 return {"ok": True, "state": "reserved", "idempotent": True,
@@ -334,6 +376,8 @@ def reserve_environment(root: str | Path, request: Mapping[str, Any]) -> dict[st
                   "createdAtUnixMs": time.time_ns() // 1_000_000, "activeJob": receipt["activeJob"],
                   "activeJobEvidence": receipt["activeJobReceipt"], "observationMaximumAgeMs": receipt["maximumAgeMs"],
                   "lastObservation": receipt}
+        if len(parsed["resourceAliases"]) > 1:
+            record["resourceAliases"] = parsed["resourceAliases"]
         records.append(record)
         locked.save()
         return {"ok": True, "state": "reserved", "idempotent": False, "identity": _identity(record),

@@ -20,8 +20,7 @@ from . import native_host_observation as host
 from . import vm_workflow
 need=old.need
 MEMORY=8*1024**3
-HOST_SHA='a6b36ab56709b5c98bfff03f895af6b0f4ea2e8c64b6b158d70166d69d099d12'
-BOOT='25515f23-b966-4c3a-ae63-d38452375578'
+HOST_SHA='600d5ec9d44d8dc83bec2f0dbe891383166b0a5ea128206074b87e272010a6d2'
 VM_SHA='d0db49f7c4fc67348dd6f7ba9ebb35cfad01f055ffde374858fa36ac02f6711c'
 
 _REMOTE=r'''
@@ -44,7 +43,7 @@ def proc_visible():
  except (OSError,ValueError,IndexError):return False
 def census():
  boot=open('/proc/sys/kernel/random/boot_id').read().strip(); rows=[]
- if boot!=FIXED_BOOT or not proc_visible():raise ValueError('resource_host_unknown')
+ if re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',boot)is None or not proc_visible():raise ValueError('resource_host_unknown')
  entries=os.listdir('/proc')
  if len(entries)>8192:raise ValueError('resource_census_limit')
  for entry in entries:
@@ -74,7 +73,10 @@ def census():
  return boot,sorted(rows,key=lambda x:x['pid'])
 boot,vms=census();first,physical,swap=memory();time.sleep(.05);last,physical2,swap2=memory();boot2,vms2=census()
 if first is None or last is None or physical!=physical2 or boot!=boot2 or vms!=vms2:raise ValueError('resource_observation_unknown')
-fixed='/home/kardinal/.vpn-control-mcp-fixtures'
+sudo_uid=os.environ.get('SUDO_UID','')
+if re.fullmatch('[0-9]{1,10}',sudo_uid)is None or not 0<=int(sudo_uid)<2**32:raise ValueError('resource_principal_unknown')
+principal=pwd.getpwuid(int(sudo_uid))
+fixed=os.path.join(principal.pw_dir,'.vpn-control-mcp-fixtures')
 chain=[]
 try:
  fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);chain.append((fd,None,None,os.fstat(fd)))
@@ -82,7 +84,7 @@ try:
   parent=fd;fd=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);s=os.fstat(fd);named=os.stat(part,dir_fd=parent,follow_symlinks=False)
   if (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)!=(named.st_dev,named.st_ino,named.st_mode,named.st_uid,named.st_gid):raise ValueError('resource_disk_ancestor_changed')
   chain.append((fd,parent,part,s))
- if s.st_uid!=1000:raise ValueError('resource_disk_owner_changed')
+ if s.st_uid!=principal.pw_uid:raise ValueError('resource_disk_owner_changed')
  disk=os.fstatvfs(fd)
  for held,parent,part,before in chain:
   after=os.fstat(held)
@@ -101,7 +103,7 @@ def host_program():
  tree=ast.parse(host._REMOTE_PROGRAM)
  functions=[ast.get_source_segment(host._REMOTE_PROGRAM,n) for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('memory','parse_memory','stat','kernel_thread','terminal_zombie')]
  need(len(functions)==5,'host_definitions_changed')
- value='import json,os,sys,time,hashlib\nif os.geteuid()!=0:raise ValueError("resource_privilege_required")\nif sys.stdin.buffer.read(16385)!=b"{}":raise ValueError("resource_fixed_payload_required")\nFIXED_BOOT='+repr(BOOT)+'\n'+'\n'.join(functions)+'\n'+_REMOTE
+ value='import json,os,sys,time,hashlib,re,pwd\nif os.geteuid()!=0:raise ValueError("resource_privilege_required")\nif sys.stdin.buffer.read(16385)!=b"{}":raise ValueError("resource_fixed_payload_required")\n'+'\n'.join(functions)+'\n'+_REMOTE
  compile(value,'<fixed-tmux-resource-observation>','exec');return value
 
 
@@ -119,14 +121,14 @@ def fixed_resource_query(root,program,payload,guard):
   with direct.Guard(Path(root)) as authority:
    def close():authority.guard();held.finish();held.final_identity_pass();guard()
    close();target=authority.config.hosts['archlinux']
-   need(target.transport=='nested' and target.user=='kardinal','resource_principal_unknown')
+   need(target.transport=='nested' and type(target.user)is str and re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,63}',target.user)is not None,'resource_principal_unknown')
    password=target.password
    need(type(password)is str and 0<len(password.encode())<=512 and not any(c in password for c in ('\n','\r','\0')),'resource_credential_unknown')
    argv=ssh_transport.build_ssh_argv(authority.config,'archlinux',30,command=('sudo','-S','-p','','python3','-I','-B','-c','exec('+repr(program)+')'))
    private=password.encode()+b'\n{}';password=None
    def launch():
-    close();return adapter.subprocess.Popen(argv,cwd=root,stdin=adapter.subprocess.PIPE,stdout=adapter.subprocess.PIPE,stderr=adapter.subprocess.PIPE,bufsize=0)
-   binding={'phase':'status','snapshot':None,'sources':source_pins,'transport':{'hostAlias':'archlinux','privilegedResourceRead':True},'local':{},'argvSha256':hashlib.sha256(session.canonical(argv)).hexdigest()}
+    close();return ssh_transport.popen_ssh(argv,cwd=root,stdin=adapter.subprocess.PIPE,stdout=adapter.subprocess.PIPE,stderr=adapter.subprocess.PIPE,bufsize=0)
+   binding={'phase':'status','snapshot':None,'sources':source_pins,'transport':{'hostAlias':'archlinux','privilegedResourceRead':True},'local':{},'argvSha256':ssh_transport.argv_sha256(argv)}
    outcome,capsule=adapter._capture(root,authority=binding,launch=launch,payload=private,guard=close,timeout_seconds=30);private=None
    close();need(outcome['state']=='captured','resource_capture_unknown')
    raw,pin=closure.pipe._read(capsule/'receipt.json');need(pin==outcome['receiptPin'],'resource_capture_changed');record=json.loads(raw)

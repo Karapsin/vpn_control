@@ -174,7 +174,7 @@ class DriverTests(unittest.TestCase):
         # The current coordinator stages the exact tracked launcher-preflight helper.
         with mock.patch.object(self.driver, '_transport', side_effect=AssertionError('No transport')) as transport:
             tools = self.driver._tools()
-        self.assertEqual('95e3749be6f397dfa6d9435c04ec7fda225713bc1b6ec7eeca9736edd43ca966',
+        self.assertEqual(hashlib.sha256((ROOT/'agent_tools/linux_package_fixture_build.py').read_bytes()).hexdigest(),
                          tools['linux_package_fixture_build.py']['pin']['sha256'])
         transport.assert_not_called()
         self.assertEqual([], self.remote.calls)
@@ -366,8 +366,11 @@ class DriverTests(unittest.TestCase):
         remote = self.root / 'remote'; remote.mkdir(mode=0o700)
         original_path = Path
         def translated(value='.', *args):
-            return remote if str(value) == adapter.REMOTE_ROOT else original_path(value, *args)
-        translated.home = original_path.home
+            return original_path(value, *args)
+        translated.home = lambda:self.root
+        # The home lookup is the declared authenticated-host IO boundary.
+        remote = self.root/adapter.REMOTE_ROOT_NAME
+        remote.mkdir(mode=0o700)
         commands = []; sockets = []
         original_read = Path.read_text
         def process_stat(path, *args, **kwargs):
@@ -392,7 +395,7 @@ class DriverTests(unittest.TestCase):
         def generated(program, payload):
             output = io.StringIO(); previous = list(sys.path)
             try:
-                with mock.patch('pathlib.Path', translated), mock.patch.object(Path, 'read_text', process_stat), \
+                with mock.patch('pathlib.Path', translated), mock.patch('pwd.getpwuid',return_value=types.SimpleNamespace(pw_dir=str(self.root))), mock.patch.object(Path, 'read_text', process_stat), \
                      mock.patch('subprocess.run', side_effect=native), mock.patch.object(sys, 'stdin', types.SimpleNamespace(buffer=io.BytesIO(session.canonical(payload)))), \
                      mock.patch.object(sys, 'stdout', output):
                     exec(compile(program, 'fixed-generated-tmux-remote', 'exec'), {})

@@ -1,0 +1,6 @@
+{
+  "source": "agent_tools/ssh_connection_session_close.py",
+  "sourceSha256": "88a72e2d20746447bff5783e96cc745e4f9966ae4da1be2d9767d2b785538c80",
+  "failure": "Reviewed transport changes leave the generic close helper frozen to an earlier transport digest; ordinary current-source close is refused before intent/effect.",
+  "evidence": "affected-audit-v1.log in private reproducibility audit; inert owned original-session controls only; no real unknown session was closed."
+}
