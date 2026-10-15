@@ -1,3 +1,4 @@
+from agent_tools.tests.fixtures.cp117_gzip_runtime import HistoricalGzipTestCase, historical_gzip_view
 import ast,base64,gzip,re,hashlib,inspect,json,os,shutil,subprocess,tempfile,textwrap,unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -13,7 +14,7 @@ def native_source():
 
 def production_compile_fragment():
  tree=ast.parse((ROOT/'agent_tools/windows_cp117_secure_input_geometry_observe.py').read_text())
- native=native_source();ns={'base64':base64,'gzip':gzip,'_SEMANTIC_CS':native,'NATIVE_SHA':hashlib.sha256(native.encode()).hexdigest()}
+ native=native_source();ns={'base64':base64,'gzip':historical_gzip_view(),'_SEMANTIC_CS':native,'NATIVE_SHA':hashlib.sha256(native.encode()).hexdigest()}
  body=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='bodies')
  statements=[]
  for n in body.body:
@@ -32,7 +33,7 @@ def compressed_case_script():
  return "$ErrorActionPreference='Stop';$old=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+encoded+"'));$rejected=$false;try{&([ScriptBlock]::Create($old));throw 'OLD_BOOTSTRAP_ACCEPTED'}catch{if($_.FullyQualifiedErrorId -cne 'MethodCountCouldNotFindBest'){throw};$rejected=$true}\n"+fixed+"\nif(-not $rejected -or [CP117InputRead].GetMethod('Collect') -eq $null){throw 'COMPRESSED_COMPILE_CASES'};[Console]::Out.WriteLine('CENSUS_COMPRESSED_CASES_PASS')\n"
 
 @unittest.skipIf(os.name=='nt','POSIX native transport tests run on coordinator')
-class CensusTests(unittest.TestCase):
+class CensusTests(HistoricalGzipTestCase):
  def axis(self,value=1):
   return {'finite':True,'isNaN':False,'positiveInfinite':False,'negativeInfinite':False,'withinBound':True,'value':value}
  def node(self):
@@ -141,7 +142,7 @@ def old_geometry_predicate():
  return re.search(r'Need\((!double[^;]+),"CENSUS_GEOMETRY_BOUND"\)',cs).group(1)
 
 @unittest.skipUnless(shutil.which('powershell.exe'),'Windows PowerShell unavailable')
-class ExecutableTraversalTests(unittest.TestCase):
+class ExecutableTraversalTests(HistoricalGzipTestCase):
  def test_actual_provider_traversal_dedup_caps_and_mutable_drift(self):
   cs=native_source()+_FAKE_CS.replace("__OLD_GEOMETRY__",old_geometry_predicate())
   script=r"""$ErrorActionPreference='Stop';'UIAutomationClient','UIAutomationTypes','WindowsBase'|ForEach-Object {[void][Reflection.Assembly]::LoadWithPartialName($_)}
@@ -156,7 +157,7 @@ if(-not [CensusFixture]::Run()){throw 'CENSUS_INERT_CASES'}
    Path(directory,'result.json').write_text(json.dumps({'exit':r.returncode,'stdout':r.stdout,'stderr':r.stderr}));self.assertEqual(r.returncode,0,r.stderr);self.assertIn('CENSUS_PROVIDER_CASES_PASS',r.stdout)
 
 @unittest.skipUnless(shutil.which('powershell.exe'),'Windows PowerShell unavailable')
-class ExecutableCompressedBootstrapTests(unittest.TestCase):
+class ExecutableCompressedBootstrapTests(HistoricalGzipTestCase):
  def test_actual_untyped_constructor_red_typed_production_compile_green(self):
   script=compressed_case_script()
   with tempfile.TemporaryDirectory()as directory:
@@ -171,7 +172,7 @@ def geometry_case_script():
  return "$ErrorActionPreference='Stop';\n"+fragment+"\nif(-not [CensusFixture]::Run()){throw 'GEOMETRY_INERT_CASES'};[Console]::Out.WriteLine('CENSUS_GEOMETRY_CASES_PASS')\n"
 
 @unittest.skipUnless(shutil.which('powershell.exe'),'Windows PowerShell unavailable')
-class ExecutableGeometryCompressedTests(unittest.TestCase):
+class ExecutableGeometryCompressedTests(HistoricalGzipTestCase):
  def test_actual_production_compressed_geometry_provider_empty_infinite_negative_caps_drift(self):
   with tempfile.TemporaryDirectory()as directory:
    p=Path(directory)/'geometry.ps1';p.write_text(geometry_case_script(),encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=30)

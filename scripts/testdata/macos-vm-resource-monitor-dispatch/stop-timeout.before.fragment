@@ -1,0 +1,13 @@
+    @unittest.skipIf(os.name == "nt", "requires POSIX executable shebang fixture")
+    def test_stop_timeout_is_uncertain_and_does_not_retry_or_kill_child(self) -> None:
+        evidence = self.root / "timeout-evidence"
+        self.environment["STOP_BLOCK"] = "1"
+        monitor = self.start_monitor(evidence, stop_timeout_seconds="0.05")
+        self.wait_for(evidence / "process.json")
+        (self.root / "pressure").write_text("4\n", encoding="utf-8")
+        self.assert_monitor_exit(monitor, 2, evidence)
+        child_pid = json.loads((evidence / "process.json").read_text(encoding="utf-8"))["childPid"]
+        os.kill(child_pid, 0)
+        self.assertTrue((evidence / "stop-uncertain.json").exists())
+        calls = (self.root / "calls.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(1, sum(json.loads(call)[0] == "stop" for call in calls))

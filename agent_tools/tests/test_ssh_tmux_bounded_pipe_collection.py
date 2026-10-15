@@ -251,4 +251,5 @@ class BoundedPipeCollectionTest(unittest.TestCase):
         import ast
         tree=ast.parse(Path(collection.__file__).read_text())
         self.assertFalse(any(isinstance(node,ast.Import) and any(alias.name=='resource' for alias in node.names) for node in tree.body))
-        with mock.patch.object(collection.os,'name','nt'),self.assertRaisesRegex(ValueError,'unsupported_coordinator'):collection.collect_existing(Path.cwd(),collection.CORRELATION)
+        directory=Path.cwd()
+        with mock.patch.object(collection.os,'name','nt'),self.assertRaisesRegex(ValueError,'unsupported_coordinator'):collection.collect_existing(directory,collection.CORRELATION)

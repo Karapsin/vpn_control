@@ -1,10 +1,11 @@
+from agent_tools.tests.fixtures.cp117_gzip_runtime import HistoricalGzipTestCase
 import ast,base64,copy,hashlib,inspect,json,tempfile,textwrap,unittest
 from pathlib import Path
 from unittest.mock import patch
 from agent_tools import windows_cp117_secure_input_observe as m
 from agent_tools.tests import test_windows_cp117_secure_layout_observe as layout
 
-class SemanticTests(unittest.TestCase):
+class SemanticTests(HistoricalGzipTestCase):
     def answer(self):
         a=layout.SecureLayoutTests().answer();a['reader']['nonce']=m.NONCE;a['birth']['nonce']=m.NONCE;a['reader']['sourceSha256']=m.CHILD_SHA;a['birth']['sourceSha256']=m.CHILD_SHA
         a['facts']['secureInput']={'ownerPid':1096,'threadId':111,'hkl':'0000000004090409','windowStation':'WinSta0','desktop':'Winlogon','controlType':'Edit','controlName':'Password','className':'Edit','isPassword':True,'keyboardFocus':True,'enabled':True,'offscreen':False,'expectedAccount':True,'capsLock':False,'lengthAvailable':True,'nativeHandleMatches':True,'accountCount':1,'editCount':1,'passwordLength':0,'window':45678,'runtimeId':[42,99]}

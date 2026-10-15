@@ -50,6 +50,21 @@ def exercise(*, old_guard=False,tamper=False,late_unlink=False,old_closure=False
         ns=module.__dict__
         try:
             exec(compile(bodies['original-context-caller.source'],str(entry),'exec'),ns)
+            # The inherited inert reader resolves these two historical labels
+            # while loading templates. Strict custody subsequently opens their
+            # physical names directly, so retain exact bytes under real paths.
+            from agent_tools import windows_fixture_credentials,windows_update_fixture_server
+            for key,path_key,sha_key,current in (
+                ('credentials','CREDENTIALS_PATH','CREDENTIALS_SHA',windows_fixture_credentials),
+                ('fixture_server','SERVER_PATH','SERVER_SHA',windows_update_fixture_server)):
+                template=ns[key];label=Path(ns[path_key]);physical=Path(current.__file__).resolve(strict=True)
+                expected=Path('/Users/karapsin_de/Nextcloud/projects/vpn_control/agent_tools')/physical.name
+                if Path(template.__file__)!=label or label!=expected:
+                    raise ValueError('whole-context-explicit-source-label')
+                pin,raw=worker.installed.precise.owner.guest.recovery.authority._read_bound_file(physical,retain_bytes=True)
+                if pin['sha256']!=ns[sha_key]or hashlib.sha256(raw).hexdigest()!=ns[sha_key]:
+                    raise ValueError('whole-context-explicit-source-bytes')
+                template.__file__=str(physical)
             exec(compile(bodies['old-context.source']if old_closure else bodies['current-context.source'],'<actual-current-context>','exec'),ns)
             if old_guard:
                 tree=ast.parse(bodies['current-context.source']);prepare=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='prepare_public_context');guard=next(n for n in prepare.body if isinstance(n,ast.If));guard.test.values[1].comparators[0]=ast.Name(id='TEST_SHA',ctx=ast.Load());guard.test.values[2].comparators[0]=ast.Name(id='READ_BINDING_TEST_SHA',ctx=ast.Load());exec(compile(ast.fix_missing_locations(ast.Module(body=[prepare],type_ignores=[])),'<actual-historical-guard>','exec'),ns)

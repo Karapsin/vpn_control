@@ -5,6 +5,26 @@ from unittest.mock import patch
 from agent_tools import windows_cp117_base_source_refresh as refresh
 from agent_tools.tests import test_windows_cp117_installed_base_observe as previous
 from agent_tools.tests.test_windows_cp117_recovered_login import ScreenTests
+
+def inert_server_annotation_context(tree):
+ """Restore the server module's typing context only for inert AST executions.
+
+ Sealed historical factories retained the annotated server definitions while
+ carrying only Mapping into their emitted namespace. Their original bytes stay
+ unchanged; this fixture seam supplies the missing Any import for Python 3.12.
+ """
+ names={'_canonical','_validate_live_ready'}
+ functions=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in names]
+ if not functions:return tree
+ if len(functions)!=2 or {node.name for node in functions}!=names:
+  raise ValueError('inert-server-annotation-context')
+ imports=[node for node in tree.body if isinstance(node,ast.ImportFrom) and node.module=='typing' and node.level==0]
+ if (len(imports)!=1 or len(imports[0].names)!=1 or
+     imports[0].names[0].name!='Mapping' or imports[0].names[0].asname is not None):
+  raise ValueError('inert-server-annotation-context')
+ imports[0].names.append(ast.copy_location(ast.alias(name='Any'),imports[0]))
+ return ast.fix_missing_locations(tree)
+
 class RefreshTests(HistoryCase):
  def value(self,present=True,same=True):
   value=previous.InstalledTests().value();value['correlationId']=refresh.CORRELATION
@@ -2460,7 +2480,7 @@ class DirectFixtureTlsChannelTests(HistoryCase):
   values={'certificate':b'PUBLIC_CERTIFICATE_ONLY','privateKey':b'-----BEGIN PRIVATE KEY-----\nPUBLIC_SYNTHETIC_TLS_SENTINEL_91726483\n-----END PRIVATE KEY-----\n','trustStore':b'PUBLIC_CERTIFICATE_ONLY_TRUST'}
   return {**values,'fileSha256':{k:hashlib.sha256(v).hexdigest()for k,v in values.items()},'peerCertificateSha256':'2'*64,'certificateValidFromUtc':1791235000,'certificateValidUntilUtc':1791321700}
  def validator(self,source):
-  tree=ast.parse(source);start=next(n for n in tree.body if isinstance(n,ast.Import)and [x.name for x in n.names]==['re','types']);end=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='parse_terminal');nodes=[n for n in tree.body if start.lineno<=n.lineno<=end.lineno];ns={'base64':base64,'json':json};exec(compile(ast.Module(body=nodes,type_ignores=[]),'actual-tls-projection','exec'),ns);return ns
+  tree=inert_server_annotation_context(ast.parse(source));start=next(n for n in tree.body if isinstance(n,ast.Import)and [x.name for x in n.names]==['re','types']);end=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='parse_terminal');nodes=[n for n in tree.body if start.lineno<=n.lineno<=end.lineno];ns={'base64':base64,'json':json};exec(compile(ast.Module(body=nodes,type_ignores=[]),'actual-tls-projection','exec',dont_inherit=True),ns);return ns
  def facts(self,n,record,public):
   from agent_tools.tests.test_windows_cp117_installed_base_observe import InstalledTests
   native=InstalledTests().value();native['correlationId']=n['DOWNLOAD_CORRELATION'];binding=n['tls_binding'](record);paths=n['credentials']._fixed_paths(n['STAGED_CORRELATION']);sid=binding['originalSid']

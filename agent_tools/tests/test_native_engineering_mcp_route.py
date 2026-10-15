@@ -20,7 +20,8 @@ class NativeEngineeringMcpRouteTest(unittest.TestCase):
         ns={'__package__':'agent_tools','importlib':importlib,'REPO_ROOT':Path('/unused'),
             '_native_source_request':current_server._native_source_request,
             '_agent_module':module,'_error':lambda tool,message:{'tool':tool,'ok':False,'error':message}}
-        exec(compile(ast.Module(body=[node],type_ignores=[]),str(path),'exec'),ns)
+        future=[item for item in tree.body if isinstance(item,ast.ImportFrom) and item.module=='__future__']
+        exec(compile(ast.Module(body=future+[node],type_ignores=[]),str(path),'exec',dont_inherit=True),ns)
         return ns['_vm_workflow_impl']
     def test_actual_callback_preserves_typed_context_and_all_four_original_request_fields(self):
         callback=self.callback();raw={'sourceSha':'a'*40,'baseVersion':'2.2.8','targetVersion':'2.2.9','correlationId':'original',

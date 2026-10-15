@@ -23,8 +23,20 @@ PUBLIC_UPDATE_FACTORY_SOURCE='import hashlib,re,json\nTARGET_PATH = r"\\updates\
 
 
 def factory():
-    ns = {}
+    import builtins,hashlib
+    from agent_tools.tests.fixtures.cp117_gzip_runtime import historical_gzip_view
+    if hashlib.sha256(PUBLIC_UPDATE_FACTORY_SOURCE.encode()).hexdigest()!='e4e5d4d882c1b3d0460259c92a035e48082f2a8473b07dbe73ab61f064340ac1':
+        raise ValueError('public_historical_factory_source_changed')
+    view=historical_gzip_view();real_import=builtins.__import__
+    def fixture_import(name,globals=None,locals=None,fromlist=(),level=0):
+        if name=='gzip'and level==0:return view
+        return real_import(name,globals,locals,fromlist,level)
+    # Functions retain their builtins when created. Scope both top-level and
+    # function-local codec imports to this exact sealed factory's own mapping.
+    fixture_builtins=dict(vars(builtins));fixture_builtins['__import__']=fixture_import
+    ns = {'__builtins__':fixture_builtins}
     exec(compile(PUBLIC_UPDATE_FACTORY_SOURCE, "<cp117-public-update>", "exec"), ns)
+    ns['gzip']=view
     ns["PUBLIC_FACTORY_SOURCE_FOR_VALIDATOR"] = PUBLIC_UPDATE_FACTORY_SOURCE
     return ns
 

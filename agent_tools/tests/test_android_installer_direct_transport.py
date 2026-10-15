@@ -661,6 +661,11 @@ class CallbackWireTests(unittest.TestCase):
         original_output=case.args.output;canonical_output=root/('android-installer-component-baseline-'+corr)
         original_output.rename(canonical_output);case.args.output=canonical_output;case.args.intent_file=canonical_output/'intent.json'
         actor,dispatcher,scope=case.actor()
+        if sys.platform=='linux':
+            # The emitted observer reads this real parent's Linux identity.
+            # The shared actor fixture otherwise supplies a synthetic birth.
+            from agent_tools import android_installer_outer_transport as outer
+            exec(compile(inspect.getsource(outer.outer_process_identity),'<actual-parent-identity>','exec'),scope)
         dispatcher.identity=scope['outer_process_identity']()
         dispatcher._publish('dispatch',{**dispatcher.packet,'identity':dispatcher.identity,'state':'dispatch-intent'})
         accepted={'correlationId':corr,'sourcePacketSha256':'b'*64,'identity':dispatcher.identity,'intentPin':dispatcher.pins[str(dispatcher.directory/'00000-intent.json')],'dispatchPin':dispatcher.pins[str(dispatcher.directory/'00001-dispatch.json')]}

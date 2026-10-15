@@ -192,6 +192,7 @@ class RepairDeclarationTests(unittest.TestCase):
                 'windows_vm_setup_policy.py','native_workflow_policy.py',
                 'affected_agent_tests.py','affected_agent_test_dependencies.json',
                 'agent_test_runner.py','native_review_source_closure.py','source_module_loader.py',
+                'windows_source_custody.py',
                 'tests/fixtures/cached_recovery_source/before.json',
                 'tests/fixtures/cached_recovery_source/provenance.json')})
 
@@ -205,7 +206,13 @@ class RepairDeclarationTests(unittest.TestCase):
         fixture='agent_tools/tests/fixtures/ssh_automatic_program/'
         self.assert_reviewed('agent_tools/tests/test_ssh_automatic_program.py',
             {'agent_tools/ssh_transport.py','agent_tools/ssh_transfer.py',
-             'agent_tools/ssh_automatic_program.py','agent_tools/native_review_source_closure.py'}|
+             'agent_tools/ssh_automatic_program.py','agent_tools/native_review_source_closure.py',
+             'agent_tools/mcp_server.py','agent_tools/docs_assistant.py',
+             'agent_tools/local_build_environment.py','agent_tools/managed_check_lease.py',
+             'agent_tools/check_output_retention.py','agent_tools/windows_vm_setup_policy.py',
+             'agent_tools/native_workflow_policy.py','agent_tools/source_module_loader.py',
+             'agent_tools/windows_source_custody.py','agent_tools/affected_agent_tests.py',
+             'agent_tools/affected_agent_test_dependencies.json','agent_tools/agent_test_runner.py'}|
             {fixture+name for name in ('provenance.json','ssh_transfer.py.before.source',
                 'ssh_transport.py.before.source','stage_failure.before.source',
                 'residual_args.before.source','residual_transport.before.source',

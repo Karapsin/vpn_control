@@ -1,0 +1,16 @@
+{
+  "description": "Exact unfixed diagnostic functions from c680 Fast CI malformed-output failure. Definitions only; execution uses finite in-memory QGA replies and no native actions.",
+  "originalCommit": "c68058eb64f8452207bf2091bd2950e5a06231da",
+  "originalSource": "agent_tools/windows_msi_base_prepare.py",
+  "originalSourceSha256": "5d06ef745bbaba0208f08907a9b1c8ed7a3c8c549a940ecf5a4f127744d47cb7",
+  "diagnosticLiteralSha256": "237235bd19c959366b86c920e397df46a84853b4aff913727356091c77ae6803",
+  "sourceSha256": "3445cca7eadb43c775947eba40d6a1c4c4b6a024b79a880221ad9482fcf73993",
+  "sourceBytes": 6655,
+  "functions": [
+    "unknown_proof",
+    "dispatch_absent_proof"
+  ],
+  "originalFailureBlock": ".runtime/mcp-ci-c68058eb-fast-failure/failure-blocks/148.txt",
+  "originalTest": "agent_tools.tests.test_windows_msi_base_prepare.BasePrepareTests.test_dispatch_absent_program_classifies_each_guest_proof_failure",
+  "preservedGuard": "No/multiple JSON-object lines incorrectly reaches schema projection; all QGA, bounds and schema validations retained."
+}

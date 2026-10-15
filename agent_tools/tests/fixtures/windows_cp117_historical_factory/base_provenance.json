@@ -1,0 +1,22 @@
+{
+  "base": {
+    "authentication": "exact installed_fa5f054e.source BASE_SHA; complete source at the recorded commit",
+    "bytes": 200141,
+    "fixture": "base_5d06ef74.source",
+    "sha256": "5d06ef745bbaba0208f08907a9b1c8ed7a3c8c549a940ecf5a4f127744d47cb7",
+    "sourceCommit": "c68058eb64f8452207bf2091bd2950e5a06231da",
+    "sourcePath": "agent_tools/windows_msi_base_prepare.py"
+  },
+  "contextBefore": {
+    "authentication": "complete source retained from the unchanged H97 common focus; original package-fixed-source failure",
+    "bytes": 5226,
+    "fixture": "context.before.source",
+    "sha256": "e75ff49fdc5b8ec73c5e0738a4e44aa41062bbad5128317ad329724218e7c216",
+    "sourcePath": "agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py"
+  },
+  "historicalPinsChanged": false,
+  "kind": "inert-historical-package-source-family",
+  "nativeEvidence": false,
+  "schemaVersion": 1,
+  "scope": "inert local source factories only; no historical native entry point executes; current product and native source authority remain separate"
+}

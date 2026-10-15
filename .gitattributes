@@ -13,12 +13,18 @@ visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
 # Historical source fixtures retain the exact bytes named by their provenance.
 /agent_tools/tests/fixtures/**/*.source -text
 /agent_tools/tests/fixtures/native_wire_event_evidence/*.fragment -text
+/agent_tools/tests/fixtures/windows_cp117_publisher_boundary/*.fragment -text
 /agent_tools/tests/fixtures/fast_workflow_budget/before.yml -text
+/agent_tools/tests/fixtures/fast_workflow_interpreter_order/*.yml -text
 /agent_tools/tests/fixtures/android_component_legacy/provenance.json text eol=lf
 
 # Frozen persistent-task fixtures retain their manifest-pinned source bytes.
 /scripts/testdata/windows-persistent-ready-parser/** -text
 /scripts/testdata/windows-persistent-taskroot/** -text
+
+# The monitor regression authenticates its exact retained timeout assertion.
+/scripts/test_macos_vm_resource_monitor.py -text
+/scripts/testdata/macos-vm-resource-monitor-dispatch/*.fragment -text
 
 /agent_tools/tests/fixtures/setup_process_capture/*.ps1 -text
 

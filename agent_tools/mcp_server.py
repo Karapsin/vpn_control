@@ -15,6 +15,7 @@ import shlex
 import subprocess
 import sys
 import time
+import types
 import uuid
 from pathlib import Path
 from typing import Any, Sequence
@@ -31,7 +32,7 @@ if not __package__ and str(REPO_ROOT) not in sys.path:
 _CORE_IMPORT_DIGESTS = {}
 
 
-def _captured_core(name):
+def _captured_core(name, *, package=None):
     """Compile actual captured policy bytes, independent of pyc/module caches."""
     path=Path(__file__).resolve().with_name(name+'.py')
     identity=lambda value:(value.st_dev,value.st_ino,value.st_mode,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
@@ -52,12 +53,28 @@ def _captured_core(name):
                 or common_identity(after)!=common_identity(named_after)):
             raise ValueError('Core source capture changed')
     finally:os.close(descriptor)
-    name='_vpn_core_'+str(_MCP_BOOT_TIME_NS)+'_'+name
+    name=package+'.'+name if package is not None else '_vpn_core_'+str(_MCP_BOOT_TIME_NS)+'_'+name
     spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec)
     sys.modules[name]=module
     exec(compile(raw,str(path),'exec',dont_inherit=True),module.__dict__)
     _CORE_IMPORT_DIGESTS[path]=hashlib.sha256(raw).hexdigest()
     return module
+
+
+def _captured_native_sources():
+    """Bootstrap native source custody without inheriting a compiler's pyc."""
+    name='_vpn_native_core_'+str(_MCP_BOOT_TIME_NS)
+    package=types.ModuleType(name);package.__path__=[];package.__package__=name
+    sys.modules[name]=package
+    try:
+        if os.name=='nt':
+            package.windows_source_custody=_captured_core('windows_source_custody',package=name)
+        package.source_module_loader=_captured_core('source_module_loader',package=name)
+        return package.source_module_loader
+    except BaseException:
+        for candidate in (name+'.source_module_loader',name+'.windows_source_custody',name):
+            sys.modules.pop(candidate,None)
+        raise
 
 
 docs_assistant = _captured_core('docs_assistant')
@@ -66,6 +83,7 @@ managed_check_lease = _captured_core('managed_check_lease')
 check_output_retention = _captured_core('check_output_retention')
 windows_vm_setup_policy = _captured_core('windows_vm_setup_policy')
 native_workflow_policy = _captured_core('native_workflow_policy')
+_SOURCE_MODULE_LOADER = _captured_native_sources()
 _SELECTOR_IMPORT_BYTES = {
     path: path.read_bytes()
     for path in (Path(__file__).resolve().with_name("affected_agent_tests.py"),
@@ -2227,7 +2245,7 @@ def _native_source_request(function):
     """Keep shared captured imports alive until the complete native RPC closes."""
     @functools.wraps(function)
     def call(*args, **kwargs):
-        loader = importlib.import_module("agent_tools.source_module_loader")
+        loader = _SOURCE_MODULE_LOADER
         try:
             with loader.request_scope(Path(__file__).resolve().parent):
                 return function(*args, **kwargs)
@@ -2843,8 +2861,7 @@ def _agent_module(name: str) -> Any:
     if (_MCP_EXECUTING_CODE!=compile(current,__file__,"exec",dont_inherit=True,optimize=sys.flags.optimize)
             or hashlib.sha256(current).hexdigest()!=_CHECK_RUNNER_SOURCE_DIGESTS[Path(__file__).resolve()]):
         raise ValueError("MCP source changed; use the fresh-process route or restart MCP.")
-    loader=importlib.import_module(f"{__package__ or 'agent_tools'}.source_module_loader"
-                                   if __package__ in (None,"agent_tools") else "agent_tools.source_module_loader")
+    loader=_SOURCE_MODULE_LOADER
     return loader.adapter(Path(__file__).resolve().parent,name)
 
 

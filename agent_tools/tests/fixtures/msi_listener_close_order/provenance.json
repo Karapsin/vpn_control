@@ -1,0 +1,17 @@
+{
+  "originalCommit": "c68058eb64f8452207bf2091bd2950e5a06231da",
+  "sourcePath": "agent_tools/tests/test_windows_msi_http_transfer.py",
+  "originalSourceSha256": "5864ca6a6320936ed4f461fd5dbf410f68e501ac9b20458f251e6cbdf2a926a6",
+  "sourceSha256": "acaac003f46d7f116b9e3ac2ed4a63ee5f454e53858c355361038956cfcc9581",
+  "sourceBytes": 1012,
+  "sourceSpan": {
+    "line": 717,
+    "column": 4,
+    "endLine": 732,
+    "endColumn": 67
+  },
+  "method": "test_one_use_listener_serves_exact_staged_bytes",
+  "workerSha256": "13555eaf1d975896e164951fd12de3535f29e8b517ae7ce6d3ccbe79e632eab9",
+  "producerSha256": "eeb8884ac9466e3c55e869da79ab9cd97cc1a19dfed636bb57de24ae2fb51d04",
+  "scope": "Exact original positive method; no decorators, body bytes unchanged. Linux realclient schedule control keeps strict served, worker, ownership and free-port guards."
+}

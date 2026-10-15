@@ -413,7 +413,10 @@ class PairProducerTest(unittest.TestCase):
             zip(('secondary','tertiary'),(2339,2338),(5939,5938),launch.inventory.MACS))
         for guest in self.guests:
             guest.root.mkdir(mode=0o700);image=guest.root/'disk.qcow2';image.write_bytes(b'OVERLAY');image.chmod(0o600)
-        self.binary=Path(sys.executable).resolve()
+        # Installed interpreters may belong to root while fixture firmware
+        # belongs to this user. Keep the actual trust guard on an owned copy.
+        self.binary=self.root/'owned-executable'
+        shutil.copyfile(Path(sys.executable).resolve(),self.binary);self.binary.chmod(0o500)
         self.code=self.root/'code.fd';self.seed=self.root/'seed.fd'
         for path in (self.code,self.seed):path.write_bytes(b'FIRMWARE_SEED');path.chmod(0o644)
         self.proc=self.root/'proc';self.proc.mkdir();(self.proc/'net').mkdir();(self.proc/'pressure').mkdir()

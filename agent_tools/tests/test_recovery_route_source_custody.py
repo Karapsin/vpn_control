@@ -137,8 +137,10 @@ def _physical_server(*, historical=False):
         finally:
             for name in list(sys.modules):
                 if (name == package_name or name.startswith(package_name + ".")
-                        or public is not None and name.startswith(
-                            "_vpn_core_" + str(public._MCP_BOOT_TIME_NS) + "_")):
+                        or public is not None and (name.startswith(
+                            "_vpn_core_" + str(public._MCP_BOOT_TIME_NS) + "_") or
+                            name == "_vpn_native_core_" + str(public._MCP_BOOT_TIME_NS) or
+                            name.startswith("_vpn_native_core_" + str(public._MCP_BOOT_TIME_NS) + "."))):
                     sys.modules.pop(name, None)
 
 

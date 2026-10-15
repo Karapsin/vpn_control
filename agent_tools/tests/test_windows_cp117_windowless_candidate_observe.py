@@ -1,3 +1,4 @@
+from agent_tools.tests.fixtures.cp117_gzip_runtime import HistoricalGzipTestCase, historical_gzip_view
 import ast,base64,gzip,re,hashlib,inspect,json,os,shutil,subprocess,tempfile,textwrap,unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -13,7 +14,7 @@ def native_source():
 
 def production_compile_fragment():
  tree=ast.parse((ROOT/'agent_tools/windows_cp117_windowless_candidate_observe.py').read_text())
- native=native_source();ns={'base64':base64,'gzip':gzip,'_SEMANTIC_CS':native,'NATIVE_SHA':hashlib.sha256(native.encode()).hexdigest()}
+ native=native_source();ns={'base64':base64,'gzip':historical_gzip_view(),'_SEMANTIC_CS':native,'NATIVE_SHA':hashlib.sha256(native.encode()).hexdigest()}
  body=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='bodies')
  statements=[]
  for n in body.body:
@@ -32,7 +33,7 @@ def compressed_case_script():
  return "$ErrorActionPreference='Stop';$old=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+encoded+"'));$rejected=$false;try{&([ScriptBlock]::Create($old));throw 'OLD_BOOTSTRAP_ACCEPTED'}catch{if($_.FullyQualifiedErrorId -cne 'MethodCountCouldNotFindBest'){throw};$rejected=$true}\n"+fixed+"\nif(-not $rejected -or [CP117InputRead].GetMethod('Collect') -eq $null){throw 'COMPRESSED_COMPILE_CASES'};[Console]::Out.WriteLine('CENSUS_COMPRESSED_CASES_PASS')\n"
 
 @unittest.skipIf(os.name=='nt','POSIX native transport tests run on coordinator')
-class CensusTests(unittest.TestCase):
+class CensusTests(HistoricalGzipTestCase):
  def axis(self,value):return {'finite':True,'isNaN':False,'positiveInfinite':False,'negativeInfinite':False,'withinBound':True,'value':value}
  def node(self,rid=16):
   return {'pid':1096,'controlId':50020 if rid==19 else 50004,'nativeHandle':0,'depth':4 if rid==16 else 5,'runtimeId':[42,65626,4,rid],'isEmpty':False,'x':self.axis(100),'y':self.axis(200),'width':self.axis(200),'height':self.axis(40),'isPassword':rid!=19,'keyboardFocus':rid==17,'keyboardFocusable':rid!=19,'enabled':True,'offscreen':False,'passwordName':rid==19}
@@ -135,7 +136,7 @@ def candidate_case_script():
  return "$ErrorActionPreference='Stop';\n"+fragment+"\nif(-not [CandidateFixture]::Run()){throw 'CANDIDATE_INERT_CASES'};[Console]::Out.WriteLine('CANDIDATE_CASES_PASS')\n"
 
 @unittest.skipUnless(shutil.which('powershell.exe'),'Windows PowerShell unavailable')
-class ExecutableCandidateTests(unittest.TestCase):
+class ExecutableCandidateTests(HistoricalGzipTestCase):
  def test_actual_production_compressed_dynamic_candidates_provider_cases(self):
   with tempfile.TemporaryDirectory()as directory:
    p=Path(directory)/'candidate.ps1';p.write_text(candidate_case_script(),encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=30)

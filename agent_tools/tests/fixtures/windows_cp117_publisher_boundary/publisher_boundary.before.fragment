@@ -1,0 +1,18 @@
+ def test_actual_native_failure_projection_lost_inner_stage_and_closed_successor_factory(self):
+  import tempfile,hashlib,copy
+  native=json.loads(gzip.decompress(base64.b64decode(PUBLISHER_READ_NATIVE_GZIP)));existing=[row for row in native['rows']if row['exists']];self.assertEqual(len(existing),10);self.assertTrue(all(row['readError']=='MethodInvocationException'and row['data']is None for row in existing))
+  with tempfile.TemporaryDirectory()as td:
+   p=Path(td).resolve()/'factory.py';p.write_text(self.read_source());p.chmod(0o600);n=self.factory(p);ingress={'ast':ast,'base64':base64,'gzip':gzip,'json':json,'traw':Path(fixture.__file__).read_bytes(),'braw':Path(__file__).read_bytes(),'eraw':p.read_bytes()};exec(compile(gzip.decompress(base64.b64decode(PUBLISHER_BOUNDARY_MAIN_GZIP)),'actual-boundary-main-ingress','exec'),ingress)
+   record=fixture.DirectRecoveredGenerationTests().actual_record();public=n['credential_public'](fixture.DirectFixtureTlsChannelTests().material());wire,_,_=n['tls_program'](record,public);body,_=n['tls_body'](record,public);compile(wire,'actual-boundary-fullcarrier','exec');v=fixture.DirectFixtureTlsChannelTests().validator(wire)
+   for effect in ('Register-ScheduledTask','Start-ScheduledTask','Set-Acl'):self.assertNotIn(effect,body)
+   def encode(m):
+    raw=json.dumps(m,separators=(',',':')).encode();z=gzip.compress(raw,mtime=0);return {'state':'publisher-records-wire','version':1,'compressedBytes':len(z),'decodedBytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'data':base64.b64encode(z).decode()}
+   with self.assertRaises(ValueError):v['publisher_read_projection'](encode(native))
+   synthetic=copy.deepcopy(native)
+   for row in synthetic['rows']:
+    row.update(errorStage=None,exceptionChain=None,nativeRowType=None,nativeRowPrefix=None,nativeRowSha256=None,scriptLine=None)
+    if row['readError']:row.update(errorStage='first-invoke',exceptionChain=[{'type':'System.Reflection.TargetInvocationException','hresult':-2146232828,'message':'PUBLIC_SYNTHETIC_CAUSE'}],scriptLine=1)
+   self.assertEqual(v['publisher_read_projection'](encode(synthetic)),synthetic)
+   for key,bad in [('scriptLine',True),('errorStage','foreign'),('exceptionChain',[]),('nativeRowPrefix','unbound')]:
+    changed=copy.deepcopy(synthetic);changed['rows'][0][key]=bad
+    with self.assertRaises(ValueError,msg=key):v['publisher_read_projection'](encode(changed))

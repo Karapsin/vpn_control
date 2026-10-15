@@ -33,10 +33,11 @@ OLD_API29_GUARD_BACKEND='def _guard_backend(selected,backend):\n    """Authentic
 
 class PortabilityTests(unittest.TestCase):
     def test_unsupported_fd_and_identity_apis_refuse_explicitly(self):
+        directory=Path.cwd()
         with mock.patch.object(bundle.os,'name','nt'):
-            with self.assertRaisesRegex(ValueError,'posix_fd_required'):bundle._parents(Path.cwd())
+            with self.assertRaisesRegex(ValueError,'posix_fd_required'):bundle._parents(directory)
         with mock.patch.object(bundle.os,'getuid',None,create=True):
-            with self.assertRaisesRegex(ValueError,'posix_fd_required'):bundle._parents(Path.cwd())
+            with self.assertRaisesRegex(ValueError,'posix_fd_required'):bundle._parents(directory)
 
 
 @unittest.skipUnless(os.name=='posix','component native carrier explicitly requires POSIX FD APIs')

@@ -1799,7 +1799,8 @@ def dispatch_absent_proof():
   raw=base64.b64decode(observed.get('out-data',''),validate=True)
   if not 0<len(raw)<=2048:raise ValueError()
   lines=[line for line in decode(raw).splitlines() if line.startswith('{') and line.endswith('}')]
-  value=json.loads(lines[0]) if len(lines)==1 else None
+  if len(lines)!=1:raise ValueError()
+  value=json.loads(lines[0])
  except Exception:return proof,'powershell-empty-or-malformed-output','unavailable','unavailable',None
  try:
   required={'version','phase','task','leaf','result','correlationPowerShell','product','installedVersion','installer'}

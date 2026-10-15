@@ -194,10 +194,16 @@ class PublisherBoundaryTests(HistoryCase):
     raw=json.dumps(m,separators=(',',':')).encode();z=gzip.compress(raw,mtime=0);return {'state':'publisher-records-wire','version':1,'compressedBytes':len(z),'decodedBytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'data':base64.b64encode(z).decode()}
    with self.assertRaises(ValueError):v['publisher_read_projection'](encode(native))
    synthetic=copy.deepcopy(native)
+   # Only this synthetic result belongs to the currently emitted inert action.
+   # The recorded native capture above remains byte-for-byte unchanged.
+   synthetic['task']['actionSha256']=v['PUBLISHER_ACTION_SHA']
    for row in synthetic['rows']:
     row.update(errorStage=None,exceptionChain=None,nativeRowType=None,nativeRowPrefix=None,nativeRowSha256=None,scriptLine=None)
     if row['readError']:row.update(errorStage='first-invoke',exceptionChain=[{'type':'System.Reflection.TargetInvocationException','hresult':-2146232828,'message':'PUBLIC_SYNTHETIC_CAUSE'}],scriptLine=1)
    self.assertEqual(v['publisher_read_projection'](encode(synthetic)),synthetic)
+   foreign_action=copy.deepcopy(synthetic);foreign_action['task']['actionSha256']='0'*64
+   self.assertNotEqual(foreign_action['task']['actionSha256'],v['PUBLISHER_ACTION_SHA'])
+   with self.assertRaisesRegex(ValueError,'^publisher-read-schema$'):v['publisher_read_projection'](encode(foreign_action))
    for key,bad in [('scriptLine',True),('errorStage','foreign'),('exceptionChain',[]),('nativeRowPrefix','unbound')]:
     changed=copy.deepcopy(synthetic);changed['rows'][0][key]=bad
     with self.assertRaises(ValueError,msg=key):v['publisher_read_projection'](encode(changed))
@@ -383,7 +389,7 @@ class PublisherSuccessorNamespaceTests(HistoryCase):
   with tempfile.TemporaryDirectory()as td:
    p=Path(td).resolve()/'factory.py';p.write_text(PublisherSuccessorStageTests().read_source());p.chmod(0o600);n=PublisherSuccessorStageTests().factory(p);record=fixture.DirectRecoveredGenerationTests().actual_record();public=n['credential_public'](fixture.DirectFixtureTlsChannelTests().material());current,_,_=n['tls_program'](record,public);old=gzip.decompress(base64.b64decode(PUBLISHER_SUCCESSOR_NAMESPACE_RED_GZIP)).decode()
    def run(source):
-    tree=ast.parse(source);top=next(x for x in tree.body if isinstance(x,ast.Try));nodes=[x for x in tree.body if x.lineno<top.lineno and not(isinstance(x,ast.Expr)and isinstance(x.value,ast.Call)and isinstance(x.value.func,ast.Attribute)and isinstance(x.value.func.value,ast.Name)and x.value.func.value.id=='signal'and x.value.func.attr in('signal','setitimer'))]
+    tree=fixture.inert_server_annotation_context(ast.parse(source));top=next(x for x in tree.body if isinstance(x,ast.Try));nodes=[x for x in tree.body if x.lineno<top.lineno and not(isinstance(x,ast.Expr)and isinstance(x.value,ast.Call)and isinstance(x.value.func,ast.Attribute)and isinstance(x.value.func.value,ast.Name)and x.value.func.value.id=='signal'and x.value.func.attr in('signal','setitimer'))]
     prefix=ast.unparse(ast.Module(body=nodes,type_ignores=[]));inert=prefix+"\n_data=_successor_input()\npid=os.getpid()\nneed(sys.stdin.readline().strip()==digest({'diagnosticId':D,'nonce':NONCE,'sourceSha256':BODY_SHA,'pid':pid}),'local-anchor-ack')\nneed(sys.stdin.buffer.read(1)==b'','SUCCESSOR_INPUT_TRAILING')\nprint(json.dumps({'inputSha256':hashlib.sha256(_data).hexdigest(),'inputBytes':len(_data),'pid':pid}),flush=True)\n"
     command,frame=n['_stdin_shortcut_command'](inert);proc=subprocess.Popen([sys.executable,*command[1:]],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE);constants={}
     for name in ('D','NONCE','BODY_SHA'):

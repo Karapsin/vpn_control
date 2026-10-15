@@ -715,6 +715,7 @@ def call(sock,command,args):
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "listener is scoped to the Arch Linux host")
     def test_one_use_listener_serves_exact_staged_bytes(self):
+        import http.client,socket,time
         payload = b"local-loopback-msi"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -725,8 +726,21 @@ def call(sock,command,args):
                                       json.dumps({"path": path}).encode())
             self.assertEqual(started["state"], "listening")
             try:
-                self.assertEqual(urlopen(f"http://127.0.0.1:{started['port']}{path}", timeout=5).read(), payload)
-                self.assertEqual(self.run_remote(transfer._REMOTE_LISTEN_STATUS, args)["state"], "served")
+                # End the bounded headers by client EOF, so the actual HTTP
+                # parser must observe our FIN before dispatching do_GET.
+                with socket.create_connection(("127.0.0.1",started["port"]),timeout=5)as connection:
+                    connection.sendall(("GET "+path+" HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n").encode())
+                    connection.shutdown(socket.SHUT_WR)
+                    response=http.client.HTTPResponse(connection);response.begin()
+                    self.assertEqual(200,response.status)
+                    self.assertEqual(payload,response.read(len(payload)+1))
+                deadline=time.monotonic()+3;observations=[]
+                while True:
+                    observed=self.run_remote(transfer._REMOTE_LISTEN_STATUS,args);observations.append(observed)
+                    if observed["state"]=="served"or time.monotonic()>=deadline:break
+                    self.assertIn(observed["state"],("listening","unknown"))
+                    time.sleep(.01)
+                self.assertEqual(observed["state"],"served",observations)
                 self.assertEqual(self.run_remote(transfer._REMOTE_CLEANUP, args)["state"], "unknown")
             finally:
                 self.run_remote(transfer._REMOTE_LISTEN_STOP, args)

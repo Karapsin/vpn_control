@@ -54,9 +54,138 @@ the lease is free and source closing matched. Evidence is
 `.runtime/mcp-repair-execution-2026-10-15/prepush-final-v8/cancellation/`.
 Fresh final prepush and exact-SHA delivery follow the final workflow/content edit.
 
+The second delivery, `c68058eb64f8452207bf2091bd2950e5a06231da`, passed a
+fresh managed prepush (6,660 pooled tests, 184 platform skips) and was pushed.
+Windows then passed core import, all seven fingerprint checks and all nine
+collector controls. Its new native counterfactual stopped at the fixture's strict
+metadata assertion: `os.utime()` did not establish distinct creation/change
+clocks. The actual fixed capture had already succeeded. The original failure,
+numeric metadata and exact beforeimages remain in
+`.runtime/mcp-ci-c68058eb-failure/`. The fixture correction must physically set
+and verify the owned file's change clock, retain the strict assertion and prove
+the preserved original capture RED and fixed capture GREEN on Windows.
+
+macOS on that same SHA failed the resource-monitor test's assumption that a
+50-millisecond timeout always lets a fake child journal its startup. The monitor
+retained the uncertain receipt and live child. The original log and exact
+beforeimages remain in `.runtime/mcp-ci-c68058eb-macos-failure/`. Deterministic
+dispatch/timeout coverage must preserve one attempt, no replay and child survival;
+the original physical subprocess scenario and fresh native CI remain required.
+Neither failure authorizes relaxing production guards or claiming that SHA green.
+
+Both fixture corrections reproduced their retained assertions RED and passed
+GREEN. Windows' portable clock model retains physical file/descriptor IO; its
+12 controls passed without skips. macOS used actual owned subprocess dispatch
+with a gated child journal; all 15 routine controls passed without skips, with
+one dispatch, an uncertain receipt and an advancing surviving child. Every owned
+test process closed. These are tooling fixtures, not deferred product acceptance.
+Evidence is `.runtime/mcp-core-native-setup-c68058eb/summary.json` and the macOS
+packet's `focused-v1/causal-summary.json`; actual new-SHA Windows CI remains required.
+
+The new dependency declaration initially omitted the exact original macOS test
+hash. Selection correctly refused it. Its preserved manifest reproduced RED;
+adding the reviewed original hash passed the same selection and all 102 selector
+and checkout controls, retaining every scope and historical pin. Evidence is
+`.runtime/mcp-repair-execution-2026-10-15/fixture-dependency-check-v10/`.
+A physical Git `autocrlf` roundtrip also reproduced RED with the old attributes
+and GREEN with exact byte preservation for both new macOS inputs; the Windows
+beforeimage stayed exact under both. All eight Git children and temporary roots
+closed. Evidence is the Windows failure packet's `checkout-roundtrip/summary.json`.
+Fresh versioning, managed prepush and all five exact-SHA workflows follow these
+final content edits; none of the retained failed runs is relabeled successful.
+
 The user's subsequently identified current SSH client is explicitly excluded
 from cleanup. It received no signal. Previously closed sessions remain closed;
 no global-zero-SSH claim applies while that user client is open.
+
+Fast Checks on `c68058eb64f8452207bf2091bd2950e5a06231da` subsequently
+completed its affected suite inside the revised time budget but failed: 6,660
+tests, 18 failures, 135 errors and 175 skips. Its 153 failure blocks represent
+150 distinct test IDs across 36 modules. The complete original log, 58 exact
+beforeimages and disjoint 77/40/36 ownership matrix remain in
+`.runtime/mcp-ci-c68058eb-fast-failure/`. Android and Linux passed that SHA;
+Windows, macOS and Fast Checks failed. It is not a completed delivery.
+
+The healthy local prepush v10 was cancelled before these further edits. Exactly
+one identity-guarded signal went to its owned runner. Its SDK, worker, descendants
+and fixture closed, the lease is free, and source closing remained
+`4f344a9366e4229e83e2e1d3ff4774f21b1bdc61f884d0db05bc01800f59476b`.
+Its 1,627 partial observations supply no final unittest count or passing receipt.
+Evidence is the execution packet's `prepush-final-v10/cancellation/`.
+
+Runtime diagnostics distinguish local Python 3.14.3 from hosted Python 3.12.15.
+Isolated owned Python 3.12.14, 3.12.3 and 3.12.15 runtimes leave the prepared
+environment and user configuration intact. Actual copied-source 3.12.3 cache
+creation followed by 3.12.15 consumption reproduces both strict code-identity
+refusals: unchanged timestamp-valid bytecode has different line tables. Preparing
+3.12.15 first passes the same guards. The original hosted bytecode was not
+retained, so that exact artifact remains an inference. Evidence is the Fast
+packet's `mixed-patch-cache-v1/`; no source guard is relaxed.
+
+All seven historical gzip builders likewise reproduce their fixed-output
+refusal on Python 3.12; changing only the gzip OS-header byte restores all 14
+original output hashes. Their execution is confined to inert historical test
+graphs, outside the current public adapter/import closure. The scoped fixture
+compatibility repair preserves every production source and authority pin.
+Missing annotation context also reproduces on Python 3.12 in extracted/inert
+test helpers. Those findings led to the finite corrections and causal checks
+recorded below; the original failed workflow remains failed.
+
+MCP startup now captures the loader and native custody backend from held raw
+source in a private package before native requests. The complete original entry
+really refuses unchanged timestamp-valid Python 3.12.3 bytecode under 3.12.15;
+the fixed entry passes with private fresh source, unchanged cache generations
+and no native effects. The actual entry proof and eight bootstrap controls
+are in the Fast packet's `entry-source-bootstrap-v1/`. Fast Checks prepares its
+Python runtime and dependencies before hygiene and installs only the qemu-img
+prerequisite for owned file tests; it starts no VM. All strict code/source guards
+remain intact.
+
+The subsequent source-frozen slices reconcile all 153 original blocks: 151
+blocks representing 148 test IDs pass locally; two original Linux-native cases
+still require the next hosted run. Both Python 3.12.15 and 3.14.3 pass the 40-case
+slice and the complete 245-case historical base/server slice, with 62 existing
+Windows-only skips. The historical gzip slice and catalogue pass all 59 checks
+per runtime without skips. Preserved actual RED/GREEN also covers the newly
+exposed fixture mistakes: missing local import, already-byte program output,
+complete original base source, function-local gzip imports, synthetic action
+hash binding and nested unittest module setup. The final routine lifecycle
+counterfactual uses the exact full unfixed file under its actual owned filename;
+its fixed routine checks pass both runtimes. No native capture or historical
+source/authority pin was refreshed. Evidence and exact ID/receipt links are in
+`common-focus-v3/`, `common-focus-v4/` and the corresponding failure packets.
+
+The remaining Linux cases are the diagnostic output classifier and one-use HTTP
+listener. The latter's new routine control preserves the exact old positive
+method and uses a real server-first close, TIME_WAIT row and EADDRINUSE before
+its strict served assertion. The fixed client sends FIN before the real parser
+dispatches and must reach strict served without replay. Darwin probes preserve
+both actual served receipts but cannot prove Linux binding policy; they are not
+claimed as causal Linux RED. The unchanged worker and ownership/free-port guards
+remain strict. Windows CI additionally enrolls the raw bootstrap and held
+historical archive controls. Final versioning, fresh SDK/native staging,
+managed prepush and all five exact-SHA workflows remain completion gates; prior
+VMs stay closed and the user's current SSH client remains untouched.
+
+The next managed prepush, v11, found one additional isolated runner fixture
+failure: its copied MCP omitted the newly required loader and custody backend.
+Its original partial failure and 117-input archive remain preserved; its runner,
+worker, SDK, fixture and lease closed before edits, and source closing matched.
+The exact unchanged positive then reproduced RED with the full missing-loader
+trace. Adding only the two explicit copied inputs and finite dependency scopes
+passed that same assertion and all nine self-input checks on Python 3.12.15 and
+3.14.3, with no skips or leaked children/descriptors. Historical pins, accepted
+beforeimages and unknown-dependency refusals remain unchanged. Evidence is
+`.runtime/mcp-runner-self-input-failure-d2290d35/`; v11 remains cancelled and
+supplies no passing receipt.
+
+Fresh twelve-tool SDK checks and inert saved-file SSH staging passed under their
+recorded source bracket. The receiver verified exact saved bytes without executing
+the inert source; commands remained below 60,000 bytes, all owned sessions closed,
+and original records stayed unchanged. A separate invalid-input UNKNOWN remains
+preserved and is not replayed. Final metadata, a new source freeze, fresh tool and
+staging qualification, managed prepush and all five exact-SHA workflows follow
+the runner fixture correction. No prior VM or connection is restored.
 
 The current repair plan and copyable prompt are:
 

@@ -1,10 +1,11 @@
+from agent_tools.tests.fixtures.cp117_gzip_runtime import HistoricalGzipTestCase
 import ast,base64,copy,hashlib,inspect,json,time,textwrap,types,unittest
 from unittest.mock import patch
 from agent_tools import windows_cp117_lockpage_dismiss_observe as m
 from agent_tools.tests import test_windows_cp117_secure_input_geometry_observe as geo
 from agent_tools.tests import test_windows_cp117_secure_layout_observe as layout
 
-class DismissTests(unittest.TestCase):
+class DismissTests(HistoricalGzipTestCase):
  def value(self):return {'state':'observed','facts':geo.CensusTests().answer()}
  def record(self):
   fixture=layout.CompleteGeneratedFlowTests();src=inspect.getsource(layout.CompleteGeneratedFlowTests.execute_flow);prefix=textwrap.dedent(src).split('source,sha=')[0];prefix=prefix.replace('def execute_flow(self,stale=False,foreign=False):','def record(self):');prefix+='return record\n';ns={'secure':m.geometry.secure};exec(prefix,ns);return ns['record'](fixture)
@@ -63,7 +64,7 @@ class DismissTests(unittest.TestCase):
    with self.assertRaises(ValueError):m.login._guarded_wake(b'fixture',6,lambda:calls.append('verify'),lambda:calls.append('fence'),lambda:calls.append('key'),lambda:None)
   self.assertEqual(calls,[])
 
-class ActualStartWrapperTests(unittest.TestCase):
+class ActualStartWrapperTests(HistoricalGzipTestCase):
  def run_start(self,failed_before=False,poisoned=False):
   import tempfile,os,gzip
   from pathlib import Path
@@ -102,7 +103,7 @@ def valid_authorities(qemu):
  before={'path':m.login.TRANSFER+'/cp117-login-screen-'+m.CORRELATION+'/frame.ppm','generation':g,'sha256':sha};record={'state':'consumed','diagnosticId':m.CORRELATION,'qemu':qemu,'frameSha256':sha};raw=json.dumps(record,sort_keys=True).encode();ag=dict(g,st_ino=5678,st_size=len(raw))
  return {'beforeFrameAuthority':before,'wakeAuthority':{'generation':ag,'sha256':hashlib.sha256(raw).hexdigest(),'record':record}}
 
-class AuthoritySchemaTests(unittest.TestCase):
+class AuthoritySchemaTests(HistoricalGzipTestCase):
  def test_missing_poisoned_preframe_or_attempt_never_accepts(self):
   qemu={'pid':1};value=valid_authorities(qemu);self.assertEqual(m._frame_authority(value,qemu),value['beforeFrameAuthority'])
   for edit in(lambda v:v.pop('beforeFrameAuthority'),lambda v:v['beforeFrameAuthority'].update(path='/foreign/frame.ppm'),lambda v:v['beforeFrameAuthority']['generation'].update(st_mode=33188),lambda v:v['beforeFrameAuthority']['generation'].update(st_nlink=2),lambda v:v['beforeFrameAuthority']['generation'].update(st_size=1),lambda v:v['beforeFrameAuthority'].update(sha256='z'*64),lambda v:v.pop('wakeAuthority'),lambda v:v['wakeAuthority']['record'].update(frameSha256='b'*64),lambda v:v['wakeAuthority']['record'].update(qemu={'pid':99}),lambda v:v['wakeAuthority']['record'].update(diagnosticId='old'),lambda v:v['wakeAuthority'].update(sha256='b'*64),lambda v:v['wakeAuthority']['generation'].update(st_size=1)):

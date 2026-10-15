@@ -285,9 +285,14 @@ class FixtureHttpStageTests(unittest.TestCase):
                   "bundlePath": "/private/bundle.zip", "bundleSha256": "e" * 64, "bundleSize": 7,
                   "routeNonce": "x" * 32, "sourceFingerprint": "d" * 64}
         descriptor = ("windows-cp117", "/qga", 1, 2, "S-1-5-21-1-2-3-1002")
-        with mock.patch.object(http_stage, "_record", return_value=(Path.cwd(), record, object(), object())):
-            with mock.patch.object(http_stage.large_transfer, "read", return_value={"phase": "listening"}):
-                noneligible = http_stage.guest_create_diagnostic(Path.cwd(), {"correlationId": CORRELATION})
+        with (mock.patch.object(http_stage, "_record", return_value=(Path.cwd(), record, object(), object())),
+              mock.patch.object(http_stage.base, "_descriptor", return_value=(object(), object(), descriptor)),
+              mock.patch.object(http_stage.large_transfer, "read", return_value={"phase": "listening"}),
+              mock.patch.object(http_stage.base, "_remote") as remote,
+              mock.patch.object(http_stage, "_large_advance") as reserve,
+              mock.patch.object(http_stage, "_qga_action") as action):
+            noneligible = http_stage.guest_create_diagnostic(Path.cwd(), {"correlationId": CORRELATION})
+            remote.assert_not_called();reserve.assert_not_called();action.assert_not_called()
         self.assertEqual("not-guest-created", noneligible["phase"])
         self.assertEqual("unknown", noneligible["interpreter"])
         with (mock.patch.object(http_stage, "_record", return_value=(Path.cwd(), record, object(), object())),

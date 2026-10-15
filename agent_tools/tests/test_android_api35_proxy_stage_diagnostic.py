@@ -53,12 +53,13 @@ class DiagnosticTests(unittest.TestCase):
         # tests the old exact guard, and is NOT actual Toybox/device evidence.
         child="import os,sys;s=os.fstat(4);print('600|2000|%d|%d|%s'%(s.st_nlink,s.st_size,'regular empty file' if s.st_size==0 else 'regular file'))"
         with tempfile.TemporaryDirectory() as tmp:
-            path=Path(tmp)/'empty';path.touch(mode=0o600);saved=None
-            try:saved=os.dup(4)
+            path=Path(tmp)/'empty';path.touch(mode=0o600);saved=None;saved_inheritable=None
+            try:saved_inheritable=os.get_inheritable(4);saved=os.dup(4)
             except OSError:pass
             opened=os.open(path,os.O_RDONLY)
             try:
-                os.dup2(opened,4,inheritable=False)
+                if opened==4:os.set_inheritable(4,False)
+                else:os.dup2(opened,4,inheritable=False)
                 bad=subprocess.run([sys.executable,'-I','-c',child],close_fds=False,capture_output=True);self.assertNotEqual(0,bad.returncode)
                 os.set_inheritable(4,True);value=subprocess.run([sys.executable,'-I','-c',child],close_fds=False,capture_output=True);self.assertEqual(0,value.returncode)
                 self.assertEqual(b'600|2000|1|0|regular empty file\n',value.stdout)
@@ -67,7 +68,7 @@ class DiagnosticTests(unittest.TestCase):
                 guard=needle.replace('$(/system/bin/stat -Lc \'%a|%u|%h|%s|%F\' /proc/self/fd/4 4>&4)',"$(printf '600|2000|1|0|regular empty file')")
                 self.assertNotEqual(0,subprocess.run(['sh','-c',guard],capture_output=True).returncode)
             finally:
-                if saved is not None:os.dup2(saved,4);os.close(saved)
+                if saved is not None:os.dup2(saved,4,inheritable=saved_inheritable);os.close(saved)
                 else:os.close(4)
                 if opened!=4:os.close(opened)
         result=env['diagnostic_parse'](prior.reply(ledger()));self.assertFalse(result['legacyEmptyPredicateMatches']);self.assertEqual('regular empty file',result['type']);self.assertEqual(0,result['size'])

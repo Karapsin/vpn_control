@@ -17,7 +17,178 @@ from pathlib import Path
 FIXTURES = Path(__file__).parent / 'fixtures/mcp_core_capture_windows'
 CURRENT = Path(__file__).resolve().parents[1] / 'mcp_server.py'
 BEFORE = FIXTURES / 'captured_core.before.source'
+NATIVE_SETUP = Path(__file__).parent / 'fixtures/mcp_core_capture_native_setup'
 FIELDS = ('st_dev', 'st_ino', 'st_mode', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+FILETIME_EPOCH = 116_444_736_000_000_000
+FILE_BASIC_FIELDS = ('CreationTime', 'LastAccessTime', 'LastWriteTime',
+                     'ChangeTime', 'FileAttributes')
+
+
+def file_basic_info_api():
+    """Use the documented native handle API only for the owned inert fixture."""
+    import ctypes
+    import msvcrt
+
+    class BasicInfo(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_int64) for name in FILE_BASIC_FIELDS[:-1]] + [
+            ('FileAttributes', ctypes.c_uint32)]
+
+    if ctypes.sizeof(BasicInfo) != 40 or [getattr(BasicInfo, name).offset for name in
+                                        FILE_BASIC_FIELDS] != [0, 8, 16, 24, 32]:
+        raise AssertionError('Unexpected FILE_BASIC_INFO ABI')
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    functions = (kernel.GetFileInformationByHandleEx, kernel.SetFileInformationByHandle)
+    for function in functions:
+        function.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+        function.restype = ctypes.c_int
+
+    class Api:
+        def read(self, descriptor):
+            value = BasicInfo()
+            if not functions[0](msvcrt.get_osfhandle(descriptor), 0, ctypes.byref(value),
+                                ctypes.sizeof(value)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            return {name: getattr(value, name) for name in FILE_BASIC_FIELDS}
+
+        def write(self, descriptor, values):
+            value = BasicInfo(**values)
+            if not functions[1](msvcrt.get_osfhandle(descriptor), 0, ctypes.byref(value),
+                                ctypes.sizeof(value)):
+                raise ctypes.WinError(ctypes.get_last_error())
+
+    return Api()
+
+
+def establish_native_change_time(path):
+    """Set and re-read ChangeTime without relying on creation/write clock ticks."""
+    api = file_basic_info_api()
+    identity = lambda value: tuple(getattr(value, field) for field in FIELDS[:-1])
+    descriptor = os.open(path, os.O_RDWR | getattr(os, 'O_BINARY', 0))
+    try:
+        original_identity = identity(os.fstat(descriptor))
+        before = api.read(descriptor)
+        target = max(before['CreationTime'], before['ChangeTime']) + 10_000_000
+        if not 0 < target < 2**63:
+            raise AssertionError('Fixture ChangeTime is out of range')
+        requested = dict(before, ChangeTime=target)
+        api.write(descriptor, requested)
+        if api.read(descriptor) != requested:
+            raise AssertionError('Fixture ChangeTime did not persist on the held handle')
+        if identity(os.fstat(descriptor)) != original_identity:
+            raise AssertionError('Fixture identity or content generation changed')
+    finally:
+        os.close(descriptor)
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, 'O_BINARY', 0))
+    try:
+        after = api.read(descriptor)
+        if after != requested:
+            raise AssertionError('Fixture ChangeTime did not persist after handle closure')
+        if (identity(os.fstat(descriptor)) != original_identity or
+                identity(os.stat(path, follow_symlinks=False)) != original_identity):
+            raise AssertionError('Fixture named file differs from the held object')
+    finally:
+        os.close(descriptor)
+    return {'before': before, 'after': after, 'requestedChangeTime': target,
+            'attributeHandleClosed': True, 'readbackHandleClosed': True}
+
+
+class PhysicalWindowsClockModel:
+    """Model only documented Windows clocks; all file bytes/descriptors are real.
+
+    A metadata-only utime can leave CreationTime and ChangeTime equal, as the
+    retained c680 native failure did. The explicit FileBasicInfo operation is
+    the sole modeled operation that establishes the requested change clock.
+    This portable control does not substitute for the strict native CI case.
+    """
+    def __init__(self, *, fail=None):
+        self.creation = FILETIME_EPOCH + 15_000_000_000_000_000
+        self.change = self.creation
+        self.fail = fail
+        self.descriptors = []
+        self.reads = 0
+        self.writes = []
+        self.path = None
+        self.view = types.SimpleNamespace(
+            name='nt', open=self.open, close=os.close, read=os.read,
+            fstat=self.fstat, stat=self.named_stat, utime=self.utime,
+            O_RDONLY=os.O_RDONLY, O_RDWR=os.O_RDWR, O_BINARY=getattr(os, 'O_BINARY', 0),
+            O_NOFOLLOW=getattr(os, 'O_NOFOLLOW', 0))
+
+    def open(self, path, flags):
+        self.path = Path(path)
+        descriptor = os.open(path, flags)
+        self.descriptors.append(descriptor)
+        return descriptor
+
+    def utime(self, path, **kwargs):
+        # Real metadata IO is retained. No unsupported guarantee about changing
+        # the separate Windows ChangeTime is added to os.utime's contract.
+        os.utime(path, **kwargs)
+
+    def metadata(self, actual, *, named):
+        values = {field: getattr(actual, field) for field in FIELDS}
+        values['st_ctime_ns'] = ((self.creation if named else self.change) - FILETIME_EPOCH) * 100
+        values['st_birthtime_ns'] = (self.creation - FILETIME_EPOCH) * 100
+        return types.SimpleNamespace(**values)
+
+    def named_stat(self, *args, **kwargs):
+        return self.metadata(os.stat(*args, **kwargs), named=True)
+
+    def fstat(self, descriptor):
+        return self.metadata(os.fstat(descriptor), named=False)
+
+    def read(self, descriptor):
+        self.reads += 1
+        actual = os.fstat(descriptor)
+        result = {'CreationTime': self.creation,
+                  'LastAccessTime': FILETIME_EPOCH + actual.st_atime_ns // 100,
+                  'LastWriteTime': FILETIME_EPOCH + actual.st_mtime_ns // 100,
+                  'ChangeTime': self.change, 'FileAttributes': 128}
+        if self.fail == 'closed_readback' and self.reads == 3:
+            result['ChangeTime'] -= 1
+        if self.fail == 'other_field' and self.reads == 2:
+            result['LastWriteTime'] += 1
+        return result
+
+    def write(self, descriptor, values):
+        os.fstat(descriptor)  # A model write must target a genuinely held file.
+        self.writes.append(dict(values))
+        if self.fail == 'write_error':
+            raise OSError('Synthetic FileBasicInfo write failure')
+        if self.fail != 'noop':
+            self.change = values['ChangeTime']
+
+    def assert_closed(self, testcase):
+        for descriptor in self.descriptors:
+            with testcase.assertRaises(OSError) as error:
+                os.fstat(descriptor)
+            testcase.assertEqual(errno.EBADF, error.exception.errno)
+
+
+def isolated_native_case(model, *, preserved=False):
+    """Use the exact original method or current method in explicit local views."""
+    source = NATIVE_SETUP / 'before.source' if preserved else Path(__file__)
+    if preserved:
+        provenance = json.loads((NATIVE_SETUP / 'provenance.json').read_bytes())
+        raw = source.read_bytes()
+        if (hashlib.sha256(raw).hexdigest() != provenance['sourceSha256'] or
+                len(raw) != provenance['sourceBytes']):
+            raise AssertionError('Preserved native setup source changed')
+    tree = ast.parse(source.read_bytes())
+    owner = next(node for node in tree.body if isinstance(node, ast.ClassDef) and
+                 node.name == 'CoreCaptureWindowsTests')
+    case = next(node for node in owner.body if isinstance(node, ast.FunctionDef) and
+                node.name == 'test_actual_platform_file_capture_and_preserved_native_counterfactual')
+    local_sys = types.SimpleNamespace(
+        version='3.12.10 physical IO clock model', version_info=(3, 12, 10),
+        implementation=types.SimpleNamespace(name='cpython'), modules=sys.modules)
+    namespace = {'Path': Path, 'tempfile': tempfile, 'os': model.view, 'sys': local_sys,
+                 'json': json, 'hashlib': hashlib, 'capture_function': capture_function,
+                 'BEFORE': BEFORE, 'FIELDS': FIELDS, 'file_basic_info_api': lambda: model}
+    namespace['establish_native_change_time'] = types.FunctionType(
+        establish_native_change_time.__code__, namespace)
+    exec(compile(ast.Module(body=[case], type_ignores=[]), str(source), 'exec'), namespace)
+    return namespace[case.name]
 
 
 def capture_function(source, root, os_view):
@@ -175,6 +346,10 @@ class CoreCaptureWindowsTests(unittest.TestCase):
             path.write_bytes(raw)
             metadata = path.stat()
             os.utime(path, ns=(metadata.st_atime_ns, metadata.st_mtime_ns - 1_000_000_000))
+            if os.name == 'nt':
+                setup = establish_native_change_time(path)
+                self.assertEqual(raw, path.read_bytes())
+                print(json.dumps({'nativeCoreCaptureSetup': setup}), flush=True)
             descriptor = os.open(path, os.O_RDONLY)
             try:
                 named = os.stat(path, follow_symlinks=False)
@@ -202,6 +377,70 @@ class CoreCaptureWindowsTests(unittest.TestCase):
                     original['_captured_core']('policy')
                 print(json.dumps({'nativeCoreCapture': 'preserved_original_RED_fixed_GREEN',
                                   'python': sys.version.split()[0], 'differentFields': different}), flush=True)
+
+
+class NativeSetupClockTests(unittest.TestCase):
+    source = CURRENT
+    preserved_setup = False
+
+    def test_physical_windows_setup_keeps_strict_native_assertions(self):
+        model = PhysicalWindowsClockModel()
+        try:
+            # The causal driver can run this same positive assertion against the
+            # exact retained c680 method. No production metadata is patched.
+            isolated_native_case(model, preserved=self.preserved_setup)(self)
+            self.assertEqual(1, len(model.writes))
+            self.assertEqual(model.creation + 10_000_000, model.change)
+        finally:
+            model.assert_closed(self)
+
+    def test_preserved_setup_does_not_establish_the_required_clock_split(self):
+        model = PhysicalWindowsClockModel()
+        try:
+            with self.assertRaisesRegex(AssertionError, 'st_ctime_ns'):
+                isolated_native_case(model, preserved=True)(self)
+            self.assertEqual([], model.writes)
+            self.assertEqual(model.creation, model.change)
+        finally:
+            model.assert_closed(self)
+
+    def test_failed_noop_or_corrupt_native_readback_refuses_and_closes(self):
+        for failure in ('write_error', 'noop', 'closed_readback', 'other_field'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
+                path = Path(temporary).resolve() / 'policy.py'
+                raw = b"VALUE = 'physical private fixture'\n"
+                path.write_bytes(raw)
+                model = PhysicalWindowsClockModel(fail=failure)
+                namespace = {'os': model.view, 'FIELDS': FIELDS, 'file_basic_info_api': lambda: model}
+                helper = types.FunctionType(establish_native_change_time.__code__, namespace)
+                try:
+                    with self.assertRaises((OSError, AssertionError)):
+                        helper(path)
+                    self.assertEqual(raw, path.read_bytes())
+                finally:
+                    model.assert_closed(self)
+
+    def test_requested_clock_is_distinct_even_when_clocks_already_differ(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary).resolve() / 'policy.py'
+            raw = b"VALUE = 'same owned file bytes'\n"
+            path.write_bytes(raw)
+            original = path.stat()
+            model = PhysicalWindowsClockModel()
+            model.change += 20_000_000
+            namespace = {'os': model.view, 'FIELDS': FIELDS, 'file_basic_info_api': lambda: model}
+            helper = types.FunctionType(establish_native_change_time.__code__, namespace)
+            try:
+                evidence = helper(path)
+                self.assertEqual(model.creation + 30_000_000, evidence['requestedChangeTime'])
+                self.assertEqual(evidence['requestedChangeTime'], evidence['after']['ChangeTime'])
+                self.assertEqual(evidence['before']['CreationTime'], evidence['after']['CreationTime'])
+                self.assertTrue(evidence['attributeHandleClosed'])
+                self.assertTrue(evidence['readbackHandleClosed'])
+                self.assertEqual((original.st_dev, original.st_ino), (path.stat().st_dev, path.stat().st_ino))
+                self.assertEqual(raw, path.read_bytes())
+            finally:
+                model.assert_closed(self)
 
 
 if __name__ == '__main__':

@@ -89,9 +89,12 @@ class AndroidNativeFixtureLifecycleTest(unittest.TestCase):
                 nonlocal replaced
                 if Path(path) == victim and not replaced:
                     replaced = True
-                    victim.unlink()
-                    victim.write_bytes(b"new!")
-                    victim.chmod(0o600)
+                    # Allocate while the old inode remains named: unlink then
+                    # create may immediately reuse that inode on Linux.
+                    replacement=root/"replacement.json"
+                    replacement.write_bytes(b"new!");replacement.chmod(0o600)
+                    self.assertNotEqual(victim.stat().st_ino,replacement.stat().st_ino)
+                    os.replace(replacement,victim)
                 return original_open(path, flags, *args, **kwargs)
             with mock.patch.object(os, "open", side_effect=swap), contextlib.redirect_stdout(io.StringIO()):
                 with self.assertRaises(SystemExit):

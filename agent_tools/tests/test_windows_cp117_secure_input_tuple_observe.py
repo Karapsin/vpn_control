@@ -1,3 +1,4 @@
+from agent_tools.tests.fixtures.cp117_gzip_runtime import HistoricalGzipTestCase
 import ast,base64,hashlib,inspect,json,os,shutil,subprocess,tempfile,textwrap,unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,7 +13,7 @@ def native_source():
  return next(ast.literal_eval(n.value)for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(x,ast.Name)and x.id=='_SEMANTIC_CS'for x in n.targets))
 
 @unittest.skipIf(os.name=='nt','POSIX native transport composition tests run on the coordinator')
-class TupleTests(unittest.TestCase):
+class TupleTests(HistoricalGzipTestCase):
  def answer(self):
   a=layout.SecureLayoutTests().answer();a['reader']['nonce']=m.NONCE;a['birth']['nonce']=m.NONCE;a['reader']['sourceSha256']=m.CHILD_SHA;a['birth']['sourceSha256']=m.CHILD_SHA
   a['facts']['secureInput']={'actualPid':1096,'controlTypeId':50004,'nativeHandle':123,'ownerMatches':True,'edit':True,'password':True,'keyboardFocus':True,'keyboardFocusable':True,'enabled':True,'onscreen':True,'passwordLabel':True,'supported':True,'keyboardAdmission':False,'threadId':111,'focusWindow':456,'hkl':'0000000004090409','windowStation':'WinSta0','desktop':'Winlogon'}
@@ -102,7 +103,7 @@ class TupleTests(unittest.TestCase):
   r,calls,_=self.execute_flow(foreign=True);self.assertEqual(r['state'],'unknown');self.assertEqual(calls,[])
 
 @unittest.skipUnless(shutil.which('powershell.exe'),'Windows PowerShell unavailable')
-class ExecutableProviderTests(unittest.TestCase):
+class ExecutableProviderTests(HistoricalGzipTestCase):
  def test_actual_provider_interface_all_eight_gates_no_authority(self):
   cs=native_source()
   script=r"""$ErrorActionPreference='Stop';'UIAutomationClient','UIAutomationTypes','WindowsBase'|ForEach-Object {[void][Reflection.Assembly]::LoadWithPartialName($_)}

@@ -23,6 +23,9 @@ class AdapterSourceTests(unittest.TestCase):
             if name==self.name or name.startswith(self.name+'.'):sys.modules.pop(name,None)
             elif hasattr(self,'public_server') and name.startswith('_vpn_core_'+str(self.public_server._MCP_BOOT_TIME_NS)+'_'):
                 sys.modules.pop(name,None)
+            elif hasattr(self,'public_server') and (name=='_vpn_native_core_'+str(self.public_server._MCP_BOOT_TIME_NS) or
+                    name.startswith('_vpn_native_core_'+str(self.public_server._MCP_BOOT_TIME_NS)+'.')):
+                sys.modules.pop(name,None)
     def public_entry(self):
         # Run the authentic server from an owned source checkout. REPO_ROOT is
         # operational data; changing it must not select different executable code.
@@ -31,6 +34,7 @@ class AdapterSourceTests(unittest.TestCase):
             for name in ('mcp_server.py','docs_assistant.py','local_build_environment.py',
                          'managed_check_lease.py','check_output_retention.py','windows_vm_setup_policy.py',
                          'native_workflow_policy.py',
+                         'source_module_loader.py','windows_source_custody.py',
                          'affected_agent_tests.py','affected_agent_test_dependencies.json','agent_test_runner.py'):
                 shutil.copyfile(source/name,self.sources/name)
             name=self.name+'.mcp_server'

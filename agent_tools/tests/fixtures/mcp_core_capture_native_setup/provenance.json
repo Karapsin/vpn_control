@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "c68058eb64f8452207bf2091bd2950e5a06231da",
+  "sourcePath": "agent_tools/tests/test_mcp_core_capture_windows.py",
+  "sourceSha256": "f790215bbc4d4d10c5ca52f4c33a6d2478804df74cf2a8ba1dd4a5cfab5e3781",
+  "sourceBytes": 10360,
+  "extractedMethod": "CoreCaptureWindowsTests.test_actual_platform_file_capture_and_preserved_native_counterfactual",
+  "authority": "Exact complete committed test source. Routine regression extracts only the named original method and supplies its explicit isolated namespace; its original native assertion is retained.",
+  "originalFailureEvidence": ".runtime/mcp-ci-c68058eb-failure/native-core-capture-evidence.json",
+  "primarySources": [
+    "https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_basic_info",
+    "https://learn.microsoft.com/en-us/windows/desktop/api/winbase/nf-winbase-getfileinformationbyhandleex",
+    "https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileinformationbyhandle",
+    "https://raw.githubusercontent.com/python/cpython/v3.12.10/Modules/posixmodule.c",
+    "https://raw.githubusercontent.com/python/cpython/v3.12.10/Python/fileutils.c"
+  ]
+}

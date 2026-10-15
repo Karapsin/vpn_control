@@ -1,0 +1,54 @@
+def unknown_proof():return {'task':'unknown','leaf':'unknown','result':'unknown','correlationPowerShell':'unknown','product':'unknown','installedVersion':None,'installer':'unknown'}
+
+def dispatch_absent_proof():
+ proof=unknown_proof()
+ schema_keys=('version','phase','task','leaf','result','correlationPowerShell','product','installedVersion','installer')
+ def schema_mask(value):
+  if not isinstance(value,dict):return {'presenceMask':'000000000','extraFieldCount':0}
+  return {'presenceMask':''.join('1' if key in value else '0' for key in schema_keys),'extraFieldCount':min(9,len(set(value)-set(schema_keys)))}
+ try:
+  script="$ErrorActionPreference='Stop';$corr='"+corr+"';$sid=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+base64.b64encode(sid.encode()).decode('ascii')+"'));$hku='Registry::HKEY_USERS\\'+$sid+'\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall';$hku32='Registry::HKEY_USERS\\'+$sid+'\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall';$phase='task';try{$task='VpnControlMcpBase-'+$corr;$taskState=if(@(Get-ScheduledTask -TaskPath '\\' -ErrorAction Stop|Where-Object {$_.TaskName -ceq $task}).Count -eq 0){'absent'}else{'present'};$phase='leaf';$leaf='C:\\Users\\vpncp117\\AppData\\Local\\VpnControl\\mcp-base-'+$corr;$leafState=if([IO.Directory]::Exists($leaf)){'present'}else{'absent'};$resultState=if([IO.File]::Exists((Join-Path $leaf 'result.json'))){'present'}else{'absent'};$phase='process';$ps=@(Get-CimInstance Win32_Process -Filter \"name='powershell.exe' OR name='pwsh.exe'\"|Where-Object {$_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine -match [regex]::Escape($corr)});$psState=if($ps.Count -eq 0){'absent'}else{'present'};$phase='product';$records=@();foreach($path in @('HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',$hku,$hku32)){if(Test-Path -LiteralPath $path){$records+=@(Get-ItemProperty -Path ($path+'\\*') -ErrorAction Stop)}};$products=@($records|Where-Object {$_.DisplayName -eq 'vpn-control'});$productState=if($products.Count -eq 0){'absent'}elseif($products.Count -eq 1 -and $products[0].DisplayVersion -match '^(?:[1-9]|1[0-9])\\.(?:0|[1-9]|1[0-9])\\.(?:0|[1-9]|1[0-9])$'){'single'}else{'multiple'};$version=if($productState -eq 'single'){$products[0].DisplayVersion}else{$null};$phase='installer';$installerState=if(@(Get-CimInstance Win32_Process -Filter \"name='msiexec.exe'\").Count -eq 0){'absent'}else{'present'};$phase='output';[Console]::Out.WriteLine(([pscustomobject]@{version=1;phase=$phase;task=$taskState;leaf=$leafState;result=$resultState;correlationPowerShell=$psState;product=$productState;installedVersion=$version;installer=$installerState}|ConvertTo-Json -Compress))}catch{[Console]::Out.WriteLine(([pscustomobject]@{version=1;phase=$phase;task='unknown';leaf='unknown';result='unknown';correlationPowerShell='unknown';product='unknown';installedVersion=$null;installer='unknown'}|ConvertTo-Json -Compress));exit 1}"
+  encoded=base64.b64encode(script.encode('utf-16le')).decode('ascii')
+  if len(encoded)>=30000:raise ValueError()
+  child=call(sock,'guest-exec',{'path':'powershell.exe','arg':['-NoProfile','-NonInteractive','-EncodedCommand',encoded],'capture-output':True})['pid']
+  if type(child) is not int or child<=0:raise ValueError()
+ except Exception:return proof,'qga-exec-rpc-or-protocol','unavailable','unavailable',None
+ import time
+ for _ in range(40):
+  try:
+   observed=call(sock,'guest-exec-status',{'pid':child})
+   exited=observed.get('exited')
+  except Exception:return proof,'qga-status-rpc-or-protocol','unavailable','unavailable',None
+  if type(exited) is not bool:return proof,'qga-status-exited-malformed','unavailable','unavailable',None
+  if exited is True:break
+  time.sleep(.25)
+ else:return proof,'qga-status-running-timeout','unavailable','unavailable',None
+ if (('out-truncated' in observed and type(observed.get('out-truncated')) is not bool)
+     or ('err-truncated' in observed and type(observed.get('err-truncated')) is not bool)
+     or type(observed.get('exitcode')) is not int):return proof,'qga-status-terminal-fields-malformed','unavailable','unavailable',None
+ if observed.get('out-truncated') is True or observed.get('err-truncated') is True:return proof,'qga-truncated','unavailable','unavailable',None
+ try:
+  raw=base64.b64decode(observed.get('out-data',''),validate=True)
+  if not 0<len(raw)<=2048:raise ValueError()
+  lines=[line for line in decode(raw).splitlines() if line.startswith('{') and line.endswith('}')]
+  value=json.loads(lines[0]) if len(lines)==1 else None
+ except Exception:return proof,'powershell-empty-or-malformed-output','unavailable','unavailable',None
+ try:
+  required={'version','phase','task','leaf','result','correlationPowerShell','product','installedVersion','installer'}
+  unknown={'task':'unknown','leaf':'unknown','result':'unknown','correlationPowerShell':'unknown','product':'unknown','installedVersion':None,'installer':'unknown'}
+  phases={'task','leaf','process','product','installer','output'}
+  if not isinstance(value,dict) or set(value)!=required:raise ValueError('missing-or-extra-fields')
+  if type(value.get('version')) is not int or value.get('version')!=1 or not isinstance(value.get('phase'),str) or value['phase'] not in phases:raise ValueError('version-or-phase-invalid')
+  if observed['exitcode']!=0:
+   if {key:value[key] for key in unknown}!=unknown:raise ValueError('nonzero-failure-envelope-invalid')
+   return unknown,'powershell-nonzero',value['phase'],'unavailable',None
+  if (value.get('phase')!='output'
+      or any(not isinstance(value.get(key),str) or value[key] not in {'present','absent'} for key in ('task','leaf','result','correlationPowerShell','installer'))
+      or not isinstance(value.get('product'),str) or value['product'] not in {'absent','single','multiple'}):raise ValueError('success-enum-invalid')
+  if ((value['product']=='single' and (not isinstance(value.get('installedVersion'),str) or not re.fullmatch(r'(?:[1-9]|1[0-9])\.(?:0|[1-9]|1[0-9])\.(?:0|[1-9]|1[0-9])',value['installedVersion'])))
+      or (value['product']!='single' and value.get('installedVersion') is not None)):raise ValueError('product-version-invalid')
+  proof={key:value[key] for key in required if key not in {'version','phase'}}
+ except ValueError as error:
+  reason=str(error);return unknown_proof(),'projection','unavailable',reason,(schema_mask(value) if reason=='missing-or-extra-fields' else None)
+ except Exception:return unknown_proof(),'projection','unavailable','internal-error',None
+ return proof,'none','none','none',None

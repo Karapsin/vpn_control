@@ -7,6 +7,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Preserve source generations across Windows core-policy capture APIs.
 - Reserve bounded CI time for affected agent tests and all following validation.
+- Make native MCP fixture clocks and timeout dispatch deterministic.
+- Make MCP startup and tooling fixtures reproducible across Python runtimes.
+- Declare complete MCP startup inputs in isolated runner checks.
 
 ## 2.2.11 - 2026-10-15
 

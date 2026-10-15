@@ -19,6 +19,7 @@ from pathlib import Path
 from unittest import mock
 
 from agent_tools import windows_cp117_cp95_task_retire as retire
+from agent_tools.tests.fixtures.cp117_gzip_runtime import canonical_gzip
 
 DESC = ("windows-cp117", "/qga", 123, 456, "S-1-5-21-1-2-3-1002")
 SPECS = [{"profile": p, "task": "VpnControlMcpCp95-" + p, "actionSha256": "a" * 64,
@@ -709,7 +710,7 @@ class Cp95TaskRetireTests(unittest.TestCase):
             # 16,512-byte v1 reader envelope and was classified wire-size.
             fixture = b"".join(hashlib.sha256(f"f31-reader-{index}-{block}".encode()).digest()
                                for block in range(77))[:2440]
-            packed = base64.b64encode(gzip.compress(fixture, mtime=0)).decode()
+            packed = base64.b64encode(canonical_gzip(fixture, mtime=0)).decode()
             row = {"profile": spec["profile"], "task": spec["task"], "actionSha256": spec["actionSha256"],
                    "result": retire._RESULTS[index], "taskResult": 0 if retire._RESULTS[index] == "succeeded" else index + 1,
                    "lastRunTicks": 123456 + index, "xmlSha256": hashlib.sha256(packed.encode()).hexdigest(),
@@ -732,7 +733,7 @@ class Cp95TaskRetireTests(unittest.TestCase):
                        "a": [[row[key] for key in archive_fields] for row in archived],
                        "i": ["b" * 64, "c" * 64],
                        "t": [payload["terminal"][key] for key in terminal_fields], "z": True}
-        old_packed = base64.b85encode(gzip.compress(json.dumps(old_columns, separators=(',', ':'), sort_keys=True).encode(), mtime=0)).decode()
+        old_packed = base64.b85encode(canonical_gzip(json.dumps(old_columns, separators=(',', ':'), sort_keys=True).encode(), mtime=0)).decode()
         old_wire = json.dumps({"state": "observed", "encoding": "gzip-base85-reader-columns-v1",
                                "rawBytes": len(raw), "rawSha256": hashlib.sha256(raw).hexdigest(),
                                "receiptGzip": old_packed}, separators=(',', ':')).encode()

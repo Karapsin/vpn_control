@@ -4,10 +4,12 @@ Only testcase lifetime references change. Production source and digest guards
 remain unchanged. This fixture makes no current/native admission claim.
 """
 from contextlib import ExitStack, contextmanager
+import hashlib
 from pathlib import Path
 import unittest
 from unittest.mock import patch
 from agent_tools.tests.fixtures import historical_source
+from agent_tools.tests.fixtures.cp117_gzip_runtime import historical_gzip_context
 
 SOURCE = Path(__file__).with_name('provider_f54029cf.source')
 SHA256 = 'f54029cf3259011d71df93c51f15b3c2b7a886470008427cf85c8e127c567a72'
@@ -23,6 +25,27 @@ _INSTALLED = historical_source.load(INSTALLED_SOURCE, INSTALLED_SHA256)
 PUBLIC_SOURCE = SOURCE.with_name('public_msi_5e60d94f.source')
 PUBLIC_SHA256 = '5e60d94fe2b020957694b21611b9bb5b4789c20830597589b42d32e8dafeeb78'
 _PUBLIC = historical_source.load(PUBLIC_SOURCE, PUBLIC_SHA256)
+
+BASE_SOURCE = SOURCE.with_name('base_5d06ef74.source')
+BASE_SHA256 = '5d06ef745bbaba0208f08907a9b1c8ed7a3c8c549a940ecf5a4f127744d47cb7'
+BASE_BYTES = 200141
+
+
+@contextmanager
+def historical_base(source=BASE_SOURCE):
+    """Hold the exact complete base source under its actual fixture filename."""
+    from agent_tools import source_module_loader
+    path = Path(source).absolute()
+    with source_module_loader._bootstrap_source(path) as (raw, guard):
+        try:
+            if len(raw) != BASE_BYTES or hashlib.sha256(raw).hexdigest() != BASE_SHA256:
+                raise ValueError('historical_base_source_changed')
+            guard()
+            module = historical_source.load(path, BASE_SHA256)
+            guard()
+            yield module
+        finally:
+            guard()
 
 
 def historical_update_fixture_source():
@@ -52,9 +75,14 @@ def historical_current_package():
     """Keep the explicit current producer with its historical public input."""
     from agent_tools import windows_cp117_installed_base_observe as current_installed
     historical_public = public()
-    if current_installed.PUBLIC_SHA != PUBLIC_SHA256:
+    if current_installed.PUBLIC_SHA != PUBLIC_SHA256 or current_installed.BASE_SHA != BASE_SHA256:
         raise ValueError('historical_package_public_pin')
-    with patch.object(current_installed, 'public', historical_public):
+    with ExitStack() as stack:
+        archived_base = stack.enter_context(historical_base())
+        closure = current_installed.precise.owner.guest.recovery.authority.closure
+        stack.enter_context(patch.object(closure, 'base', archived_base))
+        stack.enter_context(patch.object(archived_base, 'windows_msi_public_scenario', historical_public))
+        stack.enter_context(patch.object(current_installed, 'public', historical_public))
         yield current_installed
 
 
@@ -68,11 +96,20 @@ def historical_factories():
     historical_installed = installed()
     historical_public = public()
     with ExitStack() as stack:
+        archived_base = stack.enter_context(historical_base())
+        # The exact historical diagnostic owns this scoped dependency view.
+        # The current base module and its source are never modified.
+        closure = precise.owner.guest.recovery.authority.closure
+        stack.enter_context(patch.object(closure, 'base', archived_base))
+        stack.enter_context(patch.object(archived_base, 'windows_msi_public_scenario', historical_public))
         for module in (current_diagnostic, precise, current_installed, historical_installed, refresh):
             stack.enter_context(patch.object(module, 'flow', old))
         stack.enter_context(patch.object(historical_installed, 'precise', precise))
         stack.enter_context(patch.object(historical_installed, 'public', historical_public))
         stack.enter_context(patch.object(refresh, 'installed', historical_installed))
+        # Install the dependency view on this actual sealed provider graph,
+        # after its source-verified module objects and references exist.
+        stack.enter_context(historical_gzip_context(old))
         yield old
 
 

@@ -158,6 +158,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install agent tool dependencies
+        run: python -m pip install --disable-pip-version-check -r agent_tools/requirements-mcp.txt
+
       - name: Check release hygiene
         run: ./scripts/check_release_hygiene.sh
 
@@ -167,13 +175,8 @@ jobs:
       - name: Check whitespace
         run: python3 scripts/check_source_whitespace.py
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install agent tool dependencies
-        run: python -m pip install --disable-pip-version-check -r agent_tools/requirements-mcp.txt
+      - name: Install qemu-img for agent fixtures
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-utils
 
       - name: Test affected agent tools
         timeout-minutes: 50

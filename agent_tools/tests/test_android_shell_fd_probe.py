@@ -33,12 +33,15 @@ class ShellFDProbeTests(unittest.TestCase):
     def external(self,case,path):
         # Consume the actual generated Android script's FD and selfdup syntax.
         command=case['command'];fd=int(re.search(r'exec ([34])</system/build.prop',command).group(1))
-        saved=None
-        try:saved=os.dup(fd)
+        saved=None;saved_inheritable=None
+        try:saved_inheritable=os.get_inheritable(fd);saved=os.dup(fd)
         except OSError:pass
         opened=os.open(path,os.O_RDONLY)
         try:
-            os.dup2(opened,fd,inheritable=False)
+            # Linux dup3 rejects identical source/target descriptors. Opening
+            # the fixture can itself allocate the selected shell descriptor.
+            if opened==fd:os.set_inheritable(fd,False)
+            else:os.dup2(opened,fd,inheritable=False)
             consumers=[part.strip() for part in command.split(';') if '/system/bin/stat -Lc' in part or '/system/bin/sha256sum' in part]
             self.assertEqual(2,len(consumers))
             selfdup=all(part.endswith(str(fd)+'>&'+str(fd)) for part in consumers)
@@ -49,7 +52,7 @@ class ShellFDProbeTests(unittest.TestCase):
             value=subprocess.run([sys.executable,'-I','-B','-c',CHILD,str(fd)],close_fds=False,capture_output=True,timeout=3)
             return probe.parse_reply(value.returncode,value.stdout,value.stderr)
         finally:
-            if saved is not None:os.dup2(saved,fd);os.close(saved)
+            if saved is not None:os.dup2(saved,fd,inheritable=saved_inheritable);os.close(saved)
             else:
                 try:os.close(fd)
                 except OSError:pass

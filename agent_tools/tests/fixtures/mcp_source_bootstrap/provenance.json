@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/mcp_server.py",
+  "sourceSha256": "9ba5cb86a41efcc0b60e26dbe85b6fbbf5217de2c0c72716a01e29ae18df0725",
+  "sourceBytes": 662451,
+  "failure": "Native MCP entry imports canonical source_module_loader through interpreter cache before request try/custody. A timestamp-valid same-tag pyc from another compiler profile raises Loaded adapter loader differs from its source.",
+  "counterfactual": "Complete raw preserved MCP server, unchanged actual current loader/backend/startup sources, isolated owned physical package and child interpreter. The portable pyc profile changes only valid nested co_linetable metadata, preserving raw source bytes, opcodes, constants, arguments and flags. Native CPython3.12.3 to3.12.15 validation is separate.",
+  "causalAssertion": "McpSourceBootstrapTests.test_registered_inventory_uses_fresh_held_loader_bytes",
+  "sourceCommit": "c68058eb64f8452207bf2091bd2950e5a06231da",
+  "regressionScope": "NoNetwork regression: complete copied MCP entries and their actual startup source closure run in isolated child interpreters against an inert inventory adapter. Each child uses only its temporary physical package and stale pyc; process submission is rejected during RPC. No SSH, VM, product state, canonical pyc or parent module cache is used."
+}

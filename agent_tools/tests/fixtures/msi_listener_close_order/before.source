@@ -1,0 +1,16 @@
+def test_one_use_listener_serves_exact_staged_bytes(self):
+        payload = b"local-loopback-msi"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = self.args(root, payload)
+            self.assertEqual(self.run_remote(transfer._REMOTE_STAGE, args, payload)["state"], "staged")
+            path = "/" + "x" * 40
+            started = self.run_remote(transfer._REMOTE_LISTEN_START, args,
+                                      json.dumps({"path": path}).encode())
+            self.assertEqual(started["state"], "listening")
+            try:
+                self.assertEqual(urlopen(f"http://127.0.0.1:{started['port']}{path}", timeout=5).read(), payload)
+                self.assertEqual(self.run_remote(transfer._REMOTE_LISTEN_STATUS, args)["state"], "served")
+                self.assertEqual(self.run_remote(transfer._REMOTE_CLEANUP, args)["state"], "unknown")
+            finally:
+                self.run_remote(transfer._REMOTE_LISTEN_STOP, args)

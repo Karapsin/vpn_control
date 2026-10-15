@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "c68058eb64f8452207bf2091bd2950e5a06231da",
+  "sourcePath": "scripts/test_macos_vm_resource_monitor.py",
+  "sourceSha256": "da7097d70f08f5f9dc2b233c366549600b09ecbdb11bd9e3fee19c4a9b5fe638",
+  "sourceLines": [
+    260,
+    272
+  ],
+  "fragmentSha256": "995464bf10a441029a7e8124eaeb4832bbd8d92d875fc2f022adab8063c639b5",
+  "productionSourcePath": "scripts/macos_vm_resource_monitor.py",
+  "productionSourceSha256": "c527453270bb72b9e7322a9ddacb1b6eb6565b38a04a531978657f454901d743",
+  "originalFailure": {
+    "runId": 38739851907,
+    "jobId": 116438379470,
+    "testId": "MonitorTest.test_stop_timeout_is_uncertain_and_does_not_retry_or_kill_child",
+    "assertion": "1 != 0",
+    "evidence": ".runtime/mcp-ci-c68058eb-macos-failure/job.log"
+  },
+  "replayContext": "Exact original method; owned test-only factory records real Popen dispatch, while an unreleased gate prevents child-side journal publication. The production monitor and subprocess.run timeout are unchanged. No VM or SSH operations."
+}

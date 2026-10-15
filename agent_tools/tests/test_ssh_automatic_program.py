@@ -272,7 +272,9 @@ class AutomaticProgramTests(unittest.TestCase):
         finally:
             for name in list(sys.modules):
                 if (name == package_name or name.startswith(package_name + ".") or
-                        public is not None and name.startswith("_vpn_core_" + str(public._MCP_BOOT_TIME_NS) + "_")):
+                        public is not None and (name.startswith("_vpn_core_" + str(public._MCP_BOOT_TIME_NS) + "_") or
+                        name == "_vpn_native_core_" + str(public._MCP_BOOT_TIME_NS) or
+                        name.startswith("_vpn_native_core_" + str(public._MCP_BOOT_TIME_NS) + "."))):
                     sys.modules.pop(name, None)
 
     def test_registered_public_vm_route_reaches_automatic_real_child_path(self):

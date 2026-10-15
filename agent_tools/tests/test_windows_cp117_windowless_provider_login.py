@@ -1,3 +1,4 @@
+from agent_tools.tests.fixtures.cp117_gzip_runtime import HistoricalGzipTestCase
 import ast,base64,hashlib,inspect,json,os,unittest,shutil,subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -5,7 +6,7 @@ if os.name!='nt':
  from agent_tools import windows_cp117_windowless_provider_login as m
 
 @unittest.skipIf(os.name=='nt','POSIX coordinator source checks')
-class OriginalStdinTests(unittest.TestCase):
+class OriginalStdinTests(HistoricalGzipTestCase):
  def test_actual_creation_boundary_no_inherited_stdin_requires_owned_duplicate(self):
   old=m.role.secure._NATIVE
   self.assertIn('SI s=new SI();s.cb=Marshal.SizeOf(typeof(SI));s.desktop=',old)
@@ -27,7 +28,7 @@ class OriginalStdinTests(unittest.TestCase):
    with self.assertRaises(ValueError):m.native_source()
 
 @unittest.skipIf(os.name=='nt','POSIX fixed source generation')
-class StagedChildTests(unittest.TestCase):
+class StagedChildTests(HistoricalGzipTestCase):
  def test_actual_full_child_uses_bound_public_stdin_stage_under_windows_command_cap(self):
   parent,child,sha=m.bodies()
   self.assertLessEqual(len(base64.b64encode(child.encode('utf-16le'))),30000)
@@ -36,7 +37,7 @@ class StagedChildTests(unittest.TestCase):
   self.assertIn('DuplicateInput($pi,$birth)',parent)
 
 @unittest.skipIf(os.name=='nt','POSIX full transport coordinator')
-class CompletePrivateFlowTests(unittest.TestCase):
+class CompletePrivateFlowTests(HistoricalGzipTestCase):
  def answer(self):
   from agent_tools.tests.test_windows_cp117_windowless_gui_login import RoleTests
   a=RoleTests().answer(False);a['reader']['nonce']=a['birth']['nonce']=m.NONCE;a['reader']['sourceSha256']=a['birth']['sourceSha256']=m.CHILD_SHA
@@ -158,7 +159,7 @@ try{[CP117SessionRead]::Probe()|Out-Null;throw 'REPLAY_ACCEPTED'}catch{if($_.Exc
 """
 
 @unittest.skipUnless(os.name=='nt'and shutil.which('powershell'),'Windows pipe execution required')
-class WindowsOriginalPipeExecutionTests(unittest.TestCase):
+class WindowsOriginalPipeExecutionTests(HistoricalGzipTestCase):
  def test_actual_duplicate_pipe_and_strict_input_source_negative_cases(self):
   import tempfile
   with tempfile.TemporaryDirectory()as d:
@@ -167,7 +168,7 @@ class WindowsOriginalPipeExecutionTests(unittest.TestCase):
   self.assertEqual(r.returncode,0,r.stderr.decode(errors='replace'));self.assertEqual(r.stdout.decode().strip(),'CP117_PIPE_CASES_PASS');self.assertEqual(r.stderr,b'')
 
 @unittest.skipIf(os.name=='nt','POSIX local observer stream')
-class ActualStreamNamespaceTests(unittest.TestCase):
+class ActualStreamNamespaceTests(HistoricalGzipTestCase):
  def test_actual_original_stream_time_nameerror_after_launch_before_private_write(self):
   from unittest.mock import MagicMock
   process=MagicMock();selector=MagicMock()
@@ -185,7 +186,7 @@ class ActualStreamNamespaceTests(unittest.TestCase):
   process.kill.assert_not_called();process.stdin.close.assert_called_once()
 
 @unittest.skipIf(os.name=='nt','POSIX actual stream assembly')
-class ActualStreamPositiveTests(unittest.TestCase):
+class ActualStreamPositiveTests(HistoricalGzipTestCase):
  def test_actual_fixed_stream_one_input_ack_same_child_raw_retention(self):
   import types
   from unittest.mock import MagicMock
@@ -208,7 +209,7 @@ class ActualStreamPositiveTests(unittest.TestCase):
   self.assertNotIn(m.PUBLIC_SENTINEL,b''.join(c.args[1]for c in capture.create.call_args_list));process.kill.assert_not_called()
 
 @unittest.skipIf(os.name=='nt','POSIX fixed parent generator')
-class ExactStdinProtectionTests(unittest.TestCase):
+class ExactStdinProtectionTests(HistoricalGzipTestCase):
  def test_actual_parent_protects_metadata_after_durable_create_before_resume(self):
   parent=m._parts(True)[0];create=parent.index("WritePrivate 'stdin.json'");protect=parent.index("[IO.File]::SetAccessControl((Join-Path $dir 'stdin.json')")
   self.assertLess(create,protect);self.assertLess(protect,parent.index('::Resume($pi)'))
@@ -229,14 +230,14 @@ foreach($bad in @('O:BAG:SYD:P(A;;FA;;;SY)','O:SYG:BAD:P(A;;FA;;;SY)','O:SYG:SYD
 """
 
 @unittest.skipUnless(os.name=='nt'and shutil.which('powershell'),'Windows real FileSecurity required')
-class WindowsActualStdinAclTests(unittest.TestCase):
+class WindowsActualStdinAclTests(HistoricalGzipTestCase):
  def test_measured_writer_descriptor_fails_actual_reader_explicit_parent_policy_passes(self):
   encoded=base64.b64encode(stdin_acl_execution_script().encode('utf-16le')).decode()
   r=subprocess.run(['powershell','-NoProfile','-NonInteractive','-EncodedCommand',encoded],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20)
   self.assertEqual(r.returncode,0,r.stderr.decode(errors='replace'));self.assertEqual(r.stdout.decode().strip(),'CP117_STDIN_ACL_CASES_PASS');self.assertEqual(r.stderr,b'')
 
 @unittest.skipIf(os.name=='nt','POSIX complete login coordinator')
-class CompleteLoginSequenceTests(unittest.TestCase):
+class CompleteLoginSequenceTests(HistoricalGzipTestCase):
  def auth(self):return {'state':'observed','credential':{'operation':'windows-credential-validity-v1','correlationId':m.AUTH_CORRELATION,'expectedSid':m.login.guest.SID,'success':True,'errorCategory':'none'},'qemu':{'pid':12},'guestChildPid':456}
  def typed(self):
   answer=CompletePrivateFlowTests().answer();answer['facts']['secureInput']['nodes']=answer['facts']['secureInput']['nodes'][:5]
@@ -285,7 +286,7 @@ class CompleteLoginSequenceTests(unittest.TestCase):
    self.assertEqual(answer['phase'],'provider-login-consumed');secret.assert_not_called();stream.assert_not_called()
 
 @unittest.skipIf(os.name=='nt','POSIX compatibility and full credential composition')
-class CurrentExecutionCompatibilityTests(unittest.TestCase):
+class CurrentExecutionCompatibilityTests(HistoricalGzipTestCase):
  def pair(self,profile):
   mapping={'base':('_reserve','WindowsMsiBasePrepareError','Base preparation requires POSIX locking.'),'recovery':('_claim','RecoveryUnknown','posix-locking-unsupported'),'lease':('_locked','Cp117LeaseError','CP117 campaign locking is unsupported.')}
   if profile=='completion':
@@ -330,7 +331,7 @@ class CurrentExecutionCompatibilityTests(unittest.TestCase):
     self.assertNotIn(b'abc',b''.join(p.read_bytes()for p in(parent/('cp117-credential-'+m.AUTH_CORRELATION)).iterdir()))
 
 @unittest.skipIf(os.name=='nt','POSIX QMP submit coordinator')
-class ActualSubmitBoundaryTests(unittest.TestCase):
+class ActualSubmitBoundaryTests(HistoricalGzipTestCase):
  def execute(self,fault=None):
   import tempfile,types,socket,struct,io,stat
   typed=CompleteLoginSequenceTests().typed();current=typed['facts'];prior={'reader':current['reader'],'roles':[n['runtimeId']for n in current['facts']['secureInput']['nodes']],'qemu':typed['qemu'],'writeSourceSha256':m.PARENT_SHA};calls=[]
@@ -397,14 +398,14 @@ public static class ProviderWriteFixture{
 }'''.replace('__METHOD__',method)
  return "$ErrorActionPreference='Stop'\nAdd-Type -TypeDefinition @'\n"+fixture+"\n'@\nif(-not [ProviderWriteFixture]::Run()){throw 'PROVIDER_WRITE_CASES'}\nWrite-Output 'PROVIDER_WRITE_CASES_PASS'\n"
 
-class ActualProviderWriteExecutionTests(unittest.TestCase):
+class ActualProviderWriteExecutionTests(HistoricalGzipTestCase):
  @unittest.skipUnless(os.name=='nt'and shutil.which('powershell'),'actual Windows managed provider execution')
  def test_actual_write_method_managed_positive_unsafe_and_exception_cases(self):
   value=subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command','-'],input=provider_write_execution_script().encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30,check=False)
   self.assertEqual(value.returncode,0,value.stderr.decode(errors='replace'));self.assertEqual(value.stdout.decode().strip(),'PROVIDER_WRITE_CASES_PASS')
 
 @unittest.skipIf(os.name=='nt','POSIX transport composition')
-class ReadonlyAckCompositionTests(unittest.TestCase):
+class ReadonlyAckCompositionTests(HistoricalGzipTestCase):
  def test_actual_stream_to_generated_readonly_ack_has_no_private_header(self):
   import sys,tempfile
   from unittest.mock import MagicMock
@@ -440,7 +441,7 @@ class ReadonlyAckCompositionTests(unittest.TestCase):
   self.assertTrue(all(isinstance(n.args[-1],ast.Name)and n.args[-1].id=='secret'for n in calls if len(n.args)==6))
 
 @unittest.skipIf(os.name=='nt','POSIX coordinator source context')
-class TypedReceiptBoundaryTests(unittest.TestCase):
+class TypedReceiptBoundaryTests(HistoricalGzipTestCase):
  def test_actual_verify_refuses_changed_typed_receipt_after_capture(self):
   import types
   from unittest.mock import MagicMock
@@ -456,7 +457,7 @@ class TypedReceiptBoundaryTests(unittest.TestCase):
 
 _MANAGED_INERT_TERMINAL_SOURCE="def parse_compile(value,nonce,sha,pid):\n    if value.get('exited')is not True:return None\n    if value.get('out-truncated')or value.get('err-truncated'):raise ValueError('compile-truncated')\n    raw=base64.b64decode(value.get('out-data',''),validate=True)\n    if len(raw)>32768:raise ValueError('compile-output-cap')\n    first,sep,body=raw.partition(b'\\n')\n    if not sep or first.rstrip(b'\\r')!=('CP117-READ %s %s %d'%(nonce,sha,pid)).encode():return None\n    if value.get('exitcode')!=0:raise ValueError('compile-exit')\n    answer=json.loads(body)\n    if not isinstance(answer,dict)or set(answer)!=set(EXPECTED)or type(answer.get('version'))is not int or answer['version']!=1 or any(type(answer.get(k))is not bool for k in EXPECTED if k!='version')or answer!=EXPECTED:raise ValueError('provider-case-result')\n    return answer\n"
 
-class ManagedInertTerminalTypesTests(unittest.TestCase):
+class ManagedInertTerminalTypesTests(HistoricalGzipTestCase):
  def test_actual_emitted_parser_exact_types_and_same_execution_binding(self):
   expected={'version':1,'managedSetExactPassed':True,'inputFramingPassed':True,'credentialInput':False,'providerInvoked':False,'keyboardAction':False}
   namespace={'base64':base64,'json':json,'EXPECTED':expected};exec(_MANAGED_INERT_TERMINAL_SOURCE,namespace);parse=namespace['parse_compile'];nonce='fixed-public';sha='a'*64;pid=456
@@ -469,7 +470,7 @@ class ManagedInertTerminalTypesTests(unittest.TestCase):
    with self.assertRaisesRegex(ValueError,'provider-case-result'):parse(terminal(wrong),nonce,sha,pid)
   self.assertIsNone(parse(terminal(expected,'old'),nonce,sha,pid))
 
-class ManagedPipeFixtureCompilerTests(unittest.TestCase):
+class ManagedPipeFixtureCompilerTests(HistoricalGzipTestCase):
  @unittest.skipUnless(os.name=='nt'and shutil.which('powershell'),'actual Windows Add-Type warning regression')
  def test_actual_old_fixture_warning_and_explicit_false_compiles(self):
   import re
@@ -483,7 +484,7 @@ class ManagedPipeFixtureCompilerTests(unittest.TestCase):
 _STALE_CS_FACTORY_SOURCE='def _parts(inert=False):\n    """Fixed derivative; source contains no credential bytes or credential hash."""\n    import re\n    if type(inert)is not bool:raise ValueError(\'provider-fixed-mode\')\n    correlation=INERT_CORRELATION if inert else CORRELATION;nonce=INERT_NONCE if inert else NONCE\n    _sources()\n    if hashlib.sha256(role.secure._NATIVE.encode()).hexdigest()!=_BASE_NATIVE_SHA or hashlib.sha256(role._SEMANTIC_CS.encode()).hexdigest()!=_ROLE_NATIVE_SHA:raise ValueError(\'provider-fixed-native\')\n    oldparent,oldchild,oldsha=role.bodies()\n    if oldsha!=_ROLE_CHILD_SHA or hashlib.sha256(oldparent.encode(\'utf-16le\')).hexdigest()!=_ROLE_PARENT_SHA:raise ValueError(\'provider-fixed-reader\')\n    match=re.search(r"FromBase64String\\(\'([^\']+)\'\\)",oldchild)\n    if match is None:raise ValueError(\'provider-reader-loader\')\n    with gzip.GzipFile(fileobj=__import__(\'io\').BytesIO(base64.b64decode(match.group(1))))as z:plain=z.read(16385)\n    if len(plain)>16384:raise ValueError(\'provider-original-bound\')\n    child=plain.decode(\'utf-8\').replace(role.CORRELATION,correlation).replace(role.NONCE,nonce)\n    head="if($sourceHash -cne $birth.sourceSha256){throw \'SECURE_READER_SOURCE\'}"\n    if child.count(head)!=1:raise ValueError(\'provider-input-placement\')\n    prefix,sep,child=child.partition(head)\n    if not sep:raise ValueError(\'provider-child-source-head\')\n    prefix+=sep+\'\\n\'\n    child=\'$privateBytes=[CP117OriginalInput]::ReadSecret($privateInput)\\n\'+child\n    native=role._SEMANTIC_CS[:-1]+_WRITE_METHOD+\'}\'\n    packed=base64.b64encode(gzip.compress(role._SEMANTIC_CS.encode(),mtime=0)).decode();newpacked=base64.b64encode(gzip.compress(native.encode(),mtime=0)).decode()\n    if child.count(packed)!=1 or child.count(_ROLE_NATIVE_SHA)!=1:raise ValueError(\'provider-native-placement\')\n    child=child.replace(packed,newpacked).replace(_ROLE_NATIVE_SHA,hashlib.sha256(native.encode()).hexdigest())\n    marker=\'$cf=[CP117InputRead]::Read([uint32[]]$ids)\' \n    if child.count(marker)!=1:raise ValueError(\'provider-write-placement\')\n    child=child.replace(marker,marker+\'\\n\'+_WRITE_PS)\n    child=child.replace(\'secureInput=$cf};WritePrivate\',\'secureInput=$cf;providerWrite=@{cleared=$true;typed=$true;contentRead=$false;credentialLogged=$false}};WritePrivate\')\n    # Provider exceptions may mention their input. Never persist error details\n    # from a secret-bearing execution, even in protected failure receipts.\n    detail="$d=($_|Out-String);if($d.Length -gt 2048){$d=$d.Substring(0,2048)};"\n    if child.count(detail)!=1:raise ValueError(\'provider-private-error-placement\')\n    child=child.replace(detail,"$d=\'\';")\n    if inert:child=_inert_public()\n    public=\'\\n\'.join(line.lstrip(\' \')for line in child.splitlines())+\'\\n\'\n    if not 0<len(public.encode())<=16384:raise ValueError(\'provider-child-public-source-bound\')\n    child=prefix+_INPUT_READ.replace(\'__INPUT_CS__\',_INPUT_CS)+_PUBLIC_STAGE.replace(\'__PUBLIC_SHA__\',hashlib.sha256(public.encode()).hexdigest())\n    childsha=hashlib.sha256(child.encode(\'utf-16le\')).hexdigest()\n    parent=oldparent.replace(role.CORRELATION,correlation).replace(role.NONCE,nonce).replace(_ROLE_CHILD_SHA,childsha).replace(base64.b64encode(oldchild.encode(\'utf-16le\')).decode(),base64.b64encode(child.encode(\'utf-16le\')).decode())\n    if parent.count(role.secure._NATIVE)!=1:raise ValueError(\'provider-parent-native-placement\')\n    parent=parent.replace(role.secure._NATIVE,native_source())\n    marker=" WritePrivate \'child.json\' $record;GuardUI"\n    if parent.count(marker)!=1:raise ValueError(\'provider-parent-input-placement\')\n    parent=parent.replace(marker,marker+"\\n $inputHandle=[CP117SessionRead]::DuplicateInput($pi,$birth);GuardUI;if([CP117SessionRead]::Birth($pi) -cne $birth){throw \'PROVIDER_INPUT_CHILD\'};WritePrivate \'stdin.json\' @{nonce=$nonce;sourceSha256=$childSha;pid=[int]$pi.pid;parentPid=$PID;creationFileTime=$birth;sessionId=1;handle=[long]$inputHandle};"+_STDIN_PROTECT+";GuardUI")\n    # Only finite source-controlled parent classifications may reach output.\n    old="phase=$_.Exception.Message;readerCreated="\n    if parent.count(old)!=1:raise ValueError(\'provider-parent-private-catch\')\n    parent=parent.replace(old,"phase=\'PROVIDER_PARENT_UNKNOWN\';readerCreated=")\n    if len(parent.encode())>65536 or len(base64.b64encode(child.encode(\'utf-16le\')))>30000:raise ValueError(\'provider-fixed-command-bound\')\n    return parent,child,childsha,public'
 
 @unittest.skipIf(os.name=='nt','POSIX exact parent generator')
-class ActualGeneratedCsLoaderTests(unittest.TestCase):
+class ActualGeneratedCsLoaderTests(HistoricalGzipTestCase):
  def guard(self,public):
   import gzip,re
   packed=re.search(r"FromBase64String\('([^']+)'\)",public).group(1)

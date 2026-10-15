@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import ast
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -31,6 +33,10 @@ FAKE_TART = """#!/usr/bin/env python3
 import json, os, signal, sys, time
 root = os.environ['FAKE_ROOT']
 args = sys.argv[1:]
+if args[:1] == ['stop'] and os.environ.get('STOP_JOURNAL_GATE'):
+    # Model a dispatched helper whose child-side receipt has not started yet.
+    while not os.path.exists(os.environ['STOP_JOURNAL_GATE']):
+        time.sleep(.01)
 with open(os.path.join(root, 'calls.jsonl'), 'a') as output:
     output.write(json.dumps(args) + '\\n')
 if args[:1] == ['get']:
@@ -74,6 +80,45 @@ else:
     raise SystemExit(64)
 """
 
+DISPATCH_PROBE = """#!/usr/bin/env python3
+import importlib.util, json, os, pathlib, subprocess, sys
+monitor_path, root, tart = sys.argv[1:4]
+del sys.argv[1:4]
+spec = importlib.util.spec_from_file_location('owned_monitor', monitor_path)
+monitor = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(monitor)
+expected = [tart, 'stop', 'owned-vm', '--timeout', '60']
+trace = pathlib.Path(root) / 'stop-dispatch.jsonl'
+original_popen = subprocess.Popen
+def dispatched(args, *positional, **keywords):
+    recording = isinstance(args, (list, tuple)) and list(args) == expected
+    if recording and trace.exists() and trace.stat().st_size > 8192:
+        raise RuntimeError('Owned stop-dispatch trace exceeded its finite bound')
+    child = original_popen(args, *positional, **keywords)
+    if recording:
+        # The real constructor returned. Preserve run/communicate and its timeout.
+        try:
+            row = json.dumps({'argv': list(args), 'pid': child.pid, 'phase': 'spawned'}) + '\\n'
+            if len(row.encode('utf-8')) + (trace.stat().st_size if trace.exists() else 0) > 8192:
+                raise RuntimeError('Owned stop-dispatch trace exceeded its finite bound')
+            descriptor = os.open(trace, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            with os.fdopen(descriptor, 'a', encoding='utf-8') as output:
+                output.write(row)
+                output.flush()
+                os.fsync(output.fileno())
+        except BaseException:
+            # Only this exact newly created test stop helper belongs to the probe.
+            child.kill()
+            child.wait()
+            raise
+    return child
+subprocess.Popen = dispatched
+try:
+    raise SystemExit(monitor.main())
+finally:
+    subprocess.Popen = original_popen
+"""
+
 
 class MonitorTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -102,9 +147,14 @@ class MonitorTest(unittest.TestCase):
         path.chmod(0o700)
         return path
 
-    def start_monitor(self, evidence: Path, stop_timeout_seconds: str = "1", graphical: bool = False) -> subprocess.Popen[str]:
+    def start_monitor(self, evidence: Path, stop_timeout_seconds: str = "1", graphical: bool = False,
+                      record_stop_dispatch: bool = False) -> subprocess.Popen[str]:
+        entry = [sys.executable, str(MONITOR)]
+        if record_stop_dispatch:
+            probe = self.write_executable("monitor-dispatch-probe.py", DISPATCH_PROBE)
+            entry = [sys.executable, str(probe), str(MONITOR), str(self.root), str(self.tart)]
         return subprocess.Popen(
-            [sys.executable, str(MONITOR), "--vm-name", "owned-vm", "--evidence-dir", str(evidence),
+            entry + ["--vm-name", "owned-vm", "--evidence-dir", str(evidence),
              "--tart", str(self.tart), "--sysctl", str(self.sysctl), "--vm-stat", str(self.vm_stat), "--interval-seconds", "0.02",
              "--stop-timeout-seconds", stop_timeout_seconds] + (["--graphics"] if graphical else []),
             text=True,
@@ -261,15 +311,51 @@ class MonitorTest(unittest.TestCase):
     def test_stop_timeout_is_uncertain_and_does_not_retry_or_kill_child(self) -> None:
         evidence = self.root / "timeout-evidence"
         self.environment["STOP_BLOCK"] = "1"
-        monitor = self.start_monitor(evidence, stop_timeout_seconds="0.05")
+        self.environment["STOP_JOURNAL_GATE"] = str(self.root / "unreleased-stop-journal")
+        monitor = self.start_monitor(evidence, stop_timeout_seconds="0.05", record_stop_dispatch=True)
         self.wait_for(evidence / "process.json")
+        before = self.wait_for_heartbeat()
         (self.root / "pressure").write_text("4\n", encoding="utf-8")
         self.assert_monitor_exit(monitor, 2, evidence)
+        self.assert_timeout_dispatch_proof(evidence)
+        self.wait_for_heartbeat_after(before)
+
+    def assert_timeout_dispatch_proof(self, evidence: Path) -> None:
         child_pid = json.loads((evidence / "process.json").read_text(encoding="utf-8"))["childPid"]
         os.kill(child_pid, 0)
-        self.assertTrue((evidence / "stop-uncertain.json").exists())
+        before = self.wait_for_heartbeat()
+        self.wait_for_heartbeat_after(before)
+        uncertain = json.loads((evidence / "stop-uncertain.json").read_text(encoding="utf-8"))
+        self.assertEqual(child_pid, uncertain["childPid"])
+        self.assertIn("timed out after", uncertain["error"])
+        self.assertFalse((evidence / "stop.json").exists())
+        self.assertFalse((evidence / "terminal.json").exists())
+        self.assertFalse((self.root / "child.exited").exists())
+        trace = self.root / "stop-dispatch.jsonl"
+        self.assertLessEqual(trace.stat().st_size, 8192)
+        dispatches = [json.loads(row) for row in trace.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(1, len(dispatches))
+        dispatch = dispatches[0]
+        self.assertEqual({"argv", "pid", "phase"}, set(dispatch))
+        self.assertEqual([str(self.tart), "stop", "owned-vm", "--timeout", "60"], dispatch["argv"])
+        self.assertEqual("spawned", dispatch["phase"])
+        self.assertIs(type(dispatch["pid"]), int)
+        self.assertGreater(dispatch["pid"], 0)
+        self.assertNotEqual(child_pid, dispatch["pid"])
         calls = (self.root / "calls.jsonl").read_text(encoding="utf-8").splitlines()
-        self.assertEqual(1, sum(json.loads(call)[0] == "stop" for call in calls))
+        # No child receipt is expected behind the gate; this says nothing about
+        # whether a real request was dispatched. The parent trace proves that.
+        self.assertEqual(0, sum(json.loads(call)[0] == "stop" for call in calls))
+
+    @unittest.skipIf(os.name == "nt", "requires POSIX executable shebang fixture")
+    def test_preserved_child_journal_assertion_fails_after_one_real_dispatch(self) -> None:
+        result = unittest.TestResult()
+        preserved_timeout_case().run(result)
+        self.assertEqual(1, result.testsRun)
+        self.assertEqual([], result.errors)
+        self.assertEqual([], result.skipped)
+        self.assertEqual(1, len(result.failures))
+        self.assertIn("AssertionError: 1 != 0", result.failures[0][1])
 
     def test_transient_warning_does_not_stop_owned_vm(self) -> None:
         # Model Windows' missing getsid even on POSIX hosts; the mock supplies it.
@@ -400,6 +486,54 @@ while True:
     return 0
 
 
+def preserved_timeout_case() -> unittest.TestCase:
+    """Keep the original receipt assertion in an explicit owned startup context."""
+    fixtures = ROOT / "testdata/macos-vm-resource-monitor-dispatch"
+    fragment = fixtures / "stop-timeout.before.fragment"
+    raw = fragment.read_bytes()
+    expected = "995464bf10a441029a7e8124eaeb4832bbd8d92d875fc2f022adab8063c639b5"
+    if hashlib.sha256(raw).hexdigest() != expected:
+        raise AssertionError("Preserved timeout assertion bytes changed")
+    provenance = json.loads((fixtures / "provenance.json").read_bytes())
+    if (provenance["sourceCommit"] != "c68058eb64f8452207bf2091bd2950e5a06231da"
+            or provenance["fragmentSha256"] != expected):
+        raise AssertionError("Preserved timeout assertion provenance changed")
+    source = ast.parse(b"class PreservedTimeoutAssertion:\n" + raw, filename=str(fragment))
+    namespace = {"unittest": unittest, "os": os, "json": json}
+    exec(compile(source, str(fragment), "exec"), namespace)
+    original = namespace["PreservedTimeoutAssertion"].test_stop_timeout_is_uncertain_and_does_not_retry_or_kill_child
+
+    class PreservedTimeoutCase(MonitorTest):
+        runTest = original
+
+        def setUp(self) -> None:
+            super().setUp()
+            self.environment["STOP_JOURNAL_GATE"] = str(self.root / "unreleased-stop-journal")
+
+        def start_monitor(self, evidence: Path, *args, **kwargs) -> subprocess.Popen[str]:
+            self.timeout_evidence = evidence
+            kwargs["record_stop_dispatch"] = True
+            return super().start_monitor(evidence, *args, **kwargs)
+
+        def tearDown(self) -> None:
+            try:
+                # Even the old assertion's RED must retain the actual one-dispatch,
+                # uncertainty, no-retry and advancing-child proof before cleanup.
+                self.assert_timeout_dispatch_proof(self.timeout_evidence)
+            finally:
+                super().tearDown()
+
+    return PreservedTimeoutCase()
+
+
+def dispatch_red() -> int:
+    """Run the original assertion against a real timed-out owned subprocess."""
+    if os.name == "nt":
+        raise RuntimeError("Dispatch RED requires the POSIX owned executable fixture")
+    result = unittest.TextTestRunner(verbosity=2).run(preserved_timeout_case())
+    return 0 if result.wasSuccessful() else 1
+
+
 def heartbeat_red() -> int:
     """Reproduce a reader observing the old truncate-before-write heartbeat."""
     with tempfile.TemporaryDirectory() as temporary:
@@ -413,9 +547,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--legacy-red", action="store_true")
     parser.add_argument("--heartbeat-red", action="store_true")
+    parser.add_argument("--dispatch-red", action="store_true")
     arguments, remaining = parser.parse_known_args()
     if arguments.legacy_red:
         raise SystemExit(legacy_red())
     if arguments.heartbeat_red:
         raise SystemExit(heartbeat_red())
+    if arguments.dispatch_red:
+        raise SystemExit(dispatch_red())
     unittest.main(argv=[sys.argv[0], *remaining])

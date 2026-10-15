@@ -6,6 +6,7 @@ import types
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 from xml.etree import ElementTree as ET
 from agent_tools import windows_vm_unattend as setup
@@ -51,7 +52,11 @@ class UnattendedTests(unittest.TestCase):
     def test_complete_start_program_refuses_without_privilege_before_creating_root(self):
         spec=FreshWindowsVmSpec.parse(specs.request())
         source=producer.program(spec,'start',setup=self.settings(),context={'hostBootId':'ff6b5d84-f546-4a96-baf7-f9c801c743c0','pending':[]})
-        result=subprocess.run([sys.executable,'-I','-B','-c',source],capture_output=True,timeout=5)
+        with tempfile.TemporaryDirectory()as directory:
+            saved=Path(directory)/'complete-start.py';saved.write_bytes(source);saved.chmod(0o600)
+            argv=[sys.executable,'-I','-B',str(saved)]
+            self.assertLessEqual(sum(len(os.fsencode(word))+1 for word in argv),60000)
+            result=subprocess.run(argv,capture_output=True,timeout=5)
         import json
         self.assertEqual(0,result.returncode,result.stderr.decode())
         self.assertEqual('unknown',json.loads(result.stdout)['state'])

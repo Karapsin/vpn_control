@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "c68058eb64f8452207bf2091bd2950e5a06231da",
+  "sourcePath": ".github/workflows/fast-checks.yml",
+  "sourceSha256": "32ea92fd1715fd5e261edfe7cd169c3afa31180f57bb582966e91c78df395b87",
+  "sourceBytes": 9813,
+  "originalFailure": {
+    "runId": 38739851847,
+    "jobId": 116438379589,
+    "errors": 135,
+    "failures": 18,
+    "originalPycRetained": false
+  },
+  "mechanismEvidence": {
+    "runtimes": [
+      "3.12.3",
+      "3.12.15"
+    ],
+    "cacheTag": "cpython-312",
+    "magic": "cb0d0d0a",
+    "sourceAndPycUnchanged": true,
+    "timestampHeadersValid": true,
+    "differingCodeFields": [
+      "co_linetable"
+    ],
+    "mixedOrderActualGuards": [
+      "Automatic transport executing source changed.",
+      "installer_adapter_hook_changed"
+    ],
+    "preparedFirstActualGuards": "accepted",
+    "evidence": ".runtime/mcp-ci-c68058eb-fast-failure/mixed-patch-cache-v1/summary.json"
+  },
+  "routineCounterfactual": "Execute complete current saved producers from owned files. Represent a prior compiler profile using only a valid different nested function line table, emitted as a timestamp-valid same-tag pyc. Keep opcodes, constants, raw source and all production CodeType guards unchanged. The saved workflow order selects prior versus prepared profile. No archived binary, VM, SSH or native actor is used.",
+  "acceptanceLimit": "The original hosted pyc was not retained. The exact-patch control reproduces the mechanism; final exact-SHA whole Fast Checks success is required."
+}

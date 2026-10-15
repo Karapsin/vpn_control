@@ -1,0 +1,18 @@
+{
+  "authentication": "exact unchanged indented original method from the recorded commit and the observed unfixed source; dedented only when parsed as a standalone function in the testcase namespace",
+  "captureJsonSha256": "6577a0d62f8bf6425d112e5f4c42efe3a54d22b4cb70f09544992b37e02b6a35",
+  "captureLiteralSha256": "1db3b3b40af37da1ce69ebca1684842cd54b653da82a215c27426cba0b916a25",
+  "className": "PublisherBoundaryTests",
+  "fixture": "publisher_boundary.before.fragment",
+  "fragmentBytes": 2406,
+  "fragmentSha256": "86cbb8440a5dc0e34f5172db40428412cb7e4c7dcf6bff176db8ac4538f2974b",
+  "kind": "inert-publisher-synthetic-action-binding",
+  "methodName": "test_actual_native_failure_projection_lost_inner_stage_and_closed_successor_factory",
+  "nativeExecution": false,
+  "observedUnfixedModuleSha256": "ae8386baa7342c971c07b2191074bd561160f5e57218b411e4b9b72791d86ca4",
+  "schemaVersion": 1,
+  "scope": "inert local factory and synthetic-copy tests only; the original native capture and strict emitted validator remain unchanged",
+  "sourceCommit": "c68058eb64f8452207bf2091bd2950e5a06231da",
+  "sourceModuleSha256": "a63159ccf9b6abf43e36a4be419f4c170ee2a6fb96a554e6d66f3c7172105419",
+  "sourcePath": "agent_tools/tests/test_windows_cp117_server_read_binding.py"
+}
