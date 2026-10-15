@@ -51,3 +51,5 @@ agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
 /agent_tools/tests/fixtures/cp117_fixture_context_portability/windowless-imports.before.fragment -text
 /agent_tools/tests/fixtures/whole_observer_binary/fixture.before.fragment -text
 /agent_tools/tests/fixtures/qemu_projection_birth/projection.before.fragment -text
+/agent_tools/tests/fixtures/native_engineering_bytecode_cache/entrypoint.before.source -text
+/agent_tools/tests/fixtures/native_engineering_bytecode_cache/provenance.json -text

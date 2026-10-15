@@ -662,13 +662,15 @@
         "scripts/integration/linux_owner_lifecycle_scenario.py",
         "agent_tools/tests/fixtures/linux_gui_source_custody/codec-driver.before.source",
         "agent_tools/tests/fixtures/linux_gui_source_custody/normal-capsule.source",
-        "agent_tools/android_installer_direct_transport.py"
+        "agent_tools/android_installer_direct_transport.py",
+        "agent_tools/tests/test_agent_test_runner.py"
       ],
       "sourceSha256": [
         "d59173ae35e3aeaaa03b18f7c4b04ceca6a17e865cd1ba30a2f228aed79f4633",
         "5cdef7bba517354e0f0b8b2fb1d432216b1b8da936bb91e97464a034a7483d34",
         "1f8ca14cebea13fc8a6d420dff75b1350878ea128a372867ef54dadec1169be3",
-        "0495792e1a5f7f16a58fcee3d8967dfe0fab48e0e82bba31968a18ebc144a186"
+        "0495792e1a5f7f16a58fcee3d8967dfe0fab48e0e82bba31968a18ebc144a186",
+        "5d6db0dbc790c91adf3750dfb1d8b64d52dba1039d85acc4025766c0c4c767d5"
       ]
     },
     "agent_tools/tests/test_agent_test_runner_self_input.py": {
@@ -1990,6 +1992,110 @@
       ],
       "sourceSha256": [
         "8bfdef6b978d49c64b660fe64b5b94ffef82e3a3454b0a135d456aee1f0b1090"
+      ]
+    },
+    "agent_tools/tests/test_native_engineering_entrypoint.py": {
+      "reason": "Reviewed complete owned NativeExecutionContext fixture source-copy graph; actual current and retained test callers execute at their authentic package paths. Saved fixture programmes are inert owned inputs, and the exact retained whole Python source and parsed provenance remain explicit dependencies.",
+      "scopes": [
+        "agent_tools/arch_tmux_install.py",
+        "agent_tools/linux_package_fixture_build.py",
+        "agent_tools/native_artifact_registry.py",
+        "agent_tools/native_artifact_reuse.py",
+        "agent_tools/native_execution_context.py",
+        "agent_tools/native_host_observation.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/ssh_automatic_program.py",
+        "agent_tools/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/ssh_channel_selection.py",
+        "agent_tools/ssh_connection_recovery.py",
+        "agent_tools/ssh_connection_session.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_expired_recovery_retirement.py",
+        "agent_tools/ssh_fresh_nested_channel.py",
+        "agent_tools/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/ssh_nested_socket_retirement.py",
+        "agent_tools/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/ssh_recovery_adoption.py",
+        "agent_tools/ssh_tmux_bounded_pipe_collection.py",
+        "agent_tools/ssh_tmux_mcp_adapter.py",
+        "agent_tools/ssh_tmux_resource_admission.py",
+        "agent_tools/ssh_tmux_session.py",
+        "agent_tools/ssh_tmux_session_ssh.py",
+        "agent_tools/ssh_tmux_source_staging_recovery.py",
+        "agent_tools/ssh_tmux_terminal_closure.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/__init__.py",
+        "agent_tools/tests/test_native_engineering_entrypoint.py",
+        "agent_tools/tests/test_native_execution_context.py",
+        "agent_tools/tmux_public_projection.py",
+        "agent_tools/tmux_workflow_routes.py",
+        "agent_tools/vm_workflow.py",
+        "agent_tools/windows_vm_virt_firmware_install.py",
+        "scripts/fixture_environment.py",
+        "scripts/macos_packaging_jdk_preflight.py",
+        "scripts/native_fixture_run.sh",
+        "scripts/prepare_desktop_update_fixture.py",
+        "scripts/prepare_sing_box_desktop_runtime.sh",
+        "scripts/test_jpackage_launcher.py",
+        "scripts/version_metadata.py",
+        "agent_tools/tests/fixtures/native_engineering_bytecode_cache/entrypoint.before.source",
+        "agent_tools/tests/fixtures/native_engineering_bytecode_cache/provenance.json"
+      ],
+      "sourceSha256": [
+        "d0cb496543e5930ccd1addb9577a09479d1f7f9922e6a55469666ac60dc19a52",
+        "11746df84f28e759a385f1ad3cee26f4cc73b07e03fa10ad27ad73c59a91d65e"
+      ]
+    },
+    "agent_tools/tests/fixtures/native_engineering_bytecode_cache/entrypoint.before.source": {
+      "reason": "Whole executable original native-engineering test source retains its actual finite imported helper and producer-copy graph. The authentic before caller does not read or import the current entrypoint test; its complete original source bytes and source guards remain unchanged.",
+      "scopes": [
+        "agent_tools/arch_tmux_install.py",
+        "agent_tools/linux_package_fixture_build.py",
+        "agent_tools/native_artifact_registry.py",
+        "agent_tools/native_artifact_reuse.py",
+        "agent_tools/native_execution_context.py",
+        "agent_tools/native_host_observation.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/ssh_automatic_program.py",
+        "agent_tools/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/ssh_channel_selection.py",
+        "agent_tools/ssh_connection_recovery.py",
+        "agent_tools/ssh_connection_session.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_expired_recovery_retirement.py",
+        "agent_tools/ssh_fresh_nested_channel.py",
+        "agent_tools/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/ssh_nested_socket_retirement.py",
+        "agent_tools/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/ssh_recovery_adoption.py",
+        "agent_tools/ssh_tmux_bounded_pipe_collection.py",
+        "agent_tools/ssh_tmux_mcp_adapter.py",
+        "agent_tools/ssh_tmux_resource_admission.py",
+        "agent_tools/ssh_tmux_session.py",
+        "agent_tools/ssh_tmux_session_ssh.py",
+        "agent_tools/ssh_tmux_source_staging_recovery.py",
+        "agent_tools/ssh_tmux_terminal_closure.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/__init__.py",
+        "agent_tools/tests/test_native_execution_context.py",
+        "agent_tools/tmux_public_projection.py",
+        "agent_tools/tmux_workflow_routes.py",
+        "agent_tools/vm_workflow.py",
+        "agent_tools/windows_vm_virt_firmware_install.py",
+        "scripts/fixture_environment.py",
+        "scripts/macos_packaging_jdk_preflight.py",
+        "scripts/native_fixture_run.sh",
+        "scripts/prepare_desktop_update_fixture.py",
+        "scripts/prepare_sing_box_desktop_runtime.sh",
+        "scripts/test_jpackage_launcher.py",
+        "scripts/version_metadata.py"
+      ],
+      "sourceSha256": [
+        "d0cb496543e5930ccd1addb9577a09479d1f7f9922e6a55469666ac60dc19a52"
       ]
     }
   },

@@ -1,5 +1,9 @@
 """Actual future clean producer imports and fixed local protocol, no native calls."""
 import io
+import hashlib
+import stat
+import shutil
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -42,6 +46,88 @@ with patch.object(resource,'operate',side_effect=fixed_local_effect),patch.objec
 output=json.loads(result.buffer.getvalue());assert seen==[packet['operation']] or (packet['operation']=='start' and not seen and output.get('reason')=='already-journaled')
 print(json.dumps(output,separators=(',',':')))
 '''
+
+# Test-only saved programmes. Every __file__ below is its real owned saved file.
+_CACHE_PATH_PROGRAM=r'''
+import hashlib,importlib.util,json,os,stat,sys
+from pathlib import Path
+def verify(fd,path,expected):
+ before=os.fstat(fd);named=path.lstat()
+ pin=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+ assert stat.S_ISREG(before.st_mode) and before.st_nlink==1 and before.st_uid==os.getuid()
+ assert pin(before)==pin(named) and 0<before.st_size<=2097152
+ raw=os.pread(fd,before.st_size+1,0)
+ assert len(raw)==before.st_size and hashlib.sha256(raw).hexdigest()==expected
+ assert pin(before)==pin(os.fstat(fd))==pin(path.lstat())
+ return pin(before)
+helper=Path(sys.argv[1]);held=int(sys.argv[2]);programme=int(sys.argv[3])
+verify(programme,Path(__file__),sys.argv[4]);verify(held,helper,sys.argv[5])
+assert sys.pycache_prefix is None,'isolated-pre-guard-cache-prefix'
+cache=importlib.util.cache_from_source(str(helper))
+verify(programme,Path(__file__),sys.argv[4]);verify(held,helper,sys.argv[5])
+print(json.dumps({'sourcePath':str(helper),'sourceSha256':sys.argv[5],
+                  'pycachePrefix':sys.pycache_prefix,'cachePath':cache},sort_keys=True))
+'''
+
+_CACHE_TEST_PROGRAM=r'''
+import hashlib,importlib,io,json,os,stat,sys,unittest
+from pathlib import Path
+def verify(fd,path,expected):
+ before=os.fstat(fd);pin=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+ assert stat.S_ISREG(before.st_mode) and before.st_nlink==1 and before.st_uid==os.getuid()
+ assert 0<before.st_size<=2097152 and pin(before)==pin(path.lstat())
+ raw=os.pread(fd,before.st_size+1,0)
+ assert len(raw)==before.st_size and hashlib.sha256(raw).hexdigest()==expected
+ assert pin(before)==pin(os.fstat(fd))==pin(path.lstat())
+root=Path(sys.argv[1]);test=Path(sys.argv[2]);held=int(sys.argv[3]);programme=int(sys.argv[4])
+verify(programme,Path(__file__),sys.argv[5]);verify(held,test,sys.argv[6])
+assert test==root/'agent_tools/tests/test_native_engineering_entrypoint.py'
+assert sys.pycache_prefix==sys.argv[7]
+os.umask(0o077)
+sys.path.insert(0,str(root))
+module=importlib.import_module('agent_tools.tests.test_native_engineering_entrypoint')
+assert Path(module.__file__).resolve()==test.resolve()
+suite=unittest.defaultTestLoader.loadTestsFromName('NativeEngineeringEntrypointTest.test_actual_script_rejects_stale_matching_bytecode_before_any_repository_import',module)
+result=unittest.TextTestRunner(verbosity=2).run(suite)
+verify(programme,Path(__file__),sys.argv[5]);verify(held,test,sys.argv[6])
+print(json.dumps({'actualTestFile':module.__file__,'testSha256':sys.argv[6],
+                  'pycachePrefix':sys.pycache_prefix,'testsRun':result.testsRun},sort_keys=True))
+raise SystemExit(0 if result.wasSuccessful()else 1)
+'''
+
+
+def _fixture_pin(info):
+    return (info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+
+
+@contextmanager
+def _held_fixture_source(path):
+    with os.fdopen(os.open(path,os.O_RDONLY|os.O_NOFOLLOW),'rb')as held:
+        info=os.fstat(held.fileno())
+        if not (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and info.st_nlink==1
+                and 0<=info.st_size<=2097152 and _fixture_pin(info)==_fixture_pin(path.lstat())):
+            raise ValueError('fixture-source-shape')
+        raw=held.read(info.st_size+1);held.seek(0)
+        if len(raw)!=info.st_size:raise ValueError('fixture-source-length')
+        try:yield held,raw
+        finally:
+            held.seek(0);closing=held.read(info.st_size+1)
+            if (closing!=raw or _fixture_pin(info)!=_fixture_pin(os.fstat(held.fileno()))
+                    or _fixture_pin(info)!=_fixture_pin(path.lstat())):
+                raise ValueError('fixture-source-closing')
+
+
+def _save_fixture_program(path,raw):
+    with os.fdopen(os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600),'wb')as saved:
+        saved.write(raw);saved.flush();os.fsync(saved.fileno())
+    return path
+
+
+def _fixture_argv_bound(argv):
+    if sum(len(os.fsencode(value))+1 for value in argv)>60000:
+        raise ValueError('fixture-command-bound')
+    return argv
+
 
 @unittest.skipUnless(os.name=='posix','Local private frozen producer control')
 class NativeEngineeringEntrypointTest(unittest.TestCase):
@@ -120,14 +206,83 @@ class NativeEngineeringEntrypointTest(unittest.TestCase):
         burn=self.coordinator/build._JOURNAL/(self.request['correlationId']+'.engineering-child-start.json')
         self.assertEqual(self.request,json.loads(burn.read_bytes())['request'])
     def test_actual_script_rejects_stale_matching_bytecode_before_any_repository_import(self):
-        import importlib.util
         import importlib._bootstrap_external
+        import marshal
         helper=self.native/'agent_tools/native_execution_context.py';marker=self.base/'cached-helper-executed'
-        # Cache header matches the unchanged actual named source mtime and size.
-        stale=compile(helper.read_text()+'\nfrom pathlib import Path\nPath('+repr(str(marker))+').write_text("stale cache executed")\n',str(helper),'exec')
-        cache=Path(importlib.util.cache_from_source(str(helper)));cache.parent.mkdir(exist_ok=True)
-        cache.write_bytes(importlib._bootstrap_external._code_to_timestamp_pyc(stale,int(helper.stat().st_mtime),helper.stat().st_size))
-        original=helper.read_bytes()
-        child=subprocess.run([sys.executable,'-I','-B',str(self.native/'agent_tools/linux_package_fixture_build.py'),'--engineering-local',str(self.coordinator)],input=b'{"operation":"status","driver":"caller"}',capture_output=True,timeout=10)
-        self.assertNotEqual(0,child.returncode);self.assertIn(b'Engineering packet fields differ',child.stderr)
-        self.assertEqual(original,helper.read_bytes());self.assertFalse(marker.exists())
+        parent_prefix=sys.pycache_prefix
+        programme=_save_fixture_program(self.base/'isolated-cache-path.py',_CACHE_PATH_PROGRAM.encode('utf-8'))
+        with _held_fixture_source(helper)as(held,original):
+            with _held_fixture_source(programme)as(programme_held,programme_raw):
+                argv=_fixture_argv_bound([sys.executable,'-I','-B',str(programme),str(helper),str(held.fileno()),
+                      str(programme_held.fileno()),hashlib.sha256(programme_raw).hexdigest(),hashlib.sha256(original).hexdigest()])
+                observed=subprocess.run(argv,pass_fds=(held.fileno(),programme_held.fileno()),capture_output=True,timeout=10)
+                self.assertEqual(0,observed.returncode,observed.stderr)
+                location=json.loads(observed.stdout)
+            self.assertTrue(programme_held.closed)
+            self.assertEqual(str(helper),location['sourcePath'])
+            self.assertEqual(hashlib.sha256(original).hexdigest(),location['sourceSha256'])
+            self.assertIsNone(location['pycachePrefix'])
+            cache=Path(location['cachePath'])
+            # Poison the actual isolated child's normal PRE-guard cache. The
+            # fixed producer still redirects its own cache reads to /dev/null.
+            self.assertEqual(helper.parent/'__pycache__',cache.parent)
+            self.assertEqual(helper.stem+'.'+sys.implementation.cache_tag+'.pyc',cache.name)
+            cache.parent.mkdir(parents=True,exist_ok=True)
+            stale=compile(original.decode('utf-8')+'\nfrom pathlib import Path\nPath('+repr(str(marker))+').write_text("stale cache executed")\n',str(helper),'exec')
+            info=os.fstat(held.fileno())
+            cached=importlib._bootstrap_external._code_to_timestamp_pyc(stale,int(info.st_mtime),info.st_size)
+            importlib._bootstrap_external._validate_timestamp_pyc(cached,int(info.st_mtime),info.st_size,str(helper),{})
+            self.assertEqual(stale,marshal.loads(cached[16:]))
+            _save_fixture_program(cache,cached)
+            child=subprocess.run(_fixture_argv_bound([sys.executable,'-I','-B',str(self.native/'agent_tools/linux_package_fixture_build.py'),'--engineering-local',str(self.coordinator)]),input=b'{"operation":"status","driver":"caller"}',capture_output=True,timeout=10)
+            self.assertNotEqual(0,child.returncode);self.assertIn(b'Engineering packet fields differ',child.stderr)
+            self.assertEqual(original,helper.read_bytes());self.assertFalse(marker.exists())
+        self.assertTrue(held.closed)
+        self.assertEqual(parent_prefix,sys.pycache_prefix)
+
+
+@unittest.skipUnless(os.name=='posix','Owned local source/FD and isolated Python cache control')
+class NativeEngineeringCacheFixtureTests(unittest.TestCase):
+    setUp=fixture.NativeExecutionContextTest.setUp
+    git=fixture.NativeExecutionContextTest.git
+
+    def test_authentic_old_fresh_prefix_red_current_same_caller_green(self):
+        parent_prefix=sys.pycache_prefix
+        folder=Path(__file__).parent/'fixtures/native_engineering_bytecode_cache'
+        provenance=json.loads((folder/'provenance.json').read_bytes())
+        before=(folder/'entrypoint.before.source').read_bytes()
+        self.assertEqual('d0cb496543e5930ccd1addb9577a09479d1f7f9922e6a55469666ac60dc19a52',hashlib.sha256(before).hexdigest())
+        self.assertEqual('d0cb496543e5930ccd1addb9577a09479d1f7f9922e6a55469666ac60dc19a52',provenance['sourceSha256'])
+        programme=_save_fixture_program(self.base/'fresh-prefix-caller.py',_CACHE_TEST_PROGRAM.encode('utf-8'))
+        with _held_fixture_source(Path(__file__))as(current_held,current):
+            for label,source in (('before',before),('current',current)):
+                with self.subTest(variant=label):
+                    # Existing fixture setUp already captures the complete real
+                    # producer dependency graph. Copy it physically, retaining
+                    # package paths; no __file__ or module-name substitution.
+                    layout=self.base/('caller-'+label)
+                    shutil.copytree(self.coordinator,layout,ignore=shutil.ignore_patterns('.git','.rag_index'))
+                    tests=layout/'agent_tools/tests';tests.mkdir(parents=True,exist_ok=True)
+                    for name in ('__init__.py','test_native_execution_context.py'):
+                        path=Path(__file__).with_name(name)
+                        if path.is_file():
+                            with _held_fixture_source(path)as(original_held,raw):
+                                _save_fixture_program(tests/name,raw)
+                            self.assertTrue(original_held.closed)
+                    target=_save_fixture_program(tests/'test_native_engineering_entrypoint.py',source)
+                    prefix=self.base/('empty-cache-'+label)
+                    with _held_fixture_source(target)as(test_held,test_raw),_held_fixture_source(programme)as(programme_held,programme_raw):
+                        argv=_fixture_argv_bound([sys.executable,'-I','-B','-X','pycache_prefix='+str(prefix),str(programme),
+                              str(layout),str(target),str(test_held.fileno()),str(programme_held.fileno()),
+                              hashlib.sha256(programme_raw).hexdigest(),hashlib.sha256(test_raw).hexdigest(),str(prefix)])
+                        child=subprocess.run(argv,pass_fds=(test_held.fileno(),programme_held.fileno()),capture_output=True,timeout=30)
+                        self.assertEqual(1 if label=='before'else 0,child.returncode,child.stderr)
+                        if label=='before':self.assertIn(b'FileNotFoundError',child.stderr)
+                        observed=json.loads(child.stdout.splitlines()[-1])
+                        self.assertEqual(str(target),observed['actualTestFile'])
+                        self.assertEqual(hashlib.sha256(test_raw).hexdigest(),observed['testSha256'])
+                        self.assertEqual(str(prefix),observed['pycachePrefix'])
+                        self.assertEqual(1,observed['testsRun'])
+                    self.assertTrue(test_held.closed);self.assertTrue(programme_held.closed)
+        self.assertTrue(current_held.closed)
+        self.assertEqual(parent_prefix,sys.pycache_prefix)

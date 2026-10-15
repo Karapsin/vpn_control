@@ -1,0 +1,11 @@
+{
+  "observedEvent": "ERROR elapsed0.40701604199421126; original terminaltracepending at preparation",
+  "originalAuditRunId": "9a154744-94d5-4447-806b-b1554036334e",
+  "originalSourceArchiveSha256": "49b85c677cee5d96a9f739b315d458ad4c003c0b94c0bccdda6e91ce3a949262",
+  "schemaVersion": 1,
+  "scope": "Authentic whole unfixed test module. Fresh-prefix routine copies existing fixture complete dependency graph into actual package paths and runs only original target method. No __file__ or namespace relabelling; isolated cachepath calibration saved source held/hashed, no parent globalcache change. No native/SSH/VM action.",
+  "sourceBytes": 10215,
+  "sourceFingerprint": "a789d421188030b424686e098264539252a635847c1b34c1f98ded0967a4a908",
+  "sourcePath": "agent_tools/tests/test_native_engineering_entrypoint.py",
+  "sourceSha256": "d0cb496543e5930ccd1addb9577a09479d1f7f9922e6a55469666ac60dc19a52"
+}

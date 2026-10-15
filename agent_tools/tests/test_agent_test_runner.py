@@ -24,6 +24,9 @@ else:
     from agent_tools import agent_test_runner as runner
 
 
+_PRIVATE_PARENT_UMASK_CHILD = "import errno\nimport hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport stat\nimport sys\nimport unittest\n\nif len(sys.argv) != 6 or sys.argv[5] not in ('077', '022'):\n    raise ValueError('exact private-parent source arguments required')\nheld = []\nsource_closing = False\nresult = None\n\ndef generation(info):\n    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,\n            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)\n\ndef read_held(fd):\n    os.lseek(fd, 0, os.SEEK_SET)\n    raw = bytearray()\n    while len(raw) <= 1048576:\n        block = os.read(fd, min(65536, 1048577 - len(raw)))\n        if not block:\n            return bytes(raw)\n        raw.extend(block)\n    raise ValueError('owned source bound')\n\ndef verify(row):\n    path, fd, initial, raw = row\n    if path.resolve() != path or generation(os.stat(path, follow_symlinks=False)) != initial:\n        raise ValueError('named owned source changed')\n    if generation(os.fstat(fd)) != initial or read_held(fd) != raw or generation(os.fstat(fd)) != initial:\n        raise ValueError('held owned source changed')\n    if generation(os.stat(path, follow_symlinks=False)) != initial:\n        raise ValueError('named owned source changed after read')\n\ndef hold(name, expected):\n    path = Path(name)\n    if not path.is_absolute() or path.resolve() != path:\n        raise ValueError('physical source path required')\n    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, 'O_NONBLOCK', 0))\n    row = [path, fd, None, None]\n    held.append(row)\n    info = os.fstat(fd)\n    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1:\n        raise ValueError('owned regular single-link source required')\n    row[2] = generation(info)\n    row[3] = read_held(fd)\n    if hashlib.sha256(row[3]).hexdigest() != expected:\n        raise ValueError('exact owned source digest required')\n    verify(row)\n    return row\n\ntry:\n    test_source = hold(sys.argv[1], sys.argv[2])\n    runner_source = hold(sys.argv[3], sys.argv[4])\n    os.environ['AGENT_TEST_RUNNER_SOURCE'] = str(runner_source[0])\n    os.umask(int(sys.argv[5], 8))\n    namespace = {'__name__': 'owned_private_parent_case', '__file__': str(test_source[0]), '__package__': None}\n    exec(compile(test_source[3], str(test_source[0]), 'exec', dont_inherit=True), namespace)\n    actual = namespace['runner']\n    if (Path(actual.__file__).resolve() != runner_source[0]\n            or actual._RUNNER_SOURCE_PATH.resolve() != runner_source[0]\n            or actual._RUNNER_SOURCE_SHA256 != sys.argv[4]\n            or actual._RUNNER_SOURCE_BYTES != runner_source[3]\n            or not actual._RUNNER_IMPLEMENTATION_MATCH):\n        raise ValueError('actual held runner implementation required')\n    case = namespace['AgentTestRunnerTests']('test_private_parent_and_symlink_rejected_before_dispatch')\n    result = unittest.TextTestRunner(stream=sys.stderr, verbosity=2).run(unittest.TestSuite([case]))\nfinally:\n    try:\n        for row in held:\n            if row[2] is not None and row[3] is not None:\n                verify(row)\n        source_closing = len(held) == 2 and all(row[2] is not None and row[3] is not None for row in held)\n    finally:\n        closed = True\n        for row in held:\n            try:\n                os.close(row[1])\n            except OSError:\n                closed = False\n            try:\n                os.fstat(row[1])\n            except OSError as error:\n                closed = closed and error.errno == errno.EBADF\n            else:\n                closed = False\n        print(json.dumps({'umask': sys.argv[5], 'testsRun': result.testsRun if result else 0,\n                          'failures': len(result.failures) if result else 0,\n                          'errors': len(result.errors) if result else 0,\n                          'skipped': len(result.skipped) if result else 0,\n                          'sourceClosing': source_closing, 'sourceFDsClosed': closed}), flush=True)\nif not source_closing or not closed or result is None:\n    raise RuntimeError('owned child did not close completely')\nraise SystemExit(0 if result.wasSuccessful() else 1)\n"
+
+
 class AgentTestRunnerTests(unittest.TestCase):
     def setUp(self):
         portable = {"test_public_projection_excludes_private_skip_reason_and_subtest_values",
@@ -539,11 +542,49 @@ class C(unittest.TestCase):
             runner.private_directory(self.root / "refused")
         self.assertFalse((self.root / "refused").exists())
 
+    def test_private_parent_rejection_under_private_and_standard_umasks(self):
+        # Execute the exact existing guard case; changing this process's umask is unnecessary.
+        test_source = Path(__file__).resolve()
+        runner_source = Path(runner.__file__).resolve()
+        self.assertEqual(runner_source, runner._RUNNER_SOURCE_PATH.resolve())
+        self.assertTrue(runner._RUNNER_IMPLEMENTATION_MATCH)
+        test_sha = hashlib.sha256(test_source.read_bytes()).hexdigest()
+        runner_sha = hashlib.sha256(runner_source.read_bytes()).hexdigest()
+        self.assertEqual(runner._RUNNER_SOURCE_SHA256, runner_sha)
+        programme = self.root / "private_parent_umask_child.py"
+        descriptor = os.open(programme, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(_PRIVATE_PARENT_UMASK_CHILD.encode("utf-8"))
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+        env.pop("DYLD_INSERT_LIBRARIES", None)
+        for mask in ("077", "022"):
+            with self.subTest(umask=mask):
+                cache = self.root / ("umask-" + mask + "-cache")
+                cache.mkdir(mode=0o700)
+                self.assertEqual(0o700, cache.stat().st_mode & 0o777)
+                argv = [sys.executable, "-I", "-B", "-X", "pycache_prefix=" + str(cache),
+                        str(programme), str(test_source), test_sha, str(runner_source), runner_sha, mask]
+                self.assertLessEqual(sum(len(os.fsencode(arg)) + 1 for arg in argv), 60000)
+                child = subprocess.run(argv, cwd=self.root, env=env, capture_output=True, text=True, timeout=15)
+                for suffix, text in (("stdout", child.stdout), ("stderr", child.stderr)):
+                    descriptor = os.open(self.root / ("umask-" + mask + "." + suffix),
+                                         os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(descriptor, "wb") as stream:
+                        stream.write(text.encode("utf-8"))
+                sys.stdout.write(child.stdout)
+                sys.stderr.write(child.stderr)
+                self.assertEqual(0, child.returncode, child.stdout + child.stderr)
+                self.assertEqual([], list(cache.iterdir()), "isolated child wrote bytecode despite -B")
+                self.assertEqual({"umask": mask, "testsRun": 1, "failures": 0, "errors": 0, "skipped": 0,
+                                  "sourceClosing": True, "sourceFDsClosed": True}, json.loads(child.stdout))
+
     def test_private_parent_and_symlink_rejected_before_dispatch(self):
         with self.environment():
             self.module("a", self.sleeping())
             foreign = self.root / "foreign"
             foreign.mkdir(mode=0o755)
+            foreign.chmod(0o755)
+            self.assertEqual(0o755, foreign.stat().st_mode & 0o777)
             with self.assertRaises(ValueError): runner.run_plan(self.plan, foreign / "result")
             link = self.root / "link"
             link.symlink_to(foreign, target_is_directory=True)

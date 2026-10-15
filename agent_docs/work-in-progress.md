@@ -560,3 +560,29 @@ causal RED/GREEN and enroll required coverage without weakening production guard
 Finish the MCP repair with reviewed scope, version_bump, fresh managed prepush,
 explicit reviewed paths and origin/dev push, then all five required workflows
 green for that exact SHA. No release or main merge.
+
+### 2026-10-16 — remaining MCP audit fixtures
+
+The intentional full audit of all 576 discovered modules closed with a failed
+575-module pool: 7,392 tests, two failures, one error and 195 platform skips.
+All three affected modules had passed the earlier managed prepush. The audit's
+restrictive umask and empty Python cache exposed additional fixture assumptions:
+an intended public directory became private, the conversation deadline expired
+before its intended stdout EOF phase, and a bytecode test used the parent's cache
+location instead of the isolated child's normal cache. Original source, complete
+streams, exact tracebacks and natural process closure are preserved in
+`.runtime/mcp-repair-execution-2026-10-15/full-audit-v6/`. That audit remains
+failed. The preceding 53 validated paths were saved locally as `ce740ac`; this
+checkpoint has not been pushed and grants no passing full-audit claim.
+
+The remaining changes belong to the same MCP repair. Fixtures explicitly set
+and verify their intended permissions, allow one existing protocol slot for the
+complete cold conversation while preserving deadline UNKNOWN and non-replay
+assertions, and calibrate the isolated child's actual pre-guard cache location.
+Coverage includes both permission masks, controlled startup latency, physical
+EOF evidence and the authentic old bytecode fixture in real copied layouts.
+Production ownership, source, deadline and non-replay guards remain unchanged.
+The preserved old sources and current scenarios still require actual causal
+RED/GREEN, followed by a passing intentional full audit, a fresh managed prepush
+and all five workflows for the final pushed SHA. No closed environment is
+restored, and product parity, H14 and product-native/visual work remain deferred.

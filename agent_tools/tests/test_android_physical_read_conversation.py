@@ -40,7 +40,12 @@ if mode=='corrupt':script=script.replace('VCREAD-1','VCREAD-X')
 if mode=='premature':script=script.replace("IFS=' ' read -r hash_nonce package_path || exit 90",'hash_nonce=00000000000000000000000000000000; package_path=/data/app/fixture/base.apk; sleep 0.1').replace('if IFS= read -r extra; then exit 91; fi','true')
 if mode=='input-loss':script=script.replace("IFS=' ' read -r hash_nonce package_path || exit 90","sleep 2; IFS=' ' read -r hash_nonce package_path || exit 90")
 if mode=='partial':script=script.replace(' END %s', ' BROKEN %s',1)
-if mode=='stdout-only-eof':script+='\\nexec 1>&-\\nsleep 2\\n'
+if mode=='stdout-only-eof':
+ delay=os.environ.get('FIXTURE_EOF_STARTUP_DELAY','')
+ if delay not in ('','0.6'):raise ValueError('inert_eof_startup_delay')
+ if delay:__import__('time').sleep(0.6)
+ # Replace the direct child so its held Popen owns the stderr-holder itself.
+ script+='\\nexec 1>&-\\nprintf "stdout-closed\\\\n" > "$FIXTURE_LOG.eof-ready"\\nexec sleep 21\\n'
 if mode=='same-inode-change':Path(sys.argv[0]).write_text(Path(sys.argv[0]).read_text()+'\\n#changed\\n')
 if mode=='capture-name-change':
  p=Path(os.environ['FIXTURE_LOG']).parent/'raw-1.json';q=p.with_suffix('.other');q.write_text('foreign');os.replace(q,p)
@@ -119,12 +124,26 @@ os.execv('/bin/sh',['/bin/sh','-c',script])
             (self.root/'raw-1.json').unlink()
     def test_both_eofs_required_and_environment_unchanged(self):
         import time
+        cache=self.root/'eof-fresh-child-cache';cache.mkdir(mode=0o700)
+        self.assertEqual([],list(cache.iterdir()))
+        self.env.update(PYTHONPYCACHEPREFIX=str(cache),PYTHONDONTWRITEBYTECODE='1',
+                        FIXTURE_EOF_STARTUP_DELAY='0.6')
         before=dict(self.env);self.env['FIXTURE_MODE']='stdout-only-eof'
-        with self.assertRaises(read.ConversationUnknown):self.run_read('stdout-only-eof',time.monotonic()+0.4)
+        # Include real cold interpreter startup, ten commands and stdin handoff.
+        # One existing protocol slot bounds this case; the peer holds stderr21s.
+        self.assertEqual(20,read.STEP_SECONDS)
+        with self.assertRaises(read.ConversationUnknown):
+            self.run_read('stdout-only-eof',time.monotonic()+read.STEP_SECONDS)
         raw=json.loads((self.root/'raw-1.json').read_bytes())
+        self.assertEqual('stdout-closed\n',Path(str(self.log)+'.eof-ready').read_text())
+        self.assertEqual(list(range(1,11)),[row['index'] for row in raw['frameObservations']])
         self.assertTrue(raw['stdoutEOF']);self.assertFalse(raw['stderrEOF'])
+        self.assertIn('physical_deadline_unknown',raw['failure'])
+        self.assertFalse(raw['complete']);self.assertFalse(raw['admissionGranted'])
+        self.assertFalse(raw['replayAllowed']);self.assertIsNotNone(raw['returncode'])
         self.assertEqual('stdout-only-eof',self.env.pop('FIXTURE_MODE'))
         before.pop('FIXTURE_MODE',None);self.assertEqual(before,self.env)
+        self.assertEqual([],list(cache.iterdir()))
     def test_real_same_inode_capture_overwrite_refuses_and_retains_unknown(self):
         real_fsync=os.fsync;mutations=[];path=self.root/'raw-1.json'
         def overwrite_at_fsync(fd):
