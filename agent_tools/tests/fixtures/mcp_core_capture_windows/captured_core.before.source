@@ -1,0 +1,17 @@
+def _captured_core(name):
+    """Compile actual captured policy bytes, independent of pyc/module caches."""
+    path=Path(__file__).resolve().with_name(name+'.py')
+    descriptor=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))
+    try:
+        before=os.fstat(descriptor);raw=os.read(descriptor,1024**2+1)
+        identity=lambda value:(value.st_dev,value.st_ino,value.st_mode,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
+        if (not 0<len(raw)<=1024**2 or len(raw)!=before.st_size
+                or identity(os.fstat(descriptor))!=identity(before) or identity(os.stat(path,follow_symlinks=False))!=identity(before)):
+            raise ValueError('Core source capture changed')
+    finally:os.close(descriptor)
+    name='_vpn_core_'+str(_MCP_BOOT_TIME_NS)+'_'+name
+    spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec)
+    sys.modules[name]=module
+    exec(compile(raw,str(path),'exec',dont_inherit=True),module.__dict__)
+    _CORE_IMPORT_DIGESTS[path]=hashlib.sha256(raw).hexdigest()
+    return module

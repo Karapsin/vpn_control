@@ -82,6 +82,9 @@ on:
       - "agent_tools/source_module_loader.py"
       - "agent_tools/tests/test_source_loader_bootstrap.py"
       - "agent_tools/tests/fixtures/source_loader_bootstrap/**"
+      - "agent_tools/tests/test_mcp_core_capture_windows.py"
+      - "agent_tools/tests/fixtures/mcp_core_capture_windows/captured_core.before.source"
+      - "agent_tools/tests/fixtures/mcp_core_capture_windows/provenance.json"
       - "agent_tools/windows_source_custody.py"
       - "agent_tools/tests/test_windows_source_custody.py"
       - "agent_tools/windows_vm_unattend.py"
@@ -210,7 +213,7 @@ jobs:
       - name: Verify native managed-check locking and receipts
         env:
           AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.agent_test_baseline || github.sha) || '' }}
-        run: python agent_tools/affected_agent_tests.py --run --include agent_tools.tests.test_managed_check_lease agent_tools.tests.test_mcp_server.FingerprintTest agent_tools.tests.test_windows_source_custody agent_tools.tests.test_source_loader_bootstrap agent_tools.tests.test_historical_fixture_checkout_bytes agent_tools.tests.test_reviewed_source_checkout_bytes agent_tools.tests.test_native_wire_event_evidence
+        run: python agent_tools/affected_agent_tests.py --run --include agent_tools.tests.test_managed_check_lease agent_tools.tests.test_mcp_server.FingerprintTest agent_tools.tests.test_windows_source_custody agent_tools.tests.test_source_loader_bootstrap agent_tools.tests.test_historical_fixture_checkout_bytes agent_tools.tests.test_reviewed_source_checkout_bytes agent_tools.tests.test_native_wire_event_evidence agent_tools.tests.test_mcp_core_capture_windows
 
       - name: Require native Windows PowerShell for causal guards
         run: python -c "import os, shutil; assert os.name == 'nt' and shutil.which('powershell.exe'), 'Native Windows PowerShell is required'"

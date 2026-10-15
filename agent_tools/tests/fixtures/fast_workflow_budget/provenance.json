@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "843c4740474a7b1c4038c51f7a941500dae0ce01",
+  "sourcePath": ".github/workflows/fast-checks.yml",
+  "sourceSha256": "87bb78573d8ef9fe0cb1ee212feaa561432d8bedb8ae0e25c24dee052254d901",
+  "sourceBytes": 9785,
+  "failureEvidence": ".runtime/mcp-fast-checks-timeout-843c4740474a/",
+  "observedFailure": "Actual Fast Checks job cancelled after45m14s; agent-tool step40m43s and13 later steps skipped; annotation: job exceeded maximum execution time of45m0s.",
+  "scaledFixture": "Five prelude model-minutes,42 tool model-minutes and1 tail model-minute. These are synthetic allowed work durations, not a tail-duration benchmark. Source workflow limits scale to real monotonic subprocess deadlines.",
+  "independence": "Routine tests consume only this exact old workflow, current workflow and current managed-budget source. Original CI logs/attempt files are historical metadata, never runtime test inputs."
+}

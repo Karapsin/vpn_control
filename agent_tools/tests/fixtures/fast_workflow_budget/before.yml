@@ -1,0 +1,240 @@
+name: Fast Checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: "Commit to compare for affected agent tests (manual dispatch defaults to current SHA)"
+        required: false
+        type: string
+      audit_agent_tests:
+        description: Explicitly audit the complete agent test suite
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches:
+      - dev
+  pull_request:
+    paths:
+      - ".github/workflows/fast-checks.yml"
+      - ".github/workflows/windows-update-fixture.yml"
+      - ".github/workflows/macos-update-fixture.yml"
+      - ".github/workflows/macos-desktop.yml"
+      - "scripts/record_macos_fixture_signing.py"
+      - "scripts/test_record_macos_fixture_signing.py"
+      - "scripts/test_macos_update_fixture_workflow.py"
+      - "scripts/test_macos_artifact_upload_selection.py"
+      - "scripts/testdata/macos-artifact-upload-glob/**"
+      - "scripts/setup_macos_signing.sh"
+      - "scripts/test_setup_macos_signing.py"
+      - ".github/workflows/windows-desktop.yml"
+      - "scripts/test_windows_update_fixture_workflow.py"
+      - ".github/required-workflows.json"
+      - ".codex/config.toml"
+      - "AGENTS.md"
+      - "README.md"
+      - "agent_docs/**"
+      - "agent_tools/**"
+      - "docs/**"
+      - "app/**"
+      - "desktopApp/**"
+      - "shared/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - "scripts/add_language.py"
+      - "scripts/check_localization.py"
+      - "scripts/check_source_whitespace.py"
+      - "scripts/test_source_whitespace.py"
+      - "scripts/check_python_platform_contracts.py"
+      - "scripts/test_python_platform_contracts.py"
+      - "scripts/native_fixture_preflight.py"
+      - "scripts/test_native_fixture_preflight_script.py"
+      - "scripts/integration/linux_scheduled_refresh_scenario.py"
+      - "scripts/test_linux_scheduled_refresh_scenario.py"
+      - "scripts/status_catalog_tool.py"
+      - "scripts/check_release_hygiene.sh"
+      - "scripts/test_packaged_cli_harness.py"
+      - "scripts/testdata/windows-persistent-ready-parser/**"
+      - "scripts/testdata/windows-persistent-taskroot/**"
+      - "scripts/windows_native_fixture.py"
+      - "scripts/test_windows_native_fixture.py"
+      - "scripts/native_fixture_qemu_assets.py"
+      - "scripts/test_native_fixture_qemu_assets.py"
+      - "scripts/check_workflow_syntax.py"
+      - "scripts/test_check_workflow_syntax.py"
+      - "scripts/prepare_android_native_tools.sh"
+      - "scripts/test_prepare_android_native_tools.py"
+      - "scripts/android_avd_sdk_preflight.py"
+      - "scripts/test_android_avd_sdk_preflight.py"
+      - "scripts/check_docs_hygiene.sh"
+      - "scripts/check_contract_docs.py"
+      - "scripts/check_user_facing_terminology.py"
+      - "scripts/check_ui_theme.py"
+      - "scripts/visual_regression.py"
+      - "scripts/test_visual_regression.py"
+      - "scripts/test_visual_platform.py"
+      - "scripts/test_visual_review.py"
+      - "scripts/visual_platform.py"
+      - "scripts/visual_review.py"
+      - "scripts/bootstrap_windows_visual_vm.sh"
+      - "scripts/start_windows_visual_vm.sh"
+      - "scripts/mark_windows_visual_vm_ready.sh"
+      - "scripts/capture_visual_android.sh"
+      - "scripts/capture_visual_desktop.sh"
+      - "scripts/capture_visual_desktop.ps1"
+      - "scripts/capture_visual_windows_qemu.py"
+      - "scripts/select_visual_scenes.py"
+      - "visual-tests/**"
+      - "scripts/check_release_metadata.py"
+      - "scripts/release_notes.py"
+      - "scripts/version_metadata.py"
+      - "scripts/test_version_metadata.py"
+      - "scripts/test_vpn_integration_fixture.py"
+      - "scripts/test_linux_package_postinst.py"
+      - "scripts/package_linux_deb.py"
+      - "scripts/test_package_linux_deb.py"
+      - "scripts/package_linux_rpm.py"
+      - "scripts/test_package_linux_rpm.py"
+      - "scripts/test_linux_public_install.py"
+      - "scripts/test_linux_public_install_harness.py"
+      - "scripts/linux_gui_fixture_guard.py"
+      - "scripts/test_linux_gui_fixture_guard.py"
+      - "scripts/prepare_linux_install_vm.py"
+      - "scripts/test_prepare_linux_install_vm.py"
+      - "scripts/prepare_linux_public_install_image.py"
+      - "scripts/test_android_update_fixture.py"
+      - "scripts/integration/android_benchmark_fixture.py"
+      - "scripts/test_android_benchmark_fixture.py"
+      - "scripts/run_android_instrumented_tests.py"
+      - "scripts/test_android_instrumented_launcher.py"
+      - "scripts/android_instrumentation_signatures.gradle"
+      - "scripts/test_android_instrumentation_signatures.py"
+      - "scripts/macos_fixture_frontend.py"
+      - "scripts/test_macos_fixture_frontend.py"
+      - "scripts/android_routing_evidence.py"
+      - "scripts/test_android_routing_evidence.py"
+      - "scripts/test_android_install_visual_inventory.py"
+      - "scripts/prepare_desktop_update_fixture.py"
+      - "scripts/test_desktop_update_fixture.py"
+      - "scripts/fixture_environment.py"
+      - "scripts/test_fixture_environment.py"
+      - "scripts/test_jpackage_launcher.py"
+      - "scripts/test_jpackage_launcher_harness.py"
+      - "scripts/arch_public_update.py"
+      - "scripts/test_arch_public_update.py"
+      - "scripts/rpm_public_update.py"
+      - "scripts/test_rpm_public_update.py"
+      - "scripts/test_desktop_sdk_independence.py"
+      - "scripts/test_windows_packaging_graph.py"
+      - "scripts/windows_native_packaging.gradle"
+      - "scripts/windows_install_admission_diagnostic.py"
+      - "scripts/test_windows_install_admission_diagnostic.py"
+      - "scripts/windows_qga_powershell_size.py"
+      - "scripts/test_windows_qga_powershell_size.py"
+      - "scripts/test_windows_packaging_graph.init.gradle"
+      - "scripts/test_macos_install_gate.py"
+      - "scripts/test_macos_install_enospc.py"
+      - "scripts/native/macos_install_worker.c"
+      - "scripts/test_user_facing_terminology.py"
+      - "scripts/integration/**"
+      - "scripts/arch_install.sh"
+      - "scripts/test_arch_install_hygiene.sh"
+      - "scripts/test_arch_update_permissions.py"
+      - "scripts/install_arch_desktop_update.sh"
+
+jobs:
+  fast-checks:
+    name: Hygiene, Localization, Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check release hygiene
+        run: ./scripts/check_release_hygiene.sh
+
+      - name: Check documentation hygiene
+        run: ./scripts/check_docs_hygiene.sh
+
+      - name: Check whitespace
+        run: python3 scripts/check_source_whitespace.py
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install agent tool dependencies
+        run: python -m pip install --disable-pip-version-check -r agent_tools/requirements-mcp.txt
+
+      - name: Test affected agent tools
+        env:
+          AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}
+          AUDIT_AGENT_TESTS: ${{ inputs.audit_agent_tests && '1' || '' }}
+        run: |
+          if [[ "$AUDIT_AGENT_TESTS" == "1" ]]; then
+            python agent_tools/affected_agent_tests.py --baseline "$AGENT_TEST_BASELINE" --audit --run
+          else
+            python agent_tools/affected_agent_tests.py --run
+          fi
+
+      - name: Check fixed UI theme and visual comparator
+        run: |
+          python scripts/check_ui_theme.py
+          python scripts/test_visual_regression.py
+          python scripts/test_visual_platform.py
+          python scripts/test_visual_review.py
+          python scripts/select_visual_scenes.py --manifest visual-tests/scenes.json --platform linux --kind app >/dev/null
+          bash -n scripts/bootstrap_windows_visual_vm.sh
+          bash -n scripts/start_windows_visual_vm.sh
+          bash -n scripts/mark_windows_visual_vm_ready.sh
+          bash -n scripts/capture_visual_android.sh
+          bash -n scripts/capture_visual_desktop.sh
+          python -m py_compile scripts/capture_visual_macos_tart.py scripts/capture_visual_windows_qemu.py
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install pinned Android native build tools
+        run: bash scripts/prepare_android_native_tools.sh
+
+      - name: Verify Windows admission diagnostic behavior
+        run: python scripts/test_windows_install_admission_diagnostic.py
+
+      - name: Verify Windows PowerShell command bounds
+        run: python scripts/test_windows_qga_powershell_size.py
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check localization catalogs
+        run: ./scripts/check_localization.py
+
+      - name: Check typed status catalogs
+        run: ./scripts/status_catalog_tool.py check
+
+      - name: Install windowless desktop test display
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xauth
+
+      - name: Run fast unit tests
+        run: ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:verifyDebugAndroidTestSignatures
+
+      - name: Verify desktop build without Android SDK
+        run: python scripts/test_desktop_sdk_independence.py
+
+      - name: Verify Windows packaging task graph
+        run: python scripts/test_windows_packaging_graph.py
+
+      - name: Verify Android instrumentation signature guard
+        run: python scripts/test_android_instrumentation_signatures.py

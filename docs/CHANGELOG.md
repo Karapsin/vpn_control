@@ -3,6 +3,11 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Preserve source generations across Windows core-policy capture APIs.
+- Reserve bounded CI time for affected agent tests and all following validation.
+
 ## 2.2.11 - 2026-10-15
 
 - Prefer current agent guidance while retaining explicit historical evidence retrieval.

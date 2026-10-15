@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "843c4740474a7b1c4038c51f7a941500dae0ce01",
+  "sourcePath": "agent_tools/mcp_server.py",
+  "sourceSha256": "81a31edfeb03b63624aa316f021a70e4e50fb18a866f6e2d105a27a8b94b4eaa",
+  "firstLine": 34,
+  "lastLine": 50,
+  "fragmentSha256": "90bbe6fa880881ce57a1819673c2728907b96eb94f4c580401e342ac24322eb4",
+  "purpose": "Exact unfixed core capture function from the failed Windows development CI source. Compiled only by the owned inert policy regression; no repository adapters or native actions execute."
+}

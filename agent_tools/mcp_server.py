@@ -34,12 +34,22 @@ _CORE_IMPORT_DIGESTS = {}
 def _captured_core(name):
     """Compile actual captured policy bytes, independent of pyc/module caches."""
     path=Path(__file__).resolve().with_name(name+'.py')
+    identity=lambda value:(value.st_dev,value.st_ino,value.st_mode,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
+    def common_identity(value):
+        # CPython 3.12 Windows path stat reports creation time as ctime,
+        # while fstat reports metadata change time. Compare each API's full
+        # generation separately; retain common file identity across APIs.
+        common=identity(value) if os.name!='nt' else identity(value)[:-1]
+        return common+(hasattr(value,'st_birthtime_ns'),getattr(value,'st_birthtime_ns',None))
+    named_before=os.stat(path,follow_symlinks=False)
     descriptor=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0))
     try:
         before=os.fstat(descriptor);raw=os.read(descriptor,1024**2+1)
-        identity=lambda value:(value.st_dev,value.st_ino,value.st_mode,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
+        after=os.fstat(descriptor);named_after=os.stat(path,follow_symlinks=False)
         if (not 0<len(raw)<=1024**2 or len(raw)!=before.st_size
-                or identity(os.fstat(descriptor))!=identity(before) or identity(os.stat(path,follow_symlinks=False))!=identity(before)):
+                or identity(after)!=identity(before) or identity(named_after)!=identity(named_before)
+                or common_identity(before)!=common_identity(named_before)
+                or common_identity(after)!=common_identity(named_after)):
             raise ValueError('Core source capture changed')
     finally:os.close(descriptor)
     name='_vpn_core_'+str(_MCP_BOOT_TIME_NS)+'_'+name

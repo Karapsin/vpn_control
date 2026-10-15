@@ -9,6 +9,55 @@ is authorized. Do not resume Windows product acceptance, H14, visuals or the ori
 Windows plan without the user resuming it. Linux, Android and macOS product-native
 and visual work also remains deferred. No release.
 
+The first repair delivery, `843c4740474a7b1c4038c51f7a941500dae0ce01`,
+passed the managed prepush (6,695 pooled agent tests, 186 platform skips) and was
+pushed to `origin/dev`. Windows CI then failed importing the core source capture;
+that SHA is not a completed delivery. Original logs and ten exact beforeimages
+are preserved in `.runtime/mcp-windows-core-capture-failure-843c4740474a/`.
+CPython 3.12.10 gives pathname and descriptor `ctime` different Windows meanings;
+the old loader compares them directly. The original exception did not retain its
+failed field. The repair preserves full generation checks separately for each
+API and cross-binds comparable object metadata. A preserved-function regression
+and the native Windows counterfactual distinguish this mechanism; final new-SHA
+prepush and all five development workflows remain required.
+The unchanged-file assertion reproduced RED on the exact preserved function and
+GREEN on the fix using physical file IO and the documented Windows metadata
+projection. The expanded 28-check slice passed, with two native Windows bootstrap
+skips; 102 selector and seven workflow/checkout controls passed. A macOS temporary
+path alias in the new wrapper initially failed after successful capture; its
+beforeimage and failure remain preserved, and resolving the owned fixture root
+passed the same assertion. Evidence is the packet's `causal-local-v1/`,
+`causal-local-v2/` and `dependency-review/`; these local results do not claim
+native Windows acceptance.
+
+Fast Checks on the same first SHA was subsequently cancelled after 45m14s;
+GitHub's annotation explicitly says the 45-minute job limit was exceeded. Its
+agent-test phase consumed 40m43s after setup, and 13 later steps never ran.
+There is no per-module timing artifact, so no particular slow or hung test is
+inferred. Original logs, selection and beforeimages remain in
+`.runtime/mcp-fast-checks-timeout-843c4740474a/`. The workflow repair gives the job
+90 minutes and the agent-test phase 50 minutes while retaining every command,
+selection and the existing managed-command bound. Causal coverage runs an inert
+saved producer under scaled real deadlines read from the original/current
+configuration; the actual new-SHA GitHub run remains required proof.
+The identical completion assertion was actual RED on the preserved 45-minute
+configuration and GREEN on the fix. All four deadline controls passed, including
+refusal beyond the 50-minute phase cap; 102 selector and nine workflow/checkout
+controls passed. The parser found no errors across 1,344 source versions, and
+all five saved-producer children closed. Exact raw streams, markers and identical
+producer bytes remain in `.runtime/mcp-fast-workflow-budget-843c4740474a/`.
+
+The healthy local prepush v8 was deliberately cancelled before that workflow
+edit. Its 3,280 partial timing observations are not a passing receipt. Exactly
+one guarded signal went to its owned runner; the worker/session/fixture closed,
+the lease is free and source closing matched. Evidence is
+`.runtime/mcp-repair-execution-2026-10-15/prepush-final-v8/cancellation/`.
+Fresh final prepush and exact-SHA delivery follow the final workflow/content edit.
+
+The user's subsequently identified current SSH client is explicitly excluded
+from cleanup. It received no signal. Previously closed sessions remain closed;
+no global-zero-SSH claim applies while that user client is open.
+
 The current repair plan and copyable prompt are:
 
 - `.runtime/mcp-repair-handoff-2026-10-15/plan.md`
