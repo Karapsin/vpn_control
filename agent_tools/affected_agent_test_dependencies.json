@@ -592,7 +592,8 @@
         "9c45713afe916baf2c240a43c91966e9b3225dd59f3970c72447c630fd4b2b38",
         "e75ff49fdc5b8ec73c5e0738a4e44aa41062bbad5128317ad329724218e7c216",
         "954b4d0e07dd4111108f65985a0db5e1891e71699a2441b9004180e3e35b0607",
-        "6f8ce74ffd4a5d4b836579cfb13b4fea99e3661c345cc2e96d0e0100bf48fe49"
+        "6f8ce74ffd4a5d4b836579cfb13b4fea99e3661c345cc2e96d0e0100bf48fe49",
+        "fe886e20f2238db0ac7518c67f3c8169e5325ce426fe1a10dd9b1336630d79f8"
       ]
     },
     "agent_tools/tests/fixtures/windows_cp117_public_context/whole_entry.py": {
@@ -1690,7 +1691,8 @@
       "sourceSha256": [
         "062fbac241ffbdaa9d2bb406b375ee0983e314ea5903b2f217a1b2cc9401886f",
         "e42904abc4ce886044525754b3771aa6f4075f766737ac2bc2a7624fe7d65aa5",
-        "7cf2b17814ed31af50a7f56a31d62f26bdd82d628262068e5b9e050a88278d76"
+        "7cf2b17814ed31af50a7f56a31d62f26bdd82d628262068e5b9e050a88278d76",
+        "e6c9b7a7b766a5cd0fcf02241b5d35da240524ac78bb1bd7f4c736acced9c767"
       ]
     },
     "agent_tools/tests/test_windows_vm_setup_policy.py": {
@@ -1730,6 +1732,265 @@
         "da7097d70f08f5f9dc2b233c366549600b09ecbdb11bd9e3fee19c4a9b5fe638",
         "9a1eda56c1360f3672c21fa2ce1a2b52a66e92f5bc2fffaa940f21b311b8386c"
       ]
+    },
+    "agent_tools/tests/test_windows_fixture_checkout_bytes.py": {
+      "reason": "Exact raw-byte checkout regression reads only the two unchanged current specimen reader definitions, their authenticated standalone before functions and attributes, and the explicit public HTTPS/cleanup fixture families. Fresh owned local Git checkouts use isolated Git configuration and actual core.autocrlf conversion; no native execution, global Git settings, historical source pin changes or prior-attempt data. All payload/provenance guards and unlisted text conversion remain active.",
+      "scopes": [
+        ".gitattributes",
+        "agent_tools/tests/fixtures/windows_fixture_checkout_bytes/attributes.before",
+        "agent_tools/tests/fixtures/windows_fixture_checkout_bytes/cleanup_reader.before.source",
+        "agent_tools/tests/fixtures/windows_fixture_checkout_bytes/https_reader.before.source",
+        "agent_tools/tests/fixtures/windows_fixture_checkout_bytes/provenance.json",
+        "agent_tools/tests/fixtures/windows_ordinary_https/before-total-deadline.cs",
+        "agent_tools/tests/fixtures/windows_ordinary_https/prior-direct-tls.cs",
+        "agent_tools/tests/fixtures/windows_ordinary_https/provenance.json",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/current_file_binding.ps1",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/current_publication.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/decision_consumer.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/delete_native.cs",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_admission_guards.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_file_binding.ps1",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_interfaces.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_publication.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_resources.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/provenance.json",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/reader_handles.ps1",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/reviewed_admission_consumer.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/sdk_consumer.source",
+        "agent_tools/tests/test_windows_ordinary_https.py",
+        "agent_tools/tests/test_windows_secondary_ordinary_read.py"
+      ],
+      "sourceSha256": [
+        "896f45821e49477e088c0b0796f5f8b54bfbe786d5ebbc6d00e076be88ccd54b"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_fixture_checkout_bytes/https_reader.before.source": {
+      "reason": "Exact standalone original raw-byte reader function from pushed9a is compiled only after its current function source matches these retained bytes. The supplied namespace points only at a fresh owned physical Git checkout of this finite authenticated public fixture family; the complete raw digest checks execute unchanged. This declaration covers copied input bytes, not current MCP or native authority.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_ordinary_https/provenance.json",
+        "agent_tools/tests/fixtures/windows_ordinary_https/prior-direct-tls.cs",
+        "agent_tools/tests/fixtures/windows_ordinary_https/before-total-deadline.cs"
+      ],
+      "sourceSha256": [
+        "68c97624a654cf24d18264ff1b6ee19ca77348faeb5c430c1eeb687405116f32"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_fixture_checkout_bytes/cleanup_reader.before.source": {
+      "reason": "Exact standalone original raw-byte reader function from pushed9a is compiled only after its current function source matches these retained bytes. The supplied namespace points only at a fresh owned physical Git checkout of this finite authenticated public fixture family; the complete raw digest checks execute unchanged. This declaration covers copied input bytes, not current MCP or native authority.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/provenance.json",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/current_file_binding.ps1",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/current_publication.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/decision_consumer.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/delete_native.cs",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_admission_guards.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_file_binding.ps1",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_interfaces.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_publication.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_resources.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/reader_handles.ps1",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/reviewed_admission_consumer.source",
+        "agent_tools/tests/fixtures/windows_secondary_cleanup/sdk_consumer.source"
+      ],
+      "sourceSha256": [
+        "17f32cd53627ba387912bc7e730ca6bd854bc7e2fdfe6827b1782bf43d7be4c8"
+      ]
+    },
+    "agent_tools/tests/test_windows_powershell_fixture_execution.py": {
+      "reason": "Finite actual PowerShell fixture controls extract only named current or byte-authenticated retained functions/methods from the listed source inputs. Complete length/SHA/strict-UTF8/parser carriers and exact decoder/observation contracts remain unchanged; generated public programmes and native child streams belong to the current owned case. The native decoder comparison remains Windows-only; no module-wide historical source execution or remote/native lifecycle admission.",
+      "scopes": [
+        "agent_tools/tests/test_windows_cp117_base_source_refresh.py",
+        "agent_tools/windows_cp117_base_source_refresh.py",
+        "agent_tools/tests/test_windows_cp117_c32_absence.py",
+        "agent_tools/windows_cp117_c32_absence.py",
+        "agent_tools/tests/test_windows_secure_input_failure_execution.py",
+        "agent_tools/tests/fixtures/windows_complete_program_transfer/carrier.before.source",
+        "agent_tools/tests/fixtures/windows_complete_program_transfer/decoder.before.fragment",
+        "agent_tools/tests/fixtures/windows_complete_program_transfer/haderrors.before.fragment",
+        "agent_tools/tests/fixtures/windows_complete_program_transfer/provenance.json"
+      ],
+      "sourceSha256": [
+        "b48d390095eb8739af5be06264c59963ea4dab688e2a7c093a29521dc7eb6d52"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_complete_program_transfer/carrier.before.source": {
+      "reason": "Exact original two carrier functions are parsed and executed in the explicit new regression namespace. Their historical refresh.__file__ source dependency is the single complete current base-refresh producer; the counterfactual intentionally lacks that coordinator capability and must refuse before effects. No whole archived test module, source hash shortcut or package fallback is admitted.",
+      "scopes": [
+        "agent_tools/windows_cp117_base_source_refresh.py",
+        "agent_tools/tests/test_windows_powershell_fixture_execution.py"
+      ],
+      "sourceSha256": [
+        "1b5f2779fe8c0760c1767d5edbc0d11e6bf6b26e7032b2795136dd0fa36f7be9"
+      ]
+    },
+    "agent_tools/tests/test_cp117_fixture_context_portability.py": {
+      "reason": "Explicit inert portability controls consume the complete finite current/retained source family. Only two context definitions and the named frozen recipe definitions/literal data execute in private namespaces; exact current pure answer helpers and the source-only campaign emitter retain ordinary transitive imports and held source custody. Private reader, socket grammar, source digest, original/native and no-effect boundaries remain strict; no global platform/import patch or broad package fallback.",
+      "scopes": [
+        "agent_tools/tests/test_cp117_fixture_context_portability.py",
+        "agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py",
+        "agent_tools/tests/test_windows_cp117_source_campaign.py",
+        "agent_tools/windows_cp117_source_campaign.py",
+        "agent_tools/windows_cp117_staged_fixture_retire.py",
+        "agent_tools/windows_cp117_lease.py",
+        "agent_tools/windows_msi_base_prepare.py",
+        "agent_tools/windows_msi_public_scenario.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/windows_source_custody.py",
+        "agent_tools/windows_cp117_bound_absence_completion.py",
+        "agent_tools/windows_fixture_credentials.py",
+        "agent_tools/windows_update_fixture_server.py",
+        "agent_tools/tests/fixtures/windows_cp117_recovery/short_socket_51538dad.source",
+        "agent_tools/tests/test_windows_cp117_secure_input_geometry_observe.py",
+        "agent_tools/tests/test_windows_cp117_windowless_edit_observe.py",
+        "agent_tools/tests/test_windows_cp117_secure_layout_observe.py",
+        "agent_tools/tests/test_windows_cp117_recovered_login.py",
+        "agent_tools/tests/fixtures/cp117_fixture_context_portability/context.before.source",
+        "agent_tools/tests/fixtures/cp117_fixture_context_portability/geometry-imports.before.fragment",
+        "agent_tools/tests/fixtures/cp117_fixture_context_portability/windowless-imports.before.fragment",
+        "agent_tools/tests/fixtures/cp117_fixture_context_portability/source-campaign.before.source",
+        "agent_tools/tests/fixtures/cp117_fixture_context_portability/provenance.json"
+      ],
+      "sourceSha256": [
+        "a1b0503ebbf2904a1799551913dcdb730451b3644f3652df1e562e203df6745a"
+      ]
+    },
+    "agent_tools/tests/fixtures/cp117_fixture_context_portability/context.before.source": {
+      "reason": "Exact complete original context bytes are authenticated and parsed only for the two named inert source-reader/remote-recipe definitions. The supplied namespace retains the actual current context filename and fixed two public source labels. Original unnecessary coordinator imports must refuse under the private capability recorder; full historical factory module initialization is not executed.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py",
+        "agent_tools/windows_cp117_bound_absence_completion.py",
+        "agent_tools/windows_fixture_credentials.py",
+        "agent_tools/windows_update_fixture_server.py"
+      ],
+      "sourceSha256": [
+        "6f8ce74ffd4a5d4b836579cfb13b4fea99e3661c345cc2e96d0e0100bf48fe49"
+      ]
+    },
+    "agent_tools/tests/fixtures/cp117_fixture_context_portability/source-campaign.before.source": {
+      "reason": "Exact complete original campaign module counterfactual executes with __package__ agent_tools under a private two-endpoint import refusal. Its finite complete original relative import set is explicit, including lease consumed before the first refusal. No historical action functions or native entry points execute; original source and authority pins remain unchanged.",
+      "scopes": [
+        "agent_tools/windows_cp117_source_campaign.py",
+        "agent_tools/windows_cp117_staged_fixture_retire.py",
+        "agent_tools/windows_cp117_lease.py",
+        "agent_tools/windows_msi_base_prepare.py",
+        "agent_tools/windows_msi_public_scenario.py",
+        "agent_tools/windows_update_fixture_stage.py"
+      ],
+      "sourceSha256": [
+        "54c5d259327e10f782bfb3d78e6f19b29528960e92213994d733b945f1cfddf4"
+      ]
+    },
+    "agent_tools/tests/test_windows_cp117_source_campaign.py": {
+      "reason": "The actual native ordering fixture loads only the complete held campaign source and one held retirement literal. Its private AST namespace omits exactly the two POSIX coordinator imports while preserving all unchanged definitions, source filenames, actual ordinary lease/base/public imports and closing custody; operational retirement/stage methods are never supplied.",
+      "scopes": [
+        "agent_tools/tests/test_windows_cp117_source_campaign.py",
+        "agent_tools/windows_cp117_source_campaign.py",
+        "agent_tools/windows_cp117_staged_fixture_retire.py",
+        "agent_tools/windows_cp117_lease.py",
+        "agent_tools/windows_msi_base_prepare.py",
+        "agent_tools/windows_msi_public_scenario.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/windows_source_custody.py"
+      ],
+      "sourceSha256": [
+        "2d61eba671ca9c0aad4aa5e430da54cd614fa5978e6466f55b12cc93c5e862a4",
+        "f2860ab5d71c3cdb96f365583fb376941b6ebb528ad2394f961046df27389be4"
+      ]
+    },
+    "agent_tools/tests/test_windows_python_fixture_io.py": {
+      "reason": "Finite fixture IO controller authenticates complete before/current test source bytes and executes only selected AST assignments, call expressions or the exact native-owner caller under explicit namespaces. Actual physical mkdir/binary reads, strict current byte-carrier packets and full current two-script source factories remain real; the CRT transformation is explicitly modeled and native Windows outcomes remain required. Whole historical test modules are never imported and original fragment/payload guards stay unchanged.",
+      "scopes": [
+        "agent_tools/tests/test_windows_vm_setup_phase.py",
+        "agent_tools/tests/test_windows_recent_fixture_failures.py",
+        "agent_tools/tests/test_windows_cp117_preprobe_identity.py",
+        "agent_tools/tests/test_windows_tertiary_guest_stage.py",
+        "agent_tools/tests/test_windows_cp117_base_source_refresh.py",
+        "agent_tools/windows_cp117_base_source_refresh.py",
+        "agent_tools/windows_tertiary_guest_stage.py",
+        "agent_tools/windows_tertiary_fixture_stage.py",
+        "agent_tools/tests/fixtures/windows_python_io/provenance.json",
+        "agent_tools/tests/fixtures/windows_python_io/test_windows_vm_setup_phase.py.before.source",
+        "agent_tools/tests/fixtures/windows_python_io/test_windows_recent_fixture_failures.py.before.source",
+        "agent_tools/tests/fixtures/windows_python_io/test_windows_cp117_preprobe_identity.py.before.source",
+        "agent_tools/tests/fixtures/windows_python_io/test_windows_tertiary_guest_stage.py.before.source"
+      ],
+      "sourceSha256": [
+        "bd00acf1464343d75706a8e851f732679868c0131bab38fd3601f0a9e6333704"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_python_io/test_windows_vm_setup_phase.py.before.source": {
+      "reason": "Exact complete original pushed9a test bytes are authenticated as an AST input, not executed/imported as a module. Only the controller-selected physical IO prefix, assignment/call or native-owner diagnostic method executes with explicit owned values and the listed actual carrier/factory inputs. This nonempty interpretation map preserves current-versus-original source custody; ordinary static imports/resources remain conservatively analyzed as well.",
+      "scopes": [
+        "agent_tools/tests/test_windows_python_fixture_io.py",
+        "agent_tools/tests/fixtures/windows_python_io/provenance.json",
+        "agent_tools/tests/test_windows_vm_setup_phase.py"
+      ],
+      "sourceSha256": [
+        "7cf2b17814ed31af50a7f56a31d62f26bdd82d628262068e5b9e050a88278d76"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_python_io/test_windows_recent_fixture_failures.py.before.source": {
+      "reason": "Exact complete original pushed9a test bytes are authenticated as an AST input, not executed/imported as a module. Only the controller-selected physical IO prefix, assignment/call or native-owner diagnostic method executes with explicit owned values and the listed actual carrier/factory inputs. This nonempty interpretation map preserves current-versus-original source custody; ordinary static imports/resources remain conservatively analyzed as well.",
+      "scopes": [
+        "agent_tools/tests/test_windows_python_fixture_io.py",
+        "agent_tools/tests/fixtures/windows_python_io/provenance.json",
+        "agent_tools/tests/test_windows_recent_fixture_failures.py"
+      ],
+      "sourceSha256": [
+        "599fe6037bd420a3bca7e482afcb3345d287218c2f42a853579ceaaa0abc453a"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_python_io/test_windows_cp117_preprobe_identity.py.before.source": {
+      "reason": "Exact complete original pushed9a test bytes are authenticated as an AST input, not executed/imported as a module. Only the controller-selected physical IO prefix, assignment/call or native-owner diagnostic method executes with explicit owned values and the listed actual carrier/factory inputs. This nonempty interpretation map preserves current-versus-original source custody; ordinary static imports/resources remain conservatively analyzed as well.",
+      "scopes": [
+        "agent_tools/tests/test_windows_python_fixture_io.py",
+        "agent_tools/tests/fixtures/windows_python_io/provenance.json",
+        "agent_tools/tests/test_windows_cp117_preprobe_identity.py",
+        "agent_tools/tests/test_windows_cp117_base_source_refresh.py",
+        "agent_tools/windows_cp117_base_source_refresh.py"
+      ],
+      "sourceSha256": [
+        "2f3ff64f8aa4a486fe3d775a2ce2e9d11906d87268f5ede458f59e74d15f57d7"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_python_io/test_windows_tertiary_guest_stage.py.before.source": {
+      "reason": "Exact complete original pushed9a test bytes are authenticated as an AST input, not executed/imported as a module. Only the controller-selected physical IO prefix, assignment/call or native-owner diagnostic method executes with explicit owned values and the listed actual carrier/factory inputs. This nonempty interpretation map preserves current-versus-original source custody; ordinary static imports/resources remain conservatively analyzed as well.",
+      "scopes": [
+        "agent_tools/tests/test_windows_python_fixture_io.py",
+        "agent_tools/tests/fixtures/windows_python_io/provenance.json",
+        "agent_tools/tests/test_windows_tertiary_guest_stage.py",
+        "agent_tools/windows_tertiary_guest_stage.py",
+        "agent_tools/windows_tertiary_fixture_stage.py",
+        "agent_tools/tests/test_windows_cp117_base_source_refresh.py",
+        "agent_tools/windows_cp117_base_source_refresh.py"
+      ],
+      "sourceSha256": [
+        "2c00bab4c6233170e3aae9a6ea3be8050de2793c142d21a6b7bd5205d14e7ed8"
+      ]
+    },
+    "agent_tools/tests/test_whole_observer_binary_fixture.py": {
+      "reason": "Exact test-only fixture ownership counterfactual compiles the SHA-bound preserved binary assignment or the single actual current WholeObserverTest assignment. Both invoke the unchanged strict observed_boot guard with physical inert image/overlay/proc files and a real installed executable; a journal-boundary sentinel prevents every native executable dispatch. The current initializer creates a fresh current-UID regular byte copy with held/named source generation checks, exclusive destination and32MiB bound. No VM/SSH, production source/ownership guard or historical pin changes.",
+      "scopes": [
+        "agent_tools/tests/test_whole_observer_binary_fixture.py",
+        "agent_tools/tests/test_windows_parallel_vm_launch.py",
+        "agent_tools/tests/fixtures/whole_observer_binary/fixture.before.fragment",
+        "agent_tools/tests/fixtures/whole_observer_binary/provenance.json"
+      ],
+      "sourceSha256": [
+        "e4bfc59fe742ec04b904eca87d1478c8916b68cd9c33edf23d4db069a04b050c"
+      ]
+    },
+    "agent_tools/tests/test_qemu_projection_birth_fixture.py": {
+      "reason": "Compile only the exact SHA-bound preserved native_process_projection function or current named fixture method. Its existing lock_class seam receives a private harmless real child holding actualsourceFD9, bounded READY/naturalQUIT/EOFreap and physicalprocfiles. The unchanged actual close_source comparesconstructorbirth withgeneratedstat; DarwinpositivebirthisexplicitLinuxmetadata model. No OS/platform/sourceguard/equalitypredicate is replaced, and no guest/SSH/QEMU/nativeacceptance is inferred.",
+      "scopes": [
+        "agent_tools/tests/test_qemu_projection_birth_fixture.py",
+        "agent_tools/tests/test_windows_parallel_vm_prepare.py",
+        "agent_tools/tests/fixtures/qemu_projection_birth/projection.before.fragment",
+        "agent_tools/tests/fixtures/qemu_projection_birth/provenance.json"
+      ],
+      "sourceSha256": [
+        "8bfdef6b978d49c64b660fe64b5b94ffef82e3a3454b0a135d456aee1f0b1090"
+      ]
     }
   },
   "nonPythonResources": {
@@ -1739,7 +2000,13 @@
     "agent_tools/tests/fixtures/windows_cp117_publisher_boundary/publisher_boundary.before.fragment": "86cbb8440a5dc0e34f5172db40428412cb7e4c7dcf6bff176db8ac4538f2974b",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-loss.source": "24001dcaed1e666438e18497abde4594b6f3121b28c339a569b11955da0d3a21",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-restored.source": "dc4ea223703ea8b16faa07d1b6d231d45b30d078f09e4e1e4954241a3be9efa6",
-    "scripts/testdata/macos-vm-resource-monitor-dispatch/stop-timeout.before.fragment": "995464bf10a441029a7e8124eaeb4832bbd8d92d875fc2f022adab8063c639b5"
+    "scripts/testdata/macos-vm-resource-monitor-dispatch/stop-timeout.before.fragment": "995464bf10a441029a7e8124eaeb4832bbd8d92d875fc2f022adab8063c639b5",
+    "agent_tools/tests/fixtures/windows_complete_program_transfer/decoder.before.fragment": "278b19f6cb5bdea5b30ea9699960ac209cd029432331bbf6718b98b6c9544a92",
+    "agent_tools/tests/fixtures/windows_complete_program_transfer/haderrors.before.fragment": "ae6e4dd8359acc4a8f1ed7d9fa405119694ce59ee50abb80509aad01d4f02629",
+    "agent_tools/tests/fixtures/cp117_fixture_context_portability/geometry-imports.before.fragment": "48cca7e905f2a806671694d51bf9f5dd7a66ff5ecfa63173b70c75891d6ea0ac",
+    "agent_tools/tests/fixtures/cp117_fixture_context_portability/windowless-imports.before.fragment": "f981b5c22f951cc236bf0fac120d1fb9c440cbc325cb48bc8328e51005bb146d",
+    "agent_tools/tests/fixtures/whole_observer_binary/fixture.before.fragment": "26c0f22608797c55fe2fbc54c617078dd9deb27646a868ece332771d68d70e4b",
+    "agent_tools/tests/fixtures/qemu_projection_birth/projection.before.fragment": "beab62becfbb8b2e9947243ba5d2ec7c848bb91998480e6f1ef21d2c7d7cbad6"
   },
   "schemaVersion": 1
 }

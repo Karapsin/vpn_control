@@ -3,10 +3,12 @@ import ast,base64,copy,json,unittest,tempfile,os,sys
 from pathlib import Path
 from unittest.mock import patch
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import diagnostic as historical_diagnostic
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_tests
 d=historical_diagnostic()
 from agent_tools import windows_cp117_recovered_owner_observe as owner
 from agent_tools.tests.test_windows_cp117_recovered_owner_observe import OwnerFactsTests
 
+@remote_posix_recipe_tests(owner.guest.recovery)
 class DiagnosticTests(HistoryCase):
     def value(self):
         return {'version':1,'correlationId':d.CORRELATION,'outcome':'blocked','stage':'process-generation','category':'OWNER_PROCESS_GENERATION','errorType':'RuntimeException','hresult':-2146233087,'observations':[{'pid':123,'sessionId':1,'osStart':'134356179626700513','cimStart':'134356179626700510','hasExited':False}],'facts':None,'details':'private measured mismatch'}
@@ -143,13 +145,14 @@ class ActualPowerShellBoundaryTests(HistoryCase):
     @unittest.skipUnless(os.name=='nt','actual Windows PowerShell boundary execution')
     def test_actual_whole_body_compiler_failure_original_opaque_new_retained(self):
         import subprocess
+        from agent_tools.tests.test_windows_cp117_base_source_refresh import _run_complete_windows_fixture
         def inert(value):
             # Throw at the actual compiler boundary; the rest of the real body
             # remains assembled but cannot execute native APIs or CIM queries.
             return value.replace(" Add-Type -TypeDefinition @'", " throw 'CP117_INERT_COMPILER_FAILURE'\n Add-Type -TypeDefinition @'",1)
-        old=subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command','-'],input=inert(owner.body()).encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10)
+        old=_run_complete_windows_fixture(inert(owner.body()).encode('utf-8',errors='strict'),timeout=10)
         self.assertEqual(old.returncode,1);self.assertEqual(json.loads(old.stdout),{'version':1,'code':'OWNER_UNKNOWN'})
-        fixed=subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command','-'],input=inert(d.body()).encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10)
+        fixed=_run_complete_windows_fixture(inert(d.body()).encode('utf-8',errors='strict'),timeout=10)
         self.assertEqual(fixed.returncode,0,fixed.stderr.decode(errors='replace'))
         answer=d.validate(json.loads(fixed.stdout));self.assertEqual(answer['stage'],'compiler')
         self.assertEqual(answer['outcome'],'blocked');self.assertIn('CP117_INERT_COMPILER_FAILURE',answer['details'])
@@ -220,6 +223,7 @@ class ActualPrecisionPredicateTests(HistoryCase):
         completed=subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command','-'],input=script.encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10)
         self.assertEqual(completed.returncode,0,completed.stderr.decode(errors='replace'));self.assertEqual(completed.stdout.decode().strip(),'PRECISION_CASES_PASS')
 
+@remote_posix_recipe_tests(owner.guest.recovery)
 class MissingSignalApiCompositionTests(HistoryCase):
     def test_actual_complete_generated_linux_fixture_without_windows_signal_apis(self):
         import signal
@@ -232,6 +236,7 @@ class MissingSignalApiCompositionTests(HistoryCase):
             self.assertTrue(all(name not in signal.__dict__ for name in ('setitimer','SIGALRM','ITIMER_REAL')))
 
 
+@unittest.skipUnless(os.name=='posix','actual POSIX nofollow/UID/single-link source custody fixture')
 class HistoricalSourceBindingTests(unittest.TestCase):
     """Public source-only controls; never invoke a native provider entry."""
     def test_exact_archive_and_one_byte_cleanup_refusal(self):

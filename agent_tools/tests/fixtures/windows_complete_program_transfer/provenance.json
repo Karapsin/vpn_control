@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "9a6d4b3cf4850750253af8339a12b9d7b425e5f1",
+  "nativeEvidence": "Preserved Windows job failure blocks 01, 44, 45 and 46. New exact-SHA Windows execution remains required.",
+  "decoderCause": "Automatic-input binding is a candidate until fresh unchanged-old and parameter-only-current executions retain complete streams.",
+  "localObservationModel": "The HadErrors namespace control supplies the exact recorded native false/zero/marker observation; it does not emulate PowerShell execution.",
+  "files": [
+    {
+      "path": "carrier.before.source",
+      "sha256": "1b5f2779fe8c0760c1767d5edbc0d11e6bf6b26e7032b2795136dd0fa36f7be9",
+      "bytes": 1418,
+      "sourcePath": "agent_tools/tests/test_windows_cp117_base_source_refresh.py",
+      "sourceSha256": "c323e4bbe42582403c2b601889cf6aaa95a2ed641c7ec58328af0c366bdd050d",
+      "firstLine": 812,
+      "lastLine": 830
+    },
+    {
+      "path": "decoder.before.fragment",
+      "sha256": "278b19f6cb5bdea5b30ea9699960ac209cd029432331bbf6718b98b6c9544a92",
+      "bytes": 1618,
+      "sourcePath": "agent_tools/tests/test_windows_cp117_c32_absence.py",
+      "sourceSha256": "3fcd7f441878198f7dfc771f58551651693a8b21ea566160e6e0a4065c9c3d7c",
+      "firstLine": 248,
+      "lastLine": 265
+    },
+    {
+      "path": "haderrors.before.fragment",
+      "sha256": "ae6e4dd8359acc4a8f1ed7d9fa405119694ce59ee50abb80509aad01d4f02629",
+      "bytes": 755,
+      "sourcePath": "agent_tools/tests/test_windows_secure_input_failure_execution.py",
+      "sourceSha256": "d6c2cd72f6e46e64e48ee3da49e0a8d540ba87c564bd44ce3497305999e64554",
+      "firstLine": 107,
+      "lastLine": 111
+    }
+  ]
+}

@@ -34,3 +34,20 @@ visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
 /agent_tools/tests/fixtures/setup_msi_phase/*.ps1 -text
 
 agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
+
+# These Windows causal readers authenticate raw specimen and manifest bytes.
+/agent_tools/tests/fixtures/windows_ordinary_https/prior-direct-tls.cs -text
+/agent_tools/tests/fixtures/windows_ordinary_https/before-total-deadline.cs -text
+/agent_tools/tests/fixtures/windows_secondary_cleanup/provenance.json -text
+/agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_file_binding.ps1 -text
+/agent_tools/tests/fixtures/windows_secondary_cleanup/current_file_binding.ps1 -text
+/agent_tools/tests/fixtures/windows_secondary_cleanup/reader_handles.ps1 -text
+/agent_tools/tests/fixtures/windows_secondary_cleanup/delete_native.cs -text
+/agent_tools/tests/fixtures/windows_fixture_checkout_bytes/attributes.before -text
+/agent_tools/tests/fixtures/windows_complete_program_transfer/provenance.json -text
+/agent_tools/tests/fixtures/windows_complete_program_transfer/decoder.before.fragment -text
+/agent_tools/tests/fixtures/windows_complete_program_transfer/haderrors.before.fragment -text
+/agent_tools/tests/fixtures/cp117_fixture_context_portability/geometry-imports.before.fragment -text
+/agent_tools/tests/fixtures/cp117_fixture_context_portability/windowless-imports.before.fragment -text
+/agent_tools/tests/fixtures/whole_observer_binary/fixture.before.fragment -text
+/agent_tools/tests/fixtures/qemu_projection_birth/projection.before.fragment -text

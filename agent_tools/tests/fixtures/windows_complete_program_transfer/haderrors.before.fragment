@@ -1,0 +1,5 @@
+    def test_managed_powershell_caught_throw_keeps_haderrors_after_success(self):
+        with tempfile.TemporaryDirectory()as directory:
+            script=r"""$ErrorActionPreference='Stop';$p=[Management.Automation.PowerShell]::Create();try{$p.AddScript("try{throw 'expected-negative'}catch{};'ACL_CAUSAL_PASS'")|Out-Null;$output=$p.Invoke();[Console]::Out.WriteLine((@{hadErrors=$p.HadErrors;errors=$p.Streams.Error.Count;output=@($output|ForEach-Object {$_.ToString()})}|ConvertTo-Json -Compress))}finally{$p.Dispose()}"""
+            result=self.invoke(directory,script);self.assertEqual(result.returncode,0,result.stderr)
+            value=json.loads(result.stdout);self.assertEqual(value,{'hadErrors':True,'errors':0,'output':['ACL_CAUSAL_PASS']})

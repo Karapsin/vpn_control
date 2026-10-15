@@ -1,0 +1,4 @@
+if os.name!='nt':
+ from agent_tools import windows_cp117_secure_input_geometry_observe as m
+ from agent_tools import windows_cp117_secure_input_observe as original
+ from agent_tools.tests import test_windows_cp117_secure_layout_observe as layout

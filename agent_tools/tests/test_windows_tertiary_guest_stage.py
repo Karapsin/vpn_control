@@ -534,7 +534,10 @@ class NativeTargetOwnerTests(unittest.TestCase):
     def test_actual_windows_creation_time_owner_and_inherited_custody(self):
         import subprocess,json
         ps=stage.target_owner_probe_script()
-        completed=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',ps],capture_output=True,timeout=30,check=True)
+        completed=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',ps],capture_output=True,timeout=30)
+        self.assertEqual(completed.returncode,0,
+                         'native target-owner probe failed; stdout='+repr(completed.stdout)+
+                         '; stderr='+repr(completed.stderr))
         result=json.loads(completed.stdout.decode('utf-8-sig'))
         self.assertTrue(result['explicitOwnerMatchesCurrentUser'])
         self.assertTrue(result['inheritedDaclUnchanged'])
@@ -1205,7 +1208,11 @@ class FixtureProvisionFlowTests(unittest.TestCase):
         # Parse the actual complete scripts in memory, without evaluating their AST.
         scripts=base64.b64encode(json.dumps([source,body]).encode()).decode()
         parser="$ErrorActionPreference='Stop';$s=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+scripts+"'))|ConvertFrom-Json;$counts=@();foreach($text in $s){$tokens=$null;$errors=$null;$null=[Management.Automation.Language.Parser]::ParseInput($text,[ref]$tokens,[ref]$errors);$counts+=@($errors.Count);if($errors.Count){throw ($errors|Out-String)}};$counts|ConvertTo-Json -Compress"
-        checked=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',stage.fixture_powershell_carrier(parser)],capture_output=True,timeout=20,check=True)
+        # The complete two-script parser is test data larger than an inline
+        # Windows command. Keep every byte and authenticate the saved transfer.
+        from .test_windows_cp117_base_source_refresh import _run_complete_windows_fixture
+        checked=_run_complete_windows_fixture(parser.encode('utf-8',errors='strict'),timeout=20)
+        self.assertEqual(checked.returncode,0,checked.stderr)
         self.assertEqual(json.loads(checked.stdout.decode('utf-8-sig')),[0,0])
 
 

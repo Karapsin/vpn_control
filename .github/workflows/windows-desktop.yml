@@ -27,6 +27,14 @@ on:
       - "agent_tools/tests/test_affected_agent_tests.py"
       - ".gitattributes"
       - "agent_tools/tests/test_historical_fixture_checkout_bytes.py"
+      - "agent_tools/tests/test_windows_fixture_checkout_bytes.py"
+      - "agent_tools/tests/test_windows_python_fixture_io.py"
+      - "agent_tools/tests/test_windows_powershell_fixture_execution.py"
+      - "agent_tools/tests/test_cp117_fixture_context_portability.py"
+      - "agent_tools/tests/fixtures/windows_fixture_checkout_bytes/**"
+      - "agent_tools/tests/fixtures/windows_python_io/**"
+      - "agent_tools/tests/fixtures/windows_complete_program_transfer/**"
+      - "agent_tools/tests/fixtures/cp117_fixture_context_portability/**"
       - "agent_tools/tests/native_wire_event_evidence.py"
       - "agent_tools/tests/test_native_wire_event_evidence.py"
       - "agent_tools/tests/fixtures/native_wire_event_evidence/**"
@@ -232,6 +240,10 @@ jobs:
           agent_tools.tests.test_windows_cp117_c32_absence.C32AbsenceTests.test_windows_result_decoder_accepts_only_utf8_with_optional_bom
           agent_tools.tests.test_windows_cp117_source_campaign.SourceCampaignTests.test_actual_powershell_task_runtime_census_precedes_uninstall
           agent_tools.tests.test_windows_recent_fixture_failures
+          agent_tools.tests.test_windows_fixture_checkout_bytes
+          agent_tools.tests.test_windows_python_fixture_io
+          agent_tools.tests.test_windows_powershell_fixture_execution
+          agent_tools.tests.test_cp117_fixture_context_portability
           agent_tools.tests.test_windows_vm_setup_phase
           agent_tools.tests.test_windows_vm_guest.FixedPowerShellTests
           agent_tools.tests.test_windows_standard_token

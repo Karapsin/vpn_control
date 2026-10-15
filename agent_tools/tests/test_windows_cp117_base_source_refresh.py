@@ -814,7 +814,10 @@ def _complete_windows_fixture_carrier(public):
  # Only this unit-test carrier has a 262144-byte ceiling for the complete
  # worst-case log-projection fixtures; production's 65536 cap is unchanged.
  if type(public)is not bytes or not 0<len(public)<=262144:raise ValueError('test-source-bound')
- tree=ast.parse(Path(refresh.__file__).read_bytes())
+ # The POSIX coordinator module may be unavailable in a native Windows test.
+ # Read only the actual current source; no imported stand-in supplies authority.
+ source=Path(__file__).resolve().parents[1]/'windows_cp117_base_source_refresh.py'
+ tree=ast.parse(source.read_bytes())
  method=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='repair_program')
  expression=next(n.value for n in method.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='loader'for t in n.targets))
  loader=eval(compile(ast.Expression(expression),'actual-fixed-test-loader','eval'),{'hashlib':hashlib,'str':str,'len':len,'__builtins__':{}},{'public':public})

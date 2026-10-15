@@ -1,0 +1,13 @@
+{
+  "authority": "Preserved test projection only; production ReadLock/process birth/equality guards remain unchanged.",
+  "fragmentPath": "projection.before.fragment",
+  "fragmentSelection": "Exact original complete QemuPreparationTest.native_process_projection method with original indentation/finalLF.",
+  "fragmentSha256": "beab62becfbb8b2e9947243ba5d2ec7c848bb91998480e6f1ef21d2c7d7cbad6",
+  "headSha": "9a6d4b3cf4850750253af8339a12b9d7b425e5f1",
+  "originalFailureLogSha256": "ff7ce564788c2423d1fceadc714100dd0ea2d4243b028b5c6cd29cff1268cb85",
+  "originalProducerPath": "agent_tools/windows_parallel_vm_prepare.py",
+  "originalProducerSha256": "4ce0aec013698919c762f291897b906252e6371e7fb50a14790e74e312ff3050",
+  "originalTestPath": "agent_tools/tests/test_windows_parallel_vm_prepare.py",
+  "originalTestSha256": "f1f0287effa870e832103bc304c430425c461862fd352ddf9d67181c72637005",
+  "schemaVersion": 1
+}

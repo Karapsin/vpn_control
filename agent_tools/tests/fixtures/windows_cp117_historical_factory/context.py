@@ -4,7 +4,10 @@ Only testcase lifetime references change. Production source and digest guards
 remain unchanged. This fixture makes no current/native admission claim.
 """
 from contextlib import ExitStack, contextmanager
+from functools import wraps
 import hashlib
+import os
+import posixpath
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -130,10 +133,9 @@ def inert_repository_source_reads():
     source/private-record reads retain the production nofollow/generation guard.
     """
     from agent_tools import windows_cp117_bound_absence_completion as binding
-    from agent_tools import windows_fixture_credentials, windows_update_fixture_server
     historical=Path('/Users/karapsin_de/Nextcloud/projects/vpn_control/agent_tools')
-    actual={historical/Path(module.__file__).name:Path(module.__file__).resolve()
-            for module in (windows_fixture_credentials,windows_update_fixture_server)}
+    names=('windows_fixture_credentials.py','windows_update_fixture_server.py')
+    actual={historical/name:Path(__file__).resolve().parents[3]/name for name in names}
     original=binding._read_bound_file
     def read(path,private=False,retain_bytes=False):
         supplied=Path(path)
@@ -141,6 +143,49 @@ def inert_repository_source_reads():
         # Private inputs, intents, arbitrary source names and native code never map.
         if not private and supplied in actual:
             supplied=actual[supplied]
+            if os.name=='nt':
+                # These two public source labels are data for sealed emission,
+                # not imports of their POSIX coordinator implementations.
+                from agent_tools import source_module_loader
+                with source_module_loader._bootstrap_source(supplied) as (raw,guard):
+                    if not 0<len(raw)<=1048576:raise ValueError('source-record')
+                    before=supplied.stat()
+                    generation=lambda value:[value.st_dev,value.st_ino,value.st_mode,value.st_uid,
+                        value.st_gid,value.st_nlink,value.st_size,value.st_mtime_ns,value.st_ctime_ns]
+                    pin={'sha256':hashlib.sha256(raw).hexdigest(),'generation':generation(before)}
+                    guard()
+                    if generation(supplied.stat())!=pin['generation']:raise ValueError('source-generation')
+                    return (pin,raw) if retain_bytes else pin
         return original(supplied,private=private,retain_bytes=retain_bytes)
     with patch.object(binding,'_read_bound_file',side_effect=read):
         yield
+
+
+@contextmanager
+def remote_posix_recipe_context(recovery):
+    """Interpret only an inert remote recipe's paths using its POSIX grammar.
+
+    The actual recovery functions, socket length checks and source bytes stay
+    intact. Local IO, flags and platform capabilities delegate to the real OS;
+    no stdlib/global platform value changes and this grants no native custody.
+    """
+    original=recovery.os
+    class RemotePathView:
+        path=posixpath
+        def __getattr__(self,name):return getattr(original,name)
+    with patch.object(recovery,'os',RemotePathView()):
+        yield
+
+
+def remote_posix_recipe_tests(recovery):
+    """Scope the explicit recipe-data context to actual inert test methods."""
+    def decorate(cls):
+        for name,method in tuple(vars(cls).items()):
+            if name.startswith('test_') and callable(method):
+                @wraps(method)
+                def run(self,*args,__method=method,**kwargs):
+                    with remote_posix_recipe_context(recovery):
+                        return __method(self,*args,**kwargs)
+                setattr(cls,name,run)
+        return cls
+    return decorate

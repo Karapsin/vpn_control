@@ -270,7 +270,7 @@ class ExistingImageTransfer(unittest.TestCase):
         # preserved transfer statements and size predicate with a real file and
         # real stdout pipe; no QMP command or new capture is part of this control.
         script=('import os,sys,json,gzip,hashlib,base64\n'
-                'fd=os.open(sys.argv[1],os.O_RDONLY);s=os.fstat(fd)\n'
+                'fd=os.open(sys.argv[1],os.O_RDONLY|getattr(os,"O_BINARY",0));s=os.fstat(fd)\n'
                 'try:\n raw=os.read(fd,s.st_size+1)\nfinally:os.close(fd)\n'+
                 source('image.'+VARIANT+'.fragment.py'))
         return subprocess.run([sys.executable,'-B','-c',script,str(path)],

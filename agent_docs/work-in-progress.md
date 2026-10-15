@@ -286,6 +286,79 @@ copy the one missing helper. Original action equality and source guards remain
 intact; checks now also cover preparation in both shard jobs. Fresh focused GREEN,
 final managed validation and all five exact-SHA workflows follow this checkpoint.
 
+The next delivery, `9a6d4b3cf4850750253af8339a12b9d7b425e5f1`, passed
+all seventeen managed prepush checks, including 6,761 pooled tests with 187
+platform skips. Android, Linux and macOS packaging passed on that SHA. Windows
+then failed its tooling fixture step with twelve failures and 41 errors; Fast
+Checks' first shard failed five whole-observer cases at `boot-binary-trust`;
+the second shard failed five preparation cases at `source-lock-birth-changed`.
+Neither the local receipt nor the three successful workflows qualifies this SHA
+as a completed delivery. Complete logs, exact pushed beforeimages and the
+53-block Windows diagnosis remain in
+`.runtime/mcp-ci-9a6d4b3c-windows-full-v1/`; the Linux five-block log is in
+`.runtime/mcp-ci-9a6d4b3cf4850750253af8339a12b9d7b425e5f1-fast-main-failure-v1/`.
+
+The second Fast Checks shard's completed log records 3,562 tests with one
+failure, four errors and 115 platform skips. All five cases hit the same earlier
+source-lock birth guard. The fixture invokes the actual read-lock constructor,
+which observes a positive Linux process birth, then writes the synthetic value
+123 into its private process table. The unchanged production closing guard
+correctly refuses that inconsistent identity; Darwin's unavailable process birth
+had masked the fixture mismatch. The fix retains the observed positive value and
+uses the existing synthetic value only when the original constructor has no birth.
+Its preserved-source regression must exercise actual closing checks over owned
+physical source/process-table files, with an explicit Linux metadata model on
+Darwin and the original five genuine Linux cases still required in CI. Evidence
+and exact pushed beforeimages are in
+`.runtime/mcp-ci-9a6d4b3cf4850750253af8339a12b9d7b425e5f1-fast-shard2-once-v1/`.
+
+Managed prepush v17 was deliberately stopped before this further edit. Exactly
+one guarded signal went to its owned runner; the SDK, runner, worker, descendants
+and fixture closed, the same pinned lease inode is free, and source closing stayed
+`a85806323c5a781f7c6bfe404c163e7b163ccbe10f1a83699f861c1071c0d12e`.
+Its 1,222 partial observations comprise 1,219 successes and three skips; there is
+no completed unittest aggregate or passing receipt. Evidence remains in
+`prepush-final-v17/cancellation/`. Fresh final checks are required after the fix.
+
+The next test-only repair preserves production sources and historical authority
+pins. Exact Git attributes protect authenticated C#, PowerShell and provenance
+bytes. Historical public source labels use held source without importing POSIX
+coordinators merely to obtain filenames; remote Linux recipe fixtures use a
+scoped POSIX path view, with physical POSIX custody cases explicitly marked by
+capability. Portable helpers retain their actual source. Other corrections use
+binary fixture reads, disjoint case directories, strict UTF-8 bytes and the
+existing authenticated complete-program carrier with unchanged bounds. The Linux
+whole-observer fixture supplies a fresh owned executable copy under the existing
+current-UID trust policy, with source generation and copy closing checks.
+
+Finite preserved-source regressions cover checkout conversion, source context,
+Python fixture IO, complete PowerShell transfer and owned executable preparation.
+All five groups reproduced authentic-source RED and passed the same positives
+GREEN on both Python 3.12.15 and 3.14.3, with unchanged source and closed owned
+children/streams. The checkout routine passed eight controls; source context ten;
+owned binary six; Python IO five; PowerShell seven with one honest native skip.
+Original consumer batches also passed. Evidence remains in each failure packet's
+focused or wave1 directory and `focused-final-v17-freeze-v2/final-closing.json`.
+Selection first refused a missing original campaign-test digest; preserving that
+failure and adding only the exact pushed baseline digest passed the same gate.
+Original applicable native cases and fresh final managed prepush remain required.
+The native decoder parameter collision remains a candidate until the old/current
+Windows pair runs.
+The native target-owner failure has no retained stderr and its cause remains
+unknown; the exact original factory and assertions remain, with both streams
+included in the status assertion. No synthetic result qualifies that native case.
+All four new Windows regression modules are explicitly enrolled in package CI.
+
+A private read-only CI collector separately confused dynamic run titles with
+workflow names. Its original incomplete result is preserved. A corrected private
+collector binds workflow identity to the exact pushed manifest, definition IDs,
+paths, attempt and SHA, and treats skipped optional jobs as metadata rather than
+missing logs. The old collector was identity-checked, stopped once and reaped;
+all 49 owned CLI readers closed before edits. This diagnostic repair changes no
+production MCP authority or CI outcome. Original failed runs remain failed.
+Previously closed VMs and connections remain closed, and the user's identified
+SSH client remains excluded from cleanup. No product-native or visual work resumes.
+
 The current repair plan and copyable prompt are:
 
 - `.runtime/mcp-repair-handoff-2026-10-15/plan.md`

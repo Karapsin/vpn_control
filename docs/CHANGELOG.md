@@ -5,6 +5,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Retain observed process births in MCP QEMU preparation fixtures.
+
+## 2.2.12 - 2026-10-15
+
 - Preserve source generations across Windows core-policy capture APIs.
 - Reserve bounded CI time for affected agent tests and all following validation.
 - Make native MCP fixture clocks and timeout dispatch deterministic.
@@ -14,6 +18,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Make agent CI reproducible with isolated shards and bounded evidence.
 - Keep sharded agent CI clean under repository whitespace checks.
 - Update agent CI fixtures for isolated workflow jobs.
+- Make MCP test fixtures reproducible across Windows and Linux hosts.
 
 ## 2.2.11 - 2026-10-15
 

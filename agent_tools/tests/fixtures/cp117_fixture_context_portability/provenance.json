@@ -1,0 +1,38 @@
+{
+  "description": "Exact original context and conditional-import beforeimages for inert CP117 fixture portability. Tests prove private source-only imports and remote POSIX recipe data only; native Windows and original hosted scenarios remain required.",
+  "originalCommit": "9a6d4b3cf4850750253af8339a12b9d7b425e5f1",
+  "originalEvidencePacket": ".runtime/mcp-ci-9a6d4b3c-windows-full-v1/",
+  "originalContext": "agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py",
+  "originalGeometryTest": "agent_tools/tests/test_windows_cp117_secure_input_geometry_observe.py",
+  "originalGeometrySha256": "acab5730821b0acb97372f2af0bf644739a7b555e74eac4a206aea2e72670ca1",
+  "originalWindowlessTest": "agent_tools/tests/test_windows_cp117_windowless_edit_observe.py",
+  "originalWindowlessSha256": "d8f4b4167f0c068a38d2767a8e077a174a5a8457cd739ddaaa28c7f18d9ea72c",
+  "recoverySource": "agent_tools/tests/fixtures/windows_cp117_recovery/short_socket_51538dad.source",
+  "recoverySourceSha256": "51538dad4c2fa6591384081f5a0aabacada1e752c1afd6a6ed50ebed9596663e",
+  "expectedRecipeSha256": "1c3cacf023b3b0906dec8538d5b97b4d4e8e242e13dc485a2f79b116c70a6fe3",
+  "expectedRecipeConstruction": "Independent fixed literal QEMU/TPM argv, identity, paths, memory and ports from the frozen recipe; exact literal BASELINE retained. No operational code was executed to construct this artifact.",
+  "resources": {
+    "context.before.source": {
+      "bytes": 6903,
+      "sha256": "6f8ce74ffd4a5d4b836579cfb13b4fea99e3661c345cc2e96d0e0100bf48fe49"
+    },
+    "geometry-imports.before.fragment": {
+      "bytes": 246,
+      "sha256": "48cca7e905f2a806671694d51bf9f5dd7a66ff5ecfa63173b70c75891d6ea0ac"
+    },
+    "windowless-imports.before.fragment": {
+      "bytes": 240,
+      "sha256": "f981b5c22f951cc236bf0fac120d1fb9c440cbc325cb48bc8328e51005bb146d"
+    },
+    "source-campaign.before.source": {
+      "bytes": 45087,
+      "sha256": "54c5d259327e10f782bfb3d78e6f19b29528960e92213994d733b945f1cfddf4"
+    }
+  },
+  "scope": "Private builtins refusal of exactly two coordinator importfrom endpoints; exact frozen pure recipe with explicit ntpath input and fixture-only posixpath view. No os.name/platform/proc spoof, global builtins changes, dummy fcntl or native effects.",
+  "sourceCampaignSource": "agent_tools/windows_cp117_source_campaign.py",
+  "sourceCampaignSourceSha256": "54c5d259327e10f782bfb3d78e6f19b29528960e92213994d733b945f1cfddf4",
+  "retirementLiteralSource": "agent_tools/windows_cp117_staged_fixture_retire.py",
+  "retirementLiteralSourceSha256": "4e67acdeb33a9cd6f50b7c507efe48af06ad271d777e5d5af99f094c4a0370d0",
+  "campaignScope": "Execute exact unchanged full source beforeimage under private refusal of only its two relative POSIX coordinator importfrom endpoints; compare the same positive assertion with the actual held source-only fixture helper. No dummy fcntl or global imports/platform changes."
+}

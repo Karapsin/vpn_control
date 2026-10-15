@@ -1,0 +1,6 @@
+def cleanup_fixture(name):
+ raw_manifest=(CLEANUP_FIXTURES/'provenance.json').read_bytes()
+ if hashlib.sha256(raw_manifest).hexdigest()!=CLEANUP_PROVENANCE_SHA256:raise ValueError('cleanup-fixture-provenance')
+ expected=json.loads(raw_manifest)['files'][name];raw=(CLEANUP_FIXTURES/name).read_bytes()
+ if len(raw)!=expected['bytes']or hashlib.sha256(raw).hexdigest()!=expected['sha256']:raise ValueError('cleanup-fixture-source')
+ return raw.decode('utf-8')

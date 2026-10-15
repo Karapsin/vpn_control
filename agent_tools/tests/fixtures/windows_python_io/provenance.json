@@ -1,0 +1,40 @@
+{
+  "failureIds": [
+    "03",
+    "33",
+    "34",
+    "40",
+    "41",
+    "42",
+    "43"
+  ],
+  "originalFailureEvidence": ".runtime/mcp-ci-9a6d4b3c-windows-full-v1/failure-blocks",
+  "scope": "Immutable authentic original test sources. Routine controls execute only finite caller IO/directory/byte-carrier boundaries, never native product operations. CRT read model is explicitly a projection; real Windows native cases remain required. Failure40 cause remains unknown pending retained native streams; no fixed-native claim.",
+  "sourceCommit": "9a6d4b3cf4850750253af8339a12b9d7b425e5f1",
+  "sources": [
+    {
+      "bytes": 6275,
+      "file": "test_windows_vm_setup_phase.py.before.source",
+      "sha256": "7cf2b17814ed31af50a7f56a31d62f26bdd82d628262068e5b9e050a88278d76",
+      "source": "agent_tools/tests/test_windows_vm_setup_phase.py"
+    },
+    {
+      "bytes": 33032,
+      "file": "test_windows_recent_fixture_failures.py.before.source",
+      "sha256": "599fe6037bd420a3bca7e482afcb3345d287218c2f42a853579ceaaa0abc453a",
+      "source": "agent_tools/tests/test_windows_recent_fixture_failures.py"
+    },
+    {
+      "bytes": 6659,
+      "file": "test_windows_cp117_preprobe_identity.py.before.source",
+      "sha256": "2f3ff64f8aa4a486fe3d775a2ce2e9d11906d87268f5ede458f59e74d15f57d7",
+      "source": "agent_tools/tests/test_windows_cp117_preprobe_identity.py"
+    },
+    {
+      "bytes": 107393,
+      "file": "test_windows_tertiary_guest_stage.py.before.source",
+      "sha256": "2c00bab4c6233170e3aae9a6ea3be8050de2793c142d21a6b7bd5205d14e7ed8",
+      "source": "agent_tools/tests/test_windows_tertiary_guest_stage.py"
+    }
+  ]
+}

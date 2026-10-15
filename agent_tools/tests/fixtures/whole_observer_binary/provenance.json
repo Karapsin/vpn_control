@@ -1,0 +1,13 @@
+{
+  "authority": "Frozen test setup fragment only; no production authority or historical pin is replaced.",
+  "failureLogSha256": "ffdaf766c338bdd3dcf9b0c884e802d46698e807b67e3446b86b170ef0920740",
+  "fragmentPath": "fixture.before.fragment",
+  "fragmentSelection": "Exact original WholeObserverTest.setUp binary assignment, including indentation and finalLF.",
+  "fragmentSha256": "26c0f22608797c55fe2fbc54c617078dd9deb27646a868ece332771d68d70e4b",
+  "headSha": "9a6d4b3cf4850750253af8339a12b9d7b425e5f1",
+  "originalProducerPath": "agent_tools/windows_parallel_vm_launch.py",
+  "originalProducerSha256": "90bc0f5e220faedca4fa66afe48bfbe32db0b452e7378608485967451ba2bf53",
+  "originalTestPath": "agent_tools/tests/test_windows_parallel_vm_launch.py",
+  "originalTestSha256": "bccde1f485c81b12c1493d3362918e6d52ff8cb782034e3e73e1e075ad09bc59",
+  "schemaVersion": 1
+}

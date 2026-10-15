@@ -1,0 +1,18 @@
+    def native_process_projection(self, lock_class=prepare.ReadLock):
+        # macOS lacks Linux /proc. Only the host process-table boundary is
+        # projected; real qemu-io source opens/write exclusion and the actual
+        # parser/copy/hash/source guards/census inode reads execute unchanged.
+        original_init, original_close = lock_class.__init__, lock_class.close
+        def start(lock, binary, source, evidence):
+            original_init(lock, binary, source, evidence)
+            directory = self.proc / str(lock.child.pid)
+            (directory / "fd").mkdir(parents=True)
+            (directory / "stat").write_text(str(lock.child.pid) + " (qemu-io) " +
+                " ".join(["S"] + ["0"] * 18 + ["123"]))
+            (directory / "comm").write_text("qemu-io")
+            (directory / "cmdline").write_bytes(os.fsencode(binary) + b"\0")
+            (directory / "fd" / "9").symlink_to(source)
+        def close(lock):
+            original_close(lock)
+            shutil.rmtree(self.proc / str(lock.child.pid))
+        return patch.object(lock_class, "__init__", start), patch.object(lock_class, "close", close)

@@ -7,10 +7,59 @@ import json
 import os
 import shutil
 import subprocess
+import ast
+import types
+from contextlib import ExitStack
 from pathlib import Path
 from unittest import mock
 
-from agent_tools import windows_cp117_source_campaign as campaign
+def _source_only_campaign():
+    """Compile held emitter source without importing POSIX coordinator peers."""
+    from agent_tools import source_module_loader
+    root=Path(__file__).resolve().parents[1]
+    with ExitStack() as stack:
+        source,guard=stack.enter_context(source_module_loader._bootstrap_source(root/'windows_cp117_source_campaign.py'))
+        retired,retired_guard=stack.enter_context(source_module_loader._bootstrap_source(root/'windows_cp117_staged_fixture_retire.py'))
+        literals={}
+        for node in ast.parse(retired).body:
+            if isinstance(node,ast.Assign) and all(isinstance(target,ast.Name) for target in node.targets):
+                try:value=ast.literal_eval(node.value)
+                except (ValueError,TypeError):continue
+                for target in node.targets:literals[target.id]=value
+        tree=ast.parse(source);body=[];omitted=[]
+        for node in tree.body:
+            if isinstance(node,ast.ImportFrom) and node.level==1 and node.module is None:
+                names=[alias.name for alias in node.names]
+                if names in (['retirement'],['stage']):
+                    # Actual import aliases name their modules, not local aliases.
+                    raise ValueError('campaign_source_import_shape')
+                if names==['windows_cp117_staged_fixture_retire'] or names==['windows_update_fixture_stage']:
+                    omitted.extend(names);continue
+                if names not in (['windows_cp117_lease'],['windows_msi_base_prepare'],['windows_msi_public_scenario']):
+                    raise ValueError('campaign_source_import_shape')
+            if isinstance(node,(ast.Assign,ast.AnnAssign)):
+                calls=[item for item in ast.walk(node.value) if isinstance(item,ast.Call)]
+                if any(ast.unparse(call.func) not in ('re.compile','frozenset') for call in calls):
+                    raise ValueError('campaign_source_constant_effect')
+            elif not isinstance(node,(ast.Import,ast.ImportFrom,ast.FunctionDef,ast.ClassDef)):
+                if not isinstance(node,ast.Expr) or not isinstance(node.value,ast.Constant) or not isinstance(node.value.value,str):
+                    raise ValueError('campaign_source_top_level_effect')
+            body.append(node)
+        if omitted!=['windows_cp117_staged_fixture_retire','windows_update_fixture_stage']:
+            raise ValueError('campaign_source_import_shape')
+        namespace={'__name__':'agent_tools._inert_campaign_fixture','__package__':'agent_tools',
+                   '__file__':str(root/'windows_cp117_source_campaign.py'),
+                   'retirement':types.SimpleNamespace(**literals)}
+        guard();retired_guard()
+        exec(compile(ast.Module(body=body,type_ignores=tree.type_ignores),namespace['__file__'],'exec',dont_inherit=True),namespace)
+        guard();retired_guard()
+        return types.SimpleNamespace(**namespace)
+
+
+if os.name=='nt':
+    campaign=_source_only_campaign()
+else:
+    from agent_tools import windows_cp117_source_campaign as campaign
 
 
 LEASE = "f18df6cb-2c43-4265-b1ba-4bbadf9b708a"
@@ -44,6 +93,7 @@ class SourceCampaignTests(unittest.TestCase):
         (directory / "receipt.json").write_text('{"leaseId":"e59a7483-4e38-4e7b-b8fa-0d8b2356916a","removed":true,"stageCorrelationId":"e848bed2-5bea-47bc-a85a-6cf17b1fcc6a"}')
         (directory / "receipt.json").chmod(0o600)
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_green_requires_fresh_absence_and_returns_explicit_new_base_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); self._retired_root(root)
@@ -70,6 +120,7 @@ class SourceCampaignTests(unittest.TestCase):
         self.assertEqual("2.1.19", result["sourceBaseInstallInputs"]["expectedCurrentVersion"])
         begin.assert_not_called()
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_red_matching_version_never_substitutes_for_fresh_source_absence(self):
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(campaign, "_retirement_terminal", return_value=True), \
@@ -80,6 +131,7 @@ class SourceCampaignTests(unittest.TestCase):
         self.assertEqual({"state": "blocked", "reason": "retirement-not-terminal"}, {"state": result["state"], "reason": result["reason"]})
         readiness.assert_not_called()
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_red_old_source_pair_cannot_open_d32_campaign(self):
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(campaign, "_retirement_terminal", return_value=True), \
@@ -90,6 +142,7 @@ class SourceCampaignTests(unittest.TestCase):
             result = campaign.preflight(Path(directory), {"host": "archlinux", "leaseId": LEASE})
         self.assertEqual("new-source-pair", result["reason"])
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_red_closed_lease_requires_exact_old_identity_and_remote_confirmation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); self._retired_root(root)
@@ -107,6 +160,7 @@ class SourceCampaignTests(unittest.TestCase):
                 with self.assertRaises(campaign.WindowsCp117SourceCampaignError):
                     campaign._request({"host": "archlinux", "leaseId": lease_id})
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_transfer_admission_is_fixed_to_d32_and_reuses_only_the_generic_transfer_engine(self):
         inputs = {"host": "archlinux", "correlationId": LEASE, "sourceSha": campaign._SOURCE,
                   "fixtureReceiptArtifactId": campaign._RECEIPT, "baseMsiArtifactId": campaign._BASE,
@@ -236,6 +290,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
             self.assertEqual('unknown',campaign.parser(Path(directory),{'host':'archlinux','leaseId':LEASE})['state'])
         run.assert_not_called()
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_start_requires_transfer_handoff_before_any_campaign_reservation(self):
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(campaign, "preflight", return_value={"state": "ready"}), \
@@ -246,6 +301,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
         self.assertEqual("unknown", result["state"])
         reserve.assert_not_called()
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_red_real_historical_base_reservation_blocks_new_source_before_guest_effect(self):
         """A real base reservation file must remain intact and block preflight."""
         with tempfile.TemporaryDirectory() as directory:
@@ -257,6 +313,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
             self.assertEqual("historical-base-unresolved", reason)
             self.assertTrue(campaign.base._intent_path(root, campaign._HISTORICAL_BASE).exists())
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_reservation_diagnose_is_local_only_and_never_promotes_c32(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); campaign.base._reserve(root,{"request":{"correlationId":campaign._HISTORICAL_BASE}})
@@ -266,12 +323,14 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
         self.assertEqual("absent",seen["newIntent"])
         self.assertEqual("present",seen["historical"])
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_historical_closure_diagnostic_reports_version_only_after_absence(self):
         corr='45e4514a-c629-4f3b-99bc-aad599640d29'; request={'host':'archlinux','correlationId':corr,'sourceSha':'a'*40,'fixtureReceiptArtifactId':'sha256-'+'a'*64,'baseMsiArtifactId':'sha256-'+'b'*64,'targetMsiArtifactId':'sha256-'+'c'*64,'expectedCurrentVersion':'2.1.17'}; intent={'request':request,'commandSha256':'d'*64}; census={'state':'observed','correlationId':corr,'mutation':'none','remoteStage':'absent','leaf':'absent','task':'absent','result':'absent','correlationPowerShell':'absent','installer':'absent','product':'single','installedVersion':'2.1.19'}
         closed={'identity':campaign.base._campaign_identity(request,DESC),'lastOutcome':'unknown-cleaned'}
         with tempfile.TemporaryDirectory() as d, mock.patch.object(campaign.base,'_unknown_recovery_profile',return_value=(request,'d'*64)),mock.patch.object(campaign.base,'_private_intent',return_value=intent),mock.patch.object(campaign.base,'_unknown_marker_valid',return_value=True),mock.patch.object(campaign.lease,'_locked',return_value=(Path(d),0)),mock.patch.object(campaign.lease,'_active',return_value=None),mock.patch.object(campaign.lease,'_closed',return_value=closed),mock.patch.object(campaign.os,'close'),mock.patch.object(campaign.base,'_unknown_cleanup_observe',side_effect=[census,census]):
             self.assertEqual('installed-version',campaign._historical_closure_phase(Path(d),object(),object(),DESC,corr))
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_reservation_diagnostic_uses_authoritative_archive_recognition(self):
         corr='45e4514a-c629-4f3b-99bc-aad599640d29'
         with tempfile.TemporaryDirectory() as d:
@@ -282,6 +341,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
             self.assertNotIn('blockers',result)
             diagnosis.assert_not_called()
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_red_reserved_source_run_reports_legacy_job_without_generic_action_observer(self):
         """A post-reservation legacy refusal is a pre-effect fact, not QGA unknown."""
         pair = self._pair(sourceFingerprint="d" * 64, baseCliSha256="a" * 64,
@@ -313,6 +373,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
         generic.assert_not_called()
         task_census.assert_not_called()
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_green_source_diagnosis_stops_before_legacy_attestation_or_lease_claim(self):
         pair = self._pair(sourceFingerprint="d" * 64, baseCliSha256="a" * 64,
                           baseAppJarSha256="b" * 64, baseHelperSha256="c" * 64,
@@ -342,6 +403,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
         attest.assert_not_called()
         begin.assert_not_called()
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_red_preflight_blocks_legacy_task_census_before_reserving_source_intent(self):
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(campaign, "_retirement_terminal", return_value=True), \
@@ -357,6 +419,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
                          {"state": result["state"], "reason": result["reason"]})
         history.assert_not_called()
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_legacy_task_diagnosis_reports_only_fixed_bounded_categories(self):
         raw = '{"state":"observed","inventory":{"version":1,"legacy":0,"c32":1,"recovery":1,"retirement":0,"other":0,"activeInstallerCount":0,"identities":[],"unclassifiedTaskCount":0}}'
         with tempfile.TemporaryDirectory() as directory, \
@@ -373,6 +436,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
         self.assertIn("VpnControlCp117GuestAgentRecovery-c2c0e5c9-77aa-4bd2-91a1-fb7540aa9f58", script)
         self.assertIn("VpnControlCp117RetirementRecovery-f72ecafe-1890-4e17-a954-1d045dfa0ea3", script)
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_red_legacy_task_diagnosis_rejects_bool_or_unbounded_counts(self):
         for changed in ({"legacy": True}, {"other": 1001}):
             with self.subTest(changed=changed), tempfile.TemporaryDirectory() as directory:
@@ -384,6 +448,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
                      mock.patch.object(campaign.base, "_remote", return_value=raw):
                     self.assertIsNone(campaign._legacy_task_inventory(Path(directory), DESC))
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_diagnose_includes_task_counts_only_for_a_valid_legacy_task_observation(self):
         counts = {"legacy": 0, "c32": 1, "recovery": 1, "retirement": 0,
                   "other": 0, "activeInstallerCount": 0, "identities": [], "unclassifiedTaskCount": 0}
@@ -393,6 +458,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
         self.assertEqual("observed", observed["legacyTaskState"])
         self.assertEqual({key: value for key, value in counts.items() if key not in {"identities", "unclassifiedTaskCount"}}, observed["legacyTasks"])
 
+    @unittest.skipUnless(os.name=='posix','actual POSIX coordinator receipt/lease/source custody fixture')
     def test_legacy_task_inventory_sanitizes_only_known_prefix_uuid_identities(self):
         identity = {"purpose": "fixture-server", "correlationId": "11111111-1111-4111-8111-111111111111", "taskState": "ready"}
         inventory = {"version": 1, "legacy": 0, "c32": 1, "recovery": 1, "retirement": 0,
@@ -410,6 +476,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
             self.assertIsNone(campaign._legacy_task_inventory(Path(directory), DESC))
 
 
+@unittest.skipUnless(os.name=='posix','actual POSIX source-archive reservation custody fixture')
 class Source67ArchiveReservationTests(unittest.TestCase):
     def test_red_c32_archive_recognition_uses_source67_lease_while_diagnose_uses_prospective_lease(self):
         """Keep the real lease-dependent disagreement visible to the base owner."""

@@ -109,7 +109,7 @@ class QemuPreparationTest(unittest.TestCase):
             directory = self.proc / str(lock.child.pid)
             (directory / "fd").mkdir(parents=True)
             (directory / "stat").write_text(str(lock.child.pid) + " (qemu-io) " +
-                " ".join(["S"] + ["0"] * 18 + ["123"]))
+                " ".join(["S"] + ["0"] * 18 + [str(lock.birth if lock.birth is not None else 123)]))
             (directory / "comm").write_text("qemu-io")
             (directory / "cmdline").write_bytes(os.fsencode(binary) + b"\0")
             (directory / "fd" / "9").symlink_to(source)

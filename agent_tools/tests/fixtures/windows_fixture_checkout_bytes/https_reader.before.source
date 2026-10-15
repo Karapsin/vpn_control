@@ -1,0 +1,7 @@
+def specimen(name):
+    provenance=json.loads((FIXTURES/'provenance.json').read_text())
+    raw=(FIXTURES/name).read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=provenance['files'][name]['sha256']:
+        raise AssertionError('public specimen changed')
+    return raw.decode()
+

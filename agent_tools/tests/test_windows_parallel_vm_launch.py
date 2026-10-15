@@ -30,6 +30,43 @@ def controller_boot():
 from agent_tools import windows_parallel_vm_launch as launch
 
 
+def _owned_observer_binary(root, installed):
+    """Copy held installed bytes into this fixture's current-UID trust scope."""
+    installed = Path(installed).resolve(strict=True)
+    binary = root / 'owned-qemu-img-reader'
+    source_fd = os.open(installed, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        source_pin = launch.inventory.generation(os.fstat(source_fd))
+        if (not stat.S_ISREG(source_pin[2]) or not 0 < source_pin[6] <= 33554432
+                or source_pin[2] & 0o022 or not os.access(installed, os.X_OK)
+                or source_pin != launch.inventory.generation(installed.lstat())):
+            raise ValueError('fixture-reader-source')
+        target_fd = os.open(binary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o500)
+        with os.fdopen(target_fd, 'wb') as output:
+            os.fchmod(output.fileno(), 0o500)
+            copied = 0
+            while True:
+                chunk = os.read(source_fd, 65536)
+                if not chunk:
+                    break
+                copied += len(chunk)
+                if copied > 33554432:
+                    raise ValueError('fixture-reader-bound')
+                output.write(chunk)
+            output.flush();os.fsync(output.fileno())
+            target_pin = launch.inventory.generation(os.fstat(output.fileno()))
+            if (source_pin != launch.inventory.generation(os.fstat(source_fd))
+                    or source_pin != launch.inventory.generation(installed.lstat())
+                    or copied != source_pin[6]
+                    or target_pin != launch.inventory.generation(binary.lstat())
+                    or target_pin[3] != os.getuid() or target_pin[5] != 1
+                    or stat.S_IMODE(target_pin[2]) != 0o500):
+                raise ValueError('fixture-reader-copy-generation')
+    finally:
+        os.close(source_fd)
+    return binary
+
+
 def gpt(virtual=8 * 1024 ** 2, duplicate_esp=False):
     raw = bytearray(launch.PREFIX_BYTES)
     raw[510:512] = b'\x55\xaa'
@@ -290,7 +327,12 @@ class WholeObserverTest(unittest.TestCase):
         parent=self.root/'template';parent.mkdir(mode=0o750)
         self.image=parent/'template.qcow2';raw=self.root/'source.raw';raw.write_bytes(gpt(96*1024**3))
         with raw.open('r+b') as file:file.truncate(96*1024**3)
-        self.binary=Path(shutil.which('qemu-img')).resolve()
+        installed_binary=Path(shutil.which('qemu-img')).resolve()
+        self.binary=_owned_observer_binary(self.root,installed_binary)
+        print(json.dumps({'wholeObserverBinaryFixture':{
+            'installedGeneration':launch.inventory.generation(installed_binary.lstat()),
+            'readerGeneration':launch.inventory.generation(self.binary.lstat()),
+            'trustedUid':os.getuid()}},sort_keys=True),flush=True)
         subprocess.run([str(self.binary),'convert','-f','raw','-O','qcow2',str(raw),str(self.image)],
                        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True,timeout=10)
         self.image.chmod(0o440)

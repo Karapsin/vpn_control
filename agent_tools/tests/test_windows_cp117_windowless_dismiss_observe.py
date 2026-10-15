@@ -5,7 +5,9 @@ from agent_tools import windows_cp117_windowless_dismiss_observe as m
 from agent_tools.tests import test_windows_cp117_secure_input_geometry_observe as geo
 from agent_tools.tests import test_windows_cp117_secure_layout_observe as layout
 from agent_tools.tests import test_windows_cp117_windowless_edit_observe as windowlessfixture
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_tests
 
+@remote_posix_recipe_tests(m.login.guest.recovery)
 class DismissTests(HistoricalGzipTestCase):
  def value(self):return {'state':'observed','facts':geo.CensusTests().answer()}
  def record(self):
@@ -15,7 +17,7 @@ class DismissTests(HistoricalGzipTestCase):
   for slot,(corr,nonce)in m.SLOTS.items():
    source,sha=m.slot_program(record,slot);self.assertEqual(sha,m.SLOT_HASHES[slot][0]);tree=ast.parse(source)
    ns={}
-   with patch('signal.signal'),patch('signal.setitimer'):exec(compile(ast.Module(body=tree.body[:-1],type_ignores=[]),'slot-definitions','exec'),ns)
+   with patch('signal.signal'),patch('signal.setitimer',create=True):exec(compile(ast.Module(body=tree.body[:-1],type_ignores=[]),'slot-definitions','exec'),ns)
    self.assertEqual(ns['NONCE'],nonce);self.assertEqual(ns['D'],corr);self.assertEqual(ns['CHILD_SHA'],m.SLOT_HASHES[slot][1]);self.assertNotIn('send-key',source)
   with self.assertRaises(ValueError):m.slot_program(record,'arbitrary')
  def flow(self,slot,stale=False):
@@ -25,6 +27,7 @@ class DismissTests(HistoricalGzipTestCase):
    def terminal(self,nonce=None):
     raw=('CP117-READ '+(nonce or m.SLOTS[slot][1])+' '+m.SLOT_HASHES[slot][0]+' 456\n'+json.dumps(a)).encode();return {'exited':True,'exitcode':0,'out-data':base64.b64encode(raw).decode()}
   source=textwrap.dedent(inspect.getsource(layout.CompleteGeneratedFlowTests.execute_flow)).replace('secure.program(record,secure.NONCE)','reader.program(record)')
+  source=source.replace("patch('signal.setitimer')","patch('signal.setitimer',create=True)")
   reader=types.SimpleNamespace(program=lambda r:m.slot_program(r,slot));secure=types.SimpleNamespace(login=m.login,CORRELATION=corr,NONCE=nonce)
   ns={'ast':ast,'base64':base64,'json':json,'patch':patch,'secure':secure,'reader':reader};exec(source,ns);return ns['execute_flow'](Adapter(),stale,False)
  def test_each_actual_generated_slot_one_submit_same_pid_and_stale_exhaustion(self):
@@ -65,16 +68,19 @@ class DismissTests(HistoricalGzipTestCase):
    with self.assertRaises(ValueError):m.login._guarded_wake(b'fixture',6,lambda:calls.append('verify'),lambda:calls.append('fence'),lambda:calls.append('key'),lambda:None)
   self.assertEqual(calls,[])
 
+@remote_posix_recipe_tests(m.login.guest.recovery)
 class ActualStartWrapperTests(HistoricalGzipTestCase):
  def run_start(self,failed_before=False,poisoned=False):
   import tempfile,os,gzip
   from pathlib import Path
   from contextlib import ExitStack
   r=m.login.guest.recovery;authority=r.authority;records={};native=[];streams=[];frame=b'P6\n1 1\n255\nabc'
+  from agent_tools import windows_msi_base_prepare as current_base
+  fixture_base=authority.closure.base if authority.closure.base is not None else current_base
   def bound(path):return {'sha256':hashlib.sha256(Path(path).read_bytes()).hexdigest(),'generation':[1]}
   recovery_pin=bound(r.__file__);original=json.dumps({'request':{'sources':{'recovery':recovery_pin}},'authority':[],'result':{'qemu':{'pid':1}}}).encode()
   class Capture:
-   def __init__(self,root,leaf):self.path=Path(root)/'.runtime/parity-evidence'/leaf;self.fd=os.open(root,os.O_RDONLY);self.leaf=leaf
+   def __init__(self,root,leaf):self.path=Path(root)/'.runtime/parity-evidence'/leaf;self.fd=os.open(Path(root)/('.fixture-anchor-'+leaf),os.O_CREAT|os.O_EXCL|os.O_RDWR,0o600);self.leaf=leaf
    def close(self):os.close(self.fd)
    def create(self,name,raw):records[(self.leaf,name)]=raw;return {'sha256':hashlib.sha256(raw).hexdigest()}
   def stream(argv,c,diagnostic,nonce,sha,qemu):
@@ -86,6 +92,7 @@ class ActualStartWrapperTests(HistoricalGzipTestCase):
    return types.SimpleNamespace(returncode=0,stdout=json.dumps(v).encode(),stderr=b'')
   with tempfile.TemporaryDirectory()as directory,ExitStack()as stack:
    root=Path(directory);(root/'.runtime/parity-evidence').mkdir(parents=True)
+   stack.enter_context(patch.object(authority.closure,'base',fixture_base))
    mocks=[(m,'_check_factories',lambda:None),(m,'AuthorityCapture',Capture),(r,'_local_read',lambda *a:original),(authority,'_read_bound_file',bound),(authority,'_source_pins',lambda *a:{}),(authority,'_outer_authority',lambda *a:{}),(authority,'_verify_outer',lambda *a:None),(authority.closure.base,'_descriptor',lambda *a:(object(),types.SimpleNamespace(fixture_transfer_root=m.login.TRANSFER),None)),(authority.closure.base.ssh_transport,'build_ssh_argv',lambda *a,**k:['inert']),(m.login.guest,'_stream',stream),(m,'slot_program',lambda record,slot:('print("fixed-read")','a'*64)),(m,'wake_program',lambda record,admission:'print("fixed-one-wake")'),(m.subprocess,'run',run),(m.login,'_frame_create',lambda capture,raw:{'sha256':hashlib.sha256(raw).hexdigest()})]
    for target,name,value in mocks:stack.enter_context(patch.object(target,name,value))
    result=m.start(root)
@@ -95,6 +102,7 @@ class ActualStartWrapperTests(HistoricalGzipTestCase):
  def test_actual_start_unknown_before_has_no_effect_fence_or_wake(self):
   result,native,streams,records=self.run_start(failed_before=True);self.assertEqual(result['state'],'unknown');self.assertEqual(native,[]);self.assertEqual(len(streams),1);self.assertFalse(any(name=='wake-attempt.json'for leaf,name in records))
 
+@remote_posix_recipe_tests(m.login.guest.recovery)
 class MissingPreFrameCausalTests(ActualStartWrapperTests):
  def test_actual_observed_wake_missing_unbound_preframe_is_not_accepted(self):
   result,native,streams,records=self.run_start(poisoned=True);self.assertEqual(result['state'],'unknown');self.assertEqual(native,['wake']);self.assertEqual(len(streams),2)
@@ -104,6 +112,7 @@ def valid_authorities(qemu):
  before={'path':m.login.TRANSFER+'/cp117-login-screen-'+m.CORRELATION+'/frame.ppm','generation':g,'sha256':sha};record={'state':'consumed','diagnosticId':m.CORRELATION,'qemu':qemu,'frameSha256':sha};raw=json.dumps(record,sort_keys=True).encode();ag=dict(g,st_ino=5678,st_size=len(raw))
  return {'beforeFrameAuthority':before,'wakeAuthority':{'generation':ag,'sha256':hashlib.sha256(raw).hexdigest(),'record':record}}
 
+@remote_posix_recipe_tests(m.login.guest.recovery)
 class AuthoritySchemaTests(HistoricalGzipTestCase):
  def test_missing_poisoned_preframe_or_attempt_never_accepts(self):
   qemu={'pid':1};value=valid_authorities(qemu);self.assertEqual(m._frame_authority(value,qemu),value['beforeFrameAuthority'])
@@ -114,6 +123,7 @@ class AuthoritySchemaTests(HistoricalGzipTestCase):
   source=m.wake_program(DismissTests().record(),{'observedAtNs':123})
   self.assertIn("wake_authority.update({'generation':fp(os.fstat(f))",source);self.assertIn("'dismiss-preframe-drift'",source);self.assertIn("hashlib.sha256(ab).hexdigest()==wake_authority['sha256']",source);self.assertIn("'wakeAuthority':wake_authority",source)
 
+@remote_posix_recipe_tests(m.login.guest.recovery)
 class WindowlessAdmissionTests(HistoricalGzipTestCase):
  def test_actual_after_parser_required_and_diagnostic_flags_never_input_admission(self):
   calls=[]

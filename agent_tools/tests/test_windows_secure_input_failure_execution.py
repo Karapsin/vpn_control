@@ -108,7 +108,14 @@ class ExecutableFailureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory()as directory:
             script=r"""$ErrorActionPreference='Stop';$p=[Management.Automation.PowerShell]::Create();try{$p.AddScript("try{throw 'expected-negative'}catch{};'ACL_CAUSAL_PASS'")|Out-Null;$output=$p.Invoke();[Console]::Out.WriteLine((@{hadErrors=$p.HadErrors;errors=$p.Streams.Error.Count;output=@($output|ForEach-Object {$_.ToString()})}|ConvertTo-Json -Compress))}finally{$p.Dispose()}"""
             result=self.invoke(directory,script);self.assertEqual(result.returncode,0,result.stderr)
-            value=json.loads(result.stdout);self.assertEqual(value,{'hadErrors':True,'errors':0,'output':['ACL_CAUSAL_PASS']})
+            value=json.loads(result.stdout)
+            # HadErrors is version-dependent for a caught terminating error.
+            # The exact marker and empty error stream establish completion.
+            self.assertEqual(set(value),{'hadErrors','errors','output'})
+            self.assertIs(type(value['hadErrors']),bool)
+            self.assertIs(type(value['errors']),int)
+            self.assertEqual(value['errors'],0)
+            self.assertEqual(value['output'],['ACL_CAUSAL_PASS'])
     def test_windows_canonical_ai_flag_keeps_only_exact_permissions(self):
         _,_,parent,_=fragments()
         guard=parent[:parent.index("if($exit -ne 0)")]

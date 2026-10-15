@@ -3,7 +3,9 @@ from pathlib import Path
 from unittest.mock import patch
 from agent_tools import windows_cp117_recovered_login as login
 from agent_tools.windows_diagnostic_authority_capture import AuthorityCapture
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_tests
 
+@remote_posix_recipe_tests(login.guest.recovery)
 class ScreenTests(unittest.TestCase):
     diagnostic='bb6c3716-2f3a-4dba-a7ea-a46078475969'
     def record(self):
@@ -27,6 +29,7 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(login.validate_ppm(self.ppm()),(2,1))
         for raw in (b'P3\n2 1\n255\n'+b'\0'*6,b'P6\n4096 4096\n255\n',self.ppm()[:-1],self.ppm()+b'x'):
             with self.assertRaises(ValueError):login.validate_ppm(raw)
+    @unittest.skipUnless(os.name=='posix','actual POSIX AuthorityCapture ownership/mode/fsync fixture')
     def test_capture_private_create_only_and_durable(self):
         with tempfile.TemporaryDirectory()as d:
             root=Path(d).resolve();leaf=root/'.runtime/parity-evidence/screen';leaf.mkdir(parents=True,mode=0o700)
@@ -38,6 +41,7 @@ class ScreenTests(unittest.TestCase):
                 s=os.lstat(leaf/'frame.ppm');self.assertEqual(stat.S_IMODE(s.st_mode),0o600);self.assertEqual(s.st_nlink,1)
                 with self.assertRaises(FileExistsError):login._frame_create(capture,self.ppm())
             finally:capture.close()
+    @unittest.skipUnless(os.name=='posix','actual POSIX symlink/FIFO AuthorityCapture custody fixture')
     def test_existing_symlink_or_fifo_not_opened(self):
         for kind in('symlink','fifo'):
             with tempfile.TemporaryDirectory()as d:

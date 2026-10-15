@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Exact failed attributes and unchanged strict raw-byte reader functions for physical Git checkout causal controls. No native admission or historical pin refresh.",
+  "sources": [
+    {
+      "file": "attributes.before",
+      "bytes": 1826,
+      "sha256": "24292b5225a15661aa7fcbac6f2d3f5735f19059b7f1b8a5b35aad6021f06645",
+      "sourcePath": ".gitattributes",
+      "sourceBytes": 1826,
+      "sourceSha256": "24292b5225a15661aa7fcbac6f2d3f5735f19059b7f1b8a5b35aad6021f06645",
+      "sourceCommit": "9a6d4b3cf4850750253af8339a12b9d7b425e5f1",
+      "sourceKind": "complete file"
+    },
+    {
+      "file": "https_reader.before.source",
+      "bytes": 283,
+      "sha256": "68c97624a654cf24d18264ff1b6ee19ca77348faeb5c430c1eeb687405116f32",
+      "sourcePath": "agent_tools/tests/test_windows_ordinary_https.py",
+      "sourceBytes": 8941,
+      "sourceSha256": "81587335a05a0720a163be2f7c7f06e738c4d703d39c168fdba46e8dd68ca331",
+      "sourceCommit": "9a6d4b3cf4850750253af8339a12b9d7b425e5f1",
+      "sourceKind": "exact standalone function segment; never the surrounding module"
+    },
+    {
+      "file": "cleanup_reader.before.source",
+      "bytes": 458,
+      "sha256": "17f32cd53627ba387912bc7e730ca6bd854bc7e2fdfe6827b1782bf43d7be4c8",
+      "sourcePath": "agent_tools/tests/test_windows_secondary_ordinary_read.py",
+      "sourceBytes": 59889,
+      "sourceSha256": "105e19a11647a8d136a5d32c9ed121bfef5928e7e325173a2295e36094cc0a25",
+      "sourceCommit": "9a6d4b3cf4850750253af8339a12b9d7b425e5f1",
+      "sourceKind": "exact standalone function segment; never the surrounding module"
+    }
+  ],
+  "failureRunId": 38789779865,
+  "failureJobId": 116611035437,
+  "failureBlocks": [
+    39,
+    50,
+    51,
+    52,
+    53
+  ],
+  "scope": "Only fresh owned local Git checkouts and inert authenticated fixture bytes; no SSH, network, product, installer or native lifecycle effects."
+}

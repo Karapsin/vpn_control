@@ -67,7 +67,9 @@ class SetupPhaseTests(unittest.TestCase):
             with self.subTest(filename=filename):
                 raw=(folder/filename).read_bytes()
                 self.assertEqual(provenance[filename.split('.')[0]+'Sha256'],hashlib.sha256(raw).hexdigest())
-                root=self.root/filename;root.mkdir()
+                # setUp already owns before.ps1 as a script file. Each parent
+                # control gets a disjoint directory without adopting that file.
+                root=self.root/('parent-case-'+filename);root.mkdir()
                 for role,path in self.scripts.items():(root/(role+'.ps1')).write_bytes(Path(path).read_bytes())
                 (root/'harness.ps1').write_bytes((self.folder/'native_harness.ps1').read_bytes())
                 runner=root/'parent.ps1'

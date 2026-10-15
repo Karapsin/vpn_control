@@ -7,7 +7,9 @@ b=historical_installed()
 from agent_tools import windows_cp117_recovered_owner_observe as owner
 from agent_tools.tests.test_windows_cp117_recovered_owner_observe import OwnerFactsTests
 from agent_tools.tests.test_windows_cp117_recovered_owner_diagnostic import ActualStreamTests
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_tests
 
+@remote_posix_recipe_tests(owner.guest.recovery)
 class InstalledTests(HistoryCase):
     def value(self):
         package={name:b.PAIR_EXPECTED[expected]for name,expected in (('cliSha256','baseCliSha256'),('jarSha256','baseAppJarSha256'),('helperSha256','baseHelperSha256'),('runtimeSha256','baseRuntimeSha256'))}
@@ -116,6 +118,7 @@ class ActualFileReaderExecutionTests(HistoryCase):
     @unittest.skipUnless(os.name=='nt','actual Windows held-file and runtime reader')
     def test_actual_file_hash_identity_runtime_and_missing_entry(self):
         import subprocess,zipfile,hashlib
+        from agent_tools.tests.test_windows_cp117_base_source_refresh import _run_complete_windows_fixture
         with tempfile.TemporaryDirectory()as directory:
             path=Path(directory)/'public.bin';path.write_bytes(b'CP117_PUBLIC_INERT')
             jar=Path(directory)/'public.jar'
@@ -126,7 +129,7 @@ class ActualFileReaderExecutionTests(HistoryCase):
             script="$ErrorActionPreference='Stop';Add-Type -AssemblyName System.IO.Compression;Add-Type -TypeDefinition @'\n"+b.FILE_CS+"\n'@ -ReferencedAssemblies @('System','System.Core','System.IO.Compression');"
             script+="$a=[Cp117InstalledFile]::Read("+literal(path)+");$z=[Cp117InstalledFile]::Read("+literal(path)+");if($a[0] -cne '"+hashlib.sha256(path.read_bytes()).hexdigest()+"' -or $a[1] -cne $z[1]){throw 'FILE_CASE'};"
             script+="if([Cp117InstalledFile]::Runtime("+literal(jar)+") -cne '"+hashlib.sha256(b'CP117_PUBLIC_RUNTIME').hexdigest()+"'){throw 'RUNTIME_CASE'};$failed=$false;try{[Cp117InstalledFile]::Runtime("+literal(missing)+")|Out-Null}catch{$failed=$true};if(!$failed){throw 'MISSING_ACCEPTED'};'INSTALLED_FILE_CASES_PASS'"
-            result=subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command','-'],input=script.encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15)
+            result=_run_complete_windows_fixture(script.encode('utf-8',errors='strict'),timeout=15)
             self.assertEqual(result.returncode,0,result.stderr.decode(errors='replace'));self.assertEqual(result.stdout.decode().strip(),'INSTALLED_FILE_CASES_PASS')
 
 @unittest.skipIf(os.name=='nt','POSIX protected local transport capture')

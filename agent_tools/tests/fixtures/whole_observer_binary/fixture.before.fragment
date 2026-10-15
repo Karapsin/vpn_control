@@ -1,0 +1,1 @@
+        self.binary=Path(shutil.which('qemu-img')).resolve()

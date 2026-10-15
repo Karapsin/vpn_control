@@ -251,16 +251,17 @@ $old='@OLD@';$fixed='@FIXED@'
             self.skipTest("requires Windows PowerShell")
         fixed = absence._result_decode_powershell()
         old = "$result=[Text.Encoding]::UTF8.GetString($bytes)|ConvertFrom-Json -ErrorAction Stop"
-        script = r'''function Classify([byte[]]$input,[string]$decoder){$bytes=$input;try{Invoke-Expression $decoder;[string]$result.value}catch{'rejected'}}
+        script = r'''function Classify([byte[]]$candidate,[string]$decoder){$bytes=$candidate;try{Invoke-Expression $decoder;[string]$result.value}catch{'rejected'}}
 $old='@OLD@';$fixed='@FIXED@';$text=[Text.Encoding]::UTF8.GetBytes('{"value":"ok"}');$bom=[byte[]](0xEF,0xBB,0xBF)+$text;$utf16=[Text.Encoding]::Unicode.GetBytes('{"value":"ok"}');$malformed=[byte[]](0xC3,0x28)
-[Console]::Out.WriteLine(('old-bom='+(Classify -input $bom -decoder $old)))
-[Console]::Out.WriteLine(('fixed-bom='+(Classify -input $bom -decoder $fixed)))
-[Console]::Out.WriteLine(('fixed-plain='+(Classify -input $text -decoder $fixed)))
-[Console]::Out.WriteLine(('fixed-malformed='+(Classify -input $malformed -decoder $fixed)))
-[Console]::Out.WriteLine(('fixed-utf16='+(Classify -input $utf16 -decoder $fixed)))
+[Console]::Out.WriteLine(('old-bom='+(Classify -candidate $bom -decoder $old)))
+[Console]::Out.WriteLine(('fixed-bom='+(Classify -candidate $bom -decoder $fixed)))
+[Console]::Out.WriteLine(('fixed-plain='+(Classify -candidate $text -decoder $fixed)))
+[Console]::Out.WriteLine(('fixed-malformed='+(Classify -candidate $malformed -decoder $fixed)))
+[Console]::Out.WriteLine(('fixed-utf16='+(Classify -candidate $utf16 -decoder $fixed)))
 '''.replace("@OLD@", old.replace("'", "''")).replace("@FIXED@", fixed.replace("'", "''"))
         result = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-Command", script],
-                                capture_output=True, text=True, check=True, timeout=15)
+                                capture_output=True, text=True, check=False, timeout=15)
+        self.assertEqual(result.returncode, 0, {"stdout": result.stdout, "stderr": result.stderr})
         self.assertEqual(["old-bom=rejected", "fixed-bom=ok", "fixed-plain=ok",
                           "fixed-malformed=rejected", "fixed-utf16=rejected"], result.stdout.splitlines())
 

@@ -3,10 +3,9 @@ import ast,base64,gzip,re,hashlib,inspect,json,os,shutil,subprocess,tempfile,tex
 from pathlib import Path
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[2]
-if os.name!='nt':
- from agent_tools import windows_cp117_windowless_edit_observe as m
- from agent_tools import windows_cp117_secure_input_observe as original
- from agent_tools.tests import test_windows_cp117_secure_layout_observe as layout
+from agent_tools import windows_cp117_windowless_edit_observe as m
+from agent_tools import windows_cp117_secure_input_observe as original
+from agent_tools.tests import test_windows_cp117_secure_layout_observe as layout
 
 def native_source():
  tree=ast.parse((ROOT/'agent_tools/windows_cp117_windowless_edit_observe.py').read_text())
