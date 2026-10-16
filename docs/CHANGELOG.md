@@ -7,6 +7,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Make MCP PowerShell checks reproducible across native module layouts.
 - Make MCP SSH readiness fixtures reproducible and keep dependency selection complete.
+- Match PowerShell provider encoding and retain native MCP failure inputs.
 
 ## 2.2.13 - 2026-10-16
 

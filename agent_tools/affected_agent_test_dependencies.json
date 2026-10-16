@@ -3118,10 +3118,12 @@
         "agent_tools/tests/fixtures/windows_powershell_environment.py",
         "agent_tools/tests/fixtures/windows_manifest_parser/native-v3.before.ps1",
         "agent_tools/tests/fixtures/windows_manifest_parser/Utility.literal.before.psd1",
-        "agent_tools/tests/fixtures/windows_powershell_environment/native_module_g.before.ps1"
+        "agent_tools/tests/fixtures/windows_powershell_environment/native_module_g.before.ps1",
+        "agent_tools/tests/fixtures/windows_powershell_environment/native_module_i.before.ps1"
       ],
       "sourceSha256": [
-        "dbc512f209f90acd8204e21c5d1fc4cdd179dad8aa1e5f40f00bc7899d1ea495"
+        "dbc512f209f90acd8204e21c5d1fc4cdd179dad8aa1e5f40f00bc7899d1ea495",
+        "6dcc7d4c785f0257fbd5f18c58fee3461557dc713980a74f0800ea9c9ffe7dda"
       ]
     },
     "agent_tools/tests/test_windows_msi_listener_close_order.py": {
@@ -3330,7 +3332,9 @@
         "agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.before.fragment",
         "agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.provenance.json",
         "agent_tools/tests/fixtures/windows_powershell_environment/native_module_g.before.ps1",
-        "agent_tools/tests/fixtures/windows_powershell_environment/native_g_document.before.fragment"
+        "agent_tools/tests/fixtures/windows_powershell_environment/native_g_document.before.fragment",
+        "agent_tools/tests/fixtures/windows_powershell_environment/native_module_i.before.ps1",
+        "agent_tools/tests/fixtures/windows_powershell_environment/native_provider_custody.ps1"
       ],
       "sourceSha256": [
         "00a217e4dd7163003a5fd9d0142d5f843642b71b20a800464d29bbf873d24cb7",
@@ -3338,7 +3342,8 @@
         "fb7e1ec4134fece1793f70a9687a336dedd739f40fd4a703751344e51e44dd88",
         "ec9d3306e1cd3811991a33588b38a17a8fb11bf57dc57c63a9fcc9f6a4625d6a",
         "19ca9f2452119d2a2ff8b282415f4b7b5163ab451582ca55afee9cffcc74345a",
-        "5789b38b80c90e00f889563df07b9e24b3af169f73ca95225469ccc2293b94f9"
+        "5789b38b80c90e00f889563df07b9e24b3af169f73ca95225469ccc2293b94f9",
+        "c1e6acb0e937ed97c5ab8192c6d3e906cb7e41cdf73c16ee8b14e125b5e01ba6"
       ]
     },
     "agent_tools/tests/test_windows_powershell_fixture_execution.py": {

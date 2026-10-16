@@ -1,0 +1,28 @@
+{
+  "extraction": "Entire unchanged top-level NATIVE_MODULE_SCRIPT string literal from the authentic Python AST, encoded UTF-8 without a BOM. The routine adds only the same UTF-8 BOM carrier used by the original native invocation. No source transformation.",
+  "failure": {
+    "actualProviderInputAttribution": "UNKNOWN: original result did not retain offending PSD1/PSM1 raw bytes or identify which decode call failed",
+    "attempt": 1,
+    "completeJobLogBytes": 770400,
+    "completeJobLogSha256": "958c7b6818fa1e748c7be18f150ec053c8215f6577c91e751d246c2a1e83adc5",
+    "expectedCurrentExit": 0,
+    "jobId": 117097300555,
+    "nativeWindowsScenarioRemainsRequired": true,
+    "observedCurrentExit": 1,
+    "observedError": "DecoderFallbackException in strict UTF-8 GetString: byte A9 at index 128",
+    "runId": 38937717899,
+    "step": "Verify affected CP117 PowerShell causal guards",
+    "testId": "agent_tools.tests.test_windows_powershell_environment.NativeWindowsPowerShellEnvironmentTests.test_owned_missing_module_path_old_refuses_current_acl_and_hash_complete",
+    "workflow": "Windows Desktop Package"
+  },
+  "provenanceRole": "Parsed historical source/failure information; runtime authority is the exact raw PS1 digest held by the routine, not this JSON.",
+  "resource": "native_module_i.before.ps1",
+  "resourceBytes": 30316,
+  "resourceSha256": "f69211aa4bffac9873dc1526f696d6a78c81ec8163f6065cbf00460174233887",
+  "schemaVersion": 1,
+  "sourceArchiveSha256": "d10f9d1b24ee29fbd6c6f68c3268306184a738a60eaed798e84d7ac37b5b6009",
+  "sourceBytes": 110170,
+  "sourceCommit": "72d140131a2c5ab4a81bfe5ede5e0171b355fa8e",
+  "sourcePath": "agent_tools/tests/test_windows_powershell_environment.py",
+  "sourceSha256": "5789b38b80c90e00f889563df07b9e24b3af169f73ca95225469ccc2293b94f9"
+}

@@ -144,3 +144,85 @@ class PowerShellFunctionOriginComponentTests(unittest.TestCase):
         expected += [('H_ORIGIN_TAMPER_REFUSED:' + str(index)).encode('ascii') for index in range(12)]
         expected += [b'H_ORIGIN_COMPONENT_COMPLETE_METADATA_ONLY']
         self.assertEqual(current.stdout.splitlines(), expected)
+
+
+# This tests the actual source helpers with controlled legacy-format bytes.
+# The installed Windows provider bytes and physical oracle remain native-only.
+I_ENCODING_BEFORE = Path(__file__).parent / 'fixtures/windows_powershell_environment/native_module_i.before.ps1'
+I_ENCODING_BEFORE_SHA256 = 'f69211aa4bffac9873dc1526f696d6a78c81ec8163f6065cbf00460174233887'
+ENCODING_CONTROL = '$ErrorActionPreference=\'Stop\'\nSet-StrictMode -Version Latest\n$sourcePath=$args[0];$manifestPath=$args[1];$variant=$args[2];$retainedParserControlPath=$args[3]\n$source=[Text.UTF8Encoding]::new($false,$true).GetString([IO.File]::ReadAllBytes($sourcePath))\n$sourceTokens=$null;$sourceErrors=$null\n$sourceTree=[Management.Automation.Language.Parser]::ParseInput($source,[ref]$sourceTokens,[ref]$sourceErrors)\nif($null -ne $sourceErrors -and $sourceErrors.Length){throw \'ENCODING_SOURCE_SYNTAX\'}\n$names=@(\'ConvertFrom-PublicNativeProviderBytes\',\'Read-PublicNativeManifestStrings\',\'Read-PublicNativeUtilityManifest\')\nif($variant -ceq \'current\'){$names=@(\'Resolve-PublicNativeProviderNoBomCodePage\')+$names}elseif($variant -cne \'before\'){throw \'ENCODING_SOURCE_VARIANT\'}\n$definitions=[Collections.Generic.Dictionary[string,Management.Automation.Language.FunctionDefinitionAst]]::new([StringComparer]::Ordinal)\nforeach($statement in $sourceTree.EndBlock.Statements){\n if($statement -is [Management.Automation.Language.FunctionDefinitionAst] -and $names -ccontains $statement.Name){\n  if($definitions.ContainsKey($statement.Name)){throw \'ENCODING_SOURCE_DUPLICATE\'}\n  $definitions.Add($statement.Name,$statement)\n }\n}\nif($definitions.Count -ne $names.Length){throw \'ENCODING_SOURCE_MISSING\'}\nforeach($name in $names){. ([scriptblock]::Create($definitions[$name].Extent.Text))}\nfunction Assert-PublicEncodingSameFields($expected,$actual){\n if($null -eq $expected -or $null -eq $actual -or $expected.Count -ne $actual.Count){throw \'ENCODING_SAME_FIELDS_REQUIRED\'}\n $keys=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)\n foreach($key in $expected.Keys){$null=$keys.Add($key)}\n foreach($key in $actual.Keys){\n  if(-not $keys.Contains($key) -or $null -eq $actual[$key] -or $expected[$key].Length -ne $actual[$key].Length){throw \'ENCODING_SAME_FIELDS_REQUIRED\'}\n  for($index=0;$index -lt $expected[$key].Length;$index++){if($expected[$key][$index] -cne $actual[$key][$index]){throw \'ENCODING_SAME_FIELDS_REQUIRED\'}}\n }\n}\nfunction Test-PublicEncodingActualDecoderFallback($exception){\n $depth=0\n while($null -ne $exception -and $depth -lt 8){\n  if($exception -is [Text.DecoderFallbackException]){return $true}\n  $exception=$exception.InnerException;$depth++\n }\n return $false\n}\n$authenticRaw=[IO.File]::ReadAllBytes($manifestPath)\nif($authenticRaw.Length -ne 17125){throw \'ENCODING_AUTHENTIC_ASCII_WIDTH\'}\nforeach($octet in $authenticRaw){if($octet -gt 127){throw \'ENCODING_AUTHENTIC_ASCII_REQUIRED\'}}\n$authenticText=[Text.UTF8Encoding]::new($false,$true).GetString($authenticRaw)\n$expectedFields=Read-PublicNativeUtilityManifest $authenticRaw\n# MODELED format only: authentic ASCII literal data plus an inert public copyright comment.\n# These are controlled bytes, not observed I Windows provider bytes or native acceptance.\n$legacyText=$authenticText+"`n# PUBLIC MODELED legacy copyright "+[char]0x00A9+"`n"\n$legacyEncoder=[Text.Encoding]::GetEncoding(1252,[Text.EncoderExceptionFallback]::new(),[Text.DecoderExceptionFallback]::new())\n$legacyRaw=$legacyEncoder.GetBytes($legacyText)\nif($legacyRaw.Length -ne $authenticRaw.Length+37 -or $legacyRaw[$legacyRaw.Length-2] -ne 169){throw \'ENCODING_CONTROLLED_1252_BYTE_IDENTITY\'}\n[Console]::Out.WriteLine(\'ENCODING_SAME_MODELED_1252_MANIFEST_POSITIVE_BEGIN\')\n$legacyFields=$null;$observedFallback=$false\ntry{\n if($variant -ceq \'before\'){$legacyFields=Read-PublicNativeUtilityManifest $legacyRaw}else{\n  # Explicit modeled Desktop context. No actual Mac/Windows host fact is substituted.\n  $modeledCodePage=Resolve-PublicNativeProviderNoBomCodePage ([Version]\'5.1\') \'Desktop\' 1252 ([PlatformID]::Win32NT) \'mscorlib\'\n  if($modeledCodePage -ne 1252){throw \'ENCODING_MODELED_CONTEXT_RESULT\'}\n  $legacyFields=Read-PublicNativeUtilityManifest $legacyRaw $modeledCodePage\n }\n}catch{\n if(-not (Test-PublicEncodingActualDecoderFallback $_.Exception)){throw}\n $observedFallback=$true\n}\n# This one admission assertion is shared by old/current. Only actual DecoderFallback\n# from the authentic old Read call may qualify the expected RED.\nif($null -eq $legacyFields){\n if($variant -ceq \'before\' -and $observedFallback){\n  [Console]::Out.WriteLine(\'ENCODING_OBSERVED_ACTUAL_EXCEPTION:System.Text.DecoderFallbackException\')\n  [Console]::Error.WriteLine(\'ENCODING_SAME_MODELED_MANIFEST_MUST_ADMIT:System.Text.DecoderFallbackException\');exit 1\n }\n throw \'ENCODING_SAME_MODELED_MANIFEST_MUST_ADMIT\'\n}\nAssert-PublicEncodingSameFields $expectedFields $legacyFields\n[Console]::Out.WriteLine(\'ENCODING_SAME_MODELED_1252_MANIFEST_POSITIVE_PASS\')\nif($variant -cne \'current\'){throw \'ENCODING_BEFORE_UNEXPECTED_ADMISSION\'}\n# Retain every existing actual-engine parser control byte and assertion. Dot sourcing\n# executes only its selected three parser helpers and inert literal/byte controls.\n. $retainedParserControlPath $sourcePath $manifestPath \'current\'\n$liveCodePage=Resolve-PublicNativeProviderNoBomCodePage $PSVersionTable.PSVersion $PSVersionTable.PSEdition ([Text.Encoding]::Default.CodePage) ([Environment]::OSVersion.Platform) ([object].Assembly.GetName().Name)\n$expectedLiveCodePage=if($PSVersionTable.PSVersion.Major -eq 5 -and $PSVersionTable.PSVersion.Minor -eq 1 -and $PSVersionTable.PSEdition -ceq \'Desktop\'){[Text.Encoding]::Default.CodePage}else{65001}\nif($liveCodePage -ne $expectedLiveCodePage){throw \'ENCODING_ACTUAL_ENGINE_CONTEXT_RESULT\'}\nAssert-PublicEncodingSameFields $expectedFields (Read-PublicNativeUtilityManifest $authenticRaw $liveCodePage)\n[Console]::Out.WriteLine(\'ENCODING_POLICY_ACTUAL_ENGINE_ACCEPTED\')\n$desktopUtf8=Resolve-PublicNativeProviderNoBomCodePage ([Version]\'5.1\') \'Desktop\' 65001 ([PlatformID]::Win32NT) \'mscorlib\'\nif($desktopUtf8 -ne 65001){throw \'ENCODING_MODELED_DESKTOP_UTF8_CONTEXT_RESULT\'}\nAssert-PublicEncodingSameFields $expectedFields (Read-PublicNativeUtilityManifest $authenticRaw $desktopUtf8)\n[Console]::Out.WriteLine(\'ENCODING_POLICY_MODELED_DESKTOP_65001_ACCEPTED\')\n$wrongContexts=@(\n @([Version]\'5.1\',\'Desktop\',1252,[PlatformID]::Unix,\'mscorlib\'),\n @([Version]\'5.1\',\'Desktop\',1252,[PlatformID]::Win32NT,\'System.Private.CoreLib\'),\n @([Version]\'5.1\',\'Core\',1252,[PlatformID]::Win32NT,\'mscorlib\'),\n @([Version]\'5.0\',\'Desktop\',1252,[PlatformID]::Win32NT,\'mscorlib\'),\n @([Version]\'7.5.4\',\'Core\',1252,[PlatformID]::Unix,\'System.Private.CoreLib\'),\n @([Version]\'7.5.4\',\'Core\',65001,[PlatformID]::Unix,\'mscorlib\'),\n @($null,\'Desktop\',1252,[PlatformID]::Win32NT,\'mscorlib\'),\n @([Version]\'5.1\',\'Desktop\',1200,[PlatformID]::Win32NT,\'mscorlib\')\n)\nfor($case=0;$case -lt $wrongContexts.Length;$case++){\n $context=$wrongContexts[$case];$refused=$false\n try{$null=Resolve-PublicNativeProviderNoBomCodePage $context[0] $context[1] $context[2] $context[3] $context[4]}catch{if($_.Exception.Message -cne \'PUBLIC_NATIVE_PROVIDER_ENCODING_CONTEXT\'){throw};$refused=$true}\n if(-not $refused){throw \'ENCODING_WRONG_POLICY_CONTEXT_ADMITTED\'}\n [Console]::Out.WriteLine((\'ENCODING_POLICY_CONTEXT_REFUSED:\'+$case))\n}\n$utf8=[Text.UTF8Encoding]::new($false,$true);$utf16=[Text.UnicodeEncoding]::new($false,$true,$true)\n$bomPositives=[ordered]@{\n \'utf8-bom-overrides-modeled-1252\'=[byte[]](@(239,187,191)+$utf8.GetBytes($legacyText))\n \'utf16le-bom-overrides-modeled-1252\'=[byte[]]($utf16.GetPreamble()+$utf16.GetBytes($legacyText))\n}\nforeach($entry in $bomPositives.GetEnumerator()){\n Assert-PublicEncodingSameFields $expectedFields (Read-PublicNativeUtilityManifest ([byte[]]$entry.Value) 1252)\n [Console]::Out.WriteLine((\'ENCODING_EXPLICIT_BOM_PRECEDENCE_PASS:\'+$entry.Key))\n}\n$additionalNegatives=[ordered]@{\n \'legacy-under-desktop-65001\'=[byte[]]$legacyRaw\n \'malformed-utf8-bom-under-1252\'=[byte[]]@(239,187,191,195,40)\n \'utf16be-under-1252\'=[byte[]]@(254,255,0,65)\n \'utf32le-under-1252\'=[byte[]]@(255,254,0,0,65,0,0,0)\n}\nforeach($entry in $additionalNegatives.GetEnumerator()){\n $codePage=if($entry.Key -ceq \'legacy-under-desktop-65001\'){$desktopUtf8}else{1252};$refused=$false\n try{$null=ConvertFrom-PublicNativeProviderBytes ([byte[]]$entry.Value) $codePage}catch{\n  if($entry.Key -ceq \'legacy-under-desktop-65001\' -or $entry.Key -ceq \'malformed-utf8-bom-under-1252\'){\n   if(-not (Test-PublicEncodingActualDecoderFallback $_.Exception)){throw}\n  }elseif($_.Exception.Message -cne \'PUBLIC_NATIVE_PROVIDER_TEXT_ENCODING\'){throw}\n  $refused=$true\n }\n if(-not $refused){throw \'ENCODING_CONFLICTING_FORMAT_ADMITTED\'}\n [Console]::Out.WriteLine((\'ENCODING_CONFLICTING_FORMAT_REFUSED:\'+$entry.Key))\n}\n[Console]::Out.WriteLine(\'ENCODING_COMPONENT_COMPLETE_MODELED_FORMAT_NOT_WINDOWS_ACCEPTANCE\')\n'
+
+
+def _actual_provider_encoding_case(case, *, before):
+    executable = shutil.which('powershell.exe' if os.name == 'nt' else 'pwsh')
+    if os.name == 'nt':
+        case.assertIsNotNone(executable, 'Windows requires the real encoding parser control')
+    elif executable is None:
+        case.skipTest('PowerShell engine is unavailable for the encoding parser control')
+    from agent_tools import source_module_loader
+    parent = dict(os.environ)
+    with ExitStack() as held:
+        old, old_closing = held.enter_context(source_module_loader._bootstrap_source(I_ENCODING_BEFORE.resolve()))
+        manifest, manifest_closing = held.enter_context(source_module_loader._bootstrap_source((FIXTURES / 'Utility.literal.before.psd1').resolve()))
+        case.assertEqual((len(old), hashlib.sha256(old).hexdigest()), (30316, I_ENCODING_BEFORE_SHA256))
+        case.assertEqual((len(manifest), hashlib.sha256(manifest).hexdigest()), (17125, MANIFEST_SHA256))
+        current = NATIVE_MODULE_SCRIPT.encode('utf-8', errors='strict')
+        with tempfile.TemporaryDirectory(prefix='provider-encoding-parser-') as temporary, ExitStack() as copied:
+            directory = Path(temporary).resolve()
+            inputs = {'source.ps1': old if before else current, 'manifest.psd1': manifest,
+                      'control.ps1': b'\xef\xbb\xbf' + ENCODING_CONTROL.encode('utf-8', errors='strict'),
+                      'retained.ps1': b'\xef\xbb\xbf' + PARSER_CONTROL.encode('utf-8', errors='strict')}
+            paths = {name: directory / name for name in inputs}
+            closings = []
+            for name, raw in inputs.items():
+                fd = os.open(paths[name], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, 'wb') as stream:
+                    stream.write(raw)
+                captured, closing = copied.enter_context(source_module_loader._bootstrap_source(paths[name]))
+                case.assertEqual(captured, raw)
+                closings.append(closing)
+            environment = windows_powershell_environment(executable, parent)
+            supplied = dict(environment)
+            argv = [executable, '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+                    str(paths['control.ps1']), str(paths['source.ps1']), str(paths['manifest.psd1']),
+                    'before' if before else 'current', str(paths['retained.ps1'])]
+            case.assertLessEqual(sum(len(part.encode('utf-8', errors='strict')) + 1 for part in argv), 60000)
+            completed = subprocess.run(argv, capture_output=True, check=False, timeout=30, env=environment)
+            case.assertEqual(environment, supplied)
+            case.assertLessEqual(len(completed.stdout) + len(completed.stderr), 1048576)
+            for name, raw in inputs.items():
+                case.assertEqual(paths[name].read_bytes(), raw)
+            for closing in closings:
+                closing()
+            old_closing()
+            manifest_closing()
+    case.assertEqual(dict(os.environ), parent)
+    return completed
+
+
+class PowerShellProviderEncodingTests(unittest.TestCase):
+    def test_actual_i_strict_utf8_red_engine_selected_lossless_decoder_green(self):
+        old = _actual_provider_encoding_case(self, before=True)
+        self.assertEqual(old.returncode, 1, (old.stdout, old.stderr))
+        self.assertEqual(old.stdout.splitlines(), [
+            b'ENCODING_SAME_MODELED_1252_MANIFEST_POSITIVE_BEGIN',
+            b'ENCODING_OBSERVED_ACTUAL_EXCEPTION:System.Text.DecoderFallbackException'])
+        self.assertEqual(old.stderr.splitlines(), [
+            b'ENCODING_SAME_MODELED_MANIFEST_MUST_ADMIT:System.Text.DecoderFallbackException'])
+        current = _actual_provider_encoding_case(self, before=False)
+        self.assertEqual(current.returncode, 0, (current.stdout, current.stderr))
+        self.assertEqual(current.stderr, b'')
+        lines = current.stdout.splitlines()
+        expected = [b'ENCODING_SAME_MODELED_1252_MANIFEST_POSITIVE_BEGIN',
+                    b'ENCODING_SAME_MODELED_1252_MANIFEST_POSITIVE_PASS', *PASS_LINES,
+                    b'ENCODING_POLICY_ACTUAL_ENGINE_ACCEPTED',
+                    b'ENCODING_POLICY_MODELED_DESKTOP_65001_ACCEPTED',
+                    *[b'ENCODING_POLICY_CONTEXT_REFUSED:' + str(index).encode('ascii') for index in range(8)],
+                    b'ENCODING_EXPLICIT_BOM_PRECEDENCE_PASS:utf8-bom-overrides-modeled-1252',
+                    b'ENCODING_EXPLICIT_BOM_PRECEDENCE_PASS:utf16le-bom-overrides-modeled-1252',
+                    b'ENCODING_CONFLICTING_FORMAT_REFUSED:legacy-under-desktop-65001',
+                    b'ENCODING_CONFLICTING_FORMAT_REFUSED:malformed-utf8-bom-under-1252',
+                    b'ENCODING_CONFLICTING_FORMAT_REFUSED:utf16be-under-1252',
+                    b'ENCODING_CONFLICTING_FORMAT_REFUSED:utf32le-under-1252',
+                    b'ENCODING_COMPONENT_COMPLETE_MODELED_FORMAT_NOT_WINDOWS_ACCEPTANCE']
+        self.assertEqual(lines, expected)

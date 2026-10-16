@@ -73,3 +73,5 @@ agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
 
 # The late-ready causal regression authenticates the complete original source.
 /agent_tools/tests/fixtures/ssh_late_ready_handshake/ready.before.source -text
+/agent_tools/tests/fixtures/windows_powershell_environment/native_module_i.before.ps1 -text
+/agent_tools/tests/fixtures/windows_powershell_environment/native_provider_custody.ps1 -text

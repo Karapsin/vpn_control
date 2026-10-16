@@ -235,8 +235,10 @@ jobs:
         run: python scripts/test_windows_native_fixture.py WindowsHashtableSumTest
 
       - name: Verify affected CP117 PowerShell causal guards
+        id: cp117-causal-guards
         shell: pwsh
         env:
+          VPN_CONTROL_NATIVE_PROVIDER_EVIDENCE_ROOT: ${{ runner.temp }}/vpn-control-native-provider-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.agent_test_baseline || github.sha) || '' }}
         run: >-
           python agent_tools/affected_agent_tests.py --run --include
@@ -313,6 +315,15 @@ jobs:
           agent_tools.tests.test_windows_tertiary_guest_stage.FixtureTaskTriggerTests.test_guard_excludes_null_but_retains_real_triggers
           agent_tools.tests.test_windows_tertiary_guest_stage.FixtureTaskTriggerTests.test_actual_null_trigger_old_count_red_filtered_count_green
           agent_tools.tests.test_windows_tertiary_guest_stage.FixtureRecoveryStreamTests.test_actual_hash_consumes_stream_old_eof_red_rewind_green
+
+      - name: Preserve native provider custody evidence
+        if: always() && (steps.cp117-causal-guards.outcome == 'success' || steps.cp117-causal-guards.outcome == 'failure')
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-provider-custody-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          path: ${{ runner.temp }}/vpn-control-native-provider-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          if-no-files-found: error
+          compression-level: 0
 
       - name: Verify batch-logon fixture admission
         run: python scripts/test_windows_task_admission.py
