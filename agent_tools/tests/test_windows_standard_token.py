@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 from agent_tools import ssh_transport as transport,windows_guest_input as owner
 from agent_tools.tests.test_windows_guest_input import context,binding,profile,CORRELATION,_configured_profile
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 FIXTURE=Path(__file__).parent/'fixtures/windows_standard_token'
 STANDARD=transport.WindowsInputTokenPolicy('ordinaryStandardUser',0,1,False,False)
@@ -80,7 +81,7 @@ class NativeTokenSourceCompileTests(unittest.TestCase):
                 source+="$t=$null;$e=$null;[void][Management.Automation.Language.Parser]::ParseFile('"+str(path).replace("'","''")+"',[ref]$t,[ref]$e);if($e.Count){throw ($e|Out-String)}\n"
             source+="[Console]::Out.WriteLine('NATIVE_CLASSES_AND_GUARD_COMPILED')\n"
             script=root/'compile.ps1';script.write_text(source,encoding='utf-8',newline='\n')
-            result=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(script)],capture_output=True,timeout=30)
+            result=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(script)],capture_output=True,timeout=30, env=windows_powershell_environment('powershell.exe', os.environ))
         self.assertEqual(0,result.returncode,result.stderr.decode('utf-8',errors='replace'))
         self.assertIn(b'NATIVE_CLASSES_AND_GUARD_COMPILED',result.stdout)
 

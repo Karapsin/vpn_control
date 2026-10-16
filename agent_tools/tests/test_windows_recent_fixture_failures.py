@@ -16,6 +16,7 @@ import errno
 from unittest.mock import patch
 import unittest
 import uuid
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 HERE = Path(__file__).resolve().parent
 VARIANT = os.environ.get('FIXTURE_VARIANT', 'fixed')
@@ -176,7 +177,7 @@ class CheckAcknowledgement(unittest.TestCase):
                 ";$state='inert-state';$ep=[pscustomobject]@{controllerId='owner'};$cli="+quote(cli)+
                 "\ntry{\n"+fragment+"\n[Console]::Out.WriteLine('OBSERVED')}catch{[Console]::Error.WriteLine($_.Exception.Message);exit 1}")
             result=subprocess.run([str(PWSH),'-NoLogo','-NoProfile','-NonInteractive','-File',str(script)],
-                stdout=subprocess.PIPE,stderr=subprocess.PIPE,env={k:v for k,v in os.environ.items()if not k.startswith('DYLD_')},timeout=20)
+                stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=windows_powershell_environment(str(PWSH), {k:v for k,v in os.environ.items()if not k.startswith('DYLD_')}),timeout=20)
             calls=(parent/'calls.txt').read_text().splitlines() if (parent/'calls.txt').exists() else []
             return result,calls
 

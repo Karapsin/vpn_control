@@ -50,9 +50,12 @@ def context_functions(source, importer=None):
     names = {'inert_repository_source_reads', 'remote_posix_recipe_context'}
     nodes = [node for node in ast.parse(source).body
              if isinstance(node, ast.FunctionDef) and node.name in names]
-    namespace = {'__file__': str(CONTEXT), 'Path': Path, 'os': os,
-                 'hashlib': hashlib, 'patch': patch, 'posixpath': posixpath,
-                 'contextmanager': contextmanager}
+    from agent_tools.tests.fixtures.windows_cp117_historical_factory import context as actual_context
+    # Extracted definitions retain the genuine module's complete dependencies.
+    # Remove selected names first so an absent historical definition stays absent.
+    namespace = dict(actual_context.__dict__)
+    for name in names:
+        namespace.pop(name, None)
     if importer is not None:
         namespace['__builtins__'] = {**vars(builtins), '__import__': importer}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(CONTEXT), 'exec',

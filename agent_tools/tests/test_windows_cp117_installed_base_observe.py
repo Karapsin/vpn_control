@@ -7,7 +7,7 @@ b=historical_installed()
 from agent_tools import windows_cp117_recovered_owner_observe as owner
 from agent_tools.tests.test_windows_cp117_recovered_owner_observe import OwnerFactsTests
 from agent_tools.tests.test_windows_cp117_recovered_owner_diagnostic import ActualStreamTests
-from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_tests
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_context, remote_posix_recipe_tests
 
 @remote_posix_recipe_tests(owner.guest.recovery)
 class InstalledTests(HistoryCase):
@@ -16,6 +16,7 @@ class InstalledTests(HistoryCase):
         package.update(jarCount=1,registeredPathMatches=True,jarNameMatches=True,cliSignerStatus='NotSigned',helperSignerStatus='NotSigned',identitiesStable=True)
         readiness={'version':1,'code':'READY','installedVersion':'2.1.19','productCount':1,'activeCount':0,'activeKinds':[],'activeProcesses':[],'workspaceLockPid':248,'ownedExplorerCount':1}
         return {'version':1,'correlationId':b.CORRELATION,'outcome':'complete','stage':'complete','category':'none','errorType':'none','hresult':0,'observations':[],'facts':{'owner':OwnerFactsTests().facts(),'readiness':readiness,'package':package},'details':''}
+    @remote_posix_recipe_context(owner.guest.recovery)
     def execute_flow(self,stale=False,foreign=False):
         import io,types,signal
         o=owner.guest;recipe=o.recovery.recipe();request={'recipeSha256':o.recovery._digest(recipe)}
@@ -29,9 +30,20 @@ class InstalledTests(HistoryCase):
         # Execute every generated definition/constant, then the unchanged entire
         # operation. Only OS/transport authority observations are inert fixtures.
         self.assertIsInstance(tree.body[-1],ast.Try)
+        definitions=list(tree.body[:-1])
+        imports=[(index,node)for index,node in enumerate(definitions)if isinstance(node,ast.Import)and any(alias.name=='fcntl'for alias in node.names)]
+        expected=('os','stat','json','time','hashlib','subprocess','sys','fcntl')
+        if len(imports)!=1 or tuple((alias.name,alias.asname)for alias in imports[0][1].names)!=tuple((name,None)for name in expected):
+            raise ValueError('inert-generated-posix-import-shape')
+        index,node=imports[0]
+        # The inert definitions need no locking capability. Preserve the actual
+        # programme bytes and every other statement; unexpected later use of
+        # fcntl remains a NameError, never a replacement native capability.
+        definitions[index]=ast.copy_location(ast.Import(names=[alias for alias in node.names if alias.name!='fcntl']),node)
         ns={}
         with patch('signal.signal'),patch('signal.setitimer',create=True),patch('signal.ITIMER_REAL',0,create=True),patch('signal.SIGALRM',0,create=True):
-            exec(compile(ast.Module(body=tree.body[:-1],type_ignores=[]),'complete-generated-definitions','exec'),ns)
+            exec(compile(ast.Module(body=definitions,type_ignores=[]),'complete-generated-definitions','exec'),ns)
+        self.assertNotIn('fcntl',ns)
         class FakeOS:
             O_RDONLY=0;O_DIRECTORY=0;O_NOFOLLOW=0
             def open(self,*a):return 1

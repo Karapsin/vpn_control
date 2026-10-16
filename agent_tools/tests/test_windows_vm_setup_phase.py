@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from agent_tools import windows_vm_unattend as setup
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 
 @unittest.skipUnless(os.name=='nt' and shutil.which('powershell.exe'),'native Windows PowerShell 5.1')
@@ -34,7 +35,7 @@ class SetupPhaseTests(unittest.TestCase):
         request.write_text(json.dumps({'mode':mode,'root':str(root),**self.scripts}),encoding='utf8')
         result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',
                                str(harness or self.folder/'native_harness.ps1'),'-RequestFile',str(request)],
-                              capture_output=True,timeout=30)
+                              capture_output=True,timeout=30, env=windows_powershell_environment('powershell.exe', os.environ))
         return result,root
 
     def value(self,result):
@@ -83,7 +84,7 @@ $capture=Run-Case 'beforeEarly' (Join-Path $root 'case-root')
 [Console]::WriteLine((@{code=$capture.code;outcome=$capture.value.outcome;msiCalls=$capture.value.msiCalls} | ConvertTo-Json -Compress))
 ''',encoding='utf-8-sig')
                 request=root/'request.json';request.write_text(json.dumps({'root':str(root),'parentSource':str(folder/filename)}),encoding='utf8')
-                result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(runner),'-RequestFile',str(request)],capture_output=True,timeout=30)
+                result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(runner),'-RequestFile',str(request)],capture_output=True,timeout=30, env=windows_powershell_environment('powershell.exe', os.environ))
                 value=self.value(result)
                 self.assertEqual(expected,value['code']);self.assertEqual('MSI_BEFORE_SETUP_COMPLETE',value['outcome']);self.assertEqual(1,value['msiCalls'])
 

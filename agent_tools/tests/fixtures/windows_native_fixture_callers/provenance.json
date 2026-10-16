@@ -1,0 +1,54 @@
+{
+  "files": [
+    {
+      "bytes": 1046856,
+      "fixture": "agent_tools/tests/fixtures/windows_native_fixture_callers/test_windows_cp117_base_source_refresh.py.before.source",
+      "path": "agent_tools/tests/test_windows_cp117_base_source_refresh.py",
+      "sha256": "fd685eeb83f7e7d5f622ad25492caab83627d4946e628c78104f956fca298205"
+    },
+    {
+      "bytes": 91794,
+      "fixture": "agent_tools/tests/fixtures/windows_native_fixture_callers/test_windows_cp117_server_preflight.py.before.source",
+      "path": "agent_tools/tests/test_windows_cp117_server_preflight.py",
+      "sha256": "24dd7aa7c54bd14da74485f2050bd068be3e6e287a8b78f30c7126f89d257d27"
+    },
+    {
+      "bytes": 1050462,
+      "fixture": "agent_tools/tests/fixtures/windows_native_fixture_callers/test_windows_cp117_server_read_binding.py.before.source",
+      "path": "agent_tools/tests/test_windows_cp117_server_read_binding.py",
+      "sha256": "da891225fc3b912eb8eea0235943f9879426abf7a01dfedf5415cf4e7faf50c7"
+    },
+    {
+      "bytes": 932937,
+      "fixture": "agent_tools/tests/fixtures/windows_native_fixture_callers/test_windows_cp117_public_update_flow.py.before.source",
+      "path": "agent_tools/tests/test_windows_cp117_public_update_flow.py",
+      "sha256": "565a02dfe24430be615ea96294a5582265f0b041266fc3a009b74cde8ea4ce64"
+    }
+  ],
+  "kind": "authentic-complete-before-modules",
+  "originalFailedWindowsJob": 116719790130,
+  "originalFailedWindowsRun": 38821772088,
+  "originalHeadSha": "a5cd9b73d49ff0b52f4a04a29a9122d4fe48b173",
+  "qualification": "Original source modules retained byte-for-byte; routine runs real isolated physical package copies with an inert process boundary. This fixture grants no native/product/SSH/VM result.",
+  "schemaVersion": 1,
+  "sourceArchiveSha256": "61052f9c99e69e24b96930450b6df48118e2b433b8a8452183e8175102659e76",
+  "sourceCapBefore": {
+    "path": "base.overflow-before-slim.source",
+    "sha256": "33f7d0fed1b77a2af6f96b1c50ebb7045bd70e02f6f3ab8d3e8591c511bca11f",
+    "bytes": 1048941,
+    "role": "Actual unexecuted current candidate before source-bound repair; statically found above unchanged1048576 source-record cap",
+    "originalNativeFailure": false
+  },
+  "serverReadBefore": {
+    "path": "base.server-read-before.source",
+    "sha256": "d143a7c39e4b9684f76769eda11cc858958fa2cf8223fcdcd454b5ccbd9d0740",
+    "bytes": 1039581,
+    "role": "Actual focused-v20 inherited parser/source registration mismatch; no native Windows execution claimed"
+  },
+  "metadataBefore": {
+    "path": "routine.metadata-before.source",
+    "sha256": "b06d6dc5a5ad8955ba760dad00a59adb0473229175a384ea18f9ecff741bccc3",
+    "bytes": 25267,
+    "role": "Actual focused-v20 routine before stable-generation correction; portable controlled metadata projection and separate retained physical read evidence"
+  }
+}

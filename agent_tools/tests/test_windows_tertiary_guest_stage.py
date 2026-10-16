@@ -1,11 +1,13 @@
 """Actual writer causal coverage; local FD/clock/SDK projections, no guest proof."""
 import base64
+import os
 import tempfile
 import socket
 import unittest
 from unittest.mock import patch
 
 from agent_tools import windows_tertiary_guest_stage as stage
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 
 class GuestWriteTests(unittest.TestCase):
@@ -240,7 +242,7 @@ class NativeSidRuleTests(unittest.TestCase):
     def test_actual_windows_in_memory_translation_control_and_typed_sid(self):
         import subprocess,json
         script="$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n"+stage.sid_rule_probe_script()+"\n$sidRuleControl|ConvertTo-Json -Compress"
-        c=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=15,check=True)
+        c=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=15,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
         self.assertEqual(json.loads(c.stdout.decode('utf-8-sig')),{'oldIdentityTranslationFailed':True,'typedSid':'S-1-5-32-544'})
 
 
@@ -252,7 +254,7 @@ class NativeShareCustodyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='tertiary-share-control-') as tmp:
             encoded=base64.b64encode(str(Path(tmp)).encode('utf-16le')).decode('ascii')
             script="$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n$root=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('"+encoded+"'))\nAdd-Type -TypeDefinition @'\n"+stage.PRIVATE_CS+"\n'@ -ReferencedAssemblies @('System','System.Core')\n"+stage.custody_share_probe_script()+"\n$shareControl|ConvertTo-Json -Compress"
-            c=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=20,check=True)
+            c=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=20,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
             value=json.loads(c.stdout.decode('utf-8-sig'))
             self.assertTrue(value['metadataFileRenamed'])
             self.assertTrue(value['metadataDirectoryRenamed'])
@@ -442,7 +444,7 @@ class NativeReleaseGuardTests(unittest.TestCase):
     def test_actual_windows_in_memory_old_new_release_predicate(self):
         import subprocess,json
         ps="$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);"+stage.release_guard_control_script()+";$releaseGuardControl|ConvertTo-Json -Compress"
-        completed=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',ps],capture_output=True,timeout=30,check=True)
+        completed=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',ps],capture_output=True,timeout=30,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
         self.assertEqual(json.loads(completed.stdout.decode('utf-8-sig')),dict(oldLongForeignAccepted=True,fixedForeignRefused=True,positiveIntAndLongAccepted=True,cases=10))
 
 
@@ -534,7 +536,7 @@ class NativeTargetOwnerTests(unittest.TestCase):
     def test_actual_windows_creation_time_owner_and_inherited_custody(self):
         import subprocess,json
         ps=stage.target_owner_probe_script()
-        completed=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',ps],capture_output=True,timeout=30)
+        completed=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',ps],capture_output=True,timeout=30,env=windows_powershell_environment('powershell.exe',os.environ))
         self.assertEqual(completed.returncode,0,
                          'native target-owner probe failed; stdout='+repr(completed.stdout)+
                          '; stderr='+repr(completed.stderr))
@@ -863,7 +865,7 @@ $memory=[IO.MemoryStream]::new();try{
  [ordered]@{oldResolved=$oldResolved;oldError=$oldError;newReadSucceeded=$emptyRead;typeName=$typeName;memoryOnly=$true}|ConvertTo-Json -Compress
 }finally{$memory.Dispose()}
 """
-        completed=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',control],capture_output=True,timeout=20,check=True)
+        completed=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',control],capture_output=True,timeout=20,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
         result=json.loads(completed.stdout.decode('utf-8-sig'))
         self.assertIs(type(result['oldResolved']),bool)
         if result['oldResolved']is False:self.assertEqual(result['oldError'],'TypeNotFound')
@@ -884,7 +886,7 @@ class NativeOrderedEntryTests(unittest.TestCase):
         line=next(line for line in source.splitlines()if line.strip().startswith('$captured=@('))
         old=line.replace("ForEach-Object {$_['entry']}",'Select-Object -ExpandProperty entry')
         script="$ErrorActionPreference='Stop';$matches=@([ordered]@{classes=@([ordered]@{entry='PUBLIC.Main.class'},[ordered]@{entry='PUBLIC.Parser.class'})});$oldError=$null;try{"+old+"}catch{$oldError=$_.FullyQualifiedErrorId};"+line+";[ordered]@{oldError=$oldError;captured=@($captured)}|ConvertTo-Json -Compress"
-        result=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=20,check=True)
+        result=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=20,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
         row=json.loads(result.stdout.decode('utf-8-sig'))
         self.assertEqual(row['oldError'],'ExpandPropertyNotFound,Microsoft.PowerShell.Commands.SelectObjectCommand')
         self.assertEqual(row['captured'],['PUBLIC.Main.class','PUBLIC.Parser.class'])
@@ -1064,7 +1066,7 @@ $public=[TertiaryInstalledContext]::ProjectAssignment(1608,$null)
 $hardRefused=$false;try{$null=[TertiaryInstalledContext]::ProjectAssignment(1605,$null)}catch{$hardRefused=$true}
 [ordered]@{control=$control;publicUnknownProperty=$public;otherCodeRefused=$hardRefused}|ConvertTo-Json -Depth 5 -Compress
 """
-        completed=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=20,check=True)
+        completed=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=20,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
         row=json.loads(completed.stdout.decode('utf-8-sig'))
         if row.get('noMachineProduct')is True:self.skipTest('native machine MSI catalog has no product')
         self.assertIs(row['otherCodeRefused'],True)
@@ -1099,7 +1101,7 @@ class CachedContextPathCaseTests(unittest.TestCase):
         import re,subprocess,json
         operator,pattern=re.search(r"\$cache (-cnotmatch|-notmatch) '([^']+)'",stage.INSTALLED_CONTEXT_PS).groups()
         script="$ErrorActionPreference='Stop';$path='"+self.OBSERVED+"';$pattern='"+pattern+"';[ordered]@{oldRefused=($path -cnotmatch $pattern);currentRefused=($path "+operator+" $pattern);foreignRefused=('C:\\foreign.msi' "+operator+" $pattern)}|ConvertTo-Json -Compress"
-        completed=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=10,check=True)
+        completed=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=10,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
         self.assertEqual(json.loads(completed.stdout.decode('utf-8-sig')),dict(oldRefused=True,currentRefused=False,foreignRefused=True))
 
 
@@ -1122,7 +1124,7 @@ try{
  [ordered]@{pid=$originalPid;birth=$birth;exitCode=$process.ExitCode;birthAfterTerminal=([TertiaryFixtureProcess]::Birth($originalHandle));elevated=[TertiaryFixtureProcess]::Elevated([Security.Principal.WindowsIdentity]::GetCurrent().Token);drain=$drain;prefix=$prefix}|ConvertTo-Json -Depth 5 -Compress
 }finally{$process.Dispose()}
 """
-        completed=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=15,check=True)
+        completed=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=15,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
         row=json.loads(completed.stdout.decode('utf-8-sig'))
         self.assertIs(type(row['pid']),int);self.assertGreater(row['pid'],0)
         self.assertIs(type(row['birth']),int);self.assertGreater(row['birth'],0);self.assertEqual(row['birth'],row['birthAfterTerminal'])
@@ -1199,11 +1201,11 @@ class FixtureProvisionFlowTests(unittest.TestCase):
         carrier,source,body,_=self.flow()
         public="[Console]::Out.WriteLine('PUBLIC')"
         command=stage.fixture_powershell_carrier(public)
-        completed=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',command],capture_output=True,timeout=15,check=True)
+        completed=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',command],capture_output=True,timeout=15,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
         self.assertEqual(completed.stdout.decode('utf-8-sig').strip(),'PUBLIC')
         import hashlib
         bad=command.replace(hashlib.sha256(public.encode()).hexdigest(),'0'*64)
-        refused=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',bad],capture_output=True,timeout=15)
+        refused=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',bad],capture_output=True,timeout=15,env=windows_powershell_environment('powershell.exe',os.environ))
         self.assertNotEqual(refused.returncode,0);self.assertNotIn(b'PUBLIC',refused.stdout)
         # Parse the actual complete scripts in memory, without evaluating their AST.
         scripts=base64.b64encode(json.dumps([source,body]).encode()).decode()
@@ -1244,7 +1246,7 @@ try{
 }finally{if($h){$h.Dispose()};[IO.Directory]::Delete($installRoot,$true)}
 """
         script=script.replace('__OLD_GUARD__',old,1)
-        completed=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=20,check=True)
+        completed=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=20,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
         self.assertEqual(json.loads(completed.stdout.decode('utf-8-sig')),dict(oldRejected=False,newRejected=True,identityUnchanged=True))
 
 
@@ -1277,7 +1279,7 @@ foreach($path in @('PUBLIC-A','PUBLIC-B','PUBLIC-C')){$null=Hold-ContextPath $pa
         old=fixed.replace(";. ([ScriptBlock]::Create",";& ([ScriptBlock]::Create",1)
         rows=[]
         for carrier in (old,fixed):
-            result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',carrier],capture_output=True,timeout=15,check=True)
+            result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',carrier],capture_output=True,timeout=15,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
             rows.append(json.loads(result.stdout.decode('utf-8-sig')))
         self.assertEqual(rows[0],{'localCount':0,'scriptCount':3})
         self.assertEqual(rows[1],{'localCount':3,'scriptCount':3})
@@ -1322,7 +1324,7 @@ try{try{$old=[TertiaryPrivateStage]::Hold($path,$false);$old.Dispose()}catch{$ol
  [ordered]@{oldRefused=$oldRefused;fixedReturned=($null -ne $nativeId);changedRefused=$changedRefused;wrongRoleRefused=$wrongRoleRefused;reparseObserved=$reparseObserved;reparseRefused=$reparseRefused;thirdCreatedWhileHeld=$thirdCreated;thirdError=$thirdError;heldClosingRefused=$heldClosingRefused}|ConvertTo-Json -Compress
 }finally{if($h){$h.Dispose()}}
 """.replace('__PATH__',path).replace('__ALIAS__',alias).replace('__THIRD__',third).replace('__JUNCTION__',junction)
-            completed=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=20,check=True)
+            completed=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=20,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
             row=json.loads(completed.stdout.decode('utf-8-sig'));self.assertIs(row['oldRefused'],True);self.assertIs(row['fixedReturned'],True);self.assertIs(row['changedRefused'],True);self.assertIs(row['wrongRoleRefused'],True);self.assertIs(row['reparseObserved'],True);self.assertIs(row['reparseRefused'],True);self.assertIs(type(row['thirdCreatedWhileHeld']),bool);self.assertEqual(row['heldClosingRefused'],row['thirdCreatedWhileHeld']);self.assertEqual(row['thirdError']is None,row['thirdCreatedWhileHeld'])
 
 
@@ -1341,7 +1343,7 @@ $cases=@([ordered]@{name='null';value=$null},[ordered]@{name='empty';value=@()},
 $rows=@();foreach($case in $cases){$t=[pscustomobject]@{Triggers=$case.value};$rows+=@([ordered]@{name=$case.name;oldCount=__OLD__;newCount=__NEW__})}
 $rows|ConvertTo-Json -Compress
 """.replace('__OLD__',old).replace('__NEW__',expression)
-        result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=15,check=True)
+        result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=15,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
         self.assertEqual(json.loads(result.stdout.decode('utf-8-sig')),[dict(name=n,oldCount=a,newCount=b)for n,a,b in [('null',1,0),('empty',0,0),('one',1,1),('two',2,2),('mixed',2,1)]])
 
 
@@ -1356,7 +1358,7 @@ class FixtureRecoveryStreamTests(unittest.TestCase):
         rows=[]
         for code in (self.OLD_READ,self.FIXED_READ):
             script="$ErrorActionPreference='Stop';"+hashing+";$r=[IO.MemoryStream]::new([Text.Encoding]::ASCII.GetBytes('PUBLIC'));$failed=$false;$bytes=$null;try{"+code+"}catch{if($_.Exception.Message -cne 'RECOVERY_SOURCE_EOF'){throw};$failed=$true}finally{$r.Dispose()};[ordered]@{failed=$failed;bytes=if($null -eq $bytes){$null}else{[Text.Encoding]::ASCII.GetString($bytes)};sha256=$sha}|ConvertTo-Json -Compress"
-            result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=15,check=True)
+            result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],capture_output=True,timeout=15,env=windows_powershell_environment('powershell.exe',os.environ),check=True)
             rows.append(json.loads(result.stdout.decode('utf-8-sig')))
         self.assertIs(rows[0]['failed'],True)
         self.assertEqual(rows[1],dict(failed=False,bytes='PUBLIC',sha256=__import__('hashlib').sha256(b'PUBLIC').hexdigest()))

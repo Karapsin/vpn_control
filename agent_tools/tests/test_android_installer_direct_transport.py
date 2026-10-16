@@ -3,6 +3,7 @@ import ast,io,json,os,stat,subprocess,sys,tempfile,time,unittest
 from pathlib import Path
 from unittest import mock
 from agent_tools import android_installer_direct_transport as direct
+from agent_tools.tests.test_android_direct_fixture_lifecycle import emitted_capture
 
 class PortableDecisions(unittest.TestCase):
     def test_typed_original_submission_identity(self):
@@ -34,7 +35,12 @@ class PortableDecisions(unittest.TestCase):
 @unittest.skipUnless(os.name=='posix','Actual POSIX descriptor child and flock; portable frame refusal remains covered')
 class EmittedSupervisorTests(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name).resolve();self.root.chmod(0o700)
+        self.tmp=tempfile.TemporaryDirectory();self._retain_fixture_root=False
+        original=self.tmp
+        def cleanup():
+            if self._retain_fixture_root:original._finalizer.detach()
+            else:original.cleanup()
+        self.addCleanup(cleanup);self.root=Path(self.tmp.name).resolve();self.root.chmod(0o700)
     def source(self):
         source=direct.supervisor_source().decode()
         if sys.platform!='linux':
@@ -188,10 +194,11 @@ class WholeWorkerTests(unittest.TestCase):
         repo=Path(__file__).resolve().parents[2]
         body="import sys\nsys.path.insert(0,"+repr(str(repo))+ ")\nfrom agent_tools.tests.test_android_installer_outer_transport import WholeEntryTests\ncase=WholeEntryTests()\ncase.setUp()\ntry:\n case.whole_entry(True)\n print('ACTUAL_FULL_ACTOR_TERMINAL_AND_MISSING_EOF_REFUSAL')\nfinally:case.doCleanups()\n"
         program=(direct.WORKER_GATE+body).encode();direct.write_once(self.root,'worker.py',program)
-        result=subprocess.run([sys.executable,'-I','-u','-B','-c',self.source(),str(self.root),direct.sha(program)],capture_output=True,timeout=150)
-        self.assertEqual(0,result.returncode,(result.stdout,result.stderr))
-        value=direct.saved_terminal(self.root,direct.sha(program));self.assertEqual(0,value['receipt']['returncode'],value['raw']['stderr'])
-        self.assertIn(b'ACTUAL_FULL_ACTOR_TERMINAL_AND_MISSING_EOF_REFUSAL',value['raw']['stdout'])
+        with emitted_capture(self.root,self.source(),direct.sha(program),repo/'.runtime',
+                retain=lambda:setattr(self,'_retain_fixture_root',True)) as result:
+            self.assertEqual(0,result.returncode,(result.stdout,result.stderr))
+            value=direct.saved_terminal(self.root,direct.sha(program));self.assertEqual(0,value['receipt']['returncode'],value['raw']['stderr'])
+            self.assertIn(b'ACTUAL_FULL_ACTOR_TERMINAL_AND_MISSING_EOF_REFUSAL',value['raw']['stdout'])
 
 @unittest.skipUnless(os.name=='posix','Actual sourceclosed baseline, routing, flock and custody fixture')
 class PreclaimCompositionTests(unittest.TestCase):
@@ -453,11 +460,12 @@ class JoinedDirectFlowTests(unittest.TestCase):
         repo=Path(__file__).resolve().parents[2]
         body='import sys\nsys.path.insert(0,'+repr(str(repo))+')\nfrom agent_tools.tests.test_android_installer_direct_transport import JoinedDirectFlowTests\ncase=JoinedDirectFlowTests()\ntry:\n case._run_joined_fixture()\n print("ACTUAL_JOINED_READ_BACKUP_CLAIM_STAGE_ACTOR_TERMINAL")\nfinally:case.doCleanups()\n'
         program=(direct.WORKER_GATE+body).encode();direct.write_once(self.root,'worker.py',program)
-        result=subprocess.run([sys.executable,'-I','-u','-B','-c',self.source(),str(self.root),direct.sha(program)],capture_output=True,timeout=150)
-        self.assertEqual(0,result.returncode,(result.stdout,result.stderr))
-        saved=direct.saved_terminal(self.root,direct.sha(program))
-        self.assertEqual('terminal',saved['state']);self.assertEqual(0,saved['receipt']['returncode'],saved['raw']['stderr'])
-        self.assertIn(b'ACTUAL_JOINED_READ_BACKUP_CLAIM_STAGE_ACTOR_TERMINAL',saved['raw']['stdout'])
+        with emitted_capture(self.root,self.source(),direct.sha(program),repo/'.runtime',
+                retain=lambda:setattr(self,'_retain_fixture_root',True)) as result:
+            self.assertEqual(0,result.returncode,(result.stdout,result.stderr))
+            saved=direct.saved_terminal(self.root,direct.sha(program))
+            self.assertEqual('terminal',saved['state']);self.assertEqual(0,saved['receipt']['returncode'],saved['raw']['stderr'])
+            self.assertIn(b'ACTUAL_JOINED_READ_BACKUP_CLAIM_STAGE_ACTOR_TERMINAL',saved['raw']['stdout'])
     def _run_joined_fixture(self):
         import copy,hashlib,inspect,textwrap,types,uuid,zipfile
         from agent_tools import android_installer_component_bundle as bundle

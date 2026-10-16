@@ -2,6 +2,7 @@
 import concurrent.futures,hashlib,json,os,re,shutil,socket,ssl,subprocess,tempfile,threading,time,unittest
 from pathlib import Path
 from agent_tools import windows_ordinary_https as subject
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 FIXTURES=Path(__file__).resolve().parent/'fixtures/windows_ordinary_https'
 
 def specimen(name):
@@ -67,7 +68,7 @@ class ActualTlsFixture:
                 ps=tmp/('reader-'+str(index)+'.ps1')
                 ps.write_text("Add-Type -TypeDefinition @'\n"+emitted+"\n'@\n$c=[Diagnostics.Stopwatch]::StartNew();try{$b=[Cp117FreshServerHttps]::Read("+str(port)+");$v=@{state='read';body=$b}}catch{$v=@{state='refused';message=$_.Exception.Message}};$c.Stop();$v.elapsedMs=$c.ElapsedMilliseconds;$v|ConvertTo-Json -Compress\n")
                 try:
-                    process=subprocess.run([pw,'-NoLogo','-NoProfile','-NonInteractive','-File',str(ps)],capture_output=True,timeout=35,env={k:v for k,v in os.environ.items() if k!='DYLD_INSERT_LIBRARIES'})
+                    process=subprocess.run([pw,'-NoLogo','-NoProfile','-NonInteractive','-File',str(ps)],capture_output=True,timeout=35,env=windows_powershell_environment(pw, {k:v for k,v in os.environ.items() if k!='DYLD_INSERT_LIBRARIES'}))
                     if process.returncode:raise AssertionError(process.stderr.decode(errors='replace'))
                     value=json.loads(process.stdout);thread.join(timeout=2)
                     return {**value,'producerEvents':events,'producerTlsEntered':bool(tls_entered)}

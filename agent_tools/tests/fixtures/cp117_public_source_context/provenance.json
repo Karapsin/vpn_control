@@ -1,0 +1,21 @@
+{
+  "additionalExactOriginalDefinitions": [
+    {
+      "bytes": 34394,
+      "originalPath": "agent_tools/tests/test_windows_cp117_recovered_login.py",
+      "retainedPath": "agent_tools/tests/fixtures/cp117_public_source_context/recovered-login.before.source",
+      "sha256": "b5c1469e6f541e43b3ba16811353ad41511ac071cb009f357efb1f7d94fd7236"
+    },
+    {
+      "bytes": 15554,
+      "originalPath": "agent_tools/tests/test_windows_cp117_installed_base_observe.py",
+      "retainedPath": "agent_tools/tests/fixtures/cp117_public_source_context/installed-base.before.source",
+      "sha256": "39991f9b53906727564ab31b0e6430f6ea9cb08ff88437f5e76a9bc38f53dfbc"
+    }
+  ],
+  "bytes": 8970,
+  "originalHeadSha": "a5cd9b73d49ff0b52f4a04a29a9122d4fe48b173",
+  "path": "agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py",
+  "role": "Exact full original inert context; routine loads only named function from SHA-held real source path; no old executable top level/source pins changed",
+  "sha256": "fe886e20f2238db0ac7518c67f3c8169e5325ce426fe1a10dd9b1336630d79f8"
+}

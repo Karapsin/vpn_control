@@ -6,6 +6,7 @@ SYSTEM ACL identity with its current test actor; production syntax is unchanged.
 """
 import ast,json,os,shutil,subprocess,tempfile,unittest
 from pathlib import Path
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 ROOT=Path(__file__).resolve().parents[2]
 
 
@@ -91,7 +92,7 @@ class SourceExtractionTests(unittest.TestCase):
 class ExecutableFailureTests(unittest.TestCase):
     def invoke(self,directory,script):
         path=Path(directory)/'case.ps1';path.write_text(script,encoding='utf-8')
-        result=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(path)],capture_output=True,text=True,timeout=20)
+        result=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(path)],capture_output=True,text=True,timeout=20, env=windows_powershell_environment(shutil.which('powershell.exe'), os.environ))
         index=getattr(self,'caseIndex',0);persist_case(directory,index,result);self.caseIndex=index+1
         return result
     def run_child(self,directory,fixed):

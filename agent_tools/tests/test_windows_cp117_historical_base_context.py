@@ -284,5 +284,176 @@ class HistoricalBaseContextTests(unittest.TestCase):
             self.assertEqual(raw if os.name == 'nt' else raw + b'\n', moved.read_bytes())
 
 
+
+
+class PublicSourceContextTests(unittest.TestCase):
+    """Real source gates without the coordinator's POSIX API; no native claim."""
+    public_context = staticmethod(context.inert_repository_source_reads)
+    fixtures = Path(__file__).with_name('fixtures') / 'cp117_public_source_context'
+
+    @contextmanager
+    def definitions(self, path, expected, names, globals_):
+        import ast
+        from agent_tools import source_module_loader
+        with source_module_loader._bootstrap_source(path) as (raw, guard):
+            self.assertEqual(expected, hashlib.sha256(raw).hexdigest())
+            tree = ast.parse(raw.decode('utf-8'), filename=str(path))
+            nodes = []
+            for name in names:
+                parent, _, member = name.partition('.')
+                node = next(n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name == parent)
+                if member:
+                    node = next(n for n in node.body if isinstance(n, ast.FunctionDef) and n.name == member)
+                # The preserved method body is the subject, not its testcase decorators.
+                if member:
+                    node.decorator_list = []
+                nodes.append(node)
+            namespace = dict(globals_)
+            exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), 'exec'), namespace)
+            guard()
+            try:
+                yield namespace
+            finally:
+                guard()
+
+    @contextmanager
+    def absent_posix_reader(self):
+        from agent_tools import windows_cp117_bound_absence_completion as binding
+        class MissingFlag:
+            def __getattr__(self, name):
+                if name == 'O_NOFOLLOW':
+                    raise AttributeError("module 'os' has no attribute 'O_NOFOLLOW'")
+                return getattr(os, name)
+        path = Path(binding.__file__)
+        with self.definitions(path, '48234c12de9d48e61919fa981daacd03bf681ce56348bae2f381e9ab84b15ee0',
+                              ('_read_bound_file',), dict(binding.__dict__, os=MissingFlag())) as ns:
+            with patch.object(binding, '_read_bound_file', ns['_read_bound_file']):
+                yield binding
+
+    @contextmanager
+    def before_public_context(self):
+        path = self.fixtures / 'context.before.source'
+        with self.definitions(path, 'fe886e20f2238db0ac7518c67f3c8169e5325ce426fe1a10dd9b1336630d79f8',
+                              ('inert_repository_source_reads',), dict(context.__dict__, __file__=str(path))) as ns:
+            with ns['inert_repository_source_reads']():
+                yield
+
+    def source_gate(self, chosen):
+        from agent_tools import windows_cp117_windowless_dismiss_observe as dismiss
+        from agent_tools.tests.test_windows_cp117_recovered_login import ScreenTests
+        with context.historical_factories(), self.absent_posix_reader(), chosen(), context.remote_posix_recipe_context(dismiss.login.guest.recovery):
+            dismiss._check_factories()
+            source, parent = dismiss.slot_program(ScreenTests().record(), 'before1')
+            self.assertTrue(source)
+            self.assertEqual(dismiss.SLOT_HASHES['before1'][0], parent)
+            self.assertIn('guest-exec-status', source)
+            return source
+
+    def test_actual_source_gate_without_posix_flag(self):
+        problem = None
+        try:
+            self.source_gate(self.public_context)
+        except AttributeError:
+            import traceback
+            problem = traceback.format_exc()
+        self.assertIsNone(problem, 'actual public source gate refused: ' + str(problem))
+
+    def test_preserved_two_label_context_refuses_same_actual_gate(self):
+        with self.assertRaisesRegex(AttributeError, 'O_NOFOLLOW'):
+            self.source_gate(self.before_public_context)
+
+    def test_registered_owned_source_is_exact_and_generation_bound(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td).resolve() / 'factory.py'
+            raw = b"def public_value():\n return 'PUBLIC_DECLARED_SOURCE'\n"
+            path.write_bytes(raw)
+            with self.absent_posix_reader() as binding, self.public_context():
+                context.register_inert_public_source(path, raw)
+                pin, actual = binding._read_bound_file(path, retain_bytes=True)
+                self.assertEqual(raw, actual)
+                self.assertEqual(hashlib.sha256(raw).hexdigest(), pin['sha256'])
+                ns = {}
+                exec(compile(actual, str(path), 'exec'), ns)
+                self.assertEqual('PUBLIC_DECLARED_SOURCE', ns['public_value']())
+                path.write_bytes(raw + b'#changed\n')
+                with self.assertRaisesRegex(ValueError, 'inert-public-source-changed'):
+                    binding._read_bound_file(path)
+
+    def test_private_and_undeclared_sources_keep_original_refusal(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td).resolve() / 'private.py'
+            path.write_bytes(b'PRIVATE_NOT_DECLARED\n')
+            with self.absent_posix_reader() as binding, self.public_context():
+                with self.assertRaisesRegex(AttributeError, 'O_NOFOLLOW'):
+                    binding._read_bound_file(path)
+                context.register_inert_public_source(path, path.read_bytes())
+                with self.assertRaisesRegex(AttributeError, 'O_NOFOLLOW'):
+                    binding._read_bound_file(path, private=True)
+            with self.assertRaisesRegex(ValueError, 'inert-public-source-registration'):
+                context.register_inert_public_source(path, path.read_bytes())
+
+    def test_direct_recipe_helpers_apply_only_the_remote_path_grammar(self):
+        from agent_tools import windows_cp117_fixture_recovery_short_socket as recovery
+        from agent_tools.tests import test_windows_cp117_recovered_login as screen
+        from agent_tools.tests import test_windows_cp117_installed_base_observe as installed
+        original = recovery.os
+        # Model only incoming inert recipe grammar; local OS and Path stay real.
+        import ntpath
+        class IncomingPath:
+            path = ntpath
+            def __getattr__(self, name):
+                return getattr(original, name)
+        with self.definitions(self.fixtures / 'recovered-login.before.source',
+                              'b5c1469e6f541e43b3ba16811353ad41511ac071cb009f357efb1f7d94fd7236',
+                              ('ScreenTests.record',), screen.__dict__) as old_screen:
+            with self.definitions(self.fixtures / 'installed-base.before.source',
+                                  '39991f9b53906727564ab31b0e6430f6ea9cb08ff88437f5e76a9bc38f53dfbc',
+                                  ('InstalledTests.execute_flow',), installed.__dict__) as old_installed:
+                with context.historical_factories(), context.inert_repository_source_reads(), patch.object(recovery, 'os', IncomingPath()):
+                    with self.assertRaisesRegex(Exception, 'unix-socket-path'):
+                        old_screen['record'](screen.ScreenTests())
+                    record = screen.ScreenTests().record()
+                    self.assertRegex(record['request']['recipeSha256'], r'^[a-f0-9]{64}$')
+                    self.assertEqual('running', record['result']['state'])
+                    self.assertIs(recovery.os.path, ntpath)
+                    with self.assertRaisesRegex(Exception, 'unix-socket-path'):
+                        old_installed['execute_flow'](installed.InstalledTests())
+                    if os.name == 'nt':
+                        import importlib.util
+                        import sys
+                        self.assertNotIn('fcntl', sys.modules)
+                        self.assertIsNone(importlib.util.find_spec('fcntl'))
+                        with context.remote_posix_recipe_context(recovery):
+                            with self.assertRaises(ModuleNotFoundError) as missing:
+                                old_installed['execute_flow'](installed.InstalledTests())
+                        self.assertEqual('fcntl', missing.exception.name)
+                        print('CP117_INERT_PREFIX_COUNTERFACTUAL_RED ' + json.dumps({
+                            'testsRun': 1, 'errors': 1, 'failures': 0, 'skipped': 0,
+                            'exceptionType': type(missing.exception).__name__,
+                            'missingModule': missing.exception.name,
+                            'beforeSourceSha256': '39991f9b53906727564ab31b0e6430f6ea9cb08ff88437f5e76a9bc38f53dfbc',
+                            'genuineNativeCapability': True}), flush=True)
+                    value, calls, anchors = installed.InstalledTests().execute_flow()
+                    self.assertEqual(value['state'], 'observed')
+                    self.assertEqual(['guest-exec','guest-exec-status'], [operation for operation, _ in calls])
+                    self.assertTrue(anchors)
+                    self.assertIs(recovery.os.path, ntpath)
+        self.assertIs(original, recovery.os)
+        self.assertIs(original.path, os.path)
+
+    def test_preserved_screen_generator_refuses_unsupported_base_current_scope_restores(self):
+        from agent_tools.tests import test_windows_cp117_recovered_login as fixture
+        closure = fixture.login.guest.recovery.authority.closure
+        path = self.fixtures / 'recovered-login.before.source'
+        with self.definitions(path, 'b5c1469e6f541e43b3ba16811353ad41511ac071cb009f357efb1f7d94fd7236',
+                              ('ScreenTests.test_readonly_program_has_no_guest_execution_or_keyboard',), fixture.__dict__) as ns:
+            with patch.object(closure, 'base', None), context.remote_posix_recipe_context(fixture.login.guest.recovery):
+                with self.assertRaisesRegex(AttributeError, '_QGA'):
+                    ns['test_readonly_program_has_no_guest_execution_or_keyboard'](fixture.ScreenTests())
+                self.assertIsNone(closure.base)
+                fixture.ScreenTests().test_readonly_program_has_no_guest_execution_or_keyboard()
+                self.assertIsNone(closure.base)
+
+
 if __name__ == '__main__':
     unittest.main()

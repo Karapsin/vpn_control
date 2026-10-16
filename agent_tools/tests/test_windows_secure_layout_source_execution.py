@@ -6,6 +6,7 @@ real process. macOS/Linux skip the executable cases honestly.
 """
 import ast,base64,json,os,re,shutil,subprocess,unittest
 from pathlib import Path
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 SOURCE=Path(__file__).resolve().parents[1]/'windows_cp117_secure_layout_observe.py'
 
@@ -61,7 +62,7 @@ class ExecutableOwnershipTests(unittest.TestCase):
     def run_case(self,case,legacy=False):
         source=base64.b64encode(inert_native(legacy).encode()).decode()
         script="$ErrorActionPreference='Stop';Add-Type -TypeDefinition ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+source+"')))\n"+case
-        process=subprocess.run([shutil.which('powershell'),'-NoProfile','-NonInteractive','-Command','-'],input=script,text=True,capture_output=True,timeout=20)
+        process=subprocess.run([shutil.which('powershell'),'-NoProfile','-NonInteractive','-Command','-'],input=script,text=True,capture_output=True,timeout=20, env=windows_powershell_environment(shutil.which('powershell'), os.environ))
         self.assertEqual(process.returncode,0,process.stderr[:2000]);return json.loads(process.stdout.strip().splitlines()[-1])
     def test_measured_legacy_deadline_orphans_and_fixed_deadline_cleans(self):
         case="""$p=[CP117SessionRead]::Suspended('fixed','fixed','fixed');[CP117SessionRead]::FireDeadline();@{alive=[CP117SessionRead]::Alive;closed=[CP117SessionRead]::OwnedCloses;terminated=[CP117SessionRead]::Terminations;exit=[CP117SessionRead]::RecordedExit}|ConvertTo-Json -Compress"""
@@ -81,5 +82,5 @@ class ExecutableOwnershipTests(unittest.TestCase):
         # Execute concurrent C# threads, avoiding PowerShell delegates without a runspace.
         source=inert_native();last=source.rfind('}');source=source[:last]+'''public static bool BirthRace(){Release.Reset();System.Threading.Thread a=new System.Threading.Thread(delegate(){Suspended("fixed","fixed","fixed");});a.Start();if(!Entered.WaitOne(3000))throw new Exception("birth-not-entered");System.Threading.Thread b=new System.Threading.Thread(delegate(){FireDeadline();});b.Start();System.Threading.Thread.Sleep(20);if(RecordedExit!=0)throw new Exception("exit-before-registration");Release.Set();if(!a.Join(3000)||!b.Join(3000))throw new Exception("race-timeout");return !Alive&&OwnedCloses==2&&Terminations==1&&RecordedExit==124;}'''+source[last:]
         encoded=base64.b64encode(source.encode()).decode();script="$ErrorActionPreference='Stop';Add-Type -TypeDefinition ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+encoded+"')));[CP117SessionRead]::BirthRace()|ConvertTo-Json -Compress"
-        p=subprocess.run([shutil.which('powershell'),'-NoProfile','-NonInteractive','-Command','-'],input=script,text=True,capture_output=True,timeout=20)
+        p=subprocess.run([shutil.which('powershell'),'-NoProfile','-NonInteractive','-Command','-'],input=script,text=True,capture_output=True,timeout=20, env=windows_powershell_environment(shutil.which('powershell'), os.environ))
         self.assertEqual(p.returncode,0,p.stderr[:2000]);self.assertTrue(json.loads(p.stdout.strip().splitlines()[-1]))

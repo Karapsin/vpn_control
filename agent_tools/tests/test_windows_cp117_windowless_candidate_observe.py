@@ -2,6 +2,7 @@ from agent_tools.tests.fixtures.cp117_gzip_runtime import HistoricalGzipTestCase
 import ast,base64,gzip,re,hashlib,inspect,json,os,shutil,subprocess,tempfile,textwrap,unittest
 from pathlib import Path
 from unittest.mock import patch
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 ROOT=Path(__file__).resolve().parents[2]
 if os.name!='nt':
  from agent_tools import windows_cp117_windowless_candidate_observe as m
@@ -139,5 +140,5 @@ def candidate_case_script():
 class ExecutableCandidateTests(HistoricalGzipTestCase):
  def test_actual_production_compressed_dynamic_candidates_provider_cases(self):
   with tempfile.TemporaryDirectory()as directory:
-   p=Path(directory)/'candidate.ps1';p.write_text(candidate_case_script(),encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=30)
+   p=Path(directory)/'candidate.ps1';p.write_text(candidate_case_script(),encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=30, env=windows_powershell_environment(shutil.which('powershell.exe'), os.environ))
    Path(directory,'result.json').write_text(json.dumps({'exit':r.returncode,'stdout':r.stdout,'stderr':r.stderr}));self.assertEqual(r.returncode,0,r.stderr);self.assertIn('CANDIDATE_CASES_PASS',r.stdout)

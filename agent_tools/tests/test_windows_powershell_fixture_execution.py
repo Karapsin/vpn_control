@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -203,7 +204,7 @@ class NativeDecoderFixtureTests(unittest.TestCase):
         for before in (True, False):
             script = decoder_script(before)
             result = subprocess.run([shutil.which('powershell.exe'), '-NoProfile', '-NonInteractive', '-Command', script],
-                                    capture_output=True, text=True, timeout=15, check=False)
+                                    capture_output=True, text=True, timeout=15, check=False, env=windows_powershell_environment(shutil.which('powershell.exe'), os.environ))
             records.append({'before': before, 'sourceSha256': hashlib.sha256(script.encode()).hexdigest(),
                             'returncode': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr})
         print('DECODER_FIXTURE_CAUSAL ' + json.dumps(records, sort_keys=True), flush=True)

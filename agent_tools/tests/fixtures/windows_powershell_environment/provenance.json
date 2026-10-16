@@ -1,0 +1,22 @@
+{
+  "actualStageSource": {
+    "bytes": 178772,
+    "path": "agent_tools/windows_tertiary_guest_stage.py",
+    "sha256": "fb2dab95628f1d03e30711d5bcdd0eb2440ef75c3b2cd900ad5e3ffda09bef05"
+  },
+  "claim": "Actual source/environment boundary only; no native PowerShell or historical job environment reconstruction",
+  "classFirstLine": 532,
+  "classLastLine": 547,
+  "file": {
+    "bytes": 1314,
+    "path": "native_owner.before.source",
+    "sha256": "903bcbb3eba1d92e50baec2243ed0788f616942c64a02eb6284aac583a98bb38"
+  },
+  "prefixThroughLine": 8,
+  "projection": "Exact original leading imports/docstring plus complete NativeTargetOwnerTests class; no source rewrites",
+  "schemaVersion": 1,
+  "sourceBytes": 107814,
+  "sourceCommit": "a5cd9b73d49ff0b52f4a04a29a9122d4fe48b173",
+  "sourcePath": "agent_tools/tests/test_windows_tertiary_guest_stage.py",
+  "sourceSha256": "91140559c974ac63db65ae22e3888f3e6826ed2ce85fe7424f918da3a5b02fb9"
+}

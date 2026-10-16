@@ -8,6 +8,7 @@ import subprocess
 import unittest
 
 from agent_tools import windows_secondary_ordinary_read as subject
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 POWERSHELL = shutil.which('powershell.exe') if os.name == 'nt' else None
 
@@ -16,7 +17,7 @@ class NativeAccountGuardTests(unittest.TestCase):
     @unittest.skipUnless(POWERSHELL, 'native Windows PowerShell required; guest census runs the same cases')
     def test_actual_null_constructor_red_and_guard_green(self):
         source = subject.nt_account_regression_powershell()
-        result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-EncodedCommand', base64.b64encode(source.encode('utf-16le')).decode()], capture_output=True, timeout=15, check=False)
+        result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-EncodedCommand', base64.b64encode(source.encode('utf-16le')).decode()], capture_output=True, timeout=15,env=windows_powershell_environment(POWERSHELL,os.environ), check=False)
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
         subject.validate_nt_account_regression(json.loads(result.stdout.decode('utf-8-sig')))
 
@@ -32,7 +33,7 @@ class NativeAccountGuardTests(unittest.TestCase):
             command = "$ErrorActionPreference='Stop';$s=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + encoded + "'));$tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseInput($s,[ref]$tokens,[ref]$errors);[Console]::Out.WriteLine($errors.Count);if($errors.Count -ne 0){exit 1}"
             argv = [POWERSHELL, '-NoProfile', '-NonInteractive', '-EncodedCommand', base64.b64encode(command.encode('utf-16le')).decode()]
             self.assertLess(len(subprocess.list2cmdline(argv)) + 1, 32767)
-            result = subprocess.run(argv, capture_output=True, timeout=15, check=False)
+            result = subprocess.run(argv, capture_output=True, timeout=15,env=windows_powershell_environment(argv[0],os.environ), check=False)
             self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
             self.assertEqual(result.stdout.decode('utf-8-sig').strip(), '0')
 
@@ -50,7 +51,7 @@ class NativeAccountGuardTests(unittest.TestCase):
         source = subject.boot_projection_regression_powershell()
         argv = [POWERSHELL, '-NoProfile', '-NonInteractive', '-EncodedCommand', base64.b64encode(source.encode('utf-16le')).decode()]
         self.assertLess(len(subprocess.list2cmdline(argv)) + 1, 32767)
-        result = subprocess.run(argv, capture_output=True, timeout=15, check=False)
+        result = subprocess.run(argv, capture_output=True, timeout=15,env=windows_powershell_environment(argv[0],os.environ), check=False)
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
         self.assertEqual(result.stdout.decode('utf-8-sig').strip(), 'projection-green')
 
@@ -332,7 +333,7 @@ class NativeWin32ClassificationTests(unittest.TestCase):
  @unittest.skipUnless(POWERSHELL,'actual Windows Win32Exception and PowerShell wrapper required')
  def test_actual_hresult_red_typed_native_code_green(self):
   source="$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);"+subject.NATIVE_ERROR_FAMILY_CONTROL+"\n[Console]::Out.WriteLine(($nativeErrorControl|ConvertTo-Json -Compress))"
-  r=subprocess.run([POWERSHELL,'-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',base64.b64encode(source.encode('utf-16le')).decode()],capture_output=True,timeout=15)
+  r=subprocess.run([POWERSHELL,'-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',base64.b64encode(source.encode('utf-16le')).decode()],capture_output=True,timeout=15,env=windows_powershell_environment(POWERSHELL,os.environ))
   self.assertEqual(r.returncode,0,r.stderr)
   v=json.loads(r.stdout.decode('utf-8-sig'));self.assertEqual(v['ioNativeErrorCode'],32);self.assertIs(v['boundedDepthRefused'],True);self.assertIs(v['oldWrappedIOPolicyRejected'],True);self.assertNotEqual(v['oldHresultMasked'],5);self.assertEqual(v['nativeErrorCode'],5)
   for name in ('oldPolicyRejected','wrongCodeRejected','foreignTypeRefused'):self.assertIs(v[name],True)
@@ -372,7 +373,7 @@ try{
  [Console]::Out.WriteLine('creation-acl-green')
 }finally{[IO.Directory]::Delete($root,$true)}
 """.replace('CONSTRUCTOR', constructor)
-        result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-EncodedCommand', base64.b64encode(source.encode('utf-16le')).decode()], capture_output=True, timeout=15)
+        result = subprocess.run([POWERSHELL, '-NoProfile', '-NonInteractive', '-EncodedCommand', base64.b64encode(source.encode('utf-16le')).decode()], capture_output=True, timeout=15,env=windows_powershell_environment(POWERSHELL,os.environ))
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
         self.assertEqual(result.stdout.decode('utf-8-sig').strip(), 'creation-acl-green')
 
@@ -547,7 +548,7 @@ try{
 class NativeCleanupReaderLifetimeTests(unittest.TestCase):
  @unittest.skipUnless(POWERSHELL, 'native Windows PowerShell 5.1/Win32 sharing required')
  def test_actual_old_reader_closed_fixed_reader_survives_markdelete(self):
-  result=subprocess.run([POWERSHELL,'-NoLogo','-NoProfile','-NonInteractive','-Command',cleanup_reader_lifetime_powershell()],capture_output=True,text=True,timeout=30)
+  result=subprocess.run([POWERSHELL,'-NoLogo','-NoProfile','-NonInteractive','-Command',cleanup_reader_lifetime_powershell()],capture_output=True,text=True,timeout=30,env=windows_powershell_environment(POWERSHELL,os.environ))
   self.assertEqual(result.returncode,0,result.stderr)
   self.assertIn('PUBLIC_LIFETIME_RED_GREEN',result.stdout)
 

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 class CompleteServerBodyParserTests(unittest.TestCase):
     def test_actual_finally_loss_whole_body_refuses_restored_body_parses(self):
@@ -29,7 +30,7 @@ class CompleteServerBodyParserTests(unittest.TestCase):
             for name, body in bodies.items():
                 target = Path(directory) / (name + ".ps1")
                 target.write_bytes(body)
-                results[name] = subprocess.run([interpreter, "-NoProfile", "-NonInteractive", "-File", str(script), str(target)], capture_output=True, timeout=15)
+                results[name] = subprocess.run([interpreter, "-NoProfile", "-NonInteractive", "-File", str(script), str(target)], capture_output=True, timeout=15, env=windows_powershell_environment(interpreter, os.environ))
         old = results["finally-loss"]
         current = results["finally-restored"]
         self.assertEqual(old.returncode, 1, old.stderr.decode(errors="replace"))

@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agent_tools import windows_cp117_c32_absence as absence
+import os
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 
 C32 = "c32cb108-4d48-407e-9153-40774559ba50"
@@ -240,7 +242,7 @@ $old='@OLD@';$fixed='@FIXED@'
 [Console]::Out.WriteLine(('fixed-mixed='+(Classify -items ([object[]]@($null,[pscustomobject]@{x=1})) -guard $fixed)))
 '''.replace("@OLD@", old.replace("'", "''")).replace("@FIXED@", fixed.replace("'", "''"))
         result = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-Command", script],
-                                capture_output=True, text=True, check=True, timeout=15)
+                                capture_output=True, text=True, check=True, timeout=15, env=windows_powershell_environment(powershell, os.environ))
         self.assertEqual(["old-null=TASK_TRIGGER_NULL", "fixed-empty=accepted", "fixed-null=accepted",
                           "fixed-real=TASK_TRIGGER_COUNT", "fixed-mixed=TASK_TRIGGER_COUNT"],
                          result.stdout.splitlines())
@@ -260,7 +262,7 @@ $old='@OLD@';$fixed='@FIXED@';$text=[Text.Encoding]::UTF8.GetBytes('{"value":"ok
 [Console]::Out.WriteLine(('fixed-utf16='+(Classify -candidate $utf16 -decoder $fixed)))
 '''.replace("@OLD@", old.replace("'", "''")).replace("@FIXED@", fixed.replace("'", "''"))
         result = subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-Command", script],
-                                capture_output=True, text=True, check=False, timeout=15)
+                                capture_output=True, text=True, check=False, timeout=15, env=windows_powershell_environment(powershell, os.environ))
         self.assertEqual(result.returncode, 0, {"stdout": result.stdout, "stderr": result.stderr})
         self.assertEqual(["old-bom=rejected", "fixed-bom=ok", "fixed-plain=ok",
                           "fixed-malformed=rejected", "fixed-utf16=rejected"], result.stdout.splitlines())

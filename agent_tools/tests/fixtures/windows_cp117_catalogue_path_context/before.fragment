@@ -1,0 +1,16 @@
+ @unittest.skipUnless(__import__('os').name=='nt','actual composed PowerShell lexical scope requires Windows')
+ def test_actual_catalogue_through_three_acl_fragments_old_collision_unique_binding(self):
+  import subprocess,tempfile
+  fragment=gzip.decompress(base64.b64decode(COMPLETE_STAGE_CATALOGUE_ACL_GZIP)).decode('utf-8','strict')
+  with tempfile.TemporaryDirectory()as td:
+   root=Path(td);state=root/'state';content=root/'content';state.mkdir();content.mkdir()
+   for i in range(5):(content/('file%d'%i)).write_bytes(b'PUBLIC')
+   literal=lambda x:"'"+str(x).replace("'","''")+"'"
+   # Explicit read-API seam provides three exact safe ACL observations; the original
+   # three fragments, scope assignments, and final real filesystem guard execute.
+   setup="$ErrorActionPreference='Stop';$state="+literal(state)+";$cp117NewContent="+literal(content)+";$names=@('file0','file1','file2','file3','file4');function Get-Acl {param($LiteralPath,$ErrorAction);$private=$LiteralPath.EndsWith('server-state');$rows=@();foreach($sid in @('S-1-5-18','S-1-5-32-544','S-1-5-21-2404255130-2183793310-3766671872-1002')){$rights=if($sid -eq 'S-1-5-21-2404255130-2183793310-3766671872-1002' -and !$private){1179817}else{2032127};$rows+= [pscustomobject]@{IdentityReference=[Security.Principal.SecurityIdentifier]::new($sid);FileSystemRights=$rights;AccessControlType='Allow';IsInherited=$false;InheritanceFlags=3;PropagationFlags=0}};return [pscustomobject]@{AreAccessRulesProtected=$true;Access=$rows}};"
+   script=setup+"$expected=$names;$oldRefused=$false;try{\n"+fragment+"\n}catch{if($_.Exception.Message -cne 'COMPLETE_CATALOGUE_DRIFT'){throw};$oldRefused=$true};if(!$oldRefused -or $expected -isnot [hashtable]){throw 'OLD_SCOPE_NOT_REPRODUCED'};"
+   fixed=fragment.replace('($expected -join', '($cp117CatalogueNames -join')
+   script+="$cp117CatalogueNames=$names;\n"+fixed+"\nWrite-Output 'CATALOGUE_SCOPE_RED_GREEN'"
+   proc=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-EncodedCommand',base64.b64encode(script.encode('utf-16le')).decode()],capture_output=True,timeout=20)
+   self.assertEqual(proc.returncode,0,proc.stderr.decode(errors='replace'));self.assertIn(b'CATALOGUE_SCOPE_RED_GREEN',proc.stdout)

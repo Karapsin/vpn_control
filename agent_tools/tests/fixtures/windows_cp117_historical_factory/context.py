@@ -4,6 +4,7 @@ Only testcase lifetime references change. Production source and digest guards
 remain unchanged. This fixture makes no current/native admission claim.
 """
 from contextlib import ExitStack, contextmanager
+from contextvars import ContextVar
 from functools import wraps
 import hashlib
 import os
@@ -124,41 +125,115 @@ class HistoricalFactoryTestCase(unittest.TestCase):
         self.historical_provider = stack.enter_context(historical_factories())
 
 
+# Exact public source inputs consumed by these inert programmes. This list is
+# data, not imports of POSIX coordinators or permission to read private records.
+_PUBLIC_SOURCE_NAMES = (
+    'windows_cp117_base_source_refresh.py',
+    'windows_cp117_bound_absence_completion.py',
+    'windows_cp117_fixture_recovery_short_socket.py',
+    'windows_cp117_installed_base_observe.py',
+    'windows_cp117_recovered_guest_observe.py',
+    'windows_cp117_recovered_login.py',
+    'windows_cp117_recovered_owner_diagnostic.py',
+    'windows_cp117_recovered_owner_observe.py',
+    'windows_cp117_recovered_session_observe.py',
+    'windows_cp117_secure_input_geometry_observe.py',
+    'windows_cp117_secure_input_observe.py',
+    'windows_cp117_secure_layout_observe.py',
+    'windows_cp117_static_tasks_absence_close.py',
+    'windows_cp117_windowless_candidate_observe.py',
+    'windows_cp117_windowless_dismiss_observe.py',
+    'windows_cp117_windowless_edit_observe.py',
+    'windows_cp117_windowless_gui_login.py',
+    'windows_cp117_windowless_provider_login.py',
+    'windows_fixture_credentials.py',
+    'windows_msi_base_prepare.py',
+    'windows_msi_public_scenario.py',
+    'windows_update_fixture_server.py',
+    'windows_update_fixture_stage.py',
+)
+_PUBLIC_SOURCE_REGISTRY = ContextVar('cp117_inert_public_sources', default=None)
+
+
+def _public_source(path):
+    """Real held public bytes; the coordinator's private reader stays separate."""
+    from agent_tools import source_module_loader
+    with source_module_loader._bootstrap_source(path) as (raw, guard):
+        if not 0 < len(raw) <= 1048576:
+            raise ValueError('source-record')
+        before = path.stat(follow_symlinks=False)
+        generation = lambda value: [value.st_dev, value.st_ino, value.st_mode,
+            value.st_uid, value.st_gid, value.st_nlink, value.st_size,
+            value.st_mtime_ns, value.st_ctime_ns]
+        pin = {'sha256': hashlib.sha256(raw).hexdigest(),
+               'generation': generation(before)}
+        guard()
+        if generation(path.stat(follow_symlinks=False)) != pin['generation']:
+            raise ValueError('source-generation')
+        return pin, raw
+
+
+def register_inert_public_source(path, expected):
+    """Register one owned factory file with its exact existing source bytes."""
+    registry = _PUBLIC_SOURCE_REGISTRY.get()
+    path = Path(path).absolute()
+    if (registry is None or type(expected) is not bytes
+            or not 0 < len(expected) <= 1048576
+            or path.suffix not in ('.py', '.source')):
+        raise ValueError('inert-public-source-registration')
+    pin, raw = _public_source(path)
+    if raw != expected:
+        raise ValueError('inert-public-source-bytes')
+    previous = registry.get(path)
+    if previous is not None and previous != pin:
+        raise ValueError('inert-public-source-changed')
+    registry[path] = pin
+
+
 @contextmanager
 def inert_repository_source_reads():
-    """Resolve two sealed-factory source labels on this checkout, only in tests.
+    """Hold finite public inputs for inert emission without POSIX imports.
 
-    Historical programmes contain an author's absolute workspace labels. Those
-    are inert fixture data, not current paths or native admission. All other
-    source/private-record reads retain the production nofollow/generation guard.
+    Historical absolute labels map only to their two declared current files.
+    Registered public bytes use native held-source custody when the original
+    reader lacks its POSIX capability. Private and undeclared inputs always
+    reach the unchanged coordinator reader, including its real refusals.
     """
     from agent_tools import windows_cp117_bound_absence_completion as binding
-    historical=Path('/Users/karapsin_de/Nextcloud/projects/vpn_control/agent_tools')
-    names=('windows_fixture_credentials.py','windows_update_fixture_server.py')
-    actual={historical/name:Path(__file__).resolve().parents[3]/name for name in names}
-    original=binding._read_bound_file
-    def read(path,private=False,retain_bytes=False):
-        supplied=Path(path)
-        # This is an explicit fixed-source IO seam for inert emission tests.
-        # Private inputs, intents, arbitrary source names and native code never map.
-        if not private and supplied in actual:
-            supplied=actual[supplied]
-            if os.name=='nt':
-                # These two public source labels are data for sealed emission,
-                # not imports of their POSIX coordinator implementations.
-                from agent_tools import source_module_loader
-                with source_module_loader._bootstrap_source(supplied) as (raw,guard):
-                    if not 0<len(raw)<=1048576:raise ValueError('source-record')
-                    before=supplied.stat()
-                    generation=lambda value:[value.st_dev,value.st_ino,value.st_mode,value.st_uid,
-                        value.st_gid,value.st_nlink,value.st_size,value.st_mtime_ns,value.st_ctime_ns]
-                    pin={'sha256':hashlib.sha256(raw).hexdigest(),'generation':generation(before)}
-                    guard()
-                    if generation(supplied.stat())!=pin['generation']:raise ValueError('source-generation')
-                    return (pin,raw) if retain_bytes else pin
-        return original(supplied,private=private,retain_bytes=retain_bytes)
-    with patch.object(binding,'_read_bound_file',side_effect=read):
-        yield
+    root = Path(__file__).resolve().parents[3]
+    historical = Path('/Users/karapsin_de/Nextcloud/projects/vpn_control/agent_tools')
+    names = ('windows_fixture_credentials.py', 'windows_update_fixture_server.py')
+    aliases = {(historical / name).absolute(): root / name for name in names}
+    paths = {root / name for name in _PUBLIC_SOURCE_NAMES}
+    paths.update((SOURCE, DIAGNOSTIC_SOURCE, INSTALLED_SOURCE, PUBLIC_SOURCE,
+                  BASE_SOURCE, SOURCE.with_name('update_fixture_a6445062.source'),
+                  root / 'tests/test_windows_cp117_base_source_refresh.py',
+                  root.parent / 'scripts/windows_fixture_stage_acl.py'))
+    registry = {path.absolute(): None for path in paths}
+    token = _PUBLIC_SOURCE_REGISTRY.set(registry)
+    original = binding._read_bound_file
+    namespace = getattr(original, '__globals__', {})
+    reader_os = namespace.get('os', os) if type(namespace) is dict else os
+    posix = (reader_os.name == 'posix' and hasattr(reader_os, 'O_NOFOLLOW')
+             and hasattr(reader_os, 'O_NONBLOCK'))
+    def read(path, private=False, retain_bytes=False):
+        supplied = Path(path)
+        if not private:
+            supplied = aliases.get(supplied.absolute(), supplied)
+            registered = supplied.absolute()
+            if not posix and registered in registry:
+                pin, raw = _public_source(registered)
+                expected = registry[registered]
+                if expected is not None and pin != expected:
+                    raise ValueError('inert-public-source-changed')
+                registry[registered] = pin
+                return (pin, raw) if retain_bytes else pin
+        return original(supplied, private=private, retain_bytes=retain_bytes)
+    try:
+        with patch.object(binding, '_read_bound_file', side_effect=read):
+            yield
+    finally:
+        _PUBLIC_SOURCE_REGISTRY.reset(token)
 
 
 @contextmanager

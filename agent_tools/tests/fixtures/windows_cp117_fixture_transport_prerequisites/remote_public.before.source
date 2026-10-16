@@ -1,0 +1,14 @@
+SHORTCUT_COMPRESSED_REMOTE_COMMAND_SOURCE='def _bounded_shortcut_command(program):\n import base64,gzip,hashlib,shlex\n if type(program)is not str:raise ValueError(\'shortcut-source-type\')\n public=program.encode(\'utf-8\')\n if not 0<len(public)<=131072:raise ValueError(\'shortcut-source-bound\')\n packed=gzip.compress(public,mtime=0)\n if len(packed)>65536:raise ValueError(\'shortcut-packed-bound\')\n wire=base64.b64encode(packed).decode(\'ascii\');digest=hashlib.sha256(public).hexdigest()\n bootstrap="import base64,hashlib,zlib;_sc_p=base64.b64decode("+repr(wire)+",validate=True);_sc_d=zlib.decompressobj(31);_sc_b=_sc_d.decompress(_sc_p,"+str(len(public)+1)+");"+"\\nif len(_sc_p)>65536 or len(_sc_b)!="+str(len(public))+" or not _sc_d.eof or _sc_d.unused_data or _sc_d.unconsumed_tail or hashlib.sha256(_sc_b).hexdigest()!="+repr(digest)+":raise ValueError(\'SHORTCUT_ENVELOPE\')\\nexec(compile(_sc_b.decode(\'utf-8\',\'strict\'),\'<string>\',\'exec\'))"\n command=(\'python3\',\'-c\',\'exec(\'+repr(bootstrap)+\')\')\n if max(len(part.encode())for part in command)>65536 or len(\' \'.join(shlex.quote(part)for part in command).encode())>65536:raise ValueError(\'shortcut-command-bound\')\n return command\n'
+
+class ShortcutRemoteEnvelopeTests(HistoryCase):
+ def command(self,program):
+  namespace={};exec(compile(SHORTCUT_COMPRESSED_REMOTE_COMMAND_SOURCE,'actual-fixed-shortcut-envelope','exec'),namespace);return namespace['_bounded_shortcut_command'](program)
+ def public(self):return 'print("PUBLIC_REMOTE_PASS")\n'+('#PUBLIC\n'*3170)+'#'+'P'*103880
+ def test_actual_legacy_remote_command_exceeds_linux_argument_bound_new_roundtrip(self):
+  from agent_tools import windows_credential_probe_ssh as transport
+  import subprocess,sys
+  public=self.public();old=transport._remote_command(public)
+  self.assertGreater(len(old[2].encode()),131072)
+  command=self.command(public);self.assertLess(len(command[2].encode()),65536)
+  result=subprocess.run([sys.executable,*command[1:]],capture_output=True,timeout=5)
+  self.assertEqual(result.returncode,0,result.stderr.decode());self.assertEqual(result.stdout,b'PUBLIC_REMOTE_PASS\n')

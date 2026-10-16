@@ -3,6 +3,7 @@ import base64,builtins,hashlib,inspect,io,json,os,shutil,socket,subprocess,tempf
 from pathlib import Path
 from unittest import mock
 from agent_tools import windows_vm_guest as guest
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 
 @unittest.skipUnless(os.name=='posix','POSIX host receipt fixture')
@@ -124,7 +125,7 @@ class FixedPowerShellTests(unittest.TestCase):
         body="$ErrorActionPreference='Stop'\nWrite-Progress -Activity 'Module preparation control' -Status 'Loading' -PercentComplete 50\n[Console]::WriteLine('{\"ok\":true}')\n"
         def run(source):
             encoded=base64.b64encode(source.encode('utf-16le')).decode()
-            return subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-EncodedCommand',encoded],capture_output=True,timeout=20)
+            return subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-EncodedCommand',encoded],capture_output=True,timeout=20, env=windows_powershell_environment('powershell.exe', os.environ))
         before=run(body);after=run(guest.quiet_source(body))
         self.assertEqual(0,before.returncode);self.assertIn(b'CLIXML',before.stderr);self.assertIn(b'progress',before.stderr)
         self.assertEqual(0,after.returncode,after.stderr.decode('utf8','replace'));self.assertEqual(b'',after.stderr)

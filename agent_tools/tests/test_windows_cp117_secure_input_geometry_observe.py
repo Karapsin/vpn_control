@@ -2,6 +2,7 @@ from agent_tools.tests.fixtures.cp117_gzip_runtime import HistoricalGzipTestCase
 import ast,base64,gzip,re,hashlib,inspect,json,os,shutil,subprocess,tempfile,textwrap,unittest
 from pathlib import Path
 from unittest.mock import patch
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 ROOT=Path(__file__).resolve().parents[2]
 from agent_tools import windows_cp117_secure_input_geometry_observe as m
 from agent_tools import windows_cp117_secure_input_observe as original
@@ -152,7 +153,7 @@ if(-not [CensusFixture]::Run()){throw 'CENSUS_INERT_CASES'}
 [Console]::Out.WriteLine('CENSUS_PROVIDER_CASES_PASS')
 """
   with tempfile.TemporaryDirectory()as directory:
-   p=Path(directory)/'case.ps1';p.write_text(script,encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=30)
+   p=Path(directory)/'case.ps1';p.write_text(script,encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=30, env=windows_powershell_environment(shutil.which('powershell.exe'), os.environ))
    Path(directory,'result.json').write_text(json.dumps({'exit':r.returncode,'stdout':r.stdout,'stderr':r.stderr}));self.assertEqual(r.returncode,0,r.stderr);self.assertIn('CENSUS_PROVIDER_CASES_PASS',r.stdout)
 
 @unittest.skipUnless(shutil.which('powershell.exe'),'Windows PowerShell unavailable')
@@ -160,7 +161,7 @@ class ExecutableCompressedBootstrapTests(HistoricalGzipTestCase):
  def test_actual_untyped_constructor_red_typed_production_compile_green(self):
   script=compressed_case_script()
   with tempfile.TemporaryDirectory()as directory:
-   p=Path(directory)/'compressed.ps1';p.write_text(script,encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=30)
+   p=Path(directory)/'compressed.ps1';p.write_text(script,encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=30, env=windows_powershell_environment(shutil.which('powershell.exe'), os.environ))
    Path(directory,'result.json').write_text(json.dumps({'exit':r.returncode,'stdout':r.stdout,'stderr':r.stderr}));self.assertEqual(r.returncode,0,r.stderr);self.assertIn('CENSUS_COMPRESSED_CASES_PASS',r.stdout)
 
 def geometry_case_script():
@@ -174,5 +175,5 @@ def geometry_case_script():
 class ExecutableGeometryCompressedTests(HistoricalGzipTestCase):
  def test_actual_production_compressed_geometry_provider_empty_infinite_negative_caps_drift(self):
   with tempfile.TemporaryDirectory()as directory:
-   p=Path(directory)/'geometry.ps1';p.write_text(geometry_case_script(),encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=30)
+   p=Path(directory)/'geometry.ps1';p.write_text(geometry_case_script(),encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=30, env=windows_powershell_environment(shutil.which('powershell.exe'), os.environ))
    Path(directory,'result.json').write_text(json.dumps({'exit':r.returncode,'stdout':r.stdout,'stderr':r.stderr}));self.assertEqual(r.returncode,0,r.stderr);self.assertIn('CENSUS_GEOMETRY_CASES_PASS',r.stdout)

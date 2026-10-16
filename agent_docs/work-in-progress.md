@@ -9,6 +9,70 @@ is authorized. Do not resume Windows product acceptance, H14, visuals or the ori
 Windows plan without the user resuming it. Linux, Android and macOS product-native
 and visual work also remains deferred. No release.
 
+The latest pushed repair checkpoint is
+`a5cd9b73d49ff0b52f4a04a29a9122d4fe48b173`. Its preceding cold full audit
+passed all 7,421 executed tests, including the separate SSH gate, and its fresh
+managed prepush passed all 17 commands. Those receipts qualify that checkpoint
+only. Windows then reached previously blocked tests and failed its CP117 step:
+497 tests, 11 failures, 100 errors and 148 capability skips. The selector did
+not broaden its input: 206 existing methods became reachable after seven module
+setup errors were repaired, and 30 new routine cases passed. Keep all 67 explicit
+test specifiers and every applicable native scenario.
+
+Original Windows logs, all 111 failure blocks and exact checkpoint beforeimages
+are retained in `.runtime/mcp-ci-a5cd9b73-windows-failure-v1/` and
+`.runtime/mcp-ci-a5cd9b73d49ff0b52f4a04a29a9122d4fe48b173-readonly-v19-2026-10-16/`.
+The finite repair covers inert POSIX recipe/source contexts, genuine local POSIX
+capability boundaries, strict byte inputs and complete-program carriers, and
+native PowerShell fixture prerequisites and output contracts. Production source
+authority, private-file custody, ownership, non-replay and command/chunk bounds
+remain required. Original failures stay failed; each new cause needs its actual
+preserved-source RED and fixed-source GREEN, routine coverage and applicable
+native CI proof. The checkpoint's Android, Linux and macOS workflows passed; no
+completed delivery is claimed for it. Fast Checks failed two actual emitted
+Android transport fixtures at their 150-second outer timeout. Their original
+supervisor budget was 1,800 seconds, but the blocked phase and detached-worker
+closure were not retained. Keep that original outcome unknown; do not infer a
+slow interpreter, raise the timeout blindly, replay an unknown operation or
+delete its evidence. The exact logs and 23 immutable inputs are preserved in
+`.runtime/mcp-ci-a5cd9b73-fast-failure-v1/`. A fresh inert local diagnostic must
+observe the same submitted supervisor through its natural terminal outcome,
+with phase/stack evidence and both streams, before selecting a repair.
+The original CI collector and Git SDK closed with
+their unchanged source brackets and all 87 HTTP children reaped. A GitHub TCP
+timeout is retained separately from the definite Windows failure.
+
+The corrected focused slice passed 653 tests on both Python 3.12.15 and 3.14.3,
+with 141 platform skips per run. It includes both original emitted Android full
+flows and all 82 Windows workflow specifiers. The preserved native-caller
+counterfactuals failed their seven positive cases on each interpreter; fixed
+cases passed. Namespace repairs retain the actual source filenames and genuine
+module imports. Public-source custody still refuses oversized or changed inputs;
+private and undeclared inputs retain the original reader's authority. A physical
+read demonstrated access-time changes alone;
+stable generation comparisons retain all nine ownership/object/size/nanosecond
+fields. These local results do not claim native Windows acceptance.
+
+The fresh inert Android diagnostic completed naturally in 72.295 seconds, with
+both streams at EOF, the supervisor reaped and the original worker terminal.
+It did not reproduce the historical Linux timeout. The two test callers now
+derive their 1,820-second capture bound from the unchanged supervisor's 1,800
+seconds, its existing five-second wait and 15 seconds of fixture cleanup grace.
+They retain uncertain journals and every observed raw prefix, and close only
+the harmless subprocess handles they actually created. Six routine controls
+cover real EOF/raw collection, partial timeout streams, owned-child closure,
+storage failure and registered cleanup retention. The original two bodies and
+scenario assertions remain intact. Actual retained caller code failed under a
+scaled cutoff; the fix passed with identical saved child bytes, arguments and
+READY-to-release input timing. The original Linux blocked phase stays unknown.
+Evidence and closing receipts are in
+`.runtime/mcp-repair-execution-2026-10-15/focused-final-v22/` and
+`.runtime/mcp-android-direct-timeout-diagnostic-v1/actual-whole-worker-001/`.
+Fresh final full audit, managed prepush and all five exact-SHA workflows remain
+required. Previously closed environments remain closed; no release is authorized.
+
+The following paragraphs retain the earlier checkpoint history and evidence.
+
 The first repair delivery, `843c4740474a7b1c4038c51f7a941500dae0ce01`,
 passed the managed prepush (6,695 pooled agent tests, 186 platform skips) and was
 pushed to `origin/dev`. Windows CI then failed importing the core source capture;

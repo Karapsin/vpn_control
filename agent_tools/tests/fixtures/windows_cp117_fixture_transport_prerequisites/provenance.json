@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "a5cd9b73d49ff0b52f4a04a29a9122d4fe48b173",
+  "scope": "Exact test-only before fragments for ZipArchive compiler references, the remote marker byte protocol, and the authenticated carrier progress preference. Native custody assertions and production source guards remain intact.",
+  "files": {
+    "copy_loop.before.source": {
+      "sourcePath": "agent_tools/tests/test_windows_cp117_server_read_binding.py",
+      "sourceSha256": "da891225fc3b912eb8eea0235943f9879426abf7a01dfedf5415cf4e7faf50c7",
+      "firstLine": 598,
+      "lastLine": 634,
+      "bytes": 8010,
+      "sha256": "ead618013cef3a35365cdbd274b6b7ab9399ff9c98150a3938554cb7a4e465dc"
+    },
+    "remote_public.before.source": {
+      "sourcePath": "agent_tools/tests/test_windows_cp117_base_source_refresh.py",
+      "sourceSha256": "fd685eeb83f7e7d5f622ad25492caab83627d4946e628c78104f956fca298205",
+      "firstLine": 936,
+      "lastLine": 949,
+      "bytes": 2142,
+      "sha256": "bdd9a863506e018f213bedf9d78b2eb2bcfb66555c954bbeb3989ddaacba5ebe"
+    },
+    "carrier.before.source": {
+      "sourcePath": "agent_tools/tests/test_windows_cp117_base_source_refresh.py",
+      "sourceSha256": "fd685eeb83f7e7d5f622ad25492caab83627d4946e628c78104f956fca298205",
+      "firstLine": 812,
+      "lastLine": 833,
+      "bytes": 1643,
+      "sha256": "fe365af233bbdb4c0227a9f3beaaa1efcf5e60898a98c78b276a56f5b8d6d4f0"
+    }
+  },
+  "evidence": {
+    "zipArchiveBlocks": [104, 105],
+    "zipArchiveFailure": "The actual Add-Type compiler rejects System.IO.Compression.ZipArchive before either original copy-loop assertion.",
+    "remoteMarkerBlock": 102,
+    "remoteMarkerFailure": "The actual child returns PUBLIC_REMOTE_PASS with CRLF, while the unchanged byte assertion requires LF.",
+    "progressBlock": 101,
+    "progressEvidenceLimit": "The original unittest repr truncates CLIXML. The explicit Write-Progress native control tests preference mechanics without claiming to reconstruct that unretained complete stderr."
+  }
+}

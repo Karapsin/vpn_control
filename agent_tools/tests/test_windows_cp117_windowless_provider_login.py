@@ -2,6 +2,7 @@ from agent_tools.tests.fixtures.cp117_gzip_runtime import HistoricalGzipTestCase
 import ast,base64,hashlib,inspect,json,os,unittest,shutil,subprocess
 from pathlib import Path
 from unittest.mock import patch
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 if os.name!='nt':
  from agent_tools import windows_cp117_windowless_provider_login as m
 
@@ -164,7 +165,7 @@ class WindowsOriginalPipeExecutionTests(HistoricalGzipTestCase):
   import tempfile
   with tempfile.TemporaryDirectory()as d:
    path=Path(d)/'fixed.ps1';path.write_text(input_execution_script(),encoding='utf-8')
-   public=b'PIPE-OS-INERT';r=subprocess.run(['powershell','-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(path)],input=len(public).to_bytes(4,'big')+public,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20)
+   public=b'PIPE-OS-INERT';r=subprocess.run(['powershell','-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(path)],input=len(public).to_bytes(4,'big')+public,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20, env=windows_powershell_environment('powershell', os.environ))
   self.assertEqual(r.returncode,0,r.stderr.decode(errors='replace'));self.assertEqual(r.stdout.decode().strip(),'CP117_PIPE_CASES_PASS');self.assertEqual(r.stderr,b'')
 
 @unittest.skipIf(os.name=='nt','POSIX local observer stream')
@@ -233,7 +234,7 @@ foreach($bad in @('O:BAG:SYD:P(A;;FA;;;SY)','O:SYG:BAD:P(A;;FA;;;SY)','O:SYG:SYD
 class WindowsActualStdinAclTests(HistoricalGzipTestCase):
  def test_measured_writer_descriptor_fails_actual_reader_explicit_parent_policy_passes(self):
   encoded=base64.b64encode(stdin_acl_execution_script().encode('utf-16le')).decode()
-  r=subprocess.run(['powershell','-NoProfile','-NonInteractive','-EncodedCommand',encoded],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20)
+  r=subprocess.run(['powershell','-NoProfile','-NonInteractive','-EncodedCommand',encoded],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20, env=windows_powershell_environment('powershell', os.environ))
   self.assertEqual(r.returncode,0,r.stderr.decode(errors='replace'));self.assertEqual(r.stdout.decode().strip(),'CP117_STDIN_ACL_CASES_PASS');self.assertEqual(r.stderr,b'')
 
 @unittest.skipIf(os.name=='nt','POSIX complete login coordinator')

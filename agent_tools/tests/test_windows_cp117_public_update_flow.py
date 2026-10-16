@@ -10,6 +10,7 @@ import os
 import subprocess
 import unittest
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import historical_current_package
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 from agent_tools import windows_cp117_base_source_refresh as refresh
 
@@ -90,7 +91,7 @@ if([Cp117RefreshWorkspace].GetMethod('PublicSnapshot').GetParameters().Count -ne
         import base64
         result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand",
                                  base64.b64encode(script.encode("utf-16le")).decode()],
-                                capture_output=True, timeout=20)
+                                capture_output=True, timeout=20,env=windows_powershell_environment('powershell.exe',os.environ))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(b"OLD_WORKSPACE_BYTES_NORMAL_UNCHANGED", result.stdout)
 
@@ -128,7 +129,7 @@ class PublicCompleteCommandTests(unittest.TestCase):
         argument=argument.replace(execution,inert)
         # One already closed native command string is passed as the actual
         # Windows command line, preserving its quotes. No task/body is invoked.
-        result=subprocess.run('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" '+argument,capture_output=True,timeout=20)
+        result=subprocess.run('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" '+argument,capture_output=True,timeout=20,env=windows_powershell_environment('powershell.exe',os.environ))
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(result.stdout.rstrip(b'\r\n'),b'PUBLIC_TASK_BYTES_VERIFIED')
         self.assertEqual(result.stderr,b'')
@@ -164,7 +165,7 @@ if($null -eq $failure){throw 'FAILURE_NOT_PRESERVED'}
 [Console]::WriteLine('EXPECTED_FAILURE_RETAINED')
 '''
                 argument=factory()['complete_task_argument'](script)['argument']
-                run=subprocess.run('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" '+argument,capture_output=True,timeout=12)
+                run=subprocess.run('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" '+argument,capture_output=True,timeout=12,env=windows_powershell_environment('powershell.exe',os.environ))
                 self.assertEqual(run.returncode,0,run.stderr)
                 raw=Path(directory,'status-1.stdout.private')
                 retained=raw.exists()and raw.read_bytes()==b'PUBLIC_PREFIX\r\n'
@@ -218,7 +219,7 @@ if($polls -ne 2 -or -not $terminal.data.final -or $terminal.data.phase -cne 'suc
 [Console]::WriteLine('OLD_INSPECTION_FINAL_RED_NESTED_TERMINAL_GREEN')
 '''
             argument=factory()['complete_task_argument'](script)['argument']
-            run=subprocess.run('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" '+argument,capture_output=True,timeout=10)
+            run=subprocess.run('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" '+argument,capture_output=True,timeout=10,env=windows_powershell_environment('powershell.exe',os.environ))
             self.assertEqual(run.returncode,0,run.stderr)
             self.assertIn(b'OLD_INSPECTION_FINAL_RED_NESTED_TERMINAL_GREEN',run.stdout)
 
@@ -279,7 +280,7 @@ class PublicPhaseCompositionTests(unittest.TestCase):
         execution="& ([ScriptBlock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($v)))"
         self.assertEqual(argument.count(execution),1)
         inert="$t=$null;$e=$null;[void][Management.Automation.Language.Parser]::ParseInput([Text.UTF8Encoding]::new($false,$true).GetString($v),[ref]$t,[ref]$e);if($e.Count){throw ($e|Out-String)};[Console]::Write('PUBLIC_PHASE_BYTES_VERIFIED')"
-        result=subprocess.run('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" '+argument.replace(execution,inert),capture_output=True,timeout=20)
+        result=subprocess.run('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" '+argument.replace(execution,inert),capture_output=True,timeout=20,env=windows_powershell_environment('powershell.exe',os.environ))
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(result.stdout,b'PUBLIC_PHASE_BYTES_VERIFIED')
         self.assertEqual(result.stderr,b'')
@@ -382,7 +383,7 @@ $foreign=Join-Path $root 'foreign.private';[IO.File]::WriteAllBytes($foreign,[by
 [Console]::Write('PUBLIC_ZERO_NATIVE_GREEN')
 '''
             argument=factory()['complete_task_argument'](ps)['argument']
-            result=subprocess.run('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" '+argument,capture_output=True,timeout=20)
+            result=subprocess.run('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" '+argument,capture_output=True,timeout=20,env=windows_powershell_environment('powershell.exe',os.environ))
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(result.stdout,b'PUBLIC_ZERO_NATIVE_GREEN')
             self.assertEqual(result.stderr,b'')
@@ -673,12 +674,13 @@ class PublicPostConsentCoordinatorTests(unittest.TestCase):
     @unittest.skipUnless(os.name=='nt','actual CommandLineToArgvW/Add-Type needs Windows')
     def test_actual_native_five_argument_consumer_and_complete_script_parser(self):
         import base64
+        from . import test_windows_cp117_base_source_refresh as fixture
         f=factory();b=self.binding(); script=f['post_consent_script'](b)
         args='"'+b['helperPath']+'" "install-coordinator" "'+b['jobId']+'" "'+str(b['ownerPid'])+'" "'+b['ownerBirth']+'"'
         ps="Add-Type -TypeDefinition @'\n"+f['coordinator_argv_cs']()+"\n'@ -ReferencedAssemblies @('System','System.Core')\n"
         ps+="$a=[Cp117PublicCoordinatorArgv]::Read('"+args+"');if($a.Count -ne 5 -or $a[2] -cne '"+b['jobId']+"'){throw 'ARGUMENT_BINDING'};try{[Cp117PublicCoordinatorArgv]::Read('x y')|Out-Null;throw 'NEGATIVE_ACCEPTED'}catch{if($_.Exception.ToString().Contains('NEGATIVE_ACCEPTED')){throw}}\n"
         ps+="$tokens=$null;$errors=$null;[Management.Automation.Language.Parser]::ParseInput([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+base64.b64encode(script.encode()).decode()+"')),[ref]$tokens,[ref]$errors)|Out-Null;if($errors.Count -ne 0){throw 'SCRIPT_PARSE'};Write-Output PUBLIC_POST_CONSUMER_PASS"
-        result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-EncodedCommand',base64.b64encode(ps.encode('utf-16-le')).decode()],capture_output=True,timeout=20)
+        result=fixture._run_complete_windows_fixture(ps.encode('utf-8',errors='strict'),timeout=20)
         self.assertEqual(result.returncode,0,result.stderr);self.assertIn(b'PUBLIC_POST_CONSUMER_PASS',result.stdout)
 
 PUBLIC_COLLECTION_PREFIX_GZIP='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'
@@ -798,7 +800,7 @@ class PublicConcreteBuilderTests(unittest.TestCase):
         script=c['recipe']['admin_cleanup_powershell']().split('$u=$null;',1)[0]+"\n[Console]::Out.WriteLine('PUBLIC_CLEANUP_INPUT_OK')\n"
         corr=c['phase_ids']['admin-cleanup'][0];base={'schemaVersion':1,'correlationId':corr,'fixtureId':'6815bdda-18db-42e7-8d48-99a7a8af39aa','account':'uacfix-6815bdda18db','expectedSid':'S-1-5-21-1-2-3-1004'}
         for old,data in [(True,dict(base,cleanupOnly=True)),(False,dict(base,mode='cleanup'))]:
-            child=subprocess.run([ps,'-NoProfile','-NonInteractive','-EncodedCommand',base64.b64encode(script.encode('utf-16le')).decode()],input=json.dumps(data)+'\n',text=True,capture_output=True,timeout=10)
+            child=subprocess.run([ps,'-NoProfile','-NonInteractive','-EncodedCommand',base64.b64encode(script.encode('utf-16le')).decode()],input=json.dumps(data)+'\n',text=True,capture_output=True,timeout=10,env=windows_powershell_environment(ps,os.environ))
             if old:self.assertNotEqual(child.returncode,0);self.assertNotIn('PUBLIC_CLEANUP_INPUT_OK',child.stdout)
             else:self.assertEqual(child.returncode,0,child.stderr);self.assertIn('PUBLIC_CLEANUP_INPUT_OK',child.stdout)
 
@@ -1589,7 +1591,7 @@ class PublicCliAliasBindingTests(unittest.TestCase):
             # native task is never replayed; only its function and calls are parsed.
             before.write_text('# Public AST projection\n'+function+'\n'+'\n'.join(calls)+'\n',encoding='utf-8')
             after.write_text('# Public AST projection\n'+renamed+'\n'+'\n'.join(successors)+'\n',encoding='utf-8')
-            result=subprocess.run([shell,'-NoLogo','-NoProfile','-NonInteractive','-File',str(control),'-BeforeFile',str(before),'-AfterFile',str(after)],capture_output=True,text=True,timeout=20)
+            result=subprocess.run([shell,'-NoLogo','-NoProfile','-NonInteractive','-File',str(control),'-BeforeFile',str(before),'-AfterFile',str(after)],capture_output=True,text=True,timeout=20,env=windows_powershell_environment(shell,os.environ))
         self.assertEqual(result.returncode,0,result.stderr)
         value=json.loads(result.stdout)
         self.assertEqual(value['commandResolution']['definition'],'Clear-Item')

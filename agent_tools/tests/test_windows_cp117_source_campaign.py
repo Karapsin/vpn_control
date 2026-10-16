@@ -12,6 +12,7 @@ import types
 from contextlib import ExitStack
 from pathlib import Path
 from unittest import mock
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 def _source_only_campaign():
     """Compile held emitter source without importing POSIX coordinator peers."""
@@ -225,7 +226,7 @@ $products=@([pscustomobject]@{PSChildName='{11111111-1111-1111-1111-111111111111
                                   + "[pscustomobject]@{calls=$script:InstallerCalls;reason=$reason}|ConvertTo-Json -Compress\n")
                 result = subprocess.run([interpreter, "-NoLogo", "-NoProfile", "-NonInteractive",
                                          "-File", str(script)], capture_output=True, text=True, timeout=20,
-                                        env={k: v for k, v in os.environ.items() if k != "DYLD_INSERT_LIBRARIES"})
+                                        env=windows_powershell_environment(interpreter, {k: v for k, v in os.environ.items() if k != "DYLD_INSERT_LIBRARIES"}))
                 self.assertEqual(0, result.returncode, result.stderr)
                 actual = json.loads(result.stdout)
                 self.assertEqual({"calls": 0, "reason": "ACTIVE_PROCESS"} if runtime else

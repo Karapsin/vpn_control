@@ -2,6 +2,7 @@ from agent_tools.tests.fixtures.cp117_gzip_runtime import HistoricalGzipTestCase
 import ast,base64,copy,gzip,hashlib,inspect,json,re,unittest,textwrap,os,shutil,subprocess,tempfile
 from pathlib import Path
 from unittest.mock import patch
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 if os.name!='nt':
  from agent_tools import windows_cp117_windowless_gui_login as m
  from agent_tools.tests import test_windows_cp117_secure_layout_observe as layout
@@ -156,13 +157,13 @@ _CONSOLE_CASE="$writer=[IO.StringWriter]::new();$console=[Console]::Out;$console
 @unittest.skipUnless(shutil.which('powershell.exe'),'Windows PowerShell unavailable')
 class ExecutableGuiRoleTests(HistoricalGzipTestCase):
  def test_actual_console_marker_not_in_pipeline_requires_direct_result(self):
-  r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-Command',"$ErrorActionPreference='Stop';"+_CONSOLE_CASE+"if(-not $consoleCollectorRejected){exit 1};[Console]::Out.WriteLine('CONSOLE_CAUSAL_PASS')"],capture_output=True,text=True,timeout=15)
+  r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-Command',"$ErrorActionPreference='Stop';"+_CONSOLE_CASE+"if(-not $consoleCollectorRejected){exit 1};[Console]::Out.WriteLine('CONSOLE_CAUSAL_PASS')"],capture_output=True,text=True,timeout=15, env=windows_powershell_environment(shutil.which('powershell.exe'), os.environ))
   self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout.strip(),'CONSOLE_CAUSAL_PASS')
  def test_actual_full_child_loader_forged_hash_bound_and_managed_role_cases(self):
   source=Path(__file__).resolve().parents[1]/'windows_cp117_windowless_gui_login.py';tree=ast.parse(source.read_bytes());cs=next(ast.literal_eval(n.value)for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(v,ast.Name)and v.id=='_SEMANTIC_CS'for v in n.targets));script=base64.b64decode(_GUI_INERT_B64).decode()
   self.assertIn(hashlib.sha256(cs.encode()).hexdigest(),script)
   with tempfile.TemporaryDirectory()as directory:
-   p=Path(directory)/'case.ps1';p.write_text(script,encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=40)
+   p=Path(directory)/'case.ps1';p.write_text(script,encoding='utf-8');r=subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-NonInteractive','-File',str(p)],capture_output=True,text=True,timeout=40, env=windows_powershell_environment(shutil.which('powershell.exe'), os.environ))
    Path(directory,'result.json').write_text(json.dumps({'exit':r.returncode,'stdout':r.stdout,'stderr':r.stderr}));self.assertEqual(r.returncode,0,r.stderr);self.assertIn('GUI_ROLE_CASES_PASS',r.stdout)
 
 @unittest.skipIf(os.name=='nt','POSIX descriptor and QMP coordinator tests')

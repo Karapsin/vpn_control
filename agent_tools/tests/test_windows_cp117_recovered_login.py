@@ -3,16 +3,21 @@ from pathlib import Path
 from unittest.mock import patch
 from agent_tools import windows_cp117_recovered_login as login
 from agent_tools.windows_diagnostic_authority_capture import AuthorityCapture
-from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_tests
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import historical_base, remote_posix_recipe_context, remote_posix_recipe_tests
 
 @remote_posix_recipe_tests(login.guest.recovery)
 class ScreenTests(unittest.TestCase):
     diagnostic='bb6c3716-2f3a-4dba-a7ea-a46078475969'
+    @remote_posix_recipe_context(login.guest.recovery)
     def record(self):
         return {'request':{'recipeSha256':login.guest.recovery._digest(login.guest.recovery.recipe())},'result':{'state':'running','sockets':{}},'authority':[]}
     def ppm(self):return b'P6\n2 1\n255\n'+b'\0'*6
     def test_readonly_program_has_no_guest_execution_or_keyboard(self):
-        source=login.screen_program(self.record(),self.diagnostic)
+        closure=login.guest.recovery.authority.closure
+        original_base=closure.base
+        with historical_base() as archived,patch.object(closure,'base',archived):
+            source=login.screen_program(self.record(),self.diagnostic)
+        self.assertIs(closure.base,original_base)
         compile(source,'screen','exec')
         for effect in ("'guest-exec'","'send-key'","'input-send-event'","'system_reset'"):
             self.assertNotIn(effect,source)

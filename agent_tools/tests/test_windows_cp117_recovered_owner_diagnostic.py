@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import diagnostic as historical_diagnostic
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_tests
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 d=historical_diagnostic()
 from agent_tools import windows_cp117_recovered_owner_observe as owner
 from agent_tools.tests.test_windows_cp117_recovered_owner_observe import OwnerFactsTests
@@ -220,7 +221,7 @@ class ActualPrecisionPredicateTests(HistoryCase):
         script="$ErrorActionPreference='Stop';$p=[pscustomobject]@{HasExited=$false;SessionId=1};$item=[pscustomobject]@{SessionId=1;CreationDate=[DateTime]::FromFileTimeUtc(134356192583360050)};"
         script+="foreach($n in 0..9){$stamp=[long]134356192583360050+$n;if("+condition+"){throw 'SAME_BUCKET_REFUSED'}};"
         script+="$stamp=[long]134356192583360060;if(-not ("+condition+")){throw 'FOREIGN_BUCKET_ACCEPTED'};'PRECISION_CASES_PASS'"
-        completed=subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command','-'],input=script.encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10)
+        completed=subprocess.run(['powershell','-NoProfile','-NonInteractive','-Command','-'],input=script.encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10, env=windows_powershell_environment('powershell', os.environ))
         self.assertEqual(completed.returncode,0,completed.stderr.decode(errors='replace'));self.assertEqual(completed.stdout.decode().strip(),'PRECISION_CASES_PASS')
 
 @remote_posix_recipe_tests(owner.guest.recovery)

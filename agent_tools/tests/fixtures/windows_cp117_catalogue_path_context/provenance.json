@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "headSha": "a5cd9b73d49ff0b52f4a04a29a9122d4fe48b173",
+  "sourcePath": "agent_tools/tests/test_windows_cp117_server_read_binding.py",
+  "sourceSha256": "da891225fc3b912eb8eea0235943f9879426abf7a01dfedf5415cf4e7faf50c7",
+  "sourceArchiveSha256": "61052f9c99e69e24b96930450b6df48118e2b433b8a8452183e8175102659e76",
+  "beforeimages": [
+    {
+      "file": "before.fragment",
+      "sha256": "f7b72d3ecded96b1c78cbdbe9a016b621a61231af146131edb49dac5a6e9c013",
+      "sourceFirstLine": 636,
+      "sourceLastLine": 651,
+      "scope": "Exact indented fragment containing the complete original catalogue method and native Windows boundary; not a standalone Python module."
+    },
+    {
+      "file": "catalogue-fragment.before.ps1",
+      "sha256": "484337e71329e9b291f1a3cd8b6b849b018c72ba2982d3353d17bd4544a51b60",
+      "sourceLine": 602,
+      "scope": "Exact decompression of COMPLETE_STAGE_CATALOGUE_ACL_GZIP; native path controls execute its unchanged final line."
+    }
+  ],
+  "originalFailure": {
+    "blockId": 103,
+    "rawPath": ".runtime/mcp-ci-a5cd9b73-windows-failure-v1/v2-block-103.txt",
+    "rawSha256": "b3efd3dcda9cc2ae47a88513e0ebe3851f8cb53e7068471c6ce1418b5840f1a7",
+    "observed": "COMPLETE_CATALOGUE_DRIFT in the fixed final catalogue guard at generated line 186.",
+    "causeLimit": "The original trace omits actual projected catalogue and root strings. The controlled alias proves the application-controlled prefix context failure type; it does not establish which path spelling caused the original CI mismatch."
+  },
+  "regressionModule": "agent_tools.tests.test_windows_cp117_catalogue_path_context",
+  "nativeCausalModes": [
+    "raw-prefix-red: valid existing-parent/../content alias with unchanged final guard",
+    "provider-normalized-green: same files and alias normalized with Get-Item -LiteralPath .FullName",
+    "foreign-file-negative: additional owned foreign file rejected by unchanged final guard"
+  ],
+  "portableLimit": "Source-bound interpretation of the retained UTF-16 Substring prefix decision using explicit Windows lexical/provider FullName inputs; not native evidence.",
+  "nativeLimit": "Actual Windows PowerShell and inert owned temporary files only; no VM or product acceptance. Native Windows absence of PowerShell fails rather than skips.",
+  "nativeEvidenceDirectory": ".runtime/windows-catalogue-path-context/<fresh-correlation>/",
+  "routineSuite": "python3 agent_tools/affected_agent_tests.py --run",
+  "validationState": "WRITTEN_NOT_IMPORTED_COMPILED_OR_EXECUTED_DURING_FROZEN_H19_B"
+}

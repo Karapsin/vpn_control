@@ -54,15 +54,32 @@ def complete_carrier(public, *, timeout):
 
 class PythonFixtureIoTests(unittest.TestCase):
     def test_exact_native_owner_caller_retains_both_failure_streams(self):
-        from agent_tools import windows_tertiary_guest_stage as stage
-        node = method(candidate('test_windows_tertiary_guest_stage.py'),
+        name = 'test_windows_tertiary_guest_stage.py'
+        source_path = (FIXTURES / (name + '.before.source')
+                       if VARIANT == 'before' else HERE / name)
+        raw = candidate(name)
+        if source_path.read_bytes() != raw:
+            raise ValueError('fixture-caller-source-path')
+        tree = ast.parse(raw, filename=str(source_path))
+        imports = []
+        for item in tree.body:
+            if isinstance(item, (ast.Import, ast.ImportFrom)):
+                imports.append(item)
+            elif (not imports and isinstance(item, ast.Expr)
+                  and isinstance(item.value, ast.Constant) and isinstance(item.value.value, str)):
+                imports.append(item)
+            else:
+                break
+        node = method(raw,
                       'test_actual_windows_creation_time_owner_and_inherited_custody')
         # Execute this exact caller against an observed nonzero process seam.
         # Removing only its platform decorator permits the diagnostic assertion
         # on every host; no native owner/ACL outcome is inferred or simulated.
         node.decorator_list = []
-        scope = {'stage': stage}
-        exec(compile(ast.Module(body=[node], type_ignores=[]), '<actual owner probe caller>', 'exec'), scope)
+        # Its genuine leading imports supply current runtime bindings too.
+        scope = {'__name__': 'owned_native_owner_caller', '__file__': str(source_path)}
+        exec(compile(ast.Module(body=[*imports, node], type_ignores=[]),
+                     str(source_path), 'exec', dont_inherit=True), scope)
 
         def observed_nonzero(argv, **options):
             self.assertIn('TertiaryPrivateStage', argv[-1])
