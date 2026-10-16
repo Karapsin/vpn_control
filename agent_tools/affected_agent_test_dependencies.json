@@ -3309,7 +3309,8 @@
         "00a217e4dd7163003a5fd9d0142d5f843642b71b20a800464d29bbf873d24cb7",
         "ca1ef7cd72242660a42e41aac5d9b5f5f08b8d08ee9673f12f5f1957964c47eb",
         "fb7e1ec4134fece1793f70a9687a336dedd739f40fd4a703751344e51e44dd88",
-        "ec9d3306e1cd3811991a33588b38a17a8fb11bf57dc57c63a9fcc9f6a4625d6a"
+        "ec9d3306e1cd3811991a33588b38a17a8fb11bf57dc57c63a9fcc9f6a4625d6a",
+        "19ca9f2452119d2a2ff8b282415f4b7b5163ab451582ca55afee9cffcc74345a"
       ]
     },
     "agent_tools/tests/test_windows_powershell_fixture_execution.py": {

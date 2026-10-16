@@ -994,3 +994,45 @@ remained unchanged before integration. Full raw output and physical projects
 are retained with the causal summary c0adfd1b5d20c23af93c168c6145a00a4472be40c3ddb9dd0ee2d8964f41d90a.
 The new content still requires its canonical focused checks, a final version
 note, a fresh managed prepush and all five workflows for the next exact SHA.
+
+
+Exact development SHA `dff1f4723f323909109d62f845ec1e3e10eec4f6` reached
+the Windows CP117 step and failed one of 555 tests (157 skipped). The complete
+767,186-byte job log remains SHA-256
+`544b6761525b98ee169a2be58b8c1c91ab598a29fb817748808b2fb01b4694cb`,
+with the original failure packet `fd7c90c95aa19fe7e86cb25a93667bc7ebd5dc9e12b0f7f27620d4b6329c9f79`
+in `.runtime/mcp-ci-dff1f472-windows-failure-v1/`. The controlled native child
+returned `PUBLIC_NATIVE_HASH_MODULE_RUNTIME` before the expected missing-command
+outcome. Its actual ModuleBase, Module.Path and PSHOME operands were not printed,
+so the underlying comparison cause remains unknown. The original F native
+inner failure remains unknown as recorded earlier; this checkpoint does not
+claim either native cause fixed.
+
+The reviewed change adds diagnostic output immediately before the same module
+root comparison. It reports 35 public command/module/runtime/process-environment fields (including the child process PSModulePath presence and value) through
+bounded UTF-8/Base64 records: at most 4,096 bytes per field, a 262,144-byte
+aggregate diagnostic bound and 16,384 bytes per rendered line. Diagnostic
+collection is best effort and cannot admit the command or replace the original
+guard failure. Every existing module, runtime, ACL/hash, cold-state and native
+assertion remains unchanged; the saved-file carrier and 60,000-byte command
+bound remain in force. This is a diagnostic checkpoint, not native acceptance.
+
+Five isolated controls parsed the complete saved script and exercised null
+function, null cmdlet, oversized-field and equal-base paths under the verified
+portable PowerShell engine. All five children and their streams/source readers
+closed in the model-only receipt
+`.runtime/mcp-ci-dff1f472-module-provenance-diagnostic-v3/private-control-v1/closing.json`
+(SHA-256 `820db5ae691d15a8f5e38884c430a03a51b05e6fe410e538dba3196130d935ab`).
+These controls establish bounded, nonmasking diagnostic behavior; actual Windows
+operands and the original native scenario remain required in the next hosted
+run. The finite dependency declaration appends only this reviewed current test
+digest, retaining all 175 existing loader rows, all 15 resource pins, every
+historical digest, scope and reason.
+
+This three-path checkpoint requires its own focused checks, normal version
+note, fresh managed prepush and all five workflows for its exact pushed SHA.
+Earlier successful G source receipts do not authorize the changed checkpoint,
+and the failed G workflow remains failed. Windows product parity, caller
+acceptance, H14, product-native and visual work remain deferred. No VM or SSH
+connection is restored or created, no unknown job or lease is replayed or
+purged, and no release is authorized.

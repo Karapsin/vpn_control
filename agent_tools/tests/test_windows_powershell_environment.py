@@ -70,6 +70,70 @@ $missing=@();foreach($name in @('Get-Acl','Get-FileHash')){
     if(($kind -ceq 'Cmdlet' -and $runtimeType -ceq 'System.Management.Automation.CmdletInfo' -and $command -is [Management.Automation.CmdletInfo]) -or ($kind -ceq 'Function' -and $runtimeType -ceq 'System.Management.Automation.FunctionInfo' -and $command -is [Management.Automation.FunctionInfo])){}else{throw 'PUBLIC_NATIVE_COMMAND_TYPE'}
     $modulePath=[IO.Path]::GetFullPath($command.Module.Path)
     if(-not $modulePath.StartsWith($runtimeRoot,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.File]::Exists($modulePath)){throw 'PUBLIC_NATIVE_COMMAND_RUNTIME'}
+    # Diagnostic metadata cannot replace the byte-identical refusal below.
+    if($name -ceq 'Get-FileHash' -and [IO.Path]::GetFullPath($command.Module.ModuleBase).TrimEnd('\') -ine $utilityRoot){
+        try{
+            $script:cp117ProviderDiagnosticBytesV2=0
+            function Write-PublicNativeProviderLine([string]$line){
+                $width=[Text.Encoding]::UTF8.GetByteCount($line)+2
+                if($width -gt 16384 -or $script:cp117ProviderDiagnosticBytesV2+$width -gt 262144){throw 'PUBLIC_NATIVE_PROVIDER_OUTPUT_BOUND'}
+                $script:cp117ProviderDiagnosticBytesV2+=$width
+                [Console]::Out.WriteLine($line)
+            }
+            function Write-PublicNativeProviderField([string]$field,[string]$value){
+                if($field -cnotmatch '^[a-z][a-zA-Z0-9_.]{0,63}$'){throw 'PUBLIC_NATIVE_PROVIDER_FIELD'}
+                $raw=[Text.Encoding]::UTF8.GetBytes($value)
+                if($raw.Length -gt 4096){throw 'PUBLIC_NATIVE_PROVIDER_FIELD_BOUND'}
+                Write-PublicNativeProviderLine ('PUBLIC_NATIVE_PROVIDER_V1:'+$field+':'+([string]$raw.Length)+':'+[Convert]::ToBase64String($raw))
+            }
+            Write-PublicNativeProviderLine 'PUBLIC_NATIVE_PROVIDER_BEGIN:1:35'
+            Write-PublicNativeProviderField 'moduleBaseRaw' ([string]$command.Module.ModuleBase)
+            Write-PublicNativeProviderField 'moduleBaseNormalized' ([IO.Path]::GetFullPath($command.Module.ModuleBase).TrimEnd('\'))
+            Write-PublicNativeProviderField 'expectedUtilityBaseRaw' ([IO.Path]::Combine([string]$PSHOME,'Modules\Microsoft.PowerShell.Utility'))
+            Write-PublicNativeProviderField 'expectedUtilityBaseNormalized' $utilityRoot
+            $cp117EffectiveModulePath=[Environment]::GetEnvironmentVariable('PSModulePath',[EnvironmentVariableTarget]::Process)
+            Write-PublicNativeProviderField 'psModulePathPresent' ([string]($null -ne $cp117EffectiveModulePath))
+            Write-PublicNativeProviderField 'psModulePath' ([string]$cp117EffectiveModulePath)
+            Write-PublicNativeProviderField 'psHomeRaw' ([string]$PSHOME)
+            Write-PublicNativeProviderField 'psHomeNormalized' ([IO.Path]::GetFullPath([string]$PSHOME))
+            Write-PublicNativeProviderField 'psVersion' ([string]$PSVersionTable.PSVersion)
+            Write-PublicNativeProviderField 'psEdition' ([string]$PSVersionTable.PSEdition)
+            Write-PublicNativeProviderField 'commandName' ([string]$command.Name)
+            Write-PublicNativeProviderField 'commandKind' $kind
+            Write-PublicNativeProviderField 'commandRuntimeType' $runtimeType
+            Write-PublicNativeProviderField 'commandSource' ([string]$command.Source)
+            Write-PublicNativeProviderField 'commandModuleName' $moduleName
+            Write-PublicNativeProviderField 'moduleName' ([string]$command.Module.Name)
+            Write-PublicNativeProviderField 'modulePathRaw' ([string]$command.Module.Path)
+            Write-PublicNativeProviderField 'modulePathNormalized' $modulePath
+            Write-PublicNativeProviderField 'moduleType' ([string]$command.Module.ModuleType)
+            Write-PublicNativeProviderField 'moduleRootModule' ([string]$command.Module.RootModule)
+            Write-PublicNativeProviderField 'moduleGuid' ([string]$command.Module.Guid)
+            Write-PublicNativeProviderField 'moduleVersion' ([string]$command.Module.Version)
+            $functionBlock=$null;$functionModule=$null;$implementingType=$null;$implementingAssembly=$null
+            $functionFile='';$functionModulePath='';$functionModuleBase='';$implementingTypeName='';$implementingAssemblyName='';$implementingAssemblyLocation=''
+            if($kind -ceq 'Function'){$functionBlock=$command.ScriptBlock;if($null -ne $functionBlock){$functionFile=[string]$functionBlock.File;$functionModule=$functionBlock.Module;if($null -ne $functionModule){$functionModulePath=[string]$functionModule.Path;$functionModuleBase=[string]$functionModule.ModuleBase}}}
+            if($kind -ceq 'Cmdlet'){$implementingType=$command.ImplementingType;if($null -ne $implementingType){$implementingTypeName=[string]$implementingType.FullName;$implementingAssembly=$implementingType.Assembly;if($null -ne $implementingAssembly){$implementingAssemblyName=[string]$implementingAssembly.FullName;$implementingAssemblyLocation=[string]$implementingAssembly.Location}}}
+            Write-PublicNativeProviderField 'functionBlockPresent' ([string]($null -ne $functionBlock))
+            Write-PublicNativeProviderField 'functionScriptBlockFile' $functionFile
+            Write-PublicNativeProviderField 'functionModulePresent' ([string]($null -ne $functionModule))
+            Write-PublicNativeProviderField 'functionModulePath' $functionModulePath
+            Write-PublicNativeProviderField 'functionModuleBase' $functionModuleBase
+            Write-PublicNativeProviderField 'cmdletImplementingTypePresent' ([string]($null -ne $implementingType))
+            Write-PublicNativeProviderField 'cmdletImplementingType' $implementingTypeName
+            Write-PublicNativeProviderField 'cmdletAssemblyPresent' ([string]($null -ne $implementingAssembly))
+            Write-PublicNativeProviderField 'cmdletAssemblyName' $implementingAssemblyName
+            Write-PublicNativeProviderField 'cmdletAssemblyLocation' $implementingAssemblyLocation
+            $utilityManifest=[IO.Path]::GetFullPath([IO.Path]::Combine($utilityRoot,'Microsoft.PowerShell.Utility.psd1'))
+            Write-PublicNativeProviderField 'utilityManifestPath' $utilityManifest
+            Write-PublicNativeProviderField 'utilityManifestExists' ([string][IO.File]::Exists($utilityManifest))
+            Write-PublicNativeProviderField 'runtimeContainmentPrefix' $runtimeRoot
+            Write-PublicNativeProviderLine 'PUBLIC_NATIVE_PROVIDER_END:1:35'
+        }catch{
+            # A diagnostic failure is public and bounded, and never admission.
+            try{[Console]::Out.WriteLine('PUBLIC_NATIVE_PROVIDER_DIAGNOSTIC_ERROR:1')}catch{}
+        }
+    }
     if($name -ceq 'Get-FileHash' -and [IO.Path]::GetFullPath($command.Module.ModuleBase).TrimEnd('\') -ine $utilityRoot){throw 'PUBLIC_NATIVE_HASH_MODULE_RUNTIME'}
     [Console]::Out.WriteLine(('PUBLIC_NATIVE_COMMAND:'+$name+':'+$moduleName+':'+$kind+':'+$runtimeType))
 }

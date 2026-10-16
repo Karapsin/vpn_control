@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.13 - 2026-10-16
 
 - Retain observed process births in MCP QEMU preparation fixtures.
 - Make MCP safety fixtures independent of restrictive permissions and cold Python caches.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Bind archived MCP fixtures explicitly and preserve full Gradle probe failures.
 - Fix MCP fixture contexts, bounded caller evidence and required cleanup-test enrollment.
 - Make Gradle packaging fixtures reproducible with inherited relative Python bytecode cache settings.
+- Add bounded native PowerShell provider diagnostics for reproducible MCP CI.
 
 ## 2.2.12 - 2026-10-15
 
