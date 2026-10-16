@@ -2919,7 +2919,8 @@
         "17d01be2ef1d6ecf25888a53bbdbf65739c87f9473f2c4091afccc7c35be5e8f",
         "aa39af3e0517f3c1c9e30abb6b6cf5977aa831077755ece1ed2adaeea6a07b11",
         "e6cec7d9be127aace754745ba871473647036b624127edaf4f461f0d900b340d",
-        "94b3df1d783ccfc0c85b86b11c4aa1d31738eb0164684f4d2f5479a2f0acb045"
+        "94b3df1d783ccfc0c85b86b11c4aa1d31738eb0164684f4d2f5479a2f0acb045",
+        "bf8025bcc2e071e606c37e12dcf0fbcd9fe4e0c92ab400a1d2c25f0c0bd4b961"
       ]
     },
     "agent_tools/tests/test_windows_cp117_publisher_boundary_context.py": {

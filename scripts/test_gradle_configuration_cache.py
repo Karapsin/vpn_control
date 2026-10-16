@@ -28,18 +28,18 @@ def main() -> None:
     if first.returncode:
         raise AssertionError(
             f"First configuration-cache probe failed in {first_seconds:.2f}s:\n"
-            f"{first.stdout[-5000:]}\n{first.stderr[-5000:]}"
+            f"{first.stdout}\n{first.stderr}"
         )
     second, second_seconds = probe()
     if second.returncode:
         raise AssertionError(
             f"Second configuration-cache probe failed in {second_seconds:.2f}s:\n"
-            f"{second.stdout[-5000:]}\n{second.stderr[-5000:]}"
+            f"{second.stdout}\n{second.stderr}"
         )
     if "Reusing configuration cache." not in second.stdout:
         raise AssertionError(
             "Second task graph did not reuse the configuration cache:\n"
-            f"{second.stdout[-5000:]}\n{second.stderr[-5000:]}"
+            f"{second.stdout}\n{second.stderr}"
         )
     print(
         "Gradle configuration cache reused: "

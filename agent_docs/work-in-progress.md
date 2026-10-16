@@ -829,3 +829,47 @@ normal version note, full audit, managed prepush and exact-SHA CI attempt.
 The manifest needs no new opaque loader or digest update. Original failed
 receipts stay failed; closed environments stay closed. Product acceptance, H14,
 visual work and release remain deferred.
+
+The next exact development commit, `a59ad586d64d2d5359be92ed4255e9981b426298`,
+passed Android, Linux and macOS packaging but failed Fast Checks and the Windows
+native MCP checks. All original job logs, beforeimages and source proofs remain
+preserved. Fast's main job stopped at the first real Gradle configuration-cache
+probe, while dependency POM resolution failed. Its underlying HTTP/backend cause
+was not retained and remains unknown. The skipped shard-zero artifact and failed
+coverage verifier are consequences of that earlier failed step.
+
+Windows retained 86 native test outcomes, including five failure events and ten
+platform skips; CP never ran. Four failure events reached actual programme
+emission with no archived base bound to the recovery closure. The remaining
+native counterfactual inherited the historical factory loader's inert importer,
+so the old diagnostic incorrectly passed. The testcase coordinator now holds
+the existing authenticated full base through the actual before/current calls
+and restores the original reference. Executable archived testcases compile
+their verified original bytes with genuine coordinator builtins and their real
+retained filename/package. The pure production-factory loader, QGA bytes and
+producer pins remain unchanged.
+
+Two new routine controls exercise the actual missing-base and importer
+boundaries. Preserved whole-E source produced two and four subtest failures on
+both Python versions; the same controls passed on the fix. All nine candidate
+boundary cases passed with one genuine Windows-only skip. Static propagation
+review found no additional instance across strict MAIN73 and CP45 cases. Those
+original native Windows scenarios remain mandatory in the next exact-SHA CI.
+
+The Gradle probe already captured both complete streams but discarded their
+prefixes when reporting each failure. It now retains those complete captured
+streams. The same early-detail regression failed on the whole original E probe
+and passed on the fix on both interpreters. Five routine cases preserve first
+and second failures, missing-reuse refusal, actual argv/two-probe success and
+the original timeout, without retries or real Gradle/network calls. Hygiene
+runs these cases verbosely before the unchanged real two-probe check; the probe
+and its new routine script are covered by the existing PR path filter. This is
+a diagnostic-retention repair, not a claimed fix for the unknown resolver cause.
+
+Only the new, executed controller digest is appended to its existing dependency
+declaration. All previous 174 rows, scopes, accepted versions and fifteen
+resource pins remain intact. This MCP-only follow-up deliberately spans its
+test coordinator, diagnostic script, hygiene wiring and workflow selector.
+Completion requires fresh managed checks and all five workflows successful for
+the final pushed SHA. Closed environments remain closed; product parity, H14,
+visual acceptance and release remain deferred.

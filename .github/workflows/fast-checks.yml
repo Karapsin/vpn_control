@@ -57,6 +57,8 @@ on:
       - "scripts/test_linux_scheduled_refresh_scenario.py"
       - "scripts/status_catalog_tool.py"
       - "scripts/check_release_hygiene.sh"
+      - "scripts/test_gradle_configuration_cache.py"
+      - "scripts/test_gradle_configuration_cache_evidence.py"
       - "scripts/test_packaged_cli_harness.py"
       - "scripts/testdata/windows-persistent-ready-parser/**"
       - "scripts/testdata/windows-persistent-taskroot/**"

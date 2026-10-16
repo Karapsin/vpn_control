@@ -753,7 +753,16 @@ class InertRemoteDefinitionBoundaryTests(unittest.TestCase):
                     path = self.folder / row['resource']
                     raw, guard = stack.enter_context(source_module_loader._bootstrap_source(path))
                     self.assertEqual((row['bytes'], row['sha256']), (len(raw), hashlib.sha256(raw).hexdigest()))
-                    modules[label] = historical_source.load(path, row['sha256'])
+                    # These are complete executable testcases, not pure historical
+                    # factories. Their generated namespaces need the genuine
+                    # coordinator importer, including a real missing fcntl.
+                    import builtins
+                    module = types.ModuleType('agent_tools._remote_original_' + row['sha256'])
+                    module.__package__ = 'agent_tools'
+                    module.__file__ = str(path.absolute())
+                    module.__dict__['__builtins__'] = vars(builtins)
+                    exec(compile(raw, module.__file__, 'exec', dont_inherit=True), module.__dict__)
+                    modules[label] = historical_source.verify(module, path, row['sha256'])
                     self.assertEqual(str(path.absolute()), modules[label].__file__)
                     guard()
                     stack.callback(guard)
@@ -764,6 +773,15 @@ class InertRemoteDefinitionBoundaryTests(unittest.TestCase):
                 # Dismiss copies this actual D helper; current helper bytes must
                 # not silently become the preserved old programme's input.
                 stack.enter_context(patch.object(modules['dismiss'], 'layout', modules['secure_layout']))
+            # The held original base supplies the exact QGA source while these
+            # inert testcase programmes are emitted, even when the coordinator
+            # cannot import the optional POSIX base. Restore its real reference.
+            closures = (modules['diagnostic'].owner.guest.recovery.authority.closure,
+                        modules['dismiss'].m.login.guest.recovery.authority.closure,
+                        modules['secure_layout'].secure.login.guest.recovery.authority.closure)
+            self.assertTrue(all(value is closures[0] for value in closures))
+            archived_base = stack.enter_context(context.historical_base())
+            stack.enter_context(patch.object(closures[0], 'base', archived_base))
             stack.enter_context(historical_gzip_context(*modules.values()))
             yield modules
 
@@ -816,6 +834,34 @@ class InertRemoteDefinitionBoundaryTests(unittest.TestCase):
             result = unittest.TestResult()
             getattr(module, selector[1])(selector[2]).run(result)
         self.assertEqual((1, [], [], []), (result.testsRun, result.failures, result.errors, result.skipped), '\n'.join(text for _, text in result.errors or result.failures))
+
+    def test_actual_definition_cases_keep_their_held_historical_base(self):
+        from agent_tools import windows_cp117_windowless_dismiss_observe as dismiss
+        closure = dismiss.login.guest.recovery.authority.closure
+        original = closure.base
+        with patch.object(closure, 'base', None):
+            for family in ('direct', 'copied'):
+                with self.subTest(family=family):
+                    self.positive(family)
+                    self.assertIsNone(closure.base)
+        self.assertIs(original, closure.base)
+
+    def test_actual_archived_case_uses_the_real_coordinator_importer(self):
+        import builtins
+        with self.modules('before') as modules:
+            for label, module in modules.items():
+                with self.subTest(family=label):
+                    actual = module.__dict__['__builtins__']['__import__']
+                    self.assertIs(builtins.__import__, actual)
+                    self.assertIs(__import__('errno'), actual('errno'))
+            actual = modules['diagnostic'].DiagnosticTests.execute_flow.__builtins__['__import__']
+            self.assertIs(builtins.__import__, actual)
+            if os.name == 'nt':
+                with self.assertRaises(ModuleNotFoundError) as missing:
+                    actual('fcntl')
+                self.assertEqual('fcntl', missing.exception.name)
+            else:
+                self.assertIs(__import__('fcntl'), actual('fcntl'))
 
     def test_actual_complete_diagnostic_uses_inert_target_definitions(self):
         self.positive('diagnostic')
