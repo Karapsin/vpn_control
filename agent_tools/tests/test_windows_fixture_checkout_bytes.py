@@ -273,6 +273,237 @@ class WindowsFixtureCheckoutBytesTests(unittest.TestCase):
             self.assertEqual(before, {path.name: path.read_bytes() for path in foreign.iterdir()})
 
 
+
+
+# A second independently preserved checkout regression covers exact C's sealed
+# stage/ACL guard. It executes only the original hash comparison statement;
+# original full native Windows stage/successor scenarios remain mandatory.
+_STAGE_CHECKOUT = ROOT / 'agent_tools/tests/fixtures/windows_cp117_stage_checkout'
+_STAGE_BEFORE_ATTRIBUTES_SHA = '928bb1ea8f3563e924543885940ffc6eab91da496f1f41844035f58d704588b3'
+_STAGE_SEALED_SOURCE_SHA = '26f46ec2a8c9c58299b6f263cb87397e622c2f8b31baacd395e6ceecac3df449'
+_STAGE_FILE = 'agent_tools/windows_update_fixture_stage.py'
+_STAGE_ACL_FILE = 'scripts/windows_fixture_stage_acl.py'
+
+
+def _actual_stage_guard_data():
+    import base64
+    import gzip
+    from agent_tools.source_module_loader import _bootstrap_source
+    path = ROOT / 'agent_tools/tests/test_windows_cp117_server_read_binding.py'
+    with _bootstrap_source(path) as (raw, closing):
+        tree = ast.parse(raw)
+        values = [ast.literal_eval(node.value) for node in tree.body
+                  if isinstance(node, ast.Assign) and any(isinstance(name, ast.Name)
+                  and name.id == 'PUBLISHER_SUCCESSOR_STAGE_FACTORY_SOURCE' for name in node.targets)]
+        if len(values) != 1:
+            raise ValueError('checkout-stage-sealed-slot')
+        sealed = gzip.decompress(base64.b64decode(values[0], validate=True))
+        if hashlib.sha256(sealed).hexdigest() != _STAGE_SEALED_SOURCE_SHA:
+            raise ValueError('checkout-stage-sealed-source')
+        closing()
+    tree = ast.parse(sealed)
+    expected = {}
+    for name in ('STAGE_MODULE_SHA', 'ACL_MODULE_SHA'):
+        rows = [ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
+                and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+        if len(rows) != 1:
+            raise ValueError('checkout-stage-pin-slot')
+        expected[name] = rows[0]
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'stage_templates')
+    statements = [node for node in function.body if isinstance(node, ast.If)
+                  and any(isinstance(child, ast.Constant) and child.value == 'fixture-stage-source'
+                          for child in ast.walk(node))]
+    if len(statements) != 1:
+        raise ValueError('checkout-stage-actual-guard-slot')
+    return sealed, expected, statements[0]
+
+
+def _actual_credential_guard_data():
+    from agent_tools.source_module_loader import _bootstrap_source
+    path = ROOT / 'agent_tools/windows_cp117_recovered_login.py'
+    with _bootstrap_source(path) as (raw, closing):
+        tree = ast.parse(raw)
+        guards = {}
+        for label, function_name, pin_name, variable, relative, error in (
+                ('task', 'credential_program', 'hp', '_TASK_HELPER_SHA',
+                 'scripts/windows_task_admission.ps1', 'credential-helper-source'),
+                ('validity', '_fixed_bootstrap', 'pin', '_VALIDITY_SHA',
+                 'scripts/windows_credential_validity_qga.py', 'validity-source')):
+            constants = [ast.literal_eval(node.value) for node in tree.body
+                         if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                         and target.id == variable for target in node.targets)]
+            functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                         and node.name == function_name]
+            if len(constants) != 1 or len(functions) != 1:
+                raise ValueError('checkout-credential-source-slot')
+            statements = [node for node in functions[0].body if isinstance(node, ast.If)
+                          and any(isinstance(child, ast.Constant) and child.value == error
+                                  for child in ast.walk(node))]
+            if len(statements) != 1:
+                raise ValueError('checkout-credential-actual-guard-slot')
+            guards[label] = {'statement': statements[0], 'pinName': pin_name,
+                             'variable': variable, 'expected': constants[0],
+                             'file': relative, 'error': error}
+        closing()
+    return raw, guards
+
+
+@contextmanager
+def _physical_C_stage_checkout(before):
+    from agent_tools.source_module_loader import _bootstrap_source
+    sealed, expected, statement = _actual_stage_guard_data()
+    credential_source, credential_guards = _actual_credential_guard_data()
+    attrs_path = (_STAGE_CHECKOUT / 'attributes.before') if before else ROOT / '.gitattributes'
+    with _bootstrap_source(attrs_path) as (attrs, closing):
+        closing()
+    with _bootstrap_source(_STAGE_CHECKOUT / 'provenance.json') as (metadata, closing):
+        provenance = json.loads(metadata)
+        closing()
+    if (provenance['sourceCommit'] != '30901b9f793f72534dae3441e45b67c3587719e8'
+            or provenance['attributesSha256'] != _STAGE_BEFORE_ATTRIBUTES_SHA
+            or before and (len(attrs) != provenance['attributesBytes']
+            or hashlib.sha256(attrs).hexdigest() != _STAGE_BEFORE_ATTRIBUTES_SHA)):
+        raise ValueError('checkout-stage-before-attributes')
+    payloads = {'.gitattributes': attrs, 'public-text-control.txt': b'PUBLIC\nsecond line\n'}
+    for name, key in ((_STAGE_FILE, 'STAGE_MODULE_SHA'), (_STAGE_ACL_FILE, 'ACL_MODULE_SHA')):
+        with _bootstrap_source(ROOT / name) as (raw, closing):
+            if hashlib.sha256(raw).hexdigest() != expected[key]:
+                raise ValueError('checkout-stage-actual-source')
+            payloads[name] = raw
+            closing()
+    for guard in credential_guards.values():
+        with _bootstrap_source(ROOT / guard['file']) as (raw, closing):
+            if hashlib.sha256(raw).hexdigest() != guard['expected']:
+                raise ValueError('checkout-credential-actual-source')
+            payloads[guard['file']] = raw
+            closing()
+    with tempfile.TemporaryDirectory(prefix='cp117-stage-checkout-') as directory:
+        checkout = Path(directory).resolve()
+        environment = {name: value for name, value in os.environ.items() if not name.startswith('GIT_')}
+        environment.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull, GIT_ATTR_NOSYSTEM='1')
+        environment.pop('DYLD_INSERT_LIBRARIES', None)
+        environment.pop('DYLD_LIBRARY_PATH', None)
+        def git(*arguments):
+            done = subprocess.run(['git', *arguments], cwd=checkout, env=environment,
+                                  capture_output=True, timeout=20)
+            if done.returncode:
+                raise AssertionError((arguments, done.returncode, done.stdout, done.stderr))
+            return done.stdout
+        git('init', '-q')
+        empty = checkout / '.git/empty-global-attributes'; empty.write_bytes(b'')
+        git('config', 'core.attributesFile', str(empty))
+        git('config', 'core.autocrlf', 'false')
+        for name, raw in payloads.items():
+            target = checkout / name; target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open('xb') as output:
+                output.write(raw)
+        git('add', '--', *payloads)
+        for name, raw in payloads.items():
+            if git('show', ':' + name) != raw:
+                raise AssertionError('stage-checkout-index-source-changed')
+        git('config', 'core.autocrlf', 'true')
+        for name in payloads:
+            (checkout / name).unlink()
+        git('checkout-index', '--all')
+        if (checkout / 'public-text-control.txt').read_bytes() != payloads['public-text-control.txt'].replace(b'\n', b'\r\n'):
+            raise AssertionError('stage-checkout-physical-crlf-control')
+        guard_source = checkout / 'authenticated-stage.source'
+        with guard_source.open('xb') as output:
+            output.write(sealed)
+        with _bootstrap_source(guard_source) as (held, closing):
+            if held != sealed:
+                raise ValueError('checkout-stage-guard-source')
+            programme = compile(ast.Module(body=[statement], type_ignores=[]), str(guard_source), 'exec')
+            observed = {}
+            from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import _public_source
+            for label, name in (('stage', _STAGE_FILE), ('acl', _STAGE_ACL_FILE)):
+                pin, raw = _public_source(checkout / name)
+                observed[label] = (pin, raw)
+            for label, guard in credential_guards.items():
+                observed[label] = _public_source(checkout / guard['file'])
+            attrs_observed = git('check-attr', 'text', 'eol', '--', _STAGE_FILE, _STAGE_ACL_FILE,
+                                 *(guard['file'] for guard in credential_guards.values()))
+            witness = {'beforeAttributes': before, 'sources': {name: {'sha256': item[0]['sha256'], 'bytes': len(item[1])}
+                       for name, item in observed.items()}, 'resolvedAttributes': attrs_observed.decode('utf-8', errors='strict'),
+                       'sealedGuardSourceSha256': _STAGE_SEALED_SOURCE_SHA,
+                       'credentialGuardSourceSha256': hashlib.sha256(credential_source).hexdigest(),
+                       'credentialHashFailureObservedInC': False, 'nativeConstructorAcceptance': False}
+            print('CP117_STAGE_CHECKOUT_WITNESS ' + json.dumps(witness, sort_keys=True), flush=True)
+            namespace = dict(expected, pin=observed['stage'][0], ap=observed['acl'][0])
+            credential_path = checkout / 'authenticated-credential.source'
+            with credential_path.open('xb') as output:
+                output.write(credential_source)
+            with _bootstrap_source(credential_path) as (credential_held, credential_closing):
+                if credential_held != credential_source:
+                    raise ValueError('checkout-credential-guard-source')
+                programmes = {label: compile(ast.Module(body=[guard['statement']], type_ignores=[]),
+                              str(credential_path), 'exec') for label, guard in credential_guards.items()}
+                namespaces = {label: {guard['variable']: guard['expected'],
+                              guard['pinName']: observed[label][0]} for label, guard in credential_guards.items()}
+                try:
+                    yield programme, namespace, observed, payloads, attrs_observed, programmes, namespaces
+                finally:
+                    try:
+                        credential_closing()
+                    finally:
+                        closing()
+
+
+class Cp117StageCheckoutBytesTests(unittest.TestCase):
+    before_attributes = False
+
+    def test_actual_C_checkout_passes_the_unchanged_stage_source_guard(self):
+        requested = os.environ.get('CP117_STAGE_CHECKOUT_VARIANT', 'current')
+        self.assertIn(requested, ('before', 'current'))
+        before = self.before_attributes or requested == 'before'
+        with _physical_C_stage_checkout(before) as (programme, namespace, observed, expected, attrs, programmes, namespaces):
+            # The identical positive guard executes on real checkout/held-source pins.
+            exec(programme, namespace)
+            self.assertEqual(observed['stage'][1], expected[_STAGE_FILE])
+            self.assertEqual(observed['acl'][1], expected[_STAGE_ACL_FILE])
+            self.assertIn(b'scripts/windows_fixture_stage_acl.py: text: unset', attrs)
+
+    def _credential_positive(self, label, relative):
+        requested = os.environ.get('CP117_STAGE_CHECKOUT_VARIANT', 'current')
+        self.assertIn(requested, ('before', 'current'))
+        before = self.before_attributes or requested == 'before'
+        with _physical_C_stage_checkout(before) as (programme, namespace, observed, expected, attrs, programmes, namespaces):
+            exec(programmes[label], namespaces[label])
+            self.assertEqual(observed[label][1], expected[relative])
+            self.assertIn((relative + ': text: unset').encode(), attrs)
+
+    def test_actual_task_helper_checkout_passes_the_unchanged_credential_source_guard(self):
+        self._credential_positive('task', 'scripts/windows_task_admission.ps1')
+
+    def test_actual_validity_helper_checkout_passes_the_unchanged_credential_source_guard(self):
+        self._credential_positive('validity', 'scripts/windows_credential_validity_qga.py')
+
+    def test_preserved_C_attributes_reproduce_the_same_positive_guard_red(self):
+        # Independent identical positive cases prevent the earlier validity guard
+        # from hiding the task helper or stage guard's actual checkout evidence.
+        for method, error in (
+                ('test_actual_C_checkout_passes_the_unchanged_stage_source_guard', 'fixture-stage-source'),
+                ('test_actual_task_helper_checkout_passes_the_unchanged_credential_source_guard', 'credential-helper-source'),
+                ('test_actual_validity_helper_checkout_passes_the_unchanged_credential_source_guard', 'validity-source')):
+            with self.subTest(guard=error):
+                case = type(self)(method); case.before_attributes = True
+                result = unittest.TestResult(); case.run(result)
+                self.assertEqual((result.testsRun, len(result.failures), len(result.errors), result.skipped), (1, 0, 1, []))
+                self.assertIn('ValueError: ' + error, result.errors[0][1])
+
+    def test_unchanged_stage_source_guard_refuses_each_foreign_pin(self):
+        with _physical_C_stage_checkout(False) as (programme, namespace, observed, expected, attrs, programmes, namespaces):
+            for label in ('pin', 'ap'):
+                changed = dict(namespace); changed[label] = dict(namespace[label], sha256='0' * 64)
+                with self.subTest(source=label), self.assertRaisesRegex(ValueError, '^fixture-stage-source$'):
+                    exec(programme, changed)
+            for label, pin_name, error in (('task', 'hp', 'credential-helper-source'),
+                                           ('validity', 'pin', 'validity-source')):
+                changed = dict(namespaces[label]); changed[pin_name] = dict(changed[pin_name], sha256='0' * 64)
+                with self.subTest(source=label), self.assertRaisesRegex(ValueError, '^' + error + '$'):
+                    exec(programmes[label], changed)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--legacy-red', action='store_true')

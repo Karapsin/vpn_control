@@ -1,0 +1,28 @@
+{
+  "claim": "Preserved C script and portable source-selected command-type decision model only; native actual types and autoload repair remain unproved until Windows execution",
+  "file": {
+    "bytes": 1076,
+    "path": "native_module_script_c.before.ps1",
+    "sha256": "4fc533a02a779ae4c00691837ba95d3077486c53c474e1ba3576deaa978ffe39"
+  },
+  "originalFailure": {
+    "actualCommandTypesRetained": false,
+    "blockId": 72,
+    "bytes": 1221,
+    "currentExit": 11,
+    "currentStderrPublic": "PUBLIC_NATIVE_MISSING:Get-FileHash\\r\\n",
+    "oldExit": 11,
+    "oldStderrPublic": "PUBLIC_NATIVE_MISSING:Get-FileHash\\r\\n",
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/mcp-ci-30901b9f-windows-failure-v1/block-072.raw",
+    "sha256": "31e2dfa2a38ca95acd0563acb2fb41505a56b8eef956384014c8975a9666f8c4",
+    "testId": "agent_tools.tests.test_windows_powershell_environment.NativeWindowsPowerShellEnvironmentTests.test_owned_missing_module_path_old_refuses_current_acl_and_hash_complete"
+  },
+  "originalHistoricalModulePathRetained": false,
+  "projection": "Exact complete NATIVE_MODULE_SCRIPT raw string value, encoded UTF-8 without BOM; no rewrites",
+  "schemaVersion": 1,
+  "sourceBeforeimage": "/Users/karapsin_de/projects/vpn_control/.runtime/mcp-ci-30901b9f-tool-context-diagnosis-v1/test_windows_powershell_environment.py.before.source",
+  "sourceBytes": 21766,
+  "sourceCommit": "30901b9f793f72534dae3441e45b67c3587719e8",
+  "sourcePath": "agent_tools/tests/test_windows_powershell_environment.py",
+  "sourceSha256": "00a217e4dd7163003a5fd9d0142d5f843642b71b20a800464d29bbf873d24cb7"
+}

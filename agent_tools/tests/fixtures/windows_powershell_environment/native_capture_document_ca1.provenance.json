@@ -1,0 +1,20 @@
+{
+  "baseCommit": "30901b9f793f72534dae3441e45b67c3587719e8",
+  "claim": "Local persisted-document diagnostic retention counterfactual only; no native Windows outcome or historical command type reconstructed",
+  "file": {
+    "bytes": 443,
+    "path": "native_capture_document_ca1.before.fragment",
+    "sha256": "e10c6535655a51c3244f93dfb29c819789bb69247a14e021d850703422080924"
+  },
+  "parseProcedure": "Raw fragment remains exact; textwrap.dedent is used only for AST parsing and code retains the actual physical fragment filename",
+  "projection": "Exact contiguous indented preserve/document nested definitions including intervening/trailing whitespace; no source rewrites",
+  "schemaVersion": 1,
+  "sourceBytes": 39304,
+  "sourceCommit": null,
+  "sourceFirstLine": 495,
+  "sourceLastLineInclusive": 502,
+  "sourcePath": "agent_tools/tests/test_windows_powershell_environment.py",
+  "sourceSha256": "ca1ef7cd72242660a42e41aac5d9b5f5f08b8d08ee9673f12f5f1957964c47eb",
+  "sourceSnapshotLabel": "H6b575",
+  "sourceState": "Uncommitted repaired ca1 source at coordinator freeze H6b575; not claimed committed in base C"
+}

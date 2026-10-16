@@ -1,0 +1,29 @@
+{
+  "sourceCommit": "30901b9f793f72534dae3441e45b67c3587719e8",
+  "failurePacket": ".runtime/mcp-ci-30901b9f-windows-failure-v1/failure-identities-v1.json",
+  "sources": {
+    "context.py": {
+      "sha256": "91922a4930035c2fb66f84a9e8035070d12308d457615a0030540f6251bfa4b8",
+      "bytes": 12127,
+      "sourcePath": "agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py"
+    },
+    "test_windows_cp117_windowless_dismiss_observe.py": {
+      "sha256": "6995a4af23fc328995e8586aee6b5d858286bae3e7f534a8544993349b4465ef",
+      "bytes": 13712,
+      "sourcePath": "agent_tools/tests/test_windows_cp117_windowless_dismiss_observe.py"
+    },
+    "test_windows_cp117_recovered_owner_diagnostic.py": {
+      "sha256": "a0245b49b3f72c47b94be3b6ca5449dc2458447015252504a2bae7c50e37c6eb",
+      "bytes": 21826,
+      "sourcePath": "agent_tools/tests/test_windows_cp117_recovered_owner_diagnostic.py"
+    },
+    "test_windows_cp117_installed_base_observe.py": {
+      "sha256": "ed9c7b4463354e830b7834a55e87af15ca8006fa870475ea1ead211df7021857",
+      "bytes": 16537,
+      "sourcePath": "agent_tools/tests/test_windows_cp117_installed_base_observe.py"
+    }
+  },
+  "originalSourcePinsChanged": false,
+  "nativeEvidenceClaimed": false,
+  "projectionScope": "Only missing coordinator POSIX flag and remote recipe path grammar are modeled; actual generated producers and genuine held local source backend execute unchanged."
+}

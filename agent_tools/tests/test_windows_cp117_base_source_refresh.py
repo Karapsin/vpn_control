@@ -1,3 +1,4 @@
+from agent_tools.tests.fixtures.windows_replacement_fixture_sections import replacement_fixture_outer_catch,replacement_fixture_finish
 from agent_tools.tests.fixtures.windows_shortcut_access_wire import inert_server_annotation_context,_test_shortcut_access_native_wire_schema,_qualify_shortcut_access_native_wire
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import HistoricalFactoryTestCase as HistoryCase, provider as historical_provider
 import ast,base64,copy,gzip,hashlib,json,re,tempfile,unittest,sys,subprocess,os
@@ -1629,8 +1630,8 @@ class BaselineReplacementCompletionTests(HistoryCase):
    corr='10101010-1010-4010-8010-101010101010';nonce='20202020-2020-4020-8020-202020202020';task=refresh.replacement_task(phase,corr,nonce,'a'*64 if phase=='provision'else None)
    functions=task[task.index('function WriteNew'):task.index('\ntry{')]
    wait=task[task.index(' if(-not $installer.WaitForExit'):task.index(" $phase='readback'")]
-   final=task[task.index('}catch{'):]
-   finish=task[task.index(' if($retired)'if phase=='retire'else' if($provisioned)'):task.index('}catch{')]
+   final=replacement_fixture_outer_catch(task)
+   finish=replacement_fixture_finish(task,phase)
    for mode in('zero','nonzero','readback','earlier','timeout'):
     with tempfile.TemporaryDirectory()as leaf:
      ps=refresh.installed.public._ps_literal;root=ps(leaf)
@@ -1716,7 +1717,7 @@ class RetirementRecoveryTests(HistoryCase):
  def test_actual_generated_active_process_readback_preserves_exit_and_unknown(self):
   import os,tempfile
   if os.name!='nt':self.skipTest('actual Windows production Finish/Wait/idle call execution required')
-  corr='10101010-1010-4010-8010-101010101010';nonce='20202020-2020-4020-8020-202020202020';task=refresh.replacement_task('retire',corr,nonce);functions=task[task.index('function WriteNew'):task.index('\ntry{')];wait=task[task.index(' if(-not $installer.WaitForExit'):task.index(" $phase='readback'")];final=task[task.index('}catch{'):]
+  corr='10101010-1010-4010-8010-101010101010';nonce='20202020-2020-4020-8020-202020202020';task=refresh.replacement_task('retire',corr,nonce);functions=task[task.index('function WriteNew'):task.index('\ntry{')];wait=task[task.index(' if(-not $installer.WaitForExit'):task.index(" $phase='readback'")];final=replacement_fixture_outer_catch(task)
   idle=refresh.REPLACEMENT_CONTEXT_PS[refresh.REPLACEMENT_CONTEXT_PS.index('function RequireReplacementIdle'):]
   with tempfile.TemporaryDirectory()as leaf:
    ps=refresh.installed.public._ps_literal
@@ -2467,7 +2468,7 @@ class DirectFixtureServerNamespaceTests(HistoryCase):
   current=gzip.decompress(base64.b64decode(DIRECT_FIXTURE_SERVER_FACTORY_GZIP)).decode();old=current.replace("'Any':Any,'uuid':__import__('uuid'),'ast':ast,","'Any':Any,'ast':ast,").replace('import re,uuid,hashlib\\nWindowsUpdateFixtureServerError','import re\\nWindowsUpdateFixtureServerError');self.assertNotEqual(old,current)
   with tempfile.TemporaryDirectory()as td:
    for name,source,red in(('old.py',old,True),('current.py',current,False)):
-    p=Path(td).resolve()/name;p.write_text(source);p.chmod(0o600);n={'__file__':str(p),'__name__':'inert-namespace'};exec(compile(source,str(p),'exec'),n);r=DirectRecoveredGenerationTests().actual_record();wire,_,_=n['tls_program'](r,n['credential_public'](DirectFixtureTlsChannelTests().material()));v=DirectFixtureTlsChannelTests().validator(wire)
+    p=Path(td).resolve()/name;raw=source.encode('utf-8',errors='strict');p.write_bytes(raw);p.chmod(0o600);register_inert_public_source(p,raw);n={'__file__':str(p),'__name__':'inert-namespace'};exec(compile(source,str(p),'exec'),n);r=DirectRecoveredGenerationTests().actual_record();wire,_,_=n['tls_program'](r,n['credential_public'](DirectFixtureTlsChannelTests().material()));v=DirectFixtureTlsChannelTests().validator(wire)
     if red:
      with self.assertRaises(NameError):v['_canonical']('c976d3f1-a5f6-478a-83c9-a17c7d589db7')
     else:self.assertTrue(v['_canonical']('c976d3f1-a5f6-478a-83c9-a17c7d589db7'))
@@ -2485,7 +2486,7 @@ class DirectFixtureServerReadTests(HistoryCase):
   import tempfile,inspect
   source=self.factory_source()
   with tempfile.TemporaryDirectory()as td:
-   p=Path(td).resolve()/'factory.py';p.write_text(source);p.chmod(0o600)
+   p=Path(td).resolve()/'factory.py';raw=source.encode('utf-8',errors='strict');p.write_bytes(raw);p.chmod(0o600);register_inert_public_source(p,raw)
    n={'__name__':'inert-read','__file__':str(p)};exec(compile(source,str(p),'exec'),n)
    r=DirectRecoveredGenerationTests().actual_record();public=n['credential_public'](DirectFixtureTlsChannelTests().material());wire,_,_=n['tls_program'](r,public);body,_=n['tls_body'](r,public);compile(wire,'actual-server-read-carrier','exec')
    for effect in ('New-ScheduledTaskAction','Register-ScheduledTask','Start-ScheduledTask','Set-Acl','SetAccessRuleProtection'):self.assertNotIn(effect,body)

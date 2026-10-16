@@ -1,0 +1,58 @@
+visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
+
+# These reviewed inputs are hashed byte-for-byte into native helper manifests.
+/desktopApp/native/windows/import-policy.json text eol=lf
+/desktopApp/native/windows/InstallHelper/loader.manifest text eol=lf
+/desktopApp/native/windows/VpnBroker/loader.manifest text eol=lf
+
+# Tool loaders and their preserved Python beforeimages authenticate exact bytes.
+# Keep Git blobs intact when Windows enables automatic line-ending conversion.
+/agent_tools/**/*.py -text
+/agent_tools/ssh_source_file_gateway.source -text
+
+# Historical source fixtures retain the exact bytes named by their provenance.
+/agent_tools/tests/fixtures/**/*.source -text
+/agent_tools/tests/fixtures/native_wire_event_evidence/*.fragment -text
+/agent_tools/tests/fixtures/windows_cp117_publisher_boundary/*.fragment -text
+/agent_tools/tests/fixtures/fast_workflow_budget/before.yml -text
+/agent_tools/tests/fixtures/fast_workflow_interpreter_order/*.yml -text
+/agent_tools/tests/fixtures/agent_ci_shards/*.yml -text
+/agent_tools/tests/fixtures/msi_qga_fixture_bounds/*.fragment -text
+/agent_tools/tests/fixtures/android_component_legacy/provenance.json text eol=lf
+
+# Frozen persistent-task fixtures retain their manifest-pinned source bytes.
+/scripts/testdata/windows-persistent-ready-parser/** -text
+/scripts/testdata/windows-persistent-taskroot/** -text
+
+# The monitor regression authenticates its exact retained timeout assertion.
+/scripts/test_macos_vm_resource_monitor.py -text
+/scripts/testdata/macos-vm-resource-monitor-dispatch/*.fragment -text
+
+/agent_tools/tests/fixtures/setup_process_capture/*.ps1 -text
+
+/agent_tools/tests/fixtures/setup_child_exit/*.ps1 -text
+/agent_tools/tests/fixtures/setup_msi_phase/*.ps1 -text
+
+agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
+
+# These Windows causal readers authenticate raw specimen and manifest bytes.
+/agent_tools/tests/fixtures/windows_ordinary_https/prior-direct-tls.cs -text
+/agent_tools/tests/fixtures/windows_ordinary_https/before-total-deadline.cs -text
+/agent_tools/tests/fixtures/windows_secondary_cleanup/provenance.json -text
+/agent_tools/tests/fixtures/windows_secondary_cleanup/legacy_file_binding.ps1 -text
+/agent_tools/tests/fixtures/windows_secondary_cleanup/current_file_binding.ps1 -text
+/agent_tools/tests/fixtures/windows_secondary_cleanup/reader_handles.ps1 -text
+/agent_tools/tests/fixtures/windows_secondary_cleanup/delete_native.cs -text
+/agent_tools/tests/fixtures/windows_fixture_checkout_bytes/attributes.before -text
+/agent_tools/tests/fixtures/windows_complete_program_transfer/provenance.json -text
+/agent_tools/tests/fixtures/windows_complete_program_transfer/decoder.before.fragment -text
+/agent_tools/tests/fixtures/windows_complete_program_transfer/haderrors.before.fragment -text
+/agent_tools/tests/fixtures/cp117_fixture_context_portability/geometry-imports.before.fragment -text
+/agent_tools/tests/fixtures/cp117_fixture_context_portability/windowless-imports.before.fragment -text
+/agent_tools/tests/fixtures/whole_observer_binary/fixture.before.fragment -text
+/agent_tools/tests/fixtures/qemu_projection_birth/projection.before.fragment -text
+/agent_tools/tests/fixtures/native_engineering_bytecode_cache/entrypoint.before.source -text
+/agent_tools/tests/fixtures/native_engineering_bytecode_cache/provenance.json -text
+/agent_tools/tests/fixtures/windows_cp117_fixture_transport_prerequisites/provenance.json -text
+/agent_tools/tests/fixtures/windows_cp117_catalogue_path_context/before.fragment -text
+/agent_tools/tests/fixtures/windows_cp117_catalogue_path_context/catalogue-fragment.before.ps1 -text

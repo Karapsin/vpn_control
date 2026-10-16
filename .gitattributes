@@ -56,3 +56,9 @@ agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
 /agent_tools/tests/fixtures/windows_cp117_fixture_transport_prerequisites/provenance.json -text
 /agent_tools/tests/fixtures/windows_cp117_catalogue_path_context/before.fragment -text
 /agent_tools/tests/fixtures/windows_cp117_catalogue_path_context/catalogue-fragment.before.ps1 -text
+/scripts/windows_fixture_stage_acl.py -text
+/agent_tools/tests/fixtures/windows_cp117_stage_checkout/attributes.before -text
+/agent_tools/tests/fixtures/windows_powershell_environment/native_module_script_c.before.ps1 -text
+/scripts/windows_task_admission.ps1 -text
+/scripts/windows_credential_validity_qga.py -text
+/agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.before.fragment -text

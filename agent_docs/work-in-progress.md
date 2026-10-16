@@ -650,3 +650,102 @@ The preserved old sources and current scenarios still require actual causal
 RED/GREEN, followed by a passing intentional full audit, a fresh managed prepush
 and all five workflows for the final pushed SHA. No closed environment is
 restored, and product parity, H14 and product-native/visual work remain deferred.
+
+
+### 2026-10-16 — exact-SHA tooling fixture follow-up
+
+Commit `30901b9f793f72534dae3441e45b67c3587719e8` reached origin/dev after
+all seventeen managed prepush checks passed. Its intentional full audit covered
+581 modules and 7,462 tests, with 201 justified platform skips. Those receipts
+qualify that source only. Android, Linux and macOS packaging succeeded, but
+Windows and Fast Checks failed; this delivery remains incomplete.
+
+Windows preserved 77 failure/error blocks (six failures and 71 errors) from its
+527-test CP117 batch. The earlier 67-test native batch passed with nine skips.
+The complete original logs, exact pushed source archive and cause ledger remain
+in `.runtime/mcp-ci-30901b9f-windows-failure-v1/` and the matching read-only
+collector directory. Fixture causes include incomplete finite public-source
+contexts, a POSIX recipe context that ended before complete program production,
+text-mode writes of authenticated source bytes, and task extraction that selected
+a nested catch instead of the outer catch and complete finish branch. The command
+cap and native successor cases must be rerun after these earlier guards pass.
+The production source, custody, ownership, non-replay and validation guards remain
+unchanged.
+
+The stage guard reported source refusal without retaining the two actual hashes;
+which raw pin differed remains unknown. The exact tracked ACL helper is eligible
+for Git newline conversion, so targeted attributes and real Git checkout controls
+will prove this concrete byte-authority gap without refreshing either sealed pin.
+The same finite audit identified two additional guarded public credential inputs,
+`windows_task_admission.ps1` and `windows_credential_validity_qga.py`; these are
+newly discovered eligibility gaps, not observed original credential failures.
+Each unchanged guard gets independent checkout coverage. Private operational
+inputs remain outside the inert public-source registry.
+
+The native module control also overconstrained missing commands and admitted only
+Cmdlets although a genuine PowerShell function can implement Get-FileHash. Its
+original command types were not retained. The fix requires actual trusted module
+and command-type provenance, the existing physical ACL/hash oracle, and a third
+fresh native invocation of the exact retained C script against the same data and
+sanitized environment. A portable typed-filter model is separate evidence. Native
+proof must observe the function and the exact original predicate RED; it cannot
+conditionally pass when either is absent. The original PowerShell parser error
+IDs/extents were likewise unretained; new parse-only old/current controls preserve
+them while keeping both original native task scenarios mandatory.
+
+Fast Checks completed its agent-test stages, then failed installing pinned NDK
+28.2.13676358 with `Error on ZipFile unknown archive`. The downloaded archive was
+not retained, so the external acquisition cause remains unknown. Complete main
+and verifier logs plus the exact workflow and preparation script are preserved;
+no product defect or reproduced source RED is claimed for that download failure.
+
+The original CI collector ended naturally with failure. All 244 accepted HTTP
+children, readers and full output streams closed; all 3,012 frozen source rows
+were unchanged, and HEAD matched origin/dev. Its independent closing receipt is
+`collector-independent-closing-v1.json` in the matching collector directory.
+Only then did the reviewed fixture edits begin. Required coverage uses the same
+positive assertions on preserved unfixed source and the fix, both Python 3.12.15
+and 3.14.3, genuine Git checkouts, and the enrolled Windows native tooling cases.
+Fresh full audit, managed prepush, normal version note and all five workflows for
+the next exact pushed SHA remain required. Previously closed VMs and connections
+stay closed; product acceptance, H14 and visual work remain deferred.
+
+
+The fixture follow-up is now focused GREEN on both Python 3.12.15 and 3.14.3.
+Seven actual before/current positives per interpreter cover the complete source
+context and module hooks, including an explicitly portable command-type model.
+The unchanged old caller expressions also reproduce incomplete outer/final and
+finish sections; all three independent real Git checkout guards reproduce RED
+with the exact C attributes and pass GREEN with targeted byte rules. Per runtime,
+the context/environment peer batch passed 93 tests with four genuine native skips,
+and the caller/checkout batch passed 269 with 64 native skips. These overlapping
+focused counts are not a full-suite aggregate or local Windows acceptance.
+
+A final evidence audit found that successful native causal tests swallowed their
+captured stdout and discarded temporary evidence with the runner. The retained
+uncommitted source has its own original fingerprint, not an invented Git commit.
+Actual old ca1 nested file writers and the complete e97 caller method reproduced
+the missing-receipt assertion on both interpreters; the same positives passed with
+the fix. Four new portable binary/partial/typed controls and the complete 16-test
+environment module passed, with one genuine native skip. The complete 10-test
+caller module passed with two genuine native skips. Nine strict caller controls
+reject replayed, missing, reordered, altered, foreign and malformed frames.
+
+The logger retains exact public synthetic streams, terminal flags and existing
+native proof dictionaries. Ordered 8,192-byte chunks, unique capture identities,
+whole-stream hashes and complete manifests fit the unchanged 16,384-byte collector
+line guard; neither the native calls nor their acceptance assertions changed.
+Synthetic portable markers are contained and cannot qualify a native case. The
+new authenticated before-fragment has one additional exact byte rule, bringing
+this follow-up to six targeted rules. Source/dependency guards remain strict.
+
+All 102 selector controls passed on both interpreters in the first focused freeze
+and again on the current interpreter after the logging-only delta. The final
+finite parser checked 1,421 current and changed-baseline source versions with no
+errors; selection is 514 of 581 modules. Independent closings qualified all known
+children, captured EOFs and unchanged source/HEAD before any further edit.
+Evidence is in `.runtime/mcp-ci-30901b9f-focused-v1/`,
+`.runtime/mcp-ci-30901b9f-focused-v2/` and the referenced owner packets.
+The final version note, fresh MCP surface check, intentional full audit, managed
+prepush and all five exact-new-SHA workflows still follow this checkpoint.
+Original failures stay failed and preserved; nothing closed is restored.

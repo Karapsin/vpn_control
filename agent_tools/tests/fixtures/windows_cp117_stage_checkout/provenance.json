@@ -1,0 +1,29 @@
+{
+  "actualNativeHashPair": "NOT_RETAINED; remains unknown",
+  "archiveSha256": "8a060ee49876337f15c93dfe9765eb5c87627b6b1ee8b273e2b720f7e9e08b75",
+  "attributesBytes": 3645,
+  "attributesSha256": "928bb1ea8f3563e924543885940ffc6eab91da496f1f41844035f58d704588b3",
+  "discoveredCredentialCheckoutGaps": {
+    "independentActualRawGuardOracles": [
+      "credential-helper-source",
+      "validity-source"
+    ],
+    "inputs": [
+      {
+        "bytes": 9151,
+        "origin": "immutable-C-347-archive",
+        "path": "scripts/windows_task_admission.ps1",
+        "sha256": "ed9738cd246eda8db24d05ca039b1b870940a5eb4f189ce6997442e53bfdebb3"
+      },
+      {
+        "bytes": 21963,
+        "origin": "readonly-exact-C-Git-blob",
+        "path": "scripts/windows_credential_validity_qga.py",
+        "sha256": "cdceba0ef4f1c613ece0556390fdc069b65068b89aa8c09049c4bc35a7dcae00"
+      }
+    ],
+    "observedNativeCHashFailures": false
+  },
+  "role": "Actual Git core.autocrlf checkout counterfactual; not native Windows constructor acceptance",
+  "sourceCommit": "30901b9f793f72534dae3441e45b67c3587719e8"
+}

@@ -8,6 +8,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Retain observed process births in MCP QEMU preparation fixtures.
 - Make MCP safety fixtures independent of restrictive permissions and cold Python caches.
 - Make MCP fixture source contexts and native checks reproducible, preserving timed-out worker evidence.
+- Make Windows MCP fixture source reads, checkout bytes and complete task extraction reproducible.
 
 ## 2.2.12 - 2026-10-15
 

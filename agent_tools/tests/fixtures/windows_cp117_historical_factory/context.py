@@ -87,6 +87,9 @@ def historical_current_package():
         stack.enter_context(patch.object(closure, 'base', archived_base))
         stack.enter_context(patch.object(archived_base, 'windows_msi_public_scenario', historical_public))
         stack.enter_context(patch.object(current_installed, 'public', historical_public))
+        # The complete inert programme describes a POSIX target, independently
+        # of the coordinator's genuine local source-custody backend.
+        stack.enter_context(remote_posix_recipe_context(current_installed.precise.owner.guest.recovery))
         yield current_installed
 
 
@@ -114,6 +117,7 @@ def historical_factories():
         # Install the dependency view on this actual sealed provider graph,
         # after its source-verified module objects and references exist.
         stack.enter_context(historical_gzip_context(old))
+        stack.enter_context(remote_posix_recipe_context(precise.owner.guest.recovery))
         yield old
 
 
@@ -148,6 +152,7 @@ _PUBLIC_SOURCE_NAMES = (
     'windows_cp117_windowless_provider_login.py',
     'windows_fixture_credentials.py',
     'windows_msi_base_prepare.py',
+    'windows_msi_http_transfer.py',
     'windows_msi_public_scenario.py',
     'windows_update_fixture_server.py',
     'windows_update_fixture_stage.py',
@@ -208,7 +213,9 @@ def inert_repository_source_reads():
     paths.update((SOURCE, DIAGNOSTIC_SOURCE, INSTALLED_SOURCE, PUBLIC_SOURCE,
                   BASE_SOURCE, SOURCE.with_name('update_fixture_a6445062.source'),
                   root / 'tests/test_windows_cp117_base_source_refresh.py',
-                  root.parent / 'scripts/windows_fixture_stage_acl.py'))
+                  root.parent / 'scripts/windows_fixture_stage_acl.py',
+                  root.parent / 'scripts/windows_credential_validity_qga.py',
+                  root.parent / 'scripts/windows_task_admission.ps1'))
     registry = {path.absolute(): None for path in paths}
     token = _PUBLIC_SOURCE_REGISTRY.set(registry)
     original = binding._read_bound_file

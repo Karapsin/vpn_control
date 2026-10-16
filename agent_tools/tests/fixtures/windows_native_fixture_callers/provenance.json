@@ -50,5 +50,19 @@
     "sha256": "b06d6dc5a5ad8955ba760dad00a59adb0473229175a384ea18f9ecff741bccc3",
     "bytes": 25267,
     "role": "Actual focused-v20 routine before stable-generation correction; portable controlled metadata projection and separate retained physical read evidence"
+  },
+  "replacementParserBefore": {
+    "path": "base.parser-catch-before.source",
+    "sha256": "eb38d09322428d4c5eed77ab87832af30b2c0f2624ceaedbe60870da050acaa9",
+    "bytes": 1039682,
+    "headSha": "30901b9f793f72534dae3441e45b67c3587719e8",
+    "role": "Authentic C caller; actual old generated body and ParserError extents must be captured by new native run, historical body extents unavailable"
+  },
+  "windowsTextWriterBefore": {
+    "path": "read-binding.text-writer-before.source",
+    "sha256": "75cb5961f31a2e1bac90e7f27cfd6d34923bed08bad3dac58402c21cd79d1f4a",
+    "bytes": 1055464,
+    "headSha": "30901b9f793f72534dae3441e45b67c3587719e8",
+    "role": "Authentic C old.py Path.write_text caller; native physical Windows causal control"
   }
 }

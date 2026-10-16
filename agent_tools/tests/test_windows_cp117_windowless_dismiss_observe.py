@@ -7,6 +7,18 @@ from agent_tools.tests import test_windows_cp117_secure_layout_observe as layout
 from agent_tools.tests import test_windows_cp117_windowless_edit_observe as windowlessfixture
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_tests
 
+
+
+def setUpModule():
+    from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import inert_repository_source_reads
+    global _historical_source_reads
+    _historical_source_reads = inert_repository_source_reads()
+    _historical_source_reads.__enter__()
+
+
+def tearDownModule():
+    _historical_source_reads.__exit__(None, None, None)
+
 @remote_posix_recipe_tests(m.login.guest.recovery)
 class DismissTests(HistoricalGzipTestCase):
  def value(self):return {'state':'observed','facts':geo.CensusTests().answer()}

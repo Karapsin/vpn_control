@@ -9,6 +9,18 @@ from agent_tools.tests.test_windows_cp117_recovered_owner_observe import OwnerFa
 from agent_tools.tests.test_windows_cp117_recovered_owner_diagnostic import ActualStreamTests
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_context, remote_posix_recipe_tests
 
+
+
+def setUpModule():
+    from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import inert_repository_source_reads
+    global _historical_source_reads
+    _historical_source_reads = inert_repository_source_reads()
+    _historical_source_reads.__enter__()
+
+
+def tearDownModule():
+    _historical_source_reads.__exit__(None, None, None)
+
 @remote_posix_recipe_tests(owner.guest.recovery)
 class InstalledTests(HistoryCase):
     def value(self):

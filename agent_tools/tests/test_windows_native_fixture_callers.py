@@ -10,6 +10,7 @@ from contextlib import ExitStack
 import hashlib
 import importlib
 import inspect
+import io
 import json
 import os
 from pathlib import Path, PureWindowsPath
@@ -27,6 +28,7 @@ FIXTURE = 'agent_tools/tests/fixtures/windows_native_fixture_callers'
 # Reviewed finite AST/import/resource closure; no whole-package fallback.
 # The current bytes are snapshotted per case; these paths grant no native action.
 CONTEXT_PATHS = (
+ '.gitattributes',
  'agent_tools/mcp_tool.sh',
  'agent_tools/native_artifact_registry.py',
  'agent_tools/native_review_source_closure.py',
@@ -79,6 +81,8 @@ CONTEXT_PATHS = (
  'agent_tools/tests/fixtures/windows_cp117_public_context/whole_entry.py',
  'agent_tools/tests/fixtures/windows_native_fixture_callers/base.overflow-before-slim.source',
  'agent_tools/tests/fixtures/windows_native_fixture_callers/base.server-read-before.source',
+ 'agent_tools/tests/fixtures/windows_native_fixture_callers/base.parser-catch-before.source',
+ 'agent_tools/tests/fixtures/windows_native_fixture_callers/read-binding.text-writer-before.source',
  'agent_tools/tests/fixtures/windows_native_fixture_callers/routine.metadata-before.source',
  'agent_tools/tests/fixtures/windows_native_fixture_callers/provenance.json',
  'agent_tools/tests/fixtures/windows_native_fixture_callers/test_windows_cp117_base_source_refresh.py.before.source',
@@ -87,6 +91,7 @@ CONTEXT_PATHS = (
  'agent_tools/tests/fixtures/windows_native_fixture_callers/test_windows_cp117_server_read_binding.py.before.source',
  'agent_tools/tests/fixtures/windows_powershell_environment.py',
  'agent_tools/tests/fixtures/windows_shortcut_access_wire.py',
+ 'agent_tools/tests/fixtures/windows_replacement_fixture_sections.py',
  'agent_tools/tests/test_windows_cp117_base_source_refresh.py',
  'agent_tools/tests/test_windows_cp117_installed_base_observe.py',
  'agent_tools/tests/test_windows_cp117_public_update_flow.py',
@@ -181,6 +186,8 @@ BEFORE = {
  'test_windows_cp117_server_read_binding.py': ('da891225fc3b912eb8eea0235943f9879426abf7a01dfedf5415cf4e7faf50c7', 1050462),
  'test_windows_cp117_public_update_flow.py': ('565a02dfe24430be615ea96294a5582265f0b041266fc3a009b74cde8ea4ce64', 932937),
 }
+REPLACEMENT_BEFORE = ('eb38d09322428d4c5eed77ab87832af30b2c0f2624ceaedbe60870da050acaa9', 1039682)
+WINDOWS_WRITER_BEFORE = ('75cb5961f31a2e1bac90e7f27cfd6d34923bed08bad3dac58402c21cd79d1f4a', 1055464)
 READ_BEFORE = ('d143a7c39e4b9684f76769eda11cc858958fa2cf8223fcdcd454b5ccbd9d0740',1039581)
 METADATA_BEFORE = ('b06d6dc5a5ad8955ba760dad00a59adb0473229175a384ea18f9ecff741bccc3',25267)
 CAP_BEFORE = ('33f7d0fed1b77a2af6f96b1c50ebb7045bd70e02f6f3ab8d3e8591c511bca11f',1048941)
@@ -203,6 +210,14 @@ BASE_CALLERS = (
  (BASE_MODULE,'DirectFixtureServerReadTests','test_actual_complete_server_read_body_parser'),
  ('agent_tools.tests.test_windows_cp117_server_read_binding','ServerCensusFactoryTests','test_actual_complete_census_body_parser'),
  ('agent_tools.tests.test_windows_cp117_server_read_binding','PublisherReadbackTests','test_actual_native_full_body_parser'),
+)
+WINDOWS_WRITER_CALLERS = (
+ ('agent_tools.tests.test_windows_cp117_server_read_binding','PublisherBoundaryTests','test_actual_source_extracted_catch_preserves_inner_exception'),
+ ('agent_tools.tests.test_windows_cp117_server_read_binding','PublisherTypedReadTests','test_actual_source_extracted_native_file_row_old_red_typed_green'),
+)
+REPLACEMENT_CALLERS = (
+ (BASE_MODULE,'BaselineReplacementCompletionTests','test_actual_windows_finish_wait_readback_failed_nonzero_and_timeout'),
+ (BASE_MODULE,'RetirementRecoveryTests','test_actual_generated_active_process_readback_preserves_exit_and_unknown'),
 )
 PUBLIC_CALLER = ('agent_tools.tests.test_windows_cp117_public_update_flow',
  'PublicPostConsentCoordinatorTests','test_actual_native_five_argument_consumer_and_complete_script_parser')
@@ -259,7 +274,7 @@ def _method(selector, root, variant, boundary, original=None):
    case.doCleanups()
 
 
-def _boundary(observations, require_packet, require_env=False, expected_public=None):
+def _boundary(observations, require_packet, require_env=False, expected_public=None, public_sink=None):
  def run(argv, **options):
   units = len(subprocess.list2cmdline(argv).encode('utf-16-le'))//2+1
   packet = options.get('input')
@@ -279,6 +294,7 @@ def _boundary(observations, require_packet, require_env=False, expected_public=N
    loader = base64.b64decode(argv[-1],validate=True).decode('utf-16-le',errors='strict')
    sha = hashlib.sha256(public).hexdigest()
    row.update(sourceBytes=len(public),sourceSha256=sha)
+   if public_sink is not None:public_sink.append(public)
    if sha not in loader or len(argv[-1]) >= 30000:
     raise AssertionError('authenticated-loader-bound')
    if not loader.endswith('& ([ScriptBlock]::Create($cp117Body))'):
@@ -293,11 +309,99 @@ def _boundary(observations, require_packet, require_env=False, expected_public=N
  return run
 
 
+
+def _replacement_section(module,selector,root,variant):
+ from agent_tools.tests.fixtures.windows_cp117_historical_factory import context
+ from agent_tools.tests.fixtures.windows_replacement_fixture_sections import OUTER_REPLACEMENT_CATCH
+ source=Path(module.__file__);raw,pin=_source(source);tree=ast.parse(raw)
+ cls=next(n for n in tree.body if isinstance(n,ast.ClassDef)and n.name==selector[1])
+ method=next(n for n in cls.body if isinstance(n,ast.FunctionDef)and n.name==selector[2])
+ slots={}
+ for name in ('task','final','finish'):
+  assignments=[n for n in ast.walk(method)if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id==name for t in n.targets)]
+  if len(assignments)!=int(name!='finish' or selector[1]=='BaselineReplacementCompletionTests'):raise ValueError('replacement-fixture-caller-'+name+'-slot')
+  if assignments:slots[name]=assignments[0].value
+ call=slots['task']
+ if not isinstance(call,ast.Call)or not isinstance(call.func,ast.Attribute)or call.func.attr!='replacement_task':raise ValueError('replacement-fixture-task-call')
+ argument=call.args[0]
+ if isinstance(argument,ast.Constant)and type(argument.value)is str:phases=(argument.value,)
+ elif isinstance(argument,ast.Name):
+  loops=[n for n in ast.walk(method)if isinstance(n,ast.For)and isinstance(n.target,ast.Name)and n.target.id==argument.id]
+  if len(loops)!=1:raise ValueError('replacement-fixture-phase-loop')
+  phases=ast.literal_eval(loops[0].iter)
+ else:raise ValueError('replacement-fixture-phase-source')
+ if type(phases)is not tuple or not phases or len(set(phases))!=len(phases)or any(type(p)is not str for p in phases):raise ValueError('replacement-fixture-phase-values')
+ case=getattr(module,selector[1])(selector[2]);tasks=[]
+ with context.inert_repository_source_reads():
+  try:
+   case.setUp()
+   for phase in phases:
+    local={'phase':phase,'corr':'10101010-1010-4010-8010-101010101010','nonce':'20202020-2020-4020-8020-202020202020'}
+    task=eval(compile(ast.Expression(call),str(source),'eval'),module.__dict__,local)
+    tasks.append((phase,task,local))
+  finally:case.doCleanups()
+ issues=[];evidence=[];check=unittest.TestCase()
+ for phase,task,local in tasks:
+  if task.count(OUTER_REPLACEMENT_CATCH)!=1 or task.count('\ntry{')!=1 or '}catch{$cp117BusyError='not in task:raise ValueError('replacement-fixture-authentic-catches')
+  begin=task.index('\ntry{');end=task.index(OUTER_REPLACEMENT_CATCH)
+  if not begin<task.index('}catch{$cp117BusyError=')<end:raise ValueError('replacement-fixture-authentic-catch-order')
+  local['task']=task;row={'phase':phase,'taskSha256':hashlib.sha256(task.encode()).hexdigest(),'taskBytes':len(task.encode()),'outerTryOffset':begin,'firstCatchOffset':task.index('}catch{'),'outerCatchOffset':end,'sections':{}}
+  for name in ('final','finish'):
+   if name not in slots:continue
+   # Execute both actual caller expressions independently, so a bad final tail
+   # cannot hide a separate empty or preempted finish branch.
+   actual=eval(compile(ast.Expression(slots[name]),str(source),'eval'),module.__dict__,local)
+   if name=='final':start=end;expected=task[end:]
+   else:
+    marker=' if($retired)'if phase=='retire'else' if($provisioned)'
+    if task.count(marker,begin+len('\ntry{'),end)!=1:raise ValueError('replacement-fixture-authentic-finish-marker')
+    start=task.index(marker,begin+len('\ntry{'),end);expected=task[start:end]
+   passed=type(actual)is str and bool(actual)and actual==expected
+   row['sections'][name]={'startOffset':start,'endOffset':len(task)if name=='final'else end,'expectedBytes':len(expected.encode()),'actualBytes':len(actual.encode())if type(actual)is str else None,'exactCompleteSlice':passed}
+   if not passed:issues.append(phase+':'+name+':replacement-complete-outer-section')
+  if variant=='current':
+   guard=module.replacement_fixture_outer_catch
+   for bad in (b'PUBLIC',task.replace(OUTER_REPLACEMENT_CATCH,'FOREIGN'),task+OUTER_REPLACEMENT_CATCH,OUTER_REPLACEMENT_CATCH+'\ntry{',task+'#'*65536):
+    with check.assertRaisesRegex(ValueError,'replacement-fixture-'):guard(bad)
+   if 'finish'in slots:
+    finish_guard=module.replacement_fixture_finish;marker=' if($retired)'if phase=='retire'else' if($provisioned)'
+    for bad in (task[:start]+task[start:].replace(marker,' FOREIGN',1),task[:end]+marker+task[end:]):
+     with check.assertRaisesRegex(ValueError,'replacement-fixture-'):finish_guard(bad,phase)
+    for bad_phase in (None,True,'foreign'):
+     with check.assertRaisesRegex(ValueError,'replacement-fixture-phase'):finish_guard(task,bad_phase)
+  evidence.append(row)
+ print('CP117_REPLACEMENT_SECTION_EVIDENCE '+json.dumps({'variant':variant,'caller':list(selector),'rows':evidence},sort_keys=True),flush=True)
+ check.assertFalse(issues,';'.join(issues))
+ if _source(source)[1]!=pin:raise ValueError('replacement-fixture-caller-changed')
+
+
+def _replacement_parse_evidence(module,public):
+ from agent_tools.tests.fixtures.windows_replacement_fixture_sections import replacement_parse_only_observer
+ done=module._run_complete_windows_fixture(replacement_parse_only_observer(public),timeout=25)
+ evidence={'returncode':done.returncode,'sourceSha256':hashlib.sha256(public).hexdigest(),'sourceBytes':len(public),'sourceBase64':base64.b64encode(public).decode(),'stdoutBase64':base64.b64encode(done.stdout[:65536]).decode(),'stderrBase64':base64.b64encode(done.stderr[:65536]).decode(),'stdoutBytes':len(done.stdout),'stderrBytes':len(done.stderr)}
+ print('CP117_REPLACEMENT_PARSE_EVIDENCE '+json.dumps(evidence,sort_keys=True),flush=True)
+ check=unittest.TestCase();check.assertEqual(done.returncode,0,repr(evidence));check.assertLessEqual(len(done.stdout),65536,repr(evidence));check.assertLessEqual(len(done.stderr),65536,repr(evidence))
+ value=json.loads(done.stdout.decode('utf-8',errors='strict'))
+ check.assertEqual(set(value),{'sourceSha256','sourceBytes','sourceExecuted','parsed','errorCount','errors','truncated'})
+ check.assertEqual((value['sourceSha256'],value['sourceBytes']),(evidence['sourceSha256'],len(public)))
+ check.assertIs(value['sourceExecuted'],False);check.assertIs(value['truncated'],False);check.assertIs(type(value['parsed']),bool);check.assertIs(type(value['errorCount']),int);check.assertIs(type(value['errors']),list);check.assertEqual(value['errorCount'],len(value['errors']))
+ keys={'errorId','message','incompleteInput','startLine','startColumn','endLine','endColumn','startOffset','endOffset','extentText'}
+ for row in value['errors']:
+  check.assertEqual(set(row),keys);check.assertIs(type(row['errorId']),str);check.assertTrue(row['errorId']);check.assertIs(type(row['message']),str);check.assertIs(type(row['extentText']),str);check.assertIs(type(row['incompleteInput']),bool)
+  for name in ('startLine','startColumn','endLine','endColumn','startOffset','endOffset'):check.assertIs(type(row[name]),int);check.assertGreaterEqual(row[name],0)
+ return value
+
 def qualify(root, variant, group):
  """Plain internal helper, deliberately not a discovered TestCase class."""
  test = unittest.TestCase()
  rows = []
- if group == 'callers':
+ if group=='windows-writers':
+  if os.name!='nt':raise ValueError('native-windows-writer-required')
+  selectors=WINDOWS_WRITER_CALLERS
+ elif group in ('replacement-parser','replacement-sections'):
+  if group=='replacement-parser' and os.name!='nt':raise ValueError('native-windows-parser-required')
+  selectors=REPLACEMENT_CALLERS
+ elif group == 'callers':
   selectors = BYTE_CALLERS+BASE_CALLERS
  elif group == 'public':
   selectors = (PUBLIC_CALLER,)
@@ -316,7 +420,29 @@ def qualify(root, variant, group):
   observations = []
   entry = {'selector': selector, 'observations': observations}
   try:
-   if group == 'helper':
+   if group=='windows-writers':
+    writes=[];entry['physicalSourceWrites']=writes
+    text_writer=Path.write_text;byte_writer=Path.write_bytes
+    def report(path,expected,kind):
+     if path.name=='old.py':
+      actual=path.read_bytes();writes.append({'writer':kind,'expectedSha256':hashlib.sha256(expected).hexdigest(),'observedSha256':hashlib.sha256(actual).hexdigest(),'bytes':len(actual),'exactBytes':actual==expected,'exactWindowsNewlineProjection':actual==expected.replace(b'\n',b'\r\n')})
+    def write_text(path,data,*args,**kwargs):
+     value=text_writer(path,data,*args,**kwargs);report(path,data.encode('utf-8',errors='strict'),'text');return value
+    def write_bytes(path,data,*args,**kwargs):
+     value=byte_writer(path,data,*args,**kwargs);report(path,data,'bytes');return value
+    with mock.patch.object(Path,'write_text',write_text),mock.patch.object(Path,'write_bytes',write_bytes),test.assertRaises(BoundaryReached):
+     _method(selector,root,variant,_boundary(observations,True),WINDOWS_WRITER_BEFORE if variant=='before'else None)
+   elif group=='replacement-sections':
+    module=_module(BASE_MODULE,root,variant,REPLACEMENT_BEFORE if variant=='before'else None)
+    _replacement_section(module,selector,root,variant)
+   elif group=='replacement-parser':
+    public=[]
+    with test.assertRaises(BoundaryReached):_method(selector,root,variant,_boundary(observations,True,public_sink=public),REPLACEMENT_BEFORE if variant=='before'else None)
+    test.assertEqual(len(public),1)
+    module=_module(BASE_MODULE,root,variant,REPLACEMENT_BEFORE if variant=='before'else None)
+    entry['parser']=_replacement_parse_evidence(module,public[0])
+    test.assertTrue(entry['parser']['parsed'] and not entry['parser']['errors'],'replacement-fixture-body-parse')
+   elif group == 'helper':
     module = _module(BASE_MODULE,root,variant)
     public = b'#'+b'PUBLIC'*20000+b"\n'PUBLIC lambda: \xce\xbb'\n"
     boundary = _boundary(observations,True,True,public)
@@ -347,7 +473,7 @@ def qualify(root, variant, group):
     boundary = _boundary(observations,group == 'public' or selector in BYTE_CALLERS)
     with test.assertRaises(BoundaryReached):
      _method(selector,root,variant,boundary,READ_BEFORE if group=='server-read-source' and variant=='before' else None)
-   test.assertEqual(len(observations),0 if group in ('separator','custody') else 1)
+   test.assertEqual(len(observations),0 if group in ('separator','custody','replacement-sections') else 1)
    entry['passed'] = True
   except BaseException as error:
    entry.update(passed=False,exceptionType=type(error).__name__,reason=str(error),
@@ -357,6 +483,64 @@ def qualify(root, variant, group):
  return 0 if all(row['passed'] for row in rows) else 1
 
 
+def _retained_qualification_captures(text,group,variants):
+ """Reconstruct public evidence only; never execute captured programme bytes."""
+ def require(ok,label):
+  if not ok:raise ValueError('qualification-capture-'+label)
+ def unique(pairs):
+  value={}
+  for key,item in pairs:
+   require(key not in value,'duplicate-key');value[key]=item
+  return value
+ def integer(value,minimum,maximum):return type(value)is int and minimum<=value<=maximum
+ require(type(text)is str and group in ('replacement-parser','windows-writers','replacement-sections'),'input')
+ require(type(variants)is tuple and variants in (('before',),('current',),('before','current')),'expected-variants')
+ lines=text.splitlines();require(len(lines)<=(768+1)*len(variants),'line-count')
+ captures=[];seen=set();parts=[];pending=None;count=None
+ chunk_prefix='CP117_NATIVE_CALLER_CAPTURE_CHUNK ';manifest_prefix='CP117_NATIVE_CALLER_CAPTURE_MANIFEST '
+ for line in lines:
+  require(0<len(line.encode('ascii'))<=16384,'line-bound')
+  chunk=line.startswith(chunk_prefix);manifest=line.startswith(manifest_prefix)
+  require(chunk or manifest,'label')
+  frame=json.loads(line[len(chunk_prefix if chunk else manifest_prefix):],object_pairs_hook=unique)
+  require(type(frame)is dict,'frame-type')
+  require(type(frame.get('schemaVersion'))is int and frame['schemaVersion']==1,'schema')
+  identity=frame.get('captureId');require(type(identity)is str and len(identity)==32 and all(c in '0123456789abcdef'for c in identity),'identity')
+  if chunk:
+   require(set(frame)=={'schemaVersion','captureId','index','chunks','payloadBytes','payloadSha256','dataBase64'},'chunk-keys')
+   require(integer(frame['index'],0,767)and integer(frame['chunks'],1,768),'chunk-numbers')
+   if pending is None:
+    require(identity not in seen and frame['index']==0,'new-capture');pending=identity;count=frame['chunks']
+   require(identity==pending and frame['chunks']==count and frame['index']==len(parts)and len(parts)<count,'chunk-order')
+   require(integer(frame['payloadBytes'],1,8192)and type(frame['dataBase64'])is str and len(frame['dataBase64'])<=10924,'chunk-bound')
+   part=base64.b64decode(frame['dataBase64'],validate=True)
+   require(len(part)==frame['payloadBytes']and hashlib.sha256(part).hexdigest()==frame['payloadSha256'],'chunk-hash')
+   require(len(part)==8192 or len(parts)==count-1,'chunk-size-order')
+   parts.append(part);require(sum(map(len,parts))<=6*1024*1024,'payload-bound')
+   continue
+  require(set(frame)=={'schemaVersion','captureId','group','variant','returncode','chunks','payloadBytes','payloadSha256','rawStreams'},'manifest-keys')
+  require(pending is not None and identity==pending and integer(frame['chunks'],1,768)and frame['chunks']==count and len(parts)==count,'complete-chunks')
+  require(len(captures)<len(variants)and frame['group']==group and frame['variant']==variants[len(captures)],'capture-order')
+  require(type(frame['returncode'])is int and frame['returncode']==(1 if frame['variant']=='before'else 0),'returncode')
+  payload=b''.join(parts)
+  require(integer(frame['payloadBytes'],1,6*1024*1024)and len(payload)==frame['payloadBytes']and (len(payload)+8191)//8192==count and hashlib.sha256(payload).hexdigest()==frame['payloadSha256'],'whole-hash')
+  record=json.loads(payload.decode('ascii',errors='strict'),object_pairs_hook=unique)
+  truths={'stdoutEOF','stderrEOF','directChildReaped','programmeSourceChecked','copiedSourceChecked','repositorySourceChecked','ownedCopyRemoved'}
+  require(type(record)is dict and set(record)=={'schemaVersion','captureId','group','variant','returncode','streams','nativeFixtureBodyExecuted'}|truths,'payload-keys')
+  require(type(record['schemaVersion'])is int and record['schemaVersion']==1 and record['captureId']==identity and record['group']==group and record['variant']==frame['variant']and type(record['returncode'])is int and record['returncode']==frame['returncode'],'payload-identity')
+  require(all(type(record[k])is bool and record[k]is True for k in truths)and type(record['nativeFixtureBodyExecuted'])is bool and record['nativeFixtureBodyExecuted']is False,'closure')
+  require(type(record['streams'])is dict and set(record['streams'])=={'stdout','stderr'}and type(frame['rawStreams'])is dict and set(frame['rawStreams'])=={'stdout','stderr'},'stream-keys')
+  for label,stream in record['streams'].items():
+   require(type(stream)is dict and set(stream)=={'bytes','sha256','base64'}and integer(stream['bytes'],0,2*1024*1024)and type(stream['base64'])is str,'stream-schema')
+   raw=base64.b64decode(stream['base64'],validate=True)
+   require(len(raw)==stream['bytes']and hashlib.sha256(raw).hexdigest()==stream['sha256'],'stream-hash')
+   summary=frame['rawStreams'][label]
+   require(type(summary)is dict and set(summary)=={'bytes','sha256'}and type(summary['bytes'])is int and summary=={k:stream[k]for k in ('bytes','sha256')},'manifest-stream')
+  seen.add(identity);captures.append(record);pending=None;parts=[];count=None
+ require(pending is None and len(captures)==len(variants),'complete-captures')
+ return captures
+
+
 class WindowsNativeFixtureCallerTests(unittest.TestCase):
  def _variant(self, group, variant):
   required = {SELF, FIXTURE+'/provenance.json', *(FIXTURE+'/'+name+'.before.source' for name in BEFORE),
@@ -364,7 +548,8 @@ class WindowsNativeFixtureCallerTests(unittest.TestCase):
               'agent_tools/tests/fixtures/windows_shortcut_access_wire.py',
               FIXTURE+'/base.overflow-before-slim.source',
               FIXTURE+'/base.server-read-before.source',
-              FIXTURE+'/routine.metadata-before.source'}
+              FIXTURE+'/routine.metadata-before.source',FIXTURE+'/base.parser-catch-before.source',FIXTURE+'/read-binding.text-writer-before.source',
+              '.gitattributes','agent_tools/tests/fixtures/windows_replacement_fixture_sections.py'}
   names = tuple(CONTEXT_PATHS)
   self.assertTrue(names,'parent must fill the finite CONTEXT_PATHS tuple before execution')
   self.assertEqual(len(names),len(set(names)))
@@ -379,6 +564,8 @@ class WindowsNativeFixtureCallerTests(unittest.TestCase):
   self.assertEqual((provenance['sourceCapBefore']['sha256'],provenance['sourceCapBefore']['bytes']),CAP_BEFORE)
   self.assertEqual((provenance['serverReadBefore']['sha256'],provenance['serverReadBefore']['bytes']),READ_BEFORE)
   self.assertEqual((provenance['metadataBefore']['sha256'],provenance['metadataBefore']['bytes']),METADATA_BEFORE)
+  for field,expected in (('replacementParserBefore',REPLACEMENT_BEFORE),('windowsTextWriterBefore',WINDOWS_WRITER_BEFORE)):
+   self.assertEqual((provenance[field]['sha256'],provenance[field]['bytes']),expected)
   opening = _snapshot(ROOT,names)
   with tempfile.TemporaryDirectory(prefix='vc-native-callers-') as temporary:
    context = Path(temporary).resolve()
@@ -391,12 +578,16 @@ class WindowsNativeFixtureCallerTests(unittest.TestCase):
     target.parent.mkdir(parents=True,exist_ok=True)
     target.write_bytes(raw)
     target.chmod(pin[1])
-   if variant == 'before' and group!='server-read-source':
+   if variant == 'before' and group not in ('server-read-source','windows-writers','replacement-parser','replacement-sections'):
     for name,(sha,size) in BEFORE.items():
      source = context/FIXTURE/(name+'.before.source')
      raw,pin = _source(source)
      self.assertEqual((len(raw),pin[0]),(size,sha))
      (context/'agent_tools/tests'/name).write_bytes(raw)
+   if variant=='before' and group in ('replacement-parser','replacement-sections','windows-writers'):
+    name,preserved,expected=('test_windows_cp117_server_read_binding.py','read-binding.text-writer-before.source',WINDOWS_WRITER_BEFORE)if group=='windows-writers'else('test_windows_cp117_base_source_refresh.py','base.parser-catch-before.source',REPLACEMENT_BEFORE)
+    raw,pin=_source(context/FIXTURE/preserved);self.assertEqual((pin[0],len(raw)),expected)
+    (context/'agent_tools/tests'/name).write_bytes(raw)
    if variant=='before' and group=='server-read-source':
     raw,pin=_source(context/FIXTURE/'base.server-read-before.source')
     self.assertEqual((pin[0],len(raw)),READ_BEFORE)
@@ -426,9 +617,36 @@ class WindowsNativeFixtureCallerTests(unittest.TestCase):
    self.assertEqual(_source(programme)[1],programme_opening,evidence)
    self.assertEqual(_snapshot(context,names),copied,evidence)
    self.assertEqual(_snapshot(ROOT,names),opening,evidence)
-   lines = completed.stdout.decode('utf-8',errors='strict').splitlines()
-   result = json.loads(lines[-1]) if lines else None
-   return completed,result,evidence
+  if group in ('replacement-parser','windows-writers','replacement-sections'):
+   self.assertFalse(context.exists(),'qualification-owned-copy-cleanup')
+   streams={}
+   for label,value in (('stdout',completed.stdout),('stderr',completed.stderr)):
+    self.assertLessEqual(len(value),2*1024*1024,'qualification-evidence-stream-bound:'+label)
+    streams[label]={'bytes':len(value),'sha256':hashlib.sha256(value).hexdigest(),'base64':base64.b64encode(value).decode('ascii')}
+   capture_id=os.urandom(16).hex()
+   capture={'schemaVersion':1,'captureId':capture_id,'group':group,'variant':variant,'returncode':completed.returncode,
+            'streams':streams,'stdoutEOF':True,'stderrEOF':True,'directChildReaped':True,
+            'programmeSourceChecked':True,'copiedSourceChecked':True,'repositorySourceChecked':True,
+            'ownedCopyRemoved':True,'nativeFixtureBodyExecuted':False}
+   payload=json.dumps(capture,sort_keys=True).encode('ascii')
+   self.assertLessEqual(len(payload),6*1024*1024,'qualification-evidence-payload-bound')
+   count=(len(payload)+8191)//8192
+   for index,offset in enumerate(range(0,len(payload),8192)):
+    part=payload[offset:offset+8192]
+    frame={'schemaVersion':1,'captureId':capture_id,'index':index,'chunks':count,'payloadBytes':len(part),
+           'payloadSha256':hashlib.sha256(part).hexdigest(),'dataBase64':base64.b64encode(part).decode('ascii')}
+    line='CP117_NATIVE_CALLER_CAPTURE_CHUNK '+json.dumps(frame,sort_keys=True)
+    self.assertLessEqual(len(line.encode('ascii')),16384,'qualification-evidence-line-bound')
+    print(line,flush=True)
+   manifest={'schemaVersion':1,'captureId':capture_id,'group':group,'variant':variant,'returncode':completed.returncode,
+             'chunks':count,'payloadBytes':len(payload),'payloadSha256':hashlib.sha256(payload).hexdigest(),
+             'rawStreams':{label:{key:value[key]for key in ('bytes','sha256')}for label,value in streams.items()}}
+   line='CP117_NATIVE_CALLER_CAPTURE_MANIFEST '+json.dumps(manifest,sort_keys=True)
+   self.assertLessEqual(len(line.encode('ascii')),16384,'qualification-evidence-manifest-bound')
+   print(line,flush=True)
+  lines = completed.stdout.decode('utf-8',errors='strict').splitlines()
+  result = json.loads(lines[-1]) if lines else None
+  return completed,result,evidence
 
  def _compare(self, group):
   requested = os.environ.get('WINDOWS_NATIVE_CALLER_VARIANT','compare')
@@ -449,6 +667,16 @@ class WindowsNativeFixtureCallerTests(unittest.TestCase):
      self.assertIn('actual-peer-environment-missing',cause,evidence)
     elif group == 'public':
      self.assertIn('portable-win32-command-budget',cause,evidence)
+    elif group=='windows-writers':
+     self.assertEqual((row['exceptionType'],cause),('ValueError','inert-public-source-bytes'),evidence)
+     self.assertEqual(len(row['physicalSourceWrites']),1,evidence);write=row['physicalSourceWrites'][0];self.assertEqual(write['writer'],'text',evidence);self.assertFalse(write['exactBytes'],evidence);self.assertTrue(write['exactWindowsNewlineProjection'],evidence)
+    elif group=='replacement-sections':
+     self.assertEqual(row['exceptionType'],'AssertionError',evidence)
+     expected=['retire:final:replacement-complete-outer-section']
+     if row['selector'][1]=='BaselineReplacementCompletionTests':expected+=['retire:finish:replacement-complete-outer-section','provision:final:replacement-complete-outer-section','provision:finish:replacement-complete-outer-section']
+     for detail in expected:self.assertIn(detail,cause,evidence)
+    elif group=='replacement-parser':
+     self.assertEqual(row['exceptionType'],'AssertionError',evidence);self.assertIn('replacement-fixture-body-parse',cause,evidence);self.assertFalse(row['parser']['parsed'],evidence);self.assertTrue(row['parser']['errors'],evidence)
     elif group == 'server-read-source':
      self.assertEqual((row['exceptionType'],cause),('ValueError','inert-public-source-bytes'),evidence)
     elif group == 'custody':
@@ -466,6 +694,10 @@ class WindowsNativeFixtureCallerTests(unittest.TestCase):
    self.assertEqual(fixed.returncode,0,evidence)
    self.assertTrue(record['rows'],evidence)
    self.assertTrue(all(row['passed'] for row in record['rows']),evidence)
+   if group=='windows-writers':
+    for row in record['rows']:
+     self.assertEqual(len(row['physicalSourceWrites']),1,evidence);write=row['physicalSourceWrites'][0];self.assertEqual(write['writer'],'bytes',evidence);self.assertTrue(write['exactBytes'],evidence)
+
 
  def test_actual_native_caller_methods_reach_the_authenticated_boundary(self):
   self._compare('callers')
@@ -524,3 +756,30 @@ class WindowsNativeFixtureCallerTests(unittest.TestCase):
      with self.subTest(variant=variant,drift=name),self.assertRaisesRegex(ValueError,'qualification-source-changed'):
       read(ReadView(name))
    self.assertEqual(_source(source)[1],pin)
+
+ def test_actual_caller_tail_expression_selects_the_unique_outer_catch(self):
+  captured=io.StringIO()
+  try:
+   with mock.patch.object(sys,'stdout',captured):self._compare('replacement-sections')
+  finally:
+   retained=captured.getvalue();sys.stdout.write(retained);sys.stdout.flush()
+  requested=os.environ.get('WINDOWS_NATIVE_CALLER_VARIANT','compare')
+  variants=('before','current')if requested=='compare'else(requested,)
+  records=_retained_qualification_captures(retained,'replacement-sections',variants)
+  self.assertEqual([row['variant']for row in records],list(variants))
+  lines=retained.splitlines();prefix='CP117_NATIVE_CALLER_CAPTURE_CHUNK '
+  first=json.loads(lines[0][len(prefix):]);tampered=dict(first,dataBase64=('A'if first['dataBase64'][0]!='A'else'B')+first['dataBase64'][1:])
+  foreign=dict(first,captureId='0'*32 if first['captureId']!='0'*32 else'1'*32);unknown=dict(first,unknown=True);wrongtype=dict(first,index=False)
+  bad_cases=[retained+retained,'\n'.join(lines[1:]),'\n'.join(lines[:-1]),'\n'.join([lines[1],lines[0],*lines[2:]]),'X'*16385]
+  for badframe in (tampered,foreign,unknown,wrongtype):bad_cases.append('\n'.join([prefix+json.dumps(badframe,sort_keys=True),*lines[1:]]))
+  for number,bad in enumerate(bad_cases):
+   with self.subTest(retentionRefusal=number),self.assertRaisesRegex(ValueError,'qualification-capture-'):
+    _retained_qualification_captures(bad,'replacement-sections',variants)
+
+ @unittest.skipUnless(os.name=='nt','native Windows physical newline conversion and real custody required')
+ def test_actual_windows_old_text_writer_red_exact_byte_writer_green(self):
+  self._compare('windows-writers')
+
+ @unittest.skipUnless(os.name=='nt','native Windows PowerShell Parser IDs and extents required')
+ def test_actual_windows_old_caller_body_parse_red_complete_current_body_green(self):
+  self._compare('replacement-parser')

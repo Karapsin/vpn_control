@@ -455,5 +455,272 @@ class PublicSourceContextTests(unittest.TestCase):
                 self.assertIsNone(closure.base)
 
 
+class CompleteInertContextLifetimeTests(unittest.TestCase):
+    """Actual source gates with modeled missing POSIX flags/remote path grammar.
+
+    These controls do not emulate Windows file custody or claim native execution.
+    The unchanged original Windows scenarios remain required on Windows CI.
+    """
+    family_variant = 'current'
+    definitions = PublicSourceContextTests.definitions
+    absent_posix_reader = PublicSourceContextTests.absent_posix_reader
+    c_commit = '30901b9f793f72534dae3441e45b67c3587719e8'
+    c_sources = {'context.py': {'sha256': '91922a4930035c2fb66f84a9e8035070d12308d457615a0030540f6251bfa4b8', 'bytes': 12127, 'sourcePath': 'agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py'}, 'test_windows_cp117_windowless_dismiss_observe.py': {'sha256': '6995a4af23fc328995e8586aee6b5d858286bae3e7f534a8544993349b4465ef', 'bytes': 13712, 'sourcePath': 'agent_tools/tests/test_windows_cp117_windowless_dismiss_observe.py'}, 'test_windows_cp117_recovered_owner_diagnostic.py': {'sha256': 'a0245b49b3f72c47b94be3b6ca5449dc2458447015252504a2bae7c50e37c6eb', 'bytes': 21826, 'sourcePath': 'agent_tools/tests/test_windows_cp117_recovered_owner_diagnostic.py'}, 'test_windows_cp117_installed_base_observe.py': {'sha256': 'ed9c7b4463354e830b7834a55e87af15ca8006fa870475ea1ead211df7021857', 'bytes': 16537, 'sourcePath': 'agent_tools/tests/test_windows_cp117_installed_base_observe.py'}}
+
+    @contextmanager
+    def family(self, variant=None):
+        from agent_tools import source_module_loader
+        selected = self.family_variant if variant is None else variant
+        self.assertIn(selected, ('before', 'current'))
+        path = (FIXTURE / 'context_30901b9f.before.source' if selected == 'before'
+                else Path(context.__file__).resolve())
+        with source_module_loader._bootstrap_source(path) as (raw, guard):
+            if selected == 'before':
+                expected = self.c_sources['context.py']
+                self.assertEqual(expected['sha256'], hashlib.sha256(raw).hexdigest())
+                self.assertEqual(expected['bytes'], len(raw))
+                family = historical_source.load(path, expected['sha256'])
+            else:
+                family = historical_source.verify(context, path, hashlib.sha256(raw).hexdigest())
+            guard()
+            try:
+                yield family
+            finally:
+                guard()
+
+    @contextmanager
+    def incoming_remote_path_grammar(self):
+        import ntpath
+        from agent_tools import windows_cp117_fixture_recovery_short_socket as recovery
+        original = recovery.os
+        class IncomingPath:
+            path = ntpath
+            def __getattr__(self, name):
+                return getattr(original, name)
+        with patch.object(recovery, 'os', IncomingPath()):
+            supplied = recovery.os
+            try:
+                yield recovery, supplied
+            finally:
+                self.assertIs(supplied, recovery.os)
+        self.assertIs(original, recovery.os)
+
+    def producer(self, variant=None, current=False):
+        from agent_tools import windows_cp117_base_source_refresh as refresh
+        from agent_tools.tests.test_windows_cp117_recovered_login import ScreenTests
+        original_os_path = os.path
+        with self.family(variant) as family, self.incoming_remote_path_grammar() as (recovery, supplied):
+            chosen = family.historical_current_package if current else family.historical_factories
+            with chosen(), family.inert_repository_source_reads():
+                record = ScreenTests().record()
+                if current:
+                    source, sha = current_installed.program_current(record, current_installed.PAIR_EXPECTED)
+                    body = current_installed.body_current(current_installed.PAIR_EXPECTED)
+                else:
+                    source, sha = refresh.program(record, refresh.PAIR_EXPECTED)
+                    body = refresh.body(refresh.PAIR_EXPECTED)
+                self.assertEqual(hashlib.sha256(body.encode('utf-16le')).hexdigest(), sha)
+                self.assertEqual(record['request']['recipeSha256'], recovery._digest(recovery.recipe()))
+                self.assertGreater(len(source), 10000)
+                self.assertIn('guest-exec-status', source)
+                self.assertIsNot(supplied, recovery.os)
+            self.assertIs(supplied, recovery.os)
+        self.assertIs(original_os_path, os.path)
+        return source, sha
+
+    def http_source(self, variant=None):
+        from agent_tools import windows_cp117_base_source_refresh as refresh
+        with self.family(variant) as family, family.historical_factories(), self.absent_posix_reader(), family.inert_repository_source_reads():
+            source, sha = refresh.download_body(refresh.SUBMITTED_PORT)
+            self.assertTrue(source)
+            self.assertRegex(sha, r'^[0-9a-f]{64}$')
+            self.assertIn('DOWNLOAD_ACTION_SOURCE', source)
+            return source, sha
+
+    def run_module_hook_case(self, key, variant=None):
+        import ast
+        import importlib
+        from agent_tools import source_module_loader
+        selected = self.family_variant if variant is None else variant
+        self.assertIn(selected, ('before', 'current'))
+        module_name, class_name, method = {
+            'test_windows_cp117_windowless_dismiss_observe.py': (
+                'agent_tools.tests.test_windows_cp117_windowless_dismiss_observe',
+                'AuthoritySchemaTests', 'test_generated_actual_pre_key_guard_pins_preframe_attempt_after_read'),
+            'test_windows_cp117_recovered_owner_diagnostic.py': (
+                'agent_tools.tests.test_windows_cp117_recovered_owner_diagnostic',
+                'DiagnosticTests', 'test_complete_generated_blocked_transport_is_diagnosis_not_admission'),
+            'test_windows_cp117_installed_base_observe.py': (
+                'agent_tools.tests.test_windows_cp117_installed_base_observe',
+                'InstalledTests', 'test_complete_compressed_source_roundtrip_hash_size_and_fixed_catalog'),
+        }[key]
+        module = importlib.import_module(module_name)
+        current_path = Path(module.__file__).resolve()
+        before_path = FIXTURE / (Path(key).stem + '_30901b9f.before.source')
+        with source_module_loader._bootstrap_source(before_path) as (before, before_guard), source_module_loader._bootstrap_source(current_path) as (actual, actual_guard):
+            expected = self.c_sources[key]
+            self.assertEqual(expected['sha256'], hashlib.sha256(before).hexdigest())
+            self.assertEqual(expected['bytes'], len(before))
+            before_tree = ast.parse(before, filename=str(before_path))
+            actual_tree = ast.parse(actual, filename=str(current_path))
+            def body(tree):
+                cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == class_name)
+                return next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == method)
+            self.assertEqual(ast.dump(body(before_tree)), ast.dump(body(actual_tree)))
+            chosen_tree = before_tree if selected == 'before' else actual_tree
+            chosen_path = before_path if selected == 'before' else current_path
+            hooks = [n for n in chosen_tree.body if isinstance(n, ast.FunctionDef)
+                     and n.name in ('setUpModule', 'tearDownModule')]
+            self.assertEqual([] if selected == 'before' else ['setUpModule', 'tearDownModule'],
+                             [n.name for n in hooks])
+            # The actual producer namespace supplies its imports. Only the exact
+            # selected module-hook definitions execute under their real filename.
+            namespace = dict(module.__dict__, __file__=str(chosen_path))
+            exec(compile(ast.Module(body=hooks, type_ignores=[]), str(chosen_path), 'exec'), namespace)
+            with context.historical_factories(), self.absent_posix_reader() as binding:
+                original_reader = binding._read_bound_file
+                original_registry = context._PUBLIC_SOURCE_REGISTRY.get()
+                entered = False
+                try:
+                    if hooks:
+                        namespace['setUpModule']()
+                        entered = True
+                    result = unittest.TestResult()
+                    getattr(module, class_name)(method).run(result)
+                finally:
+                    if entered:
+                        namespace['tearDownModule']()
+                self.assertIs(original_reader, binding._read_bound_file)
+                self.assertIs(original_registry, context._PUBLIC_SOURCE_REGISTRY.get())
+            before_guard()
+            actual_guard()
+            return result
+
+    def assert_case_success(self, result):
+        self.assertEqual(1, result.testsRun)
+        self.assertEqual([], result.errors, result.errors)
+        self.assertEqual([], result.failures, result.failures)
+        self.assertEqual([], result.skipped)
+
+    def test_complete_historical_producer_keeps_remote_posix_scope(self):
+        self.producer()
+
+    def test_complete_current_package_producer_keeps_remote_posix_scope(self):
+        self.producer(current=True)
+
+    def test_exact_c_context_refuses_both_complete_producers(self):
+        from agent_tools import windows_cp117_fixture_recovery_short_socket as recovery
+        for current in (False, True):
+            with self.subTest(current=current):
+                with self.assertRaisesRegex(recovery.RecoveryUnknown, '^unix-socket-path$'):
+                    self.producer('before', current=current)
+                self.producer('current', current=current)
+
+    def test_http_source_uses_declared_genuine_held_bytes(self):
+        self.http_source()
+
+    def test_exact_c_context_does_not_admit_the_missing_http_origin(self):
+        with self.assertRaisesRegex(AttributeError, 'O_NOFOLLOW'):
+            self.http_source('before')
+        self.http_source('current')
+
+    def test_actual_three_module_lifetimes_cover_source_emission(self):
+        for key in self.c_sources:
+            if key != 'context.py':
+                with self.subTest(module=key):
+                    self.assert_case_success(self.run_module_hook_case(key))
+
+    def test_exact_c_missing_hooks_refuse_the_same_unchanged_test_bodies(self):
+        for key in self.c_sources:
+            if key != 'context.py':
+                with self.subTest(module=key):
+                    result = self.run_module_hook_case(key, 'before')
+                    self.assertEqual(1, result.testsRun)
+                    self.assertEqual([], result.failures, result.failures)
+                    self.assertEqual([], result.skipped)
+                    self.assertEqual(1, len(result.errors), result.errors)
+                    self.assertIn('O_NOFOLLOW', result.errors[0][1])
+                    self.assert_case_success(self.run_module_hook_case(key, 'current'))
+
+    def credential_source(self, variant=None, supply_validity=False):
+        from agent_tools import source_module_loader
+        from agent_tools import windows_cp117_recovered_login as login
+        from agent_tools.tests.test_windows_cp117_recovered_login import ScreenTests
+        root = Path(__file__).resolve().parents[2]
+        validity = root / 'scripts/windows_credential_validity_qga.py'
+        task = root / 'scripts/windows_task_admission.ps1'
+        with self.family(variant) as family, family.historical_factories(), self.absent_posix_reader(), family.inert_repository_source_reads():
+            # The second exact-C counterfactual supplies only the first genuine
+            # public prerequisite, so the unchanged next read reaches Task PS1.
+            # Both registered bytes and the unchanged producer hash must agree.
+            with source_module_loader._bootstrap_source(validity) as (raw, guard):
+                self.assertEqual(login._VALIDITY_SHA, hashlib.sha256(raw).hexdigest())
+                if supply_validity:
+                    family.register_inert_public_source(validity, raw)
+                try:
+                    source, sha, pins = login.credential_program(root, ScreenTests().record(),
+                        'fb0a9a9d-eac2-43b0-a332-5fd766ce65a4')
+                    self.assertEqual(login._BOOTSTRAP_SHA, sha)
+                    self.assertEqual({str(validity), str(task)}, set(pins))
+                    self.assertEqual(login._VALIDITY_SHA, pins[str(validity)]['sha256'])
+                    self.assertEqual(login._TASK_HELPER_SHA, pins[str(task)]['sha256'])
+                    self.assertIn('credential-helper', source)
+                    self.assertIn('private-input-cap', source)
+                    self.assertIn('probe-record-generation', source)
+                    compile(source, 'inert-complete-credential-source', 'exec')
+                    return source, sha, pins
+                finally:
+                    guard()
+
+    def test_complete_credential_source_keeps_both_exact_public_script_inputs(self):
+        self.credential_source()
+
+    def test_exact_c_registry_refuses_the_original_validity_input(self):
+        with self.assertRaisesRegex(AttributeError, 'O_NOFOLLOW'):
+            self.credential_source('before')
+        self.credential_source('current')
+
+    def test_exact_c_registry_refuses_task_after_the_validity_prerequisite(self):
+        with self.assertRaisesRegex(AttributeError, 'O_NOFOLLOW'):
+            self.credential_source('before', supply_validity=True)
+        self.credential_source('current', supply_validity=True)
+
+    def test_declared_task_input_keeps_the_original_private_reader_refusal(self):
+        from agent_tools import windows_cp117_recovered_login as login
+        task = Path(__file__).resolve().parents[2] / 'scripts/windows_task_admission.ps1'
+        with self.absent_posix_reader() as binding, context.inert_repository_source_reads():
+            pin, raw = binding._read_bound_file(task, retain_bytes=True)
+            self.assertEqual(login._TASK_HELPER_SHA, pin['sha256'])
+            self.assertEqual(login._TASK_HELPER_SHA, hashlib.sha256(raw).hexdigest())
+            self.assertEqual(9, len(pin['generation']))
+            with self.assertRaisesRegex(AttributeError, 'O_NOFOLLOW'):
+                binding._read_bound_file(task, private=True)
+
+
+    def test_nested_exceptional_recipe_and_source_contexts_restore_references(self):
+        from agent_tools import windows_cp117_bound_absence_completion as binding
+        original_reader = binding._read_bound_file
+        original_registry = context._PUBLIC_SOURCE_REGISTRY.get()
+        original_os_path = os.path
+        with self.incoming_remote_path_grammar() as (recovery, supplied):
+            with context.historical_factories(), context.inert_repository_source_reads():
+                outer_os = recovery.os
+                outer_reader = binding._read_bound_file
+                outer_registry = context._PUBLIC_SOURCE_REGISTRY.get()
+                with self.assertRaisesRegex(RuntimeError, '^inert nested context failure$'):
+                    with context.historical_current_package(), context.inert_repository_source_reads():
+                        self.assertIsNot(outer_os, recovery.os)
+                        self.assertIsNot(outer_reader, binding._read_bound_file)
+                        self.assertIsNot(outer_registry, context._PUBLIC_SOURCE_REGISTRY.get())
+                        raise RuntimeError('inert nested context failure')
+                self.assertIs(outer_os, recovery.os)
+                self.assertIs(outer_reader, binding._read_bound_file)
+                self.assertIs(outer_registry, context._PUBLIC_SOURCE_REGISTRY.get())
+            self.assertIs(supplied, recovery.os)
+        self.assertIs(original_reader, binding._read_bound_file)
+        self.assertIs(original_registry, context._PUBLIC_SOURCE_REGISTRY.get())
+        self.assertIs(original_os_path, os.path)
+
+
 if __name__ == '__main__':
     unittest.main()

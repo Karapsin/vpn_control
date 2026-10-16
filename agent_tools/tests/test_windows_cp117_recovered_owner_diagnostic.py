@@ -9,6 +9,18 @@ d=historical_diagnostic()
 from agent_tools import windows_cp117_recovered_owner_observe as owner
 from agent_tools.tests.test_windows_cp117_recovered_owner_observe import OwnerFactsTests
 
+
+
+def setUpModule():
+    from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import inert_repository_source_reads
+    global _historical_source_reads
+    _historical_source_reads = inert_repository_source_reads()
+    _historical_source_reads.__enter__()
+
+
+def tearDownModule():
+    _historical_source_reads.__exit__(None, None, None)
+
 @remote_posix_recipe_tests(owner.guest.recovery)
 class DiagnosticTests(HistoryCase):
     def value(self):
