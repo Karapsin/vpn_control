@@ -873,3 +873,124 @@ test coordinator, diagnostic script, hygiene wiring and workflow selector.
 Completion requires fresh managed checks and all five workflows successful for
 the final pushed SHA. Closed environments remain closed; product parity, H14,
 visual acceptance and release remain deferred.
+
+
+The next exact development commit, `3a7f6d3414f25c232f2512112ed527c819a7bb21`,
+reached the Windows CP117 batch after its main native tooling checks passed.
+The CP117 batch retained 532 outcomes: four failures, four errors and 157
+platform skips. Its complete original log, eight trace blocks and exact 372-file
+source archive remain in `.runtime/mcp-ci-3a7f6d34-windows-failure-v1/` and the
+matching exact-F collection directory. All five exact-F runs then completed:
+Fast Checks and Android, Linux and macOS packaging succeeded; Windows failed.
+The collector and every owned actor, raw stream and source capture closed before
+any source edit was authorized. That failed delivery is not relabeled successful.
+
+Five fixture failure types are addressed in one explicit MCP-only bucket.
+Four Dismiss cases lost the archived base when their module ran independently;
+the module hooks now hold the authenticated historical base, recovery reference
+and public-source context for the complete unittest module lifetime, including
+setup-failure cleanup. The preserved whole F module reproduced the four actual
+`_QGA` errors; the same four original positives passed with the lifetime fix on
+both supported Python interpreters.
+
+The cold PowerShell check used a command lookup that could alter the catalog it
+was observing. The new source-selected observation avoids autoloading and
+retains exact before/after counts. The preserved guard failed and the same
+positive passed against a real, explicitly controlled PowerShell catalog on
+both interpreters; six routine controls also passed. This component proof does
+not identify which branch caused the original Windows PowerShell 5.1 compound
+refusal. The actual physical ACL, hash, environment and exact-old-script native
+scenario remains required on Windows.
+
+The successor constructor emits a source witness before its terminal record;
+the caller had required the terminal record to be the first bytes. The strict
+observer now accepts exactly the complete two-record grammar. A separate writer
+control wrongly required an authenticated stdin frame for the original bounded
+inline parser call. Its actual raw trace retained `authenticated-frame-required`.
+The correction recognizes only that declared finite inline shape and preserves
+its source, command and transfer bounds. Both components have actual preserved
+F RED and fixed GREEN evidence. Full failure streams now travel through a small
+public chunk schema after the owned child returns, with byte counts and hashes,
+8,192-byte chunks and the unchanged 16,384-byte collector line limit. The
+constructor's earlier unreported child branch is not inferred from this proof.
+
+The task-consumer fixture inserted an unescaped single quote inside an existing
+single-quoted generated literal. Its replacement uses the matching double-quote
+form. The actual preserved method failed the complete emitted-source contract
+and the fixed method passed on both Python versions. A genuine owned Python
+failure child separately proved that the original nonzero return guard still
+fails, that the unfixed caller loses its diagnostics, and that the corrected
+caller retains both complete streams through the existing bounded carrier.
+These controls assert the real coordinator importer and held source generation;
+they do not fabricate a PowerShell result. The original Windows task-consumer
+failure retained only `1 != 0`, so its underlying native child cause remains
+unknown until the unchanged native scenario and new native counterfactual run.
+
+All frozen production bodies, action hashes, semantic pins and acceptance
+assertions remain intact. The shared base test stays below its existing one-MiB
+source guard. Six authentic beforeimage/provenance resources are added. The
+raw-hashed Shortcut JSON and retained enrollment YAML receive only their exact
+byte-preservation rules; parsed-only provenance does not gain a raw byte guard.
+The merged dependency declaration preserves all 174 existing rows, prior
+versions and fifteen resource pins. It appends seven finite lists across four
+existing rows and one new five-input declaration for the enrollment regression,
+for 175 rows total.
+Private source-controlled checks completed with actual RED/GREEN on Python
+3.12.15 and 3.14.3. Their owned actors, raw streams and source handles closed
+before integration; honest platform skips are not native success.
+
+A sixth failure type was found by strict native coverage verification. Four
+required Temurin cleanup methods had no native start or finish records; only
+55 of the required 59 Linux identities qualified. The successful 511-module Fast
+union does not establish those four native cases. The ordinary Ubuntu package
+job now explicitly invokes the exact cleanup class verbosely after its unchanged
+native-JDK launcher command, under the existing unconditional Temurin 17 setup
+and fail-fast step. The preserved whole F workflow produced the exact missing-
+enrollment failure on both interpreters; the fixed same positive and six routine
+controls passed. The controls reject conditional, dispatch-only, ignored,
+duplicate and launcher-dropping enrollment. The original 59 identities and
+coverage guard stay intact: those four cases must run successfully in the next
+actual Linux job, while the other 55 retain their actual Fast provenance.
+
+The reviewed sixteen-path code and evidence batch was applied after both
+exact-F verification processes and their source readers closed. The source
+bridge verifies the exact 3,031-to-3,038-file change, preserves all nine original
+physical modes and creates the seven new files privately. Every other source
+byte and mode remains unchanged. The batch still needs fresh focused checks,
+the normal final version note, the intentional complete agent audit, managed
+prepush and all five workflows successful for the next exact pushed SHA. The
+earlier failed receipts stay failed. No VM, SSH connection, job or lease is restored, replayed or purged.
+Windows product parity, caller product acceptance, H14, product-native and visual
+work remain deferred; no release is authorized.
+
+
+The final static review also found an LF-only assumption in the new Linux cleanup-enrollment test. The preserved `b4990b38` test fails its actual positive on a physical CRLF workflow; the reviewed `bb9f2913` parser accepts LF and CRLF after raw evidence verification, rejects lone CR, and keeps all hostile workflow controls effective. Both Python 3.12.15 and 3.14.3 proved that same positive RED before the fix and GREEN afterward; all six current cases pass without skips. The eight owned children, all streams and held inputs closed in `.runtime/mcp-ci-3a7f6d34-temurin-coverage-v1/crlf-repair-v1/actual-focused-v1/closing.json` (SHA-256 `ea73f9fa64f4776f108f503d1edb9717907b72faf54816ea53ab060091661dc5`). This is a portable source-input regression, not a claim of native Windows acceptance. The finite dependency declaration only appends this reviewed source digest; all previous entries remain.
+
+
+The final managed prepush exposed a separate Windows packaging-graph fixture
+failure: its second successful Gradle invocation reran the native-helper task
+instead of reporting UP-TO-DATE. The original log did not retain Gradle's
+invalidation reason. A closer diagnostic of the unchanged actual test, with
+the known relative Python cache prefix and only --info added, reported newly
+created cache directories under the native source file-tree input. This is a
+measured reproduction; the original run's unrecorded invalidation reason is
+not inferred from it.
+
+The fixture now gives Gradle's Python children a fresh absolute cache under
+the owned fixture root, outside the native input tree, through a copied child
+environment. The original three-call test routinely supplies a hostile
+relative parent prefix and allows actual bytecode writes; its UP-TO-DATE,
+intentional bundled-runtime mutation and installer assertions remain strict.
+No Gradle inputs, outputs, task policies or product runtime source changed.
+The existing nine cases remain in Fast Checks and managed prepush.
+
+The authentic before and reviewed fix each ran the same real Gradle positive
+on Python 3.12.15 and 3.14.3. Both before cases failed only the UP-TO-DATE
+assertion after the measured cache-directory invalidation; both fixes passed
+all three invocations, including the deliberate runtime rebuild. All four
+children, ten Gradle calls, streams and held source descriptors closed, the
+parent environment was restored, and all 3,038 frozen source bytes and modes
+remained unchanged before integration. Full raw output and physical projects
+are retained with the causal summary c0adfd1b5d20c23af93c168c6145a00a4472be40c3ddb9dd0ee2d8964f41d90a.
+The new content still requires its canonical focused checks, a final version
+note, a fresh managed prepush and all five workflows for the next exact SHA.

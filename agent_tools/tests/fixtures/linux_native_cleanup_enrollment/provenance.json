@@ -1,0 +1,11 @@
+{
+  "beforeimageUnmodified": true,
+  "failure": "Four required CleanupOwnershipTests have0start/0finish; affected511moduleunion excludes unchanged module and native-JDK step runs only launcher.",
+  "failurePacketSha256": "4466179c48b810e619c916d3c5ca3094d9a90fd8996b9edb798a23202f4e0a1a",
+  "headSha": "3a7f6d3414f25c232f2512112ed527c819a7bb21",
+  "nativeExecutionAcceptance": "Pending exact next-SHA Linux workflow actual four verbose cases; configuration regression alone does not qualify native execution.",
+  "schemaVersion": 1,
+  "workflowBytes": 7890,
+  "workflowPath": ".github/workflows/linux-desktop.yml",
+  "workflowSha256": "a5886a0ae519834adc8012d05af5d596b7440e076e62e8ee494bfa5b5ddf909e"
+}

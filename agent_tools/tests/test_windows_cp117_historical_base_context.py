@@ -969,5 +969,87 @@ class InertRemoteDefinitionBoundaryTests(unittest.TestCase):
         self.assertEqual((1, [], [], []), (current.testsRun, current.failures, current.errors, current.skipped), current.errors or current.failures)
 
 
+class StandaloneDismissModuleLifetimeTests(unittest.TestCase):
+    """Actual module hooks with an explicitly unavailable coordinator base.
+
+    The controlled None prerequisite is local fixture evidence. The original
+    four Windows programme-emission cases remain required without native skips.
+    """
+    variant = 'current'
+    source_path = 'agent_tools/tests/test_windows_cp117_windowless_dismiss_observe.py'
+    before = {'resource': 'dismiss_3a7f6d34.before.source', 'bytes': 14074,
+              'sha256': 'e32d513b48ab2969a0c6e4cfb4284d845c203eef35468e586fa96bcb5de82cca'}
+    selectors = (
+        ('AuthoritySchemaTests', 'test_generated_actual_pre_key_guard_pins_preframe_attempt_after_read'),
+        ('DismissTests', 'test_actual_generated_wake_only_one_fixed_released_key_fence_first_raw_retained'),
+        ('DismissTests', 'test_each_actual_generated_slot_one_submit_same_pid_and_stale_exhaustion'),
+        ('DismissTests', 'test_fixed_catalog_sources_parent_child_and_unknown_slot_refusal'),
+    )
+    folder = FIXTURE.parent / 'windows_standalone_module_lifetime'
+
+    @contextmanager
+    def selected_module(self):
+        import builtins
+        from agent_tools import source_module_loader
+        self.assertIn(self.variant, ('before', 'current'))
+        path = (self.folder / self.before['resource'] if self.variant == 'before'
+                else Path(__file__).resolve().parents[2] / self.source_path)
+        with source_module_loader._bootstrap_source(self.folder / 'provenance.json') as (metadata, metadata_guard), source_module_loader._bootstrap_source(path) as (raw, guard):
+            provenance = json.loads(metadata)
+            self.assertEqual('3a7f6d3414f25c232f2512112ed527c819a7bb21', provenance['sourceCommit'])
+            self.assertEqual(self.source_path, provenance['sourcePath'])
+            self.assertEqual(self.before, provenance['before'])
+            self.assertIs(provenance['productionPinsChanged'], False)
+            if self.variant == 'before':
+                self.assertEqual((self.before['bytes'], self.before['sha256']), (len(raw), hashlib.sha256(raw).hexdigest()))
+            module = types.ModuleType('agent_tools._standalone_dismiss_' + self.variant)
+            module.__package__ = 'agent_tools.tests'
+            module.__file__ = str(path.absolute())
+            module.__dict__['__builtins__'] = vars(builtins)
+            exec(compile(raw, module.__file__, 'exec', dont_inherit=True), module.__dict__)
+            historical_source.verify(module, path, hashlib.sha256(raw).hexdigest())
+            guard(); metadata_guard()
+            try:
+                # These actual executable test modules are not cache-registered.
+                # Supply their real source-bound graph to the existing gzip view.
+                with historical_gzip_context(module):
+                    yield module
+            finally:
+                guard(); metadata_guard()
+
+    def outcomes(self):
+        with self.selected_module() as module:
+            closure = module.m.login.guest.recovery.authority.closure
+            original = closure.base
+            with patch.object(closure, 'base', None):
+                module.setUpModule()
+                try:
+                    results = []
+                    for class_name, method in self.selectors:
+                        result = unittest.TestResult()
+                        getattr(module, class_name)(method).run(result)
+                        results.append((class_name + '.' + method, result))
+                finally:
+                    module.tearDownModule()
+                self.assertIsNone(closure.base)
+            self.assertIs(original, closure.base)
+            return results
+
+    def test_actual_standalone_module_hooks_keep_base_through_four_original_cases(self):
+        for selector, result in self.outcomes():
+            with self.subTest(selector=selector):
+                self.assertEqual((1, [], [], []), (result.testsRun, result.failures, result.errors, result.skipped),
+                                 '\n'.join(text for _, text in result.errors or result.failures))
+
+    def test_exact_F_module_hooks_refuse_the_same_positive_cases_without_base(self):
+        case = type(self)('test_actual_standalone_module_hooks_keep_base_through_four_original_cases')
+        case.variant = 'before'
+        result = unittest.TestResult()
+        case.run(result)
+        self.assertEqual((1, 4, 0, []), (result.testsRun, len(result.failures), len(result.errors), result.skipped))
+        for _, trace in result.failures:
+            self.assertIn("AttributeError: 'NoneType' object has no attribute '_QGA'", trace)
+
+
 if __name__ == '__main__':
     unittest.main()

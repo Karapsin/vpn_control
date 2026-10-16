@@ -62,3 +62,5 @@ agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
 /scripts/windows_task_admission.ps1 -text
 /scripts/windows_credential_validity_qga.py -text
 /agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.before.fragment -text
+/agent_tools/tests/fixtures/windows_shortcut_task_marker/provenance.json -text
+/agent_tools/tests/fixtures/linux_native_cleanup_enrollment/linux-desktop.before.yml -text

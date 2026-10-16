@@ -12,6 +12,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Make inert MCP fixtures use explicit coordinator capabilities and complete source contexts.
 - Make copied MCP fixture flows self-contained and close only owned fixture resources.
 - Bind archived MCP fixtures explicitly and preserve full Gradle probe failures.
+- Fix MCP fixture contexts, bounded caller evidence and required cleanup-test enrollment.
+- Make Gradle packaging fixtures reproducible with inherited relative Python bytecode cache settings.
 
 ## 2.2.12 - 2026-10-15
 

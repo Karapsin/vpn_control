@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from test_windows_native_helpers import pe, BROKER_MANIFEST
 
@@ -62,6 +63,8 @@ class WindowsPackagingGraphTest(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory(prefix="vpn-windows-package-graph-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        self.python_cache = (self.root / ".python-cache").resolve()
+        self.python_cache.mkdir(mode=0o700)
         for name in ("gradlew", "gradlew.bat"):
             shutil.copy2(self.repository / name, self.root / name)
         shutil.copytree(self.repository / "gradle" / "wrapper", self.root / "gradle" / "wrapper")
@@ -79,9 +82,11 @@ class WindowsPackagingGraphTest(unittest.TestCase):
 
     def run_gradle(self, task, *properties):
         launcher = self.root / ("gradlew.bat" if os.name == "nt" else "gradlew")
+        environment = dict(os.environ)
+        environment["PYTHONPYCACHEPREFIX"] = str(self.python_cache)
         result = subprocess.run(
             [str(launcher), "--console=plain", "--offline", "--max-workers=1", "-I", str(self.init_script),
-             task, *properties], cwd=self.root, capture_output=True, text=True, timeout=180)
+             task, *properties], cwd=self.root, env=environment, capture_output=True, text=True, timeout=180)
         return result, (result.stdout + result.stderr)[-16000:]
 
     def enable_native_producer(self, failure=False):
@@ -214,24 +219,30 @@ tasks.named('createDistributable').configure {
         self.assertNotIn("FIXTURE_PACKAGED_", output)
 
     def test_changed_bundled_runtime_rebuilds_native_helpers_before_packaging(self):
-        self.enable_native_producer()
-        task = ":desktopApp:packageDistributionForCurrentOS"
-        result, output = self.run_gradle(task, *self.native_properties)
-        self.assertEqual(0, result.returncode, output)
-        self.assertIn("FIXTURE_NATIVE_READY", output)
+        original_environment = dict(os.environ)
+        with mock.patch.dict(os.environ, {"PYTHONPYCACHEPREFIX": "relative-python-cache"}):
+            # Exercise actual bytecode writes; parent -B is not inherited by
+            # the Python processes Gradle launches from the native source tree.
+            os.environ.pop("PYTHONDONTWRITEBYTECODE", None)
+            self.enable_native_producer()
+            task = ":desktopApp:packageDistributionForCurrentOS"
+            result, output = self.run_gradle(task, *self.native_properties)
+            self.assertEqual(0, result.returncode, output)
+            self.assertIn("FIXTURE_NATIVE_READY", output)
 
-        result, output = self.run_gradle(task, *self.native_properties)
-        self.assertEqual(0, result.returncode, output)
-        self.assertIn(":desktopApp:prepareWindowsNativeHelpers UP-TO-DATE", output)
-        self.assertNotIn("FIXTURE_NATIVE_READY", output)
+            result, output = self.run_gradle(task, *self.native_properties)
+            self.assertEqual(0, result.returncode, output)
+            self.assertIn(":desktopApp:prepareWindowsNativeHelpers UP-TO-DATE", output)
+            self.assertNotIn("FIXTURE_NATIVE_READY", output)
 
-        runtime = self.root / "desktopApp/src/main/resources/bin/windows-amd64/sing-box.exe"
-        runtime.write_bytes(runtime.read_bytes() + b"changed-bundled-runtime")
-        result, output = self.run_gradle(task, *self.native_properties)
-        self.assertEqual(0, result.returncode, output)
-        self.assertLess(output.index("FIXTURE_NATIVE_READY"), output.index("FIXTURE_IMAGE_READY"))
-        self.assertIn("FIXTURE_NATIVE_PACKAGED_packageExe", output)
-        self.assertIn("FIXTURE_NATIVE_PACKAGED_packageMsi", output)
+            runtime = self.root / "desktopApp/src/main/resources/bin/windows-amd64/sing-box.exe"
+            runtime.write_bytes(runtime.read_bytes() + b"changed-bundled-runtime")
+            result, output = self.run_gradle(task, *self.native_properties)
+            self.assertEqual(0, result.returncode, output)
+            self.assertLess(output.index("FIXTURE_NATIVE_READY"), output.index("FIXTURE_IMAGE_READY"))
+            self.assertIn("FIXTURE_NATIVE_PACKAGED_packageExe", output)
+            self.assertIn("FIXTURE_NATIVE_PACKAGED_packageMsi", output)
+        self.assertEqual(dict(os.environ), original_environment)
 
     def test_graph_inspection_does_not_build_native_helper(self):
         self.enable_native_producer(failure=True)

@@ -182,7 +182,9 @@ jobs:
           java-version: "17"
 
       - name: Verify native JDK launcher before packaging
-        run: python3 scripts/test_jpackage_launcher.py --jdk "$JAVA_HOME"
+        run: |
+          python3 scripts/test_jpackage_launcher.py --jdk "$JAVA_HOME"
+          python3 -m unittest -v agent_tools.tests.test_temurin_artifact_continuity.CleanupOwnershipTests
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

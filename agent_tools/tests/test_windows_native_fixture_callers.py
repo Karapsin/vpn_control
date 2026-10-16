@@ -274,7 +274,7 @@ def _method(selector, root, variant, boundary, original=None):
    case.doCleanups()
 
 
-def _boundary(observations, require_packet, require_env=False, expected_public=None, public_sink=None):
+def _boundary(observations, require_packet, require_env=False, expected_public=None, public_sink=None, inline_source=False):
  def run(argv, **options):
   units = len(subprocess.list2cmdline(argv).encode('utf-16-le'))//2+1
   packet = options.get('input')
@@ -284,6 +284,13 @@ def _boundary(observations, require_packet, require_env=False, expected_public=N
   # Projection of the real generated argv, not a fabricated Win32 exception.
   if units >= 32767:
    raise AssertionError('portable-win32-command-budget: '+str(units))
+  if inline_source:
+   if require_packet or packet is not None or len(argv)!=5 or argv[:4]!=['powershell.exe','-NoProfile','-NonInteractive','-EncodedCommand']:
+    raise AssertionError('authenticated-inline-shape')
+   public=base64.b64decode(argv[-1],validate=True).decode('utf-16-le',errors='strict').encode('utf-8',errors='strict')
+   if not 0<len(public)<=262144 or len(argv[-1])>=30000:
+    raise AssertionError('authenticated-inline-bound')
+   row.update(sourceBytes=len(public),sourceSha256=hashlib.sha256(public).hexdigest(),transfer='inline')
   if require_packet or packet is not None:
    if type(packet) is not bytes or len(packet) <= 4:
     raise AssertionError('authenticated-frame-required')
@@ -431,7 +438,7 @@ def qualify(root, variant, group):
     def write_bytes(path,data,*args,**kwargs):
      value=byte_writer(path,data,*args,**kwargs);report(path,data,'bytes');return value
     with mock.patch.object(Path,'write_text',write_text),mock.patch.object(Path,'write_bytes',write_bytes),test.assertRaises(BoundaryReached):
-     _method(selector,root,variant,_boundary(observations,True),WINDOWS_WRITER_BEFORE if variant=='before'else None)
+     _method(selector,root,variant,_boundary(observations,selector==WINDOWS_WRITER_CALLERS[1],True,inline_source=selector==WINDOWS_WRITER_CALLERS[0]),WINDOWS_WRITER_BEFORE if variant=='before'else None)
    elif group=='replacement-sections':
     module=_module(BASE_MODULE,root,variant,REPLACEMENT_BEFORE if variant=='before'else None)
     _replacement_section(module,selector,root,variant)
@@ -542,6 +549,46 @@ def _retained_qualification_captures(text,group,variants):
 
 
 class WindowsNativeFixtureCallerTests(unittest.TestCase):
+ def _actual_writer_policy(self,selector,observations):
+  # Evaluate only the boundary expression from the actual complete qualifier.
+  # The real caller still executes through its unchanged inert submission seam.
+  path=Path(__file__);raw,pin=_source(path);tree=ast.parse(raw,filename=str(path))
+  function=next(node for node in tree.body if isinstance(node,ast.FunctionDef)and node.name=='qualify')
+  loop=next(node for node in function.body if isinstance(node,ast.For)and isinstance(node.target,ast.Name)and node.target.id=='selector')
+  choices=[node for node in ast.walk(loop)if isinstance(node,ast.If)and ast.dump(node.test)==ast.dump(ast.parse("group=='windows-writers'",mode='eval').body)]
+  self.assertEqual(len(choices),1)
+  calls=[node for statement in choices[0].body for node in ast.walk(statement)if isinstance(node,ast.Call)and isinstance(node.func,ast.Name)and node.func.id=='_method']
+  self.assertEqual(len(calls),1);expression=calls[0].args[3]
+  self.assertIsInstance(expression,ast.Call);self.assertEqual(expression.func.id,'_boundary')
+  result=eval(compile(ast.Expression(expression),str(path),'eval'),globals(),dict(selector=selector,observations=observations))
+  self.assertEqual(_source(path)[1],pin)
+  return result
+
+ def test_actual_writer_callers_keep_their_declared_transfer_shapes(self):
+  for selector in WINDOWS_WRITER_CALLERS:
+   with self.subTest(selector=selector):
+    observations=[];boundary=self._actual_writer_policy(selector,observations)
+    with self.assertRaises(BoundaryReached):_method(selector,ROOT,'current',boundary)
+    self.assertEqual(len(observations),1)
+
+ def test_actual_writer_policy_refuses_missing_frames_and_oversized_inline(self):
+  from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
+  from agent_tools.tests import test_windows_cp117_base_source_refresh as factory
+  public=b"'PUBLIC_WRITER_POLICY'";argv,packet=factory._complete_windows_fixture_carrier(public)
+  options={'env':windows_powershell_environment('powershell.exe',os.environ)}
+  framed=self._actual_writer_policy(WINDOWS_WRITER_CALLERS[1],[])
+  with self.assertRaisesRegex(AssertionError,'authenticated-frame-required'):framed(argv,**options)
+  for changed in (b'\x00\x00\x00\x00'+packet[4:],packet[:-1],packet[:4]+b'\xff'+packet[5:]):
+   with self.subTest(packet=hashlib.sha256(changed).hexdigest()),self.assertRaises((AssertionError,UnicodeDecodeError)):
+    framed(argv,input=changed,**options)
+  with self.assertRaisesRegex(AssertionError,'actual-peer-environment-missing'):framed(argv,input=packet,env={})
+  inline=self._actual_writer_policy(WINDOWS_WRITER_CALLERS[0],[])
+  command=['powershell.exe','-NoProfile','-NonInteractive','-EncodedCommand',base64.b64encode(public.decode().encode('utf-16-le')).decode()]
+  with self.assertRaises(BoundaryReached):inline(command,**options)
+  with self.assertRaisesRegex(AssertionError,'authenticated-inline-shape'):inline(command,input=packet,**options)
+  command[-1]=base64.b64encode(('P'*12000).encode('utf-16-le')).decode()
+  with self.assertRaisesRegex(AssertionError,'authenticated-inline-bound'):inline(command,**options)
+
  def _variant(self, group, variant):
   required = {SELF, FIXTURE+'/provenance.json', *(FIXTURE+'/'+name+'.before.source' for name in BEFORE),
               'agent_tools/tests/fixtures/windows_powershell_environment.py',
@@ -783,3 +830,284 @@ class WindowsNativeFixtureCallerTests(unittest.TestCase):
  @unittest.skipUnless(os.name=='nt','native Windows PowerShell Parser IDs and extents required')
  def test_actual_windows_old_caller_body_parse_red_complete_current_body_green(self):
   self._compare('replacement-parser')
+
+
+# Append-only proposal: actual caller code and public child observations only.
+from contextlib import contextmanager as _shortcut_contextmanager
+import builtins as _shortcut_builtins
+import types as _shortcut_types
+
+_SHORTCUT_MARKER_FIXTURE = ROOT / 'agent_tools/tests/fixtures/windows_shortcut_task_marker'
+_SHORTCUT_MARKER_PROVENANCE_SHA = '271940352d2b342130ea2abdcf1b6ff2b2ccbfc796f17288c682d7f3941068ba'
+_SHORTCUT_MARKER_BEFORE_SHA = '2f35262b54e4d203d40f7191055e622b50b61f9c93946cb808a2d9bca047570d'
+_SHORTCUT_MARKER_METHOD = 'test_actual_windows_task_consumers_old_red_new_green_without_task_effects'
+_SHORTCUT_MARKER_CLASS = 'ShortcutTaskPacketBindingTests'
+_SHORTCUT_MARKER_OLD = "[Console]::Out.WriteLine(''ACTION_BYTES_VERIFIED'')"
+_SHORTCUT_MARKER_CURRENT = '[Console]::Out.WriteLine("ACTION_BYTES_VERIFIED")'
+_SHORTCUT_FAILURE_STDOUT = b'CP117_NONNATIVE_PUBLIC_STDOUT_BEGIN\n' + b'o' * 12000 + b'\nSTDOUT_END\n'
+_SHORTCUT_FAILURE_STDERR = 'CP117_NONNATIVE_PUBLIC_STDERR_BEGIN lambda=\u03bb\n'.encode('utf-8') + b'e' * 12000 + b'\nSTDERR_END\n'
+_SHORTCUT_FAILURE_CHILD = (
+    "import os,sys\n"
+    "os.write(1,b'CP117_NONNATIVE_PUBLIC_STDOUT_BEGIN\\n'+b'o'*12000+b'\\nSTDOUT_END\\n')\n"
+    "os.write(2,'CP117_NONNATIVE_PUBLIC_STDERR_BEGIN lambda=\\u03bb\\n'.encode('utf-8')+b'e'*12000+b'\\nSTDERR_END\\n')\n"
+    "raise SystemExit(17)\n"
+).encode('ascii')
+
+
+class WindowsShortcutTaskMarkerQuoteTests(unittest.TestCase):
+ """A portable source contract, a real nonnative failure child, and native Windows.
+
+ Portable observations stop at the genuine helper call and never manufacture
+ a native result. The original F008 cause remains unknown.
+ """
+
+ def _code(self, outer, name):
+  found=[value for value in outer.co_consts if isinstance(value,_shortcut_types.CodeType)and value.co_name==name]
+  self.assertEqual(len(found),1,'shortcut-task-authentic-code-'+name)
+  return found[0]
+
+ @_shortcut_contextmanager
+ def _sources(self):
+  from agent_tools.source_module_loader import _bootstrap_source
+  module=_module(BASE_MODULE,ROOT,'current')
+  helper=importlib.import_module('agent_tools.tests.test_windows_cp117_fixture_transport_prerequisites')
+  actual=ROOT/'agent_tools/tests/test_windows_cp117_base_source_refresh.py'
+  helper_path=ROOT/'agent_tools/tests/test_windows_cp117_fixture_transport_prerequisites.py'
+  self.assertEqual(Path(module.__file__).resolve(),actual.resolve())
+  self.assertEqual(Path(helper.__file__).resolve(),helper_path.resolve())
+  with ExitStack()as stack:
+   held={};guards=[]
+   for name,path in (('before',_SHORTCUT_MARKER_FIXTURE/'consumer.before.source'),
+                     ('provenance',_SHORTCUT_MARKER_FIXTURE/'provenance.json'),
+                     ('actual',actual),('helper',helper_path),('caller',Path(__file__).resolve())):
+    raw,guard=stack.enter_context(_bootstrap_source(path));guard()
+    self.assertLessEqual(len(raw),1048576)
+    held[name]=raw;guards.append(guard)
+   try:
+    self.assertEqual(hashlib.sha256(held['before']).hexdigest(),_SHORTCUT_MARKER_BEFORE_SHA)
+    self.assertEqual(hashlib.sha256(held['provenance']).hexdigest(),_SHORTCUT_MARKER_PROVENANCE_SHA)
+    provenance=json.loads(held['provenance'])
+    self.assertEqual((provenance['sourceSha256'],provenance['sourceBytes']),
+                     ('ee72b9c2907d360deb1999a8084235715e6e011cdc193f23ae534728fcf767af',1039931))
+    self.assertEqual((provenance['resourceSha256'],provenance['resourceBytes']),
+                     (_SHORTCUT_MARKER_BEFORE_SHA,len(held['before'])))
+    self.assertEqual((provenance['sourceClass'],provenance['nativeMethod']),(_SHORTCUT_MARKER_CLASS,_SHORTCUT_MARKER_METHOD))
+    self.assertIs(provenance['portableQuoteCheckIsNativeParserEvidence'],False)
+    self.assertIs(provenance['productionPinsChanged'],False)
+    self.assertIs(provenance['originalTaskConsumerAssertionsChanged'],False)
+    before_tree=ast.parse(held['before'],filename=str(_SHORTCUT_MARKER_FIXTURE/'consumer.before.source'))
+    actual_tree=ast.parse(held['actual'],filename=str(actual))
+    def cls(tree):
+     found=[node for node in tree.body if isinstance(node,ast.ClassDef)and node.name==_SHORTCUT_MARKER_CLASS]
+     self.assertEqual(len(found),1);return found[0]
+    def method(tree,name):
+     found=[node for node in cls(tree).body if isinstance(node,ast.FunctionDef)and node.name==name]
+     self.assertEqual(len(found),1);return found[0]
+    for name in ('assemble','check'):
+     self.assertEqual(ast.dump(method(before_tree,name)),ast.dump(method(actual_tree,name)))
+    self.assertEqual([ast.dump(node)for node in method(before_tree,_SHORTCUT_MARKER_METHOD).body[-2:]],
+                     [ast.dump(node)for node in method(actual_tree,_SHORTCUT_MARKER_METHOD).body[-2:]],
+                     'original-two-native-consumer-assertions')
+    for name,pin in provenance['frozenGlobals'].items():
+     value=getattr(module,name);self.assertIs(type(value),str);raw=value.encode('utf-8')
+     self.assertEqual((len(raw),hashlib.sha256(raw).hexdigest()),(pin['bytes'],pin['sha256']))
+    # Compile the authentic retained class without executing its module, class,
+    # decorators, imports or setup. Bind only its exact method code to the real
+    # current module globals; all unchanged assembler/provider objects are real.
+    before_path=_SHORTCUT_MARKER_FIXTURE/'consumer.before.source'
+    before_code=self._code(self._code(compile(held['before'],str(before_path),'exec',dont_inherit=True),_SHORTCUT_MARKER_CLASS),_SHORTCUT_MARKER_METHOD)
+    self.assertEqual(before_code.co_freevars,())
+    old=_shortcut_types.FunctionType(before_code,module.__dict__,_SHORTCUT_MARKER_METHOD)
+    current=inspect.unwrap(getattr(getattr(module,_SHORTCUT_MARKER_CLASS),_SHORTCUT_MARKER_METHOD))
+    self.assertIs(old.__globals__,module.__dict__);self.assertIs(current.__globals__,module.__dict__)
+    self.assertEqual(Path(old.__code__.co_filename).resolve(),before_path.resolve())
+    self.assertEqual(Path(current.__code__.co_filename).resolve(),actual.resolve())
+    actual_code=compile(held['actual'],current.__code__.co_filename,'exec',dont_inherit=True)
+    current_code=self._code(self._code(actual_code,_SHORTCUT_MARKER_CLASS),_SHORTCUT_MARKER_METHOD)
+    self.assertEqual(current.__code__,current_code,'current-method-held-source')
+    for function in (old,current,module._run_complete_windows_fixture):
+     self.assertIs(function.__builtins__['__import__'],_shortcut_builtins.__import__,'genuine-caller-builtins-import')
+     self.assertIs(function.__globals__,module.__dict__)
+    self.assertEqual(module._run_complete_windows_fixture.__code__,self._code(actual_code,'_run_complete_windows_fixture'))
+    helper_code=compile(held['helper'],helper.__file__,'exec',dont_inherit=True)
+    for name in ('_public_native_child_capture','_retained_public_native_child_capture'):
+     function=getattr(helper,name)
+     self.assertIs(function.__globals__,helper.__dict__)
+     self.assertEqual(Path(function.__code__.co_filename).resolve(),helper_path.resolve())
+     self.assertEqual(function.__code__,self._code(helper_code,name),'actual-shared-capture-helper')
+    yield module,{'before':old,'current':current},helper
+   finally:
+    for guard in reversed(guards):guard()
+
+ def _invoke(self,module,function,boundary):
+  from agent_tools.tests.fixtures.windows_cp117_historical_factory import context
+  case=getattr(module,_SHORTCUT_MARKER_CLASS)(_SHORTCUT_MARKER_METHOD)
+  references=(module.refresh,module.ScreenTests,module.historical_provider)
+  with context.inert_repository_source_reads(),mock.patch.object(module,'_run_complete_windows_fixture',boundary):
+   try:
+    case.setUp()
+    self.assertIs(function.__globals__,module.__dict__)
+    self.assertIs(function.__builtins__['__import__'],_shortcut_builtins.__import__,'actual-call-boundary-genuine-import')
+    function(case)
+   finally:
+    self.assertTrue(case.doCleanups(),'shortcut-task-real-case-cleanups')
+    self.assertEqual((module.refresh,module.ScreenTests,module.historical_provider),references)
+    self.assertIs(function.__builtins__['__import__'],_shortcut_builtins.__import__)
+
+ def _public(self,module,function):
+  observations=[]
+  def boundary(public,*,timeout):
+   self.assertIs(type(public),bytes);self.assertTrue(0<len(public)<=262144)
+   self.assertEqual(timeout,20);observations.append(public)
+   raise BoundaryReached()
+  with self.assertRaises(BoundaryReached):self._invoke(module,function,boundary)
+  self.assertEqual(len(observations),1,'one-authentic-source-boundary')
+  return observations[0]
+
+ def _quoted(self,text,index):
+  self.assertEqual(text[index:index+1],"'",'shortcut-task-bootstrap-single-quote')
+  result=[];index+=1
+  while index<len(text):
+   if text[index]!="'":result.append(text[index]);index+=1;continue
+   if text[index:index+2]=="''":result.append("'");index+=2;continue
+   return ''.join(result),index+1
+  self.fail('shortcut-task-bootstrap-single-quote: unterminated literal')
+
+ def _quote_contract(self,public):
+  text=public.decode('utf-8',errors='strict')
+  prefix="$ErrorActionPreference='Stop';$old="
+  self.assertTrue(text.startswith(prefix),'actual-task-consumer-outer-prefix')
+  old,end=self._quoted(text,len(prefix))
+  self.assertTrue(text.startswith(';$new=',end),'actual-task-consumer-new-slot')
+  new,end=self._quoted(text,end+len(';$new='))
+  self.assertTrue(text.startswith(';$red=$false;try{',end),'actual-task-consumer-original-red-guard')
+  for consumer in (old,new):
+   slot='$cp117ActionBootstrap=';self.assertEqual(consumer.count(slot),1)
+   first,position=self._quoted(consumer,consumer.index(slot)+len(slot))
+   self.assertTrue(consumer.startswith('+$cp117Packed+',position),'shortcut-task-bootstrap-single-quote: packed slot')
+   second,position=self._quoted(consumer,position+len('+$cp117Packed+'))
+   self.assertTrue(consumer.startswith(';$cp117ActionEncoded=',position),'shortcut-task-bootstrap-single-quote: closing delimiter')
+   decoded=first+'PUBLIC_PACKED_BASE64'+second
+   self.assertEqual(decoded.count(_SHORTCUT_MARKER_CURRENT),1,'actual-quoted-marker')
+   self.assertNotIn('& ([ScriptBlock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($v)))',decoded)
+
+ def _quote_positive(self,variant):
+  with self._sources()as(module,functions,helper):
+   before=self._public(module,functions['before'])
+   self.assertEqual(before.decode().count(_SHORTCUT_MARKER_OLD),2)
+   selected=before if variant=='before'else self._public(module,functions['current'])
+   if variant=='current':
+    self.assertEqual(selected.decode(),before.decode().replace(_SHORTCUT_MARKER_OLD,_SHORTCUT_MARKER_CURRENT),
+                     'complete-public-source-diff-is-only-two-marker-quotes')
+   self._quote_contract(selected)
+
+ def _failure_child(self):
+  from agent_tools.source_module_loader import _bootstrap_source
+  with tempfile.TemporaryDirectory(prefix='cp117-shortcut-nonnative-')as folder:
+   root=Path(folder).resolve();child=root/'public-failure.py';cache=root/'fresh-cache'
+   fd=os.open(child,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+   with os.fdopen(fd,'wb')as stream:stream.write(_SHORTCUT_FAILURE_CHILD)
+   cache.mkdir(mode=0o700)
+   with _bootstrap_source(child)as(raw,guard):
+    self.assertEqual(raw,_SHORTCUT_FAILURE_CHILD);self.assertEqual(_source(child)[0],raw)
+    if os.name=='posix':self.assertEqual(stat.S_IMODE(child.stat().st_mode),0o600)
+    argv=[sys.executable,'-I','-B','-X','pycache_prefix='+str(cache),str(child)]
+    self.assertLessEqual(sum(len(os.fsencode(value))+1 for value in argv),60000)
+    env=dict(os.environ)
+    for name in ('DYLD_INSERT_LIBRARIES','DYLD_LIBRARY_PATH'):env.pop(name,None)
+    env['PYTHONDONTWRITEBYTECODE']='1'
+    handles=[];real_popen=subprocess.Popen
+    def own_child(*args,**options):
+     handle=real_popen(*args,**options);handles.append(handle);return handle
+    try:
+     # Genuine completed subprocess.run returns only after both captured pipes
+     # reach EOF and its direct owned child has been waited and reaped.
+     with mock.patch.object(subprocess,'Popen',side_effect=own_child):
+      completed=subprocess.run(argv,cwd=root,env=env,stdin=subprocess.DEVNULL,capture_output=True,timeout=20)
+    finally:guard()
+   self.assertEqual(len(handles),1,'one-owned-nonnative-public-child')
+   handle=handles[0]
+   self.assertIsNotNone(handle.returncode);self.assertEqual(handle.returncode,completed.returncode)
+   self.assertEqual(handle.wait(timeout=1),completed.returncode,'actual-owned-child-reaped')
+   self.assertIsNone(handle.stdin)
+   self.assertIsNotNone(handle.stdout);self.assertTrue(handle.stdout.closed)
+   self.assertIsNotNone(handle.stderr);self.assertTrue(handle.stderr.closed)
+   self.assertEqual(completed.returncode,17)
+   self.assertEqual(completed.stdout,_SHORTCUT_FAILURE_STDOUT)
+   self.assertEqual(completed.stderr,_SHORTCUT_FAILURE_STDERR)
+   self._last_shortcut_child_closure={'scope':'NONNATIVE_PUBLIC_OWNED_FAILURE_CONTROL','pid':handle.pid,
+       'actualReturnCode':handle.returncode,'directChildReaped':True,'stdoutPipeClosed':handle.stdout.closed,
+       'stderrPipeClosed':handle.stderr.closed,'fullStdoutBytes':len(completed.stdout),'fullStderrBytes':len(completed.stderr),
+       'fullStdoutSha256':hashlib.sha256(completed.stdout).hexdigest(),'fullStderrSha256':hashlib.sha256(completed.stderr).hexdigest(),
+       'sourceSha256':hashlib.sha256(raw).hexdigest(),'sourceClosingGuardPassed':True,'nativeProductAcceptance':False}
+   return completed
+
+ def _diagnostic_positive(self,variant):
+  with self._sources()as(module,functions,helper):
+   observations=[];witness=io.StringIO();failure=None
+   def boundary(public,*,timeout):
+    self.assertIs(type(public),bytes);self.assertTrue(0<len(public)<=262144)
+    self.assertEqual(timeout,20);self.assertEqual(len(observations),0)
+    done=self._failure_child();observations.append(done);return done
+   try:
+    with mock.patch.object(sys,'stdout',witness):self._invoke(module,functions[variant],boundary)
+   except AssertionError as error:failure=error
+   self.assertEqual(len(observations),1,'same-genuine-helper-boundary')
+   self.assertIs(type(failure),AssertionError)
+   self.assertEqual(str(failure),'17 != 0','original-nonzero-consumer-guard-still-fails')
+   self.assertTrue(self._last_shortcut_child_closure['directChildReaped'])
+   print('CP117_NONNATIVE_PUBLIC_FAILURE_CONTROL '+json.dumps(dict(self._last_shortcut_child_closure,variant=variant),sort_keys=True),flush=True)
+   helper._public_native_child_capture(variant,observations[0],'owned-failure-control')
+   decoded=None
+   try:decoded=helper._retained_public_native_child_capture(witness.getvalue(),'current','shortcut-task-consumer')
+   except ValueError as error:self.assertEqual(str(error),'successor-retained-capture')
+   self.assertIsNotNone(decoded,'shortcut-task-failure-full-raw-diagnostic')
+   done=observations[0]
+   self.assertEqual((decoded['returnCode'],decoded['stdout'],decoded['stderr']),(done.returncode,done.stdout,done.stderr))
+   sys.stdout.write(witness.getvalue());sys.stdout.flush()
+   self.assertGreater(len(witness.getvalue().splitlines()),2,'actual-multichunk-public-failure')
+
+ def _native_positive(self,variant):
+  with self._sources()as(module,functions,helper):
+   actual=module._run_complete_windows_fixture;observations=[];failure=None;witness=io.StringIO()
+   def boundary(public,*,timeout):
+    self.assertEqual(len(observations),0);self.assertEqual(timeout,20)
+    done=actual(public,timeout=timeout);observations.append(done);return done
+   try:
+    with mock.patch.object(sys,'stdout',witness):self._invoke(module,functions[variant],boundary)
+   except AssertionError as error:failure=error
+   self.assertEqual(len(observations),1,'one-real-Windows-consumer-child')
+   done=observations[0]
+   # Real native streams, never a manufactured result or portable substitution.
+   helper._public_native_child_capture(variant,done,kind='shortcut-task-consumer')
+   self._last_shortcut_native=done
+   self.assertIsNone(failure,'shortcut-task-native-original-assertions: '+str(failure))
+   self.assertEqual(done.returncode,0)
+   self.assertEqual(done.stdout.decode().strip().splitlines(),['ACTION_BYTES_VERIFIED','TASK_CONSUMERS_CAUSAL_PASS'])
+
+ def _compare_shortcut(self,kind):
+  requested=os.environ.get('WINDOWS_NATIVE_CALLER_VARIANT','compare')
+  self.assertIn(requested,('before','current','compare'))
+  positive={'quote':self._quote_positive,'diagnostic':self._diagnostic_positive,'native':self._native_positive}[kind]
+  if requested=='before':positive('before');return
+  if requested=='compare':
+   reason={'quote':'shortcut-task-bootstrap-single-quote','diagnostic':'shortcut-task-failure-full-raw-diagnostic',
+           'native':'shortcut-task-native-original-assertions'}[kind]
+   with self.assertRaisesRegex(AssertionError,reason):positive('before')
+   if kind=='native':
+    done=self._last_shortcut_native;self.assertNotEqual(done.returncode,0)
+    stderr=done.stderr.decode('utf-8',errors='strict')
+    self.assertIn('ACTION_BYTES_VERIFIED',stderr)
+    self.assertTrue(any(token in stderr for token in ('ParseException','ParserError','Unexpected token')),
+                    'new-native-counterfactual-parser-evidence-required; original-F008-cause-still-unknown')
+  positive('current')
+
+ def test_actual_task_consumer_source_quotes_old_red_current_green(self):
+  self._compare_shortcut('quote')
+
+ def test_actual_owned_failure_child_keeps_guard_and_full_raw_diagnostic(self):
+  self._compare_shortcut('diagnostic')
+
+ @unittest.skipUnless(os.name=='nt','genuine Windows PowerShell task-consumer execution required')
+ def test_actual_windows_task_consumer_old_red_current_green(self):
+  self._compare_shortcut('native')

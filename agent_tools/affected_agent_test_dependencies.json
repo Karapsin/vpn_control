@@ -2297,6 +2297,20 @@
         "8324f07b3eb81fb95eb3c485f55f3a33b0a42948e9cec8d2467883e823d81fcc"
       ]
     },
+    "agent_tools/tests/test_linux_native_cleanup_enrollment.py": {
+      "reason": "Finite data-only native-cleanup enrollment control reads the actual Linux workflow, actual Temurin cleanup test, exact retained F workflow and parsed provenance through its bounded _read wrapper, then compares their real syntax and four method names. These five explicit source inputs retain affected-test selection; no dynamic module execution, native action, source guard relaxation or non-Python exemption is introduced.",
+      "scopes": [
+        "agent_tools/tests/test_linux_native_cleanup_enrollment.py",
+        ".github/workflows/linux-desktop.yml",
+        "agent_tools/tests/test_temurin_artifact_continuity.py",
+        "agent_tools/tests/fixtures/linux_native_cleanup_enrollment/linux-desktop.before.yml",
+        "agent_tools/tests/fixtures/linux_native_cleanup_enrollment/provenance.json"
+      ],
+      "sourceSha256": [
+        "b4990b38ffa8b60772dcc9c4fbd4abce484d93a76fe41d1bd81c022f060b3ded",
+        "bb9f2913530b703072e94bac9e2667b758cc62bdbf3e5838622c78ba6ef4cf41"
+      ]
+    },
     "agent_tools/tests/test_mcp_core_capture_windows.py": {
       "reason": "Exact owned core-capture regression AST-extracts only _captured_core from the explicit current server or its complete retained function beforeimage, with fixed standard-library globals and an owned generated policy.py. It also extracts only the named native test method from its current self or the exact c680 test beforeimage, with an explicit physical-file clock model namespace. Native setup changes only FILE_BASIC_INFO.ChangeTime on the newly owned inert file and verifies readback; actual native CI remains separate. No server/test top-level dispatcher, adapters, prior runtime evidence or additional repository source is executed or read.",
       "scopes": [
@@ -2866,10 +2880,13 @@
         "agent_tools/source_module_loader.py",
         "agent_tools/windows_update_fixture_stage.py",
         "scripts/windows_fixture_stage_acl.py",
-        "agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py"
+        "agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py",
+        ".gitattributes",
+        "agent_tools/tests/test_windows_cp117_fixture_transport_prerequisites.py"
       ],
       "sourceSha256": [
-        "13b5c2e1d4c3572bc143aaee596b58a489b39aef045c2dce34a20c941e8b2f97"
+        "13b5c2e1d4c3572bc143aaee596b58a489b39aef045c2dce34a20c941e8b2f97",
+        "ceeba674ac8378d5c61bea3985dc691e55b88aff374b71f35e804c86dca59a7c"
       ]
     },
     "agent_tools/tests/test_windows_cp117_historical_base_context.py": {
@@ -2908,7 +2925,9 @@
         "agent_tools/tests/fixtures/windows_inert_remote_definitions/secure_layout.before.source",
         "agent_tools/tests/fixtures/windows_inert_remote_definitions/provenance.json",
         "agent_tools/tests/test_windows_cp117_secure_layout_observe.py",
-        "agent_tools/tests/fixtures/windows_replacement_fixture_sections.py"
+        "agent_tools/tests/fixtures/windows_replacement_fixture_sections.py",
+        "agent_tools/tests/fixtures/windows_standalone_module_lifetime/dismiss_3a7f6d34.before.source",
+        "agent_tools/tests/fixtures/windows_standalone_module_lifetime/provenance.json"
       ],
       "sourceSha256": [
         "e373010900974281360e5155fe03c35c4df0ea4b85662d30f2873628f11e55f9",
@@ -2920,7 +2939,8 @@
         "aa39af3e0517f3c1c9e30abb6b6cf5977aa831077755ece1ed2adaeea6a07b11",
         "e6cec7d9be127aace754745ba871473647036b624127edaf4f461f0d900b340d",
         "94b3df1d783ccfc0c85b86b11c4aa1d31738eb0164684f4d2f5479a2f0acb045",
-        "bf8025bcc2e071e606c37e12dcf0fbcd9fe4e0c92ab400a1d2c25f0c0bd4b961"
+        "bf8025bcc2e071e606c37e12dcf0fbcd9fe4e0c92ab400a1d2c25f0c0bd4b961",
+        "6b1e6acfaf60e46d7bd477a6fe96e1f979f6d5ae42aeb78a40d3d11bc7d1c527"
       ]
     },
     "agent_tools/tests/test_windows_cp117_publisher_boundary_context.py": {
@@ -3244,13 +3264,17 @@
         ".gitattributes",
         "agent_tools/tests/fixtures/windows_native_fixture_callers/base.parser-catch-before.source",
         "agent_tools/tests/fixtures/windows_native_fixture_callers/read-binding.text-writer-before.source",
-        "agent_tools/tests/fixtures/windows_replacement_fixture_sections.py"
+        "agent_tools/tests/fixtures/windows_replacement_fixture_sections.py",
+        "agent_tools/tests/fixtures/windows_shortcut_task_marker/consumer.before.source",
+        "agent_tools/tests/fixtures/windows_shortcut_task_marker/provenance.json",
+        "agent_tools/tests/test_windows_cp117_fixture_transport_prerequisites.py"
       ],
       "sourceSha256": [
         "b06d6dc5a5ad8955ba760dad00a59adb0473229175a384ea18f9ecff741bccc3",
         "4a441b3d579eda937e05f997be954e4d2b8fd3308d769d4e1e0b9fd884524646",
         "e97f3f32209de9caecf2901b501e91b12792d0f7757e285808cab363a938e216",
-        "ea71efab12c872922e2f1262a39b61963eaf03edabf0d59f954bc19d8180d2dc"
+        "ea71efab12c872922e2f1262a39b61963eaf03edabf0d59f954bc19d8180d2dc",
+        "b897f6440d9bca9de0b1154a5d0e8e43281f29199030266cd03a638abfc2d52d"
       ]
     },
     "agent_tools/tests/test_windows_ordinary_https.py": {
@@ -3284,7 +3308,8 @@
       "sourceSha256": [
         "00a217e4dd7163003a5fd9d0142d5f843642b71b20a800464d29bbf873d24cb7",
         "ca1ef7cd72242660a42e41aac5d9b5f5f08b8d08ee9673f12f5f1957964c47eb",
-        "fb7e1ec4134fece1793f70a9687a336dedd739f40fd4a703751344e51e44dd88"
+        "fb7e1ec4134fece1793f70a9687a336dedd739f40fd4a703751344e51e44dd88",
+        "ec9d3306e1cd3811991a33588b38a17a8fb11bf57dc57c63a9fcc9f6a4625d6a"
       ]
     },
     "agent_tools/tests/test_windows_powershell_fixture_execution.py": {

@@ -1,0 +1,12 @@
+{
+  "before": {
+    "bytes": 14074,
+    "resource": "dismiss_3a7f6d34.before.source",
+    "sha256": "e32d513b48ab2969a0c6e4cfb4284d845c203eef35468e586fa96bcb5de82cca"
+  },
+  "failureEvidenceSha256": "302eadf2bfe2240fb840da139f4e4073be5bc8bf755cdcc4d1a1aeadc85b5aed",
+  "nativeAcceptanceClaimed": false,
+  "productionPinsChanged": false,
+  "sourceCommit": "3a7f6d3414f25c232f2512112ed527c819a7bb21",
+  "sourcePath": "agent_tools/tests/test_windows_cp117_windowless_dismiss_observe.py"
+}

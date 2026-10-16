@@ -41,6 +41,7 @@ _SOURCE_PATHS = {
     'stage': _TESTS.parent / 'windows_update_fixture_stage.py',
     'acl': _TESTS.parents[1] / 'scripts' / 'windows_fixture_stage_acl.py',
     'history_context': _TESTS / 'fixtures' / 'windows_cp117_historical_factory' / 'context.py',
+    'attributes': _TESTS.parents[1] / '.gitattributes',
 }
 _COPY_METHODS = (
     'test_actual_old_copy_loop_can_publish_stale_earlier_destination',
@@ -514,13 +515,120 @@ def _successor_constructor(variant, pins):
                         guard()
 
 
+def _successor_observation(raw, attributes_sha):
+    """Two complete public records, never a prefix or a native-action receipt."""
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value: raise ValueError('successor-duplicate-key')
+            value[key] = item
+        return value
+    if type(raw) is not bytes or not 0 < len(raw) <= 262144:
+        raise ValueError('successor-output-bound')
+    lines = raw.splitlines()
+    prefixes = (b'CP117_STAGE_SOURCE_WITNESS ', b'SUCCESSOR_TEMPLATE_PASS ')
+    if len(lines) != 2 or any(not line.startswith(prefix) for line, prefix in zip(lines, prefixes)):
+        raise ValueError('successor-output-order')
+    witness, value = [json.loads(line[len(prefix):], object_pairs_hook=unique)
+                      for line, prefix in zip(lines, prefixes)]
+    if (type(witness) is not dict or set(witness) != {'sources','attributesSha256','aclByteRulePresent','constructorAction'}
+            or witness['attributesSha256'] != attributes_sha
+            or witness['aclByteRulePresent'] is not True or witness['constructorAction'] is not False
+            or type(witness['sources']) is not dict or set(witness['sources']) != {'stage','acl'}):
+        raise ValueError('successor-source-witness')
+    for label, digest, size in (
+            ('stage','3e37a30445a3ea14057b010d205b92ac9907d278c0a57164fabeb63f49d07bed',55712),
+            ('acl','30dcda8a0708a1d07465993485cb3ec8a995ae93e68b2d46e5327ca4b3dd953e',10358)):
+        row = witness['sources'][label]
+        if (type(row) is not dict or set(row) != {'expectedSha256','observedSha256','bytes'}
+                or row['expectedSha256'] != digest or row['observedSha256'] != digest
+                or type(row['bytes']) is not int or row['bytes'] != size):
+            raise ValueError('successor-source-pin')
+    if (type(value) is not dict or set(value) != {'sourceSha256','scriptSha256','scriptBytes'}
+            or value['sourceSha256'] != _SUCCESSOR_SOURCE_SHA256
+            or type(value['scriptSha256']) is not list or len(value['scriptSha256']) != 3
+            or any(type(item) is not str or len(item) != 64 or any(c not in '0123456789abcdef' for c in item)
+                   for item in value['scriptSha256'])
+            or type(value['scriptBytes']) is not list or len(value['scriptBytes']) != 3
+            or any(type(size) is not int or not 0 < size <= 65536 for size in value['scriptBytes'])):
+        raise ValueError('successor-terminal-shape')
+    return value
+
+
+def _public_native_child_capture(variant, completed, kind='successor-constructor'):
+    """Retain complete public streams after the owned child returned."""
+    import uuid
+    if (variant not in ('before','current') or kind not in ('successor-constructor','shortcut-task-consumer','owned-failure-control')
+            or type(completed.returncode) is not int or type(completed.stdout) is not bytes
+            or type(completed.stderr) is not bytes or len(completed.stdout)+len(completed.stderr)>262144):
+        raise ValueError('successor-capture-input')
+    value = {'variant':variant,'kind':kind,'returnCode':completed.returncode,
+             'stdoutBase64':base64.b64encode(completed.stdout).decode('ascii'),
+             'stderrBase64':base64.b64encode(completed.stderr).decode('ascii')}
+    for channel in ('stdout','stderr'):
+        raw = getattr(completed,channel)
+        value[channel+'Bytes'] = len(raw); value[channel+'Sha256'] = hashlib.sha256(raw).hexdigest()
+    raw = json.dumps(value,sort_keys=True,separators=(',',':')).encode('ascii')
+    if not 0<len(raw)<=524288: raise ValueError('successor-capture-bound')
+    capture = uuid.uuid4().hex; chunks = [raw[start:start+8192] for start in range(0,len(raw),8192)]
+    for index, part in enumerate(chunks):
+        line = 'CP117_PUBLIC_NATIVE_CHILD_CAPTURE_CHUNK '+json.dumps({'captureId':capture,'index':index,'count':len(chunks),
+            'dataBytes':len(part),'sha256':hashlib.sha256(part).hexdigest(),
+            'dataBase64':base64.b64encode(part).decode('ascii')},sort_keys=True)
+        if len(line.encode('ascii'))>16384:raise ValueError('successor-capture-line-bound')
+        print(line,flush=True)
+    print('CP117_PUBLIC_NATIVE_CHILD_CAPTURE_MANIFEST '+json.dumps({'captureId':capture,'variant':variant,'kind':kind,
+        'chunks':len(chunks),'payloadBytes':len(raw),'payloadSha256':hashlib.sha256(raw).hexdigest(),
+        'childReturned':True,'stdoutEof':True,'stderrEof':True},sort_keys=True),flush=True)
+
+
+def _retained_public_native_child_capture(text, variant, kind):
+    def need(value):
+        if not value: raise ValueError('successor-retained-capture')
+    def unique(pairs):
+        answer={}
+        for key,value in pairs:
+            need(key not in answer);answer[key]=value
+        return answer
+    lines=text.splitlines();need(2<=len(lines)<=65);parts=[];capture=None;count=None
+    for index,line in enumerate(lines[:-1]):
+        prefix='CP117_PUBLIC_NATIVE_CHILD_CAPTURE_CHUNK ';need(line.startswith(prefix)and len(line.encode('ascii'))<=16384)
+        row=json.loads(line[len(prefix):],object_pairs_hook=unique)
+        need(type(row)is dict and set(row)=={'captureId','index','count','dataBytes','sha256','dataBase64'})
+        need(type(row['captureId'])is str and len(row['captureId'])==32 and all(c in '0123456789abcdef' for c in row['captureId']))
+        if capture is None:capture=row['captureId'];count=row['count']
+        need(row['captureId']==capture and type(row['index'])is int and row['index']==index
+             and type(row['count'])is int and row['count']==count and 1<=count<=64)
+        part=base64.b64decode(row['dataBase64'],validate=True)
+        need(type(row['dataBytes'])is int and row['dataBytes']==len(part)and 0<len(part)<=8192
+             and hashlib.sha256(part).hexdigest()==row['sha256']);parts.append(part)
+    prefix='CP117_PUBLIC_NATIVE_CHILD_CAPTURE_MANIFEST ';need(lines[-1].startswith(prefix)and len(lines[-1].encode('ascii'))<=16384)
+    final=json.loads(lines[-1][len(prefix):],object_pairs_hook=unique);raw=b''.join(parts)
+    need(type(final)is dict and set(final)=={'captureId','variant','kind','chunks','payloadBytes','payloadSha256','childReturned','stdoutEof','stderrEof'})
+    need(final['captureId']==capture and final['variant']==variant and final['kind']==kind
+         and type(final['chunks'])is int and final['chunks']==count==len(parts)
+         and type(final['payloadBytes'])is int and final['payloadBytes']==len(raw)<=524288
+         and hashlib.sha256(raw).hexdigest()==final['payloadSha256']
+         and all(final[key]is True for key in ('childReturned','stdoutEof','stderrEof')))
+    value=json.loads(raw,object_pairs_hook=unique)
+    need(type(value)is dict and set(value)=={'variant','kind','returnCode','stdoutBase64','stderrBase64','stdoutBytes','stderrBytes','stdoutSha256','stderrSha256'})
+    need(value['variant']==variant and value['kind']==kind and type(value['returnCode'])is int)
+    for channel in ('stdout','stderr'):
+        data=base64.b64decode(value[channel+'Base64'],validate=True)
+        need(type(value[channel+'Bytes'])is int and value[channel+'Bytes']==len(data)
+             and hashlib.sha256(data).hexdigest()==value[channel+'Sha256']);value[channel]=data
+    need(len(value['stdout'])+len(value['stderr'])<=262144)
+    return value
+
+
 def _successor_positive(variant, captures, pins):
     class Positive(unittest.TestCase):
         def runTest(self):
             if not _WINDOWS:
                 self.skipTest('genuine missing fcntl requires a fresh native Windows interpreter')
             from agent_tools.source_module_loader import _bootstrap_source
-            with _inputs(pins):
+            with _inputs(pins) as (_, current_inputs):
+                attributes_sha = hashlib.sha256(current_inputs['attributes']).hexdigest()
                 with tempfile.TemporaryDirectory(prefix='cp117-successor-native-') as folder:
                     root = Path(folder).resolve()
                     child = root / 'constructor.py'
@@ -542,11 +650,10 @@ def _successor_positive(variant, captures, pins):
                         finally:
                             guard()
             # The exact same positive assertions execute for old/current.
+            _public_native_child_capture(variant, completed)
             self.assertEqual(completed.returncode, 0, completed.stderr.decode(errors='replace'))
             self.assertLessEqual(len(completed.stdout) + len(completed.stderr), 262144)
-            marker = b'SUCCESSOR_TEMPLATE_PASS '
-            self.assertTrue(completed.stdout.startswith(marker), completed.stdout)
-            value = json.loads(completed.stdout[len(marker):])
+            value = _successor_observation(completed.stdout, attributes_sha)
             self.assertEqual(set(value), {'sourceSha256', 'scriptSha256', 'scriptBytes'})
             self.assertEqual(value['sourceSha256'], _SUCCESSOR_SOURCE_SHA256)
             self.assertEqual(len(value['scriptSha256']), 3)
@@ -556,6 +663,114 @@ def _successor_positive(variant, captures, pins):
 
 
 class SuccessorConstructorPrerequisiteTests(unittest.TestCase):
+    def _constructor_protocol(self):
+        import io
+        from contextlib import redirect_stdout
+        from agent_tools.source_module_loader import _bootstrap_source
+        path=Path(__file__).resolve()
+        with _inputs({}), _bootstrap_source(path) as (source,guard), _bootstrap_source(_TESTS.parents[1]/'.gitattributes') as (attributes,attributes_guard):
+            attributes_sha = hashlib.sha256(attributes).hexdigest()
+            witness = io.StringIO()
+            with redirect_stdout(witness): value = _successor_constructor('current', {})
+            # Execute only the actual child's final public serializer. Its
+            # native capability checks and constructor remain separate cases.
+            constants=[node for node in ast.parse(source).body if isinstance(node,ast.Assign)
+                       and any(isinstance(target,ast.Name)and target.id=='_SUCCESSOR_CHILD'for target in node.targets)]
+            self.assertEqual(len(constants),1);self.assertEqual(ast.literal_eval(constants[0].value),_SUCCESSOR_CHILD)
+            terminal = ast.parse(_SUCCESSOR_CHILD,filename=str(path)).body[-1]
+            self.assertIsInstance(terminal, ast.Expr)
+            output = io.BytesIO()
+            namespace = dict(globals(), value=value, sys=types.SimpleNamespace(stdout=types.SimpleNamespace(buffer=output)))
+            exec(compile(ast.Module(body=[terminal], type_ignores=[]), str(path), 'exec'), namespace)
+            guard();attributes_guard()
+            return witness.getvalue().encode('utf-8') + output.getvalue(), attributes_sha
+
+    def _actual_successor_assertions(self, completed, attributes_sha):
+        from agent_tools.source_module_loader import _bootstrap_source
+        path = Path(__file__).resolve()
+        with _bootstrap_source(path) as (raw, guard):
+            tree = ast.parse(raw, filename=str(path))
+            function = _unique(tree, ast.FunctionDef, '_successor_positive')
+            cls = _unique(function, ast.ClassDef, 'Positive')
+            method = _unique(cls, ast.FunctionDef, 'runTest')
+            starts = [index for index,node in enumerate(method.body) if isinstance(node,ast.Expr)
+                      and isinstance(node.value,ast.Call) and isinstance(node.value.func,ast.Attribute)
+                      and node.value.func.attr=='assertEqual' and node.value.args
+                      and ast.dump(node.value.args[0])==ast.dump(ast.parse('completed.returncode',mode='eval').body)]
+            self.assertEqual(len(starts),1)
+            namespace = dict(globals(), self=self, completed=completed, attributes_sha=attributes_sha)
+            exec(compile(ast.Module(body=method.body[starts[0]:],type_ignores=[]),str(path),'exec'),namespace)
+            guard()
+
+    def _actual_successor_outer_assertion(self, current):
+        from agent_tools.source_module_loader import _bootstrap_source
+        path = Path(__file__).resolve()
+        with _bootstrap_source(path) as (raw, guard):
+            tree = ast.parse(raw, filename=str(path))
+            cls = _unique(tree, ast.ClassDef, 'SuccessorConstructorPrerequisiteTests')
+            method = _unique(cls, ast.FunctionDef, 'test_actual_original_coordinator_import_red_pure_constructor_green')
+            calls = [node for node in ast.walk(method) if isinstance(node,ast.Call)
+                     and isinstance(node.func,ast.Attribute) and node.func.attr=='assertEqual'
+                     and node.args and isinstance(node.args[0],ast.Tuple)
+                     and ast.dump(node.args[0].elts[0])==ast.dump(ast.parse('current.testsRun',mode='eval').body)]
+            self.assertEqual(len(calls),1)
+            node=ast.copy_location(ast.Expr(value=calls[0]),calls[0])
+            exec(compile(ast.Module(body=[node],type_ignores=[]),str(path),'exec'),dict(globals(),self=self,current=current))
+            guard()
+
+    def test_actual_successor_stdout_observer_accepts_its_complete_source_witness(self):
+        raw, attributes_sha = self._constructor_protocol()
+        completed = subprocess.CompletedProcess(['public-constructor-protocol'],0,raw,b'')
+        self._actual_successor_assertions(completed,attributes_sha)
+
+    def test_successor_observer_refuses_partial_foreign_duplicate_and_wrong_type_records(self):
+        raw, attributes_sha = self._constructor_protocol()
+        witness, terminal = raw.splitlines()
+        self.assertEqual(_successor_observation(raw,attributes_sha)['sourceSha256'],_SUCCESSOR_SOURCE_SHA256)
+        value=json.loads(witness[len(b'CP117_STAGE_SOURCE_WITNESS '):])
+        bad=[]
+        for changed in (dict(value,unknown=True),dict(value,constructorAction=True),dict(value,attributesSha256='0'*64)):
+            bad.append(b'CP117_STAGE_SOURCE_WITNESS '+json.dumps(changed).encode()+b'\n'+terminal+b'\n')
+        changed=json.loads(json.dumps(value));changed['sources']['stage']['bytes']=True
+        bad.append(b'CP117_STAGE_SOURCE_WITNESS '+json.dumps(changed).encode()+b'\n'+terminal+b'\n')
+        changed=json.loads(json.dumps(value));changed['sources']['acl']['observedSha256']='0'*64
+        bad.append(b'CP117_STAGE_SOURCE_WITNESS '+json.dumps(changed).encode()+b'\n'+terminal+b'\n')
+        duplicate=witness[:-1]+b',"constructorAction":false}'
+        bad.extend((terminal+b'\n',witness+b'\n',terminal+b'\n'+witness+b'\n',raw+raw,duplicate+b'\n'+terminal+b'\n'))
+        for number,body in enumerate(bad):
+            with self.subTest(refusal=number),self.assertRaises(ValueError):_successor_observation(body,attributes_sha)
+
+    def test_actual_successor_outer_assertion_retains_complete_owned_child_diagnostics(self):
+        import io
+        from contextlib import redirect_stdout
+        from agent_tools.source_module_loader import _bootstrap_source
+        public=b"import sys\nsys.stdout.buffer.write(b'O'*6000+b'PUBLIC_SUCCESSOR_STDOUT_RETAINED\\n')\nsys.stderr.buffer.write(b'E'*6000+b'PUBLIC_SUCCESSOR_STDERR_RETAINED\\n')\nraise SystemExit(7)\n"
+        with tempfile.TemporaryDirectory(prefix='successor-owned-diagnostic-') as folder:
+            programme=Path(folder).resolve()/'public-failure.py';programme.write_bytes(public)
+            with _bootstrap_source(programme) as (raw,guard):
+                self.assertEqual(public,raw)
+                completed=subprocess.run([sys.executable,'-I','-B',str(programme)],capture_output=True,timeout=20)
+                guard()
+        self.assertEqual(completed.returncode,7)
+        retained=io.StringIO()
+        with redirect_stdout(retained):_public_native_child_capture('current',completed,'owned-failure-control')
+        text=retained.getvalue();sys.stdout.write(text);sys.stdout.flush()
+        saved=_retained_public_native_child_capture(text,'current','owned-failure-control')
+        self.assertEqual((saved['stdout'],saved['stderr']),(completed.stdout,completed.stderr))
+        owner=self
+        class Inner(unittest.TestCase):
+            def runTest(self):self.assertEqual(completed.returncode,0,repr((completed.stdout,completed.stderr)))
+        inner=unittest.TestResult();Inner().run(inner)
+        class Outer(unittest.TestCase):
+            def runTest(self):owner._actual_successor_outer_assertion(inner)
+        outer=unittest.TestResult();Outer().run(outer)
+        self.assertEqual((outer.testsRun,len(outer.failures),len(outer.errors)),(1,1,0))
+        for marker in ('PUBLIC_SUCCESSOR_STDOUT_RETAINED','PUBLIC_SUCCESSOR_STDERR_RETAINED'):
+            self.assertIn(marker,outer.failures[0][1],'successor-complete-owned-child-diagnostics')
+        lines=text.splitlines()
+        for changed in ('\n'.join(lines[1:]),'\n'.join(lines[:-1]),text+text,'\n'.join(reversed(lines))):
+            with self.assertRaises(ValueError):_retained_public_native_child_capture(changed,'current','owned-failure-control')
+
     def test_actual_guarded_pure_constructor_keeps_archived_creation_and_acl_bytes(self):
         value = _successor_constructor('current', {})
         self.assertEqual(value['sourceSha256'], _SUCCESSOR_SOURCE_SHA256)
@@ -572,7 +787,7 @@ class SuccessorConstructorPrerequisiteTests(unittest.TestCase):
         self.assertNotIn(b'SUCCESSOR_TEMPLATE_PASS ', old_capture[0]['stdout'])
         current, current_capture = _run('successor-template', 'current')
         self.assertEqual((current.testsRun, current.failures, current.errors, current.skipped),
-                         (1, [], [], []))
+                         (1, [], [], []), '\n'.join(text for _,text in current.errors or current.failures))
         self.assertEqual(len(current_capture), 1)
         self.assertTrue(all(row['complete'] and row['stdoutEof'] and row['stderrEof']
                             for row in old_capture + current_capture))

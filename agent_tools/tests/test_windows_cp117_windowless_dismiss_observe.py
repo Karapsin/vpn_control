@@ -11,14 +11,22 @@ from agent_tools.tests.fixtures.windows_replacement_fixture_sections import iner
 
 
 def setUpModule():
-    from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import inert_repository_source_reads
+    from contextlib import ExitStack
+    from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import historical_base, inert_repository_source_reads
     global _historical_source_reads
-    _historical_source_reads = inert_repository_source_reads()
-    _historical_source_reads.__enter__()
+    _historical_source_reads = ExitStack()
+    try:
+        archived = _historical_source_reads.enter_context(historical_base())
+        closure = m.login.guest.recovery.authority.closure
+        _historical_source_reads.enter_context(patch.object(closure, 'base', archived))
+        _historical_source_reads.enter_context(inert_repository_source_reads())
+    except BaseException:
+        _historical_source_reads.close()
+        raise
 
 
 def tearDownModule():
-    _historical_source_reads.__exit__(None, None, None)
+    _historical_source_reads.close()
 
 @remote_posix_recipe_tests(m.login.guest.recovery)
 class DismissTests(HistoricalGzipTestCase):

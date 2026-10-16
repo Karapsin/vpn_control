@@ -53,7 +53,13 @@ if(-not [IO.Directory]::Exists($utilityRoot)){throw 'PUBLIC_NATIVE_UTILITY_ROOT_
 $utility=@(Get-Module -Name Microsoft.PowerShell.Utility -All -ErrorAction Stop)
 if($utility.Count -gt 8){throw 'PUBLIC_NATIVE_UTILITY_MODULE_COUNT'}
 foreach($module in $utility){if($module.Name -cne 'Microsoft.PowerShell.Utility' -or [IO.Path]::GetFullPath($module.ModuleBase).TrimEnd('\') -ine $utilityRoot){throw 'PUBLIC_NATIVE_UTILITY_MODULE_IDENTITY'};Remove-Module -ModuleInfo $module -Force -ErrorAction Stop}
-if(@(Get-Module -Name Microsoft.PowerShell.Utility -All -ErrorAction Stop).Count -or @(Get-Command -Name Get-FileHash -ListImported -ErrorAction SilentlyContinue).Count){throw 'PUBLIC_NATIVE_UTILITY_NOT_COLD'}
+# PUBLIC_COLD_OBSERVATION_BEGIN
+$coldBefore=@(Get-Module -Name Microsoft.PowerShell.Utility -All -ErrorAction Stop)
+$coldHash=@();foreach($candidate in @(Get-Command -Name 'Get-FileHash*' -ListImported -ErrorAction SilentlyContinue)){if($candidate.Name -ieq 'Get-FileHash'){$coldHash+=,$candidate}}
+$coldAfter=@(Get-Module -Name Microsoft.PowerShell.Utility -All -ErrorAction Stop)
+[Console]::Out.WriteLine(('PUBLIC_NATIVE_COLD_OBSERVATION:'+([string]$coldBefore.Count)+':'+([string]$coldAfter.Count)+':'+([string]$coldHash.Count)))
+if($coldBefore.Count -or $coldAfter.Count -or $coldHash.Count){throw 'PUBLIC_NATIVE_UTILITY_NOT_COLD'}
+# PUBLIC_COLD_OBSERVATION_END
 [Console]::Out.WriteLine(('PUBLIC_NATIVE_UTILITY_COLD:'+([string]$utility.Count)))
 $missing=@();foreach($name in @('Get-Acl','Get-FileHash')){
     try{$commands=@(Get-Command -Name $name -CommandType Cmdlet,Function -ErrorAction Stop)}catch{$missing+=,$name;continue}
@@ -76,6 +82,9 @@ $actualHash=(Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop
 if($actualHash -cne $expectedHash){throw 'PUBLIC_NATIVE_HASH_MISMATCH'}
 [Console]::Out.WriteLine('PUBLIC_NATIVE_MODULE_ACL_HASH_PASS')
 '''
+
+NATIVE_COLD_F_BEFORE = "if(@(Get-Module -Name Microsoft.PowerShell.Utility -All -ErrorAction Stop).Count -or @(Get-Command -Name Get-FileHash -ListImported -ErrorAction SilentlyContinue).Count){throw 'PUBLIC_NATIVE_UTILITY_NOT_COLD'}\n"
+NATIVE_COLD_F_BEFORE_SHA256 = '13ca824a7a3b5ba08f5940e6758803e89c49131081fc836ea5d1ccd3660c5b12'
 
 
 def _emit_native_public_json(value):
@@ -205,6 +214,15 @@ def native_command_observations(stdout):
     if type(stdout) is not bytes or len(stdout) > 4096:
         raise ValueError('native-command-observation-bound')
     lines = stdout.decode('ascii', errors='strict').splitlines()
+    cold = None
+    if lines and lines[0].startswith('PUBLIC_NATIVE_COLD_OBSERVATION:'):
+        fields = lines.pop(0).split(':')
+        if (len(fields) != 4 or any(value not in tuple(str(index) for index in range(9))
+                                    for value in fields[1:])):
+            raise ValueError('native-command-cold-observation')
+        cold = tuple(int(value) for value in fields[1:])
+        if cold != (0, 0, 0):
+            raise ValueError('native-command-not-cold')
     if not lines or not lines[0].startswith('PUBLIC_NATIVE_UTILITY_COLD:'):
         raise ValueError('native-command-utility-observation')
     loaded = lines.pop(0).removeprefix('PUBLIC_NATIVE_UTILITY_COLD:')
@@ -223,7 +241,8 @@ def native_command_observations(stdout):
     modeled_native_precheck_missing(NATIVE_MODULE_SCRIPT, facts)
     if [item['name'] for item in facts] not in ([], ['Get-Acl'], ['Get-FileHash'], ['Get-Acl', 'Get-FileHash']):
         raise ValueError('native-command-observation-order')
-    return {'utilityModulesUnloaded': int(loaded), 'commands': facts, 'oraclePassed': passed}
+    return {'utilityModulesUnloaded': int(loaded), 'commands': facts, 'oraclePassed': passed,
+            'coldObservation': cold}
 
 
 class NativeCommandDiscoveryModelPositive(unittest.TestCase):
@@ -647,11 +666,13 @@ class NativeWindowsPowerShellEnvironmentTests(unittest.TestCase):
                           ([b'PUBLIC_NATIVE_MISSING:Get-FileHash'],
                            [b'PUBLIC_NATIVE_MISSING:Get-Acl,Get-FileHash']), records)
             old_facts = native_command_observations(old['stdout'])
+            self.assertEqual(old_facts['coldObservation'], (0, 0, 0), records)
             self.assertIs(old_facts['oraclePassed'], False, records)
             self.assertNotIn('Get-FileHash', [item['name'] for item in old_facts['commands']], records)
             self.assertEqual(current['exit'], 0, records)
             self.assertEqual(current['stderr'], b'', records)
             current_facts = native_command_observations(current['stdout'])
+            self.assertEqual(current_facts['coldObservation'], (0, 0, 0), records)
             self.assertIs(current_facts['oraclePassed'], True, records)
             self.assertEqual([item['name'] for item in current_facts['commands']],
                              ['Get-Acl', 'Get-FileHash'], records)
@@ -930,6 +951,155 @@ class NativePublicCaptureControlTests(unittest.TestCase):
             with redirect_stdout(captured), self.assertRaisesRegex(ValueError, '^native-public-'):
                 emit_native_causal_marker(wrong)
             self.assertEqual(captured.getvalue(), '')
+
+
+
+
+def native_cold_observation_fragment(script):
+    """Select actual contiguous guard bytes, without interpreting PowerShell."""
+    begin = '# PUBLIC_COLD_OBSERVATION_BEGIN\n'
+    end = '# PUBLIC_COLD_OBSERVATION_END\n'
+    if (type(script) is not str or script.count(begin) != 1
+            or script.count(end) != 1):
+        raise ValueError('native-cold-source-selector')
+    first = script.index(begin)
+    last = script.index(end, first) + len(end)
+    return script[first:last]
+
+
+def controlled_cold_catalog_program(fragment, *, initially_imported=False):
+    """Real-engine component fixture with an explicitly controlled catalog.
+
+    Its exact-name lookup deliberately imports a modeled command. This proves
+    the guard's sensitivity to discovery side effects; it does not establish
+    the original Windows host's branch, module availability, ACL, or hash.
+    """
+    if (type(initially_imported) is not bool or type(fragment) is not str
+            or fragment not in (NATIVE_COLD_F_BEFORE,
+                                native_cold_observation_fragment(NATIVE_MODULE_SCRIPT))):
+        raise ValueError('native-cold-catalog-selector')
+    if hashlib.sha256(NATIVE_COLD_F_BEFORE.encode()).hexdigest() != NATIVE_COLD_F_BEFORE_SHA256:
+        raise ValueError('native-cold-f-before-changed')
+    prelude = r"""$ErrorActionPreference='Stop'
+$script:catalogImported=__IMPORTED__
+function Get-Module {param([string]$Name,[switch]$All,[string]$ErrorAction)
+ if($Name -cne 'Microsoft.PowerShell.Utility' -or -not $All){throw 'PUBLIC_CATALOG_MODULE_QUERY'}
+ if($script:catalogImported){[pscustomobject]@{Name='Microsoft.PowerShell.Utility'}}
+}
+function Get-Command {param([string]$Name,[switch]$ListImported,[string]$ErrorAction)
+ if(-not $ListImported){throw 'PUBLIC_CATALOG_COMMAND_QUERY'}
+ if($Name -ceq 'Get-FileHash'){$script:catalogImported=$true;[pscustomobject]@{Name='Get-FileHash'};return}
+ if($Name -cne 'Get-FileHash*'){throw 'PUBLIC_CATALOG_COMMAND_QUERY'}
+ if($script:catalogImported){[pscustomobject]@{Name='Get-FileHash'}}
+}
+try {
+""".replace('__IMPORTED__', '$true' if initially_imported else '$false')
+    return (prelude + fragment + r"""
+ if($script:catalogImported){throw 'PUBLIC_CONTROLLED_CATALOG_NOT_COLD'}
+ [Console]::Out.WriteLine('PUBLIC_CONTROLLED_CATALOG_PASS')
+ exit 0
+}catch{[Console]::Error.WriteLine($_.Exception.Message);exit 11}
+""")
+
+
+class NativeColdObservationProtocolPositive(unittest.TestCase):
+    """Synthetic wire control only; no native execution receipt is emitted."""
+    decoder = staticmethod(native_command_observations)
+
+    def test_diagnostic_counts_precede_native_command_facts(self):
+        self.facts = self.decoder(
+            b'PUBLIC_NATIVE_COLD_OBSERVATION:0:0:0\n'
+            b'PUBLIC_NATIVE_UTILITY_COLD:1\n')
+        self.assertEqual(self.facts['coldObservation'], (0, 0, 0))
+        self.assertEqual(self.facts['utilityModulesUnloaded'], 1)
+        self.assertEqual(self.facts['commands'], ())
+        self.assertIs(self.facts['oraclePassed'], False)
+
+
+class PowerShellColdCatalogPositive(unittest.TestCase):
+    """Execute actual guard bytes against a declared private catalog model."""
+    fragment = None
+    initially_imported = False
+
+    def setUp(self):
+        self.executable = shutil.which('powershell.exe' if os.name == 'nt' else 'pwsh')
+        if os.name == 'nt':
+            self.assertIsNotNone(self.executable, 'Windows PowerShell is required')
+        elif self.executable is None:
+            self.skipTest('PowerShell engine is unavailable for the controlled catalog component')
+
+    def test_source_selected_discovery_keeps_controlled_catalog_cold(self):
+        fragment = (native_cold_observation_fragment(NATIVE_MODULE_SCRIPT)
+                    if self.fragment is None else self.fragment)
+        program = controlled_cold_catalog_program(fragment, initially_imported=self.initially_imported)
+        with tempfile.TemporaryDirectory(prefix='controlled-cold-catalog-') as temporary:
+            path = Path(temporary).resolve() / 'catalog.ps1'
+            raw = b'\xef\xbb\xbf' + program.encode('utf-8', errors='strict')
+            with path.open('xb') as stream:
+                stream.write(raw)
+            environment = windows_powershell_environment(self.executable, dict(os.environ))
+            self.completed = subprocess.run(
+                [self.executable, '-NoLogo', '-NoProfile', '-NonInteractive', '-File', str(path)],
+                capture_output=True, check=False, timeout=30, env=environment)
+            self.assertEqual(path.read_bytes(), raw)
+        self.assertEqual(self.completed.returncode, 0,
+                         (self.completed.stdout, self.completed.stderr))
+        self.assertEqual(self.completed.stderr, b'')
+        self.assertEqual(self.completed.stdout.splitlines(),
+                         [b'PUBLIC_NATIVE_COLD_OBSERVATION:0:0:0',
+                          b'PUBLIC_CONTROLLED_CATALOG_PASS'])
+
+
+class NativeColdObservationTests(unittest.TestCase):
+    def test_count_protocol_refuses_warm_malformed_and_duplicate_records(self):
+        suffix = b'PUBLIC_NATIVE_UTILITY_COLD:0\n'
+        for prefix in (b'PUBLIC_NATIVE_COLD_OBSERVATION:1:0:0\n',
+                       b'PUBLIC_NATIVE_COLD_OBSERVATION:0:1:0\n',
+                       b'PUBLIC_NATIVE_COLD_OBSERVATION:0:0:1\n',
+                       b'PUBLIC_NATIVE_COLD_OBSERVATION:0:0\n',
+                       b'PUBLIC_NATIVE_COLD_OBSERVATION:0:0:9\n',
+                       b'PUBLIC_NATIVE_COLD_OBSERVATION:False:0:0\n',
+                       b'PUBLIC_NATIVE_COLD_OBSERVATION:0:0:0\n' * 2):
+            with self.subTest(prefix=prefix), self.assertRaises(ValueError):
+                native_command_observations(prefix + suffix)
+        self.assertIsNone(native_command_observations(suffix)['coldObservation'])
+
+    def test_catalog_source_selection_refuses_unknown_programs(self):
+        for wrong in ('', NATIVE_MODULE_SCRIPT, NATIVE_COLD_F_BEFORE + '# changed\n'):
+            with self.subTest(source=wrong), self.assertRaisesRegex(ValueError, '^native-cold-catalog-selector$'):
+                controlled_cold_catalog_program(wrong)
+        for wrong in ('', NATIVE_MODULE_SCRIPT.replace('# PUBLIC_COLD_OBSERVATION_BEGIN', '# missing')):
+            with self.subTest(source=wrong), self.assertRaisesRegex(ValueError, '^native-cold-source-selector$'):
+                native_cold_observation_fragment(wrong)
+
+    def test_actual_f_guard_red_current_guard_green_on_controlled_catalog(self):
+        cases = []
+        for fragment in (NATIVE_COLD_F_BEFORE, native_cold_observation_fragment(NATIVE_MODULE_SCRIPT)):
+            case = PowerShellColdCatalogPositive('test_source_selected_discovery_keeps_controlled_catalog_cold')
+            case.fragment = fragment
+            result = unittest.TestResult()
+            case.run(result)
+            if result.skipped:
+                self.skipTest(result.skipped[0][1])
+            cases.append((case, result))
+        (old_case, old), (current_case, current) = cases
+        self.assertEqual((old.testsRun, len(old.failures), len(old.errors)), (1, 1, 0), old.errors)
+        self.assertEqual(old_case.completed.returncode, 11)
+        self.assertIn(b'PUBLIC_NATIVE_UTILITY_NOT_COLD', old_case.completed.stderr)
+        self.assertEqual((current.testsRun, len(current.failures), len(current.errors)), (1, 0, 0),
+                         (current.failures, current.errors))
+
+    def test_warm_controlled_catalog_still_refuses(self):
+        case = PowerShellColdCatalogPositive('test_source_selected_discovery_keeps_controlled_catalog_cold')
+        case.initially_imported = True
+        result = unittest.TestResult()
+        case.run(result)
+        if result.skipped:
+            self.skipTest(result.skipped[0][1])
+        self.assertEqual((result.testsRun, len(result.failures), len(result.errors)), (1, 1, 0), result.errors)
+        self.assertEqual(case.completed.returncode, 11)
+        self.assertIn(b'PUBLIC_NATIVE_COLD_OBSERVATION:1:1:1', case.completed.stdout)
+        self.assertIn(b'PUBLIC_NATIVE_UTILITY_NOT_COLD', case.completed.stderr)
 
 
 if __name__ == '__main__':
