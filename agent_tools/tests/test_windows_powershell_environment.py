@@ -524,6 +524,41 @@ class WindowsPowerShellEnvironmentTests(unittest.TestCase):
         self.assertIs(current_case.observation['environmentExplicit'], True)
 
 
+J_NATIVE_OWNED_SETUP_BEFORE = b"owned = Path(directory)\nempty_modules = owned / 'empty-modules'\nempty_modules.mkdir(mode=0o700)\ndata = owned / 'PUBLIC.bytes'\nwith data.open('xb') as stream:\n    stream.write(public)\n"
+J_NATIVE_OWNED_SETUP_PROVENANCE = {'sourceCommit': '95f18a92bdd4dc450aca0cbf26fb01e894e03e3a', 'sourcePath': 'agent_tools/tests/test_windows_powershell_environment.py', 'wholeSourceSha256': 'c1e6acb0e937ed97c5ab8192c6d3e906cb7e41cdf73c16ee8b14e125b5e01ba6', 'wholeSourceBytes': 168227, 'firstLine': 575, 'lastLine': 580, 'spanStartByte': 67206, 'spanEndByte': 67485, 'indentedSpanSha256': '86259c5b1c0b9defdf9bf23ac5dd9ed9226a9e8baf760a572a7cc91c19afc4dd', 'indentedSpanBytes': 279, 'transformation': 'textwrap.dedent only; complete original owned/data setup statement block, no reconstructed old logic', 'fragmentSha256': '2ecf957e77b872f5fea52d9c610645efd7e2a687b6368939a5fb1db11d26f11a', 'fragmentBytes': 183}
+
+
+def native_provider_canonical_owned_data(owned, data, expected):
+    """Normalize an admitted owned file name; aliases never bypass custody."""
+    from agent_tools import source_module_loader
+    owned, data = Path(owned), Path(data)
+    if data.parent != owned or not owned.is_absolute():
+        raise ValueError('native-provider-owned-data-parent')
+    fields = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
+              'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    generation = lambda path: tuple(getattr(path.stat(follow_symlinks=False), key) for key in fields)
+    # The original spelling is opened first. This must reject a reparse/symlink
+    # before resolve() can erase that evidence; its ancestors remain held here.
+    with source_module_loader._bootstrap_source(data) as (original, original_closing):
+        if original != expected or hashlib.sha256(original).digest() != hashlib.sha256(expected).digest():
+            raise ValueError('native-provider-owned-data-bytes')
+        original_file = generation(data)
+        original_parent = generation(owned)
+        canonical_data = data.resolve(strict=True)
+        canonical_owned = canonical_data.parent
+        with source_module_loader._bootstrap_source(canonical_data) as (observed, canonical_closing):
+            if (not data.samefile(canonical_data) or not owned.samefile(canonical_owned)
+                    or generation(canonical_data) != original_file
+                    or generation(canonical_owned) != original_parent):
+                raise ValueError('native-provider-owned-data-identity')
+            if observed != original or hashlib.sha256(observed).digest() != hashlib.sha256(expected).digest():
+                raise ValueError('native-provider-owned-data-bytes')
+            original_closing()
+            canonical_closing()
+        original_closing()
+    return canonical_owned, canonical_data
+
+
 @unittest.skipUnless(os.name == 'nt', 'Actual Windows PowerShell module/ACL/hash control')
 class NativeWindowsPowerShellEnvironmentTests(unittest.TestCase):
     def test_owned_missing_module_path_old_refuses_current_acl_and_hash_complete(self):
@@ -578,6 +613,7 @@ class NativeWindowsPowerShellEnvironmentTests(unittest.TestCase):
                 data = owned / 'PUBLIC.bytes'
                 with data.open('xb') as stream:
                     stream.write(public)
+                owned, data = native_provider_canonical_owned_data(owned, data, public)
                 preserve('PUBLIC.bytes', public)
                 inherited = {key: value for key, value in parent_before.items() if key.casefold() != 'psmodulepath'}
                 inherited['PSModulePath'] = str(empty_modules)
@@ -2033,6 +2069,144 @@ class NativeProviderTransportControlTests(unittest.TestCase):
         partial = _native_provider_transport_control_values(); del partial[1]['files']['script.raw']
         with self.assertRaisesRegex(ValueError, '^native-provider-file-set$'):
             native_provider_custody_admission(partial[1], 'sanitized', b'', b'', '', '', b'', '', '')
+
+
+
+
+class NativeProviderOwnedPathAdmissionTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt' or (os.name == 'posix' and hasattr(os, 'O_NOFOLLOW')),
+                         'Owned alias admission needs Windows custody or POSIX nofollow')
+    def test_authentic_j_assignment_red_then_current_same_file_green(self):
+        from agent_tools import source_module_loader
+        public = b'PUBLIC native module byte oracle\r\n'
+        self.assertEqual((len(J_NATIVE_OWNED_SETUP_BEFORE), hashlib.sha256(J_NATIVE_OWNED_SETUP_BEFORE).hexdigest()),
+                         (183, '2ecf957e77b872f5fea52d9c610645efd7e2a687b6368939a5fb1db11d26f11a'))
+        self.assertEqual(J_NATIVE_OWNED_SETUP_PROVENANCE['wholeSourceSha256'],
+                         'c1e6acb0e937ed97c5ab8192c6d3e906cb7e41cdf73c16ee8b14e125b5e01ba6')
+        parent = Path(tempfile.gettempdir()).resolve(strict=True)
+        with tempfile.TemporaryDirectory(prefix='native-j-assignment-causal-', dir=parent) as name:
+            real = Path(name)
+            fixture = real / 'fixture'; fixture.mkdir()
+            if os.name == 'nt':
+                import ctypes
+                # Ask Win32 for a real existing alias; never invent RUNNER~1.
+                short_path = ctypes.WinDLL('kernel32', use_last_error=True).GetShortPathNameW
+                short_path.argtypes = (ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32)
+                short_path.restype = ctypes.c_uint32
+                needed = short_path(str(fixture), None, 0)
+                if not needed:
+                    self.skipTest('Actual GetShortPathNameW capability unavailable: ' + str(ctypes.get_last_error()))
+                self.assertLessEqual(needed, 32768)
+                buffer = ctypes.create_unicode_buffer(needed)
+                observed = short_path(str(fixture), buffer, needed)
+                if not observed:
+                    self.skipTest('Actual GetShortPathNameW capability unavailable: ' + str(ctypes.get_last_error()))
+                self.assertLess(observed, needed)
+                alias = Path(buffer.value)
+                if str(alias).casefold() == str(alias.resolve(strict=True)).casefold():
+                    self.skipTest('Actual owned fixture has no distinct non-casing Win32 short-name alias')
+            else:
+                # SYNTHETIC_NON_WINDOWS: real repeated-root spelling, not 8.3.
+                alias = Path('//' + str(fixture).lstrip('/'))
+            self.assertTrue(alias.is_absolute())
+            self.assertTrue(alias.samefile(fixture))
+            # This original spelling must enter the unchanged bootstrap first.
+            program = real / 'authentic-j-owned-data-setup.py'
+            component = b'from pathlib import Path\n' + J_NATIVE_OWNED_SETUP_BEFORE
+            with program.open('xb') as stream:
+                stream.write(component)
+            with source_module_loader._bootstrap_source(program) as (held, closing):
+                self.assertEqual(held, component)
+                namespace = {'__file__': str(program), '__name__': '__authentic_j_owned_data_setup__',
+                             'directory': str(alias), 'public': public}
+                exec(compile(held, str(program), 'exec'), namespace)
+                closing()
+            owned, data = namespace['owned'], namespace['data']
+            with source_module_loader._bootstrap_source(data) as (admitted, closing):
+                self.assertEqual(admitted, public)
+                closing()
+            first = data.stat(follow_symlinks=False)
+
+            class SamePositive(unittest.TestCase):
+                def __init__(self, current):
+                    super().__init__('runTest')
+                    self.current = current
+                    self.observation = None
+                def runTest(self):
+                    selected_owned, selected_data = owned, data
+                    if self.current:
+                        selected_owned, selected_data = native_provider_canonical_owned_data(owned, data, public)
+                    with source_module_loader._bootstrap_source(selected_data) as (raw, closing):
+                        self.assertEqual(raw, public)
+                        self.assertTrue(data.samefile(selected_data))
+                        state = selected_data.stat(follow_symlinks=False)
+                        self.observation = (state.st_dev, state.st_ino, hashlib.sha256(raw).hexdigest())
+                        closing()
+                    # Caller ingress invariant; the separate real-PS control executes
+                    # authentic wrapper141. This is not native Windows acceptance.
+                    self.assertEqual(str(selected_data), str(selected_data.resolve(strict=True)),
+                                     'AUTHENTIC_J_OWNED_PATH_MUST_BE_CANONICAL_BEFORE_NATIVE_WRAPPER')
+                    self.assertEqual(str(selected_owned), str(selected_owned.resolve(strict=True)))
+
+            cases = []
+            for current in (False, True):
+                case = SamePositive(current); result = unittest.TestResult(); case.run(result)
+                cases.append((case, result))
+            (old_case, old), (fixed_case, fixed) = cases
+            self.assertEqual((old.testsRun, len(old.failures), len(old.errors), len(old.skipped)), (1, 1, 0, 0))
+            self.assertIn('AUTHENTIC_J_OWNED_PATH_MUST_BE_CANONICAL_BEFORE_NATIVE_WRAPPER', old.failures[0][1])
+            self.assertEqual((fixed.testsRun, len(fixed.failures), len(fixed.errors), len(fixed.skipped)), (1, 0, 0, 0))
+            self.assertEqual(old_case.observation, fixed_case.observation)
+            self.assertEqual(old_case.observation[:2], (first.st_dev, first.st_ino))
+            self.assertEqual(data.read_bytes(), public)
+            self.assertEqual(program.read_bytes(), component)
+
+    def test_existing_owned_path_and_non_windows_alias_keep_exact_identity_and_bytes(self):
+        public = b'PUBLIC native module byte oracle\r\n'
+        parent = Path(tempfile.gettempdir()).resolve(strict=True)
+        with tempfile.TemporaryDirectory(prefix='native-owned-path-admission-', dir=parent) as name:
+            actual = Path(name)
+            data = actual / 'PUBLIC.bytes'
+            data.write_bytes(public)
+            spelling = actual if os.name == 'nt' else Path('//' + str(actual).lstrip('/'))
+            original = spelling / 'PUBLIC.bytes'
+            canonical, observed = native_provider_canonical_owned_data(spelling, original, public)
+            self.assertEqual(canonical, actual.resolve(strict=True))
+            self.assertEqual(observed, data.resolve(strict=True))
+            self.assertTrue(original.samefile(observed))
+            self.assertTrue(spelling.samefile(canonical))
+            self.assertEqual(observed.read_bytes(), public)
+            if os.name != 'nt':
+                self.assertNotEqual(str(original), str(observed), 'SYNTHETIC_NON_WINDOWS_ALIAS_COMPONENT')
+
+    @unittest.skipUnless(os.name == 'posix' and hasattr(os, 'O_NOFOLLOW'), 'Original-name nofollow control')
+    def test_original_symlink_is_refused_before_resolve_is_called(self):
+        from unittest import mock
+        public = b'PUBLIC native module byte oracle\r\n'
+        parent = Path(tempfile.gettempdir()).resolve(strict=True)
+        with tempfile.TemporaryDirectory(prefix='native-owned-path-nofollow-', dir=parent) as name:
+            owned = Path(name)
+            target = owned / 'actual.bytes'; target.write_bytes(public)
+            alias = owned / 'PUBLIC.bytes'; alias.symlink_to(target)
+            with mock.patch.object(Path, 'resolve', side_effect=AssertionError('resolve-before-original-custody')) as resolver:
+                with self.assertRaises((OSError, ValueError)):
+                    native_provider_canonical_owned_data(owned, alias, public)
+                resolver.assert_not_called()
+
+    def test_resolved_foreign_same_bytes_file_is_refused(self):
+        from unittest import mock
+        public = b'PUBLIC native module byte oracle\r\n'
+        parent = Path(tempfile.gettempdir()).resolve(strict=True)
+        with tempfile.TemporaryDirectory(prefix='native-owned-path-identity-', dir=parent) as name:
+            owned = Path(name)
+            data = owned / 'PUBLIC.bytes'; data.write_bytes(public)
+            other = owned / 'other'; other.mkdir()
+            foreign = other / 'PUBLIC.bytes'; foreign.write_bytes(public)
+            with mock.patch.object(Path, 'resolve', return_value=foreign):
+                with self.assertRaisesRegex(ValueError, '^native-provider-owned-data-identity$'):
+                    native_provider_canonical_owned_data(owned, data, public)
+            self.assertEqual(data.read_bytes(), public)
+            self.assertEqual(foreign.read_bytes(), public)
 
 
 if __name__ == '__main__':

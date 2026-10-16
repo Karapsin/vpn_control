@@ -2308,7 +2308,8 @@
       ],
       "sourceSha256": [
         "b4990b38ffa8b60772dcc9c4fbd4abce484d93a76fe41d1bd81c022f060b3ded",
-        "bb9f2913530b703072e94bac9e2667b758cc62bdbf3e5838622c78ba6ef4cf41"
+        "bb9f2913530b703072e94bac9e2667b758cc62bdbf3e5838622c78ba6ef4cf41",
+        "1f2e7c54ec077cfa44dd14dc4d4f093e511ecc952d81795c00da362dcea71696"
       ]
     },
     "agent_tools/tests/test_mcp_core_capture_windows.py": {
@@ -3343,7 +3344,8 @@
         "ec9d3306e1cd3811991a33588b38a17a8fb11bf57dc57c63a9fcc9f6a4625d6a",
         "19ca9f2452119d2a2ff8b282415f4b7b5163ab451582ca55afee9cffcc74345a",
         "5789b38b80c90e00f889563df07b9e24b3af169f73ca95225469ccc2293b94f9",
-        "c1e6acb0e937ed97c5ab8192c6d3e906cb7e41cdf73c16ee8b14e125b5e01ba6"
+        "c1e6acb0e937ed97c5ab8192c6d3e906cb7e41cdf73c16ee8b14e125b5e01ba6",
+        "ac3f01fccc9a9394a728b299abae6f6bc7096b22db46f276a8a9f137fb01c023"
       ]
     },
     "agent_tools/tests/test_windows_powershell_fixture_execution.py": {

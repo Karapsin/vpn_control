@@ -186,6 +186,9 @@ jobs:
           python3 scripts/test_jpackage_launcher.py --jdk "$JAVA_HOME"
           python3 -m unittest -v agent_tools.tests.test_temurin_artifact_continuity.CleanupOwnershipTests
 
+      - name: Verify Linux cleanup enrollment guards
+        run: python3 -m unittest -v agent_tools.tests.test_linux_native_cleanup_enrollment
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 

@@ -177,5 +177,22 @@ class LinuxNativeCleanupEnrollmentTests(unittest.TestCase):
             enrolled_cleanup_ids(raw, changed)
 
 
+    def test_actual_ordinary_linux_job_runs_all_enrollment_guards(self):
+        raw = _workflow_text(_read(WORKFLOW))
+        temurin = _read(TEMURIN)
+        for variant in (raw.encode('utf-8'), raw.replace('\n', '\r\n').encode('utf-8')):
+            enrolled_cleanup_ids(variant, temurin)
+            rows = _steps(_job(_workflow_text(variant), 'package-linux-desktop'))
+            guards = [(i, block) for i, (name, block) in enumerate(rows)
+                      if name == 'Verify Linux cleanup enrollment guards']
+            self.assertEqual(len(guards), 1, 'ordinary Linux cleanup enrollment step must be unique')
+            index, block = guards[0]
+            self.assertEqual(block.rstrip(),
+                             '      - name: Verify Linux cleanup enrollment guards\n'
+                             '        run: python3 -m unittest -v agent_tools.tests.test_linux_native_cleanup_enrollment')
+            names = [name for name, _ in rows]
+            self.assertLess(names.index('Verify native JDK launcher before packaging'), index)
+            self.assertLess(index, names.index('Build Linux packages'))
+
 if __name__ == '__main__':
     unittest.main(defaultTest='LinuxNativeCleanupEnrollmentTests.test_actual_workflow_enrolls_all_four_native_cleanup_cases' if BEFORE_RED else None)
