@@ -30,6 +30,11 @@ on:
       - "agent_tools/tests/test_windows_fixture_checkout_bytes.py"
       - "agent_tools/tests/test_windows_python_fixture_io.py"
       - "agent_tools/tests/test_windows_powershell_fixture_execution.py"
+      - "agent_tools/tests/test_windows_powershell_environment.py"
+      - "agent_tools/tests/test_windows_manifest_parser.py"
+      - "agent_tools/tests/fixtures/windows_powershell_environment.py"
+      - "agent_tools/tests/fixtures/windows_powershell_environment/**"
+      - "agent_tools/tests/fixtures/windows_manifest_parser/**"
       - "agent_tools/tests/test_cp117_fixture_context_portability.py"
       - "agent_tools/tests/fixtures/windows_fixture_checkout_bytes/**"
       - "agent_tools/tests/fixtures/windows_python_io/**"
@@ -244,6 +249,7 @@ jobs:
           agent_tools.tests.test_windows_python_fixture_io
           agent_tools.tests.test_windows_powershell_fixture_execution
           agent_tools.tests.test_windows_powershell_environment
+          agent_tools.tests.test_windows_manifest_parser
           agent_tools.tests.test_windows_cp117_fixture_transport_prerequisites
           agent_tools.tests.test_windows_cp117_catalogue_path_context
           agent_tools.tests.test_windows_native_fixture_callers

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "beforeProgram": {
+    "path": "native-v3.before.ps1",
+    "bytes": 23685,
+    "sha256": "0c3375490ff3dec0243adc61a42dd9834fb2e8a8a511bd1ca1f4d511fd9a5315",
+    "role": "Entire authentic privatev3 NATIVE_MODULE_SCRIPT. Only two actual reader definitions execute in this test; provider and main body never execute."
+  },
+  "literalManifest": {
+    "path": "Utility.literal.before.psd1",
+    "bytes": 17125,
+    "sha256": "50285639e097ccada4af8c5699c660d055b19bbe12b99db0910124411fb07ab6",
+    "role": "Authenticated genuine PowerShell7.5.4 Utility manifest parsed only as inert literal data; not claimed Windows installed bytes."
+  },
+  "actualFailure": {
+    "v3FailureArchiveSha256": "255f87f306e8af49dd8ba7829aa17fb93e3a82f962f8bc2b8582f01429ca5156",
+    "typedNullFactsSha256": "650e9603fc819064996fbe908daee211a1d03da987ed9bff60a9d0d954264c20",
+    "firstUnsafeOperand": "EndBlock.Traps.Count",
+    "trapsActuallyNull": true,
+    "priorActualParserCausalClosingSha256": "7c865299c480d6866981781bc946b6ab75efdf27290080f08fb82b93f701cf1d"
+  },
+  "currentHelpers": [
+    "ConvertFrom-PublicNativeProviderBytes",
+    "Read-PublicNativeManifestStrings",
+    "Read-PublicNativeUtilityManifest"
+  ],
+  "beforeHelpers": [
+    "Read-PublicNativeManifestStrings",
+    "Read-PublicNativeUtilityManifest"
+  ],
+  "functionOriginComponent": {
+    "actualHCommit": "e14f6b04726885df28c0d49313f43dbf22752b01",
+    "actualDiagnosticSha256": "6a80648d34db9ea32bb9fad400e2f661f7e090438e918be8c38a998c84677596",
+    "authenticatedFieldsSha256": "2761b6216ac16cb2159dce7fe86f10b1a960b7682134bc42d9dacd063acf97ed",
+    "beforeSource": "../windows_powershell_environment/native_module_g.before.ps1",
+    "projection": "Select authentic old unique ModuleBase guard AST; replace only its native normalization left expression by already-normalized H selectedBase. Retain original comparison/name/right operand/throw. No Windows GetFullPath is run on POSIX.",
+    "currentHelper": "Assert-PublicNativeUtilityFunctionOrigins",
+    "limit": "H normalized metadata only. Actual typed nested/export/body relationships and physical Windows ACL/hash remain native-only assertions."
+  },
+  "encodingControls": "Actual current decoder/read helper: authenticUTF8, UTF8BOM and explicitUTF16LEBOM preserve every parsed field; malformedUTF8, oddUTF16LE, unpairedsurrogate, BE, UTF32LE and NUL refuse. Function-schema literal is controlled data, not claimed actualHbytes.",
+  "primaryEncodingBasis": "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_character_encoding?view=powershell-5.1",
+  "routineCapability": "Windows requires real powershell.exe; POSIX uses real pwsh or an honest capability skip. No fake AST/provider objects, module import warming or native acceptance substitution."
+}

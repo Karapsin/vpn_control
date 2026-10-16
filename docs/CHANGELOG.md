@@ -3,6 +3,11 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Make MCP PowerShell checks reproducible across native module layouts.
+- Make MCP SSH readiness fixtures reproducible and keep dependency selection complete.
+
 ## 2.2.13 - 2026-10-16
 
 - Retain observed process births in MCP QEMU preparation fixtures.

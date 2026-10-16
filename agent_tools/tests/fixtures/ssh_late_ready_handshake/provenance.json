@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/tests/test_ssh_gateway_tmux_ready_reconciliation.py",
+  "sourceBytes": 9921,
+  "sourceSha256": "7adb04b07af9bfc18d72a685f48da8bd0c2a5104cd4ef35217a39cab0377ba77",
+  "originalAuditSourceFingerprint": "01ac055964d9df67649d425c3fe52aea57b2ec02913c842359df348cb5cac4c2",
+  "originalFailureTestId": "agent_tools.tests.test_ssh_gateway_tmux_reconciliation_status.ReconciliationStatusTests.test_canonical_symlink_never_reads_foreign_authority",
+  "originalFailurePacketSha256": "0a191f7ae23b8667a0bca94d221826518129c39e066b9fb95d87524036c14b9c",
+  "originalTraceSha256": "b8e238f4bae72439956f121b144f821b785a2d0fc13fcc6381cd85526867c1bf",
+  "originalBeforeArchiveSha256": "322d27d3cb814980660a67145a31a8d0b48eeb892f5451b23aafe5a21caa7faa",
+  "confirmedFailure": "inherited setUp socket assertion at original line46; symlink body not reached",
+  "originalChildStartupOrExitCause": "UNKNOWN",
+  "controlledRegression": "real pre-entry delay then unchanged6.1second late readiness; no original transient cause claim"
+}

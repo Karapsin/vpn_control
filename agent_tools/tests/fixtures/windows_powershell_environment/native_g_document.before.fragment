@@ -1,0 +1,11 @@
+def preserve(name, value):
+    fd = os.open(evidence / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'wb') as stream:
+        stream.write(value)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+def document(name, value):
+    preserve(name, (json.dumps(value, sort_keys=True, indent=2) + '\n').encode('utf-8'))
+    if name == 'causal-proof.private.json':
+        emit_native_causal_marker(value)

@@ -1,0 +1,146 @@
+"""Real-engine literal parser controls; no provider or Windows oracle executes.
+
+PROSPECTIVE: enroll only if the source helpers enter NATIVE_MODULE_SCRIPT.
+The retained manifest is parsed solely as inert data on every host.
+"""
+from contextlib import ExitStack
+import hashlib
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import unittest
+
+from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
+from agent_tools.tests.test_windows_powershell_environment import NATIVE_MODULE_SCRIPT
+
+
+FIXTURES = Path(__file__).parent / 'fixtures/windows_manifest_parser'
+BEFORE_SHA256 = '0c3375490ff3dec0243adc61a42dd9834fb2e8a8a511bd1ca1f4d511fd9a5315'
+MANIFEST_SHA256 = '50285639e097ccada4af8c5699c660d055b19bbe12b99db0910124411fb07ab6'
+PARSER_CONTROL = '$ErrorActionPreference=\'Stop\'\nSet-StrictMode -Version Latest\n$sourcePath=$args[0];$manifestPath=$args[1];$variant=$args[2]\n$source=[Text.UTF8Encoding]::new($false,$true).GetString([IO.File]::ReadAllBytes($sourcePath))\n$sourceTokens=$null;$sourceErrors=$null\n$sourceTree=[Management.Automation.Language.Parser]::ParseInput($source,[ref]$sourceTokens,[ref]$sourceErrors)\nif($null -ne $sourceErrors -and $sourceErrors.Length){throw \'PARSER_SOURCE_SYNTAX\'}\nif($variant -ceq \'before\'){\n $names=@(\'Read-PublicNativeManifestStrings\',\'Read-PublicNativeUtilityManifest\')\n}elseif($variant -ceq \'current\'){\n $names=@(\'ConvertFrom-PublicNativeProviderBytes\',\'Read-PublicNativeManifestStrings\',\'Read-PublicNativeUtilityManifest\')\n}else{throw \'PARSER_SOURCE_VARIANT\'}\n$definitions=[Collections.Generic.Dictionary[string,Management.Automation.Language.FunctionDefinitionAst]]::new([StringComparer]::Ordinal)\nforeach($statement in $sourceTree.EndBlock.Statements){\n if($statement -is [Management.Automation.Language.FunctionDefinitionAst] -and $names -ccontains $statement.Name){\n  if($definitions.ContainsKey($statement.Name)){throw \'PARSER_SOURCE_DUPLICATE\'}\n  $definitions.Add($statement.Name,$statement)\n }\n}\nif($definitions.Count -ne $names.Length){throw \'PARSER_SOURCE_MISSING\'}\nforeach($name in $names){. ([scriptblock]::Create($definitions[$name].Extent.Text))}\n$raw=[IO.File]::ReadAllBytes($manifestPath)\n[Console]::Out.WriteLine(\'PARSER_SAME_AUTHENTIC_17125_POSITIVE_BEGIN\')\n$fields=Read-PublicNativeUtilityManifest $raw\nif($fields[\'GUID\'][0] -ine \'1DA87E53-152B-403E-98DC-74D7B4D63D59\' -or $fields[\'ModuleVersion\'][0] -cne \'7.0.0.0\' -or $null -eq $fields[\'FunctionsToExport\'] -or $fields[\'FunctionsToExport\'].Length -ne 0){throw \'PARSER_SAME_AUTHENTIC_POSITIVE_RESULT\'}\n[Console]::Out.WriteLine(\'PARSER_SAME_AUTHENTIC_POSITIVE_PASS\')\nif($variant -ceq \'current\'){\n $tokens=$null;$errors=$null;$text=[Text.UTF8Encoding]::new($false,$true).GetString($raw)\n $tree=[Management.Automation.Language.Parser]::ParseInput($text,[ref]$tokens,[ref]$errors)\n if($errors.Count){throw \'PARSER_ACTUAL_MANIFEST_PARSE\'}\n $empty=@($tree.FindAll({param($node) $node -is [Management.Automation.Language.ArrayExpressionAst] -and $node.Extent.Text -ceq \'@()\'},$true))\n if($empty.Count -ne 1 -or $null -eq $empty[0].SubExpression.Statements -or $empty[0].SubExpression.Statements.Count -ne 0){throw \'PARSER_GENUINE_EMPTY_ARRAY_IDENTITY\'}\n $values=[Collections.Generic.List[string]]::new();Read-PublicNativeManifestStrings $empty[0] $values 0\n if($values.Count -ne 0){throw \'PARSER_GENUINE_EMPTY_ARRAY_VALUES\'}\n [Console]::Out.WriteLine(\'PARSER_GENUINE_EMPTY_ARRAY_ACCEPTED\')\n $trapText="@(trap { \'PUBLIC_INERT_TRAP_BODY_NEVER_EXECUTED\' }; \'PUBLIC literal\')"\n $tokens=$null;$errors=$null;$trapTree=[Management.Automation.Language.Parser]::ParseInput($trapText,[ref]$tokens,[ref]$errors)\n if($errors.Count){throw \'PARSER_INERT_TRAP_AST_PARSE\'}\n $array=$trapTree.EndBlock.Statements[0].PipelineElements[0].Expression\n if($array -isnot [Management.Automation.Language.ArrayExpressionAst] -or $null -eq $array.SubExpression.Traps -or $array.SubExpression.Traps.Count -ne 1){throw \'PARSER_INERT_NONEMPTY_TRAP_AST_IDENTITY\'}\n foreach($kind in @(\'statement\',\'array\')){\n  $node=if($kind -ceq \'statement\'){$array.SubExpression}else{$array}\n  $values=[Collections.Generic.List[string]]::new();$refused=$false\n  try{Read-PublicNativeManifestStrings $node $values 0}catch{if($_.Exception.Message -cne \'PUBLIC_NATIVE_MANIFEST_LITERAL\'){throw};$refused=$true}\n  if(-not $refused){throw \'PARSER_INERT_NONEMPTY_TRAP_ADMITTED\'}\n  [Console]::Out.WriteLine((\'PARSER_NONEMPTY_TRAP_REFUSED:\'+$kind))\n }\n $rootTrap="trap { \'PUBLIC_ROOT_TRAP_BODY_NEVER_EXECUTED\' }; @{}"\n $refused=$false\n try{$null=Read-PublicNativeUtilityManifest ([Text.Encoding]::UTF8.GetBytes($rootTrap))}catch{if($_.Exception.Message -cne \'PUBLIC_NATIVE_MANIFEST_SHAPE\'){throw};$refused=$true}\n if(-not $refused){throw \'PARSER_ROOT_TRAP_ADMITTED\'}\n [Console]::Out.WriteLine(\'PARSER_NONEMPTY_TRAP_REFUSED:root\')\n function Assert-PublicParserSameFields($expected,$actual){\n  if($null -eq $expected -or $null -eq $actual -or $expected.Count -ne $actual.Count){throw \'PARSER_DECODER_FIELDS_CHANGED\'}\n  $keys=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)\n  foreach($key in $expected.Keys){$null=$keys.Add($key)}\n  foreach($key in $actual.Keys){\n   if(-not $keys.Contains($key) -or $null -eq $actual[$key] -or $expected[$key].Length -ne $actual[$key].Length){throw \'PARSER_DECODER_FIELDS_CHANGED\'}\n   for($index=0;$index -lt $expected[$key].Length;$index++){if($expected[$key][$index] -cne $actual[$key][$index]){throw \'PARSER_DECODER_FIELDS_CHANGED\'}}\n  }\n }\n # Every variant enters the actual selected Read helper; decoder bytes are not\n # interpreted by a Python model or by a replacement PowerShell decoder.\n $authenticText=ConvertFrom-PublicNativeProviderBytes $raw\n $utf8=[Text.UTF8Encoding]::new($false,$true)\n $utf16=[Text.UnicodeEncoding]::new($false,$true,$true)\n $positive=[ordered]@{\n  \'authentic-utf8\'=$raw\n  \'utf8-bom\'=[byte[]](@(239,187,191)+$utf8.GetBytes($authenticText))\n  \'utf16le-bom\'=[byte[]]($utf16.GetPreamble()+$utf16.GetBytes($authenticText))\n }\n foreach($entry in $positive.GetEnumerator()){\n  $decodedFields=Read-PublicNativeUtilityManifest ([byte[]]$entry.Value)\n  Assert-PublicParserSameFields $fields $decodedFields\n  [Console]::Out.WriteLine((\'PARSER_DECODER_SAME_RESULT:\'+$entry.Key))\n }\n # This inert literal models the official Function-schema shape, not observed H manifest bytes.\n $functionText="@{GUID=\'1DA87E53-152B-403E-98DC-74D7B4D63D59\';ModuleVersion=\'3.1.0.0\';NestedModules=@(\'Microsoft.PowerShell.Commands.Utility.dll\',\'Microsoft.PowerShell.Utility.psm1\');CmdletsToExport=@();FunctionsToExport=@(\'Get-FileHash\')}"\n $functionFields=Read-PublicNativeUtilityManifest ($utf8.GetBytes($functionText))\n if($functionFields[\'NestedModules\'].Length -ne 2 -or $functionFields[\'FunctionsToExport\'].Length -ne 1 -or $functionFields[\'FunctionsToExport\'][0] -cne \'Get-FileHash\'){throw \'PARSER_FUNCTION_SCHEMA_RESULT\'}\n Assert-PublicParserSameFields $functionFields (Read-PublicNativeUtilityManifest ([byte[]]($utf16.GetPreamble()+$utf16.GetBytes($functionText))))\n [Console]::Out.WriteLine(\'PARSER_FUNCTION_SCHEMA_READ_ACCEPTED\')\n foreach($wrong in @($functionText.Replace(\'Microsoft.PowerShell.Utility.psm1\',\'PUBLIC.foreign.psm1\'),$functionText.Replace(\'Microsoft.PowerShell.Utility.psm1\',\'Microsoft.PowerShell.Commands.Utility.dll\'),$functionText.Replace("FunctionsToExport=@(\'Get-FileHash\')","FunctionsToExport=@(\'Get-*\')"))){\n  $refused=$false;try{$null=Read-PublicNativeUtilityManifest ($utf8.GetBytes($wrong))}catch{if($_.Exception.Message -cnotin @(\'PUBLIC_NATIVE_MANIFEST_NESTED\',\'PUBLIC_NATIVE_MANIFEST_EXPORT\')){throw};$refused=$true}\n  if(-not $refused){throw \'PARSER_FOREIGN_FUNCTION_SCHEMA_ADMITTED\'}\n }\n [Console]::Out.WriteLine(\'PARSER_FUNCTION_SCHEMA_STRICT_REFUSALS\')\n $negative=[ordered]@{\n  \'malformed-utf8\'=[byte[]]@(195,40)\n  \'odd-utf16le\'=[byte[]]@(255,254,65)\n  \'unpaired-surrogate\'=[byte[]]@(255,254,0,216)\n  \'utf16be\'=[byte[]]@(254,255,0,65)\n  \'utf32le\'=[byte[]]@(255,254,0,0,65,0,0,0)\n  \'nul\'=[byte[]]@(65,0,66)\n }\n foreach($entry in $negative.GetEnumerator()){\n  $refused=$false\n  try{$null=ConvertFrom-PublicNativeProviderBytes ([byte[]]$entry.Value)}catch{\n   if($entry.Key -ceq \'malformed-utf8\' -or $entry.Key -ceq \'unpaired-surrogate\'){\n    $exception=$_.Exception;$fallback=$false;$depth=0\n    while($null -ne $exception -and $depth -lt 8){\n     if($exception -is [Text.DecoderFallbackException]){$fallback=$true;break}\n     $exception=$exception.InnerException;$depth++\n    }\n    if(-not $fallback){throw}\n   }elseif($_.Exception.Message -cne \'PUBLIC_NATIVE_PROVIDER_TEXT_ENCODING\'){throw}\n   $refused=$true\n  }\n  if(-not $refused){throw \'PARSER_DECODER_INVALID_BYTES_ADMITTED\'}\n  [Console]::Out.WriteLine((\'PARSER_DECODER_STRICT_REFUSAL:\'+$entry.Key))\n }\n}\n[Console]::Out.WriteLine(\'PARSER_CAUSAL_CASE_COMPLETE\')\n'
+PASS_LINES = [b'PARSER_SAME_AUTHENTIC_17125_POSITIVE_BEGIN', b'PARSER_SAME_AUTHENTIC_POSITIVE_PASS', b'PARSER_GENUINE_EMPTY_ARRAY_ACCEPTED', b'PARSER_NONEMPTY_TRAP_REFUSED:statement', b'PARSER_NONEMPTY_TRAP_REFUSED:array', b'PARSER_NONEMPTY_TRAP_REFUSED:root', b'PARSER_DECODER_SAME_RESULT:authentic-utf8', b'PARSER_DECODER_SAME_RESULT:utf8-bom', b'PARSER_DECODER_SAME_RESULT:utf16le-bom', b'PARSER_FUNCTION_SCHEMA_READ_ACCEPTED', b'PARSER_FUNCTION_SCHEMA_STRICT_REFUSALS', b'PARSER_DECODER_STRICT_REFUSAL:malformed-utf8', b'PARSER_DECODER_STRICT_REFUSAL:odd-utf16le', b'PARSER_DECODER_STRICT_REFUSAL:unpaired-surrogate', b'PARSER_DECODER_STRICT_REFUSAL:utf16be', b'PARSER_DECODER_STRICT_REFUSAL:utf32le', b'PARSER_DECODER_STRICT_REFUSAL:nul', b'PARSER_CAUSAL_CASE_COMPLETE']
+
+
+def _actual_manifest_parser_case(case, *, before=False):
+    executable = shutil.which('powershell.exe' if os.name == 'nt' else 'pwsh')
+    if os.name == 'nt':
+        case.assertIsNotNone(executable, 'Windows requires the real PowerShell parser control')
+    elif executable is None:
+        case.skipTest('PowerShell engine is unavailable for the literal parser control')
+    from agent_tools import source_module_loader
+    parent = dict(os.environ)
+    before_path = (FIXTURES / 'native-v3.before.ps1').resolve()
+    manifest_path = (FIXTURES / 'Utility.literal.before.psd1').resolve()
+    with ExitStack() as held:
+        old, old_closing = held.enter_context(source_module_loader._bootstrap_source(before_path))
+        manifest, manifest_closing = held.enter_context(source_module_loader._bootstrap_source(manifest_path))
+        case.assertEqual((len(old), hashlib.sha256(old).hexdigest()), (23685, BEFORE_SHA256))
+        case.assertEqual((len(manifest), hashlib.sha256(manifest).hexdigest()), (17125, MANIFEST_SHA256))
+        source = old if before else NATIVE_MODULE_SCRIPT.encode('utf-8', errors='strict')
+        with tempfile.TemporaryDirectory(prefix='literal-manifest-parser-') as temporary:
+            directory = Path(temporary).resolve()
+            paths = {name: directory / name for name in ('source.ps1', 'manifest.psd1', 'control.ps1')}
+            inputs = {'source.ps1': source, 'manifest.psd1': manifest,
+                      'control.ps1': PARSER_CONTROL.encode('utf-8', errors='strict')}
+            for name, raw in inputs.items():
+                fd = os.open(paths[name], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, 'wb') as stream:
+                    stream.write(raw)
+            argv = [executable, '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+                    str(paths['control.ps1']), str(paths['source.ps1']),
+                    str(paths['manifest.psd1']), 'before' if before else 'current']
+            case.assertLessEqual(sum(len(part.encode('utf-8', errors='strict')) + 1 for part in argv), 60000)
+            completed = subprocess.run(argv, capture_output=True, check=False, timeout=30,
+                                       env=windows_powershell_environment(executable, parent))
+            for name, raw in inputs.items():
+                case.assertEqual(paths[name].read_bytes(), raw)
+            case.assertLessEqual(len(completed.stdout) + len(completed.stderr), 1048576)
+            old_closing()
+            manifest_closing()
+    case.assertEqual(dict(os.environ), parent)
+    return completed
+
+
+class PowerShellManifestParserTests(unittest.TestCase):
+    def test_actual_source_parser_keeps_empty_arrays_and_refuses_nonempty_traps(self):
+        completed = _actual_manifest_parser_case(self)
+        self.assertEqual(completed.returncode, 0, (completed.stdout, completed.stderr))
+        self.assertEqual(completed.stderr, b'')
+        self.assertEqual(completed.stdout.splitlines(), PASS_LINES)
+
+    def test_actual_unfixed_nullable_traps_red_current_same_positive_green(self):
+        old = _actual_manifest_parser_case(self, before=True)
+        current = _actual_manifest_parser_case(self)
+        self.assertEqual(old.returncode, 1, (old.stdout, old.stderr))
+        self.assertEqual(old.stdout.splitlines(), [PASS_LINES[0]])
+        self.assertIn(b'Count', old.stderr)
+        self.assertEqual(current.returncode, 0, (current.stdout, current.stderr))
+        self.assertEqual(current.stderr, b'')
+        self.assertEqual(current.stdout.splitlines(), PASS_LINES)
+
+
+# Retained-H post-normalization component; typed graph and physical oracle stay native-only.
+H_G_FIXTURE = Path(__file__).parent / 'fixtures/windows_powershell_environment/native_module_g.before.ps1'
+H_G_SHA256 = '44adab1cf63866aad566cd49624ef7e23f3e08be20a044341008b10222bd1635'
+H_AUTHORITY_SHA256 = '2761b6216ac16cb2159dce7fe86f10b1a960b7682134bc42d9dacd063acf97ed'
+H_ORIGIN_CONTROL = '$ErrorActionPreference=\'Stop\'\nSet-StrictMode -Version Latest\n$currentPath=$args[0];$oldPath=$args[1];$mode=$args[2]\n$current=[Text.UTF8Encoding]::new($false,$true).GetString([IO.File]::ReadAllBytes($currentPath))\n$old=[Text.UTF8Encoding]::new($false,$true).GetString([IO.File]::ReadAllBytes($oldPath))\n$tokens=$null;$errors=$null;$tree=[Management.Automation.Language.Parser]::ParseInput($current,[ref]$tokens,[ref]$errors)\nif($null -ne $errors -and $errors.Length){throw \'H_ORIGIN_CURRENT_SOURCE_PARSE\'}\n$definitions=@()\nforeach($statement in $tree.EndBlock.Statements){if($statement -is [Management.Automation.Language.FunctionDefinitionAst] -and $statement.Name -ceq \'Assert-PublicNativeUtilityFunctionOrigins\'){$definitions+=,$statement}}\nif($definitions.Count -ne 1){throw \'H_ORIGIN_CURRENT_SOURCE_IDENTITY\'}\n. ([scriptblock]::Create($definitions[0].Extent.Text))\n$tokens=$null;$errors=$null;$oldTree=[Management.Automation.Language.Parser]::ParseInput($old,[ref]$tokens,[ref]$errors)\nif($null -ne $errors -and $errors.Length){throw \'H_ORIGIN_OLD_SOURCE_PARSE\'}\n$guards=@($oldTree.FindAll({param($node) $node -is [Management.Automation.Language.StringConstantExpressionAst] -and $node.Value -ceq \'PUBLIC_NATIVE_HASH_MODULE_RUNTIME\'},$true))\nif($guards.Count -ne 1){throw \'H_ORIGIN_OLD_GUARD_IDENTITY\'}\n$oldIf=$guards[0].Parent\nwhile($null -ne $oldIf -and $oldIf -isnot [Management.Automation.Language.IfStatementAst]){$oldIf=$oldIf.Parent}\nif($null -eq $oldIf){throw \'H_ORIGIN_OLD_GUARD_PARENT\'}\n$decisions=@($oldIf.FindAll({param($node) $node -is [Management.Automation.Language.BinaryExpressionAst] -and $node.Operator -eq [Management.Automation.Language.TokenKind]::Ine},$true))\nif($decisions.Count -ne 1){throw \'H_ORIGIN_OLD_DECISION_IDENTITY\'}\n# Only the native normalization expression is projected to the already\n# authenticated normalized string. The original -ine decision remains source.\n$normalization=$decisions[0].Left\n$offset=$normalization.Extent.StartOffset-$oldIf.Extent.StartOffset\n$width=$normalization.Extent.EndOffset-$normalization.Extent.StartOffset\n$projected=$oldIf.Extent.Text.Substring(0,$offset)+\'$selectedBase\'+$oldIf.Extent.Text.Substring($offset+$width)\n$retainedDecision=[scriptblock]::Create("param([string]`$selectedBase,[string]`$utilityRoot)`n`$name=\'Get-FileHash\'`n"+$projected)\n$cases=@(\n    @{manifestPath=\'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1\';selectedPath=\'C:\\windows\\system32\\windowspowershell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1\';selectedBase=\'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\';scriptPath=\'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psm1\';scriptFile=\'C:\\windows\\system32\\windowspowershell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psm1\';definingPath=\'C:\\windows\\system32\\windowspowershell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psm1\';definingBase=\'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\';utilityRoot=\'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\'},\n    @{manifestPath=\'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1\';selectedPath=\'C:\\Windows\\system32\\WindowsPowerShell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1\';selectedBase=\'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\';scriptPath=\'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psm1\';scriptFile=\'C:\\Windows\\system32\\WindowsPowerShell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psm1\';definingPath=\'C:\\Windows\\system32\\WindowsPowerShell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psm1\';definingBase=\'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\';utilityRoot=\'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules\\Microsoft.PowerShell.Utility\'}\n)\n$accepted=0\nfor($index=0;$index -lt $cases.Count;$index++){\n    $row=$cases[$index];$refusal=\'\'\n    try{\n        if($mode -ceq \'before\'){& $retainedDecision $row.selectedBase $row.utilityRoot}\n        elseif($mode -ceq \'current\'){\n            Assert-PublicNativeUtilityFunctionOrigins $row.manifestPath $row.selectedPath $row.selectedBase $row.scriptPath $row.scriptFile $row.definingPath $row.definingBase ([StringComparison]::OrdinalIgnoreCase)\n        }else{throw \'H_ORIGIN_MODE\'}\n    }catch{\n        $expected=if($mode -ceq \'before\'){\'PUBLIC_NATIVE_HASH_MODULE_RUNTIME\'}else{\'PUBLIC_NATIVE_HASH_FUNCTION_ORIGIN\'}\n        if($_.Exception.Message -cne $expected){throw};$refusal=$_.Exception.Message\n    }\n    if($refusal){[Console]::Out.WriteLine((\'H_ORIGIN_CASE:\'+([string]$index)+\':REFUSED:\'+$refusal))}\n    else{$accepted++;[Console]::Out.WriteLine((\'H_ORIGIN_CASE:\'+([string]$index)+\':ACCEPTED\'))}\n}\ntry{\n    if($accepted -ne $cases.Count){throw \'H_ORIGIN_SAME_AUTHENTIC_NORMALIZED_STRINGS_MUST_ADMIT\'}\n}catch{\n    if($_.Exception.Message -cne \'H_ORIGIN_SAME_AUTHENTIC_NORMALIZED_STRINGS_MUST_ADMIT\'){throw}\n    [Console]::Error.WriteLine(\'H_ORIGIN_SAME_AUTHENTIC_NORMALIZED_STRINGS_MUST_ADMIT\')\n    exit 1\n}\n[Console]::Out.WriteLine(\'H_ORIGIN_SAME_AUTHENTIC_NORMALIZED_STRINGS_PASS\')\n# These finite negatives call the genuine current string-relation helper.\n# They assert no typed provider, filesystem normalization, source-body or oracle fact.\n$base=$cases[0];$keys=@(\'manifestPath\',\'selectedPath\',\'selectedBase\',\'scriptPath\',\'scriptFile\',\'definingPath\',\'definingBase\')\n$negative=0\nforeach($key in $keys){\n    $changed=@{};foreach($name in $base.Keys){$changed[$name]=$base[$name]};$changed[$key]=$base[$key]+\'\\PUBLIC_foreign\'\n    $refused=$false\n    try{Assert-PublicNativeUtilityFunctionOrigins $changed.manifestPath $changed.selectedPath $changed.selectedBase $changed.scriptPath $changed.scriptFile $changed.definingPath $changed.definingBase ([StringComparison]::OrdinalIgnoreCase)}catch{if($_.Exception.Message -cne \'PUBLIC_NATIVE_HASH_FUNCTION_ORIGIN\'){throw};$refused=$true}\n    if(-not $refused){throw \'H_ORIGIN_SINGLE_FIELD_TAMPER_ADMITTED\'}\n    [Console]::Out.WriteLine((\'H_ORIGIN_TAMPER_REFUSED:\'+([string]$negative)));$negative++\n}\nforeach($value in @(\'\',\' \',([string][char]0),(\'x\'*32769))){\n    $refused=$false\n    try{Assert-PublicNativeUtilityFunctionOrigins $base.manifestPath $base.selectedPath $value $base.scriptPath $base.scriptFile $base.definingPath $base.definingBase ([StringComparison]::OrdinalIgnoreCase)}catch{if($_.Exception.Message -cne \'PUBLIC_NATIVE_HASH_FUNCTION_ORIGIN\'){throw};$refused=$true}\n    if(-not $refused){throw \'H_ORIGIN_BASE_SCHEMA_TAMPER_ADMITTED\'}\n    [Console]::Out.WriteLine((\'H_ORIGIN_TAMPER_REFUSED:\'+([string]$negative)));$negative++\n}\n$refused=$false\ntry{Assert-PublicNativeUtilityFunctionOrigins $base.manifestPath $base.selectedPath $base.selectedBase $base.scriptPath $base.scriptFile $base.definingPath $base.definingBase ([StringComparison]::CurrentCulture)}catch{if($_.Exception.Message -cne \'PUBLIC_NATIVE_HASH_FUNCTION_ORIGIN\'){throw};$refused=$true}\nif(-not $refused){throw \'H_ORIGIN_COMPARISON_TAMPER_ADMITTED\'}\n[Console]::Out.WriteLine((\'H_ORIGIN_TAMPER_REFUSED:\'+([string]$negative)))\n[Console]::Out.WriteLine(\'H_ORIGIN_COMPONENT_COMPLETE_METADATA_ONLY\')\n'
+
+
+class PowerShellFunctionOriginComponentTests(unittest.TestCase):
+    def test_authentic_h_normalized_origin_decision_old_red_current_green(self):
+        executable = shutil.which('powershell.exe' if os.name == 'nt' else 'pwsh')
+        if os.name == 'nt':
+            self.assertIsNotNone(executable, 'Windows requires the real PowerShell origin component')
+        elif executable is None:
+            self.skipTest('PowerShell engine is unavailable for the origin component')
+        from agent_tools import source_module_loader
+        parent = dict(os.environ)
+        with ExitStack() as held:
+            old, old_closing = held.enter_context(source_module_loader._bootstrap_source(H_G_FIXTURE.resolve()))
+            self.assertEqual((len(old), hashlib.sha256(old).hexdigest()), (3981, H_G_SHA256))
+            current = NATIVE_MODULE_SCRIPT.encode('utf-8', errors='strict')
+            with tempfile.TemporaryDirectory(prefix='h-origin-metadata-component-') as temporary, ExitStack() as copied:
+                directory = Path(temporary).resolve()
+                inputs = {'current.ps1': current, 'old.ps1': old,
+                          'control.ps1': b'\xef\xbb\xbf' + H_ORIGIN_CONTROL.encode('utf-8', errors='strict')}
+                paths = {name: directory / name for name in inputs}
+                for name, raw in inputs.items():
+                    fd = os.open(paths[name], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, 'wb') as stream:
+                        stream.write(raw)
+                for name, raw in inputs.items():
+                    captured, closing = copied.enter_context(source_module_loader._bootstrap_source(paths[name]))
+                    self.assertEqual(captured, raw)
+                results = []
+                environment = windows_powershell_environment(executable, parent)
+                supplied = dict(environment)
+                for mode in ('before', 'current'):
+                    argv = [executable, '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+                            str(paths['control.ps1']), str(paths['current.ps1']), str(paths['old.ps1']), mode]
+                    self.assertLessEqual(sum(len(item.encode('utf-8', errors='strict')) + 1 for item in argv), 60000)
+                    results.append(subprocess.run(argv, capture_output=True, check=False, timeout=30, env=environment))
+                    old_closing()
+                    for name, raw in inputs.items():
+                        self.assertEqual(paths[name].read_bytes(), raw)
+                    self.assertEqual(environment, supplied)
+                    self.assertEqual(dict(os.environ), parent)
+                old_closing()
+                # Context exit closes every held copied source generation too.
+        old, current = results
+        self.assertEqual(old.returncode, 1, (old.stdout, old.stderr))
+        self.assertEqual(old.stdout.splitlines(), [
+            b'H_ORIGIN_CASE:0:REFUSED:PUBLIC_NATIVE_HASH_MODULE_RUNTIME',
+            b'H_ORIGIN_CASE:1:REFUSED:PUBLIC_NATIVE_HASH_MODULE_RUNTIME'])
+        common = b'H_ORIGIN_SAME_AUTHENTIC_NORMALIZED_STRINGS_MUST_ADMIT'
+        # Fixed component-only receipt comes only from the exact common
+        # admission assertion catch; unrelated errors retain engine rendering.
+        self.assertEqual(old.stderr.splitlines(), [common])
+        self.assertEqual(current.returncode, 0, (current.stdout, current.stderr))
+        self.assertEqual(current.stderr, b'')
+        expected = [b'H_ORIGIN_CASE:0:ACCEPTED', b'H_ORIGIN_CASE:1:ACCEPTED',
+                    b'H_ORIGIN_SAME_AUTHENTIC_NORMALIZED_STRINGS_PASS']
+        expected += [('H_ORIGIN_TAMPER_REFUSED:' + str(index)).encode('ascii') for index in range(12)]
+        expected += [b'H_ORIGIN_COMPONENT_COMPLETE_METADATA_ONLY']
+        self.assertEqual(current.stdout.splitlines(), expected)

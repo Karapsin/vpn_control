@@ -64,3 +64,12 @@ agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
 /agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.before.fragment -text
 /agent_tools/tests/fixtures/windows_shortcut_task_marker/provenance.json -text
 /agent_tools/tests/fixtures/linux_native_cleanup_enrollment/linux-desktop.before.yml -text
+
+# Native provider/parser causal fixtures authenticate exact Git payload bytes.
+/agent_tools/tests/fixtures/windows_powershell_environment/native_module_g.before.ps1 -text
+/agent_tools/tests/fixtures/windows_powershell_environment/native_g_document.before.fragment -text
+/agent_tools/tests/fixtures/windows_manifest_parser/native-v3.before.ps1 -text
+/agent_tools/tests/fixtures/windows_manifest_parser/Utility.literal.before.psd1 -text
+
+# The late-ready causal regression authenticates the complete original source.
+/agent_tools/tests/fixtures/ssh_late_ready_handshake/ready.before.source -text

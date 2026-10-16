@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "originalCommit": "dff1f4723f323909109d62f845ec1e3e10eec4f6",
+  "originalProducer": "agent_tools/tests/test_windows_powershell_environment.py",
+  "originalProducerBytes": 70324,
+  "originalProducerSha256": "ec9d3306e1cd3811991a33588b38a17a8fb11bf57dc57c63a9fcc9f6a4625d6a",
+  "nativeProgram": {
+    "path": "native_module_g.before.ps1",
+    "bytes": 3981,
+    "sha256": "44adab1cf63866aad566cd49624ef7e23f3e08be20a044341008b10222bd1635",
+    "extraction": "Entire literal NATIVE_MODULE_SCRIPT assignment at original producer line46, ast.literal_eval then strictUTF8 encoding; no program transformation. Runtime carrier adds only UTF8 BOM."
+  },
+  "documentComponent": {
+    "path": "native_g_document.before.fragment",
+    "bytes": 433,
+    "sha256": "1aea351d4fecee39c7fe330edc65f11bf8381d8f15fa606aa2bcfea84102d6e5",
+    "extraction": "Entire original native test nested preserve lines594-599 and document lines600-603, dedent only; AST bodies and order retained."
+  },
+  "roles": {
+    "nativeProgram": "Full authentic counterfactual, executed only by actual Windows native case on owned input.",
+    "documentComponent": "Actual source-derived local document IO decision; synthetic proof output captured locally, no native acceptance."
+  },
+  "wholeOriginalPythonRuntimeFixture": false
+}

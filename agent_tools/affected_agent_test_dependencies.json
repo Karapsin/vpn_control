@@ -2799,6 +2799,17 @@
         "b906fbe00ad070e6d27ae07e36b47f034058569bf5fe3a58329859d7f6e19ee8"
       ]
     },
+    "agent_tools/tests/test_ssh_gateway_tmux_ready_reconciliation.py": {
+      "reason": "The owned late-ready handshake regression holds and hashes the complete authentic before source and parsed provenance, then imports only that exact copied before module through its real filename. Its literal repository imports are identical to suppliers already imported by this current test and remain ordinary static transitive edges; temporary control/entry/diagnostic files are owned fixture data, not repository authority. This finite declaration admits only the preserved before module and its provenance and does not qualify native SSH, VM work, or a successful audit receipt. The ordinary selector analyzes both generations at this same path: current9cce with the held before loader, and authentic H baseline7adb whose imports are already the same static suppliers. The exact baseline digest is retained for that original-path analysis; the baseline before module itself introduces no opaque loader or new scope. Unknown current or baseline digests still refuse.",
+      "scopes": [
+        "agent_tools/tests/fixtures/ssh_late_ready_handshake/ready.before.source",
+        "agent_tools/tests/fixtures/ssh_late_ready_handshake/provenance.json"
+      ],
+      "sourceSha256": [
+        "9cce26e6a8fe224cd3fde7428c467838df96ef46b534471f2ade07a3cb207b67",
+        "7adb04b07af9bfc18d72a685f48da8bd0c2a5104cd4ef35217a39cab0377ba77"
+      ]
+    },
     "agent_tools/tests/test_ssh_jobs.py": {
       "scopes": [
         "agent_tools/ssh_transport.py",
@@ -3099,6 +3110,20 @@
         "6439a108e63179f1dcdd5a2d26dda9c19dbc2f60e744829e190aea9270c0f2f1"
       ]
     },
+    "agent_tools/tests/test_windows_manifest_parser.py": {
+      "reason": "Finite held actual native program and inert manifest inputs. The routine imports the genuine current PowerShell environment producer and fixture helper, authenticates exact retained whole native programs and manifest bytes, and selects only the named parser/decoder or origin helper definitions through the real PowerShell AST. The manifest is data only; the retained G decision component is explicitly separate from native provider, ACL, and hash acceptance. Owned temporary script/data files are invocation outputs, not repository authority.",
+      "scopes": [
+        "agent_tools/tests/test_windows_manifest_parser.py",
+        "agent_tools/tests/test_windows_powershell_environment.py",
+        "agent_tools/tests/fixtures/windows_powershell_environment.py",
+        "agent_tools/tests/fixtures/windows_manifest_parser/native-v3.before.ps1",
+        "agent_tools/tests/fixtures/windows_manifest_parser/Utility.literal.before.psd1",
+        "agent_tools/tests/fixtures/windows_powershell_environment/native_module_g.before.ps1"
+      ],
+      "sourceSha256": [
+        "dbc512f209f90acd8204e21c5d1fc4cdd179dad8aa1e5f40f00bc7899d1ea495"
+      ]
+    },
     "agent_tools/tests/test_windows_msi_listener_close_order.py": {
       "reason": "Linux-only actual saved original positive method and current method using the unchanged HTTP worker/status/free-port owner guards; real TCP FIN/TIME_WAIT and EADDRINUSE qualify the sole served/unknown RED, and current case must be strictly served without GET/start replay.",
       "scopes": [
@@ -3303,14 +3328,17 @@
         "agent_tools/tests/fixtures/windows_powershell_environment/native_module_script_c.provenance.json",
         "agent_tools/tests/test_windows_powershell_environment.py",
         "agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.before.fragment",
-        "agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.provenance.json"
+        "agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.provenance.json",
+        "agent_tools/tests/fixtures/windows_powershell_environment/native_module_g.before.ps1",
+        "agent_tools/tests/fixtures/windows_powershell_environment/native_g_document.before.fragment"
       ],
       "sourceSha256": [
         "00a217e4dd7163003a5fd9d0142d5f843642b71b20a800464d29bbf873d24cb7",
         "ca1ef7cd72242660a42e41aac5d9b5f5f08b8d08ee9673f12f5f1957964c47eb",
         "fb7e1ec4134fece1793f70a9687a336dedd739f40fd4a703751344e51e44dd88",
         "ec9d3306e1cd3811991a33588b38a17a8fb11bf57dc57c63a9fcc9f6a4625d6a",
-        "19ca9f2452119d2a2ff8b282415f4b7b5163ab451582ca55afee9cffcc74345a"
+        "19ca9f2452119d2a2ff8b282415f4b7b5163ab451582ca55afee9cffcc74345a",
+        "5789b38b80c90e00f889563df07b9e24b3af169f73ca95225469ccc2293b94f9"
       ]
     },
     "agent_tools/tests/test_windows_powershell_fixture_execution.py": {
@@ -3566,6 +3594,7 @@
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-loss.source": "24001dcaed1e666438e18497abde4594b6f3121b28c339a569b11955da0d3a21",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-restored.source": "dc4ea223703ea8b16faa07d1b6d231d45b30d078f09e4e1e4954241a3be9efa6",
     "agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.before.fragment": "e10c6535655a51c3244f93dfb29c819789bb69247a14e021d850703422080924",
+    "agent_tools/tests/fixtures/windows_powershell_environment/native_g_document.before.fragment": "1aea351d4fecee39c7fe330edc65f11bf8381d8f15fa606aa2bcfea84102d6e5",
     "scripts/testdata/macos-vm-resource-monitor-dispatch/stop-timeout.before.fragment": "995464bf10a441029a7e8124eaeb4832bbd8d92d875fc2f022adab8063c639b5"
   },
   "schemaVersion": 1
