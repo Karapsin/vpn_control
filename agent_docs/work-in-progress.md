@@ -749,3 +749,83 @@ Evidence is in `.runtime/mcp-ci-30901b9f-focused-v1/`,
 The final version note, fresh MCP surface check, intentional full audit, managed
 prepush and all five exact-new-SHA workflows still follow this checkpoint.
 Original failures stay failed and preserved; nothing closed is restored.
+
+The next delivery, `fd4a3c77e8935c4c5669e61a26bbfca41e171850`, passed
+Fast Checks and Android, Linux and macOS packaging. Windows failed two native
+batch assertions because an inert fixture executed a target-Linux definition
+prefix that imported unavailable `fcntl`. Its CP117 batch did not run. The full
+original logs, exact source archive and closing receipts remain in the matching
+`.runtime/mcp-ci-fd4a3c77*` evidence directories. All original collection actors
+and streams closed before the ten reviewed fixture/dependency paths changed.
+
+The fixture now copies the authenticated AST, removes only the proven unused
+target-only import and exact timer setup calls, and leaves emitted program bytes,
+source pins and complete operation assertions intact. Finite review also found
+the same assumption in direct and copied Dismiss fixtures. Independent missing
+capability models distinguish these predicted paths from the observed native
+failure; the signal-only model honestly requires POSIX, and genuine Windows
+counterfactual evidence remains a required CI case. A focused run then exposed
+escaped nested traceback text in the test harness. Its full original trace and
+unfixed source are retained; joining raw tracebacks fixes reporting while keeping
+the exact-cause check. The same aggregate reproduced three failures on the real
+unfixed source in both Python runtimes; its diagnostic subcase passed after the
+one-line fix, while two further source-context failures remained preserved.
+
+The direct and copied old modules then exposed a missing compression-fixture
+lifetime: they are isolated from the module cache, and their decorated methods
+do not expose the original producer through wrapper globals. Supplying those
+actual modules to the existing scoped historical gzip context preserves the
+original generated-source guard and global standard-library behavior. The exact
+unfixed aggregate and both-runtime fixed positives retain this causal evidence.
+
+Both-runtime focused fixture and finite dependency checks passed before this
+checkpoint. The four authentic beforeimage/provenance resources and only the
+reviewed dependency edges join the existing dirty bucket. Original failures stay
+failed; prior audit and prepush receipts do not cover this follow-up. Fresh full
+audit, managed prepush and all five exact-SHA workflows remain required. Closed
+VMs and connections stay closed; product acceptance, H14 and visual work remain
+deferred, and no release is authorized.
+
+The next frozen full audit retained 7,496 test outcomes, including 23 errors and
+204 platform skips. Managed prepush stopped at its fifth command with the same
+22 Windows errors; four preceding commands passed and twelve were not started.
+Its older global receipt was rejected. Both failed runs ended naturally, with
+all owned workers, sessions, streams, fixtures and source captures closed before
+further edits. Their full original traces and source archive remain in
+`.runtime/mcp-repair-execution-2026-10-15/full-audit-v10/` and
+`.runtime/mcp-fd4a3c77-repair-2026-10-16/prepush-final/`.
+
+The Windows errors were a missing helper name in copied function source. A real
+local import now travels with the common function. Full-inventory review found
+thirteen current copy sites in ten consumers and four retained copies. The new
+routine regression copies the actual function into the legacy namespace and
+runs its unchanged positive, stale-child and foreign-listener assertions. The
+preserved unfixed function produced three exact NameErrors on both interpreters;
+the same assertions passed after the fix.
+
+The separate cleanup error was a cached-versus-fresh ancestor generation
+mismatch. The original trace did not retain which ancestor or field changed.
+A controlled sibling mutation reproduced the exact predicate on the preserved
+method; the same positive passed using the existing test-owned root boundary.
+Actual root and descendant generation guards, producer pins, the 155-record
+tuple assertion and the old cleanup TypeError remain intact. Three routine
+controls cover the sibling mutation, owned-tree tampering and eight partial
+admission cleanup points. Cleanup begins before any descriptor admission.
+
+The strict focused process check also caught four descriptors left open by the
+provider credential test's two in-process generated operations. A separate
+import-only check opened none. Each actual operation owned a parent directory
+descriptor and a job directory descriptor. The test now closes those exact
+namespace-owned handles in nested cleanup, after checking their path identity,
+private directory mode, owner and noninheritance; it verifies EBADF immediately
+and checks the whole descriptor set on exit. The preserved test leaked four
+handles on both interpreters and the same original assertions passed without
+leaks after the fix. An initial private proof used the wrong copied repository
+layout and was refused for the wrong cause; that failed attempt remains failed.
+
+This follow-up changes three test files. Both-runtime focused checks and ordinary
+dependency selection qualify their actual canonical source before the next
+normal version note, full audit, managed prepush and exact-SHA CI attempt.
+The manifest needs no new opaque loader or digest update. Original failed
+receipts stay failed; closed environments stay closed. Product acceptance, H14,
+visual work and release remain deferred.

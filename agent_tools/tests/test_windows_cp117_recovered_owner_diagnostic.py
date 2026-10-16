@@ -1,6 +1,7 @@
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import HistoricalFactoryTestCase as HistoryCase, provider as historical_provider
 import ast,base64,copy,json,unittest,tempfile,os,sys
 from pathlib import Path
+from agent_tools.tests.fixtures.windows_replacement_fixture_sections import inert_remote_definitions
 from unittest.mock import patch
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import diagnostic as historical_diagnostic
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_tests
@@ -39,8 +40,8 @@ class DiagnosticTests(HistoryCase):
         # operation. Only OS/transport authority observations are inert fixtures.
         self.assertIsInstance(tree.body[-1],ast.Try)
         ns={}
-        with patch('signal.signal'),patch('signal.setitimer',create=True),patch('signal.ITIMER_REAL',0,create=True),patch('signal.SIGALRM',0,create=True):
-            exec(compile(ast.Module(body=tree.body[:-1],type_ignores=[]),'complete-generated-definitions','exec'),ns)
+        exec(compile(inert_remote_definitions(tree),'complete-generated-definitions','exec'),ns)
+        self.assertNotIn('fcntl',ns)
         class FakeOS:
             O_RDONLY=0;O_DIRECTORY=0;O_NOFOLLOW=0
             def open(self,*a):return 1
@@ -70,7 +71,7 @@ class DiagnosticTests(HistoryCase):
             return [dict(flags='00010000',type='0001',state='01',inode=inode)]
         ack=o.recovery._digest({'diagnosticId':d.CORRELATION,'nonce':d.NONCE,'sourceSha256':sha,'pid':456})
         ns.update(os=FakeOS(),fp=lambda s:s if isinstance(s,dict)else vars(s),read=protected_read,leaf_check=lambda:None,child_guard=lambda c,a:None,unix_rows=rows,fd_socket_inodes=lambda p:{s['kernelInode']for s in sockets.values()},call=call,open=lambda p:io.StringIO(recipe['bootId']),sys=types.SimpleNamespace(stderr=err,stdin=io.StringIO(ack+'\n')),time=types.SimpleNamespace(sleep=lambda n:None),result=lambda v:out.write(json.dumps(v)))
-        with patch('select.select',return_value=([ns['sys'].stdin],[],[])),patch('signal.signal'),patch('signal.setitimer',create=True),patch('signal.ITIMER_REAL',0,create=True),patch('signal.SIGALRM',0,create=True):
+        with patch('select.select',return_value=([ns['sys'].stdin],[],[])):
             exec(compile(ast.Module(body=tree.body[-1:],type_ignores=[]),'complete-generated-operation','exec'),ns)
         return json.loads(out.getvalue()),queries,anchors
 

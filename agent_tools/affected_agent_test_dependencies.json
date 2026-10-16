@@ -886,6 +886,50 @@
         "68c97624a654cf24d18264ff1b6ee19ca77348faeb5c430c1eeb687405116f32"
       ]
     },
+    "agent_tools/tests/fixtures/windows_inert_remote_definitions/diagnostic.before.source": {
+      "reason": "Complete exact D diagnostic test source loaded from its authenticated real archive filename. Declare its genuine repository imports, historical factory/source custody and existing native fixture helper; generated-program counterfactuals retain the complete unchanged operation and original source pins.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py",
+        "agent_tools/tests/fixtures/windows_powershell_environment.py",
+        "agent_tools/windows_cp117_recovered_owner_observe.py",
+        "agent_tools/tests/test_windows_cp117_recovered_owner_observe.py",
+        "agent_tools/windows_diagnostic_authority_capture.py",
+        "agent_tools/tests/test_windows_cp117_base_source_refresh.py",
+        "agent_tools/tests/test_windows_cp117_recovered_login.py",
+        "agent_tools/tests/fixtures/historical_source.py",
+        "agent_tools/windows_cp117_installed_base_observe.py",
+        "agent_tools/windows_cp117_base_source_refresh.py"
+      ],
+      "sourceSha256": [
+        "f384a61f8cd4d77048843514e11a74e1bfbc8dfd529c512b062b24a55d107db9"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_inert_remote_definitions/dismiss.before.source": {
+      "reason": "Complete exact D dismiss test source with genuine normal imports. Its before-only scoped layout reference consumes the exact retained D secure-layout test source for inspect.getsource copied-flow execution; declare both that actual archive and the initially imported current helper, preserving all original generated-source pins.",
+      "scopes": [
+        "agent_tools/tests/fixtures/cp117_gzip_runtime.py",
+        "agent_tools/windows_cp117_windowless_dismiss_observe.py",
+        "agent_tools/tests/test_windows_cp117_secure_input_geometry_observe.py",
+        "agent_tools/tests/test_windows_cp117_secure_layout_observe.py",
+        "agent_tools/tests/test_windows_cp117_windowless_edit_observe.py",
+        "agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py",
+        "agent_tools/windows_msi_base_prepare.py",
+        "agent_tools/tests/fixtures/windows_inert_remote_definitions/secure_layout.before.source"
+      ],
+      "sourceSha256": [
+        "6816aad43259a28c2aa67482a65d2fcb823b2efdaca251d4eed802c1502da3b4"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_inert_remote_definitions/secure_layout.before.source": {
+      "reason": "Complete exact D secure-layout test source, authenticated at its actual retained filename, supplies original facts and the whole copied generated-flow helper. Its only project imports are the unchanged production secure-layout producer and genuine recovered-login test fixtures; no extra source authority or native dispatch is introduced.",
+      "scopes": [
+        "agent_tools/windows_cp117_secure_layout_observe.py",
+        "agent_tools/tests/test_windows_cp117_recovered_login.py"
+      ],
+      "sourceSha256": [
+        "b9930147565736a1d3f412dbe2dc9e4b4e2cfd89e497f217ad6262d3d764b364"
+      ]
+    },
     "agent_tools/tests/fixtures/windows_native_fixture_callers/base.overflow-before-slim.source": {
       "reason": "Complete retained oversized fixture source is held only as raw input to the actual current _public_source size-admission guard. Its source text is never compiled, imported or executed and grants no historical or current executable authority. The authentic context and custody backend are the finite consumers; the one-MiB refusal remains unchanged. This is not a non-Python classification of Python source.",
       "scopes": [
@@ -2858,7 +2902,13 @@
         "agent_tools/windows_msi_http_transfer.py",
         "scripts/windows_credential_validity_qga.py",
         "scripts/windows_task_admission.ps1",
-        "agent_tools/windows_cp117_recovered_login.py"
+        "agent_tools/windows_cp117_recovered_login.py",
+        "agent_tools/tests/fixtures/windows_inert_remote_definitions/diagnostic.before.source",
+        "agent_tools/tests/fixtures/windows_inert_remote_definitions/dismiss.before.source",
+        "agent_tools/tests/fixtures/windows_inert_remote_definitions/secure_layout.before.source",
+        "agent_tools/tests/fixtures/windows_inert_remote_definitions/provenance.json",
+        "agent_tools/tests/test_windows_cp117_secure_layout_observe.py",
+        "agent_tools/tests/fixtures/windows_replacement_fixture_sections.py"
       ],
       "sourceSha256": [
         "e373010900974281360e5155fe03c35c4df0ea4b85662d30f2873628f11e55f9",
@@ -2866,7 +2916,10 @@
         "939a328170f938f857031ff1a49d6d064033d8487b4d4c93422d9f3bcfd31a8d",
         "b43913abbeff7b329bfbe507604b23f5b6aef30a9a8dbfdf55237cda1e00ab12",
         "a4239f02942e87d73d335796fafc2bba29c3ebec9fa73290a23953d84f20c56f",
-        "17d01be2ef1d6ecf25888a53bbdbf65739c87f9473f2c4091afccc7c35be5e8f"
+        "17d01be2ef1d6ecf25888a53bbdbf65739c87f9473f2c4091afccc7c35be5e8f",
+        "aa39af3e0517f3c1c9e30abb6b6cf5977aa831077755ece1ed2adaeea6a07b11",
+        "e6cec7d9be127aace754745ba871473647036b624127edaf4f461f0d900b340d",
+        "94b3df1d783ccfc0c85b86b11c4aa1d31738eb0164684f4d2f5479a2f0acb045"
       ]
     },
     "agent_tools/tests/test_windows_cp117_publisher_boundary_context.py": {

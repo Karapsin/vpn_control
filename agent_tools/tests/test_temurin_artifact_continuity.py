@@ -275,23 +275,60 @@ class OwnedParentTransitionTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name=='posix','POSIX real FD closure required')
 class CleanupOwnershipTests(unittest.TestCase):
+    def harmless_stage(self, root):
+        stage=root/'android-cli-stage-inert';stage.mkdir(mode=0o700)
+        tree=stage/'tree';tree.mkdir(mode=0o700)
+        paths={'intent.json':stage/'intent.json','receipt.json':stage/'receipt.json'}
+        paths.update({'file-'+str(i):tree/('file-'+str(i)) for i in range(153)})
+        for path in paths.values():path.write_bytes(b'harmless')
+        return stage,tree,paths
+
+    def owned_fds(self, ns):
+        fds={item[2] for item in ns.get('held',[])}
+        fds.update(row['fd'] for row in ns.get('parent_cache',{}).values())
+        for key in ('result_chain','archive_chain','final_chain'):
+            fds.update(row['fd'] for row in ns.get(key,[]))
+        fds.update(fd for key in ('tree_fd','archive_fd','result_fd') if type(fd:=ns.get(key)) is int)
+        for item in ns.get('final_tree',{}).values():
+            fds.add(item['fd']);fds.update(row['fd'] for row in item['rootChain'])
+        return fds
+
+    @__import__('contextlib').contextmanager
+    def retained_namespace(self, root):
+        from agent_tools.tests import test_temurin_product_launcher_recipe as recipe_tests
+        ns=namespace(fixture.FIXED_PARENT_SOURCE+'\n'+fixture.RETAINER_SOURCE+'\n'+fixture.CLOSE_TREE_SOURCE)
+        ns.update(ROOT=root,GETTER={'stageId':'inert'},held=[],parent_cache={})
+        try:
+            recipe_tests.ProductLauncherRecipeTests.fixture_parent_namespace(self,ns,root)
+            yield ns
+        finally:
+            for fd in self.owned_fds(ns):
+                try:os.close(fd)
+                except OSError as error:
+                    if error.errno!=__import__('errno').EBADF:raise
+
+    def admit_cleanup_contexts(self, ns, stage, tree, old, after=lambda name:None):
+        ns['tree_fd']=os.open(tree,os.O_RDONLY|os.O_DIRECTORY) if old else None;after('tree_fd')
+        ns['archive_fd']=os.open(stage/'intent.json',os.O_RDONLY);after('archive_fd')
+        ns['result_fd']=os.open(stage,os.O_RDONLY|os.O_DIRECTORY);after('result_fd')
+        ns['result_chain'],_=ns['parent_fds'](stage/'intent.json');after('result_chain')
+        ns['archive_chain'],_=ns['parent_fds'](stage/'intent.json') if not old else ([],None);after('archive_chain')
+        ns['final_chain'],_=ns['parent_fds'](stage/'intent.json');after('final_chain')
+        ns['final_tree']={'owned':{'fd':os.open(stage/'intent.json',os.O_RDONLY),'rootChain':ns['final_chain']}};after('final_tree')
+
     def test_actual_retainer_old_tuple_cleanup_red_and_all_fixed_contexts_close(self):
         self.assertEqual(hashlib.sha256(fixture.RETAINER_SOURCE.encode()).hexdigest(),fixture.RETAINER_SOURCE_SHA256)
         for old in (True,False):
             source=fixture.OLD_CLEANUP_SOURCE if old else fixture.FIXED_CLEANUP_SOURCE
             digest=fixture.OLD_CLEANUP_SOURCE_SHA256 if old else fixture.FIXED_CLEANUP_SOURCE_SHA256
             self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),digest)
-            with tempfile.TemporaryDirectory()as temp:
-                root=Path(temp).resolve();stage=root/'android-cli-stage-inert';stage.mkdir(mode=0o700);tree=stage/'tree';tree.mkdir(mode=0o700)
-                paths={'intent.json':stage/'intent.json','receipt.json':stage/'receipt.json'};paths.update({'file-'+str(i):tree/('file-'+str(i))for i in range(153)})
-                for path in paths.values():path.write_bytes(b'harmless')
-                ns=namespace(fixture.FIXED_PARENT_SOURCE+'\n'+fixture.RETAINER_SOURCE+'\n'+fixture.CLOSE_TREE_SOURCE);ns.update(ROOT=root,GETTER={'stageId':'inert'},held=[],parent_cache={})
-                pins={name:{'generation':ns['fp'](path.stat())}for name,path in paths.items()};ns['retain_stage'](pins)
-                self.assertEqual(len(ns['held']),155);self.assertTrue(all(type(item)is tuple and len(item)==4 for item in ns['held']));self.assertTrue(all(type(row)is dict and type(row['fd'])is int for row in ns['parent_cache'].values()))
-                ns['tree_fd']=os.open(tree,os.O_RDONLY|os.O_DIRECTORY)if old else None;ns['archive_fd']=os.open(stage/'intent.json',os.O_RDONLY);ns['result_fd']=os.open(stage,os.O_RDONLY|os.O_DIRECTORY);ns['result_chain'],_=ns['parent_fds'](stage/'intent.json');ns['archive_chain'],_=ns['parent_fds'](stage/'intent.json')if not old else ([],None)
-                finalchain,_=ns['parent_fds'](stage/'intent.json');ns['final_tree']={'owned':{'fd':os.open(stage/'intent.json',os.O_RDONLY),'rootChain':finalchain}}
-                fds={item[2]for item in ns['held']}|{row['fd']for row in ns['parent_cache'].values()}|{row['fd']for row in ns['result_chain']}|{row['fd']for row in finalchain}|{row['fd']for row in ns['archive_chain']}|{fd for fd in (ns['tree_fd'],ns['archive_fd'],ns['result_fd'],ns['final_tree']['owned']['fd'])if fd is not None}
-                try:
+            with tempfile.TemporaryDirectory() as temp:
+                root=Path(temp).resolve();stage,tree,paths=self.harmless_stage(root)
+                with self.retained_namespace(root) as ns:
+                    pins={name:{'generation':ns['fp'](path.stat())} for name,path in paths.items()};ns['retain_stage'](pins)
+                    self.assertEqual(len(ns['held']),155);self.assertTrue(all(type(item)is tuple and len(item)==4 for item in ns['held']));self.assertTrue(all(type(row)is dict and type(row['fd'])is int for row in ns['parent_cache'].values()))
+                    self.admit_cleanup_contexts(ns,stage,tree,old)
+                    fds=self.owned_fds(ns)
                     if old:
                         with self.assertRaises(TypeError):exec(compile(source,'actual-old-all-cleanup','exec'),ns)
                         os.fstat(ns['held'][0][2])
@@ -301,10 +338,61 @@ class CleanupOwnershipTests(unittest.TestCase):
                         self.assertEqual(ns['final_tree'],{})
                         for fd in fds:
                             with self.subTest(fd=fd),self.assertRaises(OSError):os.fstat(fd)
-                finally:
-                    for fd in fds:
-                        try:os.close(fd)
-                        except OSError:pass
+
+    def test_shared_coordinator_mutation_keeps_owned_155_record_retainer(self):
+        with tempfile.TemporaryDirectory() as temp:
+            coordinator=Path(temp).resolve();root=coordinator/'owned';root.mkdir(mode=0o700)
+            stage,tree,paths=self.harmless_stage(root)
+            with self.retained_namespace(root) as ns:
+                actual=ns['parent_fds'];calls=0
+                def parent_fds(path):
+                    nonlocal calls
+                    calls+=1
+                    if calls==2:
+                        before=ns['fp'](coordinator.stat());(coordinator/'harmless-sibling').mkdir(mode=0o700)
+                        self.assertNotEqual(before,ns['fp'](coordinator.stat()))
+                    return actual(path)
+                ns['parent_fds']=parent_fds
+                ns['retain_stage']({name:{'generation':ns['fp'](path.stat())} for name,path in paths.items()})
+                self.assertEqual(155,len(ns['held']));self.assertEqual(155,calls)
+
+    def test_owned_root_and_descendant_generation_tamper_still_refuse(self):
+        for target in ('root','tree'):
+            with self.subTest(target=target),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp).resolve();stage,tree,paths=self.harmless_stage(root)
+                with self.retained_namespace(root) as ns:
+                    ns['retain_stage']({name:{'generation':ns['fp'](path.stat())} for name,path in paths.items()})
+                    (root if target=='root' else tree).chmod(0o755)
+                    with self.assertRaisesRegex(ValueError,'census_ancestry_changed'):
+                        ns['guard_parents'](ns['held'][-1][0])
+
+    def test_every_partial_retainer_and_cleanup_context_admission_closes_fds(self):
+        phases=('retain','tree_fd','archive_fd','result_fd','result_chain','archive_chain','final_chain','final_tree')
+        for phase in phases:
+            observed=set()
+            with self.subTest(phase=phase),tempfile.TemporaryDirectory() as temp:
+                root=Path(temp).resolve();stage,tree,paths=self.harmless_stage(root)
+                with self.assertRaisesRegex(RuntimeError,'injected_partial_admission'):
+                    with self.retained_namespace(root) as ns:
+                        actual=ns['parent_fds'];guard=ns['guard_parents'];calls=0
+                        def parent_fds(path):
+                            chain,leaf=actual(path);observed.update(row['fd'] for row in chain)
+                            return chain,leaf
+                        def guard_parents(chain):
+                            nonlocal calls
+                            guard(chain);calls+=1
+                            observed.update(self.owned_fds(ns))
+                            if phase=='retain' and calls==2:raise RuntimeError('injected_partial_admission')
+                        ns.update(parent_fds=parent_fds,guard_parents=guard_parents)
+                        ns['retain_stage']({name:{'generation':ns['fp'](path.stat())} for name,path in paths.items()})
+                        def after(name):
+                            observed.update(self.owned_fds(ns))
+                            if name==phase:raise RuntimeError('injected_partial_admission')
+                        self.admit_cleanup_contexts(ns,stage,tree,phase!='archive_chain',after)
+                self.assertTrue(observed)
+                for fd in observed:
+                    with self.subTest(fd=fd),self.assertRaises(OSError) as error:os.fstat(fd)
+                    self.assertEqual(__import__('errno').EBADF,error.exception.errno)
 
 
 

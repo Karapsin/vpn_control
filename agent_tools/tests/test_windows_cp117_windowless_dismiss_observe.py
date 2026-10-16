@@ -6,6 +6,7 @@ from agent_tools.tests import test_windows_cp117_secure_input_geometry_observe a
 from agent_tools.tests import test_windows_cp117_secure_layout_observe as layout
 from agent_tools.tests import test_windows_cp117_windowless_edit_observe as windowlessfixture
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import remote_posix_recipe_tests
+from agent_tools.tests.fixtures.windows_replacement_fixture_sections import inert_remote_definitions
 
 
 
@@ -29,7 +30,7 @@ class DismissTests(HistoricalGzipTestCase):
   for slot,(corr,nonce)in m.SLOTS.items():
    source,sha=m.slot_program(record,slot);self.assertEqual(sha,m.SLOT_HASHES[slot][0]);tree=ast.parse(source)
    ns={}
-   with patch('signal.signal'),patch('signal.setitimer',create=True):exec(compile(ast.Module(body=tree.body[:-1],type_ignores=[]),'slot-definitions','exec'),ns)
+   exec(compile(inert_remote_definitions(tree),'slot-definitions','exec'),ns);self.assertNotIn('fcntl',ns)
    self.assertEqual(ns['NONCE'],nonce);self.assertEqual(ns['D'],corr);self.assertEqual(ns['CHILD_SHA'],m.SLOT_HASHES[slot][1]);self.assertNotIn('send-key',source)
   with self.assertRaises(ValueError):m.slot_program(record,'arbitrary')
  def flow(self,slot,stale=False):
@@ -39,9 +40,8 @@ class DismissTests(HistoricalGzipTestCase):
    def terminal(self,nonce=None):
     raw=('CP117-READ '+(nonce or m.SLOTS[slot][1])+' '+m.SLOT_HASHES[slot][0]+' 456\n'+json.dumps(a)).encode();return {'exited':True,'exitcode':0,'out-data':base64.b64encode(raw).decode()}
   source=textwrap.dedent(inspect.getsource(layout.CompleteGeneratedFlowTests.execute_flow)).replace('secure.program(record,secure.NONCE)','reader.program(record)')
-  source=source.replace("patch('signal.setitimer')","patch('signal.setitimer',create=True)")
   reader=types.SimpleNamespace(program=lambda r:m.slot_program(r,slot));secure=types.SimpleNamespace(login=m.login,CORRELATION=corr,NONCE=nonce)
-  ns={'ast':ast,'base64':base64,'json':json,'patch':patch,'secure':secure,'reader':reader};exec(source,ns);return ns['execute_flow'](Adapter(),stale,False)
+  ns={'ast':ast,'base64':base64,'json':json,'patch':patch,'secure':secure,'reader':reader,'inert_remote_definitions':inert_remote_definitions};exec(source,ns);return ns['execute_flow'](Adapter(),stale,False)
  def test_each_actual_generated_slot_one_submit_same_pid_and_stale_exhaustion(self):
   for slot in m.SLOTS:
    r,calls,_=self.flow(slot);self.assertEqual(r['state'],'observed',r);self.assertEqual([c[0]for c in calls],['guest-exec','guest-exec-status']);self.assertEqual(calls[1][1],{'pid':456})

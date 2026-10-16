@@ -1,5 +1,6 @@
 import ast,base64,copy,hashlib,inspect,json,os,tempfile,unittest
 from pathlib import Path
+from agent_tools.tests.fixtures.windows_replacement_fixture_sections import inert_remote_definitions
 from unittest.mock import patch
 from agent_tools import windows_cp117_secure_layout_observe as secure
 from agent_tools.tests import test_windows_cp117_recovered_login as fixtures
@@ -76,6 +77,7 @@ class CompleteGeneratedFlowTests(unittest.TestCase):
     terminal=SecureLayoutTests.terminal
     def execute_flow(self,stale=False,foreign=False):
         import io,types
+        from agent_tools.tests.fixtures.windows_replacement_fixture_sections import inert_remote_definitions
         o=secure.login.guest;recipe=o.recovery.recipe();request={'recipeSha256':o.recovery._digest(recipe)}
         identity={'st_dev':1,'st_ino':2,'st_mode':16832,'st_uid':1000,'st_gid':1000}
         children=[{'role':role,'child':{'pid':pid},'pin':{'role':role},'intentPin':{},'attemptPin':{},'leafIdentity':identity}for role,pid in(('tpm',10),('qemu',11))]
@@ -88,8 +90,8 @@ class CompleteGeneratedFlowTests(unittest.TestCase):
         # operation. Only OS/transport authority observations are inert fixtures.
         self.assertIsInstance(tree.body[-1],ast.Try)
         ns={}
-        with patch('signal.signal'),patch('signal.setitimer'):
-            exec(compile(ast.Module(body=tree.body[:-1],type_ignores=[]),'complete-generated-definitions','exec'),ns)
+        exec(compile(inert_remote_definitions(tree),'complete-generated-definitions','exec'),ns)
+        self.assertNotIn('fcntl',ns)
         class FakeOS:
             O_RDONLY=0;O_DIRECTORY=0;O_NOFOLLOW=0
             def open(self,*a):return 1
@@ -118,9 +120,25 @@ class CompleteGeneratedFlowTests(unittest.TestCase):
             return [dict(flags='00010000',type='0001',state='01',inode=inode)]
         ack=o.recovery._digest({'diagnosticId':secure.CORRELATION,'nonce':secure.NONCE,'sourceSha256':sha,'pid':456})
         ns.update(os=FakeOS(),fp=lambda s:s if isinstance(s,dict)else vars(s),read=protected_read,leaf_check=lambda:None,child_guard=lambda c,a:None,unix_rows=rows,fd_socket_inodes=lambda p:{s['kernelInode']for s in sockets.values()},call=call,open=lambda p:io.StringIO(recipe['bootId']),sys=types.SimpleNamespace(stderr=err,stdin=io.StringIO(ack+'\n')),time=types.SimpleNamespace(sleep=lambda n:None),result=lambda v:out.write(json.dumps(v)))
-        with patch('select.select',return_value=([ns['sys'].stdin],[],[])),patch('signal.signal'),patch('signal.setitimer'):
+        with patch('select.select',return_value=([ns['sys'].stdin],[],[])):
             exec(compile(ast.Module(body=tree.body[-1:],type_ignores=[]),'complete-generated-operation','exec'),ns)
         return json.loads(out.getvalue()),queries,anchors
+    def test_actual_copied_flow_carries_its_definition_view_import(self):
+        import textwrap
+        source = textwrap.dedent(inspect.getsource(self.execute_flow))
+        namespace = {'ast': ast, 'base64': base64, 'json': json,
+                     'patch': patch, 'secure': secure}
+        self.assertNotIn('inert_remote_definitions', namespace)
+        exec(compile(source, 'actual-copied-complete-flow', 'exec'), namespace)
+        copied = namespace['execute_flow'].__get__(self, type(self))
+        for selector in (
+                'test_complete_generated_one_submit_fixed_child_and_public_source_input',
+                'test_complete_generated_stale_terminal_exhausts_original_pid_only',
+                'test_complete_generated_foreign_listener_has_no_submit'):
+            with self.subTest(scenario=selector), patch.object(self, 'execute_flow', copied):
+                getattr(self, selector)()
+        self.assertNotIn('inert_remote_definitions', namespace)
+
     def test_complete_generated_one_submit_fixed_child_and_public_source_input(self):
         result,calls,anchors=self.execute_flow()
         self.assertEqual(result['state'],'observed');self.assertEqual(result['facts'],self.answer())

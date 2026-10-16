@@ -1,5 +1,7 @@
 """Pure fixture extraction and parse-only diagnostics; never execute input bodies."""
+import ast
 import base64
+import copy
 import hashlib
 
 OUTER_REPLACEMENT_CATCH = '}catch{$retired=$false;$provisioned=$false;$errorType='
@@ -47,3 +49,39 @@ def replacement_parse_only_observer(public):
     if len(encoded) > 262144:
         raise ValueError('replacement-parse-wrapper-bound')
     return encoded
+
+
+def inert_remote_definitions(tree):
+    """Explicit coordinator view of an authenticated read-only Linux programme.
+
+    This omits one unused target-only import and the exact target alarm setup.
+    The emitted bytes and complete operation stay intact; no capability is faked.
+    """
+    if type(tree) is not ast.Module or not tree.body or not isinstance(tree.body[-1], ast.Try):
+        raise ValueError('inert-remote-module-shape')
+    definitions = copy.deepcopy(tree.body[:-1])
+    expected = ('os', 'stat', 'json', 'time', 'hashlib', 'subprocess', 'sys', 'fcntl')
+    if (not definitions or not isinstance(definitions[0], ast.Import)
+            or tuple((item.name, item.asname) for item in definitions[0].names)
+            != tuple((name, None) for name in expected)):
+        raise ValueError('inert-remote-import-shape')
+    if (any(isinstance(node, ast.Name) and node.id == 'fcntl' for node in ast.walk(tree))
+            or any(isinstance(node, ast.ImportFrom) and node.module == 'fcntl' for node in ast.walk(tree))
+            or sum(item.name == 'fcntl' for node in ast.walk(tree)
+                   if isinstance(node, ast.Import) for item in node.names) != 1):
+        raise ValueError('inert-remote-locking-required')
+    definitions[0].names = definitions[0].names[:-1]
+    prelude = ast.parse("import signal\ndef reader_expired(*args):raise ValueError('reader-deadline')\nsignal.signal(signal.SIGALRM,reader_expired)\nsignal.setitimer(signal.ITIMER_REAL,50)\n").body
+    shapes = tuple(ast.dump(node) for node in prelude)
+    starts = [index for index in range(len(definitions)-3)
+              if tuple(ast.dump(node) for node in definitions[index:index+4]) == shapes]
+    if len(starts) != 1:
+        raise ValueError('inert-remote-alarm-shape')
+    start = starts[0]
+    del definitions[start+2:start+4]
+    remaining = ast.Module(body=definitions + [copy.deepcopy(tree.body[-1])], type_ignores=[])
+    if any(isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+           and node.value.id == 'signal' and node.attr in ('signal', 'setitimer', 'SIGALRM', 'ITIMER_REAL')
+           for node in ast.walk(remaining)):
+        raise ValueError('inert-remote-alarm-use')
+    return ast.Module(body=definitions, type_ignores=copy.deepcopy(tree.type_ignores))

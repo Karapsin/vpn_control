@@ -306,7 +306,15 @@ class CurrentExecutionCompatibilityTests(HistoricalGzipTestCase):
     with self.assertRaises(ValueError):m._compatibility_ast(profile,old,mutated)
   with self.assertRaises(ValueError):m._compatibility_ast('foreign',b'',b'')
  def test_actual_fresh_credential_operation_preserves_original_child_and_no_replay(self):
-  import tempfile,io,types,select,time,stat
+  import tempfile,io,types,select,time,stat,errno
+  def descriptors():
+   answer={}
+   for number in range(256):
+    try:info=os.fstat(number)
+    except OSError:continue
+    answer[number]=(info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid)
+   return answer
+  initial_descriptors=descriptors()
   from agent_tools.tests.test_windows_cp117_recovered_login import ScreenTests
   source,sha,_=m._credential_phase_program(Path(__file__).resolve().parents[2],ScreenTests().record())
   parser=next(n for n in ast.parse(source).body if isinstance(n,ast.FunctionDef)and n.name=='_credential_terminal');namespace={'json':json,'base64':base64,'CREDENTIAL_CORRELATION':m.AUTH_CORRELATION};exec(compile(ast.Module([parser],type_ignores=[]),'actual-generated-parser','exec'),namespace)
@@ -325,11 +333,25 @@ class CurrentExecutionCompatibilityTests(HistoricalGzipTestCase):
      nonce='old'if len(calls)==2 else m.AUTH_NONCE
      return {'exited':True,'exitcode':0,'out-data':base64.b64encode(('CP117-READ '+nonce+' '+sha+' 456\n'+json.dumps(answer)).encode()).decode()}
     ns=dict(namespace,guards=lambda:None,os=os,stat=stat,fp=lambda info:{k:getattr(info,k)for k in('st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns')},need=need,hashlib=hashlib,D=m.AUTH_CORRELATION,NONCE=m.AUTH_NONCE,BODY_SHA=sha,ENCODED='fixed',LEAF='fixed',children=[{}, {'child':{'pid':12}}],sys=types.SimpleNamespace(stdin=stdin),call=call,event=events.append,result=results.append,digest=m.login.guest.recovery._digest,time=types.SimpleNamespace(sleep=lambda _:None))
-    with patch.object(select,'select',return_value=([stdin],[],[])):exec('try:\n'+actual,ns)
-    self.assertEqual(sum(method=='guest-exec'for method,_ in calls),1);self.assertTrue(all(args=={'pid':456}for method,args in calls if method=='guest-exec-status'))
-    if drift:self.assertEqual(results[0]['state'],'unknown');self.assertEqual(len(calls),2)
-    else:self.assertEqual(results[0]['state'],'observed');self.assertEqual(results[0]['credential'],answer);self.assertEqual(len(calls),3)
-    self.assertNotIn(b'abc',b''.join(p.read_bytes()for p in(parent/('cp117-credential-'+m.AUTH_CORRELATION)).iterdir()))
+    def close_owned(name):
+     if name not in ns:return
+     descriptor=ns[name];self.assertIs(type(descriptor),int);self.assertGreaterEqual(descriptor,3)
+     target=parent if name=='parentfd'else parent/ns['job'];held=os.fstat(descriptor);named=target.lstat()
+     self.assertTrue(stat.S_ISDIR(held.st_mode));self.assertEqual(stat.S_IMODE(held.st_mode),0o700);self.assertEqual(held.st_uid,os.geteuid())
+     self.assertEqual((held.st_dev,held.st_ino,held.st_mode,held.st_uid,held.st_gid),(named.st_dev,named.st_ino,named.st_mode,named.st_uid,named.st_gid))
+     self.assertFalse(os.get_inheritable(descriptor));os.close(descriptor)
+     with self.assertRaises(OSError)as closed:os.fstat(descriptor)
+     self.assertEqual(closed.exception.errno,errno.EBADF)
+    try:
+     with patch.object(select,'select',return_value=([stdin],[],[])):exec('try:\n'+actual,ns)
+     self.assertEqual(sum(method=='guest-exec'for method,_ in calls),1);self.assertTrue(all(args=={'pid':456}for method,args in calls if method=='guest-exec-status'))
+     if drift:self.assertEqual(results[0]['state'],'unknown');self.assertEqual(len(calls),2)
+     else:self.assertEqual(results[0]['state'],'observed');self.assertEqual(results[0]['credential'],answer);self.assertEqual(len(calls),3)
+     self.assertNotIn(b'abc',b''.join(p.read_bytes()for p in(parent/('cp117-credential-'+m.AUTH_CORRELATION)).iterdir()))
+    finally:
+     try:close_owned('jobfd')
+     finally:close_owned('parentfd')
+  self.assertEqual(initial_descriptors,descriptors(),'credential fixture must close its standalone descriptors')
 
 @unittest.skipIf(os.name=='nt','POSIX QMP submit coordinator')
 class ActualSubmitBoundaryTests(HistoricalGzipTestCase):

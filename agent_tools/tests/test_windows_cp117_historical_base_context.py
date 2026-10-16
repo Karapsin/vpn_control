@@ -1,5 +1,5 @@
 """Inert historical package factories keep their complete original base source."""
-from contextlib import contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 import errno
 import hashlib
 import json
@@ -13,6 +13,7 @@ from unittest.mock import patch
 from agent_tools import windows_msi_base_prepare as current_base
 from agent_tools import windows_cp117_installed_base_observe as current_installed
 from agent_tools.tests.fixtures import historical_source
+from agent_tools.tests.fixtures.cp117_gzip_runtime import historical_gzip_context
 from agent_tools.tests.fixtures.windows_cp117_historical_factory import context
 
 
@@ -720,6 +721,206 @@ class CompleteInertContextLifetimeTests(unittest.TestCase):
         self.assertIs(original_reader, binding._read_bound_file)
         self.assertIs(original_registry, context._PUBLIC_SOURCE_REGISTRY.get())
         self.assertIs(original_os_path, os.path)
+
+
+
+
+class InertRemoteDefinitionBoundaryTests(unittest.TestCase):
+    """Actual complete inert fixtures under explicit missing-import projections.
+
+    The adapter only subtracts generated-namespace capabilities. It changes no
+    global OS, signal module, import cache, production source or native authority.
+    """
+    variant = None
+    sources = {'diagnostic': {'sourcePath': 'agent_tools/tests/test_windows_cp117_recovered_owner_diagnostic.py', 'resource': 'diagnostic.before.source', 'bytes': 22182, 'sha256': 'f384a61f8cd4d77048843514e11a74e1bfbc8dfd529c512b062b24a55d107db9'}, 'dismiss': {'sourcePath': 'agent_tools/tests/test_windows_cp117_windowless_dismiss_observe.py', 'resource': 'dismiss.before.source', 'bytes': 14068, 'sha256': '6816aad43259a28c2aa67482a65d2fcb823b2efdaca251d4eed802c1502da3b4'}, 'secure_layout': {'sourcePath': 'agent_tools/tests/test_windows_cp117_secure_layout_observe.py', 'resource': 'secure_layout.before.source', 'bytes': 15698, 'sha256': 'b9930147565736a1d3f412dbe2dc9e4b4e2cfd89e497f217ad6262d3d764b364'}}
+    folder = FIXTURE.parent / 'windows_inert_remote_definitions'
+
+    @contextmanager
+    def modules(self, variant):
+        import importlib
+        from agent_tools import source_module_loader
+        with ExitStack() as stack:
+            metadata, close_metadata = stack.enter_context(source_module_loader._bootstrap_source(self.folder / 'provenance.json'))
+            provenance = json.loads(metadata)
+            self.assertEqual('fd4a3c77e8935c4c5669e61a26bbfca41e171850', provenance['sourceCommit'])
+            self.assertEqual(self.sources, provenance['files'])
+            self.assertIs(provenance['rawProgramAndProductionPinsChanged'], False)
+            self.assertIs(provenance['nativeEvidenceFabricated'], False)
+            close_metadata(); stack.callback(close_metadata)
+            modules = {}
+            for label, row in self.sources.items():
+                if variant == 'before':
+                    path = self.folder / row['resource']
+                    raw, guard = stack.enter_context(source_module_loader._bootstrap_source(path))
+                    self.assertEqual((row['bytes'], row['sha256']), (len(raw), hashlib.sha256(raw).hexdigest()))
+                    modules[label] = historical_source.load(path, row['sha256'])
+                    self.assertEqual(str(path.absolute()), modules[label].__file__)
+                    guard()
+                    stack.callback(guard)
+                else:
+                    name = row['sourcePath'][:-3].replace('/', '.')
+                    modules[label] = importlib.import_module(name)
+            if variant == 'before':
+                # Dismiss copies this actual D helper; current helper bytes must
+                # not silently become the preserved old programme's input.
+                stack.enter_context(patch.object(modules['dismiss'], 'layout', modules['secure_layout']))
+            stack.enter_context(historical_gzip_context(*modules.values()))
+            yield modules
+
+    @contextmanager
+    def missing_target_capabilities(self, modules, capability):
+        import builtins
+        self.assertIn(capability, ('fcntl', 'signal'))
+        original_import = builtins.__import__
+        class SignalView:
+            def __init__(self, actual): self.actual = actual
+            def __getattr__(self, name):
+                if name in ('SIGALRM', 'ITIMER_REAL', 'setitimer'):
+                    raise AttributeError('projected target-only signal capability: ' + name)
+                return getattr(self.actual, name)
+        def importing(name, *args, **kwargs):
+            if capability == 'fcntl' and name == 'fcntl':
+                raise ModuleNotFoundError("No module named 'fcntl'", name='fcntl')
+            actual = original_import(name, *args, **kwargs)
+            return SignalView(actual) if name == 'signal' else actual
+        def executing(code, namespace, local=None):
+            self.assertIs(type(namespace), dict)
+            view = dict(vars(builtins), __import__=importing, exec=executing)
+            namespace['__builtins__'] = view
+            return builtins.exec(code, namespace) if local is None else builtins.exec(code, namespace, local)
+        actual_patch = patch
+        def inert_patch(name, *args, **kwargs):
+            # Historical test stubs for target alarms stay local and cannot
+            # create or alter coordinator signal attributes during this model.
+            if isinstance(name, str) and name in ('signal.signal', 'signal.setitimer', 'signal.SIGALRM', 'signal.ITIMER_REAL'):
+                return nullcontext()
+            return actual_patch(name, *args, **kwargs)
+        with ExitStack() as stack:
+            for module in modules.values():
+                stack.enter_context(patch.object(module, 'exec', executing, create=True))
+                stack.enter_context(patch.object(module, 'patch', inert_patch))
+            yield
+
+    def positive(self, family, capability='fcntl', variant=None):
+        selected = variant if variant is not None else self.variant
+        if selected is None:
+            selected = 'current'
+        self.assertIn(selected, ('before', 'current'))
+        selector = {
+            'diagnostic': ('diagnostic', 'DiagnosticTests', 'test_complete_generated_blocked_transport_is_diagnosis_not_admission'),
+            'direct': ('dismiss', 'DismissTests', 'test_fixed_catalog_sources_parent_child_and_unknown_slot_refusal'),
+            'copied': ('dismiss', 'DismissTests', 'test_each_actual_generated_slot_one_submit_same_pid_and_stale_exhaustion'),
+        }[family]
+        with self.modules(selected) as modules, context.inert_repository_source_reads(), self.missing_target_capabilities(modules, capability):
+            module = modules[selector[0]]
+            result = unittest.TestResult()
+            getattr(module, selector[1])(selector[2]).run(result)
+        self.assertEqual((1, [], [], []), (result.testsRun, result.failures, result.errors, result.skipped), '\n'.join(text for _, text in result.errors or result.failures))
+
+    def test_actual_complete_diagnostic_uses_inert_target_definitions(self):
+        self.positive('diagnostic')
+
+    def test_actual_direct_slot_definitions_use_inert_target_view(self):
+        self.positive('direct')
+
+    def test_actual_copied_slot_flow_uses_inert_target_view(self):
+        self.positive('copied')
+
+    def test_preserved_D_imports_refuse_the_same_positive_cases(self):
+        for family, method in (
+                ('diagnostic', 'test_actual_complete_diagnostic_uses_inert_target_definitions'),
+                ('direct', 'test_actual_direct_slot_definitions_use_inert_target_view'),
+                ('copied', 'test_actual_copied_slot_flow_uses_inert_target_view')):
+            with self.subTest(family=family):
+                case = type(self)(method); case.variant = 'before'
+                result = unittest.TestResult(); case.run(result)
+                self.assertEqual((1, 1, 0, []), (result.testsRun, len(result.failures), len(result.errors), result.skipped))
+                self.assertIn("ModuleNotFoundError: No module named 'fcntl'", result.failures[0][1])
+                self.positive(family, variant='current')
+
+    @unittest.skipIf(os.name == 'nt', 'Separate signal-only causal model needs genuine POSIX fcntl; complete original Windows fixtures remain required')
+    def test_posix_signal_absence_is_independent_from_real_locking_support(self):
+        import fcntl
+        self.assertTrue(callable(fcntl.flock))
+        for family in ('direct', 'copied'):
+            with self.subTest(family=family):
+                with self.assertRaisesRegex(AssertionError, 'SIGALRM'):
+                    self.positive(family, capability='signal', variant='before')
+                self.positive(family, capability='signal', variant='current')
+
+    def test_actual_emitted_view_omits_only_the_admitted_target_effects(self):
+        from agent_tools.tests.fixtures.windows_replacement_fixture_sections import inert_remote_definitions
+        import ast
+        import copy
+        seen = []
+        with self.modules('current') as modules, context.inert_repository_source_reads(), self.missing_target_capabilities(modules, 'fcntl'):
+            def observing(tree):
+                before = ast.dump(tree)
+                view = inert_remote_definitions(tree)
+                self.assertEqual(before, ast.dump(tree))
+                original = copy.deepcopy(tree.body[:-1])
+                original[0].names = original[0].names[:-1]
+                original = [node for node in original if not (
+                    isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Attribute)
+                    and isinstance(node.value.func.value, ast.Name)
+                    and node.value.func.value.id == 'signal'
+                    and node.value.func.attr in ('signal', 'setitimer'))]
+                self.assertEqual(ast.dump(ast.Module(body=original, type_ignores=[])), ast.dump(view))
+                seen.append(copy.deepcopy(tree))
+                return view
+            with patch.object(modules['diagnostic'], 'inert_remote_definitions', observing):
+                result = unittest.TestResult()
+                modules['diagnostic'].DiagnosticTests('test_complete_generated_blocked_transport_is_diagnosis_not_admission').run(result)
+                self.assertEqual((1, [], [], []), (result.testsRun, result.failures, result.errors, result.skipped), result.errors)
+        self.assertEqual(1, len(seen))
+        original = seen[0]
+        variants = []
+        used = copy.deepcopy(original); used.body[-1].body.append(ast.Expr(value=ast.Name(id='fcntl', ctx=ast.Load()))); variants.append(used)
+        imported = copy.deepcopy(original); imported.body.insert(1, ast.Import(names=[ast.alias(name='fcntl')])); variants.append(imported)
+        foreign = copy.deepcopy(original); foreign.body[0].names[-1].asname = 'foreign'; variants.append(foreign)
+        alarm = copy.deepcopy(original)
+        call = next(node for node in ast.walk(alarm) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'setitimer')
+        call.args[-1] = ast.Constant(value=51); variants.append(alarm)
+        for number, tree in enumerate(variants):
+            with self.subTest(refusal=number), self.assertRaisesRegex(ValueError, 'inert-remote-'):
+                inert_remote_definitions(tree)
+
+
+    @unittest.skipUnless(os.name == 'nt', 'Actual Windows coordinator missing fcntl, with unprojected authentic D diagnostic')
+    def test_actual_windows_observed_D_diagnostic_import_red_current_green(self):
+        import base64
+        selector = 'test_complete_generated_blocked_transport_is_diagnosis_not_admission'
+        with self.modules('before') as modules, context.inert_repository_source_reads():
+            # Run the complete immutable D original directly. There is no
+            # generated-namespace import projection or local patch adapter here.
+            old = unittest.TestResult()
+            modules['diagnostic'].DiagnosticTests(selector).run(old)
+        self.assertEqual((1, 0, 1, []), (old.testsRun, len(old.failures), len(old.errors), old.skipped))
+        self.assertIn("ModuleNotFoundError: No module named 'fcntl'", old.errors[0][1])
+        before_trace = old.errors[0][1].encode('utf-8', errors='strict')
+        self.assertLessEqual(len(before_trace), 8192, 'complete native diagnostic traceback bound')
+        from agent_tools import source_module_loader
+        with self.modules('current') as modules, context.inert_repository_source_reads():
+            with source_module_loader._bootstrap_source(Path(modules['diagnostic'].__file__)) as (current_raw, current_guard):
+                current_sha = hashlib.sha256(current_raw).hexdigest()
+                current = unittest.TestResult()
+                modules['diagnostic'].DiagnosticTests(selector).run(current)
+                current_guard()
+        evidence = {'sourceCommit': 'fd4a3c77e8935c4c5669e61a26bbfca41e171850',
+                    'beforeSourceSha256': self.sources['diagnostic']['sha256'],
+                    'beforeTracebackBytes': len(before_trace),
+                    'beforeTracebackSha256': hashlib.sha256(before_trace).hexdigest(),
+                    'beforeTracebackBase64': base64.b64encode(before_trace).decode('ascii'),
+                    'currentSourceSha256': current_sha, 'actualWindowsCoordinator': True,
+                    'before': {'testsRun': old.testsRun, 'failures': len(old.failures), 'errors': len(old.errors)},
+                    'current': {'testsRun': current.testsRun, 'failures': len(current.failures), 'errors': len(current.errors), 'skipped': len(current.skipped)},
+                    'importProjectionUsed': False, 'nativeProductAcceptance': False,
+                    'nativeTransportExecuted': False}
+        line = 'CP117_NATIVE_INERT_DEFINITION_DIAGNOSTIC ' + json.dumps(evidence, sort_keys=True)
+        self.assertLessEqual(len(line.encode('ascii')), 16384, 'native diagnostic evidence line bound')
+        print(line, flush=True)
+        self.assertEqual((1, [], [], []), (current.testsRun, current.failures, current.errors, current.skipped), current.errors or current.failures)
 
 
 if __name__ == '__main__':

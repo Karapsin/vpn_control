@@ -1,0 +1,27 @@
+{
+  "dismissAndSignalNativeDScenarios": "not executed by failed D CP step; statically reachable risks",
+  "files": {
+    "diagnostic": {
+      "bytes": 22182,
+      "resource": "diagnostic.before.source",
+      "sha256": "f384a61f8cd4d77048843514e11a74e1bfbc8dfd529c512b062b24a55d107db9",
+      "sourcePath": "agent_tools/tests/test_windows_cp117_recovered_owner_diagnostic.py"
+    },
+    "dismiss": {
+      "bytes": 14068,
+      "resource": "dismiss.before.source",
+      "sha256": "6816aad43259a28c2aa67482a65d2fcb823b2efdaca251d4eed802c1502da3b4",
+      "sourcePath": "agent_tools/tests/test_windows_cp117_windowless_dismiss_observe.py"
+    },
+    "secure_layout": {
+      "bytes": 15698,
+      "resource": "secure_layout.before.source",
+      "sha256": "b9930147565736a1d3f412dbe2dc9e4b4e2cfd89e497f217ad6262d3d764b364",
+      "sourcePath": "agent_tools/tests/test_windows_cp117_secure_layout_observe.py"
+    }
+  },
+  "nativeEvidenceFabricated": false,
+  "originalFailureObserved": "diagnostic fcntl import only",
+  "rawProgramAndProductionPinsChanged": false,
+  "sourceCommit": "fd4a3c77e8935c4c5669e61a26bbfca41e171850"
+}
