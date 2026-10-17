@@ -334,3 +334,132 @@ class PowerShellNestedFunctionGraphTests(unittest.TestCase):
             b'SYNTHETIC_GRAPH_REFUSED:foreign-assembly',
             b'SYNTHETIC_GRAPH_REFUSED:foreign-export-counterpart',
             b'SYNTHETIC_GRAPH_COMPONENT_COMPLETE_NO_NATIVE_ACCEPTANCE'])
+
+
+L_SOURCE_BODY_OLD_GUARD = b"        if($definitions.Count -ne 1 -or $definitions[0].Name -cne 'Get-FileHash' -or $block.Ast -isnot [Management.Automation.Language.ScriptBlockAst] -or $block.Ast.Extent.Text -cne $definitions[0].Body.Extent.Text){throw 'PUBLIC_NATIVE_HASH_FUNCTION_SOURCE_BODY'}\n"
+L_SOURCE_BODY_PSM1 = b"function Get-FileHash\r\n{\r\n    [CmdletBinding()]\r\n    param([string]$LiteralPath)\r\n    begin { $tag = 'PUBLIC source-body component' }\r\n    process { throw 'PUBLIC_COMPONENT_FUNCTION_MUST_NOT_EXECUTE' }\r\n}\r\nExport-ModuleMember -Function Get-FileHash\r\n"
+L_SOURCE_BODY_MANIFEST = b"@{\r\n    ModuleVersion='1.0.0'\r\n    GUID='5e419ede-8290-4fd6-a257-a53552b5a161'\r\n    RootModule=''\r\n    NestedModules=@('source-body-fixture.psm1')\r\n    FunctionsToExport=@('Get-FileHash')\r\n    CmdletsToExport=@()\r\n    AliasesToExport=@()\r\n}\r\n"
+L_SOURCE_BODY_CONTROL = 'param([string]$sourcePath,[string]$beforePath,[string]$psm1Path,[string]$manifestPath,[string]$workRoot,[string]$variant)\nSet-StrictMode -Version Latest\n$ErrorActionPreference=\'Stop\'\n$utf8=[Text.UTF8Encoding]::new($false,$true)\n$comparison=if([IO.Path]::DirectorySeparatorChar -eq [char]92){[StringComparison]::OrdinalIgnoreCase}else{[StringComparison]::Ordinal}\nfunction Read-BodyFixture([string]$scriptPath,[string]$manifest,[string]$name){\n    $loaded=@(Import-Module -Name $manifest -Force -PassThru -ErrorAction Stop)\n    if($loaded.Count -ne 1 -or $loaded[0] -isnot [Management.Automation.PSModuleInfo] -or [string]$loaded[0].ModuleType -cne \'Manifest\'){throw \'BODY_REAL_MANIFEST\'}\n    $root=$loaded[0];$nested=@($root.NestedModules)\n    if($nested.Count -ne 1 -or $nested[0] -isnot [Management.Automation.PSModuleInfo] -or [string]$nested[0].ModuleType -cne \'Script\'){throw \'BODY_REAL_NESTED\'}\n    $command=$root.ExportedFunctions[$name];$childCommand=$nested[0].ExportedFunctions[$name]\n    if($command -isnot [Management.Automation.FunctionInfo] -or $command.GetType().FullName -cne \'System.Management.Automation.FunctionInfo\' -or $command.Name -cne $name){throw \'BODY_REAL_FUNCTION\'}\n    $block=$command.ScriptBlock\n    if($block -isnot [Management.Automation.ScriptBlock] -or -not [Object]::ReferenceEquals($childCommand.ScriptBlock,$block) -or -not [Object]::ReferenceEquals($block.Module,$nested[0]) -or -not [string]::Equals([IO.Path]::GetFullPath($block.File),$scriptPath,$comparison)){throw \'BODY_REAL_EXPORTED_REFERENCE\'}\n    $tokens=$null;$errors=$null;$tree=[Management.Automation.Language.Parser]::ParseFile($scriptPath,[ref]$tokens,[ref]$errors)\n    if($null -ne $errors -and $errors.Length){throw \'BODY_PHYSICAL_PARSE\'}\n    $definitions=@($tree.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst]},$true))\n    if($definitions.Count -ne 1 -or $definitions[0].Name -cne $name){throw \'BODY_PHYSICAL_DEFINITION\'}\n    return @{root=$root;block=$block;definitions=$definitions;path=$scriptPath}\n}\n$positive=Read-BodyFixture $psm1Path $manifestPath \'Get-FileHash\'\n$definitions=$positive.definitions;$block=$positive.block\nif($variant -ceq \'before\'){\n    $old=[ScriptBlock]::Create(\'param($definitions,$block)\'+"`n"+[IO.File]::ReadAllText($beforePath,$utf8))\n    $refused=$false\n    try{& $old $definitions $block}catch{if($_.Exception.Message -cne \'PUBLIC_NATIVE_HASH_FUNCTION_SOURCE_BODY\'){throw};$refused=$true}\n    if(-not $refused){throw \'BODY_BEFORE_UNEXPECTED_ADMISSION\'}\n    [Console]::Out.WriteLine(\'SOURCE_BODY_OLD_REFUSED:PUBLIC_NATIVE_HASH_FUNCTION_SOURCE_BODY\')\n    [Console]::Error.WriteLine(\'SOURCE_BODY_COMMON_POSITIVE_MUST_ADMIT\')\n    exit 1\n}\nif($variant -cne \'current\'){throw \'BODY_VARIANT\'}\n$tokens=$null;$errors=$null;$tree=[Management.Automation.Language.Parser]::ParseInput([IO.File]::ReadAllText($sourcePath,$utf8),[ref]$tokens,[ref]$errors)\nif($null -ne $errors -and $errors.Length){throw \'BODY_CURRENT_SOURCE_PARSE\'}\n$selected=@($tree.EndBlock.Statements | Where-Object {$_ -is [Management.Automation.Language.FunctionDefinitionAst] -and $_.Name -ceq \'Assert-PublicNativeUtilityFunctionSourceBody\'})\nif($selected.Count -ne 1){throw \'BODY_CURRENT_SOURCE_SELECTION\'}\n. ([ScriptBlock]::Create($selected[0].Extent.Text))\n$output=@(Assert-PublicNativeUtilityFunctionSourceBody $block.Ast $definitions $positive.path $comparison)\nif($output.Count -ne 0){throw \'BODY_CURRENT_PIPELINE_OUTPUT\'}\n[Console]::Out.WriteLine(\'SOURCE_BODY_SAME_TYPED_POSITIVE_ACCEPTED\')\n$output=@(Assert-PublicNativeUtilityFunctionSourceBody $definitions[0].Body $definitions $positive.path $comparison)\nif($output.Count -ne 0){throw \'BODY_LEGACY_PIPELINE_OUTPUT\'}\n[Console]::Out.WriteLine(\'SOURCE_BODY_GENUINE_LEGACY_BODY_ACCEPTED\')\n$source=[IO.File]::ReadAllText($psm1Path,$utf8);$manifest=[IO.File]::ReadAllText($manifestPath,$utf8)\nfunction New-BodyFixture([string]$label,[string]$text,[string]$name){\n    if($label -cnotmatch \'^[a-z][a-z-]{0,31}$\'){throw \'BODY_CASE_LABEL\'}\n    $directory=[IO.Path]::Combine($workRoot,$label)\n    if([IO.Directory]::Exists($directory) -or [IO.File]::Exists($directory)){throw \'BODY_CASE_REUSE\'}\n    [void][IO.Directory]::CreateDirectory($directory)\n    $script=[IO.Path]::Combine($directory,\'source-body-fixture.psm1\');$data=[IO.Path]::Combine($directory,\'PublicSourceBodyObservation.psd1\')\n    [IO.File]::WriteAllText($script,$text,$utf8)\n    [IO.File]::WriteAllText($data,$manifest.Replace("FunctionsToExport=@(\'Get-FileHash\')","FunctionsToExport=@(\'"+$name+"\')"),$utf8)\n    return Read-BodyFixture $script $data $name\n}\nfunction Require-BodyRefusal([string]$label,[Management.Automation.Language.Ast]$runtime,$defs,[string]$path){\n    $refused=$false\n    try{$null=Assert-PublicNativeUtilityFunctionSourceBody $runtime $defs $path $comparison}catch{if($_.Exception.Message -cne \'PUBLIC_NATIVE_HASH_FUNCTION_SOURCE_BODY\'){throw};$refused=$true}\n    if(-not $refused){throw (\'BODY_NEGATIVE_ADMITTED:\'+ $label)}\n    [Console]::Out.WriteLine(\'SOURCE_BODY_REFUSED:\'+ $label)\n}\nRequire-BodyRefusal \'runtime-type\' $definitions[0].Body.BeginBlock $definitions $positive.path\nRequire-BodyRefusal \'definition-type\' $block.Ast @($definitions[0].Body) $positive.path\n$wrongName=New-BodyFixture \'wrong-name\' ($source.Replace(\'Get-FileHash\',\'Get-OtherHash\')) \'Get-OtherHash\'\nRequire-BodyRefusal \'definition-name\' $block.Ast $wrongName.definitions $positive.path\nRequire-BodyRefusal \'runtime-name\' $wrongName.definitions[0] $definitions $wrongName.path\nRequire-BodyRefusal \'zero-definitions\' $block.Ast @() $positive.path\nRequire-BodyRefusal \'two-definitions\' $block.Ast @($definitions[0],$definitions[0]) $positive.path\n$body=New-BodyFixture \'changed-body\' ($source.Replace(\'component\',\'tampered!\')) \'Get-FileHash\'\nRequire-BodyRefusal \'body-text\' $body.definitions[0] $definitions $body.path\n$header=New-BodyFixture \'changed-header\' ($source.Replace(\'function Get-FileHash\',\'FUNCTION Get-FileHash\')) \'Get-FileHash\'\nRequire-BodyRefusal \'definition-text\' $header.definitions[0] $definitions $header.path\n$offset=New-BodyFixture \'shifted-offset\' ("`r`n"+$source) \'Get-FileHash\'\nRequire-BodyRefusal \'offset\' $offset.definitions[0] $definitions $offset.path\n$foreign=New-BodyFixture \'foreign-origin\' $source \'Get-FileHash\'\nRequire-BodyRefusal \'foreign-origin\' $foreign.definitions[0] $definitions $positive.path\n$wrapped=[ScriptBlock]::Create($definitions[0].Extent.Text)\nRequire-BodyRefusal \'wrapped-root\' $wrapped.Ast $definitions $positive.path\n[Console]::Out.WriteLine(\'SOURCE_BODY_COMPONENT_COMPLETE_NO_FUNCTION_INVOCATION\')\n'
+L_SOURCE_BODY_PROVENANCE = {'wholeNativeSha256': '86c71bec00a939539d80add9d5a89cdb8c304bd79c30af9b2dd2b44a5533b963', 'line': 265, 'guardSha256': 'c67bdb81bd3553827c69ed29bf0f6bba4c5025928083a1ba9b74a3dc28aec86d', 'transformation': 'none; exact266UTF8bytes includingLF', 'measurementClosingSha256': '25e5a6ed16aaefe47d9f33e26b7ee23e0353aee6ea472697904a7b0b85646718', 'measurementDecodedFieldsSha256': '4eaaa3cf96bf6254995cb7793991faaf6876fb0268612d987319c68166aebb1e'}
+
+
+def _actual_function_source_body_pair(case):
+    executable = shutil.which('powershell.exe' if os.name == 'nt' else 'pwsh')
+    if os.name == 'nt':
+        case.assertIsNotNone(executable, 'Windows requires the real source-body component')
+    elif executable is None:
+        case.skipTest('PowerShell engine is unavailable for the source-body component')
+    from agent_tools import source_module_loader
+    import ast
+    parent = dict(os.environ)
+    case._source_body_raw_cases = []
+    for raw, size, digest in (
+        (L_SOURCE_BODY_OLD_GUARD, 266, 'c67bdb81bd3553827c69ed29bf0f6bba4c5025928083a1ba9b74a3dc28aec86d'),
+        (L_SOURCE_BODY_PSM1, 250, 'd0f0a7dbd3519ba7eda852f249b75bb4ace0b0e005fd991c0557d90aec743beb'),
+        (L_SOURCE_BODY_MANIFEST, 242, 'c9992c92bccc1d8926a6f8d5943f779e11ab832d4bbb9de1eb02f2cf656bb169'),
+    ):
+        case.assertEqual((len(raw), hashlib.sha256(raw).hexdigest()), (size, digest))
+    producer = Path(__file__).with_name('test_windows_powershell_environment.py')
+    with ExitStack() as held:
+        own, own_closing = held.enter_context(source_module_loader._bootstrap_source(Path(__file__)))
+        own_tree = ast.parse(own, filename=__file__)
+        for name, value in (('L_SOURCE_BODY_OLD_GUARD', L_SOURCE_BODY_OLD_GUARD),
+                            ('L_SOURCE_BODY_PSM1', L_SOURCE_BODY_PSM1),
+                            ('L_SOURCE_BODY_MANIFEST', L_SOURCE_BODY_MANIFEST),
+                            ('L_SOURCE_BODY_CONTROL', L_SOURCE_BODY_CONTROL)):
+            definitions = [node for node in own_tree.body if isinstance(node, ast.Assign)
+                           and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+            case.assertEqual(len(definitions), 1)
+            case.assertEqual(ast.literal_eval(definitions[0].value), value)
+        raw, producer_closing = held.enter_context(source_module_loader._bootstrap_source(producer))
+        tree = ast.parse(raw, filename=str(producer))
+        assignments = [node for node in tree.body if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name) and target.id == 'NATIVE_MODULE_SCRIPT'
+                               for target in node.targets)]
+        case.assertEqual(len(assignments), 1)
+        actual = ast.literal_eval(assignments[0].value)
+        case.assertEqual(actual, NATIVE_MODULE_SCRIPT)
+        with tempfile.TemporaryDirectory(prefix='typed-source-body-') as temporary, ExitStack() as copied:
+            directory = Path(temporary).resolve()
+            inputs = {'current.ps1': actual.encode('utf-8', errors='strict'),
+                      'before.ps1': L_SOURCE_BODY_OLD_GUARD,
+                      'source-body-fixture.psm1': L_SOURCE_BODY_PSM1,
+                      'PublicSourceBodyObservation.psd1': L_SOURCE_BODY_MANIFEST,
+                      'control.ps1': b'\xef\xbb\xbf' + L_SOURCE_BODY_CONTROL.encode('utf-8', errors='strict')}
+            paths = {name: directory / name for name in inputs}
+            closings = []
+            for name, content in inputs.items():
+                fd = os.open(paths[name], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, 'wb') as stream:
+                    stream.write(content)
+                admitted, closing = copied.enter_context(source_module_loader._bootstrap_source(paths[name]))
+                case.assertEqual(admitted, content)
+                closings.append(closing)
+            work = directory / 'typed-modules'
+            work.mkdir(mode=0o700)
+            outcomes = []
+            for variant in ('before', 'current'):
+                argv = [executable, '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+                        str(paths['control.ps1']), str(paths['current.ps1']), str(paths['before.ps1']),
+                        str(paths['source-body-fixture.psm1']), str(paths['PublicSourceBodyObservation.psd1']),
+                        str(work), variant]
+                case.assertLessEqual(sum(len(part.encode('utf-8', errors='strict')) + 1 for part in argv), 60000)
+                environment = windows_powershell_environment(executable, parent)
+                supplied = dict(environment)
+                completed = subprocess.run(argv, capture_output=True, check=False, timeout=30, env=environment)
+                case._source_body_raw_cases.append((variant, completed))
+                case.assertLessEqual(len(completed.stdout) + len(completed.stderr), 1048576)
+                case.assertEqual(environment, supplied)
+                case.assertEqual(dict(os.environ), parent)
+                for name, content in inputs.items():
+                    case.assertEqual(paths[name].read_bytes(), content)
+                for closing in closings:
+                    closing()
+                producer_closing()
+                own_closing()
+                if variant == 'before':
+                    case.assertEqual(completed.returncode, 1, (completed.stdout, completed.stderr))
+                    case.assertEqual(completed.stdout.splitlines(), [b'SOURCE_BODY_OLD_REFUSED:PUBLIC_NATIVE_HASH_FUNCTION_SOURCE_BODY'])
+                    case.assertEqual(completed.stderr.splitlines(), [b'SOURCE_BODY_COMMON_POSITIVE_MUST_ADMIT'])
+                outcomes.append(completed)
+    return outcomes
+
+
+class PowerShellFunctionSourceBodyTests(unittest.TestCase):
+    def test_authentic_l265_guard_red_current_genuine_body_resolver_and_refusals(self):
+        old, current = _actual_function_source_body_pair(self)
+        import io
+        class SamePositive(unittest.TestCase):
+            def runTest(inner):
+                inner.assertEqual(inner.actual.returncode, 0, 'SOURCE_BODY_COMMON_POSITIVE_MUST_ADMIT')
+        outcomes = []
+        old_failure = None
+        for actual in (old, current):
+            positive = SamePositive()
+            positive.actual = actual
+            stream = io.StringIO()
+            result = unittest.TextTestRunner(stream=stream, verbosity=2).run(unittest.TestSuite([positive]))
+            outcomes.append((result.testsRun, len(result.failures), len(result.errors), len(result.skipped)))
+            if actual is old:
+                self.assertEqual(len(result.failures), 1)
+                old_failure = result.failures[0][1]
+                self.assertTrue(old_failure.endswith('AssertionError: 1 != 0 : SOURCE_BODY_COMMON_POSITIVE_MUST_ADMIT\n'))
+        self.assertEqual(outcomes, [(1, 1, 0, 0), (1, 0, 0, 0)])
+        self._source_body_causal_audit = {'outcomes': outcomes, 'oldCommonPositiveFailure': old_failure}
+        self.assertEqual(current.returncode, 0, (current.stdout, current.stderr))
+        self.assertEqual(current.stderr, b'')
+        self.assertEqual(current.stdout.splitlines(), [
+            b'SOURCE_BODY_SAME_TYPED_POSITIVE_ACCEPTED',
+            b'SOURCE_BODY_GENUINE_LEGACY_BODY_ACCEPTED',
+            b'SOURCE_BODY_REFUSED:runtime-type',
+            b'SOURCE_BODY_REFUSED:definition-type',
+            b'SOURCE_BODY_REFUSED:definition-name',
+            b'SOURCE_BODY_REFUSED:runtime-name',
+            b'SOURCE_BODY_REFUSED:zero-definitions',
+            b'SOURCE_BODY_REFUSED:two-definitions',
+            b'SOURCE_BODY_REFUSED:body-text',
+            b'SOURCE_BODY_REFUSED:definition-text',
+            b'SOURCE_BODY_REFUSED:offset',
+            b'SOURCE_BODY_REFUSED:foreign-origin',
+            b'SOURCE_BODY_REFUSED:wrapped-root',
+            b'SOURCE_BODY_COMPONENT_COMPLETE_NO_FUNCTION_INVOCATION'])

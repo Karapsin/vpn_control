@@ -3128,7 +3128,8 @@
       "sourceSha256": [
         "dbc512f209f90acd8204e21c5d1fc4cdd179dad8aa1e5f40f00bc7899d1ea495",
         "6dcc7d4c785f0257fbd5f18c58fee3461557dc713980a74f0800ea9c9ffe7dda",
-        "a0cc67ab9b2d57173bd184368e5164f3260ca320f698c38b9a91c2e036baa31e"
+        "a0cc67ab9b2d57173bd184368e5164f3260ca320f698c38b9a91c2e036baa31e",
+        "74b01f9d10f82bb3196120e7b7b343efa21c8eae639b848ba2ac2585e458c448"
       ]
     },
     "agent_tools/tests/test_windows_msi_listener_close_order.py": {
@@ -3350,7 +3351,8 @@
         "5789b38b80c90e00f889563df07b9e24b3af169f73ca95225469ccc2293b94f9",
         "c1e6acb0e937ed97c5ab8192c6d3e906cb7e41cdf73c16ee8b14e125b5e01ba6",
         "ac3f01fccc9a9394a728b299abae6f6bc7096b22db46f276a8a9f137fb01c023",
-        "404f92d11387b2758ded7d4792dee0644b0f62018416f9896a205cdf231477a1"
+        "404f92d11387b2758ded7d4792dee0644b0f62018416f9896a205cdf231477a1",
+        "c61829e8947516a0e678db7801e3b7d5c632940d727a82ada91418d0cc6a5137"
       ]
     },
     "agent_tools/tests/test_windows_powershell_fixture_execution.py": {

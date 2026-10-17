@@ -11,6 +11,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Normalize native test paths and enforce Linux cleanup CI coverage.
 - Validate PowerShell provider identity and read buffered guest commands reliably.
 - Keep MCP input test fixtures independent of caller temporary paths.
+- Validate genuine PowerShell function bodies across runtime AST forms.
 
 ## 2.2.13 - 2026-10-16
 
