@@ -9,6 +9,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Make MCP SSH readiness fixtures reproducible and keep dependency selection complete.
 - Match PowerShell provider encoding and retain native MCP failure inputs.
 - Normalize native test paths and enforce Linux cleanup CI coverage.
+- Validate PowerShell provider identity and read buffered guest commands reliably.
+- Keep MCP input test fixtures independent of caller temporary paths.
 
 ## 2.2.13 - 2026-10-16
 

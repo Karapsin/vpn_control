@@ -226,3 +226,111 @@ class PowerShellProviderEncodingTests(unittest.TestCase):
                     b'ENCODING_CONFLICTING_FORMAT_REFUSED:utf32le-under-1252',
                     b'ENCODING_COMPONENT_COMPLETE_MODELED_FORMAT_NOT_WINDOWS_ACCEPTANCE']
         self.assertEqual(lines, expected)
+
+
+# Exact K program region, not a reconstructed selector. The surrounding native
+# function still authenticates paths/bytes/manifest and exports/body/closing.
+K_GRAPH_BEFORE = b"        $nested=@($module.NestedModules);$scriptNode=$null;$scriptCount=0;$binaryCount=0\n        if($nested.Count -ne 2){throw 'PUBLIC_NATIVE_HASH_FUNCTION_NESTED'}\n        foreach($node in $nested){\n            if($null -eq $node -or $node.GetType().FullName -cne 'System.Management.Automation.PSModuleInfo' -or $node -isnot [Management.Automation.PSModuleInfo]){throw 'PUBLIC_NATIVE_HASH_FUNCTION_NESTED'}\n            if([string]$node.ModuleType -ceq 'Script' -and $node.Name -ceq 'Microsoft.PowerShell.Utility'){$scriptNode=$node;$scriptCount++}\n            elseif([string]$node.ModuleType -ceq 'Binary' -and $node.Name -ceq 'Microsoft.PowerShell.Commands.Utility'){$binaryCount++}\n            else{throw 'PUBLIC_NATIVE_HASH_FUNCTION_NESTED'}\n        }\n        if($scriptCount -ne 1 -or $binaryCount -ne 1 -or -not [Object]::ReferenceEquals($scriptNode,$block.Module)){throw 'PUBLIC_NATIVE_HASH_FUNCTION_DEFINING_MODULE'}\n"
+K_GRAPH_BEFORE_SHA256 = '85068740611abaf64efccc798ec717335e9a1bdf07029800cf044735ddeaf146'
+K_GRAPH_BEFORE_PROVENANCE = {
+    'commit': '33cedbedc222286d8fa2cdb80c7b3aebc44bf77f',
+    'pythonPath': 'agent_tools/tests/test_windows_powershell_environment.py',
+    'pythonSha256': 'ac3f01fccc9a9394a728b299abae6f6bc7096b22db46f276a8a9f137fb01c023',
+    'literalName': 'NATIVE_MODULE_SCRIPT',
+    'literalSha256': 'cc691b159e226e59bd133dfb5867c65b9edb8cd926c866cd1d6c989a0a0b3a7e',
+    'utf8Start': 24106, 'utf8End': 25031, 'lines': [202, 210],
+    'transformation': 'none; exact 925 UTF-8 bytes including terminal LF',
+}
+NESTED_GRAPH_CONTROL = 'param([string]$sourcePath,[string]$beforePath,[string]$workRoot,[string]$variant)\nSet-StrictMode -Version Latest\n$ErrorActionPreference=\'Stop\'\n# SYNTHETIC_GRAPH_COMPONENT: genuine imported typed nodes, not Windows/native acceptance.\n$utf8=[Text.UTF8Encoding]::new($false,$true)\n$errors=$null;$tokens=$null\n$tree=[Management.Automation.Language.Parser]::ParseInput([IO.File]::ReadAllText($sourcePath,$utf8),[ref]$tokens,[ref]$errors)\nif($null -ne $errors -and $errors.Length){throw \'GRAPH_CURRENT_SOURCE_SYNTAX\'}\n$names=@(\'Stop-PublicNativeUtilityFunctionGraph\',\'Resolve-PublicNativeUtilityFunctionNodes\')\n$definitions=[Collections.Generic.Dictionary[string,Management.Automation.Language.FunctionDefinitionAst]]::new([StringComparer]::Ordinal)\nforeach($statement in $tree.EndBlock.Statements){\n    if($statement -is [Management.Automation.Language.FunctionDefinitionAst] -and $names -ccontains $statement.Name){\n        if($definitions.ContainsKey($statement.Name)){throw \'GRAPH_CURRENT_SOURCE_DUPLICATE\'}\n        $definitions.Add($statement.Name,$statement)\n    }\n}\nif($definitions.Count -ne 2){throw \'GRAPH_CURRENT_SOURCE_MISSING\'}\nforeach($name in $names){. ([ScriptBlock]::Create($definitions[$name].Extent.Text))}\n$before=[IO.File]::ReadAllText($beforePath,$utf8)\n$oldSelector=[ScriptBlock]::Create(\'param($module,$block)\'+"`n"+$before+"`nreturn ,`$scriptNode")\nfunction Quote-GraphLiteral([string]$value){return "\'"+$value.Replace("\'","\'\'")+"\'"}\nfunction Find-GraphBinary([Management.Automation.PSModuleInfo]$module){\n    $nodes=@();foreach($node in $module.NestedModules){if([string]$node.ModuleType -ceq \'Binary\'){$nodes+=,$node}}\n    if($nodes.Count -ne 1 -or $null -eq $nodes[0].ImplementingAssembly -or $nodes[0].ImplementingAssembly.IsDynamic){throw \'GRAPH_REAL_BINARY_ADMISSION\'}\n    return ,$nodes[0]\n}\nfunction Import-GraphInstalledModule([string]$name){\n    $path=[IO.Path]::Combine([string]$PSHOME,\'Modules\',$name,$name+\'.psd1\')\n    $modules=@(Import-Module -Name $path -Force -PassThru -ErrorAction Stop)\n    if($modules.Count -ne 1 -or $modules[0] -isnot [Management.Automation.PSModuleInfo] -or [string]$modules[0].ModuleType -cne \'Manifest\'){throw \'GRAPH_REAL_MANIFEST_ADMISSION\'}\n    return ,$modules[0]\n}\n$utility=Import-GraphInstalledModule \'Microsoft.PowerShell.Utility\'\n$realBinary=Find-GraphBinary $utility\n$assembly=$realBinary.ImplementingAssembly\n$binaryPath=[string]$assembly.Location\nif([string]::IsNullOrWhiteSpace($binaryPath) -or -not [IO.Path]::IsPathRooted($binaryPath) -or -not [IO.File]::Exists($binaryPath) -or $assembly.GetName().Name -cne \'Microsoft.PowerShell.Commands.Utility\'){throw \'GRAPH_REAL_ASSEMBLY_ADMISSION\'}\n$declaredDll=[IO.Path]::GetFileName($binaryPath)\nif($declaredDll -cne \'Microsoft.PowerShell.Commands.Utility.dll\'){throw \'GRAPH_REAL_DLL_DECLARATION_ADMISSION\'}\n$keys=[string[]]@($realBinary.ExportedCmdlets.Keys);[Array]::Sort($keys,[StringComparer]::Ordinal)\nif($keys.Length -lt 2){throw \'GRAPH_REAL_EXPORTED_SUBSET_ADMISSION\'}\n$anchor=$keys[0]\nfunction New-GraphFixture([string]$label,[string[]]$binaryPaths,[string[]]$extraScripts,[string[]]$exports,[string]$extraBody){\n    if($label -cnotmatch \'^[a-z][a-z0-9-]{0,31}$\'){throw \'GRAPH_FIXTURE_LABEL\'}\n    $directory=[IO.Path]::Combine($workRoot,$label)\n    if([IO.Directory]::Exists($directory) -or [IO.File]::Exists($directory)){throw \'GRAPH_FIXTURE_REUSE\'}\n    [void][IO.Directory]::CreateDirectory($directory)\n    $scriptName=\'ActualGraph_\'+$label+\'.psm1\'\n    $scriptPath=[IO.Path]::Combine($directory,$scriptName)\n    # The function is never invoked: it supplies genuine exported FunctionInfo/ScriptBlock identity only.\n    $body="function Get-FileHash { throw \'SYNTHETIC_GRAPH_FUNCTION_MUST_NOT_EXECUTE\' }`n"+$extraBody+"`nExport-ModuleMember -Function Get-FileHash"\n    [IO.File]::WriteAllText($scriptPath,$body,$utf8)\n    $nested=[Collections.Generic.List[string]]::new()\n    foreach($path in $binaryPaths){[void]$nested.Add((Quote-GraphLiteral $path))}\n    [void]$nested.Add((Quote-GraphLiteral $scriptName))\n    foreach($name in $extraScripts){\n        $path=[IO.Path]::Combine($directory,$name)\n        [IO.File]::WriteAllText($path,"function Get-SyntheticExtra { throw \'SYNTHETIC_EXTRA_MUST_NOT_EXECUTE\' }`nExport-ModuleMember -Function Get-SyntheticExtra",$utf8)\n        [void]$nested.Add((Quote-GraphLiteral $name))\n    }\n    $exportText=[Collections.Generic.List[string]]::new();foreach($name in $exports){[void]$exportText.Add((Quote-GraphLiteral $name))}\n    $manifest="@{RootModule=\'\';ModuleVersion=\'1.0.0\';GUID=\'cab1f57b-69af-40c9-9aaf-bd968882464c\';NestedModules=@("+[string]::Join(\',\',$nested.ToArray())+");CmdletsToExport=@("+[string]::Join(\',\',$exportText.ToArray())+");FunctionsToExport=@(\'Get-FileHash\')}"\n    $manifestPath=[IO.Path]::Combine($directory,\'Fixture_\'+$label+\'.psd1\')\n    [IO.File]::WriteAllText($manifestPath,$manifest,$utf8)\n    $loaded=@(Import-Module -Name $manifestPath -Force -PassThru -ErrorAction Stop)\n    if($loaded.Count -ne 1 -or $loaded[0] -isnot [Management.Automation.PSModuleInfo] -or [string]$loaded[0].ModuleType -cne \'Manifest\' -or -not $loaded[0].ExportedFunctions.ContainsKey(\'Get-FileHash\')){throw \'GRAPH_FIXTURE_IMPORT_ADMISSION\'}\n    $command=$loaded[0].ExportedFunctions[\'Get-FileHash\']\n    if($command -isnot [Management.Automation.FunctionInfo] -or $command.ScriptBlock -isnot [Management.Automation.ScriptBlock] -or $command.ScriptBlock.Module -isnot [Management.Automation.PSModuleInfo] -or [IO.Path]::GetFullPath($command.ScriptBlock.File) -cne [IO.Path]::GetFullPath($scriptPath)){throw \'GRAPH_FIXTURE_FUNCTION_ADMISSION\'}\n    return @{module=$loaded[0];block=$command.ScriptBlock;path=$scriptPath;manifest=$manifestPath}\n}\n$positive=New-GraphFixture \'positive\' @($binaryPath) @() @($anchor) \'\'\nif($positive.block.Module.Name -ceq \'Microsoft.PowerShell.Utility\' -or $positive.module.ExportedCmdlets.Count -ne 1){throw \'GRAPH_CONTROLLED_POSITIVE_IDENTITY\'}\n$actualNodes=@($positive.module.NestedModules)\nif($actualNodes.Count -ne 2 -or $actualNodes[0] -isnot [Management.Automation.PSModuleInfo] -or $actualNodes[1] -isnot [Management.Automation.PSModuleInfo]){throw \'GRAPH_CONTROLLED_POSITIVE_TYPED_NODES\'}\nif($variant -ceq \'before\'){\n    $refused=$false\n    try{$null=& $oldSelector $positive.module $positive.block}catch{\n        if($_.Exception.Message -cne \'PUBLIC_NATIVE_HASH_FUNCTION_NESTED\'){throw}\n        $refused=$true\n    }\n    if(-not $refused){throw \'GRAPH_BEFORE_UNEXPECTED_ADMISSION\'}\n    [Console]::Out.WriteLine(\'SYNTHETIC_GRAPH_OLD_REFUSED:PUBLIC_NATIVE_HASH_FUNCTION_NESTED\')\n    [Console]::Error.WriteLine(\'SYNTHETIC_GRAPH_COMMON_POSITIVE_MUST_ADMIT\')\n    exit 1\n}\nif($variant -cne \'current\'){throw \'GRAPH_SOURCE_VARIANT\'}\n$selected=Resolve-PublicNativeUtilityFunctionNodes $positive.module $positive.block $declaredDll\nif(-not [Object]::ReferenceEquals($selected,$positive.block.Module)){throw \'GRAPH_CURRENT_EXACT_SCRIPT_REFERENCE\'}\n[Console]::Out.WriteLine(\'SYNTHETIC_GRAPH_SAME_TYPED_POSITIVE_ACCEPTED\')\nfunction Require-GraphRefusal([string]$label,[object]$module,[object]$block,[string]$dll,[string]$prefix){\n    $refused=$false\n    try{$null=Resolve-PublicNativeUtilityFunctionNodes $module $block $dll}catch{\n        $message=[string]$_.Exception.Message\n        if(-not $message.StartsWith($prefix,[StringComparison]::Ordinal)){throw}\n        if($utf8.GetByteCount($message) -gt 4096 -or $message.IndexOf("`n") -ge 0 -or $message.IndexOf("`r") -ge 0){throw \'GRAPH_REFUSAL_DETAIL_BOUND\'}\n        $refused=$true\n    }\n    if(-not $refused){throw (\'GRAPH_NEGATIVE_ADMITTED:\'+ $label)}\n    [Console]::Out.WriteLine(\'SYNTHETIC_GRAPH_REFUSED:\'+ $label)\n}\n$other=New-GraphFixture \'other-reference\' @($binaryPath) @() @($anchor) \'\'\nRequire-GraphRefusal \'foreign-script-reference\' $positive.module $other.block $declaredDll \'PUBLIC_NATIVE_HASH_FUNCTION_NESTED\'\n$one=New-GraphFixture \'one-node\' @() @() @() \'\'\nRequire-GraphRefusal \'missing-binary\' $one.module $one.block $declaredDll \'PUBLIC_NATIVE_HASH_FUNCTION_NESTED\'\n$three=New-GraphFixture \'three-nodes\' @($binaryPath) @(\'Extra.psm1\') @($anchor) \'\'\nRequire-GraphRefusal \'extra-node\' $three.module $three.block $declaredDll \'PUBLIC_NATIVE_HASH_FUNCTION_NESTED\'\n$twoScripts=New-GraphFixture \'two-scripts\' @() @(\'Extra.psm1\') @() \'\'\nRequire-GraphRefusal \'wrong-node-type\' $twoScripts.module $twoScripts.block $declaredDll \'PUBLIC_NATIVE_HASH_FUNCTION_NESTED\'\nRequire-GraphRefusal \'missing-script-block\' $positive.module $null $declaredDll \'PUBLIC_NATIVE_HASH_FUNCTION_NESTED\'\n$empty=New-GraphFixture \'empty-exports\' @($binaryPath) @() @() \'\'\nRequire-GraphRefusal \'empty-export-subset\' $empty.module $empty.block $declaredDll \'PUBLIC_NATIVE_HASH_FUNCTION_EXPORT\'\n$management=Import-GraphInstalledModule \'Microsoft.PowerShell.Management\'\n$foreignBinary=Find-GraphBinary $management\n$foreignPath=[string]$foreignBinary.ImplementingAssembly.Location\n$foreignKeys=[string[]]@($foreignBinary.ExportedCmdlets.Keys);[Array]::Sort($foreignKeys,[StringComparer]::Ordinal)\n$foreignName=$null;foreach($name in $foreignKeys){if(-not $realBinary.ExportedCmdlets.ContainsKey($name)){$foreignName=$name;break}}\nif($null -eq $foreignName -or $foreignBinary.ImplementingAssembly.GetName().Name -ceq $assembly.GetName().Name){throw \'GRAPH_REAL_FOREIGN_ASSEMBLY_ADMISSION\'}\n$foreign=New-GraphFixture \'foreign-assembly\' @($foreignPath) @() @($foreignName) \'\'\nRequire-GraphRefusal \'foreign-assembly\' $foreign.module $foreign.block $declaredDll \'PUBLIC_NATIVE_HASH_FUNCTION_NESTED\'\n$managementPath=[IO.Path]::Combine([string]$PSHOME,\'Modules\',\'Microsoft.PowerShell.Management\',\'Microsoft.PowerShell.Management.psd1\')\n$extraBody=\'Import-Module -Name \'+(Quote-GraphLiteral $managementPath)+\' -Force -ErrorAction Stop\'+"`nExport-ModuleMember -Cmdlet "+(Quote-GraphLiteral $foreignName)\n$foreignExport=New-GraphFixture \'foreign-export\' @($binaryPath) @() @($foreignName) $extraBody\nif($foreignExport.module.ExportedCmdlets.Count -lt 1 -or -not $foreignExport.module.ExportedCmdlets.ContainsKey($foreignName)){throw \'GRAPH_REAL_FOREIGN_EXPORT_ADMISSION\'}\nRequire-GraphRefusal \'foreign-export-counterpart\' $foreignExport.module $foreignExport.block $declaredDll \'PUBLIC_NATIVE_HASH_FUNCTION_EXPORT\'\n[Console]::Out.WriteLine(\'SYNTHETIC_GRAPH_COMPONENT_COMPLETE_NO_NATIVE_ACCEPTANCE\')\n'
+
+
+def _actual_nested_function_graph_case(case, *, before):
+    executable = shutil.which('powershell.exe' if os.name == 'nt' else 'pwsh')
+    if os.name == 'nt':
+        case.assertIsNotNone(executable, 'Windows requires the real typed module graph component')
+    elif executable is None:
+        case.skipTest('PowerShell engine is unavailable for the synthetic typed graph component')
+    from agent_tools import source_module_loader
+    import ast
+    parent = dict(os.environ)
+    case.assertEqual((len(K_GRAPH_BEFORE), hashlib.sha256(K_GRAPH_BEFORE).hexdigest()),
+                     (925, K_GRAPH_BEFORE_SHA256))
+    producer = Path(__file__).with_name('test_windows_powershell_environment.py')
+    with ExitStack() as held:
+        raw, producer_closing = held.enter_context(source_module_loader._bootstrap_source(producer))
+        tree = ast.parse(raw, filename=str(producer))
+        assignments = [node for node in tree.body if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name) and target.id == 'NATIVE_MODULE_SCRIPT'
+                               for target in node.targets)]
+        case.assertEqual(len(assignments), 1)
+        actual = ast.literal_eval(assignments[0].value)
+        case.assertEqual(actual, NATIVE_MODULE_SCRIPT)
+        with tempfile.TemporaryDirectory(prefix='synthetic-native-graph-') as temporary, ExitStack() as copied:
+            directory = Path(temporary).resolve()
+            inputs = {'current.ps1': actual.encode('utf-8', errors='strict'),
+                      'before.ps1': K_GRAPH_BEFORE,
+                      'control.ps1': b'\xef\xbb\xbf' + NESTED_GRAPH_CONTROL.encode('utf-8', errors='strict')}
+            paths = {name: directory / name for name in inputs}
+            closings = []
+            for name, content in inputs.items():
+                fd = os.open(paths[name], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, 'wb') as stream:
+                    stream.write(content)
+                admitted, closing = copied.enter_context(source_module_loader._bootstrap_source(paths[name]))
+                case.assertEqual(admitted, content)
+                closings.append(closing)
+            work = directory / 'typed-modules'
+            work.mkdir(mode=0o700)
+            argv = [executable, '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+                    str(paths['control.ps1']), str(paths['current.ps1']), str(paths['before.ps1']),
+                    str(work), 'before' if before else 'current']
+            case.assertLessEqual(sum(len(part.encode('utf-8', errors='strict')) + 1 for part in argv), 60000)
+            environment = windows_powershell_environment(executable, parent)
+            supplied = dict(environment)
+            completed = subprocess.run(argv, capture_output=True, check=False, timeout=30, env=environment)
+            case.assertLessEqual(len(completed.stdout) + len(completed.stderr), 1048576)
+            case.assertEqual(environment, supplied)
+            case.assertEqual(dict(os.environ), parent)
+            for name, content in inputs.items():
+                case.assertEqual(paths[name].read_bytes(), content)
+            for closing in closings:
+                closing()
+            producer_closing()
+    return completed
+
+
+class PowerShellNestedFunctionGraphTests(unittest.TestCase):
+    def test_authentic_k_selector_red_current_genuine_graph_and_refusals(self):
+        # Actual imported typed graph; the harmless function is never invoked.
+        # The controlled display name is not an assertion about K's unprinted node.
+        old = _actual_nested_function_graph_case(self, before=True)
+        current = _actual_nested_function_graph_case(self, before=False)
+        self.assertEqual(old.returncode, 1, (old.stdout, old.stderr))
+        self.assertEqual(old.stdout.splitlines(), [
+            b'SYNTHETIC_GRAPH_OLD_REFUSED:PUBLIC_NATIVE_HASH_FUNCTION_NESTED'])
+        self.assertEqual(old.stderr.splitlines(), [b'SYNTHETIC_GRAPH_COMMON_POSITIVE_MUST_ADMIT'])
+        import io
+        class SamePositive(unittest.TestCase):
+            def runTest(inner):
+                inner.assertEqual(inner.actual.returncode, 0, (inner.actual.stdout, inner.actual.stderr))
+        outcomes = []
+        for actual in (old, current):
+            positive = SamePositive()
+            positive.actual = actual
+            stream = io.StringIO()
+            result = unittest.TextTestRunner(stream=stream, verbosity=2).run(unittest.TestSuite([positive]))
+            outcomes.append((result.testsRun, len(result.failures), len(result.errors), len(result.skipped)))
+        self.assertEqual(outcomes, [(1, 1, 0, 0), (1, 0, 0, 0)])
+        self.assertEqual(current.returncode, 0, (current.stdout, current.stderr))
+        self.assertEqual(current.stderr, b'')
+        self.assertEqual(current.stdout.splitlines(), [
+            b'SYNTHETIC_GRAPH_SAME_TYPED_POSITIVE_ACCEPTED',
+            b'SYNTHETIC_GRAPH_REFUSED:foreign-script-reference',
+            b'SYNTHETIC_GRAPH_REFUSED:missing-binary',
+            b'SYNTHETIC_GRAPH_REFUSED:extra-node',
+            b'SYNTHETIC_GRAPH_REFUSED:wrong-node-type',
+            b'SYNTHETIC_GRAPH_REFUSED:missing-script-block',
+            b'SYNTHETIC_GRAPH_REFUSED:empty-export-subset',
+            b'SYNTHETIC_GRAPH_REFUSED:foreign-assembly',
+            b'SYNTHETIC_GRAPH_REFUSED:foreign-export-counterpart',
+            b'SYNTHETIC_GRAPH_COMPONENT_COMPLETE_NO_NATIVE_ACCEPTANCE'])

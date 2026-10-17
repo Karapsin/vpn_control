@@ -3067,12 +3067,15 @@
       "scopes": [
         "agent_tools/tests/connected_input_peer_causal.py",
         "agent_tools/ssh_transport.py",
-        "agent_tools/windows_guest_input.py"
+        "agent_tools/windows_guest_input.py",
+        "agent_tools/tests/test_windows_guest_input.py"
       ],
       "sourceSha256": [
         "0f7fa73ba6a2d69c91edc380fdd8d6a6a76dfd66f6b48795f5ed463dbba73e46",
         "df273e1b3740bf7c6ef316af2d94c2eeccf41f832f84180bfdb586bc47efe34c",
-        "c9f8737f5c1a8a4a56b0abf7831722f5bd3670074f82ce07f3d5ed808312be0d"
+        "c9f8737f5c1a8a4a56b0abf7831722f5bd3670074f82ce07f3d5ed808312be0d",
+        "860b6b7b7692c2177f719d9d610af9ce220e70b9d4eea0b03d22b7d089193643",
+        "33213f65526961e6b25f6599f9c04e59d235d70850940731f5228c4bbf8d3950"
       ]
     },
     "agent_tools/tests/test_windows_hosted_fixture_workflow.py": {
@@ -3124,7 +3127,8 @@
       ],
       "sourceSha256": [
         "dbc512f209f90acd8204e21c5d1fc4cdd179dad8aa1e5f40f00bc7899d1ea495",
-        "6dcc7d4c785f0257fbd5f18c58fee3461557dc713980a74f0800ea9c9ffe7dda"
+        "6dcc7d4c785f0257fbd5f18c58fee3461557dc713980a74f0800ea9c9ffe7dda",
+        "a0cc67ab9b2d57173bd184368e5164f3260ca320f698c38b9a91c2e036baa31e"
       ]
     },
     "agent_tools/tests/test_windows_msi_listener_close_order.py": {
@@ -3345,7 +3349,8 @@
         "19ca9f2452119d2a2ff8b282415f4b7b5163ab451582ca55afee9cffcc74345a",
         "5789b38b80c90e00f889563df07b9e24b3af169f73ca95225469ccc2293b94f9",
         "c1e6acb0e937ed97c5ab8192c6d3e906cb7e41cdf73c16ee8b14e125b5e01ba6",
-        "ac3f01fccc9a9394a728b299abae6f6bc7096b22db46f276a8a9f137fb01c023"
+        "ac3f01fccc9a9394a728b299abae6f6bc7096b22db46f276a8a9f137fb01c023",
+        "404f92d11387b2758ded7d4792dee0644b0f62018416f9896a205cdf231477a1"
       ]
     },
     "agent_tools/tests/test_windows_powershell_fixture_execution.py": {

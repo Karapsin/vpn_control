@@ -1312,10 +1312,20 @@ def main():
    emit({'state':'FRESH_CHAIN_FRAME','stage':stage,'sha256':hashlib.sha256(raw).hexdigest(),'frameGzip':base64.b64encode(packed).decode(),'binding':binding,'bindingSha256':binding_sha,'remoteCapture':directory,'inputAckIsUiProof':False,'joined':original_binding is not None,'joinRequired':original_binding is None})
    return binding_sha
   response(None);command('qmp_capabilities');stage='focus';original_binding=None;original_consent=None;accepted_ack=None;deadline=time.monotonic()+240;actions=0;finished=False;emit_frame()
+  input_pending=bytearray()
   while time.monotonic()<deadline:
-   ready,_,_=select.select([sys.stdin],[],[],max(0,deadline-time.monotonic()))
-   if not ready:raise ValueError('ORIGINAL_CHAIN_INPUT_DEADLINE')
-   raw=sys.stdin.buffer.readline(8193)
+   # Keep bytes read beyond one line in the same bounded owner. Kernel select
+   # cannot report a complete line already held by Python's BufferedReader.
+   while b'\n'not in input_pending:
+    if len(input_pending)>8192:raise ValueError('ORIGINAL_CHAIN_COMMAND_BOUND')
+    ready,_,_=select.select([sys.stdin],[],[],max(0,deadline-time.monotonic()))
+    if not ready:raise ValueError('ORIGINAL_CHAIN_INPUT_DEADLINE')
+    chunk=os.read(sys.stdin.fileno(),8193-len(input_pending))
+    if not chunk:break
+    input_pending.extend(chunk)
+   if b'\n'in input_pending:
+    line,_,rest=input_pending.partition(b'\n');raw=bytes(line)+b'\n';input_pending=bytearray(rest)
+   else:raw=bytes(input_pending);input_pending.clear()
    if not raw or len(raw)>8192:raise ValueError('ORIGINAL_CHAIN_COMMAND_BOUND')
    save(directory+'/decision-'+str(actions)+'.json',raw);decision=json.loads(raw)
    if decision=={'action':'finish'}:finished=True;break

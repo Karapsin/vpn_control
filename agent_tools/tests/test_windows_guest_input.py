@@ -3,11 +3,13 @@ import base64
 from dataclasses import asdict, replace
 import gzip
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -228,11 +230,31 @@ if options.get('sourceBoundary'):
  print('SOURCE_GUARD_WIRE '+json.dumps({'keyPackets':len(keys),'lastPacket':keys[-1]if keys else None,'nativeCalls':0}),file=sys.stderr)
 """
 
+def _owned_input_fixture():
+    # These local fixtures exercise AF_UNIX, whose physical pathname bound is
+    # smaller than a caller's legitimate deeply nested TMPDIR. Never alter that
+    # environment or adopt an existing root: make a fresh private short root.
+    temporary=tempfile.TemporaryDirectory(prefix='vci-',dir='/tmp')
+    try:
+        root=Path(temporary.name).resolve(strict=True);info=root.lstat()
+        if not stat.S_ISDIR(info.st_mode)or info.st_uid!=os.getuid()or stat.S_IMODE(info.st_mode)!=0o700:
+            raise AssertionError('owned input fixture directory identity')
+        if any(len(os.fsencode(str(root/name)))>103 for name in ('qga.sock','qmp.sock')):
+            raise AssertionError('owned input fixture AF_UNIX pathname bound')
+        return temporary,root
+    except BaseException:
+        temporary.cleanup();raise
+
+
 @unittest.skipUnless(input_owner.channel.coordinator_capable(),'POSIX retained observer required; pure producer/profile tests remain portable')
 class WindowsGuestInputOriginalObserverTest(unittest.TestCase):
+    def _make_owned_fixture(self):
+        self.temp,self.root=_owned_input_fixture()
+
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name).resolve()
+        self._make_owned_fixture()
         self.observers=[];self.fake_guard_calls=[]
+        self.retained_failure=None
         self.c=context();self.raw=input_owner._json(asdict(self.c));self.path=self.root/'context.json';self.path.write_bytes(self.raw)
         self.digest=hashlib.sha256(self.raw).hexdigest();self.p=profile(self.path,self.digest)
         owner=self
@@ -247,6 +269,49 @@ class WindowsGuestInputOriginalObserverTest(unittest.TestCase):
         self.guard_patch=patch.object(input_owner.channel,'Guard',ControlledGuard);self.guard_patch.start()
         self.epoch_patch=patch.object(input_owner,'_source_epoch',return_value=(self.c.caller_source_sha,self.c.caller_content_fingerprint));self.epoch_patch.start()
         self.runtime_patch=patch.object(input_owner,'build_remote_program',return_value='controlled transport fixture');self.runtime_patch.start()
+
+    def _remember_owned_start(self,reply):
+        # Only this fresh root and exact current fixture selectors can enroll
+        # an observer. This is an in-memory constructor record, never PID search.
+        inputs={'host':'archlinux','profile':'synthetic','correlationId':CORRELATION}
+        with input_owner._SESSIONS_LOCK:
+            matches=[value for (root,key),value in input_owner._SESSIONS.items()
+                     if root==str(self.root)and key==value.input_id and value.root==self.root
+                     and value.inputs==inputs and value.process is not None]
+        self.assertLessEqual(len(matches),1,'ambiguous owned fixture constructor')
+        if matches:
+            observer=matches[0]
+            if observer not in self.observers:self.observers.append(observer)
+            if reply is not None and 'inputId'in reply:self.assertEqual(reply['inputId'],observer.input_id)
+
+    def _dispatch_fixture_start(self):
+        reply=None
+        evidence={'socketPathBytes':{name:len(os.fsencode(str(self.root/name)))for name in ('qga.sock','qmp.sock')},
+                  'fixtureRoot':str(self.root),'ownedConstructorOnly':True}
+        try:
+            reply=input_owner.dispatch(self.root,'windows-input-start',{'host':'archlinux','profile':'synthetic','correlationId':CORRELATION})
+            self._remember_owned_start(reply)
+        except BaseException as error:
+            # Even a malformed delivery cannot discard an already accepted own
+            # constructor. Enroll before validating the reply's claimed id.
+            self._remember_owned_start(None)
+            self._retain_observer_failure('startup-exception',
+                {'type':type(error).__name__,'message':str(error),'reply':reply},[],evidence)
+            raise
+        if not reply.get('ok')or reply.get('state')!='INPUT_FRAME_READY':
+            self._retain_observer_failure('startup',reply,[],evidence)
+        return reply
+
+    def _retain_observer_failure(self,stage,reply,errors,evidence):
+        # This is the exact owned inert fixture, never an adopted live session.
+        # Retain before the assertion: a later cleanup failure must not erase it.
+        self.retained_failure={'stage':stage,'reply':reply,'sourceErrors':errors,
+                               'boundaryEvidence':evidence,'originalCauseEstablished':False}
+        self.temp._finalizer.detach()
+        path=self.root/'failure-reply.private.json'
+        input_owner._write(path,input_owner._json(self.retained_failure))
+        print('RETAINED_INPUT_FAILURE '+json.dumps({'root':str(self.root),'replyPath':str(path),
+              'stage':stage,'reply':reply,'capturesClosed':False}),file=sys.stderr)
 
     def tearDown(self):
         for observer in self.observers:
@@ -268,15 +333,37 @@ class WindowsGuestInputOriginalObserverTest(unittest.TestCase):
         with input_owner._SESSIONS_LOCK:
             for key in list(input_owner._SESSIONS):
                 if key[0]==str(self.root):del input_owner._SESSIONS[key]
-        self.runtime_patch.stop();self.epoch_patch.stop();self.guard_patch.stop();self.temp.cleanup()
+        self.runtime_patch.stop();self.epoch_patch.stop();self.guard_patch.stop()
+        if self.retained_failure is None:self.temp.cleanup()
+        else:
+            # Every exact owned child/reader above is now naturally reaped and
+            # closed. Only now read the actual private captures and wire rows.
+            captures=[]
+            for observer in self.observers:
+                row={'inputId':observer.input_id,'pid':observer.process.pid,
+                     'returncode':observer.process.returncode,'threadClosed':not observer.thread.is_alive(),
+                     'streamsClosed':all(stream.closed for stream in (observer.process.stdin,observer.process.stdout,observer.process.stderr)),
+                     'guardClosed':observer.guard.closed,'raw':{}}
+                for name in ('stdout.private','stderr.private'):
+                    path=observer.directory/name;size=path.stat().st_size
+                    self.assertLessEqual(size,input_owner._MAX_STDOUT_BYTES if name.startswith('stdout')else 2097152)
+                    raw=path.read_bytes();row['raw'][name]={'path':str(path),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+                    if name.startswith('stderr'):
+                        row['wire']=[line for line in raw.decode('utf-8','replace').splitlines()if line.startswith('SOURCE_GUARD_WIRE ')]
+                captures.append(row)
+            self.retained_failure.update(captures=captures,allOwnedObserversClosed=True)
+            path=self.root/'failure-closed-capture.private.json'
+            input_owner._write(path,input_owner._json(self.retained_failure))
+            print('RETAINED_INPUT_FAILURE_CLOSED '+json.dumps({'root':str(self.root),'manifest':str(path),
+                  'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}),file=sys.stderr)
 
     def start(self,scenario='normal'):
         argv=[sys.executable,'-u','-c',_CHILD,json.dumps([self.digest,input_owner.CURRENT_GUEST_GUARD_TEMPLATE_SHA256,CORRELATION,scenario,binding()])]
         with patch.object(input_owner,'_launch',return_value=(argv,b'{}\n')):
-            reply=input_owner.dispatch(self.root,'windows-input-start',{'host':'archlinux','profile':'synthetic','correlationId':CORRELATION})
+            reply=self._dispatch_fixture_start()
         self.assertTrue(reply['ok'],reply)
         self.assertFalse(reply['nativeInputAdmitted'])
-        observer=input_owner._SESSIONS[(str(self.root),reply['inputId'])];self.observers.append(observer)
+        observer=input_owner._SESSIONS[(str(self.root),reply['inputId'])]
         self.selectors={'host':'archlinux','profile':'synthetic','correlationId':CORRELATION,'inputId':reply['inputId']}
         return reply,observer
 
@@ -315,9 +402,9 @@ class WindowsGuestInputOriginalObserverTest(unittest.TestCase):
             return [sys.executable,'-u','-c',_PRODUCTION_CHILD,json.dumps([program,binding(),ACK,typed,green])],b'{}\n'
         try:
             with patch.object(input_owner,'_launch',side_effect=launch):
-                reply=input_owner.dispatch(self.root,'windows-input-start',{'host':'archlinux','profile':'synthetic','correlationId':CORRELATION})
+                reply=self._dispatch_fixture_start()
             self.assertEqual(reply['state'],'INPUT_FRAME_READY',reply);self.assertIsNone(reply['binding'])
-            observer=input_owner._SESSIONS[(str(self.root),reply['inputId'])];self.observers.append(observer)
+            observer=input_owner._SESSIONS[(str(self.root),reply['inputId'])]
             self.selectors={'host':'archlinux','profile':'synthetic','correlationId':CORRELATION,'inputId':reply['inputId']}
             row=self.join()
             for stage,expanded,focused in [('focus',False,False),('expand',False,True),('approve',True,True)]:
@@ -351,9 +438,9 @@ class WindowsGuestInputOriginalObserverTest(unittest.TestCase):
             return [sys.executable,'-u','-c',_PRODUCTION_CHILD,json.dumps([program,binding(),ACK,typed,green,{'large':True}])],b'{}\n'
         try:
             with patch.object(input_owner,'_launch',side_effect=launch):
-                reply=input_owner.dispatch(self.root,'windows-input-start',{'host':'archlinux','profile':'synthetic','correlationId':CORRELATION})
+                reply=self._dispatch_fixture_start()
             self.assertEqual(reply['state'],'INPUT_FRAME_READY',reply)
-            observer=input_owner._SESSIONS[(str(self.root),reply['inputId'])];self.observers.append(observer)
+            observer=input_owner._SESSIONS[(str(self.root),reply['inputId'])]
             self.selectors={'host':'archlinux','profile':'synthetic','correlationId':CORRELATION,'inputId':reply['inputId']}
             baseline=observer.version
             self.assertEqual(self.call('join',acceptedAck=ACK)['state'],'INPUT_JOB_JOINED')
@@ -388,7 +475,7 @@ class WindowsGuestInputOriginalObserverTest(unittest.TestCase):
                   'frames':5,'nativeCalls':0,'allThreeKeysAckOnly':True}),file=sys.stderr)
         finally:self.runtime_patch.start()
 
-    def _start_actual_source_control(self):
+    def _start_actual_source_control(self,fixture_launch=None):
         self.runtime_patch.stop()
         self.p=replace(self.p,qga_socket_path=PurePosixPath(str(self.root/'qga.sock')),
                        qmp_socket_path=PurePosixPath(str(self.root/'qmp.sock')),qemu_uid=os.getuid())
@@ -399,12 +486,14 @@ class WindowsGuestInputOriginalObserverTest(unittest.TestCase):
                'elevated':0,'elevationType':3,'effects':False,'helperActors':[],
                'consentActor':{'pid':50,'birth':'134362251846706448'}}
         def launch(guard,program):
-            return [sys.executable,'-u','-c',_PRODUCTION_CHILD,json.dumps([program,binding(),ACK,typed,green,{'sourceBoundary':True}])],b'{}\n'
+            values=[binding(),ACK,typed,green,{'sourceBoundary':True}]
+            if fixture_launch is not None:return fixture_launch(guard,program,values)
+            return [sys.executable,'-u','-c',_PRODUCTION_CHILD,json.dumps([program,*values])],b'{}\n'
         try:
             with patch.object(input_owner,'_launch',side_effect=launch):
-                reply=input_owner.dispatch(self.root,'windows-input-start',{'host':'archlinux','profile':'synthetic','correlationId':CORRELATION})
+                reply=self._dispatch_fixture_start()
             self.assertEqual(reply['state'],'INPUT_FRAME_READY',reply)
-            observer=input_owner._SESSIONS[(str(self.root),reply['inputId'])];self.observers.append(observer)
+            observer=input_owner._SESSIONS[(str(self.root),reply['inputId'])]
             self.selectors={'host':'archlinux','profile':'synthetic','correlationId':CORRELATION,'inputId':reply['inputId']}
             return observer,self.join()
         finally:self.runtime_patch.start()
@@ -468,7 +557,10 @@ class WindowsGuestInputOriginalObserverTest(unittest.TestCase):
             for stage,expanded,focused in [('focus',False,False),('expand',False,True),('approve',True,True)]:
                 decision={'action':stage,'frameSha256':row['sha256'],'bindingSha256':row['bindingSha256'],
                           'promptVerified':True,'expandedDetailsVerified':expanded,'detailsFocusVerified':focused}
-                self.assertEqual(self.call('decision',decision=decision)['state'],'INPUT_KEY_ACK_ONLY')
+                reply=self.call('decision',decision=decision)
+                if reply['state']!='INPUT_KEY_ACK_ONLY':
+                    self._retain_observer_failure(stage,reply,errors,evidence)
+                self.assertEqual(reply['state'],'INPUT_KEY_ACK_ONLY',{'stage':stage,'reply':reply})
                 if stage!='approve':row=self.call('observe')
             observer.thread.join(5);self.assertEqual(observer.process.returncode,0)
             wire=[json.loads(line.removeprefix('SOURCE_GUARD_WIRE '))for line in (observer.directory/'stderr.private').read_text().splitlines()if line.startswith('SOURCE_GUARD_WIRE ')]
@@ -858,3 +950,515 @@ class WindowsInputProfileConfigTest(unittest.TestCase):
             candidate = _configured_profile()
             candidate[field] = value
             self.reject(f'path-{index}-{field}', candidate)
+
+# The child still executes the complete actual emitted main. This diagnostic
+# boundary observes genuine BufferedReader/kernel state; it replaces no QMP,
+# identity, binding, source, stage, deadline or native-acceptance guard.
+_INPUT_PIPE_AUDIT=r"""
+import io,time,hashlib,stat
+def _saved_input_values(path,digest):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);before=os.fstat(fd)
+ try:
+  if not stat.S_ISREG(before.st_mode)or before.st_uid!=os.getuid()or before.st_nlink!=1 or not 0<before.st_size<=131072:raise AssertionError('saved fixture input identity/bound')
+  raw=b''
+  while True:
+   part=os.read(fd,65536)
+   if not part:break
+   raw+=part
+   if len(raw)>131072:raise AssertionError('saved fixture input bound')
+  if len(raw)!=before.st_size or hashlib.sha256(raw).hexdigest()!=digest:raise AssertionError('saved fixture input SHA')
+  after=os.fstat(fd);named=os.lstat(path)
+  fields=('st_dev','st_ino','st_mode','st_uid','st_nlink','st_size','st_mtime_ns','st_ctime_ns')
+  if any(getattr(before,k)!=getattr(after,k)or getattr(before,k)!=getattr(named,k)for k in fields):raise AssertionError('saved fixture input generation')
+  return json.loads(raw)
+ finally:os.close(fd)
+def install_input_pipe_audit(ns,directory):
+ original_stdin=sys.stdin;real_select=ns['select'].select;real_os=ns['os']
+ stream=bytearray();returned=bytearray();saved=[];acks=[];marked=set()
+ journal=real_os.open(directory+'/events.jsonl',real_os.O_WRONLY|real_os.O_CREAT|real_os.O_EXCL|real_os.O_NOFOLLOW,0o600)
+ def marker(name,value):
+  if name in marked:return
+  marked.add(name);value=dict(value,childMonotonic=time.monotonic())
+  raw=(json.dumps(value,sort_keys=True)+'\n').encode();path=directory+'/'+name+'.json'
+  fd=real_os.open(path,real_os.O_WRONLY|real_os.O_CREAT|real_os.O_EXCL|real_os.O_NOFOLLOW,0o600)
+  try:
+   view=memoryview(raw)
+   while view:
+    n=real_os.write(fd,view)
+    if n<=0:raise AssertionError('diagnostic marker write')
+    view=view[n:]
+   real_os.fsync(fd)
+  finally:real_os.close(fd)
+  fd=real_os.open(path+'.ready',real_os.O_WRONLY|real_os.O_CREAT|real_os.O_EXCL|real_os.O_NOFOLLOW,0o600);real_os.close(fd)
+ def event(kind,**value):
+  row=dict(value,kind=kind,childMonotonic=time.monotonic());raw=(json.dumps(row,sort_keys=True)+'\n').encode()
+  if len(raw)>32768:raise AssertionError('diagnostic event bound')
+  view=memoryview(raw)
+  while view:
+   n=real_os.write(journal,view)
+   if n<=0:raise AssertionError('diagnostic journal write')
+   view=view[n:]
+  real_os.fsync(journal)
+ def armed():return real_os.path.exists(directory+'/arm.json.ready')
+ def raw_observed(raw,source):
+  event('actual_stdin_read',source=source,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+  if armed()and raw and b'\n'not in raw:marker('partial-input-read',{'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()})
+ class Raw(io.RawIOBase):
+  def __init__(self):self.fd=real_os.dup(original_stdin.fileno())
+  def readable(self):return True
+  def readinto(self,destination):
+   raw=real_os.read(self.fd,len(destination));destination[:len(raw)]=raw;stream.extend(raw);raw_observed(raw,'genuine_buffered_raw_readinto');return len(raw)
+  def close(self):
+   if not self.closed:real_os.close(self.fd)
+   super().close()
+ buffered=io.BufferedReader(Raw(),buffer_size=8192)
+ class Buffer:
+  def readline(self,bound):
+   raw=buffered.readline(bound);returned.extend(raw);event('actual_buffered_readline_return',bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest());return raw
+ class Stdin:
+  buffer=Buffer()
+  def fileno(self):return original_stdin.fileno()
+ class Os:
+  def __getattr__(self,name):return getattr(real_os,name)
+  def read(self,fd,bound):
+   raw=real_os.read(fd,bound)
+   if fd==original_stdin.fileno():raw_observed(raw,'actual_unbuffered_os_read')
+   return raw
+ def select(readers,writers,errors,timeout):
+  if any(getattr(x,'fileno',lambda:x)()==original_stdin.fileno()for x in readers):
+   ready=real_select(readers,writers,errors,0)[0]
+   pending=bytes(stream[len(returned):])
+   if len(saved)>=2 and not armed()and not ready:
+    marker('idle-after-join',{'commandsSaved':len(saved),'kernelReady':False,'bufferedBytes':len(pending)})
+   if armed()and len(saved)>=3 and pending and b'\n'in pending and not ready:
+    peek=bytes(buffered.peek(len(pending)))
+    if peek!=pending:raise AssertionError('actual buffered remainder mismatch')
+    marker('buffered-next-command',{'firstCommandProcessed':True,'commandsSaved':len(saved),
+           'kernelReady':False,'bufferedBytes':len(peek),'bufferedSha256':hashlib.sha256(peek).hexdigest(),
+           'bufferedBase64':base64.b64encode(peek).decode(),'completeBufferedLines':peek.count(b'\n')})
+  return real_select(readers,writers,errors,timeout)
+ class Select:
+  pass
+ select_proxy=Select();select_proxy.select=select
+ original_save=ns['save'];original_emit=ns['emit']
+ def save(path,raw):
+  answer=original_save(path,raw)
+  if real_os.path.basename(path).startswith('decision-'):
+   saved.append(raw);event('actual_command_saved',index=len(saved),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+  return answer
+ def emit(row):
+  answer=original_emit(row);event('actual_emitted_row',state=row.get('state'),stage=row.get('stage'))
+  if armed()and len(saved)>=3 and row.get('state')=='FRESH_CHAIN_FRAME':
+   marker('first-command-processed',{'commandsSaved':len(saved),'state':'FRESH_CHAIN_FRAME'})
+  if armed()and row.get('state')=='ORIGINAL_KEY_CHAIN_ACK':
+   acks.append(row);marker('first-key-ack-published',{'stage':row.get('stage'),'state':row.get('state')})
+  return answer
+ ns['select']=select_proxy;ns['os']=Os();ns['save']=save;ns['emit']=emit;sys.stdin=Stdin()
+ def finish():
+  try:
+   marker('main-exited',{'commandsSaved':len(saved),'keyAcks':len(acks)})
+   event('audit_closing',commandsSaved=len(saved),keyAcks=len(acks))
+  finally:
+   sys.stdin=original_stdin;buffered.close();real_os.fsync(journal);real_os.close(journal)
+ return finish
+"""
+
+
+@unittest.skipUnless(input_owner.channel.coordinator_capable(),'POSIX inert pipe fixture required')
+class WindowsGuestInputBufferedCommandTest(unittest.TestCase):
+    """Actual emitted source, physical local pipes, explicitly inert native callbacks."""
+    def _marker(self,directory,name,timeout=30):
+        end=time.monotonic()+timeout;path=directory/(name+'.json')
+        while time.monotonic()<end:
+            if (directory/(name+'.json.ready')).exists():
+                raw=path.read_bytes();self.assertLessEqual(len(raw),32768);return json.loads(raw)
+            time.sleep(.005)
+        self.fail('owned diagnostic marker missing: '+name)
+
+    def _arm(self,directory,value):
+        input_owner._write(directory/'arm.json',input_owner._json(value))
+        input_owner._write(directory/'arm.json.ready',b'')
+
+    def _run_pipe_case(self,mode):
+        case=WindowsGuestInputOriginalObserverTest('test_collector_and_foreground_source_rehash_share_owned_lifetime')
+        evidence_root=os.environ.get('VPN_CONTROL_INPUT_PIPE_EVIDENCE_ROOT')
+        case.setUp()
+        self.assertLessEqual(len(os.fsencode(str(case.root/'qmp.sock'))),103)
+        observer=None;result=None;failure=None;saved_held=[];owned=[];saved_argv=[]
+        directory=case.root/'input-buffer-audit';directory.mkdir(mode=0o700)
+        anchor="ns['call']=qga;ns['identity']=lambda:['inert native boundary'];ns['verify_peer']=lambda _client,_sock:None;ns['main']();t.join(2);assert not t.is_alive();server.close()"
+        replacement="""ns['call']=qga;ns['identity']=lambda:['inert native boundary'];ns['verify_peer']=lambda _client,_sock:None
+audit_finish=install_input_pipe_audit(ns,AUDIT_DIRECTORY)
+try:ns['main']()
+finally:
+ try:audit_finish()
+ finally:
+  try:t.join(2);assert not t.is_alive()
+  finally:
+   server.close()
+   print('SOURCE_GUARD_WIRE '+json.dumps({'keyPackets':len(keys),'lastPacket':keys[-1]if keys else None,'nativeCalls':0}),file=sys.stderr)"""
+        self.assertEqual(_PRODUCTION_CHILD.count(anchor),1)
+        summary="if options.get('sourceBoundary'):\n print('SOURCE_GUARD_WIRE '+json.dumps({'keyPackets':len(keys),'lastPacket':keys[-1]if keys else None,'nativeCalls':0}),file=sys.stderr)"
+        self.assertEqual(_PRODUCTION_CHILD.count(summary),1)
+        child=_INPUT_PIPE_AUDIT+'\nAUDIT_DIRECTORY='+repr(str(directory))+'\n'+_PRODUCTION_CHILD.replace(anchor,replacement).replace(summary,'')
+        self.assertEqual(child.count('values=json.loads(sys.argv[1]);'),1)
+        child=child.replace('values=json.loads(sys.argv[1]);','values=_saved_input_values(sys.argv[1],sys.argv[2]);')
+        def launch_saved(guard,program,values):
+            # Transfer whole programme/input as saved files; executable argv is
+            # finite and contains no previous attempt, key or transport selector.
+            script=directory/'owned-child.py';payload=directory/'owned-input.json'
+            for path,raw in ((script,child.encode()),(payload,input_owner._json([program,*values]))):
+                self.assertLessEqual(len(raw),131072)
+                input_owner._write(path,raw);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+                saved_held.append((fd,path,source_closure.generation(os.fstat(fd)),hashlib.sha256(raw).hexdigest()))
+            argv=[sys.executable,'-u','-B',str(script),str(payload),hashlib.sha256(payload.read_bytes()).hexdigest()]
+            self.assertLessEqual(sum(len(os.fsencode(x))+1 for x in argv),60000)
+            saved_argv.extend(argv);return argv,b'{}\n'
+        actual_popen=input_owner.subprocess.Popen
+        def exact_owned_popen(argv,*positional,**keywords):
+            self.assertEqual(argv,saved_argv)
+            child=actual_popen(argv,*positional,**keywords);owned.append(child);return child
+        try:
+            with patch.object(input_owner.subprocess,'Popen',side_effect=exact_owned_popen):
+                observer,row=case._start_actual_source_control(launch_saved)
+            idle=self._marker(directory,'idle-after-join')
+            self.assertEqual(idle['commandsSaved'],2);self.assertFalse(idle['kernelReady']);self.assertEqual(idle['bufferedBytes'],0)
+            if mode=='coalesced':
+                decisions=[]
+                for stage,expanded,focused in [('focus',False,False),('expand',False,True),('approve',True,True)]:
+                    decisions.append({'action':stage,'frameSha256':row['sha256'],'bindingSha256':row['bindingSha256'],
+                                      'promptVerified':True,'expandedDetailsVerified':expanded,'detailsFocusVerified':focused})
+                batch=b'{"action":"observe"}\n'+b''.join(input_owner._json(x)+b'\n'for x in decisions)
+                self.assertLessEqual(len(batch),4096)
+                self._arm(directory,{'mode':mode,'batchSha256':hashlib.sha256(batch).hexdigest(),'batchBytes':len(batch)})
+                observer.process.stdin.write(batch);observer.process.stdin.flush()
+                first=self._marker(directory,'first-command-processed')
+                # Same actual byte input and EOF schedule for both source variants.
+                # This is a read-only checkpoint, not a mutation retry or a timer
+                # adjustment to the unchanged 240s emitted-source deadline.
+                time.sleep(max(0,first['childMonotonic']+1.0-time.monotonic()))
+                ack_before_eof=(directory/'first-key-ack-published.json.ready').exists()
+                buffered=None
+                if (directory/'buffered-next-command.json.ready').exists():buffered=self._marker(directory,'buffered-next-command')
+                eof_at=time.monotonic();observer.process.stdin.close()
+                result={'mode':mode,'batchSha256':hashlib.sha256(batch).hexdigest(),'batchBytes':len(batch),
+                        'firstCommand':first,'checkpointToEofSeconds':eof_at-first['childMonotonic'],
+                        'ackPublishedBeforeEof':ack_before_eof,'bufferedBoundary':buffered}
+            else:
+                finish=b'{"action":"finish"}'
+                if mode=='partial':
+                    first,second=finish[:9],finish[9:]+b'\n';self._arm(directory,{'mode':mode})
+                    observer.process.stdin.write(first);observer.process.stdin.flush()
+                    self._marker(directory,'partial-input-read')
+                    observer.process.stdin.write(second);observer.process.stdin.flush()
+                else:
+                    values={'exact8192':finish+b' '*(8192-len(finish)-1)+b'\n',
+                            'over8192':finish+b' '*(8193-len(finish)-1)+b'\n',
+                            'empty-eof':b'','valid-eof':finish,'malformed-eof':b'{"action":',
+                            'coalesced-invalid':b'{"action":"observe"}\n{"action":"focus","extra":true}\n'}
+                    batch=values[mode];self._arm(directory,{'mode':mode,'batchBytes':len(batch)})
+                    if batch:observer.process.stdin.write(batch);observer.process.stdin.flush()
+                observer.process.stdin.close();result={'mode':mode}
+            # Only this accepted harmless local handle is waited, without a
+            # supervisor-only timeout/kill or a replay. EOF is part of each input.
+            observer.process.wait();observer.thread.join()
+            self.assertFalse(observer.thread.is_alive());self.assertTrue(observer.closed);self.assertTrue(observer.guard.closed)
+            raw={};wire=[]
+            for name in ('stdout.private','stderr.private'):
+                path=observer.directory/name;body=path.read_bytes()
+                raw[name]={'bytes':len(body),'sha256':hashlib.sha256(body).hexdigest()}
+                if name.startswith('stderr'):
+                    wire=[json.loads(x.removeprefix('SOURCE_GUARD_WIRE '))for x in body.decode('utf-8','replace').splitlines()if x.startswith('SOURCE_GUARD_WIRE ')]
+            journal=(directory/'events.jsonl').read_bytes();self.assertLessEqual(len(journal),262144)
+            evidence_root=os.environ.get('VPN_CONTROL_INPUT_PIPE_EVIDENCE_ROOT')
+            retained={}
+            if evidence_root:
+                target=Path(evidence_root)/mode;target.mkdir(mode=0o700)
+                for path in (observer.directory/'stdout.private',observer.directory/'stderr.private',directory/'events.jsonl',directory/'owned-child.py',directory/'owned-input.json'):
+                    body=path.read_bytes();copy=target/path.name;input_owner._write(copy,body)
+                    retained[path.name]={'path':str(copy),'bytes':len(body),'sha256':hashlib.sha256(body).hexdigest()}
+            result.update(returncode=observer.process.returncode,observerUncertainty=observer.uncertain,
+                          retainedAfterActualNaturalClosure=retained,
+                          raw=raw,journalSha256=hashlib.sha256(journal).hexdigest(),
+                          ownedPid=observer.process.pid,allOwnedStreamsClosed=all(x.closed for x in (observer.process.stdin,observer.process.stdout,observer.process.stderr)),
+                          collectorClosed=True,guardClosed=True,nativeCalls=0,wire=wire,historicalCauseEstablished=False)
+            # Print complete bounded diagnostic DATA only after original closure.
+            print('INPUT_PIPE_CONTROL '+json.dumps(result,sort_keys=True),file=sys.stderr)
+            if mode=='coalesced':
+                self.assertEqual(result['returncode'],0,result);self.assertIsNone(observer.uncertain,result)
+                self.assertEqual(len(wire),1,result);self.assertEqual(wire[0]['keyPackets'],3,result)
+                if buffered is not None:
+                    self.assertTrue(buffered['firstCommandProcessed']);self.assertFalse(buffered['kernelReady'])
+                    pending=base64.b64decode(buffered['bufferedBase64'],validate=True)
+                    self.assertEqual(hashlib.sha256(pending).hexdigest(),buffered['bufferedSha256'])
+                    self.assertEqual(pending,b''.join(input_owner._json(x)+b'\n'for x in decisions))
+                self.assertTrue(result['ackPublishedBeforeEof'],result)
+            elif mode in {'partial','exact8192','valid-eof'}:
+                self.assertEqual(result['returncode'],0,result);self.assertIsNone(observer.uncertain,result)
+                self.assertEqual(wire,[{'keyPackets':0,'lastPacket':None,'nativeCalls':0}],result)
+            else:
+                self.assertNotEqual(result['returncode'],0,result);self.assertIsNotNone(observer.uncertain,result)
+                self.assertFalse(any(row.get('state')=='INPUT_KEY_ACK_ONLY'for _,row in observer.events),result)
+                self.assertEqual(wire,[{'keyPackets':0,'lastPacket':None,'nativeCalls':0}],result)
+        except BaseException as error:
+            failure=error
+            case._retain_observer_failure('pipe-control:'+mode,
+                {'state':'FIXTURE_CONTROL_REFUSED','type':type(error).__name__,'message':str(error)},[],result or {})
+        finally:
+            if observer is None and owned:
+                # Exact in-memory constructor return, never a discovered PID.
+                with input_owner._SESSIONS_LOCK:
+                    matches=[value for (root,_),value in input_owner._SESSIONS.items()
+                             if root==str(case.root)and value.process in owned]
+                if len(matches)==1:
+                    observer=matches[0]
+                    if observer not in case.observers:case.observers.append(observer)
+            # The exact created child's input may be closed on an assertion;
+            # this is the same harmless EOF signal, never a discovered PID kill.
+            if observer is not None and observer.process.poll()is None:
+                if not observer.process.stdin.closed:observer.process.stdin.close()
+                observer.process.wait();observer.thread.join()
+            closing_errors=[]
+            for fd,path,generation,digest in saved_held:
+                try:
+                    self.assertEqual(source_closure.generation(os.fstat(fd)),generation)
+                    self.assertEqual(source_closure.generation(path.lstat()),generation)
+                    self.assertEqual(hashlib.sha256(os.pread(fd,131073,0)).hexdigest(),digest)
+                except BaseException as error:closing_errors.append(error)
+                finally:
+                    try:os.close(fd)
+                    except BaseException as error:closing_errors.append(error)
+            if closing_errors and case.retained_failure is None:
+                try:
+                    case._retain_observer_failure('pipe-control-closing:'+mode,
+                        {'state':'FIXTURE_CUSTODY_REFUSED','errors':[(type(x).__name__,str(x))for x in closing_errors]},[],result or {})
+                except BaseException as error:closing_errors.append(error)
+            try:case.tearDown()
+            except BaseException as error:closing_errors.append(error)
+            if closing_errors:
+                if failure is None:failure=closing_errors[0]
+                else:failure.inputPipeCleanupErrors=[(type(x).__name__,str(x))for x in closing_errors]
+        if failure is not None:raise failure
+        return result
+
+    def test_actual_coalesced_commands_do_not_wait_for_extra_kernel_input(self):
+        self._run_pipe_case('coalesced')
+
+    def test_actual_partial_command_waits_for_its_completion(self):
+        self._run_pipe_case('partial')
+
+    def test_actual_command_bound_accepts_exact8192(self):
+        self._run_pipe_case('exact8192')
+
+    def test_actual_command_bound_refuses8193(self):
+        self._run_pipe_case('over8192')
+
+    def test_actual_empty_eof_refuses(self):
+        self._run_pipe_case('empty-eof')
+
+    def test_actual_complete_finish_without_newline_at_eof_preserves_old_semantics(self):
+        self._run_pipe_case('valid-eof')
+
+    def test_actual_partial_json_at_eof_refuses(self):
+        self._run_pipe_case('malformed-eof')
+
+    def test_actual_coalesced_invalid_decision_refuses_without_a_key(self):
+        self._run_pipe_case('coalesced-invalid')
+
+
+# Authentic 860b constructor/body slices: exact source byte offsets and SHA-256
+# are recorded here, not read from an ignored archive or a previous attempt.
+_BEFORE_INPUT_FIXTURE_SOURCE_SHA256='860b6b7b7692c2177f719d9d610af9ce220e70b9d4eea0b03d22b7d089193643'
+_BEFORE_INPUT_FIXTURE_REGIONS={'constructor': {'bytes': 89, 'lines': 1, 'sha256': '9fb943d1b36551a8b45f9ea6f5042119afeb36be63d9133c34d6c8d95f92ad92', 'startByte': 14517}, 'startupBody': {'bytes': 1735, 'lines': 21, 'sha256': '04cd5bbd99415d44c61a7592a8762d219cd33ca878e2fabfa9792730020180de', 'startByte': 29230}}
+
+def _authentic_before_fixture_constructor(self):
+        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name).resolve()
+
+def _authentic_before_startup_control(self,fixture_launch=None):
+        self.runtime_patch.stop()
+        self.p=replace(self.p,qga_socket_path=PurePosixPath(str(self.root/'qga.sock')),
+                       qmp_socket_path=PurePosixPath(str(self.root/'qmp.sock')),qemu_uid=os.getuid())
+        typed={'state':'CURRENT_TYPED_GETPROCESS_BIRTHS','effects':False,'source':'GetProcess.StartTime.ToFileTimeUtc',
+               'explorer40':self.c.console_birth,'owner11':self.c.owner.birth,'launcher10':self.c.owner_wrapper.birth}
+        green={'state':'CURRENT_BOUND_GUEST_GREEN','jobId':binding()['jobId'],'sid':SID,'sessionId':1,
+               'consolePid':40,'ownerPid':11,'ownerBirth':self.c.owner.birth,'boot':self.c.boot_utc,
+               'elevated':0,'elevationType':3,'effects':False,'helperActors':[],
+               'consentActor':{'pid':50,'birth':'134362251846706448'}}
+        def launch(guard,program):
+            values=[binding(),ACK,typed,green,{'sourceBoundary':True}]
+            if fixture_launch is not None:return fixture_launch(guard,program,values)
+            return [sys.executable,'-u','-c',_PRODUCTION_CHILD,json.dumps([program,*values])],b'{}\n'
+        try:
+            with patch.object(input_owner,'_launch',side_effect=launch):
+                reply=input_owner.dispatch(self.root,'windows-input-start',{'host':'archlinux','profile':'synthetic','correlationId':CORRELATION})
+            self.assertEqual(reply['state'],'INPUT_FRAME_READY',reply)
+            observer=input_owner._SESSIONS[(str(self.root),reply['inputId'])];self.observers.append(observer)
+            self.selectors={'host':'archlinux','profile':'synthetic','correlationId':CORRELATION,'inputId':reply['inputId']}
+            return observer,self.join()
+        finally:self.runtime_patch.start()
+
+
+@unittest.skipUnless(input_owner.channel.coordinator_capable(),'POSIX inert socket fixture required')
+class WindowsGuestInputFixtureRootTest(unittest.TestCase):
+    """Actual emitted child; only local inert callbacks and owned roots exist."""
+    def _before_regions(self):
+        self.assertEqual(_BEFORE_INPUT_FIXTURE_SOURCE_SHA256,'860b6b7b7692c2177f719d9d610af9ce220e70b9d4eea0b03d22b7d089193643')
+        for name,function in (('constructor',_authentic_before_fixture_constructor),('startupBody',_authentic_before_startup_control)):
+            raw=(inspect.getsource(function).split('\n',1)[1].rstrip('\n')+'\n').encode()
+            expected=_BEFORE_INPUT_FIXTURE_REGIONS[name]
+            self.assertEqual(len(raw),expected['bytes']);self.assertEqual(raw.count(b'\n'),expected['lines'])
+            self.assertEqual(hashlib.sha256(raw).hexdigest(),expected['sha256'])
+
+    def _saved_launch(self,case,held,argvs,script_source=None):
+        # Reuse the already source-bound saved-input reader; no new executable
+        # loader policy, raw-data cap or command-line transfer is introduced.
+        prefix=_INPUT_PIPE_AUDIT.split('def install_input_pipe_audit(ns,directory):',1)[0]
+        self.assertEqual(prefix.count('def _saved_input_values('),1)
+        anchor='values=json.loads(sys.argv[1]);'
+        self.assertEqual(_PRODUCTION_CHILD.count(anchor),1)
+        child=prefix+'\n'+_PRODUCTION_CHILD.replace(anchor,'values=_saved_input_values(sys.argv[1],sys.argv[2]);')
+        if script_source is not None:child=script_source
+        def launch(guard,program,values):
+            script=case.root/'owned-startup-child.py';payload=case.root/'owned-startup-input.json'
+            for path,raw in ((script,child.encode()),(payload,input_owner._json([program,*values]))):
+                self.assertLessEqual(len(raw),131072);input_owner._write(path,raw)
+                self.assertEqual(held.read(str(path),hashlib.sha256(raw).hexdigest(),max_bytes=131072),raw)
+            argv=[sys.executable,'-u','-B',str(script),str(payload),hashlib.sha256(payload.read_bytes()).hexdigest()]
+            self.assertLessEqual(sum(len(os.fsencode(x))+1 for x in argv),60000)
+            argvs.append(argv);return argv,b'{}\n'
+        return launch
+
+    def _finish_case(self,case,held,owned,preserve=False):
+        # Failure cleanup can recover only the constructor return captured by
+        # this invocation, never a discovered PID or an unrelated registry row.
+        with input_owner._SESSIONS_LOCK:
+            matches=[value for (root,key),value in input_owner._SESSIONS.items()
+                     if root==str(case.root)and key==value.input_id and value.process in owned]
+        for observer in matches:
+            if observer not in case.observers:case.observers.append(observer)
+        cleanup=case.temp.cleanup;qualified=False
+        try:
+            # Keep saved-source names present through their closing rehash after
+            # the fixture has naturally reaped all its children and collectors.
+            with patch.object(case.temp,'cleanup',return_value=None):case.tearDown()
+            self.assertEqual([x.process for x in case.observers],owned)
+            for child in owned:
+                self.assertIsNotNone(child.returncode)
+                self.assertTrue(all(stream.closed for stream in (child.stdin,child.stdout,child.stderr)))
+            held.finish();qualified=True
+        finally:
+            sources_closed=False
+            try:held.close();sources_closed=True
+            finally:
+                if qualified and sources_closed and case.retained_failure is None and not preserve:cleanup()
+                else:case.temp._finalizer.detach()
+
+    def _actual_lifetime(self,long_environment):
+        self._before_regions()
+        environment,environment_root=_owned_input_fixture()
+        inherited=environment_root/('x'*130 if long_environment else 'tmp');inherited.mkdir(mode=0o700)
+        if long_environment:self.assertGreater(len(os.fsencode(str(inherited/'a'/'qmp.sock'))),103)
+        else:self.assertLessEqual(len(os.fsencode(str(inherited/'a'/'qmp.sock'))),103)
+        case=WindowsGuestInputOriginalObserverTest('test_collector_and_foreground_source_rehash_share_owned_lifetime')
+        held=_Held();owned=[];argvs=[];failure=None;setup=False;closing=[];summary=None
+        actual_popen=input_owner.subprocess.Popen
+        def exact_child(argv,*args,**kwargs):
+            self.assertEqual(argvs,[argv]);child=actual_popen(argv,*args,**kwargs);owned.append(child);return child
+        try:
+            # Identical inherited environment, source, saved input and protocol
+            # schedule for before/current; only _make_owned_fixture differs.
+            with patch.dict(os.environ,{'TMPDIR':str(inherited)}),patch.object(tempfile,'tempdir',str(inherited)):
+                case.setUp();setup=True
+                launch=self._saved_launch(case,held,argvs);start=case._start_actual_source_control
+                with patch.object(case,'_start_actual_source_control',side_effect=lambda:start(launch)),\
+                     patch.object(input_owner.subprocess,'Popen',side_effect=exact_child):
+                    case.test_collector_and_foreground_source_rehash_share_owned_lifetime()
+        except BaseException as error:failure=error
+        finally:
+            if setup:
+                try:self._finish_case(case,held,owned,preserve=failure is not None)
+                except BaseException as error:closing.append((type(error).__name__,str(error)))
+            else:held.close()
+            try:
+                summary={'longInheritedTmpdir':long_environment,'inheritedTmpdirBytes':len(os.fsencode(str(inherited))),
+                         'fixtureRoot':str(case.root)if setup else None,'ownedChildren':len(owned),
+                         'allOwnedChildrenReaped':all(x.returncode is not None for x in owned),
+                         'allOwnedStreamsClosed':all(all(y.closed for y in (x.stdin,x.stdout,x.stderr))for x in owned),
+                         'startupFailureRetained':bool(setup and case.retained_failure is not None),
+                         'originalHistoricalCauseEstablished':False,'nativeCalls':0,'closingErrors':closing}
+                if setup and case.retained_failure is not None:
+                    manifest=case.root/'failure-closed-capture.private.json'
+                    self.assertTrue(manifest.exists(),'startup failure lost its owned closed raw manifest')
+                    data=json.loads(manifest.read_bytes());summary['retainedManifest']=str(manifest)
+                    summary['retainedReply']=data['reply'];summary['retainedRaw']=data['captures']
+                    self.assertEqual(data['stage'],'startup');self.assertTrue(data['allOwnedObserversClosed'])
+                    self.assertEqual(len(data['captures']),1)
+                    stderr=Path(data['captures'][0]['raw']['stderr.private']['path']).read_bytes()
+                    summary['actualSocketPathBytes']=len(os.fsencode(str(case.root/'qmp.sock')))
+                    if summary['actualSocketPathBytes']>103:
+                        self.assertIn(b'OSError: AF_UNIX path too long',stderr)
+                        summary['actualLongSocketFailureProved']=True
+                    # Preserve the exact owned failure tree, even when this is
+                    # a deliberate before-source causal probe. Nothing live moves.
+                    environment._finalizer.detach()
+            except BaseException as error:
+                closing.append((type(error).__name__,str(error)))
+                if failure is None:failure=error
+            finally:
+                if not(setup and case.retained_failure is not None):environment.cleanup()
+                print('INPUT_FIXTURE_ROOT_CONTROL '+json.dumps(summary,sort_keys=True),file=sys.stderr)
+        if closing:
+            if failure is None:self.fail({'fixtureClosingErrors':closing})
+            failure.fixtureClosingErrors=closing
+        if failure is not None:raise failure
+        self.assertEqual(len(owned),1)
+
+    def test_actual_long_tmpdir_preserves_original_source_lifetime_flow(self):
+        self._actual_lifetime(True)
+
+    def test_actual_short_tmpdir_preserves_original_source_lifetime_flow(self):
+        self._actual_lifetime(False)
+
+    def test_startup_refusal_retains_full_reply_and_owned_closed_raw(self):
+        self._before_regions()
+        case=WindowsGuestInputOriginalObserverTest('test_collector_and_foreground_source_rehash_share_owned_lifetime')
+        case.setUp();held=_Held();owned=[];argvs=[];failure=None;summary=None
+        child="import sys\nsys.stdin.buffer.readline()\nsys.stderr.buffer.write(b'OWNED-STARTUP-REFUSAL\\n');sys.stderr.buffer.flush()\nraise SystemExit(23)\n"
+        launch=self._saved_launch(case,held,argvs,child);actual_popen=input_owner.subprocess.Popen
+        def exact_child(argv,*args,**kwargs):
+            self.assertEqual(argvs,[argv]);process=actual_popen(argv,*args,**kwargs);owned.append(process);return process
+        try:
+            with patch.object(input_owner.subprocess,'Popen',side_effect=exact_child):
+                with self.assertRaises(AssertionError):case._start_actual_source_control(launch)
+            summary={'registeredBeforeCleanup':len(case.observers)==1,'startupReplyRetainedBeforeCleanup':case.retained_failure is not None}
+            self.assertEqual(len(case.observers),1,'startup assertion lost the exact owned constructor')
+            self.assertIsNotNone(case.retained_failure,'startup assertion failed to preserve diagnostics')
+            self.assertEqual(case.retained_failure['stage'],'startup')
+            reply=case.retained_failure['reply'];self.assertEqual(reply['state'],'UNKNOWN')
+            self.assertFalse(reply['replayAllowed']);self.assertTrue(reply['originalTerminal'])
+        except BaseException as error:failure=error
+        finally:
+            try:
+                self._finish_case(case,held,owned,preserve=failure is not None)
+                self.assertEqual(len(case.observers),1)
+                observer=case.observers[0];self.assertEqual(observer.process.returncode,23)
+                capture={}
+                for name,expected in (('stdout.private',b''),('stderr.private',b'OWNED-STARTUP-REFUSAL\n')):
+                    path=observer.directory/name;actual=path.read_bytes();self.assertEqual(actual,expected)
+                    capture[name]={'path':str(path),'bytes':len(actual),'sha256':hashlib.sha256(actual).hexdigest()}
+                summary=dict(summary or {},controlledExit=23,allOwnedChildrenReaped=True,allOwnedStreamsClosed=True,
+                             raw=capture,retentionOwner='startup-policy'if case.retained_failure is not None else'known-constructor-causal-harness-after-failure',
+                             originalHistoricalCauseEstablished=False,nativeCalls=0)
+                if case.retained_failure is not None:
+                    manifest=case.root/'failure-closed-capture.private.json';raw=manifest.read_bytes();data=json.loads(raw)
+                    self.assertTrue(data['allOwnedObserversClosed']);self.assertEqual(data['reply'],reply)
+                    self.assertEqual(len(data['captures']),1);record=data['captures'][0]
+                    self.assertEqual(record['returncode'],23)
+                    self.assertTrue(record['threadClosed']);self.assertTrue(record['streamsClosed']);self.assertTrue(record['guardClosed'])
+                    self.assertEqual(record['raw'],capture)
+                    summary.update(manifest=str(manifest),sha256=hashlib.sha256(raw).hexdigest())
+            except BaseException as error:
+                if failure is None:failure=error
+                else:failure.fixtureClosingError=(type(error).__name__,str(error))
+            finally:print('INPUT_STARTUP_RETENTION_CONTROL '+json.dumps(summary,sort_keys=True),file=sys.stderr)
+        if failure is not None:raise failure
