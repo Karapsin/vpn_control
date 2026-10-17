@@ -53,8 +53,55 @@ class InterruptedAdmissionCompletionTest(unittest.TestCase):
             self.assertEqual('completion_already_recorded',h.execute()['reason']);self.assertEqual('completion_metadata_unknown',h.execute('remaining-admission-status')['reason']);self.assertFalse((h.job/('remaining-stage-'+recovery.REMAINING+'.json')).exists())
     def test_lost_response_after_receipt_can_collect_without_rewrite(self):
         with tempfile.TemporaryDirectory() as raw:
-            h=CompletionHarness(Path(raw));h.crash='after-ready';self.assertEqual('completion_lost_response',h.execute()['reason']);h.crash=None;name='remaining-stage-'+recovery.REMAINING+'.json';before=(h.job/name).stat()
-            self.assertEqual('ready',h.execute('remaining-admission-status')['state']);self.assertEqual(before,(h.job/name).stat());self.assertEqual(1,h.writes.count(name))
+            h=CompletionHarness(Path(raw));h.crash='after-ready';self.assertEqual('completion_lost_response',h.execute()['reason']);h.crash=None;name='remaining-stage-'+recovery.REMAINING+'.json';before=h.pin(h.job/name)
+            self.assertEqual('ready',h.execute('remaining-admission-status')['state']);self.assertEqual(before,h.pin(h.job/name));self.assertEqual(1,h.writes.count(name))
+    def test_receipt_collection_ignores_atime_but_detects_content_and_generation_changes(self):
+        from unittest import mock
+        execute,stat,lstat=CompletionHarness.execute,Path.stat,Path.lstat
+        receipt_name='remaining-stage-'+recovery.REMAINING+'.json'
+        for mutation in ('atime','content','generation'):
+            observed={'after':False,'baseline':None,'shifted':0,'receipt_comparison_unequal':None}
+            equal=self.assertEqual
+            def receipt_equal(before,after,*args,**kwargs):
+                pins=all(isinstance(value,dict) and set(value)=={'sha256','generation'} for value in (before,after))
+                stats=all(isinstance(value,os.stat_result) for value in (before,after))
+                if pins or stats:observed['receipt_comparison_unequal']=before!=after
+                return equal(before,after,*args,**kwargs)
+            def status(h,action='remaining-admission-complete'):
+                result=execute(h,action)
+                if action=='remaining-admission-status':
+                    self.assertEqual('ready',result['state'],result)
+                    path=h.job/receipt_name
+                    observed.update(ready=True,writes=h.writes.count(receipt_name),effects=list(h.effects))
+                    if mutation=='content':path.write_bytes(path.read_bytes()+b' ')
+                    elif mutation=='generation':
+                        replacement=h.job/(receipt_name+'.replacement')
+                        replacement.write_bytes(path.read_bytes());replacement.chmod(0o600);os.replace(replacement,path)
+                    observed['after']=True
+                return result
+            def observed_stat(path,value):
+                if path.name==receipt_name:
+                    if observed['baseline'] is None:observed['baseline']=value
+                    if mutation=='atime' and observed['after']:
+                        baseline=observed['baseline'];values=list(value);values[7]=baseline[7]+1
+                        attributes={name:getattr(value,name) for name in ('st_atime','st_mtime','st_ctime','st_atime_ns','st_mtime_ns','st_ctime_ns')}
+                        attributes.update(st_atime=baseline.st_atime+1,st_atime_ns=baseline.st_atime_ns+1_000_000_000)
+                        shifted=os.stat_result(values,attributes)
+                        self.assertEqual([7],[index for index,(a,b) in enumerate(zip(baseline,shifted)) if a!=b])
+                        self.assertEqual(recovery._file_fp(value),recovery._file_fp(shifted))
+                        observed['shifted']+=1
+                        return shifted
+                return value
+            def receipt_stat(path,*args,**kwargs):return observed_stat(path,stat(path,*args,**kwargs))
+            def receipt_lstat(path,*args,**kwargs):return observed_stat(path,lstat(path,*args,**kwargs))
+            with self.subTest(mutation=mutation),mock.patch.object(CompletionHarness,'execute',status),mock.patch.object(Path,'stat',receipt_stat),mock.patch.object(Path,'lstat',receipt_lstat),mock.patch.object(self,'assertEqual',receipt_equal):
+                if mutation=='atime':self.test_lost_response_after_receipt_can_collect_without_rewrite()
+                else:
+                    with self.assertRaises(self.failureException):self.test_lost_response_after_receipt_can_collect_without_rewrite()
+                self.assertTrue(observed['ready']);self.assertEqual(1,observed['writes']);self.assertEqual([],observed['effects'])
+                if mutation=='atime':
+                    self.assertGreater(observed['shifted'],0);self.assertIs(observed['receipt_comparison_unequal'],False)
+                else:self.assertIs(observed['receipt_comparison_unequal'],True)
     def test_owner_drift_after_fence_prevents_metadata_effect(self):
         with tempfile.TemporaryDirectory() as raw:
             h=CompletionHarness(Path(raw));h.drift=True;self.assertEqual('completion_owner_changed',h.execute()['reason']);self.assertFalse((h.job/('remaining-stage-'+recovery.REMAINING+'.json')).exists());self.assertEqual('completion_already_recorded',h.execute()['reason'])

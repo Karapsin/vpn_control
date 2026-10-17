@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep MCP input test fixtures independent of caller temporary paths.
 - Validate genuine PowerShell function bodies across runtime AST forms.
 - Run every explicit Windows causal CI check even when its module is unchanged.
+- Ignore access-time changes in the Android remaining-stage admission test oracle.
 
 ## 2.2.13 - 2026-10-16
 
