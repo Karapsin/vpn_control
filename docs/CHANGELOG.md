@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Validate PowerShell provider identity and read buffered guest commands reliably.
 - Keep MCP input test fixtures independent of caller temporary paths.
 - Validate genuine PowerShell function bodies across runtime AST forms.
+- Run every explicit Windows causal CI check even when its module is unchanged.
 
 ## 2.2.13 - 2026-10-16
 

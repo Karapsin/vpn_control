@@ -428,6 +428,134 @@ class CliIncludeTests(unittest.TestCase):
         result=subprocess.run(args,cwd=self.root,text=True,capture_output=True)
         self.assertEqual(2,result.returncode,result.stderr);self.assertIn('Repository changed during selected tests',result.stderr)
 
+
+# Immutable full M workflow, not a reconstructed old command. Raw hash is checked
+# before line-ending normalization. Existing agent_ci_shards/*.yml byte policy
+# preserves this payload on Windows checkouts.
+_NATIVE_M_WORKFLOW_SHA256 = '784847ced09d7ada2ad9e9e721212dded766a5e710eca2a5b94d8028ccf2d054'
+_NATIVE_CAUSAL_STEPS = (
+    'Verify native managed-check locking and receipts',
+    'Verify affected CP117 PowerShell causal guards',
+)
+
+
+def _native_m_workflow():
+    raw = (Path(__file__).parent / 'fixtures' / 'agent_ci_shards' /
+           'windows-native-causal.M.before.yml').read_bytes()
+    assert len(raw) == 22483 and hashlib.sha256(raw).hexdigest() == _NATIVE_M_WORKFLOW_SHA256, 'immutable M workflow bytes changed'
+    # Full file from commit bba6fd39c01f2e86bfc1e94c10a0a48c9877d20d;
+    # exact-pushed-beforeimages.zip SHA a90853ead43a3b175932607cc620e145c8b82bf0edae28a5d6fa310eb2a21c36.
+    return raw
+
+
+def _native_causal_commands(raw):
+    assert len(raw) <= 65536, 'native workflow source bound'
+    text = raw.decode('utf-8').replace('\r\n', '\n')
+    assert '\r' not in text, 'lone CR in native workflow'
+    lines = text.splitlines()
+    commands = {}
+    for name in _NATIVE_CAUSAL_STEPS:
+        starts = [i for i, line in enumerate(lines) if line == '      - name: ' + name]
+        assert len(starts) == 1, 'native causal step must be unique'
+        start = starts[0]
+        end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('      - ')), len(lines))
+        block = lines[start:end]
+        assert not any(line.startswith(('        if:', '        continue-on-error:')) for line in block), 'native causal step must fail normally and remain unconditional'
+        runs = [i for i, line in enumerate(block) if line.startswith('        run:')]
+        assert len(runs) == 1, 'native causal run must be unique'
+        index = runs[0]
+        value = block[index].split('run:', 1)[1].strip()
+        if value == '>-':
+            body = block[index + 1:]
+            assert body and all(not line or line.startswith('          ') for line in body), 'folded native command fields changed'
+            value = ' '.join(line.strip() for line in body if line.strip())
+        args = shlex.split(value, comments=False)
+        assert args[:2] == ['python', 'agent_tools/affected_agent_tests.py'], 'actual selector command required'
+        assert args.count('--include') == 1 and '--run' in args, 'explicit native causal include run required'
+        include = args.index('--include')
+        assert include + 1 < len(args) and all(not item.startswith('-') for item in args[include + 1:]), 'native selector list must be literal and nonempty'
+        commands[name] = args
+    return commands
+
+
+class WindowsNativeCausalEnrollmentTests(unittest.TestCase):
+    """Real CLI enrollment component; inert controls never claim native success."""
+    git = GitSelectionTests.git
+    write = GitSelectionTests.write
+    setUp = WorkflowExecutionTests.setUp
+
+    def _controls(self):
+        self.write('agent_tools/tests/test_unaffected.py',
+                   'import unittest\nclass Case(unittest.TestCase):\n def test_value(self): self.assertTrue(True)\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'preexisting unchanged include control')
+        self.base = self.git('rev-parse', 'HEAD').strip()
+        self.write('agent_tools/leaf.py', 'value=4')
+        event = self.root / '.event.json'
+        event.write_text(json.dumps({'before': self.base}), encoding='utf-8')
+        self.native_event = event
+        self.native_executions = []
+
+    def _assert_command_covers_unaffected(self, raw, name):
+        if not hasattr(self, 'native_event'):
+            self._controls()
+        actual = _native_causal_commands(raw)[name]
+        include = actual.index('--include')
+        ids = ['agent_tools.tests.test_leaf.Case.test_value',
+               'agent_tools.tests.test_unaffected.Case.test_value']
+        # Only two explicit seams: prepared interpreter/path and inert include
+        # operands. Every actual workflow policy option through --include stays.
+        argv = [sys.executable, str(self.root / actual[1]), *actual[2:include + 1], *ids]
+        env = {**os.environ, 'GITHUB_EVENT_NAME': 'push',
+               'GITHUB_EVENT_PATH': str(self.native_event), 'GITHUB_SHA': self.base,
+               'PATH': str(Path(sys.executable).parent) + os.pathsep + os.defpath}
+        result = subprocess.run(argv, cwd=self.root, env=env, capture_output=True, text=True, timeout=30)
+        self.native_executions.append({'step': name, 'argv': argv, 'returncode': result.returncode,
+                                       'stdout': result.stdout, 'stderr': result.stderr})
+        self.assertLessEqual(len(result.stdout.encode()) + len(result.stderr.encode()), 1048576, 'inert CLI evidence bound')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        timings = [json.loads(line.removeprefix('AGENT_TEST_TIMING '))
+                   for line in result.stdout.splitlines() if line.startswith('AGENT_TEST_TIMING ')]
+        self.assertEqual(sorted((item['testId'], item['outcome']) for item in timings),
+                         sorted((name, 'success') for name in ids),
+                         'unaffected explicit selector omitted by native causal workflow')
+        self.assertIn('Ran 2 tests', result.stderr)
+        self.assertNotIn('unrelated suite imported', result.stdout + result.stderr)
+
+    def test_actual_windows_causal_gates_run_unaffected_include_controls(self):
+        raw = (Path(__file__).resolve().parents[2] / '.github/workflows/windows-desktop.yml').read_bytes()
+        for name in _NATIVE_CAUSAL_STEPS:
+            with self.subTest(step=name):
+                self._assert_command_covers_unaffected(raw, name)
+
+    def test_preserved_m_same_positive_omits_only_the_unaffected_control(self):
+        for name in _NATIVE_CAUSAL_STEPS:
+            case = unittest.FunctionTestCase(lambda name=name: self._assert_command_covers_unaffected(_native_m_workflow(), name))
+            result = unittest.TestResult()
+            unittest.TestSuite([case]).run(result)
+            self.assertEqual((result.testsRun, len(result.failures), len(result.errors), len(result.skipped)), (1, 1, 0, 0))
+            self.assertIn('unaffected explicit selector omitted', result.failures[0][1])
+            record = self.native_executions[-1]
+            rows = [json.loads(line.removeprefix('AGENT_TEST_TIMING '))
+                    for line in record['stdout'].splitlines() if line.startswith('AGENT_TEST_TIMING ')]
+            self.assertEqual([(item['testId'], item['outcome']) for item in rows],
+                             [('agent_tools.tests.test_leaf.Case.test_value', 'success')])
+
+    def test_both_audit_head_commands_preserve_all_immutable_m_selectors(self):
+        before = _native_causal_commands(_native_m_workflow())
+        raw = (Path(__file__).resolve().parents[2] / '.github/workflows/windows-desktop.yml').read_bytes()
+        for variant in (raw, raw.decode('utf-8').replace('\r\n', '\n').replace('\n', '\r\n').encode('utf-8')):
+            current = _native_causal_commands(variant)
+            for name in _NATIVE_CAUSAL_STEPS:
+                expected = before[name]
+                actual = current[name]
+                self.assertEqual(actual[:actual.index('--include') + 1],
+                                 ['python', 'agent_tools/affected_agent_tests.py', '--audit', '--baseline', 'HEAD', '--run', '--include'])
+                self.assertEqual(actual[actual.index('--include') + 1:], expected[expected.index('--include') + 1:])
+        with self.assertRaisesRegex(AssertionError, 'lone CR'):
+            _native_causal_commands(raw.replace(b'\r\n', b'\n').replace(b'jobs:\n', b'jobs:\r', 1))
+
+
 class DocumentationResourceSelectionTests(unittest.TestCase):
     def sources(self, path):
         return {'agent_tools/tests/test_fixture.py': 'from pathlib import Path\ndef test_body():\n return Path('+repr(path)+').read_text()\n',path:None}
