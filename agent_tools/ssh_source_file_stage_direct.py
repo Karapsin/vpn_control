@@ -49,29 +49,17 @@ class FileCapture(OuterCustody):
     """Reuse complete two-stream collection; stream file input independently."""
     def __init__(self,argv,*,capture_limit=65536):
         if type(capture_limit)is not int or capture_limit not in (65536,16*1024**2):raise ValueError('file_capture_limit')
-        self.capture_limit=capture_limit
-        self.child=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE,bufsize=0)
-        self.selector=selectors.DefaultSelector()
-        self.raw={"stdout":bytearray(),"stderr":bytearray()}
-        self.counts={key:0 for key in self.raw};self.eof={key:False for key in self.raw}
-        self.overflow=False;self.timeout=False;self.closed=False;self.sendError=None
-        for name in self.raw:
-            fd=getattr(self.child,name).fileno();os.set_blocking(fd,False)
-            self.selector.register(fd,selectors.EVENT_READ,name)
-        os.set_blocking(self.child.stdin.fileno(),False)
+        self._reserve();self.capture_limit=capture_limit
         self.writer_errors=[];self.writer=None
-
-    def step(self,seconds):
-        # File return has its own bounded byte budget. The inherited Android
-        # collector and all ordinary source-stage calls keep their old limits.
-        for key,_ in self.selector.select(seconds):
-            try:block=os.read(key.fd,4096)
-            except BlockingIOError:continue
-            if not block:self.eof[key.data]=True;self.selector.unregister(key.fd);continue
-            name=key.data;self.counts[name]+=len(block);left=self.capture_limit-len(self.raw[name])
-            self.raw[name].extend(block[:max(left,0)])
-            if self.counts[name]>self.capture_limit:self.overflow=True
+        try:
+            self.child=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE,bufsize=0)
+            self._attach()
+            os.set_blocking(self.child.stdin.fileno(),False)
+        except BaseException as error:
+            if not self.captureErrors:self._capture_error('setup',error)
+            self.finish_naturally()
+            raise
 
     def submit(self,payload):
         if type(payload)is not bytes or not 0<len(payload)<=files.MAX_SOURCE_BYTES+4096:
@@ -108,8 +96,9 @@ def _retain(directory,name,value):
 def _run(directory,argv,payload,label,*,file_output=False):
     if type(file_output)is not bool:raise ValueError('file_capture_mode')
     if len(os.fsencode(argv[-1]))>60000:raise ValueError('source_stage_command_bound')
-    custody=FileCapture(argv,capture_limit=16*1024**2) if file_output else FileCapture(argv)
+    custody=FileCapture.__new__(FileCapture)
     try:
+        custody.__init__(argv,capture_limit=16*1024**2) if file_output else custody.__init__(argv)
         _retain(directory,label+'-accepted.json',{'pid':custody.child.pid,'parentPid':os.getpid(),
                                                'commandBytes':len(os.fsencode(argv[-1]))})
         custody.submit(payload);capture=custody.observe(60)
@@ -118,11 +107,10 @@ def _run(directory,argv,payload,label,*,file_output=False):
         # Hold source through the original child's closure, including retention
         # failures. Never signal or replace the original SSH process.
         custody.finish_naturally()
-        if custody.writer is not None:custody.writer.join(1)
-    final=custody.snapshot()
-    _retain(directory,label+'-terminal.json',final)
-    for name,raw in custody.raw.items():_retain(directory,label+'-'+name+'.private',bytes(raw))
-    if (not capture['complete'] or capture['overflow'] or custody.writer.is_alive()
+        final=custody.snapshot()
+        _retain(directory,label+'-terminal.json',final)
+        for name,raw in custody.raw.items():_retain(directory,label+'-'+name+'.private',bytes(raw))
+    if (not capture['complete'] or capture['timeout'] or capture['overflow'] or capture['captureErrors'] or final['captureErrors'] or custody.writer.is_alive()
             or custody.writer_errors or final['returnCode']!=0 or custody.raw['stderr']):
         raise ValueError('source_stage_'+label+'_unverified')
     return json.loads(bytes(custody.raw['stdout']))

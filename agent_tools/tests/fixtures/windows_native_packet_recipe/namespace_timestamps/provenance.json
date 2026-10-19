@@ -1,0 +1,95 @@
+{
+  "actualObservationRole": "Complete namespace opening/closing full9 metadata copied from actual65f4; actor/process identity outside those rows remains inert. The original7d closing cause is unobserved.",
+  "currentGetterSha256": "c8365ace8f9162837b4b6f393a90597a59fbfe1bf2728aaeda14ddabb9714a99",
+  "guestStateObserved": false,
+  "historicalOriginalRpcOutcome": "UNKNOWN",
+  "originalCauseReceipt": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/host-actor-closing-cause-private-v1/actual-65f4-difference-followup-v1/actual-namespace-cause-qualified.private.json",
+    "sha256": "e1c7abcb3fbb8b6e3ce975822a430c5e0c1116a9fd254c6bf03bc21086b1246c"
+  },
+  "qualifierStagePath": ".runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-actor-identity-preparation-v1/namespace-stability-preparation-v1/qualify_collector.py",
+  "replayAllowed": false,
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "bytes": 20550,
+      "fixture": "inputs/00-qualify_collector.py.source",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-actor-identity-preparation-v1/namespace-stability-preparation-v1/qualify_collector.py",
+      "sha256": "bbda64bc87935e65e97835a04a873c3e835f7a5212af85643f4b0e3e28b66dc9",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-actor-identity-preparation-v1/namespace-stability-preparation-v1/qualify_collector.py"
+    },
+    {
+      "bytes": 5403,
+      "fixture": "inputs/01-namespace-timestamp-oracle.private.json.source",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-actor-identity-preparation-v1/namespace-stability-preparation-v1/namespace-timestamp-oracle.private.json",
+      "sha256": "b6cafca5be7dd582797481601e689c8e86aea7e59f4d20e308afac52d1143483",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-actor-identity-preparation-v1/namespace-stability-preparation-v1/namespace-timestamp-oracle.private.json"
+    },
+    {
+      "bytes": 17257,
+      "fixture": "inputs/02-qualify_collector.py.source",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-actor-identity-preparation-v1/qualify_collector.py",
+      "sha256": "12263d0bc555035b7de6e19a4a9119b333e89a829b530441a00c5c4179b0a67c",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-actor-identity-preparation-v1/qualify_collector.py"
+    },
+    {
+      "bytes": 14787,
+      "fixture": "inputs/03-qualify_collector.py.source",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/owned-host-readonly-preparation-v1/qualify_collector.py",
+      "sha256": "fd420b83e273de49755d3bc3058731e1bf22485f21002011e3ac79194943a42b",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/owned-host-readonly-preparation-v1/qualify_collector.py"
+    },
+    {
+      "bytes": 20601,
+      "fixture": "inputs/04-harness.py.source",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/inert-caller-qualification/harness.py",
+      "sha256": "ea82b43ee0d687a503a415360bec27acd1826fced11e18caf617d7e2062c4390",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/inert-caller-qualification/harness.py"
+    },
+    {
+      "bytes": 32805,
+      "fixture": "inputs/05-rpc83.request.json.source",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-readonly-preparation-v1/native-run-v1/rpc83.request.json",
+      "sha256": "8db1bf43f51b325fc620957366af54ff0555696e6c0fd7cd7bfa71963d147c81",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-readonly-preparation-v1/native-run-v1/rpc83.request.json"
+    },
+    {
+      "bytes": 214,
+      "fixture": "inputs/06-rpc83.raw.bin",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-readonly-preparation-v1/native-run-v1/rpc83.raw",
+      "sha256": "639ec96921964c4e0dc65cfd20603b2ea040de99b5e83792f67c4f156c9bf2f4",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-readonly-preparation-v1/native-run-v1/rpc83.raw"
+    },
+    {
+      "bytes": 28116,
+      "fixture": "inputs/07-windows_qga_transfer.candidate.py.source",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/qga-recv-poll-private-preparation-v1/windows_qga_transfer.candidate.py",
+      "sha256": "bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/qga-recv-poll-private-preparation-v1/windows_qga_transfer.candidate.py"
+    },
+    {
+      "bytes": 44195,
+      "fixture": "inputs/08-artifact-probe-d053e44c-5652-4fc2-9b1d-bbcc7413398e.canonical-emitter.py.source",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/original-park-host-evidence-extracted-v1/artifact-probe-d053e44c-5652-4fc2-9b1d-bbcc7413398e.canonical-emitter.py",
+      "sha256": "297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/original-park-host-evidence-extracted-v1/artifact-probe-d053e44c-5652-4fc2-9b1d-bbcc7413398e.canonical-emitter.py"
+    },
+    {
+      "bytes": 28116,
+      "fixture": "inputs/07-windows_qga_transfer.candidate.py.source",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/qga-recv-poll-private-preparation-v1/windows_qga_transfer.candidate.py",
+      "role": "historical-inert-peer-import-data",
+      "sha256": "bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022",
+      "stagePath": "agent_tools/windows_qga_transfer.py"
+    },
+    {
+      "bytes": 44195,
+      "fixture": "inputs/08-artifact-probe-d053e44c-5652-4fc2-9b1d-bbcc7413398e.canonical-emitter.py.source",
+      "origin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/original-park-host-evidence-extracted-v1/artifact-probe-d053e44c-5652-4fc2-9b1d-bbcc7413398e.canonical-emitter.py",
+      "role": "historical-inert-peer-import-data",
+      "sha256": "297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479",
+      "stagePath": "agent_tools/windows_artifact_transfer.py"
+    }
+  ],
+  "wholeNativeBeforeSha256": "81f3957f0985c49bb7d9752e63008e0a31c6bdb7be49e4eef29f10b4dbe9be20"
+}

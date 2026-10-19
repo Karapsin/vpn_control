@@ -13,7 +13,8 @@ class DesktopUpdateHelperSafetyTest {
         try {
             val tools = Files.createDirectory(directory.resolve("tools"))
             val sleep = tools.resolve("sleep")
-            Files.writeString(sleep, "#!/bin/sh\nexit 0\n")
+            // A fixture command must never spend the observer budget spawning sleep actors.
+            Files.writeString(sleep, "#!/bin/sh\nexit 97\n")
             assertTrue(sleep.toFile().setExecutable(true))
             val launcher = directory.resolve("launcher")
             val launched = directory.resolve("launched")
@@ -22,8 +23,11 @@ class DesktopUpdateHelperSafetyTest {
             val owner = ProcessBuilder("/bin/sh", "-c", "exit 0").start()
             assertTrue(owner.waitFor(5, TimeUnit.SECONDS))
             val service = DesktopUpdateService({ MainUiState() }, {}, directory)
-            val builder = ProcessBuilder(service.linuxRelaunchCommand(owner.pid(), launcher.toString(),
-                directory.resolve("not-installed"), directory.resolve("error"), directory.resolve("cancel")))
+            val command = service.linuxRelaunchCommand(owner.pid(), launcher.toString(),
+                directory.resolve("not-installed"), directory.resolve("error"), directory.resolve("cancel")).toMutableList()
+            // Keep the real 300-attempt watcher and its 10s observer; only fixture sleep is immediate.
+            command[2] = "sleep() { :; }\n" + command[2]
+            val builder = ProcessBuilder(command)
             builder.environment()["PATH"] = tools.toString() + java.io.File.pathSeparator + System.getenv("PATH").orEmpty()
             val watcher = builder.start()
             try {

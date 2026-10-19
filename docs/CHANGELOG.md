@@ -5,6 +5,16 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Harden Windows test transfers, task policy and generated-program execution; keep new SSH channels idle for five hours.
+- Preserve private remote-program failure diagnostics without changing launch or retry decisions.
+- Keep remote script output complete and preserve deadlines during SSH recovery.
+- Keep remote programs pending while their original worker publishes its final confirmation.
+- Keep SSH test cleanup and saved-program integrity checks reliable during long Windows runs.
+- Reserve Windows helper command headroom and retain complete native diagnostic identity and results.
+- Keep Windows acceptance regressions portable across isolated runners and preserve authenticated failure evidence.
+
+## 2.2.14 - 2026-10-19
+
 - Make MCP PowerShell checks reproducible across native module layouts.
 - Make MCP SSH readiness fixtures reproducible and keep dependency selection complete.
 - Match PowerShell provider encoding and retain native MCP failure inputs.
@@ -14,6 +24,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Validate genuine PowerShell function bodies across runtime AST forms.
 - Run every explicit Windows causal CI check even when its module is unchanged.
 - Ignore access-time changes in the Android remaining-stage admission test oracle.
+- Fix public subscription-mode CLI selection and recognize unrelated Arch VM-preflight advisories.
 
 ## 2.2.13 - 2026-10-16
 

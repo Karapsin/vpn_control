@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/ssh_program_mcp_client.py",
+  "sourceSha256": "18394b7ae702ea0f317093417c36fa96aad2ec2f80d96fe8abf37b34190b03e3",
+  "sourceBytes": 7318,
+  "failure": "absolute retained-relay import cannot resolve agent_tools when PYTHONPATH absent",
+  "nativeScenario": "actual MCP SDK initialize/list; no tool call or remote action",
+  "originalEvidence": ".runtime/windows-parity-20261019/program-tool-draft/initialize-list-current-server"
+}

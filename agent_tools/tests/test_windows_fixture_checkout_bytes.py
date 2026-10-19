@@ -33,6 +33,10 @@ HTTPS_PINS = {
     'before-total-deadline.cs': (3128, '3339630834fc13674df1e6ba833a792de3772995aa0b5cd7918ddc90befd0e19'),
 }
 CLEANUP_PROVENANCE_SHA256 = '3eb5efdca7385e8980d6aa9d20d315d468237ca32357e0d4fdb45c713f47eaff'
+ORDINARY_RAW_PATHS = (
+    'agent_tools/windows_ordinary_task_owner.ps1',
+    'agent_tools/tests/fixtures/windows_ordinary_task/original-task.xml',
+)
 CLEANUP_NAMES = (
     'current_file_binding.ps1', 'current_publication.source',
     'decision_consumer.source', 'delete_native.cs',
@@ -83,6 +87,8 @@ def reader(kind, checkout):
 
 def public_payloads():
     result = {}
+    for name in ORDINARY_RAW_PATHS:
+        result[name] = (ROOT / name).read_bytes()
     manifest = (ROOT / HTTPS_FOLDER / 'provenance.json').read_bytes()
     facts = json.loads(manifest)
     result[HTTPS_FOLDER + '/provenance.json'] = manifest
@@ -180,6 +186,21 @@ class WindowsFixtureCheckoutBytesTests(unittest.TestCase):
 
     def test_current_attributes_preserve_deadline_specimen(self):
         self.https_positive('before-total-deadline.cs')
+
+    def test_current_attributes_preserve_ordinary_task_source_bytes(self):
+        with physical_checkout(self.before_attributes) as (checkout, payloads):
+            for name in ORDINARY_RAW_PATHS:
+                with self.subTest(source=name):
+                    self.assertEqual((checkout / name).read_bytes(), payloads[name])
+
+    def test_preserved_attributes_reproduce_ordinary_task_source_conversion(self):
+        case = type(self)('test_current_attributes_preserve_ordinary_task_source_bytes')
+        case.before_attributes = True
+        result = unittest.TestResult()
+        case.run(result)
+        self.assertEqual((result.testsRun, len(result.failures), len(result.errors), result.skipped),
+                         (1, 1, 0, []))
+        self.assertIn('AssertionError', result.failures[0][1])
 
     def test_current_attributes_preserve_complete_cleanup_family(self):
         with physical_checkout(self.before_attributes) as (checkout, payloads):

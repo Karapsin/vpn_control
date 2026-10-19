@@ -1,0 +1,7 @@
+{
+  "beforeRole": "Private fixed546 candidate before binary-stream custody correction; complete actual source, not native evidence.",
+  "beforeSha256": "e608b2f2505fae2ee49cee760b19f97e42fc791a969ed318bc38f25027270646",
+  "originalFailureEvidence": ".runtime/windows-parity-20261019/channel546-retirement-private-candidate-v1/tests-v3.stderr.bin",
+  "schemaVersion": 1,
+  "scope": "Authentic private empty-stderr Snapshot failure, actual before RED/current whole publication GREEN; inert native and current-authority seams only."
+}

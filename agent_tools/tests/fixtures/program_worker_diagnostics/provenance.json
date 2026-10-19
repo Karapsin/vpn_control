@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "sources": {
+    "ssh_program_execution.py.before.source": {
+      "originalPath": "agent_tools/ssh_program_execution.py",
+      "sha256": "78021ee7fb14dda4015dc3e3ac77f9399b635379da2d71d6c67cd8ed3ed382f4"
+    },
+    "ssh_transport.py.before.source": {
+      "originalPath": "agent_tools/ssh_transport.py",
+      "sha256": "86a897ee00d843a38b16357dab4c4b8415d11503cc6883f525fd1cf7fbe3ac55"
+    },
+    "ssh_channel_selection.py.before.source": {
+      "originalPath": "agent_tools/ssh_channel_selection.py",
+      "sha256": "2d4617a262e9772942809c112067fe382d759d975141051ef83b0654fe515e44"
+    },
+    "ssh_direct_nested_channel.py.before.source": {
+      "originalPath": "agent_tools/ssh_direct_nested_channel.py",
+      "sha256": "a68077b5db3a8390b58a354819afcf1ef732d19e4de07aaa0d7e1026537d021e"
+    },
+    "ssh_fresh_nested_channel.py.before.source": {
+      "originalPath": "agent_tools/ssh_fresh_nested_channel.py",
+      "sha256": "a9ae6246cf7ba84cc8dc84031508af5bf7573bca2b67197fcada008f58c7da8d"
+    }
+  },
+  "nativeFailure": "Original bc6ed15f worker returned UNKNOWN/errorClass SshConfigError/capture:null without a message or traceback. Its exact cause remains unresolved; it was never replayed.",
+  "causalBoundary": "Controlled preautomatic selected-admission SshConfigError on the whole authentic original 780 worker versus current observability. No remote or native program start."
+}

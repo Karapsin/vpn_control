@@ -12,9 +12,22 @@ from agent_tools import arch_package_integrity as integrity
 from agent_tools.native_vm_spec import FreshWindowsVmSpec
 from agent_tools.tests import test_native_vm_spec as specs
 
+SYNC_DATABASE_ADVISORY=b"warning: database file for 'openai-chatgpt' does not exist (use '-Sy' to download)\n"
+
+
+def preserved_sync_database_policy():
+    path=Path(__file__).parent/'fixtures/arch_runtime_policy/sync_database.before.source';raw=path.read_bytes()
+    provenance=json.loads(path.with_name('sync_database.provenance.json').read_text())
+    expected='f35c1da6433caf42baa9a4f77fa6bcd86c6eaa064b94567f06ad2812e003f00d'
+    if (hashlib.sha256(raw).hexdigest()!=expected or provenance['sourceSha256']!=expected
+            or provenance['sourceBytes']!=len(raw)):raise AssertionError('preserved package-policy source changed')
+    namespace={};exec(compile(raw,str(path),'exec'),namespace)
+    return namespace['swtpm_runtime_owner_accepted']
+
+
 @unittest.skipUnless(os.name=='posix','POSIX package/physical metadata boundary')
 class WindowsVmPreflightTests(unittest.TestCase):
-    def observe(self,producer=subject,*,alteration='uid',layout='a',directory_readable=True,missing_binary=None):
+    def observe(self,producer=subject,*,alteration='uid',layout='a',directory_readable=True,missing_binary=None,pacman_advisory=b'',package_policy=None):
         with tempfile.TemporaryDirectory(prefix='vcv-',dir=Path('/tmp').resolve()) as tmp:
             base=Path(tmp).resolve();base.chmod(0o700)
             binaries=base/'bin';binaries.mkdir()
@@ -42,15 +55,19 @@ class WindowsVmPreflightTests(unittest.TestCase):
             def run(argv,**kw):
                 calls.append(argv)
                 self.assertEqual(str(binaries/'pacman'),argv[0]);self.assertIn(argv[1],('-Q','-Qkk','-Ql','-Qoq'))
-                if argv[1]=='-Qoq':return subprocess.CompletedProcess(argv,0,b'libisoburn\n',b'')
-                if argv[1]=='-Q':return subprocess.CompletedProcess(argv,0,(argv[2]+' 42.7-3\n').encode(),b'')
-                if argv[1]=='-Ql':return subprocess.CompletedProcess(argv,0,b'swtpm /usr/lib/tmpfiles.d/swtpm.conf\n',b'')
+                if argv[1]=='-Qoq':return subprocess.CompletedProcess(argv,0,b'libisoburn\n',pacman_advisory)
+                if argv[1]=='-Q':return subprocess.CompletedProcess(argv,0,(argv[2]+' 42.7-3\n').encode(),pacman_advisory)
+                if argv[1]=='-Ql':return subprocess.CompletedProcess(argv,0,b'swtpm /usr/lib/tmpfiles.d/swtpm.conf\n',pacman_advisory)
+                if argv[2]=='qemu-img' and alteration=='required-package':
+                    return subprocess.CompletedProcess(argv,1,b'qemu-img: 24 total files, 1 altered file\n',pacman_advisory+b'warning: qemu-img: /usr/bin/qemu-img (SHA256 checksum mismatch)\n')
                 if argv[2]=='swtpm' and alteration:
                     stderr=b'warning: swtpm: /var/lib/swtpm-localca (UID mismatch)\n'
                     if alteration=='extra':stderr+=b'warning: swtpm: /usr/bin/swtpm (SHA256 checksum mismatch)\n'
-                    return subprocess.CompletedProcess(argv,1,b'swtpm: 259 total files, 1 altered file\n',stderr)
-                return subprocess.CompletedProcess(argv,0,b'',b'')
-            stream=io.StringIO();body=producer.program(spec,'preflight')
+                    return subprocess.CompletedProcess(argv,1,b'swtpm: 259 total files, 1 altered file\n',pacman_advisory+stderr)
+                return subprocess.CompletedProcess(argv,0,b'',pacman_advisory)
+            stream=io.StringIO()
+            with (mock.patch.object(producer,'swtpm_runtime_owner_accepted',package_policy) if package_policy is not None else contextlib.nullcontext()):
+                body=producer.program(spec,'preflight')
             with mock.patch.object(os,'O_PATH',metadata_flag,create=True),mock.patch.object(os,'open',side_effect=native_open),mock.patch.object(os,'stat',side_effect=lambda p,*a,**kw:real_stat(path(p),*a,**kw)),mock.patch.object(builtins,'open',side_effect=lambda p,*a,**kw:real_builtin(path(p),*a,**kw)),mock.patch('shutil.which',side_effect=lambda n,**kw:None if n==missing_binary else str(binaries/n)),mock.patch.object(subprocess,'run',side_effect=run),mock.patch('shutil.disk_usage',return_value=types.SimpleNamespace(free=1024**4)),contextlib.redirect_stdout(stream):
                 exec(compile(body,'complete saved VM preflight','exec'),{'__name__':'__main__'})
             self.assertFalse(Path(spec.root).exists())
@@ -61,6 +78,15 @@ class WindowsVmPreflightTests(unittest.TestCase):
         self.assertEqual('qualified',self.observe(layout='another layout')['state'])
     def test_other_package_alterations_are_blocked(self):
         self.assertEqual('package_integrity',self.observe(alteration='extra')['reason'])
+    def test_missing_sync_database_advisory_keeps_complete_preflight_qualified(self):
+        self.assertEqual('qualified',self.observe(pacman_advisory=SYNC_DATABASE_ADVISORY)['state'])
+    def test_preserved_sync_database_guard_blocks_identical_complete_preflight(self):
+        self.assertEqual('package_integrity',self.observe(pacman_advisory=SYNC_DATABASE_ADVISORY,package_policy=preserved_sync_database_policy())['reason'])
+        self.assertEqual('qualified',self.observe(pacman_advisory=SYNC_DATABASE_ADVISORY)['state'])
+    def test_sync_database_advisory_does_not_hide_package_alterations(self):
+        for alteration in ('extra','required-package'):
+            with self.subTest(alteration=alteration):
+                self.assertEqual('package_integrity',self.observe(alteration=alteration,pacman_advisory=SYNC_DATABASE_ADVISORY)['reason'])
     def test_missing_seed_builder_is_rejected_before_vm_creation(self):
         self.assertEqual('binary_unavailable',self.observe(missing_binary='xorriso')['reason'])
     def test_preserved_complete_before_producer_exposes_same_causal_failure(self):
@@ -141,8 +167,44 @@ class VmDeployMcpBoundaryTests(unittest.TestCase):
                 operation.assert_not_called()
 
 class PackagePolicyTests(unittest.TestCase):
+    def arguments(self):
+        return [1,b'swtpm: 259 total files, 1 altered file\n',b'warning: swtpm: /var/lib/swtpm-localca (UID mismatch)\n','z /var/lib/swtpm-localca 0750 tss root\n',{'mode':stat.S_IFDIR|0o750,'uid':972,'gid':0},972,0]
+
+    def test_missing_sync_database_advisory_preserves_single_uid_policy(self):
+        for name in ('openai-chatgpt','another-repo','a'*128):
+            args=self.arguments();args[2]=SYNC_DATABASE_ADVISORY.replace(b'openai-chatgpt',name.encode())+args[2]
+            with self.subTest(repository=name):self.assertTrue(integrity.swtpm_runtime_owner_accepted(*args))
+
+    def test_preserved_sync_database_guard_rejects_same_valid_helper_observation(self):
+        args=self.arguments();args[2]=SYNC_DATABASE_ADVISORY+args[2]
+        self.assertFalse(preserved_sync_database_policy()(*args))
+        self.assertTrue(integrity.swtpm_runtime_owner_accepted(*args))
+
+    def test_sync_database_advisory_keeps_exact_stderr_and_package_guards(self):
+        args=self.arguments();uid_warning=args[2];args[2]=SYNC_DATABASE_ADVISORY+uid_warning
+        invalid_stderr=(SYNC_DATABASE_ADVISORY,uid_warning+SYNC_DATABASE_ADVISORY,
+            SYNC_DATABASE_ADVISORY*2+uid_warning,SYNC_DATABASE_ADVISORY+uid_warning*2,
+            SYNC_DATABASE_ADVISORY+b'unknown warning\n'+uid_warning,
+            SYNC_DATABASE_ADVISORY+uid_warning+b'warning: swtpm: /usr/bin/swtpm (SHA256 checksum mismatch)\n',
+            SYNC_DATABASE_ADVISORY.replace(b'openai-chatgpt',b'a'*129)+uid_warning,
+            SYNC_DATABASE_ADVISORY.replace(b'openai-chatgpt',b'')+uid_warning,
+            SYNC_DATABASE_ADVISORY.replace(b'openai-chatgpt',b"repo'name")+uid_warning,
+            SYNC_DATABASE_ADVISORY.replace(b'openai-chatgpt',b'repo/name')+uid_warning,
+            SYNC_DATABASE_ADVISORY.replace(b'openai-chatgpt',b'repo\x00name')+uid_warning,
+            SYNC_DATABASE_ADVISORY.replace(b'\n',b'\r\n')+uid_warning,
+            SYNC_DATABASE_ADVISORY.replace(b"'-Sy'",b"'-Syy'")+uid_warning,
+            SYNC_DATABASE_ADVISORY+uid_warning+b'\n',SYNC_DATABASE_ADVISORY+uid_warning+b'\x00')
+        for value in invalid_stderr:
+            changed=list(args);changed[2]=value
+            with self.subTest(stderr=value):self.assertFalse(integrity.swtpm_runtime_owner_accepted(*changed))
+        for index,value in ((0,0),(0,True),(1,b'swtpm: 259 total files, 2 altered files\n'),
+                (1,args[1]+b'ignored\n'),(3,args[3]*2),(3,args[3].replace('0750','0777')),
+                (4,{**args[4],'uid':0}),(4,{**args[4],'gid':1}),(4,{**args[4],'mode':stat.S_IFDIR|0o777}),(5,True)):
+            changed=list(args);changed[index]=value
+            with self.subTest(index=index,value=value):self.assertFalse(integrity.swtpm_runtime_owner_accepted(*changed))
+
     def test_only_exact_policy_and_metadata_may_explain_the_single_uid_difference(self):
-        args=[1,b'swtpm: 259 total files, 1 altered file\n',b'warning: swtpm: /var/lib/swtpm-localca (UID mismatch)\n','z /var/lib/swtpm-localca 0750 tss root\n',{'mode':stat.S_IFDIR|0o750,'uid':972,'gid':0},972,0]
+        args=self.arguments()
         self.assertTrue(integrity.swtpm_runtime_owner_accepted(*args))
         for index,value in ((0,0),(1,b'bad'),(2,args[2]+b'other warning'),(3,args[3]*2),(3,args[3].replace('0750','0777')),(4,{**args[4],'uid':0}),(4,{**args[4],'mode':stat.S_IFREG|0o750}),(5,True)):
             changed=list(args);changed[index]=value

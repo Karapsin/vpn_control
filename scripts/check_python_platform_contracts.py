@@ -308,6 +308,147 @@ def _failure(name: str, result: subprocess.CompletedProcess[str]) -> str:
     return f"{name} failed with exit {result.returncode}: {output[-1000:]}"
 
 
+def probe_windows_native_packet_recipe_test_suite(
+    helper_path: Path | None = None,
+    *, expected_tests: int = 8, windows_like: bool = True,
+    temporary_root: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run the complete registered helper under declared missing OS capabilities.
+
+    The missing-API peer is local to the helper and its boundary source imports;
+    the host os module, Python imports, and production privacy code stay intact.
+    """
+    return _run('''import builtins
+import collections
+import hashlib
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+import types
+import unittest
+
+config = json.load(sys.stdin)
+path = Path(config["helperPath"]).resolve(strict=True)
+boundary_path = path.parent / "fixtures/windows_native_packet_recipe/boundary.py"
+sys.dont_write_bytecode = True
+if config["temporaryRoot"] is not None:
+    tempfile.tempdir = config["temporaryRoot"]
+
+class WindowsOs:
+    name = "nt"
+    def __getattr__(self, name):
+        if name in {"O_NOFOLLOW", "getuid"}:
+            raise AttributeError(name)
+        return getattr(os, name)
+
+surface = WindowsOs()
+original_import = builtins.__import__
+imports = []
+def declared_import(name, globals=None, locals=None, fromlist=(), level=0):
+    origin = None if globals is None else globals.get("__file__")
+    if config["windowsLike"] and name == "os" and origin in {str(path), str(boundary_path)}:
+        imports.append({"name": name, "source": origin, "declaredPeer": "WindowsOs", "missing": ["O_NOFOLLOW", "getuid"]})
+        return surface
+    return original_import(name, globals, locals, fromlist, level)
+
+name = "_windows_native_recipe_capability_probe"
+spec = importlib.util.spec_from_file_location(name, path)
+module = importlib.util.module_from_spec(spec)
+assert name not in sys.modules
+sys.modules[name] = module
+calls = collections.Counter()
+owners = {}
+def profile(frame, event, arg):
+    origin = frame.f_code.co_filename
+    if event == "call" and origin in {str(path), str(boundary_path)}:
+        owner_name = frame.f_globals.get("__name__")
+        registered = sys.modules.get(owner_name)
+        assert registered is not None and registered.__dict__ is frame.f_globals
+        calls[(origin, frame.f_code.co_name)] += 1
+        owners[owner_name] = {"source": origin, "completeRegisteredNamespace": True}
+
+prior_profile = sys.getprofile()
+builtins.__import__ = declared_import
+try:
+    sys.setprofile(profile)
+    spec.loader.exec_module(module)
+    cases = (module.WindowsNativePacketRecipeTest, module.DiagnosticResultContainerPowerShellTest)
+    original_functions = {case: {key: value for key, value in vars(case).items() if callable(value)}
+                          for case in cases}
+    loader = unittest.TestLoader()
+    posix_ids = {test.id() for test in loader.loadTestsFromTestCase(cases[0])}
+    diagnostic_ids = {test.id() for test in loader.loadTestsFromTestCase(cases[1])}
+    suite = loader.loadTestsFromModule(module)
+    test_ids = [test.id() for group in suite for test in group]
+    output = io.StringIO()
+    result = unittest.TextTestRunner(stream=output, verbosity=2).run(suite)
+    assert all(vars(case)[key] is value for case, functions in original_functions.items()
+               for key, value in functions.items())
+    assert all(case.__module__ == module.__name__ for case in cases)
+    assert module.render_operator.__globals__ is module.__dict__
+finally:
+    sys.setprofile(prior_profile)
+    builtins.__import__ = original_import
+
+skipped_ids = {test.id() for test, reason in result.skipped}
+failed_ids = {test.id() for test, error in result.failures + result.errors}
+passed_ids = set(test_ids) - skipped_ids - failed_ids
+powershell = (os.environ.get("VPN_CONTROL_TEST_POWERSHELL")
+              or (shutil.which("powershell.exe") if config["windowsLike"] or os.name == "nt" else None)
+              or shutil.which("pwsh"))
+terminal = {
+    "testsRun": result.testsRun,
+    "testIds": test_ids,
+    "skipped": [{"test": test.id(), "reason": reason} for test, reason in result.skipped],
+    "failures": [{"test": test.id(), "traceback": error} for test, error in result.failures],
+    "errors": [{"test": test.id(), "traceback": error} for test, error in result.errors],
+    "successful": result.wasSuccessful(),
+    "passed": sorted(passed_ids),
+    "posixTestIds": sorted(posix_ids),
+    "diagnosticTestIds": sorted(diagnostic_ids),
+    "diagnosticPowerShellRuntime": powershell,
+    "helperPath": str(path),
+    "helperSha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    "boundaryPath": str(boundary_path),
+    "boundarySha256": hashlib.sha256(boundary_path.read_bytes()).hexdigest(),
+    "helperModule": module.__name__,
+    "helperWholeRegisteredModuleCalls": calls[(str(path), "<module>")],
+    "boundaryWholeRegisteredModuleCalls": calls[(str(boundary_path), "<module>")],
+    "registeredModuleOwners": owners,
+    "sourceCalls": [{"source": source, "function": function, "calls": count} for (source, function), count in sorted(calls.items())],
+    "declaredOsPeerImports": imports,
+    "callerFunctionsReplaced": False,
+    "wholeHelperAndFixtureSourceUnmodified": True,
+    "windowsLike": config["windowsLike"],
+    "realNetworkOrGuestActions": False,
+}
+print(output.getvalue(), file=sys.stderr, end="")
+print(json.dumps(terminal, sort_keys=True))
+assert terminal["helperWholeRegisteredModuleCalls"] == 1
+assert len(posix_ids) == 7 and len(diagnostic_ids) == 1, "exact helper class case counts changed"
+assert set(test_ids) == posix_ids | diagnostic_ids, "unclassified helper coverage"
+assert result.testsRun == config["expectedTests"], "exact helper case count changed"
+if result.wasSuccessful():
+    expected_posix_skips = posix_ids if config["windowsLike"] else set()
+    assert skipped_ids & posix_ids == expected_posix_skips, "POSIX helper capability coverage changed"
+    if powershell is None:
+        assert skipped_ids & diagnostic_ids == diagnostic_ids, "unavailable PowerShell diagnostic did not skip"
+    else:
+        assert diagnostic_ids <= passed_ids, "available PowerShell diagnostic coverage skipped"
+raise SystemExit(not result.wasSuccessful())
+''', timeout=30, input_text=json.dumps({
+        "helperPath": str(helper_path or ROOT / "agent_tools/tests/test_windows_native_packet_recipe.py"),
+        "expectedTests": expected_tests,
+        "windowsLike": windows_like,
+        "temporaryRoot": None if temporary_root is None else str(temporary_root),
+    }))
+
+
 def check_contracts(root: Path = ROOT) -> list[str]:
     errors: list[str] = []
     for probe in IMPORT_PROBES:
@@ -323,7 +464,8 @@ def check_contracts(root: Path = ROOT) -> list[str]:
         errors.append(_failure("absent-os-getuid native_fixture_preflight", result))
     for name, probe in (("windows-phase-recorder", probe_windows_phase_recorder),
                         ("windows-android-installer", probe_windows_android_installer_boundary),
-                        ("windows-android-test-suites", probe_windows_android_test_suites)):
+                        ("windows-android-test-suites", probe_windows_android_test_suites),
+                        ("windows-native-packet-recipe-test-suite", probe_windows_native_packet_recipe_test_suite)):
         result = probe()
         if result.returncode:
             errors.append(_failure(name, result))
@@ -336,7 +478,7 @@ def main() -> int:
         print("Python platform contract check failed:", file=sys.stderr)
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 4} capability probes)")
+    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 5} capability probes)")
     return 0
 
 

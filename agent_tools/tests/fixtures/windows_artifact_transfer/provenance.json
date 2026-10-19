@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "sources": {
+    "decoder.before.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/decoder-causal-isolation/e032-untouched.py",
+      "sha256": "e032389394eda9eff3e4e23cdab02912bee55f2bf134bf0612026ba4d145b1fb"
+    },
+    "decoder.sddl-only-overlay.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/decoder-causal-isolation/e032-sddl-only-overlay.py",
+      "sha256": "b19a0ccf686ae64aa857b04abed2b0161ce47a4a74edaf860838e088cdaffdce"
+    },
+    "native-source-receipt.json": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/native-source-sddl-causal-fixture/native-owner-probe-gates-receipt.json",
+      "sha256": "c75d1bd910bff604c2da68e4d8eff3617bfc1cf0a5f5e65f4eb28aae1ce526db"
+    },
+    "atomic.before.ps1": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/atomic-directory-proof-program.ps1",
+      "sha256": "93a17aeb84e43d24f2eafae23d54c1f4976062fc479c128189f28207806dfbc0",
+      "bytes": 8286
+    },
+    "owner.before.ps1": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/ordinary-token-continuation-source-capsule-v4/ordinary-token-continuation-v4-bootstrap.ps1",
+      "sha256": "72d70092039baf8525e815f8fa0d2a02cfdab29a30d1f303db73188b9cd4559b",
+      "bytes": 6674
+    },
+    "progress.before.caller.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/windows-boot-negative-absence-caller.py",
+      "sha256": "2274f81d34f3cf3b15e3a2f87ebee90ba808f74a8d3e3a6f04f3722477b0fff0",
+      "bytes": 20216
+    },
+    "windows-length.before.caller.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/ordinary-token-continuation-source-capsule-v2/ordinary-token-continuation-v2-caller.py",
+      "sha256": "f962ff8ac564dd304725023eb9f67a0655cfcf732eb74bcf174d7ac049028b3f",
+      "bytes": 32253
+    },
+    "windows-length.before.ps1": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/ordinary-token-continuation-source-capsule-v2/ordinary-token-continuation-v2.ps1",
+      "sha256": "1e5793e1f30f43b62a1c2c3ff25bce4dbdf2cb39c1def80d0ac84c307371b794",
+      "bytes": 13321
+    },
+    "windows-length.native-bound.json": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/ordinary-token-continuation-v2-rendered-command-limit.json",
+      "sha256": "52f33f703abaed6e41ca3203c788f9889b36d99549d50d9b0dc9ca63a171b780",
+      "bytes": 519
+    },
+    "native-runner.before.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/routine-regression-qualification/artifact-helper.before-scope-fix.py",
+      "sha256": "d04c7e72c1e112388a4eb156f4c54c5aa8467cf7d0899778e3d57977c4480804",
+      "bytes": 26462,
+      "scope": "Complete authentic first tracked testhelper draft before LOCAL review found it returned to unittest while its original child was still pending; no native failure."
+    },
+    "native-qualification.before.source": {
+      "originalPath": "agent_tools/tests/test_windows_artifact_transfer.py",
+      "sha256": "46dce7b73ef3bc71bfc15b648fc47250fd44fc58c5825744976ebba96c6c3c5d",
+      "bytes": 34441,
+      "scope": "Complete authentic tracked helper46 before LOCAL public review found pre-catch process attachment and incomplete physical-identity result checks; no native failure."
+    },
+    "constructor-no-start.before.source": {
+      "originalPath": "agent_tools/tests/test_windows_artifact_transfer.py",
+      "sha256": "107d9767a903419ed6661f020b77f4b4cd3612ac0eb48fdec1a8b59ae2961707",
+      "bytes": 39931,
+      "scope": "Complete authentic107d helper before LOCAL read review identified OSError afterCreateProcess before Popen public handle/PID assignment could be misclassified no-start; no native failure."
+    },
+    "qga-helper-length.before.source": {
+      "originalPath": "agent_tools/windows_artifact_transfer.py",
+      "sha256": "297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479",
+      "bytes": 44195,
+      "scope": "Complete authentic297b producer consumed by original Windows DIRECT8ced, before the observed owner-before RPC83 helper launch failure. Original outcome remains UNKNOWN; no replay."
+    },
+    "qga-helper-length.failed.ps1.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/windows-spawn-budget-cause-private-v1/owner-before.bound.ps1",
+      "sha256": "e00783a9b9ca9d9d711901703edb387ac7689c070084a06be671cc5ee6ad8ecc",
+      "bytes": 12122,
+      "scope": "Exact source deterministically reproduced from held complete8786 caller/297b producer/f3b8 helper; reconstructed request8db1 matches retained native RPC83. Guest helper path/version and exact OS cause remain unqualified.",
+      "phaseId": "967aecfb-e320-4e0b-b3fd-8867cb3d1b65",
+      "guestContext": {
+        "boot": {
+          "hardwareUuid": "D493A373-1D2C-4AB0-BFD4-E93575019DCE",
+          "lastBootUpTimeFileTimeUtc": "134368653065000000",
+          "machineGuid": "7b109066-c50e-4138-8969-f83555499b60"
+        },
+        "deploymentId": "d493a373-1d2c-4ab0-bfd4-e93575019dce",
+        "ordinarySid": "S-1-5-21-4099058025-2437077614-260217637-1001",
+        "powerShellPath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "sourceWorkspace": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a"
+      },
+      "nativeRequestSha256": "8db1bf43f51b325fc620957366af54ff0555696e6c0fd7cd7bfa71963d147c81",
+      "nativeRequestBytes": 32805,
+      "nativeResponseClass": "GenericError",
+      "nativeResponseDescription": "Failed to execute helper program (Invalid argument)",
+      "originalOutcome": "UNKNOWN",
+      "originalOperationId": "8ced843c-dc6b-4b89-a8d6-84b517692efb"
+    }
+  },
+  "overlay": "Explicit LOCAL partial fix: only decoder expected SDDL gains AI; not authentic native source or a native attempt. It exposes still-unfixed inner/outer actor join.",
+  "nativeReceiptScope": "Only /sddl is authoritative native data. All newly constructed actors/envelopes are inert.",
+  "originalEvidenceIndex": {
+    "path": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/causal-decoder-admission-red-green.json",
+    "sha256": "58adeac29eac1d61963b226096f6d73f77770a80dfe21af20f73dac3d4d78fa9"
+  }
+}

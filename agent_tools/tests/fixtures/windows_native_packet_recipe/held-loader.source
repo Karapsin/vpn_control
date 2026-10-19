@@ -1,0 +1,40 @@
+"""Invocation text is supplied to Python -c; it never reloads the named program."""
+import hashlib
+import os
+import re
+import stat
+import sys
+
+operator_path, operator_sha256, label, manifest_sha256 = sys.argv[1:]
+if re.fullmatch("[0-9a-f]{64}", operator_sha256) is None or re.fullmatch("[0-9a-f]{64}", manifest_sha256) is None:
+    raise ValueError("operator_reviewed_source_and_manifest_pins_required")
+fd = os.open(operator_path, os.O_RDONLY | os.O_NOFOLLOW)
+
+
+def generation(value):
+    return (value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid,
+            value.st_nlink, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+
+
+try:
+    opening = os.fstat(fd)
+    expected_generation = generation(opening)
+    if not stat.S_ISREG(opening.st_mode) or opening.st_uid != os.getuid() or opening.st_nlink != 1 or opening.st_size > 8 * 1024 * 1024:
+        raise ValueError("operator_source_identity")
+    raw = bytearray()
+    while True:
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            break
+        raw.extend(chunk)
+        if len(raw) > 8 * 1024 * 1024:
+            raise ValueError("operator_source_bound")
+    if len(raw) != opening.st_size or hashlib.sha256(raw).hexdigest() != operator_sha256:
+        raise ValueError("operator_source_bytes")
+    if generation(os.fstat(fd)) != expected_generation or generation(os.stat(operator_path, follow_symlinks=False)) != expected_generation:
+        raise ValueError("operator_source_changed")
+    sys.argv = [operator_path, label, manifest_sha256]
+    namespace = {"__name__": "__main__", "__file__": operator_path}
+    exec(compile(bytes(raw), operator_path, "exec"), namespace, namespace)
+finally:
+    os.close(fd)

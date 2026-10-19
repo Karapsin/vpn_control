@@ -1,0 +1,73 @@
+﻿$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$source='C:\ProgramData\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a';$output='C:\Users\winparityUser\AppData\Local\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a';$taskName='VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a';$operation='d907f7a0-725b-40f1-8bf8-d9c76439e33a'
+function Save([string]$Name,[object]$Value){$bytes=[Text.UTF8Encoding]::new($false).GetBytes(($Value|ConvertTo-Json -Depth 12 -Compress));$f=[IO.File]::Open((Join-Path $source $Name),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read);try{$f.Write($bytes,0,$bytes.Length);$f.Flush($true)}finally{$f.Dispose()}}
+if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -cne 'S-1-5-18'){throw 'TOKEN_LAUNCH_SYSTEM'}
+$phase='cc66fcb2-cd8a-4020-9cb4-c33dcbab81fe'
+
+function Assert-ExactOriginalTaskPolicy {
+ param([string]$Xml,[string]$CmdletSid,[object]$CmdletRunLevel,[object]$CmdletLogonType,[string]$ComSid,[object]$ComRunLevel,[object]$ComLogonType)
+ if($CmdletSid -cne 'S-1-5-21-4099058025-2437077614-260217637-1001' -or $ComSid -cne $CmdletSid -or $CmdletRunLevel -isnot [string] -or $CmdletRunLevel -cne 'Limited' -or $CmdletLogonType -isnot [string] -or $CmdletLogonType -cne 'Interactive' -or $ComRunLevel -isnot [int] -or $ComRunLevel -ne 0 -or $ComLogonType -isnot [int] -or $ComLogonType -ne 3){throw 'TOKEN_NATIVE_PRINCIPAL_POLICY'}
+ [xml]$policyDoc=$Xml;$policyNs=New-Object Xml.XmlNamespaceManager($policyDoc.NameTable);$policyNs.AddNamespace('t','http://schemas.microsoft.com/windows/2004/02/mit/task')
+ $fields=[ordered]@{UserId='S-1-5-21-4099058025-2437077614-260217637-1001';LogonType='InteractiveToken';ExecutionTimeLimit='PT0S';MultipleInstancesPolicy='IgnoreNew';WorkingDirectory='C:\Users\winparityUser\AppData\Local\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a';Command='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe';Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\ProgramData\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\ordinary.ps1 -ExpectedSourceSha256 4753579339552216c22b8e5ca3a5af34659f0fd679c5bc16379766ffda382795'}
+ foreach($name in $fields.Keys){$nodes=$policyDoc.SelectNodes('//t:'+$name,$policyNs);if($nodes.Count -ne 1 -or $nodes[0].InnerText -cne $fields[$name]){throw ('TOKEN_XML_FIELD_'+$name)}}
+ $levels=$policyDoc.SelectNodes('//t:RunLevel',$policyNs);if($levels.Count -gt 1 -or ($levels.Count -eq 1 -and $levels[0].InnerText -cne 'LeastPrivilege')){throw 'TOKEN_XML_RUNLEVEL'}
+ if($policyDoc.SelectNodes('//t:Principal',$policyNs).Count -ne 1 -or $policyDoc.SelectNodes('//t:Exec',$policyNs).Count -ne 1 -or $policyDoc.SelectNodes('//t:Triggers/*',$policyNs).Count -ne 0){throw 'TOKEN_XML_AMBIGUOUS'}
+}
+function Resolve-TaskSid([string]$Value){if($Value -match '^S-1-'){return ([Security.Principal.SecurityIdentifier]::new($Value)).Value};return ([Security.Principal.NTAccount]::new($Value)).Translate([Security.Principal.SecurityIdentifier]).Value}
+function Native-TaskPolicy([string]$Xml,[object]$Task,[object]$Principal){
+ $cmdSid=Resolve-TaskSid ([string]$Task.Principal.UserId);$comSid=Resolve-TaskSid ([string]$Principal.UserId)
+ Assert-ExactOriginalTaskPolicy -Xml $Xml -CmdletSid $cmdSid -CmdletRunLevel ([string]$Task.Principal.RunLevel) -CmdletLogonType ([string]$Task.Principal.LogonType) -ComSid $comSid -ComRunLevel $Principal.RunLevel -ComLogonType $Principal.LogonType
+ return [ordered]@{cmdletSid=$cmdSid;cmdletRunLevel=[string]$Task.Principal.RunLevel;cmdletLogonType=[string]$Task.Principal.LogonType;comSid=$comSid;comRunLevel=[int]$Principal.RunLevel;comLogonType=[int]$Principal.LogonType}
+}
+
+$task=Get-ScheduledTask -TaskName $taskName;$info=Get-ScheduledTaskInfo -TaskName $taskName;$xml=Export-ScheduledTask -TaskName $taskName
+$service=New-Object -ComObject 'Schedule.Service';$service.Connect();$registered=$service.GetFolder('\').GetTask($taskName);$nativePrincipal=$registered.Definition.Principal
+$xmlBytes=[Text.UTF8Encoding]::new($false).GetBytes($xml);$hasher=[Security.Cryptography.SHA256]::Create();try{$xmlHash=([BitConverter]::ToString($hasher.ComputeHash($xmlBytes))).Replace('-','').ToLowerInvariant()}finally{$hasher.Dispose()}
+if($xmlHash -cne 'a58bc85ee1e188140883bea281e2e2fe7c84a5b5fdb0968430eacf4f4a79e675'){throw 'TOKEN_ORIGINAL_XML_DRIFT'}
+[xml]$doc=$xml;$ns=New-Object Xml.XmlNamespaceManager($doc.NameTable);$ns.AddNamespace('t','http://schemas.microsoft.com/windows/2004/02/mit/task')
+$originalRejected=$false;try{
+if($doc.SelectSingleNode('//t:UserId',$ns).InnerText -cne 'S-1-5-21-4099058025-2437077614-260217637-1001' -or $doc.SelectSingleNode('//t:LogonType',$ns).InnerText -cne 'InteractiveToken' -or $doc.SelectSingleNode('//t:RunLevel',$ns).InnerText -cne 'LeastPrivilege' -or $doc.SelectSingleNode('//t:ExecutionTimeLimit',$ns).InnerText -cne 'PT0S' -or $doc.SelectSingleNode('//t:WorkingDirectory',$ns).InnerText -cne $output -or $doc.SelectSingleNode('//t:Command',$ns).InnerText -ine 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -or $doc.SelectSingleNode('//t:Arguments',$ns).InnerText -cne '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\ProgramData\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\ordinary.ps1 -ExpectedSourceSha256 4753579339552216c22b8e5ca3a5af34659f0fd679c5bc16379766ffda382795'){throw 'TOKEN_TASK_XML'}
+}catch{if($_.Exception.Message -cne 'TOKEN_TASK_XML'){throw};$originalRejected=$true}
+if(-not $originalRejected){throw 'TOKEN_CAUSAL_RED_MISSING'}
+
+$nativeObservation=Native-TaskPolicy -Xml $xml -Task $task -Principal $nativePrincipal
+$cases=@(
+ @{name='original-default-omitted';xml=$xml;cmdLevel='Limited';comLevel=0;comLogon=3;accept=$true},
+ @{name='explicit-least';xml=$xml.Replace('</LogonType>','</LogonType><RunLevel>LeastPrivilege</RunLevel>');cmdLevel='Limited';comLevel=0;comLogon=3;accept=$true},
+ @{name='xml-elevated';xml=$xml.Replace('</LogonType>','</LogonType><RunLevel>HighestAvailable</RunLevel>');cmdLevel='Limited';comLevel=0;comLogon=3;accept=$false},
+ @{name='xml-empty';xml=$xml.Replace('</LogonType>','</LogonType><RunLevel />');cmdLevel='Limited';comLevel=0;comLogon=3;accept=$false},
+ @{name='xml-duplicate';xml=$xml.Replace('</LogonType>','</LogonType><RunLevel>LeastPrivilege</RunLevel><RunLevel>LeastPrivilege</RunLevel>');cmdLevel='Limited';comLevel=0;comLogon=3;accept=$false},
+ @{name='native-com-elevated';xml=$xml;cmdLevel='Limited';comLevel=1;comLogon=3;accept=$false},
+ @{name='native-cmdlet-elevated';xml=$xml;cmdLevel='Highest';comLevel=0;comLogon=3;accept=$false},
+ @{name='native-com-null';xml=$xml;cmdLevel='Limited';comLevel=$null;comLogon=3;accept=$false},
+ @{name='native-com-ambiguous-string';xml=$xml;cmdLevel='Limited';comLevel='0';comLogon=3;accept=$false},
+ @{name='native-logon-wrong';xml=$xml;cmdLevel='Limited';comLevel=0;comLogon=2;accept=$false},
+ @{name='xml-user-wrong';xml=$xml.Replace('S-1-5-21-4099058025-2437077614-260217637-1001','S-1-5-18');cmdLevel='Limited';comLevel=0;comLogon=3;accept=$false},
+ @{name='xml-auto-kill';xml=$xml.Replace('PT0S','PT60S');cmdLevel='Limited';comLevel=0;comLogon=3;accept=$false},
+ @{name='xml-trigger';xml=$xml.Replace('<Triggers />','<Triggers><BootTrigger /></Triggers>');cmdLevel='Limited';comLevel=0;comLogon=3;accept=$false}
+)
+$controls=@();foreach($case in $cases){$accepted=$false;$reason=$null;try{Assert-ExactOriginalTaskPolicy -Xml $case.xml -CmdletSid 'S-1-5-21-4099058025-2437077614-260217637-1001' -CmdletRunLevel $case.cmdLevel -CmdletLogonType 'Interactive' -ComSid 'S-1-5-21-4099058025-2437077614-260217637-1001' -ComRunLevel $case.comLevel -ComLogonType $case.comLogon;$accepted=$true}catch{$reason=$_.Exception.Message};if($accepted -ne $case.accept){throw ('TOKEN_CAUSAL_CASE_'+$case.name)};$controls+=,[ordered]@{name=$case.name;expected=$case.accept;accepted=$accepted;reason=$reason}}
+Save ('task-policy-phase-'+$phase+'.json') ([ordered]@{operationId=$operation;phaseId=$phase;originalValidator='RED: TOKEN_TASK_XML';fixedValidator='GREEN';xmlSha256=$xmlHash;nativePrincipal=$nativeObservation;controls=$controls;productOperation=$false})
+foreach($pair in @(@('C:\ProgramData\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\ordinary.ps1','4753579339552216c22b8e5ca3a5af34659f0fd679c5bc16379766ffda382795'),@('C:\ProgramData\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\child.ps1','220abad9c02a9e86460980e2f7045cb65671746ccc7a8fd8d099b008009a87f9'))){$item=Get-Item -LiteralPath $pair[0] -Force;if($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0 -or (Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pair[1]){throw 'TOKEN_LAUNCH_SOURCE'};$tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseFile($pair[0],[ref]$tokens,[ref]$errors);if(@($errors).Count -ne 0){throw 'TOKEN_SOURCE_PARSE'}}
+
+$explorer=Get-Process -Id 5788;if($explorer.StartTime.ToUniversalTime().ToFileTimeUtc() -ne 134368653275038175 -or $explorer.SessionId -ne 2){throw 'TOKEN_ORIGINAL_EXPLORER_DRIFT'}
+foreach($name in @('task-before.json','task-start-intent.json','task-terminal.json','task-started.json','child-started.json','child-pending.json','failure.json','result.json','child.stdout','child.stderr')){foreach($directory in @($source,$output)){if(Test-Path -LiteralPath (Join-Path $directory $name)){throw ('TOKEN_ALREADY_STARTED_'+$name)}}}
+$matching=@(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'"|Where-Object {$_.CommandLine -like '*VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a*' -and $_.CommandLine -notlike '*-EncodedCommand*'});if($matching.Count -ne 0){throw 'TOKEN_ORIGINAL_PROCESS_PRESENT'}
+$task=Get-ScheduledTask -TaskName $taskName;$info=Get-ScheduledTaskInfo -TaskName $taskName;$xmlNow=Export-ScheduledTask -TaskName $taskName
+if($task.State -cne 'Ready' -or $info.LastTaskResult -ne 267011 -or $info.LastRunTime.Year -ge 2000 -or $xmlNow -cne $xml){throw 'TOKEN_ORIGINAL_NOT_NEVER_STARTED'}
+[void](Native-TaskPolicy -Xml $xmlNow -Task $task -Principal $registered.Definition.Principal)
+Save 'task-before.json' ([ordered]@{operationId=$operation;phaseId=$phase;taskName=$taskName;xml=$xml;nativePrincipal=$nativeObservation;sourceSha256='4753579339552216c22b8e5ca3a5af34659f0fd679c5bc16379766ffda382795';childSourceSha256='220abad9c02a9e86460980e2f7045cb65671746ccc7a8fd8d099b008009a87f9';neverStarted=$true;lastTaskResult=$info.LastTaskResult;lastRunTime=$info.LastRunTime.ToString('o')})
+Save ('task-start-phase-'+$phase+'.intent.json') ([ordered]@{operationId=$operation;phaseId=$phase;taskName=$taskName;originalXmlSha256=$xmlHash;sourceSha256='4753579339552216c22b8e5ca3a5af34659f0fd679c5bc16379766ffda382795';submittedAt=[DateTime]::UtcNow.ToString('o');productOperation=$false})
+Start-ScheduledTask -TaskName $taskName
+$deadline=[DateTime]::UtcNow.AddSeconds(35)
+do {$state=Get-ScheduledTask -TaskName $taskName;$info=Get-ScheduledTaskInfo -TaskName $taskName;$done=(Test-Path -LiteralPath (Join-Path $output 'result.json')) -or (Test-Path -LiteralPath (Join-Path $output 'failure.json'));if($done -and $state.State -ne 'Running'){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $deadline)
+$startedPath=Join-Path $output 'task-started.json';$started=$null;if(Test-Path -LiteralPath $startedPath){$started=[IO.File]::ReadAllText($startedPath)|ConvertFrom-Json}
+$result=$null;$failure=$null;if(Test-Path -LiteralPath (Join-Path $output 'result.json')){$result=[IO.File]::ReadAllText((Join-Path $output 'result.json'))|ConvertFrom-Json};if(Test-Path -LiteralPath (Join-Path $output 'failure.json')){$failure=[IO.File]::ReadAllText((Join-Path $output 'failure.json'))|ConvertFrom-Json}
+$closed=$false;$childClosed=$false
+if($null -ne $started){$p=Get-Process -Id $started.pid -ErrorAction SilentlyContinue;$closed=($null -eq $p -or $p.StartTime.ToUniversalTime().ToFileTimeUtc() -ne $started.birthFileTime)}
+if($null -ne $result){$p=Get-Process -Id $result.child.pid -ErrorAction SilentlyContinue;$childClosed=($null -eq $p -or $p.StartTime.ToUniversalTime().ToFileTimeUtc() -ne $result.child.birthFileTime)}
+$qualified=($null -ne $result -and $null -eq $failure -and $result.state -ceq 'qualified' -and $result.operationId -ceq $operation -and $info.LastTaskResult -eq 0 -and $state.State -ceq 'Ready' -and $closed -and $childClosed)
+$receipt=[ordered]@{state=$(if($qualified){'qualified'}else{'unknown'});operationId=$operation;taskName=$taskName;taskXml=$xml;taskState=[string]$state.State;lastTaskResult=$info.LastTaskResult;taskStarted=$started;result=$result;failure=$failure;originalTaskProcessClosed=$closed;originalChildClosed=$childClosed;taskRemoved=$false;productOperation=$false}
+if($qualified){$currentXml=Export-ScheduledTask -TaskName $taskName;if($currentXml -cne $xml){throw 'TOKEN_TASK_DEFINITION_DRIFT'};Unregister-ScheduledTask -TaskName $taskName -Confirm:$false;if($null -ne (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)){throw 'TOKEN_TASK_REMAINS'};$receipt.taskRemoved=$true}
+Save 'task-terminal.json' $receipt
+[Console]::WriteLine(($receipt|ConvertTo-Json -Depth 14 -Compress))

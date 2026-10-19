@@ -1,4 +1,683 @@
-# Current MCP repair work; Windows parity deferred
+# Windows GUI/CLI parity resumed — 2026-10-19
+
+The user resumed Windows product parity, installed-package native acceptance and
+Windows visual review on 2026-10-19. Linux, Android and macOS product-native and
+visual work remain deferred; all five development CI workflows remain mandatory.
+Delivery is to `origin/dev`; no release or host VPN interruption is authorized.
+The retained repair history below is historical and does not override this scope.
+
+Startup found clean `dev` at `d24c19047ec15689948404ede40f50c5ec284e77`,
+version `2.2.13`, equal to `origin/dev`. Fresh managed exact-SHA verification
+confirmed Fast Checks and Android, Linux, Windows and macOS package success.
+Read-only `matrix-status` still reports every Windows requirement and shared
+document-persistence-transfer open. No product acceptance is inferred from CI.
+
+Current owned work intentionally spans the desktop public CLI adapter and its
+causal regressions, this ledger/failure mapping, and fresh Windows fixture/native/
+visual evidence. The coordinator owns documentation, source/artifact admission,
+versioning and delivery. The CLI worker owns the public mode-only subscription
+fix and focused Kotlin tests; independent readers audit public adapters and retained
+evidence. One Windows operator owns all fresh guest actions. Private evidence is
+under `.runtime/windows-parity-20261019/`.
+
+The first product blocker, `source set subscription` without an ID, is fixed in
+the public argument adapter by separating typed validation from optional legacy
+translation. Owner validation/revision guards remain unchanged. Actual public
+argv/transport coverage produced three failures on the preserved implementation
+and passed all five tests on the fix; the 31-test adjacent slice passed. The
+packaged smoke now checks human/JSON empty, remembered and explicit-ID selection,
+invalid arguments, guards and readbacks. Installed Windows verification remains
+open. Exact causal mapping is in `cli-entrypoint/failure-to-regression.json`.
+
+Fresh fixture qualification must bind environment, ordinary account, credentials,
+source, package/helper/runtime bytes, architecture, signer, workspace and controller.
+`setupReady` never implies `productReady`. Historical closed sessions remain closed;
+preserve disks, original jobs/leases/evidence and every failed or unknown outcome.
+The retired CP117/MSI start routes grant no authority for new work. Protect the host
+VPN and unrelated processes.
+
+Remaining gates are every Windows-applicable scenario from
+`native_acceptance_requirements.json` (native CLI, installer lifecycle, scoped VPN,
+owner lifecycle, document persistence/transfer), complete DIRECT success/failure/
+recovery/cleanup before the matching MCP replay, all 58 Windows visual scenes with
+geometry/contrast and opened-image review, final-source/artifact requalification,
+routine causal regressions, fresh version/prepush and exact-SHA five-workflow CI.
+No product-native or visual result has yet been qualified for this continuation.
+
+### Fresh fixture admission work
+
+The fresh Arch/KVM deployment is `d493a373-1d2c-4ab0-bfd4-e93575019dce`
+at `/home/kardinal/vc-win-d493a3731d2c`, 6 GiB RAM, four CPUs, 96 GiB disk,
+loopback VNC 5955, Enterprise Evaluation amd64/en-US and distinct fresh ordinary/
+administrator accounts. Setup qualification observed Windows 11 Enterprise
+Evaluation 25H2, build 26200.6584, an ordinary non-administrator desktop account,
+its Explorer session and the SYSTEM QEMU guest agent. Actual MCP
+`windows-vm-deploy-secure` rotated the temporary administrator secret, disabled
+automatic sign-in and removed password-bearing setup files; a separate MCP status
+confirmed completion. The qualified private context is
+`windows-fixture/native-environment-context.private.json`. `setupReady` and
+`setupSecured` are true; `productReady` is false. No app is installed yet.
+
+The first preflight refused `package_integrity`: an unrelated missing pacman sync
+database advisory precedes the one policy-correct swtpm UID difference. Preserve
+the raw native result and helper beforeimage under
+`.runtime/windows-parity-20261019/windows-fixture/`. A narrow parser repair and
+causal helper/whole-preflight regressions now pass: authentic before two tests/four
+designated assertion failures, fixed two passes and the full 18-test module green.
+No host package,
+repository configuration or CA-directory metadata change is authorized or needed.
+
+Four historical running capacity claims still account for stopped actors. Exact
+original start/reset-stop receipts and fresh same-boot PID/start-generation
+absence are joined under `windows-fixture/direct-running-claim-reconcile/`.
+The Windows operator closed only these four capacity rows through existing
+correlated-observation/release APIs after a fresh recheck and copied-ledger guard
+qualification. The real closure receipt is
+`windows-fixture/capacity-closure-real/closing.json`
+(SHA-256 `ef3709fb415eb16cc0fa2978d31684e04c3563d1904c014e0db16d04171ff5c0`).
+All eight exact ledger-operation children exited zero with complete raw streams.
+Original ledger bytes, jobs, leases, unknown product outcomes, disks and evidence
+remain preserved; the three pending 12 GiB claims are unchanged and counted.
+The pre-start privileged census found no running VMs; only the new deployment was
+then started. No old guest/session was restarted, and no raw ledger edit or guard
+bypass occurred.
+
+### Current test-tool and transfer work
+
+The first managed prepush stopped waiting at its unchanged 3,000-second agent
+suite limit. The separate original worker continued naturally. Both original
+processes are now absent; its final result is 6,963 tests across all 513 selected
+modules, with two assertion failures, one error and 200 skips in 3,537.226 seconds.
+This is a failed run, not a managed prepush receipt. Full original artifacts and
+52 source beforeimages are retained at
+`prepush-failure-investigation/natural-worker-terminal-v1/`; the managed timeout
+and its separate worker custody are retained under `outer-timeout-v1/`.
+
+Two existing routing-diagnostic tests assumed a Python child had emitted bytes or
+exited before a 50 ms measurement. Their actual failures were an empty stderr
+prefix and a still-live parent classification. Explicit readiness fixes those
+fixtures without changing production measurement budgets; both authentic
+before-source assertions reproduce RED and the complete 14-test module is GREEN.
+The generated Android batch-shell test also exceeded its 30-second fixture limit
+during its first normal case. Original exception output did not retain that
+child's raw channels, so the historical cause remains unknown. Separate controlled
+latency and changed-file diagnostics preserve their own originals; their canonical
+59-method check completed naturally in 1,002.877 seconds with no assertion
+failures, one fixture-loader error and one expected platform skip. Both streams
+reached EOF and all 50 held sources were unchanged. The loader incorrectly
+dedented an authentic method whose multiline string contains column-zero lines;
+it failed before the historical child could start. An unchanged-byte class wrapper
+now passes the actual before-loader RED/current GREEN and the same real delayed
+before-30/current-252 scenario: two focused tests pass in 99.551 seconds, with both
+EOFs, positive process closure and all 50 input generations unchanged. The routine
+module now has 60 methods; no complete 60-method pass is inferred. The production
+generation guards passed their early and final changed-file scenarios. Exact
+scope and receipts are `evidence-audit/installer-completion-v1.json`
+(SHA-256 `5f4a5739dd52b6afe765c1b824f1724a6dd15d8322b8c42caa0facdb282c4b1b`).
+
+The selected suite intentionally ran serially because its source isolation
+reviews were absent or stale. Its measured total could not fit the aggregate
+3,000-second command limit. Managed-only consecutive batches of 16 modules retain
+the exact original order and complete coverage. A scoped runner owner now requests
+the existing cooperative SIGTERM cleanup on timeout and retains the original
+process, lease and both streams through closure. Eight new controls, actual
+before-source RED/GREEN and the 126-test adjacent slice pass. A fresh complete
+managed prepush remains required after all content and version edits.
+
+The unrelated desktop update-watcher fixture now supplies an in-process no-op
+sleep function while preserving the production watcher, 300 attempts and
+ten-second observer. The otherwise reachable fake executable exits 97 as a
+tripwire. Actual JVM before-source RED reaches that tripwire; the fixed five-test
+suite passes. The original full-suite timeout's unretained phase remains unknown.
+The joined receipt is
+`cli-entrypoint/unrelated-desktop-failure/tripwire-causal-v1/summary.json`.
+
+The user additionally requested a reusable MCP tool accepting generated programs
+and automatically using saved-file transport for oversized commands. The new
+`program-start`, `program-status` and `program-collect` path is in progress, reusing
+the existing internal SSH automatic-program transport. A real kernel E2BIG
+before any child starts now selects one saved-file plan for the same immutable
+program; the preserved owner fails that witness and the fix executes it once.
+Status observes the same operation; timeout, disconnect or lost acknowledgement
+never permits replay. This owner preserves collected output and operation records;
+it does not guarantee remote process survival through an active SSH disconnection.
+The 60,000-byte outer command limit remains, with the separate Windows command
+limit measured in UTF-16 units including its terminator. The final combined
+53-test slice passes. The earlier configured-host DIRECT small/oversized programs and
+the matching actual MCP programs all pass, with identical source hashes across
+entrypoints, exact argv/cwd/Unicode streams/exit 7, pending reconciliation without
+replay, both EOFs and unchanged source closing. The oversized 126,544-byte source
+would require a 634,823-byte inline command; its saved loader is 3,735 bytes. The
+joined receipt is `program-tool-native/native-direct-mcp-qualification.json`
+(SHA-256 `d286099b9a9899e27bde4236b04a7367b3ebf13ff6173737b50c9225ac2f29b1`).
+These are SSH tool proofs, not Windows product results. The Windows QGA engine
+will compose through the same Python API; no second public Windows language is
+advertised.
+
+A final coordinator guard refuses these POSIX-owned program actions on Windows
+before importing the POSIX keeper. Three focused client/dispatch tests pass,
+including a controlled missing-import failure on the preserved dispatcher. This
+seven-line server change required retiring the verification channel's original
+source context before preparing a final current-source channel. The narrowly
+owned retirement helper passed 16 focused tests, its actual owned-channel exit,
+independent process/socket absence, authentic terminal publication and matching
+current-MCP ENDED observation. The first read-only probe exposed a default-config
+argument mismatch; its original refusal and helper beforeimage are preserved,
+with actual before-source RED/current GREEN. The joined receipt is
+`program-tool-native/retirement/retirement-qualification.json`
+(SHA-256 `4f10f09e419f1e0f97424459b55f40fe8e66e76a0945a0828c384a30c9a6232b`).
+No old READY context is adopted, no unknown program is restarted, and a new
+current-source channel was subsequently prepared after finite dependency enrollment.
+
+The first enrollment selected 552 of 598 modules and preserved exact coverage in
+35 serial batches of at most 16, plus one SSH gate. Its canonical policy is
+`676e7fe83f5326c05f65986f2cdbd5721d478f87f0455e4e5ec729ec4b1eeeb9`;
+the apply receipt is `dependency-enrollment-final-private/canonical-verification-receipt.json`
+under `prepush-failure-investigation/` (SHA-256
+`ab1c33d1d31bd98043a8ea0095aba5bbe8541477a65039df8485fb0151b30d45`).
+This is dry selection, not a passing prepush receipt.
+
+The new `315960df-9513-4764-a39c-ca602d36df76` channel reached READY and SELECTED.
+Its small current-MCP program passed, but oversized operation
+`bc6ed15f-36ba-492a-88ac-13eaca58fa10` ended UNKNOWN with `SshConfigError`.
+The worker retained only the error class, losing the original message, traceback
+and inner admission result. Capture absence is not proof that nothing started.
+Exact read-only reconstruction and nine fresh channel observations pass; the
+original cause remains unresolved. All 26 original source generations, request,
+worker/owner records and raw SDK frames are preserved. The joined read-only
+boundary is `program-tool-native/final-748-676/read-only-causal-boundary.private.json`
+(SHA-256 `27f37cecb4b0366f7872e9343ac1094788482c045163a4cbfb879cfbf32624ac`).
+
+After proving program owners closed and keeper absence, the second explicit
+owned-channel retirement passed native quiescence, its sole exit request,
+independent original PID/socket absence, authentic ENDED publication and current
+MCP ENDED observation. The original oversized UNKNOWN was not replayed or promoted.
+The joined retirement receipt is
+`program-tool-native/final-748-676/retirement-315/retirement-qualification.private.json`
+(SHA-256 `b11b80b0fff6e4d4522bf6c1b554e750634531f34af4a4c3ad7fcb47076a55d0`).
+The two explicitly owned correlations are the helper's entire retirement scope;
+all 20 focused retirement tests pass and all original source holds are closed.
+The narrow diagnostic fix preserves the outer exception and passes the existing
+private capture callback through the same read-only observation; no new query,
+retry, admission decision or deadline is introduced. Bounded private evidence
+includes phase, message, structured traceback, suppressed typed refusal/context
+and captured original status data. Capture/write/overflow failures preserve the
+primary failure and custody. Initial admission within the validated operation
+scope reports privately then rethrows the same exception; earlier bootstrap,
+imports and intent reads remain outside this diagnostic scope.
+
+The final two-module slice passes all 33 tests, including 12 new controls, with
+all source generations unchanged and no active SourceSessions. Independent
+review is clear. The owned handoff is
+`program-tool-native/worker-diagnostics-preparation/owned-handoff.json`
+(SHA-256 `903e84d882e2808efc26913dc066bc97d1173abcb3a077b29f0f80f27126bb09`);
+its focused summary has SHA-256
+`ef63a1728be2b2d63849d2cb4351f84c74f5d67edd9a3941a31a1e4654c72acf`.
+The diagnostic policy update is applied as exact SHA-256
+`638f701294ac2fd69e40ead2780c4dd28cb17a94dfcffdb5b1fd9fbaeab6bc21`.
+It renews three test rows, declares one archival-data beforeimage with no runtime
+scope, and adds 11 exact ownership edges without widening directories or globs.
+All 20 source byte and identity pins closed unchanged. The apply receipt is
+`prepush-failure-investigation/dependency-enrollment-diagnostic-private-v1/canonical-apply-receipt.json`
+(SHA-256 `c57ffb8b7a03e0aa93b77aac84365e7cbe23a972fe75f7fba5f668be86d0d29e`).
+Dry selection remains 552 of 598 modules with the same 35 serial batches and SSH
+gate; no passing prepush is claimed. At that checkpoint, fresh direct/current-MCP
+qualification remained open and all seven prepared Windows native requests were
+unsubmitted and on hold. The original oversized cause remains unresolved.
+
+The user requested five hours of idle persistence after an unused fresh SSH
+channel expired under its original 60-second policy. New independent channels now
+emit `ControlPersist=18000`. A complete emitted-prepare argv test fails on the
+preserved 60-second producer and passes on the five-hour producer; all 55 focused
+tests pass. Connection-attempt and launch deadlines, historical embedded sources
+and ended identities are unchanged. Evidence is under `five-hour-idle/`.
+
+Fresh whole-caller checks preserved a missing RPC argument and an absent caller
+global, both before guest command submission. Separate native Windows attempts
+preserved omitted XML RunLevel for a genuinely Limited task and a 35,599-unit
+encoded command that could not start. The saved-source bootstrap then refused a
+file owned by Administrators: SYSTEM's default token owner differs from its user
+SID. Explicit owner assignment qualified the saved source, and the single V5
+ordinary-user task passed its SID, session, non-elevation, quoting, stream and
+closure checks. Its exact task was removed and independently absent. The joined
+context is `windows-fixture/native-environment-context-qualified-ordinary.private.json`;
+the causal map is `windows-fixture/causal-map-after-token-v5.json`. New direct
+boot/PID checks also pass the original SYSTEM bootstrap and reject the wrong boot
+before file effects. Routine enrollment and matching current-MCP acceptance remain
+open; no app or product scenario has run.
+
+Two further infrastructure failures are preserved separately: an absence query
+omitted progress suppression and emitted PowerShell CLIXML on stderr; its corrected
+native query passes. An atomic directory helper named its C# method `New`, which
+PowerShell resolved as a constructor; native failure and positive original-root
+absence precede `CreateExclusive` native GREEN. Their canonical consumer is the
+new pure `windows_artifact_transfer` producer used by the complete QGA engine.
+Exact ACE flags, original directory/file identities, retained token lifetime and
+boot/PID closing are being qualified before package transfer. Neither generic
+user-program stderr nor product acceptance is inferred from those repairs.
+The retained QGA reply/capture owner is also being promoted into the canonical
+`windows_qga_transfer` module, with tests exercising its actual consumer rather
+than copied current helpers. Private review found reply-cursor, source/capture
+closing and exception-custody gaps; the canonical owner and complete emitted
+callers now pass independent static review, 42 primary local cases, one
+non-replay refusal and 32 fault cases. Single sequential inert streams of the
+full 131,228,020-byte MSI and 29,452,944-byte Python installer match their hashes.
+The joined local receipt is
+`windows-fixture/qga-transfer-preparation/final-canonical-v11-qualification-summary-v2.json`
+(SHA-256 `f810171cba11774ea13cd4b2f2a72e5d6dd4fee9d4683413f9ed7f41eeaf0af6`).
+These simulated-peer results do not qualify native Windows execution. The final
+routine slice has 35 tests: 32 pass and three PowerShell-only cases are skipped
+on this coordinator. The owned handoff is
+`qga-transfer-preparation/routine-regression-qualification/owned-handoff.json`
+under `windows-fixture/` (SHA-256
+`908c2475f2e81057cff1d7cdc162724e04150f42ab60de4f9e261587f21ae501`).
+All source holds are closed; native causal cases and the complete canonical
+direct/MCP procedures remain open. No guest artifact transfer has started.
+
+The ordinary-user task planner, retained PowerShell owner and retained Python
+process owner now use their actual canonical sources rather than duplicate
+private implementations. The focused module runs 13 tests: 12 pass and one
+PowerShell-only case is skipped on this coordinator. This addresses the
+routine-coverage gap for the original omitted-RunLevel XML: matching independent
+Limited/Interactive native facts are
+required, rather than accepting an omitted XML field alone. Exact original XML,
+validator source and native 13-control evidence are preserved. Local producer
+tests and native PowerShell causal tests are separate gates; coordinator platform
+skips do not qualify the original Windows behavior.
+Final review also found an extra ComHandler accepted alongside the expected
+Exec. The preserved immediate planner fails the actual validator regression;
+the fix requires exactly one Actions container and its sole Exec. The current
+native packet adds that refusal to 14 controls without changing the original
+13-control receipt. Two exact-byte Git attributes protect the canonical
+PowerShell owner and raw original XML; all 15 checkout tests pass, including
+actual old-attributes conversion RED and current preservation GREEN.
+
+The exact baseline 2.2.13 MSI from successful Windows run 39012808166 is held and
+hash-verified on the fresh Arch host, with no guest installation. The pinned
+Python 3.13.15 AMD64 installer is acquired and catalogue-verified; native PSF
+signature and resulting interpreter admission remain open. Artifact receipts are
+under `artifacts/`. No historical guest or connection was restored.
+
+The remaining native UAC visual baseline requires a filtered administrator's
+interactive desktop, while the product VM deliberately uses an ordinary user.
+An isolated `windowsUacVisual` setup purpose is implemented for a future separately
+owned blank visual VM. Legacy four-key setup dictionaries, standard-account
+autologon, ordinary qualification, spec serialization and the live product guest
+remain unchanged. The final source-bound 49-test slice has two platform
+skips. New boot/Explorer FILETIMEs remain exact decimal strings, including values
+above JSON's exact-number range; Explorer must be `C:\Windows\explorer.exe`.
+Native visual creation/capture is not yet performed; securing and requalifying
+the same filtered-administrator session, actual native UAC capture and image
+provenance still require direct and matching MCP qualification. The visual
+contracts require real full-screen capture, full-pixel comparison, exact-source
+provenance and opened scene review; an additional programmatic secure-desktop or
+consent-subject observer is not a required gate.
+The thin remote collector uses the existing capture-local route and copies the
+original owned frame unchanged to `windows-uac.png`; all 12 focused tests pass
+and independent review is clear. The coordinator host stamp stays truthful;
+actual remote Windows context remains in the original native journals. This
+qualifies local collection only, not a UAC scene or image verdict.
+
+### Current trust, recovery and private adoption boundary
+
+The later channel `546de964-29aa-4b9c-8ea6-332b1c549182` qualified all four
+small/oversized DIRECT and actual fresh-SDK MCP programs at the final 748/638
+source boundary. Each retained exact 147-byte stdout, 17-byte stderr, exit 7,
+both raw EOFs, source closing, keeper absence, identical-request reconciliation
+and conflict refusal. All 26 original source pins closed unchanged. The 65 SDK
+RPC servers are observations and submissions around four actual programs, not 65
+program starts. The joined receipt is
+`program-tool-native/final-748-638/native-direct-mcp-qualification.private.json`
+(SHA-256 `55b5b9302d8e5bc6f6e1f0f3c1e712fc26e1c5e9b5155b38bea4e91153edf612`).
+It is separate from the earlier `d286099b` receipt above.
+
+Subsequent `known_hosts` drift makes channel546's original READY authority stale.
+The retained old/new hashes are `c907aa5b` and `20bb94d7`; equal size does not
+establish equivalent trust, and the change is not an append. Its actor/cause and
+key equivalence remain unproved. Do not restore trust bytes or reuse that READY
+record. The original drift evidence is
+`windows-fixture/known-hosts-drift-before-diagnosis/drift-preservation.private.json`
+(SHA-256 `5111993c9951a817612ce13064eba933d01f99d675f5fdf39514debddde9b7cd`).
+
+Two separately admitted large carriers completed automatic stdin source transfer:
+470,783 bytes for the exact host-actor cleanup and 1,853,826 bytes for the once-only
+original PID4120 status query. The latter retained its original carrier child,
+exit zero, both raw EOFs and source closing; no new guest exec or endpoint replay
+was submitted. It establishes `created-terminal-observed` for the original create,
+including its bound bootstrap and empty probe file. It does not qualify the full
+original operation `ba9620b4-e5d3-4f61-82a9-ee4ce38522ec`. That full probe remains
+`unknown-unverified`: original local owner57875 and SSH58163 are absent, their
+completion custody is lost, and original dual EOF/source closing remain unproved.
+The later status receipt is
+`artifacts/original-pid4120-status-direct-preparation-v1/packet-final/operator-joined-status-observation.private.json`
+(SHA-256 `9d4b748bd9977220031dbb487e48e0d8dea59d640dc972e41ced50625ea58846`).
+It supersedes the earlier guest-status UNKNOWN only for that create component.
+
+Stage A applied fourteen exact source/fixture overrides plus policy
+`33f6144e` while retaining all sixteen original DIRECT sources through retirement.
+Canonical helper `49a9fa28`
+and test `ba8be2c2` pass all 37 routine methods in 18.755 seconds; diff check is zero.
+Receipt `stage-a-canonical-adoption-v1/root-canonical-adoption.private.json` has
+SHA-256 `19a6067480b6baf486631de3364eed1e427587c0b07c1be96158bc1a787371d1`.
+The exact owned retirement `9c0d9d65-e136-4baf-b8ec-9e09a20d0cdf` then completed:
+retained outer80423 and exit-client2108439 both exited zero with dual EOF,
+independent absence and original-channel ENDED publication/readback. Root verified
+all thirteen joined records and decoded native output. The adjudication is
+`stage-a-native-retirement-546-v1/root-retirement-adjudication.private.json`
+(SHA-256 `a405c991fac3d7f6f872d1ec12d1c2820454968a7da91569cf29b6c7562c9fad`).
+It preserves the original UNKNOWN/lost-custody limits and grants no trust equivalence.
+
+Stage B's thirty exact source overrides and policy
+`b204105250d461301f8f3c4b3f3c70700439293c8bf77152d12d627d7a3456dc`
+are now applied against accepted Stage A `33f6144e`. The joined packet is
+`metadata-consolidation-final-staged-packet-v1/handoff-final.private.json`
+(SHA-256 `050ef135c0d071e457866d5f8854ba5711c5d25dbf71bb76246d2c350c071214`);
+root verified all thirty before/candidate generations and seventeen handoff references.
+Canonical focused checks across seven modules pass all 203 distinct methods.
+The bare-Python run skipped one MCP SDK case; that same case then passed in
+`.agent_venv`, leaving no unresolved skip. Root rechecked all 44 adopted source
+hashes and the policy after these checks. The code/policy closure receipt is
+`stage-b-canonical-adoption-v1/root-canonical-adoption.private.json`
+(SHA-256 `df8f3de570f416e399af17b1b41a778e7c0a3b9471f33412ed689c51a5fb4470`).
+The earlier bf05 nineteen-test and capture 121-test receipts retain their original
+pre-adoption scope. Neither the canonical slice nor the separate bf05 native
+status component establishes native product acceptance. At that post-check
+checkpoint, documentation/version updates and a fresh channel were still pending.
+
+The order is actual546ENDED, then Stage B exact adoption/checks/source-policy freeze,
+then NEW normal prepare/select and current DIRECT/fresh-SDK MCP tool proofs, then
+seven freshly generated native callers. Do not prepare a channel before Stage B and
+then change its bound sources. At that checkpoint, no fresh channel or full native
+rerun had started; subsequent channel267 observations are recorded below. No
+unknown operation or consumptive status query is replayed.
+
+All seven complete native reruns remain open, as do all 64 Windows/shared
+memberships and all 58 visual scenes. The app is not installed. There is no current
+passing prepush receipt or pushed continuation commit. Final source/artifact
+admission, validation, versioning, push and exact-SHA CI remain outstanding.
+
+### Fresh channel267 prelaunch and diagnostic retention
+
+The later `26708975-2783-4f95-bd72-cf5bda811155` channel reached READY/SELECTED.
+DIRECT small program `2525f4ef` qualified, but oversized operation
+`c79d4b6e-12d7-4869-961b-6f0e1e8895c4` raised prelaunch `SelectionUnknown` through
+`automatic.bind -> _route_sha -> selection.selected_route_options`. Its original
+job/intent/owner/child/terminal are absent; all thirty source pins stayed unchanged.
+The original cause remains UNRESOLVED; no matching MCP program had started at that
+failed checkpoint. Later distinct operations are recorded below.
+Evidence is `program-tool-native/stage-b-b204-native-v1/oversized-original-failure-before-diagnosis/`.
+
+Actual diagnostic1 then lost its own result/raw bytes while serializing captured
+stderr bytes as JSON. This does not explain c79. Separate local complete-entry
+controls reproduce that failure, v2's empty binary readback rejection and v3's
+same-byte replacement adoption; private v4 corrects them in nine inert cases with
+zero network/program starts. The map is
+`program-tool-native/stage-b-b204-native-v1/diagnostic-retention-qualification-v1/handoff.private.json`
+(SHA-256 `4ba329a1ace321624a528eb1a008dfcf64531aeb736d6e453725efbe998eb2c1`).
+Actual diagnostic2 (exec59233, natural exit0) then built `PlannedArgv` once, with
+four complete zero-exit same-call admissions, full raw streams and source closing.
+Its twelve traced `FileExistsError` events were caught existing-directory/lock
+handling, not `SelectionUnknown`/`ChannelUnknown`. No program/argv was executed and
+no canonical fix was made. This current observation does not recover diagnostic1's
+LOST outcome or establish c79's cause.
+
+The preceding b204/0b0d source window qualified all four SSH tool cases: retained DIRECT
+small `2525f4ef` (without rerun), new DIRECT large `e5ffaccf`, MCP small `1ee7a205`
+and MCP large `7e6ed39d`. Each has exact 147/17-byte stdout/stderr, exit7, owner
+closing, raw dual EOF, source closing, keeper absence and duplicate/conflict checks.
+Large 634,823-byte inline argv becomes a 3,735-byte saved-file loader. Root verified
+274 physical records and thirty source files through unchanged full generations;
+41 SDK RPC servers represent four actual programs, with zero Windows guest actions.
+The joined proof is
+`program-tool-native/stage-b-b204-remaining-proof-v1/native-direct-mcp-qualification.private.json`
+(SHA-256 `f88104b12b0fdfe995ef362d312915d7c6044205f04028430c87b25a761858ba`),
+with root adjudication `root-four-program-adjudication.private.json` in that directory
+(SHA-256 `fba549716ff1d11e5accd09f22a24af79bf7c59be26da58840b6df7249ab8671`).
+These results leave original c79 UNRESOLVED and diagnostic1 LOST.
+
+A private routine candidate retains the 37 retirement methods and adds nine exact
+whole-entry diagnostic controls: 46 GREEN in 4.429s, handoff
+`channel546-diagnostic-retention-routine-v1/handoff-final.private.json` (SHA-256
+`61bfb1d43c4fcca93a878568536df751a5c146e78df53241456bb2eecddafb63`).
+Their exact routine wiring is adopted; source-current canonical diagnostic46 passes
+in the final 88-method check below. These three wrapper routine-enrollment gates
+are closed; canonical37 alone was never their causal RED witness.
+
+The seven bf05 callers' local guest17/request7/whole-outer18 GREEN preceded native
+submission. The first prerequisite b7 then reached original-operator UNKNOWN
+(observation98/exec73992 exit1) across a terminal-publication gap. One later pure
+LOCAL status recovered the original component terminal and matching owner-close:
+exit0, dual EOF, qualified inner result and source closing. Root held 442 physical
+files/221 source rows unchanged; no new start or remote query occurred. Receipt
+`windows-fixture/seven-engineering-b204-native-v1/root-b7-recovered-component-adjudication.private.json`
+(SHA-256 `89b4fd740117f0f0e42d07f3451f7907b17ce53ae26cdc7e5c248bf0f5e2c426`)
+qualifies that recovered component, not original-operator success. The remaining
+six callers are held. The final private program candidate e286 has actual whole-
+worker before0b0d UNKNOWN/current redacted PENDING until the exact original publisher
+naturally closes; late known terminal validation stays strict. Its separate private
+9f1 false-PENDING foreign-operation defect is corrected to UNKNOWN without actor
+lookup. The program slice passes 37 methods (25 retained+12 new), 15.857s, under
+`program-source-closing-gap-private-v1/handoff-final.private.json` (SHA-256
+`577992cb58251d263b41fb36293c963f68e69e56040152b4766e206c14f8d807`).
+Stage C adopted it; final source-current canonical program37 passes. Routine
+enrollment is closed; fixed-source native proof remains OPEN.
+
+The final recipe S preparation recorded 31 adoption targets, 32 current readers
+and five routine methods, including whole manifest-path DIRECT/MCP, actual old312b
+post-exec replacement RED/fixed d03 GREEN, FIFO and three terminal/EOF routing
+variants. The missing-POSIX-capability witness is old3 ERROR to current5 declared
+SKIP, not native Windows execution. Its live UAC producer consumes the exact
+normally registered helper; original N and all seven identities remain frozen,
+without successor launch authority. Handoff
+`windows-fixture/native-packet-recipe-successor-v1/final-successor-handoff.private.json`
+(SHA-256 `e85de32ad4f637f8e04ca9a0e75efca393750d6c5728341c929891a316d2db3f`).
+Recipe S is adopted, with its final five source-current methods passing after the
+fixture-isolation correction below.
+Existing canonical UAC
+foundations plus private31 foundation and13 whole-outer passes create no new
+canonical feature, visual-purpose VM, screenshot or native visual acceptance.
+Stage C applied 42 exact source/fixture targets and policy9e558, with candidate
+closing and policy last; receipt `stage-c-canonical-adoption-v1/adoption.private.json`
+(SHA-256 `ed41525cdd58151ddd4775d5fc1d7dae88ac0be33a13b4ba7eb2b1b3313fa81d`).
+The first canonical88 run remains FAILED with two recipe routing setup errors in
+stdout-EOF and dual-EOF: `inspect.getsource(guest.qualify_instance)` unavailable.
+The fixture imported a canonical test alias while staged source was active, then
+left its global guest/package binding pointing to deleted temporary source. This
+was a test-fixture isolation defect, not a product/native failure. Handoff
+`recipe-routing-canonical-failure-private-preparation-v1/handoff-final.private.json`
+(SHA-256 `c095504a2dea32bfbf22bc9efcdbf5bda82b91485df9cd35ba2088aad6e1dd5f`)
+preserves the original errors and source beforeimages. The strengthened same
+routing oracle produces actual old-boundary RED3 failures/0 errors under a preloaded
+worker, then fixed five-method GREEN, covering three cold variants, warm normal,
+and exact module/parent-alias restoration. Earlier preloaded-old PASS was masking
+evidence, not a causal witness; two private pretest import/setup mistakes remain
+separate retained harness failures.
+
+Stage D adopted only boundary41806/helper0a51 plus policy3a4eaf, leaving production
+e286 unchanged; receipt `stage-d-canonical-isolation-adoption-v1/adoption.private.json`
+(SHA-256 `421242a931c19fa6a335ea22f2097308bc2bdb3d0a6e432ea93872a8005ede4e`).
+Its final canonical check passes all88 methods in16.885s (program37, retirement/
+diagnostic46, recipe5) and fresh platform probes (two import/seven capability),
+with all43 held source hashes and full nine-field generations closed unchanged.
+Joined receipt `stage-d-canonical-isolation-adoption-v1/joined-validation.private.json`
+has SHA-256 `e0d15f8f9224e060b5b3381c19a9089e96c121bbb671e72d3b8543f973b72e37`.
+These local routine-enrollment gates are closed at the final source. Earlier
+four-tool proofs retain their b204/0b0d scope. At that checkpoint, fixed-source
+native first fresh T and the remaining six callers had not run, and full current
+prepush had not started; subsequent first-caller/prepush observations follow.
+No push or app installation has occurred. The task, all64 Windows/shared memberships and
+all58 visual scenes remain unfinished.
+
+### First post-adoption caller4835 refused before program loader
+
+Original operation `4835b6ea-e758-44b0-b024-0972f8fe6594` remains UNKNOWN. Its
+130,341-byte wrapper carrying114,293 source bytes transferred through automatic journal
+`b9ab4023bd544d08a5e0451e18b67260`, but selected-channel admission refused before
+the program loader. Typed refusal is `master_closing` / `fd_changed`, wrapped by
+`SelectionUnknown` / `SshConfigError`; the exact changed FD/master type and original
+cause remain UNRESOLVED. The program launch capture is null, with no captured
+program bytes or EOF proof. This is not an executed-program or Windows acceptance
+result. Original evidence and all84 reviewed source pins are preserved in
+`windows-fixture/post-program-adoption-prerequisite-preparation-v1/native-run-v1/first4835-unknown-preservation-v1/preservation-index.private.json`
+(SHA-256 `86702dc6f43df4af79d9b89ec1747d17b843880821ca9e02cfa3cc854519cbf7`);
+its automatic-journal complement `b6c8df1f` records absent execution-intent and
+submission-returned files. No replay or remaining-six start is authorized.
+
+A separate private FD-enumeration false-refusal case is now causally qualified:
+authentic whole providerfb8dfa observes listener3 then a removed listed FD99 and
+returns `fd_changed`; candidate179c97 positively joins the listener and passes.
+The one-line change skips only per-entry readlink `FileNotFoundError`; missing
+required listener, changed birth/lost stat and `PermissionError` still refuse.
+Private55+4=59 methods PASS16.824s. Handoff
+`master-fd-enumeration-private-v1/handoff-final-v2.private.json` (SHA-256
+`009c4f96e8e71e621d36d848a9b2bbe578c00527b047cc9a90faf24f838bd205`)
+binds qualification523eda03 and source freeze63deda28. The unchanged same case
+naturally ERRORs with `fd_changed`/exit1 when whole beforefb8dfa is selected as
+CURRENT, and passes with179c97 in the59-method suite. The skipped original entry
+is unclassified; this controlled case does not identify the original4835 FD/type
+or cause. Private test-placement, witness-order and report-writer preparation
+failures remain separate retained harness observations. Actual267 retirement and
+subsequent FD-fix Stage B adoption are recorded below.
+
+Original frozen8e55 prepush90637 naturally FAILED with one gateway fixture
+`writerAliveAtReturn` assertion; all managed workers closed and root returned1.
+Its injected writer used a .16-second sleep, so sufficiently late observation
+invalidated the liveness assertion. The original scheduling specifics were not
+retained. The fix holds that exact writer on an owned Event until its actual join;
+the same existing routine adds a bounded delayed-base-join condition. Authentic
+full before plus that identical fixture condition naturally REDs at the unchanged
+assertion, while Event-release current GREEN and the14-case private class pass.
+This is a local test-oracle mechanism, not original4835's native cause. Handoff
+`gateway-stage-prepush-failure-private-v1/handoff-routine-final.private.json`
+(SHA-256 `f0d24c0a8d451fa66f3ebb5809ec6eda36da740a2a6b954a9a96031f5ed0d00e`)
+preserves exact before/control/fix boundaries.
+
+The twelve-source retirement-profile/gateway Stage A is actually adopted:
+helper18ab, retirement testcf8, gateway testa854 and policy21df. Receipt
+`stage-e-profile-gateway-adoption-v1/adoption.private.json` has SHA-256
+`468884d65bd012a5c7de152ad1b336331713abc15b004fce4a8ac89ea3b028b4`.
+Canonical retirement50+source-stage52=102 PASS36.782s; the historical output filename
+`canonical-64.stderr.bin` does not change that count. Pure LOCAL real-original
+preflight qualified17 program members/50 held proofs and both absent execution
+markers, with zero native calls/exit claims/source16 changes; receipt
+`stage-e-profile-gateway-adoption-v1/local-original-preflight.private.json`
+(SHA-256 `4ec358ff3dcaa78ab471ef31c828a331ef49949111620fdf23ecdbda04578992`).
+That preflight made no native claim. Subsequent once-only retirement
+`3f7beb36-9cb7-44ca-920c-d32f5e784060` naturally returned0 on originalexec11155;
+the normal publisher and final original status are ENDED, with nativeActionAllowed
+false. Native probe, inner exit0, exit request, independent absence and final status
+all retain complete dual EOF/zero exits. Root qualification holds98 records,
+including all50 historical proofs and16 unchanged sources:
+`windows-fixture/267-retirement-preparation-v1/retire-call-preparation-v1/root-qualification.private.json`
+(SHA-256 `f49f564a8188c76ddbcabef82bfa1185e63cbfe2e9ddf95422534cbc28aff26e`).
+This closes only original267; original4835/c79/b7 outcomes remain unchanged.
+FD-fix Stage B then adopted exactly four reviewed sources (provider179c/teste5b5/
+fixturea3ab) with policy21df unchanged and no policy write; receipt
+`stage-b-fd-adopter-private-preparation-v1/adoption.private.json` (SHA-256
+`6ed71d3b02276f5daa1f148ba676a3474e5d9980c252ddde45c4de43cd7b4002`).
+Fresh provider59+retirement50=109 PASS14.526s, originalsession7246 natural0;
+`canonical-focused.stderr.bin` in that adoption directory has SHA-256
+`eeebbd4eb137ec7ce422c37fdc320e714346cdd5c239dfb96d7aeaf40b16af68`.
+The FD routine-enrollment gate is closed at the adopted source, without identifying
+original4835's cause. At that checkpoint, four-tool proof and native-seven successor
+plans were private and no new channel had been created; later observations follow. No passing current prepush or push exists. All other
+native callers remain unstarted; the app is not installed and all64 Windows/shared
+memberships and58 visual scenes stay OPEN.
+
+### Current four SSH tool proofs after267 retirement
+
+Fresh channel `11dda7ac-6cad-4eb1-9bd4-d46f8a9ade94` was prepared, observed READY
+and selected with idle18000; all three original calls naturally returned0, receipt
+`3af388db4117b0c465e1855d050cdc6b271e524111efabc64f1000ba6bf1423d`.
+Four actual programs (DIRECT small1870/large851d, fresh-SDK MCP small0e5f/large4ea8)
+qualify: deliberate exit7, exact147/17-byte stdout/stderr, complete EOF/source
+closing, same-ID/same-PID duplicates and changed-body conflicts. Large126544-byte
+source uses automatic saved-file transfer within the60000-byte command bound.
+Root joins33 unchanged source generations/hashes,608 held records/5207328 raw bytes
+and141 local actors positively absent;66 SDK RPC servers are four program starts.
+Proof `program-tool-native/post267-stage-b179c-native-v1/native-direct-mcp-qualification.private.json`
+has SHA-256 `e85c9f444ce53089cd674deaa68c8a542faeada32fdfbef4fe551cc0f732306a`;
+root closing `e1840795` preserves original unknowns and old267 ENDED.
+Before these calls, source review found normal `SystemExit(0)` skipped d03's
+post-exec guard. Engineering21's finally loader guarded all four actual calls;
+the reusable getter fix has actual natural-process before/current RED/GREEN.
+Stage F then adopted six reviewed source/fixture paths and policy688 last, receipt
+`stage-f-held-sdk-recipe-adoption-v1/adoption.private.json` (SHA-256
+`9e20ef17160d80e3f504fcc4ed76026854127de7e40505a8c270ff19fe3ca4f3`).
+The existing five-case family passes canonically in5.678s, original25904 natural0,
+`canonical-five.stderr.bin` SHA-256
+`3cfcd30e55440b7f731ee02b59e5c377885706a7fe6c8c8d2193f614b2cc742b`.
+This source-current unit regression gate is CLOSED, with no production/native
+failure claim. Policy renewal changes only two existing pins/three scope edges;
+selected source16/core/e286 stay unchanged, so the four tool proofs remain valid
+for their consumed runtime sources. At that checkpoint, Windows-seven execution
+was pending and these tool proofs had made no guest action. Subsequent DIRECT
+native observations follow. The app is still not installed. All 64 installed-package
+memberships and all 58 visual scenes, fresh prepush and push remain OPEN.
+
+### Current Windows prerequisites and remaining acceptance
+
+DIRECT and fresh-SDK MCP infrastructure qualify canonical probe, six causal
+cases (expected three RED/three GREEN) and XML policy (before `TOKEN_TASK_XML`,
+current 14 GREEN), with natural exit 0/full EOF/source/owner/PS5 actor/boot closure.
+Prior QGA/namespace/diagnostic routine gates remain qualified; full chronology is
+in [the failure map](parity-failure-regressions.md). Original `8ced` guest and
+`9226` host-operator UNKNOWNs remain unchanged; guest PID `6244` has a separate
+known exit 1. Host-only retirements and exact old-three cleanup qualify; fresh
+causal scopes/later MCP probe remain retained, without replay/child-absence claims.
+
+Managed prepush `93618`/PID `81475` naturally failed/fully closed at its first
+release-hygiene command; preserved logs remain in
+`checkpoint-prepush-current-prerequisites-v1/`. No passing receipt follows from it.
+Authentic failed-script `e007` bytes/name remain unchanged; exact path/SHA archive
+correction `0894` has whole-before RED/current six-case GREEN (`e9bb6599`).
+Core nine-path adoption `a714b1e0` fixes isolated diagnostic import, stale capability
+counts, direct-entry discovery and host `generation` shadowing; canonical recipe
+eight/platform sixteen pass with explicit PowerShell/no skips. The host whole-entry
+causal pair retains actual TypeError/virtual-FD evidence; actual read separately
+qualifies `3b46c5e7`/`5a2ae30f`. Private controls do not qualify installed acceptance.
+
+Late self-review separately found the test Path alias reset by Python 3.14's
+initializer. Preserved `117de` constructor RED/current `42933` GREEN uses an
+alternate-root peer; no whole alternate-checkout/native flow is claimed. Two-path
+successor adoption `e39a449b` updates that boundary and policy `939e` only; current
+standard-module host routine passes one case/no skips (`df9b69b5`). The earlier
+core eight/sixteen results precede this alias successor; fresh prepush remains due.
+
+At this evidence checkpoint, the source hold was released and bindings were being
+renewed for four unchanged, still-unsubmitted DIRECT preparatory operations:
+MSI endpoint/transfer and Python endpoint/transfer, producing two physical copies.
+Those preparations close no product membership; full product-scenario MCP remains
+required. The app remains uninstalled; all 64 installed-package memberships and
+all 58 scenes remain OPEN. Baseline/fixed-package acceptance, visuals and fresh
+final-source prepush/dev delivery with all five exact-SHA workflows remain required.
+At this evidence checkpoint, no commit or push had occurred.
+
+### Retained-evidence reconciliation
+
+The stale companion count is already resolved by the final retained O qualification
+at `.runtime/mcp-ci-d24c19047ec15689948404ede40f50c5ec284e77-readonly-O-2026-10-17/final.json`
+(SHA-256 `9f116cd5808ce3e3ddf7fd61e4c20cb71e9f878394dc9516a9a12e49082a3278`).
+Its independent resource closing at
+`.runtime/mcp-next-O-collector-owner-preparation-v1/closer-template-v1/actual-O-resource-closing-v1/closing.json`
+(SHA-256 `784a57775afca707ed39827c07695fc2ae90cfc481f521c4014a762edb24088b`)
+qualifies validation/resource closure with no native product claim or collector replay.
+The failed N report remains unchanged: its sealed Linux plan had 102 entries but
+the companion expected 99. O retains those obligations and adds the original
+receipt test plus its new regression: 104 Linux obligations (93 Fast, four direct
+cleanup, seven direct enrollment). The separate Windows tooling plan has 102
+retained identities plus the Function source-body routine, totaling 103.
+These source-bound tooling results need no duplicate broad audit solely for the
+old count mismatch. They do not qualify current deployed product callers.
+
+The current Windows matrix has 48 memberships (CLI 15, installer 8, scoped VPN 10,
+owner lifecycle 12, visual 3); 16 shared document scenarios also apply to Windows.
+The Android-only 48 MiB case remains deferred. All 64 applicable memberships are
+open. The manifest requires 58 Windows scenes, including eight native surfaces.
+Private reconciliation and verified identities are in
+`.runtime/windows-parity-20261019/evidence-audit/summary.json`.
+
+## Retained MCP repair history through d24c1904
 
 The user deferred the Windows parity plan on 2026-10-15 and requested the
 MCP/tooling repair described below. The later instructions in the active chat

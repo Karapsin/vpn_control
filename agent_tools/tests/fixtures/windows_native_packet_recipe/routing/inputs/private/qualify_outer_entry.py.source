@@ -1,0 +1,251 @@
+"""PRIVATE whole entry + live callback/control carrier, explicit inert IO peers.
+
+Real owned files authenticate appendable stream prefixes. Complete actual a32
+client runs with the retained declared SDK I/O peer; no server/SSH/socket/guest.
+"""
+from pathlib import Path
+import ast,base64,builtins,contextlib,copy,hashlib,importlib.util,io,json,os,stat,sys,tempfile,types,unittest,uuid
+from unittest.mock import patch
+BASE=Path(__file__).resolve().parent;ROOT=BASE.parents[4]
+sys.path.insert(0,str(ROOT))
+sha=lambda raw:hashlib.sha256(raw).hexdigest()
+def load(name,path):
+ spec=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(spec);sys.modules[name]=m;spec.loader.exec_module(m);return m
+engine=load('_uac_outer_whole_entry',BASE/'uac_outer_operator.py')
+fresh=load('_uac_outer_fresh_fixture',BASE.parent/'qualify_fresh_binding.py')
+control_peer=load('_uac_outer_actual_control_peer',BASE/'inert_control_peer.py')
+sdk_peer=load('_uac_outer_existing_sdk_peer',ROOT/'.runtime/windows-parity-20261019/windows-fixture/current-bf05-seven-preparation-v1/outer-qualification/mcp_io_peer.py')
+from agent_tools import ssh_program_execution_remote as request_protocol
+
+class ParkObserved(BaseException):pass
+
+def put(path,raw):
+ path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+ try:os.write(fd,raw)
+ finally:os.close(fd)
+
+def pin(path):return{'path':str(path),'sha256':sha(path.read_bytes())}
+
+class World:
+ def __init__(self,route,directory,fault=None):
+  self.route=route;self.directory=directory;self.fault=fault;self.jobs={};self.starts=[];self.collects=[];self.control_audits=[];self.output=io.StringIO();self.sdk_events=[]
+  self.fixture=fresh.FreshBindingTests('test_same_binding_requires_actual_fresh_ack_and_terminal_and_known_closure');self.fixture.setUp()
+  self.fixture_calls_before=len(self.fixture.calls)
+  self.M=fresh.M
+  self.patch=patch.object(self.M,'FRESH_GUEST_QUALIFIER',self.fixture.qualifier);self.patch.start()
+  owner_world=self
+  class Backend(fresh.inert.InertBackend):
+   def current_guest_guard(self):return owner_world.M.NativeBackend.current_guest_guard(owner_world.fixture.backend)
+  native_dir=directory/'native';native_dir.mkdir(mode=0o700);self.backend=Backend(native_dir)
+  self.owner=self.M.UacOwner(self.M.CONFIG,self.backend)
+  self.endpoint=self.M.CONFIG['spec']['root']+'/uac-'+uuid.UUID(self.owner.operation).hex+'/control.sock'
+  self.ledger_root=directory/'ledger';self.ledger_root.mkdir(mode=0o700)
+  self.context={'kind':'ssh','uid':1000,'principal':'inert','home':'/home/inert','bootId':'44444444-4444-4444-8444-444444444444'}
+  source=fresh.inert.SOURCE
+  request={'operationId':self.owner.operation,'program':{'language':'python3','source':source,'args':[],'cwd':'/home/inert','targetContext':self.context}}
+  self.request=request
+  request_path=directory/'owner.request.json';source_path=directory/'owner.py';put(request_path,json.dumps(request).encode());put(source_path,source.encode())
+  loader=ROOT/'.runtime/windows-parity-20261019/windows-fixture/current-bf05-seven-preparation-v1/retained-api-operator-held-loader-closing.py'
+  proof=loader.parent/'private-recipe-enrollment-handoff.private.json'
+  assert sha(loader.read_bytes())=='d03ff48f0e0411266755e393b171b5377450c6a582aa4fbcde02cdd77a59e837'
+  assert sha(proof.read_bytes())=='e02d63eb1e32898179ba5a7b87ba4668f0742e403333a1c7a645cb5362fc3f8d'
+  self.closing_probe=directory/'owned-closing-source.py';put(self.closing_probe,b'# public inert held-source closure input\n')
+  self.manifest={'schemaVersion':1,'sourceRoot':str(ROOT),'host':'archlinux','targetSha':self.M.CONFIG['targetSha'],'deploymentId':self.M.CONFIG['spec']['deploymentId'],'visualBinding':self.fixture.binding,'ownerRequest':{**pin(request_path),'sourcePath':str(source_path),'sourceSha256':sha(source.encode())},'ownerConfig':self.M.CONFIG,'sourcePins':[pin(Path(engine.__file__)),pin(self.closing_probe)],'template':pin(BASE.parent/'uac_program_template.py'),'prefixReader':pin(BASE/'pending_prefix.py'),'client':pin(ROOT/'agent_tools/ssh_program_mcp_client.py'),'server':pin(ROOT/'agent_tools/mcp_server.py'),'externalHeldLoader':{**pin(loader),'qualificationPath':str(proof),'qualificationSha256':sha(proof.read_bytes())},'outputDirectory':str(directory/'output')}
+  self.manifest_path=directory/'manifest.json';put(self.manifest_path,json.dumps(self.manifest).encode())
+  world=self
+  class Direct:
+   _session=object()
+   def admit_start(self,root,host,request):request_protocol.validate(request['program']);return{'ok':True}
+   def start(self,root,host,request,source_context):assert source_context is self._session;return world.start(request)
+   def collect(self,root,host,identity):return world.collect(identity)
+  self.direct_api=Direct()
+  self.peer=sdk_peer.MCPIoPeer(self.mcp_backend,self.emit_sdk_terminal,lambda name,details:self.sdk_events.append({'event':name,'details':details}))
+  self.input_count=0
+  class Commands:
+   def readline(self,limit):
+    world.input_count+=1
+    if world.fault=='stdin-eof':return''
+    if world.owner.challenge is None:request={'operationId':world.owner.operation,'kind':'observe','frameId':str(uuid.uuid4())}
+    else:
+     challenge=world.owner.challenge
+     request={k:challenge[k]for k in ('operationId','stage','nonce','frameId','frameSha256')}
+     request.update(kind='decision',action=world.owner.ACTIONS[world.owner.stage],openedReview=world.owner.REVIEWS[world.owner.stage])
+     if world.fault=='stale-once'and not getattr(world,'stale_done',False):
+      world.backend.time+=16;world.stale_done=True
+     elif world.fault=='stale-once'and getattr(world,'stale_done',False)and not getattr(world,'refreshed',False):
+      request={'operationId':world.owner.operation,'kind':'observe','frameId':str(uuid.uuid4())};world.refreshed=True
+    return json.dumps(request)+'\n'
+  self.input=Commands()
+ def close(self):
+  self.patch.stop();self.fixture.doCleanups()
+ def ledger(self,operation):return self.ledger_root/'.rag_index/ssh-program-execution'/operation
+ def stream(self,job,name):return bytes(job[name])
+ def append(self,job,name,raw):
+  path=self.ledger(job['id'])/(name+'.private')
+  with path.open('ab')as stream:stream.write(raw);stream.flush();os.fsync(stream.fileno())
+  job[name].extend(raw)
+ def start(self,request):
+  request_protocol.validate(request['program']);operation=request['operationId'];assert operation not in self.jobs
+  self.starts.append(operation);ledger=self.ledger(operation);ledger.mkdir(mode=0o700,parents=True)
+  put(ledger/'stdout.private',b'');put(ledger/'stderr.private',b'')
+  job={'id':operation,'stdout':bytearray(),'stderr':bytearray(),'owner':operation==self.owner.operation,'terminal':None};self.jobs[operation]=job
+  if job['owner']:
+   record={'state':'waiting-for-opened-review',**self.owner.status(),'controlSocket':self.endpoint,'visualBinding':self.fixture.binding}
+   self.append(job,'stdout',(json.dumps(record,sort_keys=True)+'\n').encode())
+  else:
+   out,error,audit=control_peer.execute(request['program']['source'],self.owner,self.endpoint,fail_ack=self.fault=='lost-control-reply')
+   self.control_audits.append(audit);self.append(job,'stdout',out)
+   if error:self.append(job,'stderr',(type(error).__name__+':'+str(error)+'\n').encode())
+   self.finish(job,0 if error is None else 3)
+  return{'state':'pending','operationId':operation}
+ def observation(self,job,terminal=False,code=0):
+  return{'state':'terminal'if terminal else'pending','operationId':job['id'],'exitCode':code if terminal else None,'capture':{'complete':terminal,'eof':{'stdout':terminal,'stderr':terminal},'overflow':False,'sendError':None},'streams':{name:{'bytes':len(job[name]),'receivedBytes':len(job[name]),'retainedSha256':sha(job[name]),'receivedSha256':sha(job[name]),'eof':terminal}for name in ('stdout','stderr')}}
+ def finish(self,job,code):
+  value=self.observation(job,True,code);job['terminal']=value
+  raw=json.dumps(value,sort_keys=True).encode();put(self.ledger(job['id'])/'terminal.json',raw)
+  closed={'operationId':job['id'],'terminalSha256':sha(raw),'sourceClosing':True}
+  if self.fault=='owner-closing'and job['owner']:closed['sourceClosing']=False
+  put(self.ledger(job['id'])/'owner-closed.json',json.dumps(closed).encode())
+ def collect(self,identity):
+  operation=identity['operationId'];self.collects.append(operation);job=self.jobs[operation]
+  if self.fault=='unknown-collect'and job['owner']:return{'state':'unknown','operationId':operation}
+  if job['owner']and self.owner.closed and job['terminal']is None:
+   self.append(job,'stdout',(json.dumps({'state':'closed','operationId':operation,'retainedContextClosing':True})+'\n').encode());self.finish(job,0)
+  result=copy.deepcopy(job['terminal']or self.observation(job))
+  if self.fault in ('pending-stdout-eof','pending-both-eof')and job['terminal']is not None and not job.get('pending_eof_sent',False):
+   job['pending_eof_sent']=True;result['state']='pending';result['exitCode']=None;result['capture']['complete']=False
+   result['streams']['stderr']['eof']=self.fault=='pending-both-eof'
+  if self.fault=='pending-hash'and job['owner']:result['streams']['stdout']['receivedSha256']='0'*64
+  return result
+ def mcp_backend(self,name,payload,context):
+  assert name=='ssh_workflow'and payload['timeout_seconds']==15
+  if payload['action']=='program-start':return self.start(payload['transfer'])
+  assert payload['action']=='program-collect';return self.collect(payload['identity'])
+ def emit_sdk_terminal(self,context,streams,delivery):
+  directory=Path(context['directory']);terminal={'complete':True,'returnCode':0,'eof':{'stdout':True,'stderr':True},'overflow':False,'readError':False,'delivery':delivery,'raw':{}}
+  for name,raw in streams.items():
+   path=directory/('server.'+name);put(path,raw);info=path.stat()
+   terminal['raw'][name]={'bytes':len(raw),'sha256':sha(raw),'generation':[info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]}
+  if self.fault=='sdk-eof':terminal['eof']['stderr']=False
+  put(directory/'server-terminal.json',json.dumps(terminal).encode())
+ def load_mcp_client(self,path,raw,name):
+  module=types.ModuleType(name);module.__file__=str(path);sys.modules[name]=module
+  original=builtins.__import__;world=self
+  def imported(value,globals=None,locals=None,fromlist=(),level=0):
+   if value=='mcp':return world.peer.mcp_module
+   if value=='mcp.client.stdio':return world.peer.stdio_module
+   return original(value,globals,locals,fromlist,level)
+  builtin=dict(vars(builtins));builtin['__import__']=imported;module.__dict__['__builtins__']=builtin
+  exec(compile(raw,str(path),'exec'),module.__dict__);return module
+
+class EntryQualification(unittest.TestCase):
+ def case(self,route,fault=None):
+  temporary=tempfile.TemporaryDirectory(prefix='uac-outer-whole-',dir=BASE);self.addCleanup(temporary.cleanup)
+  directory=Path(temporary.name).resolve();world=World(route,directory,fault);self.addCleanup(world.close)
+  owners=[];original_init=engine.Outer.__init__
+  def initialize(owner,*args,**kwargs):owners.append(owner);return original_init(owner,*args,**kwargs)
+  trace_old=sys.gettrace();park=engine.Outer.park
+  loop=next(n for n in ast.walk(ast.parse(Path(engine.__file__).read_bytes()))if isinstance(n,ast.While)and n.lineno>park.__code__.co_firstlineno)
+  def trace(frame,event,arg):
+   if frame.f_code is park.__code__ and event=='line'and frame.f_lineno==loop.lineno:raise ParkObserved()
+   return trace
+  error=None;ambient=io.StringIO();close_original=os.close
+  def close_with_declared_source_race(fd):
+   target=world.directory/'output'/'qualified.json'
+   provisional=world.directory/'output'/'observations-complete.json'
+   hit=False
+   if fault=='closing-source'and not getattr(world,'closing_replaced',False):
+    for path in (target,provisional):
+     if path.exists()and(path.stat().st_dev,path.stat().st_ino)==(os.fstat(fd).st_dev,os.fstat(fd).st_ino):hit=True
+   close_original(fd)
+   if hit:
+    replacement=world.directory/'owned-closing-replacement.py';put(replacement,world.closing_probe.read_bytes());os.replace(replacement,world.closing_probe);world.closing_replaced=True
+  try:
+   sys.settrace(trace)
+   with patch.object(engine.Outer,'__init__',initialize),patch.object(engine.os,'close',close_with_declared_source_race),contextlib.redirect_stdout(ambient):
+    code=engine.main([route,str(world.manifest_path),sha(world.manifest_path.read_bytes())],input_stream=world.input,output_stream=world.output,peers=world)
+  except ParkObserved:error=owners[0].latched
+  finally:sys.settrace(trace_old)
+  owner=owners[0]
+  report={'route':route,'fault':fault,'wholeOuterEntryExecuted':True,'actualMcpClientExecuted':route=='mcp','sdkPeerSessions':len(world.peer.sessions),'outerOutput':world.output.getvalue(),'ambientOutput':ambient.getvalue(),'ownSourceClosing':owner.closed,'startCount':len(world.starts),'controlCount':len(world.control_audits),'liveFreshQueryCount':len(world.fixture.qualifier.queries),'nativeInputPackets':world.backend.packets,'latchedError':None if error is None else{'class':type(error).__name__,'reason':str(error)},'privateRealUnixSocket':False,'networkOrNativeActions':False,'sharedFixedHeldLoaderExecuted':False}
+  EVIDENCE.mkdir(mode=0o700,exist_ok=True);name=route+'-'+(fault or'success');put(EVIDENCE/(name+'.json'),json.dumps(report,indent=2).encode())
+  if fault in (None,'stale-once','pending-stdout-eof','pending-both-eof'):
+   self.assertIsNone(error);self.assertTrue(owner.closed);self.assertTrue(world.owner.closed)
+   self.assertEqual(1,sum(packet==('esc',)for packet in world.backend.packets));self.assertEqual(1,sum(packet==('ret',)for packet in world.backend.packets))
+   self.assertGreaterEqual(len(world.fixture.qualifier.queries),8)
+   self.assertEqual([],owner.held.files);self.assertTrue(all(reader.closed for reader in owner.streams.values()))
+   self.assertEqual(len(world.starts),len(set(world.starts)))
+  else:
+   self.assertIsNotNone(error);self.assertFalse(owner.closed);self.assertTrue(owner.held.files)
+   self.assertEqual(len(world.starts),len(set(world.starts)))
+   if fault=='closing-source':
+    self.assertTrue(world.closing_replaced);self.assertTrue(world.owner.closed)
+    target=world.directory/'output'/'qualified.json'
+    premature=target.exists()and json.loads(target.read_bytes()).get('completeOuterSourceClosing')is True
+    self.assertFalse(premature,'A positive completeOuterSourceClosing receipt preceded the actual source-closing guard')
+   else:self.assertNotIn(('esc',),world.backend.packets)
+   # Explicit test-only terminal cleanup of inert resources after observing the park.
+   for reader in owner.streams.values():reader.close_known(terminal=True)
+   for fd,path,row in reversed(owner.held.files):close_original(fd)
+   owner.held.files=[]
+  return report
+ def test_direct_complete_entry_live_callback_and_control_carriers(self):self.case('direct')
+ def test_mcp_complete_entry_actual_a32_sdk_with_declared_peers(self):self.case('mcp')
+ def test_stale_known_refusal_refreshes_same_original_without_second_runas(self):self.case('direct','stale-once')
+ def test_pending_stdout_eof_waits_for_original_terminal(self):self.case('direct','pending-stdout-eof')
+ def test_pending_dual_eof_waits_for_original_terminal(self):self.case('direct','pending-both-eof')
+ def test_closing_source_refusal_has_no_prior_positive_receipt(self):self.case('direct','closing-source')
+ def test_unknown_owner_retains_sources_without_start_replay(self):self.case('direct','unknown-collect')
+ def test_pending_prefix_hash_refusal_retains_original(self):self.case('direct','pending-hash')
+ def test_stdin_eof_parks_original_without_escape(self):self.case('direct','stdin-eof')
+ def test_lost_control_reply_never_resubmits_or_sends_cleanup_key(self):self.case('direct','lost-control-reply')
+ def test_mcp_original_server_eof_failure_retains_original(self):self.case('mcp','sdk-eof')
+
+class SharedLoaderEntryQualification(unittest.TestCase):
+ def run_loaded(self,route):
+  temporary=tempfile.TemporaryDirectory(prefix='uac-fixed-loader-',dir=BASE);self.addCleanup(temporary.cleanup)
+  directory=Path(temporary.name).resolve();world=World(route,directory);self.addCleanup(world.close)
+  original_import=builtins.__import__;RealPath=type(Path());world_root=world.ledger_root
+  class VPath(RealPath):
+   def __truediv__(self,key):
+    if str(self)==str(ROOT)and(str(key)=='.rag_index'or str(key).startswith('.rag_index/')):return VPath(str(world_root/key))
+    return super().__truediv__(key)
+  paths=types.ModuleType('pathlib');paths.Path=VPath
+  fake_agent=types.ModuleType('agent_tools')
+  @contextlib.contextmanager
+  def scope(path):
+   assert str(path)==str(ROOT/'agent_tools');yield
+  fake_agent.source_module_loader=types.SimpleNamespace(request_scope=scope,adapter=lambda root,name:world.direct_api)
+  def imported(name,globals=None,locals=None,fromlist=(),level=0):
+   if name=='pathlib':return paths
+   if name=='agent_tools':return fake_agent
+   if name=='mcp':return world.peer.mcp_module
+   if name=='mcp.client.stdio':return world.peer.stdio_module
+   return original_import(name,globals,locals,fromlist,level)
+  loader=Path(world.manifest['externalHeldLoader']['path']);source=loader.read_bytes();operators=[]
+  target=str(BASE/'uac_outer_operator.py');old_trace=sys.gettrace()
+  def trace(frame,event,arg):
+   if frame.f_code.co_filename==target and frame.f_code.co_name=='__init__'and event=='return'and'held'in vars(frame.f_locals.get('self',object())):operators.append(frame.f_locals['self'])
+   return trace
+  old_argv=list(sys.argv)
+  try:
+   sys.argv=['-c',target,sha(Path(target).read_bytes()),route+'@'+str(world.manifest_path),sha(world.manifest_path.read_bytes())]
+   sys.settrace(trace)
+   with patch.object(builtins,'__import__',imported),patch.object(sys,'stdin',world.input),contextlib.redirect_stdout(world.output):
+    namespace={'__name__':'__main__','__file__':str(loader)}
+    exec(compile(source,str(loader),'exec'),namespace)
+  finally:sys.argv=old_argv;sys.settrace(old_trace)
+  self.assertEqual(1,len(operators));owner=operators[0]
+  self.assertTrue(owner.closed);self.assertEqual([],owner.held.files)
+  self.assertTrue(world.owner.closed);self.assertEqual(1,sum(packet==('esc',)for packet in world.backend.packets))
+  self.assertEqual(8,len(world.fixture.qualifier.queries))
+  self.assertEqual(len(world.starts),len(set(world.starts)))
+  EVIDENCE.mkdir(mode=0o700,exist_ok=True)
+  put(EVIDENCE/(route+'-d03-loader.json'),json.dumps({'route':route,'sharedFixedHeldLoaderExecuted':True,'loaderSha256':sha(source),'wholeMainEntryExecuted':True,'allOwnSourceDescriptorsClosed':not owner.held.files,'completeActualA32ClientNamespace':route=='mcp','sdkPeerSessions':len(world.peer.sessions),'startCount':len(world.starts),'liveFreshQueryCount':len(world.fixture.qualifier.queries),'networkOrNativeActions':False,'originalLoaderPostExecGuardReturned':True},indent=2).encode())
+ def test_direct_whole_d03_loader_entry_and_live_callback(self):self.run_loaded('direct')
+ def test_mcp_whole_d03_loader_entry_a32_sdk_and_live_callback(self):self.run_loaded('mcp')
+
+if __name__=='__main__':
+ EVIDENCE=BASE/('whole-entry-inert-'+uuid.uuid4().hex)
+ unittest.main(verbosity=2)

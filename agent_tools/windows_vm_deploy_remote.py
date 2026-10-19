@@ -254,12 +254,16 @@ def program(spec:FreshWindowsVmSpec,mode:str,*,setup=None,context=None,media_rea
         setup=unattended.parse_setup(setup)
         if mode in ('qualify','qualify-status','secure','secure-status'):
             from . import windows_vm_guest as guest
-            media_body+='import json,re\nOPERATION_ID='+repr(operation_id)+'\nPS_SCRIPT='+repr(guest.powershell_source(setup,operation_id))+'\n'
-            media_body+=guest_rpc_definitions()+'\n'+inspect.getsource(guest.validate_setup_result)+'\n'+inspect.getsource(guest.qualify_instance)+'\n'
+            visual=None
+            if setup.get('purpose')=='windowsUacVisual':
+                from . import windows_visual_fixture as visual
+            powershell=visual.powershell_source if visual is not None else guest.powershell_source
+            media_body+='import json,re\nOPERATION_ID='+repr(operation_id)+'\nPS_SCRIPT='+repr(powershell(setup,operation_id))+'\n'
+            media_body+=guest_rpc_definitions()+'\n'+(visual.definitions() if visual is not None else inspect.getsource(guest.validate_setup_result)+'\n'+inspect.getsource(guest.qualify_instance))+'\n'
             if mode in ('secure','secure-status'):
                 import uuid
                 check_id=str(uuid.uuid5(uuid.UUID(operation_id),'secure-setup-admission'))
-                media_body+='SECURE_SCRIPT='+repr(guest.secure_source(setup,operation_id))+'\nSECURE_CHECK_SCRIPT='+repr(guest.powershell_source(setup,check_id))+'\n'+inspect.getsource(guest.secure_instance)+'\n'
+                media_body+='SECURE_SCRIPT='+repr(guest.secure_source(setup,operation_id))+'\nSECURE_CHECK_SCRIPT='+repr(powershell(setup,check_id))+'\n'+inspect.getsource(guest.secure_instance)+'\n'
         if type(context)is not dict or set(context)!={'hostBootId','pending'}:raise ValueError('deployment_context')
         import uuid
         if type(context['hostBootId'])is not str or str(uuid.UUID(context['hostBootId']))!=context['hostBootId'] or type(context['pending'])is not list:raise ValueError('deployment_context')

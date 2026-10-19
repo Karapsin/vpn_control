@@ -208,9 +208,11 @@ def coordinator_capable():
             ('getuid','geteuid','O_NOFOLLOW','O_DIRECTORY','O_NONBLOCK','pread')))
 
 
-def bind(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary, argv):
+def bind(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary, argv, *, force_file=False):
     """Pure local binding; ordinary argv remains a plain list."""
-    if command_bytes(argv) <= COMMAND_BYTES:
+    if type(force_file) is not bool:
+        raise AutomaticProgramError('automatic_force_file_mode')
+    if not force_file and command_bytes(argv) <= COMMAND_BYTES:
         return argv
     if not coordinator_capable():
         raise AutomaticProgramError('automatic_unsupported_coordinator')

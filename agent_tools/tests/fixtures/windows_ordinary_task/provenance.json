@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Authentic original omitted-RunLevel XML, whole unfixed launcher and native 13-control causal receipt. No historical action is replayed.",
+  "deploymentId": "d493a373-1d2c-4ab0-bfd4-e93575019dce",
+  "nativeOriginalRunLevel": "XML omitted; native cmdlet Limited/Interactive; COM int0/int3",
+  "originalNativeRed": "TOKEN_TASK_XML",
+  "fixedNativeGreen": true,
+  "xmlBytesPreserved": true,
+  "xmlEncodingCaveat": "UTF-8 export text contains an original encoding=UTF-16 declaration; decode to Unicode before XML parse; do not rewrite original bytes.",
+  "sources": [
+    {
+      "source": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/ordinary-token-source-capsule-v1/05-ordinary-token-launch.ps1",
+      "fixture": "original-launch.before.source",
+      "sizeBytes": 6314,
+      "sha256": "72e19420f2eeeddab61a0a76181e2e1dc0cae6dd5bd97523e48553ed559c1618"
+    },
+    {
+      "source": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/original-ordinary-token-task.xml",
+      "fixture": "original-task.xml",
+      "sizeBytes": 1565,
+      "sha256": "a58bc85ee1e188140883bea281e2e2fe7c84a5b5fdb0968430eacf4f4a79e675"
+    },
+    {
+      "source": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/original-ordinary-token-current-task.json",
+      "fixture": "original-current-task.json",
+      "sizeBytes": 5291,
+      "sha256": "d1489517c7180fbc0f182a20613962a4cacc629fb23ff982df2ce668db5e4b9d"
+    },
+    {
+      "source": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/ordinary-token-final-native-receipts/task-policy-phase-77f8563d-b16d-4116-bad1-167841bcd343.json",
+      "fixture": "native-policy-receipt.json",
+      "sizeBytes": 1755,
+      "sha256": "8c0082086580484e5c53a81829f3375ddbfaca38991bff2639fa37282d140e94"
+    },
+    {
+      "source": "/Users/karapsin_de/projects/vpn_control/agent_tools/windows_ordinary_task.py",
+      "fixture": "extra-action.before.source",
+      "sizeBytes": 30784,
+      "sha256": "5d962c1d58eb326a270f9a640bfb7822146fc587ba62985c7ab393c540396795",
+      "role": "authentic canonical Python validator before extra ComHandler refusal; no native action occurred"
+    }
+  ]
+}

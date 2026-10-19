@@ -30,11 +30,15 @@ def actual_planner_runner():
             chosen.append(node)
     observed = {n.name for n in chosen if isinstance(n, ast.FunctionDef)}
     assert observed == functions and len(chosen) == 4
+    def selected_commands(python, *, max_modules_per_command):
+        assert max_modules_per_command == 16
+        return [GATE, SELECTED]
     ns = {"sys": sys, "AGENT_TEST_PYTHON": sys.executable, "Path": Path,
           "hashlib": hashlib, "time": time, "__file__": str(SOURCE),
           "Any": object, "REPO_ROOT": Path("/inert-unused-root"),
           "RECEIPT_PATH": Path("/inert-unused-root/receipt.json"),
-          "_agent_test_selection": lambda: SimpleNamespace(commands=lambda python: [GATE, SELECTED])}
+          "managed_agent_check": SimpleNamespace(is_private_command=lambda root, command: False),
+          "_agent_test_selection": lambda: SimpleNamespace(commands=selected_commands)}
     exec(compile(ast.Module(body=chosen, type_ignores=[]), str(SOURCE), "exec"), ns)
     return ns
 
@@ -89,7 +93,8 @@ class PrepushSshCloseGateTests(unittest.TestCase):
 
     def test_product_only_omits_agent_checks_and_plans_are_independent(self):
         ns = actual_planner_runner()
-        ns["_agent_test_selection"] = lambda: SimpleNamespace(commands=lambda python: [])
+        ns["_agent_test_selection"] = lambda: SimpleNamespace(
+            commands=lambda python, *, max_modules_per_command: [])
         for area, commands in ns["FOCUSED_COMMANDS"].items():
             self.assertEqual(commands, ns["_commands_for"](area, "focused"))
         self.assertFalse(any("unittest" in c for c in ns["_commands_for"]("desktop", "prepush")))

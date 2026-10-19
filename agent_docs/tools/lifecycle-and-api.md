@@ -109,6 +109,92 @@ routes remain. No stage action starts or restores a VM or establishes product
 acceptance. Programme transfer uses stdin in bounded chunks and executes a saved,
 hash-checked filename; the outer command stays within 60,000 bytes.
 
+### Generated SSH programs
+
+`ssh_workflow` accepts generated Python programs through three actions:
+
+| Action | Inputs | Behavior |
+| --- | --- | --- |
+| `program-start` | Explicit `host`, structured `transfer` below | Admit one immutable request and start its retained owner. |
+| `program-status` | Same host, `identity={"operationId":"<original UUID>"}` | Observe the original operation without submitting another program. |
+| `program-collect` | Same original identity | Return retained output evidence and terminal or pending state. |
+
+The start payload is:
+
+```json
+{
+  "operationId": "<new canonical UUID>",
+  "program": {
+    "language": "python3",
+    "source": "print('hello')\n",
+    "args": [],
+    "cwd": "/absolute/observed/target/directory",
+    "targetContext": {
+      "kind": "ssh",
+      "uid": 1000,
+      "principal": "<observed configured user>",
+      "home": "/absolute/observed/home",
+      "bootId": "<observed current host boot UUID>"
+    }
+  }
+}
+```
+
+Every context value must come from current qualified evidence. The explicit
+configured route must be live; an unavailable old selected connection is refused,
+never renewed or replaced implicitly. Prepare a fresh connection with a new
+identity when required. Keep credentials in their existing private-file inputs,
+outside supplied program text.
+
+New independent nested test connections use a five-hour idle persistence limit
+(`ControlPersist=18000`). This changes neither connection-attempt nor program
+deadlines. Historical connections retain their original policy and identity.
+
+The owner measures the complete configured SSH command. Oversized Python source
+uses the existing verified saved-file transport before execution; the 60,000-byte
+command bound is unchanged. If an inline launch instead receives the operating
+system's `E2BIG` error before creating any child, the owner records that refusal
+and selects one saved-file plan for the same immutable program and arguments.
+Error text, SSH exit 255, timeouts and disconnected or uncertain outcomes never
+trigger this fallback. Both source text and its rendered carrier have an
+8 MiB limit. Execution preserves Python `-c` semantics, including `sys.argv[0]`,
+an empty stdin and the supplied argument boundaries; it does not promise a
+`__file__` value. The target reobserves its principal, home and boot before user
+code, and opens the explicit working-directory chain without following symlinks.
+
+Repeated matching starts reconcile the original operation. A conflicting request
+under its UUID refuses. Observation deadlines return pending state; disconnected
+or unproved results remain unknown. Neither status, collection, stderr text nor
+SSH exit 255 authorizes another execution. A terminal result requires the original
+process, both raw stream EOFs and source closing checks. Results retain transport
+choice, source and command sizes, output counts and hashes, and the original exit
+code. An interrupted or failed collector keeps its original resources until their
+closure is established. Retained records and already collected output do not
+guarantee that a remote process survives an active SSH disconnection. Reconnecting
+does not itself resume that process. An idle master timeout applies only when no
+client session is active and does not interrupt an active command.
+
+Worker failures retain bounded private phase, exception message, structured
+traceback and typed admission details. The collector captures the same existing
+status observation without querying again. Public results expose only evidence
+size, hash and overflow metadata. A diagnostic capture or write failure preserves
+the primary error and ownership; it does not authorize a retry. Initial admission
+inside the validated operation directory is covered; earlier bootstrap, import
+and intent-read failures are outside this diagnostic scope.
+
+The public path currently supports Python on configured SSH hosts from a POSIX
+coordinator. Other coordinator platforms refuse before importing the POSIX owner;
+they do not submit a program. Windows
+PowerShell has a separately tested saved-source planner; it is not yet a public
+execution target. Its ScriptBlock semantics and inner QGA process custody require
+their own direct and matching MCP qualification.
+
+The current desktop MCP connection does not hot-reload server code. A fresh
+STDIO MCP server and retaining SDK relay can qualify these actions without
+restarting the old server or disturbing its operations. The dedicated
+`agent_tools/ssh_program_mcp_client.py` client records real initialize/list/tool
+protocol traffic; CLI function calls alone are not equivalent to that proof.
+
 `vm_workflow` provides argument-driven Windows VM actions:
 
 | Action | Exact inputs | Result scope |

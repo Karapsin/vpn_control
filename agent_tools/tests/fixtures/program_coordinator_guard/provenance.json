@@ -1,0 +1,9 @@
+{
+  "boundary": "complete actual _ssh_workflow_impl dispatch function, unchanged; globals bind only native coordinator os facade and effect-refusing owner import sentinel",
+  "originalEndLine": 2678,
+  "originalFile": "agent_tools/mcp_server.py",
+  "originalFileSha256": "df6e54b0404a3ce95e6db98e84ba9f9cae0d019f73f2da16ed90115305002768",
+  "originalStartLine": 2269,
+  "routeBytes": 29608,
+  "routeSha256": "51f98c8e97d1521acae1b5cc647df53a3fc6b963846af0490780a8271a91a97d"
+}

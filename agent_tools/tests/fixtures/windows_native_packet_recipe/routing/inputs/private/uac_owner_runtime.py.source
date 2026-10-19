@@ -1,0 +1,373 @@
+"""PRIVATE finite host-side UAC input owner; no automatic native execution here.
+
+Rendered with exact canonical VM helpers and the existing freshness guard.
+Native binding and image recognition require the operator's actual qualification
+and opened-image decisions. This owner supplies no guest-process exit verdict.
+"""
+import base64
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import socket
+import stat
+import struct
+import time
+import uuid
+
+# Intentionally unbound in this preparation. Native execution must first wire
+# the existing qualified retained-QGA query into this exact rendered programme.
+# A stale saved qualification must never impersonate a current guest query.
+FRESH_GUEST_QUALIFIER = None
+
+
+def check(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+
+def canonical_json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def strict_pairs(rows):
+    result = {}
+    for key, value in rows:
+        check(key not in result, "duplicate_json_field")
+        result[key] = value
+    return result
+
+
+class UacOwner:
+    STAGES = ("desktop", "run-dialog", "uac", "restored-desktop", "closed")
+    ACTIONS = {"desktop": "open-run", "run-dialog": "type-runas", "uac": "cancel", "restored-desktop": "finish"}
+    REVIEWS = {"desktop": "qualified-desktop-opened", "run-dialog": "native-run-dialog-opened",
+               "uac": "native-uac-opened", "restored-desktop": "restored-desktop-opened"}
+
+    def __init__(self, config, backend):
+        self.config, self.backend = config, backend
+        self.operation = config["operationId"]
+        self.stage = "desktop"
+        self.challenge = None
+        self.effect_uncertain = False
+        self.sequence = 0
+        self.action_sequence = 0
+        self.input_packets = 0
+        self.closed = False
+        self.in_progress = False
+        self.retained_control_cleanup = []
+        self.backend.guard()
+        self.backend.save("owner-intent.json", {"operationId": self.operation, "targetSha": config["targetSha"],
+            "deploymentId": config["spec"]["deploymentId"], "sourcePins": config["sourcePins"],
+            "stage": self.stage, "automaticReplay": False, "shellExecuteOutcome": "not-measured"})
+
+    def identity(self):
+        cfg = self.config
+        return ":".join((cfg["context"]["hostBootId"], cfg["spec"]["deploymentId"],
+                         str(cfg["qemu"]["pid"]), str(cfg["qemu"]["startTicks"])))
+
+    def status(self):
+        self.backend.guard()
+        return {"operationId": self.operation, "stage": self.stage, "ownerActor": self.backend.owner_actor(),
+                "operationTerminal": self.closed, "effectUncertain": self.effect_uncertain,
+                "inputPacketsAcknowledged": self.input_packets, "automaticReplay": False,
+                "shellExecuteOutcome": "not-measured"}
+
+    def dispatch(self, request):
+        check(type(request) is dict and request.get("operationId") == self.operation, "control_original_operation")
+        kind = request.get("kind")
+        if kind == "status":
+            check(set(request) == {"operationId", "kind"}, "status_fields")
+            return self.status()
+        check(not self.closed and not self.effect_uncertain and not self.in_progress, "owner_not_actionable")
+        self.backend.guard()
+        if kind == "observe":
+            check(set(request) == {"operationId", "kind", "frameId"}, "observe_fields")
+            self.backend.current_guest_guard()
+            frame = self.backend.reviewed_frame(request["frameId"])
+            # An actual fresh QMP frame must have the exact reviewed bytes. This
+            # records remote monotonic time; no caller timestamp is authority.
+            current = self.backend.current_frame()
+            check(current["sha256"] == frame["sha256"], "frame_changed_before_challenge")
+            self.sequence += 1
+            self.challenge = {"operationId": self.operation, "stage": self.stage,
+                "nonce": uuid.uuid4().hex, "frameId": request["frameId"], "frameSha256": current["sha256"],
+                "observedAt": current["observedAt"], "qemuIdentity": self.identity(), "sequence": self.sequence}
+            self.backend.save("observation-" + str(self.sequence).zfill(4) + ".json", self.challenge)
+            return {**self.status(), "challenge": dict(self.challenge), "reviewRequired": self.REVIEWS[self.stage]}
+        check(kind == "decision" and set(request) == {"operationId", "kind", "stage", "nonce", "frameId", "frameSha256", "action", "openedReview"}, "decision_fields")
+        challenge = self.challenge
+        check(challenge is not None and all(request[k] == challenge[k] for k in ("operationId", "stage", "nonce", "frameId", "frameSha256")), "decision_challenge")
+        check(request["action"] == self.ACTIONS[self.stage] and request["openedReview"] == self.REVIEWS[self.stage], "opened_stage_decision")
+        self.backend.current_guest_guard()
+        frame = self.backend.reviewed_frame(request["frameId"])
+        check(frame["sha256"] == challenge["frameSha256"], "reviewed_frame_changed")
+        current = self.backend.current_frame()
+        self.backend.guard()
+        metadata = {"observedAt": challenge["observedAt"], "screenshotSha256": challenge["frameSha256"],
+                    "qemuIdentity": challenge["qemuIdentity"], "operationId": self.operation, "operationTerminal": False}
+        # All keyboard actions use the same finite freshness guard, including
+        # cancellation. No stage is inferred from pixels by this program.
+        run_if_current(metadata, expected_qemu_identity=self.identity(), expected_operation_id=self.operation,
+                       current_screenshot_sha256=current["sha256"], now=self.backend.now(), action=lambda: self.act(request, challenge))
+        return self.status()
+
+    def act(self, decision, challenge):
+        self.backend.guard()
+        self.action_sequence += 1
+        prefix = "action-" + str(self.action_sequence).zfill(4)
+        self.backend.save(prefix + ".intent.json", {"decision": decision, "stage": self.stage,
+            "automaticReplay": False, "operationId": self.operation})
+        self.challenge = None  # consume before the first possible native effect
+        self.in_progress = True
+        self.action_deadline = challenge["observedAt"] + 15
+        try:
+            if self.stage == "desktop":
+                self.packet(("meta_l", "r"))
+            elif self.stage == "run-dialog":
+                self.packet(("ctrl", "a"))
+                self.packet(("backspace",))
+                for codes in self.config["keyPlan"]:
+                    self.packet(codes)
+                self.packet(("ret",))
+            elif self.stage == "uac":
+                self.packet(("esc",))
+            else:
+                check(self.stage == "restored-desktop", "finish_stage")
+            self.backend.guard()
+            old_stage = self.stage
+            next_stage = self.STAGES[self.STAGES.index(self.stage) + 1]
+            self.backend.save(prefix + ".ack.json", {"operationId": self.operation, "before": old_stage,
+                "after": next_stage, "inputPacketsAcknowledged": self.input_packets, "operationTerminal": next_stage == "closed",
+                "shellExecuteOutcome": "not-measured", "automaticReplay": False})
+            self.stage = next_stage
+            self.closed = next_stage == "closed"
+        except BaseException as error:
+            # Do not send another packet or an unconditional cleanup key.
+            self.effect_uncertain = True
+            self.original_failure = error
+            try:
+                self.backend.save(prefix + ".unknown.json", {"operationId": self.operation, "stage": self.stage,
+                    "errorClass": type(error).__name__, "automaticReplay": False, "automaticCleanup": False,
+                    "inputPacketsAcknowledged": self.input_packets})
+            except BaseException:
+                pass
+            raise
+        finally:
+            self.in_progress = False
+
+    def packet(self, codes):
+        check(self.backend.now() <= self.action_deadline, "key_plan_deadline")
+        self.backend.guard()
+        self.backend.key(tuple(codes), self.action_deadline)
+        self.input_packets += 1
+
+    def close_control_resources(self, stream, connection):
+        # A local descriptor-cleanup error is not authority to unwind a pending
+        # native request or replace its original exception. Keep failed handles.
+        for name, handle in (("stream", stream), ("connection", connection)):
+            if handle is None:
+                continue
+            try:
+                handle.close()
+            except BaseException as error:
+                self.retained_control_cleanup.append((name, handle, error))
+                self.effect_uncertain = True
+                self.closed = False
+                if not hasattr(self, "original_failure"):
+                    self.original_failure = error
+                try:
+                    self.backend.save("control-cleanup-" + str(len(self.retained_control_cleanup)).zfill(4) + ".unknown.json",
+                        {"operationId": self.operation, "handle": name, "errorClass": type(error).__name__,
+                         "automaticReplay": False, "automaticCleanup": False})
+                except BaseException:
+                    pass
+
+
+class NativeBackend:
+    def __init__(self, config):
+        self.config = config
+        self.directory = root / ("uac-" + uuid.UUID(config["operationId"]).hex)
+        self.bound_receipts = []
+        self.guard_count = 0
+        self.frame_count = 0
+        chain()
+        # Authenticate existing immutable native qualification records before
+        # creating this owner's directory or control endpoint.
+        for name, digest in config["receiptPins"].items():
+            check("/" not in name and name not in ("", ".", ".."), "receipt_leaf")
+            fd = os.open(root / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                info = os.fstat(fd)
+                check(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1 and 0 < info.st_size <= 65536, "receipt_identity")
+                raw = os.pread(fd, 65537, 0)
+                check(len(raw) == info.st_size and hashlib.sha256(raw).hexdigest() == digest, "receipt_hash")
+                self.bound_receipts.append((fd, root / name, generation(info), digest))
+            except BaseException:
+                os.close(fd)
+                raise
+        self.admit_qualification()
+        self.guard()
+        os.mkdir(self.directory, 0o700)
+        self.directory_fd = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        self.directory_identity = structure(os.fstat(self.directory_fd))
+
+    def admit_qualification(self):
+        config = self.config
+        bound = read("visual-session-qualified.json")
+        terminal = read("secure-terminal.json")
+        check(terminal.get("exited") is True and terminal.get("exitcode") == 0 and not terminal.get("out-truncated", False) and not terminal.get("err-truncated", False) and not base64.b64decode(terminal.get("err-data", ""), validate=True), "secure_terminal")
+        secured = json.loads(base64.b64decode(terminal["out-data"], validate=True).decode("utf-8-sig"))
+        check(secured == {"nonce": config["securityOperationId"], "principal": "S-1-5-18", "passwordVerified": True, "automaticLogonDisabled": True, "setupCachesRemoved": True, "setupTaskDisabled": True}, "secure_result")
+        prefix = "qualification-" + config["postSecureQualificationId"]
+        terminal = read(prefix + ".terminal.json")
+        check(terminal.get("exited") is True and terminal.get("exitcode") == 0 and not terminal.get("out-truncated", False) and not terminal.get("err-truncated", False) and not base64.b64decode(terminal.get("err-data", ""), validate=True), "postsecure_terminal")
+        value = json.loads(base64.b64decode(terminal["out-data"], validate=True).decode("utf-8-sig"))
+        binding = _visual_session(value, config["postSecureQualificationId"], SETUP)
+        check(bound == {"purpose": "windowsUacVisual", "binding": binding}, "postsecure_visual_binding")
+        self.visual_binding = binding
+
+    def guard(self):
+        with open("/proc/sys/kernel/random/boot_id") as stream:
+            check(stream.read(128).strip() == self.config["context"]["hostBootId"], "host_boot_changed")
+        for fd, path, identity, digest in self.bound_receipts:
+            check(generation(os.fstat(fd)) == identity and generation(os.lstat(path)) == identity and hashlib.sha256(os.pread(fd, 65537, 0)).hexdigest() == digest, "bound_receipt_changed")
+        instance_intent()
+        process(read("qemu-started.json")); process(read("swtpm-started.json"))
+        check({key: read("qemu-started.json")[key] for key in ("pid", "startTicks")} == self.config["qemu"], "qemu_original_binding")
+        check({key: read("swtpm-started.json")[key] for key in ("pid", "startTicks")} == self.config["swtpm"], "tpm_original_binding")
+        owns(self.config["qemu"]["pid"], root / "qmp.sock", True)
+        check(qmp("query-status").get("status") == "running", "qemu_not_running")
+        closing()
+        if hasattr(self, "directory_fd"):
+            check(structure(os.fstat(self.directory_fd)) == self.directory_identity and structure(os.lstat(self.directory)) == self.directory_identity, "owner_directory_changed")
+        self.guard_count += 1
+
+    def save(self, name, value):
+        check("/" not in name and len(name) <= 128, "owner_record_leaf")
+        raw = canonical_json(value)
+        check(len(raw) <= 262144, "owner_record_bound")
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=self.directory_fd)
+        try:
+            offset = 0
+            while offset < len(raw):
+                count = os.write(fd, raw[offset:])
+                check(count > 0, "owner_record_short_write")
+                offset += count
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def reviewed_frame(self, frame_id):
+        check(type(frame_id) is str and str(uuid.UUID(frame_id)) == frame_id, "frame_operation_id")
+        leaf = "setup-frame-" + uuid.UUID(frame_id).hex + ".png"
+        result = read("inspection-" + frame_id + ".result.json")
+        check(type(result) is dict and set(result) == {"frame", "bytes", "sha256"} and result["frame"] == leaf, "frame_original_receipt")
+        raw = self.png(root / leaf)
+        check(len(raw) == result["bytes"] and hashlib.sha256(raw).hexdigest() == result["sha256"], "frame_receipt_hash")
+        return result
+
+    @staticmethod
+    def png(path):
+        info = private(path)
+        check(24 <= info.st_size <= 3 * 1024 ** 2, "png_bound")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            raw = os.pread(fd, 3 * 1024 ** 2 + 1, 0)
+            check(len(raw) == info.st_size and generation(os.fstat(fd)) == generation(info) and generation(os.lstat(path)) == generation(info), "png_changed")
+            check(raw[:8] == b"\x89PNG\r\n\x1a\n" and raw[12:16] == b"IHDR" and struct.unpack(">II", raw[16:24]) == (1280, 800), "png_viewport")
+            return raw
+        finally:
+            os.close(fd)
+
+    def current_frame(self):
+        self.guard()
+        self.frame_count += 1
+        path = self.directory / ("guard-frame-" + str(self.frame_count).zfill(5) + ".png")
+        check(not os.path.lexists(path), "guard_frame_exists")
+        observed_at = self.now()
+        qmp("screendump", {"filename": str(path), "format": "png"})
+        raw = self.png(path)
+        self.guard()
+        # Frames remain private original evidence; never delete on refusal.
+        return {"sha256": hashlib.sha256(raw).hexdigest(), "observedAt": observed_at}
+
+    def now(self):
+        return time.monotonic()
+
+    def owner_actor(self):
+        return {"pid": os.getpid(), "startTicks": birth(os.getpid())}
+
+    def current_guest_guard(self):
+        check(callable(FRESH_GUEST_QUALIFIER), "fresh_native_visual_qualification_connector_pending")
+        current = FRESH_GUEST_QUALIFIER()
+        check(current == self.visual_binding, "current_native_visual_session_changed")
+
+    def key(self, codes, deadline):
+        global UAC_INPUT_DEADLINE
+        check(codes and all(type(code) is str and re.fullmatch("[a-z0-9_]+", code) for code in codes), "key_codes")
+        self.guard()
+        UAC_INPUT_DEADLINE = deadline
+        qmp("send-key", {"keys": [{"type": "qcode", "data": code} for code in codes], "hold-time": 10})
+        time.sleep(.035)
+        self.guard()
+
+    def close(self):
+        self.guard()
+        os.close(self.directory_fd)
+        for fd, _, _, _ in reversed(self.bound_receipts):
+            os.close(fd)
+        for fd in reversed(held):
+            os.close(fd)
+
+
+def serve(config):
+    # The preparation cannot become a native launcher merely by supplying JSON.
+    # Root must first review/bind the existing fresh guest-query capability.
+    check(callable(FRESH_GUEST_QUALIFIER), "preparation_only_fresh_guest_qualification_unbound")
+    backend = NativeBackend(config)
+    FRESH_GUEST_QUALIFIER.bind(backend)
+    owner = UacOwner(config, backend)
+    endpoint = backend.directory / "control.sock"
+    check(len(os.fsencode(endpoint)) < 104 and not os.path.lexists(endpoint), "control_socket_path")
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(endpoint)); os.chmod(endpoint, 0o600); listener.listen(1)
+    identity = os.lstat(endpoint)
+    print(json.dumps({"state": "waiting-for-opened-review", **owner.status(), "controlSocket": str(endpoint),
+                      "visualBinding": backend.visual_binding}, sort_keys=True), flush=True)
+    while not owner.closed:
+        connection, _ = listener.accept()
+        stream = None
+        try:
+            check(os.lstat(endpoint).st_ino == identity.st_ino, "control_socket_changed")
+            peer = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+            check(peer[1] == os.geteuid(), "control_peer_uid")
+            connection.settimeout(5)
+            stream = connection.makefile("rwb", buffering=0)
+            raw = stream.readline(8193)
+            check(0 < len(raw) <= 8192 and raw.endswith(b"\n"), "control_packet_bound")
+            request = json.loads(raw, object_pairs_hook=strict_pairs)
+            try:
+                result = {"state": "observed", "result": owner.dispatch(request)}
+            except BaseException as error:
+                result = {"state": "unknown" if owner.effect_uncertain else "refused", "errorClass": type(error).__name__, "reason": str(error), "automaticReplay": False}
+            response = canonical_json(result) + b"\n"
+            connection.sendall(response)
+        except BaseException as error:
+            # Transport refusal/lost reply never repeats an input. The original
+            # owner stays reachable via a new STATUS request, never a replay.
+            print(json.dumps({"state": "control-delivery-unknown", "errorClass": type(error).__name__, "automaticReplay": False}), flush=True)
+        finally:
+            owner.close_control_resources(stream, connection)
+    backend.save("owner-closed.json", {**owner.status(), "retainedContextClosing": True,
+        "completeProgramSourceClosingRequiredFromOuterOwner": True, "guestProcessExitMeasured": False})
+    backend.guard()
+    listener.close()
+    check(os.lstat(endpoint).st_ino == identity.st_ino, "control_socket_closing_changed")
+    os.unlink(endpoint)
+    backend.close()
+    print(json.dumps({"state": "closed", "operationId": owner.operation, "retainedContextClosing": True,
+                      "completeProgramSourceClosingRequiredFromOuterOwner": True,
+                      "nativeVisualVerdict": "still-required", "shellExecuteOutcome": "not-measured"}), flush=True)

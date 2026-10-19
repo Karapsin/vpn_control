@@ -1,0 +1,522 @@
+"""Internal, finite retirement of the owned fbac and 315 test connections.
+
+There is no public mutator, arbitrary archive execution, renewal or replay.
+Historical MCP bytes are data only; every executed capsule equals current
+reviewed source. A new operation records its sole exit request before launch.
+"""
+from __future__ import annotations
+
+import ast
+from contextlib import ExitStack, closing, contextmanager
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+import uuid
+
+from . import private_inventory_lock as private
+from . import source_module_loader as loader
+from . import ssh_channel_selection as selection
+from . import ssh_direct_nested_channel as direct
+from . import ssh_fresh_nested_channel as channel
+from . import ssh_transport as transport
+
+_LOADED_BYTES = Path(__file__).read_bytes()
+if sys._getframe().f_code != compile(_LOADED_BYTES, __file__, "exec", dont_inherit=True, optimize=sys.flags.optimize):
+    raise ValueError("retirement_loaded_source_changed")
+_LOADED_SHA = hashlib.sha256(_LOADED_BYTES).hexdigest()
+
+CORRELATION = "fbac0defae0349caa8a9f445cc7278cc"
+INTENT_SHA = "f1c7a0e00967054ccd50ea95100d604442df6852be87386900bec723c81cd469"
+READY_SHA = "c9fd5b249f01eeaa93b6b1f7fb84c0455075013773414560a68c4e1164bce8ec"
+BEFORE_MCP = "df6e54b0404a3ce95e6db98e84ba9f9cae0d019f73f2da16ed90115305002768"
+CURRENT_MCP = "748841ba33bd7e3a8d58d6cff249305095dfa8dff14fc908ec30ec72219f1ee3"
+PROGRAMS = ("fe53bef8-7d4e-4d26-93e2-92241a7f7f73", "0178c308-1d41-490c-a390-1c0d42883e98",
+            "264686dc-c3bc-4afd-9eca-bf931a7bc1d6", "48f55cb9-65af-49a3-aaae-5236d49fe8eb")
+
+
+# Exact authentic terminal/closing records from the four qualified operations.
+PROGRAM_RECORDS = {
+    "0178c308-1d41-490c-a390-1c0d42883e98": {
+        "intent.json": "271bd59634712a9ee0b7644f7e86294c2f135439ac3951370e17204d33ed7f9a",
+        "owner-closed.json": "ff2571c0dc15c55402e1197d39b4f7cb00265a26c8cb04843881addba321e694",
+        "owner.json": "3a60286fe103791b5672aac326fb9af9b9edaeec6e527eb0ecb223bac41d18f6",
+        "terminal.json": "7887543136577e3feb8d031ea7081733f6c33ce9b532a109cf775d107477f664"
+    },
+    "264686dc-c3bc-4afd-9eca-bf931a7bc1d6": {
+        "intent.json": "e22c347cb2ce0d2310699630354485c3484d492a30e835df91ff34702f7bd309",
+        "owner-closed.json": "5716686365d9e81ca6a5828cf28c9f2ff1a195d7c8e91621efb45187c545c3dc",
+        "owner.json": "2eb418d073d98c3046901188b1d3aec527e659f3f6e1e0926fd24833b921c29e",
+        "terminal.json": "7d65d3681956f5e68dd7b4466919546f1bb4f72712641b345f7febcec7d0afa5"
+    },
+    "48f55cb9-65af-49a3-aaae-5236d49fe8eb": {
+        "intent.json": "8e6a1798901f35f91ab0cb90c177032202b3d8824f44036bd7c0d8e24434b55e",
+        "owner-closed.json": "b8bfbb5011be918ed74bcea9094a6159baf5e32f8bf48f2fc7c5516043b8948a",
+        "owner.json": "b2ae3906c1ab30ebea65e57f7389b4f612f65be834bd4c3ccb8b3bf3ff4f80d6",
+        "terminal.json": "eb0be35ecd63d485f97c1fd1842341e804365c9705e1e1cadc7bc9c28c4a2a74"
+    },
+    "fe53bef8-7d4e-4d26-93e2-92241a7f7f73": {
+        "intent.json": "1c77678df0bc684f98be853e155b077478782272e4f0efb0228aebf86ae9a561",
+        "owner-closed.json": "abbc8ce1d9777d354357b2f933f506a2e3df9fe50d016c939f2c3d49adccc31b",
+        "owner.json": "3ca7b76b6e1be2a54eb395f15f7aef53edb6445e659784b496df3f6ab08962f2",
+        "terminal.json": "9361952925fa799c960853f1389b666ac450a60d971b324b42e12578a253785b"
+    }
+}
+
+SECOND_CORRELATION = "315960df95134764a39cca602d36df76"
+SECOND_INTENT_SHA = "cedefb1c54195c6be2988f9e5059933e8c3a76b9cb75e04adfedf5b3e28778bb"
+SECOND_READY_SHA = "7cc8478dfa90f8bd4ce9cbd72da505abda818a40f2f5f915406083df921c46a5"
+SECOND_UNKNOWN = "bc6ed15f-36ba-492a-88ac-13eaca58fa10"
+SECOND_PROGRAM_RECORDS = {**PROGRAM_RECORDS,
+    "949ae643-8eda-4f19-8dba-5e4c17b2894e": {
+        "intent.json": "5a9a9f0adcfac71845349c6c8bb82e37ed391a3e81545f31ae05fd098e6c1b65",
+        "owner.json": "6287211550115367d3c2b526763087999bd703a28847728cefa67c0a947483a4",
+        "owner-closed.json": "b4f012d1f527b1d4356384cd6ec918f1f73b8b2571fa946e16573ca04e2db06d",
+        "terminal.json": "3514c15d3579909d3b0583844be78341c949605c9024ef5101342dd2ce9829f9"},
+    SECOND_UNKNOWN: {
+        "intent.json": "19b5a52b58a4f3ebd6e70f0e2f4f665b44307e83af8fafa204c3b484f79d9f26",
+        "owner.json": "5ddde551b4d6bc5f749f273de9e3f69d067eaad0dbcb7c33f2e13725fabc5011",
+        "owner-closed.json": "b6ffff517704f4f0d5a3121e16d08df69aa22d115e74f2017f16c84818b51cde",
+        "terminal.json": "02e3c459e36162f54a67c04e629c3b49d2d8f3b38e1c9bdfcf8630f041f0d40d"}}
+
+
+def _profile(correlation):
+    if correlation == CORRELATION:
+        return INTENT_SHA, READY_SHA, PROGRAM_RECORDS
+    if correlation == SECOND_CORRELATION:
+        return SECOND_INTENT_SHA, SECOND_READY_SHA, SECOND_PROGRAM_RECORDS
+    raise ValueError("retirement_identity")
+
+
+def _sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _parse(raw):
+    return json.loads(raw, object_pairs_hook=transport._reject_duplicate_keys)
+
+
+def _local_absent(pid):
+    if type(pid) is not int or pid <= 0:
+        raise ValueError("retirement_local_actor")
+    result = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "pid="],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, timeout=3, check=False)
+    if result.returncode != 1 or result.stdout or result.stderr:
+        raise ValueError("retirement_local_owner_present")
+
+
+def _mcp_data_transition(before, current):
+    """The exact reviewed six-line guard is the only historical data edge."""
+    if _sha(before) != BEFORE_MCP or _sha(current) != CURRENT_MCP:
+        raise ValueError("retirement_mcp_source")
+    old, new = ast.parse(before), ast.parse(current)
+    functions = [node for node in new.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and node.name == "_ssh_workflow_impl"]
+    if len(functions) != 1:
+        raise ValueError("retirement_mcp_shape")
+    guards = [node for node in ast.walk(functions[0]) if isinstance(node, ast.If)
+              and ast.unparse(node.test) == "os.name != 'posix'"]
+    if len(guards) != 1:
+        raise ValueError("retirement_mcp_guard")
+    guard = guards[0]
+    expected = ast.parse('''if os.name != "posix":
+        original = transfer if starting else identity
+        return {"tool": "ssh_workflow", "ok": False, "state": "refused",
+                "reason": "program_coordinator_unsupported", "host": host,
+                "operationId": original.get("operationId"),
+                "nativeActionAllowed": False, "replayAllowed": False}
+''').body[0]
+    if ast.dump(guard, include_attributes=False) != ast.dump(expected, include_attributes=False):
+        raise ValueError("retirement_mcp_guard")
+    for parent in ast.walk(new):
+        for _, value in ast.iter_fields(parent):
+            if isinstance(value, list) and guard in value:
+                value.remove(guard)
+    if ast.dump(old, include_attributes=False) != ast.dump(new, include_attributes=False):
+        raise ValueError("retirement_mcp_delta")
+
+
+def _write(directory, name, raw):
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory.fd)
+    try:
+        offset = 0
+        while offset < len(raw):
+            count = os.write(fd, raw[offset:])
+            if count <= 0:
+                raise OSError("retirement_short_write")
+            offset += count
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.fsync(directory.fd)
+
+
+@contextmanager
+def _original(root, host, correlation, operation):
+    if host != "archlinux" or str(uuid.UUID(operation)) != operation:
+        raise ValueError("retirement_identity")
+    intent_sha, ready_sha, program_records = _profile(correlation)
+    root = Path(root).resolve(strict=True)
+    with ExitStack() as stack:
+        presented, _, lock = stack.enter_context(private.ownership(root))
+        journal = stack.enter_context(private.Directory(channel._context_journal(root, host, correlation, False, True)))
+        intent = stack.enter_context(private.Snapshot(journal, correlation + ".intent.json"))
+        ready = stack.enter_context(private.Snapshot(journal, correlation + ".ready.json"))
+        if intent.digest != intent_sha or ready.digest != ready_sha:
+            raise ValueError("retirement_original_records")
+        value, receipt = _parse(intent.body), _parse(ready.body)
+        if receipt["intent"] != intent.pin() or receipt["result"]["correlationId"] != correlation:
+            raise ValueError("retirement_ready_binding")
+        current = stack.enter_context(direct.Guard(root, host))
+        current.held.read(str(Path(__file__).absolute()), _LOADED_SHA)
+        current.held.read(str(Path(loader.__file__).absolute()), loader._LOADED_SHA)
+        if current.authority_sha != value["outerAuthoritySha256"]:
+            raise ValueError("retirement_authority")
+        config = stack.enter_context(private.Snapshot(stack.enter_context(private.Directory(root)), transport.CONFIG_FILENAME))
+        if config.pin() != value["inventory"]:
+            raise ValueError("retirement_inventory")
+        sources = {"remote": value["remoteSourceSha256"], "ssh_fresh_nested_channel.py": value["sourceSha256"], **value["directSourcePins"]}
+        if set(value["directSourcePins"]) != set(direct._SOURCE_NAMES):
+            raise ValueError("retirement_source_members")
+        capsules = {}
+        for name, digest in sources.items():
+            part = stack.enter_context(private.Snapshot(journal, correlation + "." + name + ".source"))
+            if part.digest != digest:
+                raise ValueError("retirement_capsule_bytes")
+            capsules[name] = part
+            canonical = channel._REMOTE.encode() if name == "remote" else Path(__file__).with_name(name).read_bytes()
+            if name == "mcp_server.py":
+                if correlation == CORRELATION:
+                    _mcp_data_transition(part.body, canonical)
+                elif part.body != canonical or part.digest != CURRENT_MCP:
+                    raise ValueError("retirement_mcp_source")
+            elif part.body != canonical:
+                raise ValueError("retirement_executable_source_changed")
+        # Block every cooperating selected-route admission during observation
+        # and exit. Already admitted owners must independently be closed.
+        selected = stack.enter_context(private.Directory(selection._selected_directory(root, host)))
+        selected_lock = stack.enter_context(selection._Lock(selected))
+        owners = []
+        program_group = stack.enter_context(private.Directory(root / ".rag_index/ssh-program-execution"))
+        if set(os.listdir(program_group.fd)) != set(program_records):
+            raise ValueError("retirement_unaccounted_program")
+        for identifier in program_records:
+            directory = stack.enter_context(private.Directory(root / ".rag_index/ssh-program-execution" / identifier))
+            records = {}
+            for name, digest in program_records[identifier].items():
+                part = stack.enter_context(private.Snapshot(directory, name))
+                if part.digest != digest:
+                    raise ValueError("retirement_program_record_changed")
+                owners.append(part); records[name] = part
+            terminal = _parse(records["terminal.json"].body)
+            closing = _parse(records["owner-closed.json"].body)
+            # The exact pinned bc6 UNKNOWN is never promoted to terminal or
+            # treated as no-start. Its keeper must be closed; native mux/client
+            # quiescence below independently gates the connection exit.
+            closed_unknown = (correlation == SECOND_CORRELATION and identifier == SECOND_UNKNOWN
+                              and terminal.get("state") == "unknown" and terminal.get("capture") is None)
+            known_terminal = (terminal.get("state") == "terminal" and type(terminal.get("exitCode")) is int
+                              and terminal["exitCode"] != 255 and terminal["capture"]["complete"] is True
+                              and terminal["capture"]["eof"] == {"stdout": True, "stderr": True})
+            if (not (known_terminal or closed_unknown)
+                    or closing != {"operationId": identifier, "terminalSha256": records["terminal.json"].digest, "sourceClosing": True}):
+                raise ValueError("retirement_program_not_terminal")
+            owner = _parse(records["owner.json"].body)
+            _local_absent(owner["actor"]["pid"])
+        group = root / ".rag_index/ssh-owned-channel-retirement"
+        group.mkdir(mode=0o700, exist_ok=True)
+        stack.enter_context(private.Directory(group))
+        with private.Directory(group.parent) as parent:
+            os.fsync(parent.fd)
+        path = group / operation
+        path.mkdir(mode=0o700)
+        output = stack.enter_context(private.Directory(path))
+        with private.Directory(group) as parent:
+            os.fsync(parent.fd)
+        def guard():
+            presented.guard(); lock.guard(); journal.guard(); intent.guard(); ready.guard(); config.guard()
+            current.guard(); selected.guard(); selected_lock.guard()
+            program_group.guard()
+            if set(os.listdir(program_group.fd)) != set(program_records):
+                raise ValueError("retirement_program_membership_changed")
+            for part in (*capsules.values(), *owners):
+                part.guard()
+            output.guard()
+        guard()
+        pins = {name: part.pin() for name, part in capsules.items()}
+        _write(output, "intent.json", _json({"operationId": operation, "correlationId": correlation,
+            "intent": intent.pin(), "ready": ready.pin(), "sourceCapsules": pins,
+            "sourceViewUsesRealGenerations": True, "historicalMcpExecutionAllowed": False,
+            "replayAllowed": False}))
+        local_intent = stack.enter_context(private.Snapshot(output, "intent.json"))
+        original_guard = guard
+        def guard():
+            original_guard(); local_intent.guard()
+        inventory_locked = [True]
+        def release_inventory_for_status():
+            guard()
+            if not inventory_locked[0]:
+                raise ValueError("retirement_status_already_admitted")
+            # The authentic status acquires this same cooperative lock itself.
+            # Keep the original descriptor/snapshot and all authority guards;
+            # release only ownership, never fake a successful reentrant flock.
+            private.fcntl.flock(lock.snapshot.fd, private.fcntl.LOCK_UN)
+            inventory_locked[0] = False
+            guard()
+        yield root, value, receipt["result"], current, output, capsules, guard, release_inventory_for_status
+        guard()
+
+
+_PROBE = r'''
+request=json.loads(sys.stdin.buffer.read(4097),object_pairs_hook=reject_pairs)
+if request['action'] not in ('observe','retire') or re.fullmatch('[0-9a-f-]{36}',request['operationId']) is None:raise ValueError('request')
+corr=request['ready']['correlationId'];ready=request['ready'];master=ready['master']
+stage='/tmp/vpn-channel-'+corr;control=ready['controlPath']
+if control!=stage+'/m' or os.getuid()!=master['actor']['uid']:raise ValueError('identity')
+boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+if boot!=master['gatewayBoot']:raise ValueError('boot')
+held=[];retirement_directory=None
+config_file=request['config'] if request['config'] else str(Path.home()/'.ssh/config')
+def pin(path):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);info=os.fstat(fd)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1:raise ValueError('private')
+ body=os.read(fd,65537)
+ if len(body)!=info.st_size or len(body)>65536:raise ValueError('bound')
+ held.append((path,fd,generation(info),body));return json.loads(body,object_pairs_hook=reject_pairs)
+def guards():
+ for path,fd,identity,body in held:
+  if generation(os.fstat(fd))!=identity or generation(os.lstat(path))!=identity or os.pread(fd,len(body)+1,0)!=body:raise ValueError('changed')
+ if [getattr(os.lstat(stage),k) for k in ('st_dev','st_ino','st_mode','st_uid','st_gid')]!=master['directory']:raise ValueError('directory')
+ if set(os.listdir(stage)) not in ({'m','intent.json','ready.json'},{'intent.json','ready.json'}):raise ValueError('directory_membership')
+ if retirement_directory is not None and [getattr(os.lstat(retirement_directory[0]),k) for k in ('st_dev','st_ino','st_mode','st_uid','st_gid')]!=retirement_directory[1]:raise ValueError('retirement_directory_changed')
+ if json.dumps(file_pin(config_file,body=True),sort_keys=True)!=json.dumps(remote_intent['configPin'],sort_keys=True) or json.dumps(effective_route(spec),sort_keys=True)!=json.dumps(remote_intent['effectiveRoute'],sort_keys=True):raise ValueError('route')
+remote_intent=pin(stage+'/intent.json');remote_ready=pin(stage+'/ready.json')
+if json.dumps(remote_ready,sort_keys=True)!=json.dumps(ready,sort_keys=True) or set(remote_intent)!={'correlationId','gatewayBoot','gatewayUid','sourceSha256','configPin','effectiveRoute'} or any(json.dumps(remote_intent[k])!=json.dumps(v) for k,v in {'correlationId':corr,'gatewayBoot':boot,'gatewayUid':os.getuid(),'sourceSha256':request['sourceSha256']}.items()):raise ValueError('original')
+spec={'configFile':config_file,'controlPath':control,'remoteHostAlias':request['profile']}
+def actor_present():
+ path='/proc/'+str(master['actor']['pid'])
+ if not os.path.lexists(path):return False
+ raw=Path(path+'/stat').read_bytes();tail=raw[raw.rindex(b')')+2:].split()
+ if int(tail[19])!=master['actor']['startTicks'] or os.stat(path).st_uid!=master['actor']['uid'] or tail[0] in (b'Z',b'X'):raise ValueError('actor')
+ return True
+def proc_bytes(path):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);parts=[];total=0;deadline=time.monotonic()+2
+ try:
+  while True:
+   if time.monotonic()>deadline:raise ValueError('proc_deadline')
+   part=os.read(fd,min(65536,1048577-total))
+   if not part:break
+   parts.append(part);total+=len(part)
+   if total>1048576:raise ValueError('proc_bound')
+  return b''.join(parts)
+ finally:os.close(fd)
+def rows():
+ raw=proc_bytes('/proc/net/unix')
+ if len(raw)>1048576 or not raw.startswith(b'Num       RefCount Protocol Flags    Type St Inode Path\n') or not raw.endswith(b'\n'):raise ValueError('table')
+ result=[];seen=set()
+ for line in raw.splitlines()[1:]:
+  row=line.split(maxsplit=7)
+  if len(row) not in (7,8) or not re.fullmatch(rb'[0-9a-fA-F]+:',row[0]) or any(re.fullmatch(rb'[0-9a-fA-F]+',v) is None for v in row[1:6]) or not row[6].isdigit() or row[6] in seen:raise ValueError('table_row')
+  seen.add(row[6]);result.append(row)
+ return result
+def owned_row(row):return len(row)==8 and re.fullmatch(re.escape(control.encode())+rb'(\.[A-Za-z0-9]{16})?',row[7]) is not None
+def census():
+ names=os.listdir('/proc')
+ if len(names)>8192:raise ValueError('process_bound')
+ for name in names:
+  if not name.isdecimal() or int(name) in (os.getpid(),master['actor']['pid']):continue
+  path='/proc/'+name
+  try:
+   info=os.stat(path)
+   if info.st_uid!=os.getuid():continue
+   raw=Path(path+'/cmdline').read_bytes()
+   if len(raw)>1048576:raise ValueError('command_bound')
+   if control.encode() in raw or corr.encode() in raw.split(b'\0'):raise ValueError('client_present')
+  except FileNotFoundError:
+   if os.path.lexists(path):raise ValueError('process_race')
+def snapshot():
+ guards();table=rows();present=actor_present();socket_present=os.path.lexists(control)
+ if not present and not socket_present:
+  if any(owned_row(r) for r in table):raise ValueError('listener_present')
+  census();guards();return {'state':'ended','gatewayBoot':boot,'correlationId':corr,'independentAbsence':True}
+ if not present or not socket_present or generation(os.lstat(control))!=master['socket']:raise ValueError('partial')
+ matches=[r for r in table if owned_row(r)]
+ if len(matches)!=1 or matches[0][6].decode()!=master['listenerInode'] or matches[0][3:6]!=[b'00010000',b'0001',b'01']:raise ValueError('listener')
+ fds=os.listdir('/proc/%d/fd'%master['actor']['pid'])
+ if len(fds)>256:raise ValueError('fd_bound')
+ inodes=set()
+ for name in fds:
+  link=os.readlink('/proc/%d/fd/%s'%(master['actor']['pid'],name));match=re.fullmatch(r'socket:\[([0-9]+)\]',link)
+  if match:inodes.add(match[1].encode())
+ unix={r[6] for r in table}&inodes
+ if unix!={master['listenerInode'].encode()}:raise ValueError('mux_client_active')
+ tcp=set()
+ for path in ('/proc/net/tcp','/proc/net/tcp6'):
+  raw=proc_bytes(path)
+  if not raw.endswith(b'\n') or b'local_address' not in raw.splitlines()[0]:raise ValueError('tcp_table')
+  for line in raw.splitlines()[1:]:
+   row=line.split()
+   if len(row)<10 or not row[9].isdigit():raise ValueError('tcp_row')
+   if row[9] in inodes:
+    if row[3]!=b'01':raise ValueError('forwarding_socket')
+    tcp.add(row[9])
+ if len(tcp)!=1 or inodes!=unix|tcp:raise ValueError('unexplained_socket')
+ census();guards()
+ if not actor_present() or generation(os.lstat(control))!=master['socket']:raise ValueError('closing')
+ return {'state':'ready','gatewayBoot':boot,'correlationId':corr,'unixListenerOnly':True,'socketInodes':sorted(x.decode() for x in inodes)}
+first=snapshot();second=snapshot()
+if first!=second:raise ValueError('snapshot_changed')
+if request['action']=='retire' and first['state']=='ready':
+ operation='/tmp/vpn-retire-'+corr
+ os.mkdir(operation,0o700)
+ parent_fd=os.open('/tmp',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ os.fsync(parent_fd);os.close(parent_fd)
+ retirement_directory=(operation,[getattr(os.lstat(operation),k) for k in ('st_dev','st_ino','st_mode','st_uid','st_gid')])
+ fd=os.open(operation+'/intent.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w') as f:json.dump(request,f,sort_keys=True);f.flush();os.fsync(f.fileno())
+ directory_fd=os.open(operation,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ os.fsync(directory_fd)
+ if json.dumps(pin(operation+'/intent.json'),sort_keys=True)!=json.dumps(request,sort_keys=True):raise ValueError('retirement_intent_changed')
+ if snapshot()!=first:raise ValueError('exit_boundary_changed')
+ command=['ssh']+(['-F',request['config']] if request['config'] else [])+['-S',control,'-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-O','exit',request['profile']]
+ capture=inner(command,5)
+ fd=os.open(operation+'/exit.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ saved={k:v for k,v in capture.items() if k not in ('stdout','stderr')};saved.update(stdoutBase64=base64.b64encode(capture['stdout']).decode(),stderrBase64=base64.b64encode(capture['stderr']).decode())
+ with os.fdopen(fd,'w') as f:json.dump(saved,f,sort_keys=True);f.flush();os.fsync(f.fileno())
+ if not capture['complete'] or capture['returnCode']!=0:raise ValueError('exit_unknown')
+ deadline=time.monotonic()+3
+ while time.monotonic()<deadline:
+  if not os.path.lexists(control) and not os.path.lexists('/proc/'+str(master['actor']['pid'])):break
+  time.sleep(.02)
+ final=snapshot()
+ if final['state']!='ended':raise ValueError('absence_unknown')
+ final['exitCapture']=saved;first=final
+guards();print(json.dumps(first,sort_keys=True))
+'''
+
+
+def _remote_program():
+    # These are the current reviewed provider's complete route guards and
+    # binary child collector. No historical module top-level is executed.
+    prefix = "import base64,hashlib,json,os,re,stat,subprocess,sys,time,pwd,selectors\nfrom pathlib import Path\n_SOCKET_CAPTURE_BYTES=4096\n"
+    pairs = "def reject_pairs(pairs):\n value={}\n for key,item in pairs:\n  if key in value:raise ValueError('duplicate')\n  value[key]=item\n return value\n"
+    return prefix + channel._guard_program + channel._inner_source + pairs + _PROBE
+
+
+def _capture(output, name, capture):
+    for stream in ("stdout", "stderr"):
+        _write(output, name + "." + stream, capture[stream])
+    _write(output, name + ".json", _json({key: value for key, value in capture.items() if key not in ("stdout", "stderr")}))
+
+
+def _source_view(output, capsules):
+    view = output.path / "source-view"
+    view.mkdir(mode=0o700)
+    with private.Directory(view) as directory:
+        for name, part in capsules.items():
+            if name != "remote":
+                _write(directory, name, part.body)
+    expected = {str(view / name): part.digest for name, part in capsules.items()
+                if name not in ("remote", "mcp_server.py")}
+    return view, expected
+
+
+@contextmanager
+def _claim_exit(output, operation, correlation=CORRELATION):
+    # A different UUID cannot replay an uncertain prior exit for this channel.
+    _profile(correlation)
+    with private.Directory(output.path.parent) as group:
+        _write(group, correlation + ".exit-intent.json", _json({"operationId": operation,
+            "correlationId": correlation, "action": "single-owned-mux-exit", "replayAllowed": False}))
+        with private.Snapshot(group, correlation + ".exit-intent.json") as claim:
+            claim.guard()
+            yield claim
+            claim.guard()
+
+
+def _probe(context, operation, action):
+    root, value, ready, current, output, _, guard, _ = context
+    target = current.config.hosts["archlinux"]
+    gateway = transport.connection_host(current.config, target.gateway)
+    prefix, endpoint = direct.outer_prefix(current.config, gateway)
+    source = _remote_program()
+    argv = [*prefix, *direct.OUTER_OPTIONS, "-T", "-o", "PermitLocalCommand=no", "-o", "ClearAllForwardings=yes", "-o", "UpdateHostKeys=no", endpoint,
+            shlex.join(("python3", "-I", "-B", "-c", source))]
+    sizes = transport.argv_byte_sizes(argv)
+    whole, maximum = sum(size + 1 for size in sizes), max(sizes)
+    if whole > 60000 or maximum > 60000:
+        raise ValueError("retirement_command_bound")
+    correlation = ready["correlationId"]
+    _profile(correlation)
+    payload = _json({"operationId": operation, "action": action, "ready": ready,
+                     "sourceSha256": value["sourceSha256"], "config": str(target.remote_config_file or ""), "profile": target.remote_host_alias})
+    guard(); _write(output, "probe-request.json", payload)
+    _write(output, "submission-intent.json", _json({"operationId": operation, "correlationId": correlation,
+        "action": action, "programmeSha256": _sha(source.encode()), "helperSha256": _LOADED_SHA,
+        "loaderSha256": loader._LOADED_SHA, "argvSha256": _sha(_json(argv)),
+        "wholeArgvBytes": whole, "maxArgumentBytes": maximum, "limitBytes": 60000,
+        "requestSha256": _sha(payload), "replayAllowed": False}))
+    guard()
+    with private.Snapshot(output, "probe-request.json") as request_held, private.Snapshot(output, "submission-intent.json") as submission:
+        request_held.guard(); submission.guard(); guard()
+        capture = channel._collect(argv, payload, 30)
+        _capture(output, "probe", capture); guard(); request_held.guard(); submission.guard()
+    if not capture["complete"] or capture["returnCode"] != 0 or capture["stderr"]:
+        raise ValueError("retirement_probe_unknown")
+    result = _parse(capture["stdout"])
+    if result.get("correlationId") != correlation or result.get("state") not in ("ready", "ended"):
+        raise ValueError("retirement_probe_binding")
+    return result
+
+
+def _publish_ended(context):
+    root, _, ready, _, output, capsules, guard, release_inventory = context
+    view, expected = _source_view(output, capsules)
+    guard()
+    with closing(loader.SourceSession(view, "ssh_direct_nested_channel", expected_sources=expected)) as session:
+        captures = []
+        release_inventory()
+        result = session.module.status(root, "archlinux", ready["correlationId"], _private_capture=captures.append)
+        for index, capture in enumerate(captures):
+            _capture(output, "original-status-" + str(index), capture)
+        if result.get("state") != "ended":
+            raise ValueError("retirement_original_status_not_ended")
+        session.guard(); guard()
+        _write(output, "source-view.json", _json({"expectedSources": expected,
+            "heldSources": {name: {"sha256": _sha(raw), "realGeneration": list(session.held.files[name][1])}
+                            for name, raw in ((path, data) for path, data in session.cache.values())},
+            "historicalMcpExecutionAllowed": False}))
+    return result
+
+
+def observe_original(root, host, correlation, operation):
+    """Fixed readonly native observation; never creates or adopts READY."""
+    with _original(root, host, correlation, operation) as context:
+        result = _probe(context, operation, "observe")
+        if result.get("state") == "ended" and result.get("independentAbsence") is True:
+            result["originalStatus"] = _publish_ended(context)
+        _write(context[4], "result.json", _json(result))
+        return result
+
+
+def retire_owned(root, host, correlation, operation):
+    """One fixed owned exit; any existing operation refuses before transport."""
+    with _original(root, host, correlation, operation) as context:
+        with _claim_exit(context[4], operation, correlation) as claim:
+            claim.guard()
+            result = _probe(context, operation, "retire")
+            claim.guard()
+            if result.get("state") != "ended" or result.get("independentAbsence") is not True:
+                raise ValueError("retirement_absence_unproved")
+            ended = _publish_ended(context)
+            _write(context[4], "result.json", _json({"native": result, "originalStatus": ended, "replayAllowed": False}))
+            claim.guard()
+            return ended

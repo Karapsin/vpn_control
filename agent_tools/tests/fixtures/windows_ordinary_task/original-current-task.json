@@ -1,0 +1,96 @@
+{
+  "files": [
+    {
+      "path": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\task-before.json",
+      "present": false
+    },
+    {
+      "path": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\task-start-intent.json",
+      "present": false
+    },
+    {
+      "path": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\task-terminal.json",
+      "present": false
+    },
+    {
+      "path": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\task-started.json",
+      "present": false
+    },
+    {
+      "path": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\child-started.json",
+      "present": false
+    },
+    {
+      "path": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\pending.json",
+      "present": false
+    },
+    {
+      "path": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\failure.json",
+      "present": false
+    },
+    {
+      "path": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\result.json",
+      "present": false
+    },
+    {
+      "path": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\child.stdout",
+      "present": false
+    },
+    {
+      "path": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\child.stderr",
+      "present": false
+    },
+    {
+      "path": "C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\task-before.json",
+      "present": false
+    },
+    {
+      "path": "C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\task-start-intent.json",
+      "present": false
+    },
+    {
+      "path": "C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\task-terminal.json",
+      "present": false
+    },
+    {
+      "path": "C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\task-started.json",
+      "present": false
+    },
+    {
+      "path": "C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\child-started.json",
+      "present": false
+    },
+    {
+      "path": "C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\pending.json",
+      "present": false
+    },
+    {
+      "path": "C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\failure.json",
+      "present": false
+    },
+    {
+      "path": "C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\result.json",
+      "present": false
+    },
+    {
+      "path": "C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\child.stdout",
+      "present": false
+    },
+    {
+      "path": "C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\child.stderr",
+      "present": false
+    }
+  ],
+  "lastRunTime": "1999-11-30T00:00:00.0000000+00:00",
+  "lastTaskResult": 267011,
+  "matchingSavedTaskProcesses": [],
+  "numberOfMissedRuns": 0,
+  "operationId": "d907f7a0-725b-40f1-8bf8-d9c76439e33a",
+  "principal": "S-1-5-18",
+  "productOperation": false,
+  "readOnly": true,
+  "state": "observed",
+  "taskName": "VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a",
+  "taskState": "Ready",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <URI>\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>S-1-5-21-4099058025-2437077614-260217637-1001</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers />\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command>C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe</Command>\r\n      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\\ordinary.ps1 -ExpectedSourceSha256 4753579339552216c22b8e5ca3a5af34659f0fd679c5bc16379766ffda382795</Arguments>\r\n      <WorkingDirectory>C:\\Users\\winparityUser\\AppData\\Local\\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a</WorkingDirectory>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+}

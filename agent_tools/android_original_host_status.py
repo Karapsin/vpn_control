@@ -143,7 +143,7 @@ def observe_original(root, intent):
         for name, data in custody.raw.items():
             _write(output_directory, 'final-' + name + '.private', bytes(data))
         _write(output_directory, 'stream-digests.private.json', {name: {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for name, data in custody.raw.items()})
-        if (not initial['complete'] or initial['overflow'] or initial['sendError'] or
+        if (not initial['complete'] or initial['timeout'] or initial['overflow'] or initial['sendError'] or initial['captureErrors'] or
                 initial['returnCode'] != 0 or custody.raw['stderr']):
             raise ValueError('original_host_capture_unknown')
         phase = 'decode'

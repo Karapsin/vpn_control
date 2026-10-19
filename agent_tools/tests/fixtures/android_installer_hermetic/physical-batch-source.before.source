@@ -1,0 +1,112 @@
+def _physical_batch_source(correlation,abi):
+    """Fixed shell catalogue; no caller command, guest path or timeout selector.
+
+    Acquired-parent authority uses the approved single shell-UID2000 operator
+    model. It does not promise protection from a concurrent authorized UID2000
+    writer before directory acquisition. Descriptor/name closure starts at cd.
+    """
+    if (str(uuid.UUID(correlation)) != correlation or type(abi) is not dict or
+            abi != _physical_abi_parse(abi.get('calibrationRaw'), abi.get('calibrationCorrelationId'), abi.get('guestBootId'))):
+        raise ValueError('component_guard_batch_abi_unknown')
+    opening='''set -eu
+umask 077
+test "$(/system/bin/toybox id -u)" = 2000
+guard_utilities() {
+ test "$(/system/bin/toybox cat /proc/sys/kernel/random/boot_id)" = BOOT
+ test "$(/system/bin/toybox readlink /proc/$$/exe)" = SHELLPATH
+ test "$(/system/bin/toybox readlink /proc/self/exe)" = /system/bin/toybox
+ test -f SHELLPATH && test ! -L SHELLPATH
+ test -f /system/bin/toybox && test ! -L /system/bin/toybox
+ case SHKIND in
+  regular) test ! -L /system/bin/sh;;
+  symlink) test -L /system/bin/sh && test "$(/system/bin/toybox readlink /system/bin/sh)" = SHTARGET;;
+  *) exit 91;;
+ esac
+ test "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /system/bin/sh)" = NAMEDGEN
+ test "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' SHELLPATH)" = SHELLGEN
+ test "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /system/bin/toybox)" = TOYGEN
+ test "$(/system/bin/toybox sha256sum /system/bin/toybox)" = TOYHASH
+ test "$(/system/bin/toybox sha256sum SHELLPATH)" = SHHASH
+}
+guard_utilities
+p=__VC_SPOOL__
+/system/bin/toybox mkdir "$p"
+test ! -L "$p"
+cd "$p"
+parent=$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g' .)
+test "$(/system/bin/toybox stat -c '%a:%u:%g' .)" = '700:2000:2000'
+guard_parent() {
+ test ! -L "$p"
+ test "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g' .)" = "$parent"
+ test "$(/system/bin/toybox stat -c '%d:%i:%f:%u:%g' "$p")" = "$parent"
+}
+generation() { /system/bin/toybox stat -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' "$1"; }
+guard_file() {
+ test ! -L "$1" && test -f "$1"
+ test "$(/system/bin/toybox stat -c '%a:%u:%g:%h' "$1")" = '600:2000:2000:1'
+}
+run() {
+ n=$1; shift
+ guard_parent
+ set -C
+ exec 4>"$n.o"
+ exec 5>"$n.e"
+ set +C
+ guard_file "$n.o"; guard_file "$n.e"
+ test "$(/system/bin/toybox stat -L -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /proc/$$/fd/4 4>&4)" = "$(generation "$n.o")"
+ test "$(/system/bin/toybox stat -L -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /proc/$$/fd/5 5>&5)" = "$(generation "$n.e")"
+ set +e
+ (ulimit -f 32; /system/bin/toybox timeout -s KILL 20 "$@" 4>&4 5>&5 >&4 2>&5)
+ rc=$?
+ set -e
+ test "$(/system/bin/toybox stat -L -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /proc/$$/fd/4 4>&4)" = "$(generation "$n.o")"
+ test "$(/system/bin/toybox stat -L -c '%d:%i:%f:%u:%g:%h:%s:%y:%z' /proc/$$/fd/5 5>&5)" = "$(generation "$n.e")"
+ exec 4>&-; exec 5>&-
+ guard_parent; guard_file "$n.o"; guard_file "$n.e"
+ og=$(generation "$n.o"); eg=$(generation "$n.e")
+ os=$(/system/bin/toybox stat -c '%s' "$n.o"); es=$(/system/bin/toybox stat -c '%s' "$n.e")
+ test "$((os+es))" -le 16384
+ oh=$(printf '%s' "$og" | /system/bin/toybox sha256sum); oh=${oh%% *}
+ eh=$(printf '%s' "$eg" | /system/bin/toybox sha256sum); eh=${eh%% *}
+ case "$n" in GENERATION_SAVE esac
+ printf 'FRAME\t%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "$rc" "$os" "$es" "$oh" "$eh"
+ /system/bin/toybox base64 -w 0 "$n.o"; printf '\n'
+ /system/bin/toybox base64 -w 0 "$n.e"; printf '\n'
+ test "$(generation "$n.o")" = "$og" && test "$(generation "$n.e")" = "$eg"
+ guard_parent
+}
+printf 'PHYSICAL-1 CORRELATION\n'
+'''
+    opening=opening.replace('BOOT',shlex.quote(abi['guestBootId'])).replace('TOYHASH',shlex.quote(abi['toyboxSha256']+'  /system/bin/toybox')).replace('SHHASH',shlex.quote(abi['shellSha256']+'  '+abi['shellPath'])).replace('__VC_SPOOL__',shlex.quote('/data/local/tmp/vpn-control-physical-'+correlation)).replace('CORRELATION',correlation)
+    opening = (opening.replace('SHELLPATH', shlex.quote(abi['shellPath']))
+        .replace('SHKIND', shlex.quote(abi['namedShellKind']))
+        .replace('SHTARGET', shlex.quote(abi['namedShellTarget']))
+        .replace('NAMEDGEN', shlex.quote(abi['utilityGenerations']['NAMED-SH-GENERATION']))
+        .replace('SHELLGEN', shlex.quote(abi['utilityGenerations']['SHELL-GENERATION']))
+        .replace('TOYGEN', shlex.quote(abi['utilityGenerations']['TOYBOX-GENERATION'])))
+    lines=[]
+    commands=[['/system/bin/getprop',prop] for _,prop in _PROPERTIES]+[['/system/bin/toybox','id','-u'],['/system/bin/toybox','cat','/proc/sys/kernel/random/boot_id'],['/system/bin/sh','-c',_PROCESS_READ.replace('pidof ', '/system/bin/toybox pidof ').replace('cat ', '/system/bin/toybox cat ')],['/system/bin/pm','path','com.kardinal.vpncontrol']]
+    for n,words in enumerate(commands,1):lines.append('run '+str(n)+' '+' '.join(shlex.quote(word) for word in words))
+    lines.append('''package=$(/system/bin/toybox cat 9.o)
+case "$package" in package:/data/app/*/base.apk) ;; *) exit 92;; esac
+package=${package#package:}
+case "$package" in *[!-A-Za-z0-9_./+~=]*) exit 92;; esac
+case "/$package/" in */../*) exit 92;; esac
+run 10 /system/bin/toybox sha256sum "$package"
+guard_parent
+test "$(/system/bin/toybox find . -mindepth 1 -maxdepth 1 -type f | /system/bin/toybox wc -l)" -eq 20
+for n in 1 2 3 4 5 6 7 8 9 10; do
+ guard_parent; guard_file "$n.o"; guard_file "$n.e"
+ case "$n" in GENERATION_CHECK esac
+ /system/bin/toybox rm "$n.o" "$n.e"
+done
+guard_parent
+cd /data/local/tmp
+/system/bin/toybox rmdir "$p"
+guard_utilities
+printf 'EOF CORRELATION CLEANED\n'
+'''.replace('CORRELATION',correlation))
+    result=opening+'\n'.join(lines)
+    result=result.replace('GENERATION_SAVE',' '.join(str(n)+') og'+str(n)+'=$og; eg'+str(n)+'=$eg;;' for n in range(1,11)))
+    result=result.replace('GENERATION_CHECK',' '.join(str(n)+') test "$(generation "$n.o")" = "$og'+str(n)+'" && test "$(generation "$n.e")" = "$eg'+str(n)+'";;' for n in range(1,11)))
+    return result

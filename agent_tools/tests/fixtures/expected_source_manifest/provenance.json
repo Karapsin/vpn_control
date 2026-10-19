@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/source_module_loader.py",
+  "sourceSha256": "2e1265aefe4f9ebc4822e936c1fb92775acd296c6385f8df1f1772ad4dcfa8a8",
+  "sourceBytes": 18710,
+  "causalBoundary": "authentic source loader before expected-manifest admission; complete imported/primitive top-level source execution"
+}

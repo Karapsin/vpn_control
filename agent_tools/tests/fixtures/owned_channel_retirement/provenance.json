@@ -1,0 +1,16 @@
+{
+  "correlationId": "fbac0defae0349caa8a9f445cc7278cc",
+  "historicalCodeExecutionAllowed": false,
+  "records": {
+    "intent": {
+      "bytes": 2202,
+      "role": "authentic original intent; data only, no private configuration bytes",
+      "sha256": "f1c7a0e00967054ccd50ea95100d604442df6852be87386900bec723c81cd469"
+    },
+    "ready": {
+      "bytes": 675,
+      "role": "authentic original ready; data only, no private configuration bytes",
+      "sha256": "c9fd5b249f01eeaa93b6b1f7fb84c0455075013773414560a68c4e1164bce8ec"
+    }
+  }
+}

@@ -1,0 +1,244 @@
+"""PRIVATE one retained UAC owner; stdin supplies finite opened-image controls.
+
+Derived from the authentic dbbf DIRECT/0d2a MCP observers. No launch defaults,
+new MCP action, automatic input retry, cleanup key, VM action or timeout reset.
+"""
+from pathlib import Path
+import asyncio,hashlib,io,json,os,re,stat,sys,time,types,uuid
+ROOT=Path(__file__).resolve().parents[5]
+sys.path.insert(0,str(ROOT))
+SHA=lambda raw:hashlib.sha256(raw).hexdigest()
+
+def need(value,reason):
+    if not value:raise ValueError(reason)
+
+def pairs(rows):
+    value={}
+    for key,item in rows:
+        need(key not in value,'duplicate_json_field');value[key]=item
+    return value
+
+class HeldSources:
+    def __init__(self):self.files=[]
+    @staticmethod
+    def generation(s):return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+    def read(self,path,digest):
+        path=Path(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        row=self.generation(os.fstat(fd));self.files.append((fd,path,row))
+        need(stat.S_ISREG(row[2])and row[3]==os.getuid()and row[5]==1 and 0<row[6]<=8*1024**2,'operator_source_identity')
+        raw=os.pread(fd,8*1024**2+1,0)
+        need(len(raw)==row[6]and SHA(raw)==digest,'operator_source_hash');self.guard();return raw
+    def guard(self):
+        for fd,path,row in self.files:
+            need(self.generation(os.fstat(fd))==row and self.generation(os.lstat(path))==row,'operator_source_changed')
+    def module(self,path,digest,name,peer_loader=None):
+        raw=self.read(path,digest)
+        if peer_loader is not None:module=peer_loader(path,raw,name)
+        else:
+            module=types.ModuleType(name);module.__file__=str(path);sys.modules[name]=module
+            exec(compile(raw,str(path),'exec'),module.__dict__)
+        self.guard()
+        need(sys.modules.get(name)is module,'operator_module_registration');return module
+    def close(self):
+        self.guard()
+        for fd,path,row in reversed(self.files):os.close(fd)
+        self.files=[]
+
+class Outer:
+    def __init__(self,route,manifest_path,digest,*,input_stream=None,output_stream=None,peers=None):
+        self.route=route;self.input=input_stream or sys.stdin;self.output=output_stream or sys.stdout;self.peers=peers
+        self.held=HeldSources();self.streams={};self.jobs={};self.sequence=0;self.started=False;self.closed=False;self.latched=None;self.scope=None
+        need(route in ('direct','mcp'),'explicit_uac_route')
+        manifest=json.loads(self.held.read(manifest_path,digest),object_pairs_hook=pairs);self.manifest=manifest
+        required={'schemaVersion','sourceRoot','host','targetSha','deploymentId','visualBinding','ownerRequest','ownerConfig','sourcePins','template','prefixReader','client','server','externalHeldLoader','outputDirectory'}
+        need(set(manifest)==required and manifest['schemaVersion']==1,'uac_manifest_fields')
+        need(all(manifest[key]is not None for key in ('targetSha','deploymentId','visualBinding','ownerRequest','ownerConfig','externalHeldLoader','outputDirectory')),'fresh_visual_plan_unbound')
+        need(Path(manifest['sourceRoot']).resolve()==ROOT and re.fullmatch('[0-9a-f]{40}',manifest['targetSha']),'uac_source_root_sha')
+        self.ledger_root=ROOT if peers is None else peers.ledger_root
+        self.host=manifest['host'];config=manifest['ownerConfig'];self.config=config
+        need(config['targetSha']==manifest['targetSha']and config['spec']['deploymentId']==manifest['deploymentId']and config['setup']['purpose']=='windowsUacVisual','uac_original_visual_config')
+        need(config['spec']['deploymentId']!='d493a373-1d2c-4ab0-bfd4-e93575019dce','product_guest_cannot_be_visual')
+        for pin in manifest['sourcePins']:self.held.read(pin['path'],pin['sha256'])
+        for pin in (manifest['externalHeldLoader'],):
+            self.held.read(pin['path'],pin['sha256']);self.held.read(pin['qualificationPath'],pin['qualificationSha256'])
+        pin=manifest['ownerRequest'];self.owner_request=json.loads(self.held.read(pin['path'],pin['sha256']),object_pairs_hook=pairs)
+        source=self.held.read(pin['sourcePath'],pin['sourceSha256'])
+        need(self.owner_request['program']['source'].encode()==source and self.owner_request['operationId']==config['operationId'],'operator_request_source_join')
+        self.owner_id=self.owner_request['operationId']
+        self.out=Path(manifest['outputDirectory']);self.out.mkdir(mode=0o700)
+        self.template=self.held.module(manifest['template']['path'],manifest['template']['sha256'],'_uac_outer_pinned_template_'+uuid.uuid4().hex)
+        self.prefix=self.held.module(manifest['prefixReader']['path'],manifest['prefixReader']['sha256'],'_uac_outer_pinned_prefix_'+uuid.uuid4().hex)
+        self.client=None;self.api=None;self.client_sequence=0
+        if route=='mcp':
+            self.held.read(manifest['server']['path'],manifest['server']['sha256'])
+            loader=None if peers is None else peers.load_mcp_client
+            self.client=self.held.module(manifest['client']['path'],manifest['client']['sha256'],'_uac_outer_pinned_sdk_'+uuid.uuid4().hex,loader)
+        else:
+            if peers is not None:self.api=peers.direct_api
+            else:
+                from agent_tools import source_module_loader
+                self.scope=source_module_loader.request_scope(ROOT/'agent_tools');self.scope.__enter__()
+                self.api=source_module_loader.adapter(ROOT/'agent_tools','ssh_program_execution')
+        self.save('intent.json',{'operationId':self.owner_id,'deploymentId':manifest['deploymentId'],'route':route,'targetSha':manifest['targetSha'],'sourceClosing':False,'automaticReplay':False})
+    def save(self,name,value):
+        raw=value if type(value)is bytes else(json.dumps(value,sort_keys=True,ensure_ascii=False)+'\n').encode()
+        fd=os.open(self.out/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        try:
+            at=0
+            while at<len(raw):
+                count=os.write(fd,raw[at:]);need(count>0,'operator_receipt_write');at+=count
+            os.fsync(fd)
+        finally:os.close(fd)
+    def emit(self,value):
+        self.output.write(json.dumps(value,sort_keys=True)+'\n');self.output.flush()
+    def call(self,action,request,tag):
+        self.held.guard()
+        if self.route=='direct':
+            if action=='program-start':
+                admission=self.api.admit_start(ROOT,self.host,request);need(admission=={'ok':True},'original_admission_refused')
+                result=self.api.start(ROOT,self.host,request,source_context=self.api._session)
+            else:result=self.api.collect(ROOT,self.host,request)
+        else:
+            self.client_sequence+=1;session='rpc-'+str(self.client_sequence).zfill(5)+'-'+action
+            name=tag+'.request.json';self.save(name,request)
+            arguments=types.SimpleNamespace(server_sha256=self.manifest['server']['sha256'],request_file=str(self.out/name),action=action,host=self.host,output_root=str(self.out),session=session)
+            code=asyncio.run(self.client.main(arguments))
+            record=json.loads((self.out/session/'client-result.json').read_bytes());self.save(session+'.client-result.json',record)
+            need(code==0 and record.get('state')=='rpc_returned'and record.get('originalServerTerminalClosed')is True and record.get('forwardedToolCalls')==1 and record.get('toolError')is not True,'original_mcp_call_unqualified')
+            response=json.loads((self.out/session/'call-result.json').read_bytes());result=response.get('structuredContent')
+            need(type(result)is dict,'original_mcp_result_fields')
+        self.held.guard();return result
+    def start_once(self,request,label):
+        operation=request['operationId'];need(operation not in self.jobs,'original_start_already_submitted')
+        self.jobs[operation]={'request':request,'label':label,'terminal':None,'records':[],'prefix':b''}
+        self.save(label+'.start-intent.json',{'operationId':operation,'request':request,'automaticReplay':False})
+        self.started=True  # a lost return can never authorize another start
+        value=self.call('program-start',request,label+'-start');self.save(label+'.initial.json',value)
+        need(value.get('state')in ('pending','terminal'),'original_start_unknown')
+        return self.jobs[operation]
+    def terminal_bytes(self,reader,pin,path):
+        # Terminal collection follows the authentic stable-file/raw-hash path,
+        # using the very same FD held during pending observations.
+        need(type(pin)is dict and set(pin)=={'bytes','receivedBytes','retainedSha256','receivedSha256','eof'} and pin['eof']is True,'original_terminal_stream_schema')
+        count=pin['bytes']
+        need(type(count)is int and 0<=count<=16*1024**2 and count==pin['receivedBytes'],'original_terminal_stream_count')
+        reader._check()
+        before=os.fstat(reader._stream_fd)
+        need(before.st_size==count,'original_terminal_stream_size')
+        raw=os.pread(reader._stream_fd,count+1,0)
+        need(len(raw)==count and SHA(raw)==pin['retainedSha256']==pin['receivedSha256'],'original_terminal_stream_hash')
+        need(HeldSources.generation(os.fstat(reader._stream_fd))==HeldSources.generation(before)==HeldSources.generation(os.lstat(path)),'original_terminal_stream_changed')
+        reader._check();return raw
+    def observe(self,job):
+        self.sequence+=1;tag='observe-'+str(self.sequence).zfill(6)
+        value=self.call('program-collect',{'operationId':job['request']['operationId']},tag)
+        self.save(tag+'.json',value)
+        need(value.get('state')in ('pending','terminal'),'original_operation_unknown')
+        need(value.get('operationId')==job['request']['operationId'],'original_observation_identity')
+        capture=value.get('capture');pins=value.get('streams')
+        if capture is None and pins is None:return value
+        need(type(capture)is dict and not capture.get('overflow',False)and capture.get('sendError')is None,'original_capture_unqualified')
+        need(type(pins)is dict and set(pins)=={'stdout','stderr'},'original_stream_schema')
+        directory=self.ledger_root/'.rag_index/ssh-program-execution'/job['request']['operationId']
+        if value['state']=='terminal':
+            need(value.get('exitCode')==0 and capture.get('complete')is True and capture.get('eof')=={'stdout':True,'stderr':True},'original_outer_terminal_not_success')
+        raw={}
+        for name in ('stdout','stderr'):
+            key=(job['request']['operationId'],name)
+            if key not in self.streams:self.streams[key]=self.prefix.HeldPrefix(directory,name+'.private')
+            raw[name]=(self.terminal_bytes(self.streams[key],pins[name],directory/(name+'.private'))
+                       if pins[name].get('eof')is True else self.streams[key].read(pins[name]))
+        need(not raw['stderr'],'original_outer_stderr_nonempty')
+        need(raw['stdout'].startswith(job['prefix']),'original_stream_prefix_changed')
+        if raw['stdout']!=job['prefix']:
+            self.save(tag+'.stdout.prefix.raw',raw['stdout']);job['prefix']=raw['stdout']
+        records,tail=self.prefix.parse_complete_lines(raw['stdout'])
+        need(records[:len(job['records'])]==job['records'],'original_record_prefix_changed');job['records']=records
+        if value['state']=='terminal':
+            need(value.get('exitCode')==0 and capture.get('complete')is True and capture.get('eof')=={'stdout':True,'stderr':True}and not tail,'original_outer_terminal_not_success')
+            need(all(pin.get('eof')is True for pin in pins.values()),'original_stream_eof_missing')
+            closed_raw=(directory/'owner-closed.json').read_bytes();closed=json.loads(closed_raw,object_pairs_hook=pairs)
+            terminal_raw=(directory/'terminal.json').read_bytes()
+            need(closed=={'operationId':job['request']['operationId'],'terminalSha256':SHA(terminal_raw),'sourceClosing':True},'original_owner_source_not_closed')
+            self.save(tag+'.owner-closed.json',closed);job['terminal']=value
+        return value
+    def wait_for(self,job,predicate,seconds=120):
+        deadline=time.monotonic()+seconds
+        while time.monotonic()<deadline:
+            self.observe(job)
+            if predicate(job):return
+            need(job['terminal']is None,'original_owner_closed_before_expected_state')
+            time.sleep(.2)
+        raise TimeoutError('original_observation_pending_no_replay')
+    def control(self,request):
+        need(request.get('operationId')==self.owner_id and request.get('kind')in ('observe','decision','status'),'finite_original_control')
+        source=self.template.render_control(self.owner_id,self.remote_owner['controlSocket'],request,self.remote_owner['ownerActor'])
+        owner=self.owner_request['program'];operation=str(uuid.uuid4())
+        control={'operationId':operation,'program':{'language':'python3','source':source,'args':[],'cwd':owner['cwd'],'targetContext':owner['targetContext']}}
+        job=self.start_once(control,'control-'+str(len(self.jobs)).zfill(4));self.wait_for(job,lambda item:item['terminal']is not None)
+        need(len(job['records'])==1,'original_control_reply_records');reply=job['records'][0]
+        if reply.get('state')=='refused':
+            self.emit({'state':'control-refused','reason':reply.get('reason'),'automaticReplay':False});return None
+        need(reply.get('state')=='observed','original_control_unknown')
+        result=reply['result'];need(result.get('operationId')==self.owner_id,'original_control_owner_identity')
+        self.emit({'state':'control-observed','result':result});return result
+    def park(self,error):
+        self.latched=error
+        self.reporting_errors=[]
+        try:self.save('original-unknown.json',{'errorClass':type(error).__name__,'reason':str(error),'originalOwnerOperationId':self.owner_id,'operations':list(self.jobs),'automaticReplay':False,'automaticCleanup':False})
+        except BaseException as report_error:self.reporting_errors.append(report_error)
+        try:self.emit({'state':'unknown','reason':str(error),'operations':list(self.jobs),'automaticReplay':False,'statusOnly':True})
+        except BaseException as report_error:self.reporting_errors.append(report_error)
+        while True:
+            # Keep all source/raw-stream FDs and request scope alive. Only the
+            # original generic owners/journals may be observed; no new input.
+            try:time.sleep(1)
+            except BaseException:pass
+    def run(self):
+        try:
+            owner=self.start_once(self.owner_request,'owner')
+            self.wait_for(owner,lambda job:bool(job['records']))
+            record=owner['records'][0]
+            expected_socket=self.config['spec']['root']+'/uac-'+uuid.UUID(self.owner_id).hex+'/control.sock'
+            need(record.get('state')=='waiting-for-opened-review'and record.get('operationId')==self.owner_id and record.get('visualBinding')==self.manifest['visualBinding']and record.get('controlSocket')==expected_socket,'original_uac_owner_binding')
+            actor=record.get('ownerActor');need(type(actor)is dict and set(actor)=={'pid','startTicks'}and all(type(v)is int and v>0 for v in actor.values()),'original_uac_owner_actor')
+            self.remote_owner=record;self.emit(record)
+            while True:
+                line=self.input.readline(8193)
+                need(line and len(line.encode())<=8192 and line.endswith('\n'),'opened_control_input_unavailable')
+                self.observe(owner);need(owner['terminal']is None,'original_owner_closed_before_control')
+                request=json.loads(line,object_pairs_hook=pairs);result=self.control(request)
+                if result is None:continue
+                if result.get('operationTerminal')is True:
+                    need(result.get('stage')=='closed','original_uac_finish_stage');break
+            self.wait_for(owner,lambda job:job['terminal']is not None)
+            need(owner['records'][-1].get('state')=='closed'and owner['records'][-1].get('operationId')==self.owner_id and owner['records'][-1].get('retainedContextClosing')is True,'original_uac_inner_closure')
+            self.held.guard()
+            for reader in self.streams.values():reader.close_known(terminal=True)
+            self.save('observations-complete.json',{'state':'observations-complete','operationId':self.owner_id,'deploymentId':self.manifest['deploymentId'],'targetSha':self.manifest['targetSha'],'completeOuterSourceClosing':False,'upstreamTerminalAndLoaderClosureRequired':True,'nativeVisualVerdict':'opened-review-and58-scene-workflow-still-required'})
+            self.held.close();self.closed=True
+            if self.scope is not None:self.scope.__exit__(None,None,None);self.scope=None
+            self.emit({'state':'observations-complete','operationId':self.owner_id,'ownSourceDescriptorsClosed':True,'upstreamTerminalAndLoaderClosureRequired':True});return 0
+        except BaseException as error:
+            if self.started:self.park(error)
+            self.held.close()
+            if self.scope is not None:self.scope.__exit__(None,None,None);self.scope=None
+            raise
+
+def main(argv,*,input_stream=None,output_stream=None,peers=None):
+    need(len(argv)==3 and re.fullmatch('[0-9a-f]{64}',argv[2]),'explicit_reviewed_uac_manifest')
+    owner=Outer.__new__(Outer)
+    try:Outer.__init__(owner,argv[0],Path(argv[1]),argv[2],input_stream=input_stream,output_stream=output_stream,peers=peers)
+    except BaseException:
+        if getattr(owner,'scope',None)is not None:owner.scope.__exit__(None,None,None);owner.scope=None
+        if hasattr(owner,'held'):owner.held.close()
+        raise
+    return owner.run()
+
+if __name__=='__main__':
+    # The shared held loader passes exactly label + reviewed manifest digest.
+    # Return normally so its post-exec generation guard necessarily runs.
+    need(len(sys.argv)==3 and '@'in sys.argv[1],'explicit_held_loader_label')
+    route,manifest_path=sys.argv[1].split('@',1)
+    need(Path(manifest_path).is_absolute(),'absolute_reviewed_manifest')
+    main([route,manifest_path,sys.argv[2]])

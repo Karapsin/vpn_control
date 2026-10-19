@@ -1,0 +1,50 @@
+{
+  "correlationId": "315960df95134764a39cca602d36df76",
+  "helperBeforeSha256": "d7fbaad25c6d4c83467806ca642cc7b919f33f25b2204413342f7fef4b28da84",
+  "intentSha256": "cedefb1c54195c6be2988f9e5059933e8c3a76b9cb75e04adfedf5b3e28778bb",
+  "programRecords": {
+    "0178c308-1d41-490c-a390-1c0d42883e98": {
+      "intent.json": "271bd59634712a9ee0b7644f7e86294c2f135439ac3951370e17204d33ed7f9a",
+      "owner-closed.json": "ff2571c0dc15c55402e1197d39b4f7cb00265a26c8cb04843881addba321e694",
+      "owner.json": "3a60286fe103791b5672aac326fb9af9b9edaeec6e527eb0ecb223bac41d18f6",
+      "terminal.json": "7887543136577e3feb8d031ea7081733f6c33ce9b532a109cf775d107477f664"
+    },
+    "264686dc-c3bc-4afd-9eca-bf931a7bc1d6": {
+      "intent.json": "e22c347cb2ce0d2310699630354485c3484d492a30e835df91ff34702f7bd309",
+      "owner-closed.json": "5716686365d9e81ca6a5828cf28c9f2ff1a195d7c8e91621efb45187c545c3dc",
+      "owner.json": "2eb418d073d98c3046901188b1d3aec527e659f3f6e1e0926fd24833b921c29e",
+      "terminal.json": "7d65d3681956f5e68dd7b4466919546f1bb4f72712641b345f7febcec7d0afa5"
+    },
+    "48f55cb9-65af-49a3-aaae-5236d49fe8eb": {
+      "intent.json": "8e6a1798901f35f91ab0cb90c177032202b3d8824f44036bd7c0d8e24434b55e",
+      "owner-closed.json": "b8bfbb5011be918ed74bcea9094a6159baf5e32f8bf48f2fc7c5516043b8948a",
+      "owner.json": "b2ae3906c1ab30ebea65e57f7389b4f612f65be834bd4c3ccb8b3bf3ff4f80d6",
+      "terminal.json": "eb0be35ecd63d485f97c1fd1842341e804365c9705e1e1cadc7bc9c28c4a2a74"
+    },
+    "949ae643-8eda-4f19-8dba-5e4c17b2894e": {
+      "intent.json": "5a9a9f0adcfac71845349c6c8bb82e37ed391a3e81545f31ae05fd098e6c1b65",
+      "owner-closed.json": "b4f012d1f527b1d4356384cd6ec918f1f73b8b2571fa946e16573ca04e2db06d",
+      "owner.json": "6287211550115367d3c2b526763087999bd703a28847728cefa67c0a947483a4",
+      "terminal.json": "3514c15d3579909d3b0583844be78341c949605c9024ef5101342dd2ce9829f9"
+    },
+    "bc6ed15f-36ba-492a-88ac-13eaca58fa10": {
+      "intent.json": "19b5a52b58a4f3ebd6e70f0e2f4f665b44307e83af8fafa204c3b484f79d9f26",
+      "owner-closed.json": "b6ffff517704f4f0d5a3121e16d08df69aa22d115e74f2017f16c84818b51cde",
+      "owner.json": "5ddde551b4d6bc5f749f273de9e3f69d067eaad0dbcb7c33f2e13725fabc5011",
+      "terminal.json": "02e3c459e36162f54a67c04e629c3b49d2d8f3b38e1c9bdfcf8630f041f0d40d"
+    },
+    "fe53bef8-7d4e-4d26-93e2-92241a7f7f73": {
+      "intent.json": "1c77678df0bc684f98be853e155b077478782272e4f0efb0228aebf86ae9a561",
+      "owner-closed.json": "abbc8ce1d9777d354357b2f933f506a2e3df9fe50d016c939f2c3d49adccc31b",
+      "owner.json": "3ca7b76b6e1be2a54eb395f15f7aef53edb6445e659784b496df3f6ab08962f2",
+      "terminal.json": "9361952925fa799c960853f1389b666ac450a60d971b324b42e12578a253785b"
+    }
+  },
+  "readySha256": "7cc8478dfa90f8bd4ce9cbd72da505abda818a40f2f5f915406083df921c46a5",
+  "retirementHelperInChannelPins": false,
+  "scope": "Authentic315 testconnection; original oversizedbc6 UNKNOWN preserved; no no-child inference",
+  "sourcePaths": {
+    "intent": "/Users/karapsin_de/projects/vpn_control/.rag_index/ssh-direct-nested-channel/hosts/archlinux/315960df95134764a39cca602d36df76.intent.json",
+    "ready": "/Users/karapsin_de/projects/vpn_control/.rag_index/ssh-direct-nested-channel/hosts/archlinux/315960df95134764a39cca602d36df76.ready.json"
+  }
+}

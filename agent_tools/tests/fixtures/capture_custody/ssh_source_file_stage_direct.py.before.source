@@ -1,0 +1,276 @@
+"""Explicit DIRECT, stage-only file transport for the owned Arch fixture.
+
+No selected-channel fallback or remote caller execution is exposed. Original
+channel/job history is never modified. Complete bytes are saved before transfer.
+"""
+from __future__ import annotations
+import hashlib,json,os,re,selectors,select,stat,subprocess,threading,time
+from pathlib import Path
+from . import ssh_direct_nested_channel as direct,ssh_transport as transport
+from . import ssh_source_file_stage as files
+from . import android_qualified_cli_observation as capture_module
+from .android_qualified_cli_observation import OuterCustody
+
+_LOADED_SHA=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+_FILES_SHA=hashlib.sha256(Path(files.__file__).read_bytes()).hexdigest()
+_CAPTURE_SHA=hashlib.sha256(Path(capture_module.__file__).read_bytes()).hexdigest()
+
+# This loader runs only the hash-pinned gateway staging driver, not the supplied
+# caller. The gateway driver can only publish that caller's bytes on Arch.
+_LOADER_TEMPLATE='''import os,sys,stat,hashlib
+path,expected,size=sys.argv[1:4];size=int(size);sys.argv=['saved_gateway',*sys.argv[4:]]
+fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+try:
+ info=os.fstat(fd)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=__EXPECTED_OWNER__ or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1 or info.st_size!=size:raise ValueError('saved_driver_metadata')
+ raw=b''
+ while len(raw)<=size:
+  chunk=os.read(fd,min(65536,size+1-len(raw)))
+  if not chunk:break
+  raw+=chunk
+ if len(raw)!=size or hashlib.sha256(raw).hexdigest()!=expected:raise ValueError('saved_driver_hash')
+ scope={'__name__':'__main__','__file__':path,'_DECODED_SOURCE_SHA':expected}
+ try:exec(compile(raw.decode('utf-8','strict'),path,'exec'),scope)
+ finally:
+  after=os.fstat(fd);physical=os.stat(path,follow_symlinks=False)
+  if (physical.st_dev,physical.st_ino)!=(info.st_dev,info.st_ino) or (after.st_size,after.st_mtime_ns,after.st_ctime_ns)!=(info.st_size,info.st_mtime_ns,info.st_ctime_ns) or hashlib.sha256(os.pread(fd,size,0)).hexdigest()!=expected:raise ValueError('saved_driver_changed')
+finally:os.close(fd)
+'''
+
+def loader_program(expected_owner=None):
+    if expected_owner is not None and (type(expected_owner)is not int or not 0<=expected_owner<2**32):
+        raise ValueError('saved_driver_owner')
+    owner='os.geteuid()' if expected_owner is None else repr(expected_owner)
+    return _LOADER_TEMPLATE.replace('__EXPECTED_OWNER__',owner)
+
+LOADER=loader_program()
+
+class FileCapture(OuterCustody):
+    """Reuse complete two-stream collection; stream file input independently."""
+    def __init__(self,argv,*,capture_limit=65536):
+        if type(capture_limit)is not int or capture_limit not in (65536,16*1024**2):raise ValueError('file_capture_limit')
+        self.capture_limit=capture_limit
+        self.child=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE,bufsize=0)
+        self.selector=selectors.DefaultSelector()
+        self.raw={"stdout":bytearray(),"stderr":bytearray()}
+        self.counts={key:0 for key in self.raw};self.eof={key:False for key in self.raw}
+        self.overflow=False;self.timeout=False;self.closed=False;self.sendError=None
+        for name in self.raw:
+            fd=getattr(self.child,name).fileno();os.set_blocking(fd,False)
+            self.selector.register(fd,selectors.EVENT_READ,name)
+        os.set_blocking(self.child.stdin.fileno(),False)
+        self.writer_errors=[];self.writer=None
+
+    def step(self,seconds):
+        # File return has its own bounded byte budget. The inherited Android
+        # collector and all ordinary source-stage calls keep their old limits.
+        for key,_ in self.selector.select(seconds):
+            try:block=os.read(key.fd,4096)
+            except BlockingIOError:continue
+            if not block:self.eof[key.data]=True;self.selector.unregister(key.fd);continue
+            name=key.data;self.counts[name]+=len(block);left=self.capture_limit-len(self.raw[name])
+            self.raw[name].extend(block[:max(left,0)])
+            if self.counts[name]>self.capture_limit:self.overflow=True
+
+    def submit(self,payload):
+        if type(payload)is not bytes or not 0<len(payload)<=files.MAX_SOURCE_BYTES+4096:
+            raise ValueError('source_stage_payload_bound')
+        def write():
+            view=memoryview(payload);deadline=time.monotonic()+60
+            try:
+                while view:
+                    if time.monotonic()>=deadline:raise TimeoutError('source_writer_deadline')
+                    if self.child.poll()is not None:raise BrokenPipeError('source_writer_child_exited')
+                    if not select.select([],[self.child.stdin],[],.05)[1]:continue
+                    count=self.child.stdin.write(view[:files.CHUNK_BYTES])
+                    if count:view=view[count:]
+                self.child.stdin.flush()
+            except (OSError,ValueError,TimeoutError) as error:
+                self.writer_errors.append(type(error).__name__)
+            finally:self.child.stdin.close()
+        self.writer=threading.Thread(target=write,daemon=True);self.writer.start()
+
+
+def _retain(directory,name,value):
+    raw=value if type(value)is bytes else (json.dumps(value,sort_keys=True)+'\n').encode()
+    fd=os.open(directory/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    try:
+        view=memoryview(raw)
+        while view:
+            count=os.write(fd,view)
+            if count<=0:raise ValueError('source_stage_retention_write')
+            view=view[count:]
+        os.fsync(fd)
+    finally:os.close(fd)
+
+
+def _run(directory,argv,payload,label,*,file_output=False):
+    if type(file_output)is not bool:raise ValueError('file_capture_mode')
+    if len(os.fsencode(argv[-1]))>60000:raise ValueError('source_stage_command_bound')
+    custody=FileCapture(argv,capture_limit=16*1024**2) if file_output else FileCapture(argv)
+    try:
+        _retain(directory,label+'-accepted.json',{'pid':custody.child.pid,'parentPid':os.getpid(),
+                                               'commandBytes':len(os.fsencode(argv[-1]))})
+        custody.submit(payload);capture=custody.observe(60)
+        _retain(directory,label+'-observation.json',capture)
+    finally:
+        # Hold source through the original child's closure, including retention
+        # failures. Never signal or replace the original SSH process.
+        custody.finish_naturally()
+        if custody.writer is not None:custody.writer.join(1)
+    final=custody.snapshot()
+    _retain(directory,label+'-terminal.json',final)
+    for name,raw in custody.raw.items():_retain(directory,label+'-'+name+'.private',bytes(raw))
+    if (not capture['complete'] or capture['overflow'] or custody.writer.is_alive()
+            or custody.writer_errors or final['returnCode']!=0 or custody.raw['stderr']):
+        raise ValueError('source_stage_'+label+'_unverified')
+    return json.loads(bytes(custody.raw['stdout']))
+
+
+def _stage_path(value,correlation):
+    # The pinned authenticated receiver discovers its current temporary root.
+    # Validate the returned namespace; no caller-provided readiness is used.
+    root=value.get('temporaryRoot')
+    if type(root)is not str or not root.startswith('/') or any(c in root for c in ('\n','\r','\0')):
+        raise ValueError('source_stage_remote_root')
+    if any(p in ('.','..','') for p in root.split('/')[1:]):
+        raise ValueError('source_stage_remote_root')
+    return root+'/vpn-control-windows-caller-'+correlation+'/caller.py'
+
+
+def publish(root,host,source_file,source_sha256,correlation_id):
+    import shlex
+    root=Path(root).resolve(strict=True)
+    if type(host)is not str or re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,63}',host)is None or type(correlation_id)is not str or not re.fullmatch('[0-9a-f]{32}',correlation_id):
+        raise ValueError('source_stage_scope')
+    if type(source_sha256)is not str or not re.fullmatch('[0-9a-f]{64}',source_sha256):
+        raise ValueError('source_stage_source_pin')
+    path=Path(source_file)
+    if not path.is_absolute() or path.is_symlink() or not path.resolve(strict=True).is_relative_to(root/'.runtime'):
+        raise ValueError('source_stage_local_path')
+    group=root/'.rag_index'/'ssh-source-file-stage'
+    unknown={'state':'unknown','correlationId':correlation_id,'sourceExecuted':False,'replayAllowed':False}
+    with direct.Guard(root,host=host) as guard:
+        # The saved driver runs on the immediate gateway. A deeper route's
+        # profile/config belong to a different peer and must never be submitted
+        # to the ultimate direct gateway. Admit only the supported two-hop route
+        # before retaining an intent or creating any SSH child.
+        if len(transport._route_hosts(guard.config.hosts,host))!=2:
+            raise ValueError('source_stage_route')
+        guard.held.read(str(Path(__file__)),_LOADED_SHA)
+        guard.held.read(str(Path(files.__file__)),_FILES_SHA)
+        guard.held.read(str(Path(capture_module.__file__)),_CAPTURE_SHA)
+        guard.held.read(str(files.GATEWAY_SOURCE),files.GATEWAY_SHA256)
+        caller=guard.held.read(str(path),source_sha256,max_bytes=files.MAX_SOURCE_BYTES)
+        gateway=files.gateway_program(caller)
+        # Entire rendered programme is validated and saved before any SSH submission.
+        group.mkdir(mode=0o700,exist_ok=True)
+        if group.is_symlink() or group.stat().st_uid!=os.getuid() or group.stat().st_mode&0o077:
+            raise ValueError('source_stage_journal_owner')
+        directory=group/correlation_id
+        try:directory.mkdir(mode=0o700)
+        except FileExistsError:return {**unknown,'state':'refused','reason':'source_stage_original_exists'}
+        _retain(directory,'caller.py',caller);_retain(directory,'gateway.py',gateway)
+        digest=hashlib.sha256(gateway).hexdigest()
+        _retain(directory,'intent.json',{'host':host,'correlationId':correlation_id,'sourceSha256':source_sha256,
+                                       'sourceBytes':len(caller),'gatewaySha256':digest,'gatewayBytes':len(gateway),
+                                       'sourceExecuted':False,'replayAllowed':False})
+        guard.held.read(str(directory/'caller.py'),source_sha256,max_bytes=files.MAX_SOURCE_BYTES)
+        guard.held.read(str(directory/'gateway.py'),digest,max_bytes=files.MAX_SOURCE_BYTES)
+        try:
+            guard.guard();target=guard.config.hosts[host]
+            connection=transport.connection_host(guard.config,target.gateway)
+            prefix,endpoint=direct.outer_prefix(guard.config,connection)
+            command=shlex.join(('python3','-I','-B','-c',files.receiver_program(correlation_id)))
+            argv=[*prefix,*direct.OUTER_OPTIONS,'-T','-o','ClearAllForwardings=yes','-o','PermitLocalCommand=no',
+                  '-o','UpdateHostKeys=no',endpoint,command]
+            receipt=_run(directory,argv,files.source_payload(gateway),'gateway')
+            _retain(directory,'gateway-receipt.json',receipt)
+            if (receipt.get('state')!='staged' or receipt.get('sha256')!=digest or receipt.get('bytes')!=len(gateway)
+                    or receipt.get('correlationId')!=correlation_id or receipt.get('sourceExecuted')is not False
+                    or receipt.get('principal')!=connection.user
+                    or receipt.get('path')!=_stage_path(receipt,correlation_id)):
+                raise ValueError('source_stage_gateway_receipt')
+            guard.guard()
+            argv[-1]=shlex.join(('python3','-I','-B','-c',LOADER,receipt['path'],digest,str(len(gateway)),
+                                correlation_id,str(target.remote_config_file or ''),target.remote_host_alias,digest))
+            secret=target.password
+            if type(secret)is not str or not 0<len(secret.encode())<=512 or any(c in secret for c in ('\r','\n','\0')):
+                raise ValueError('source_stage_credential')
+            result=_run(directory,argv,json.dumps({'passphrase':secret},separators=(',',':')).encode(),'arch')
+            secret=None;private=result.pop('_operatorPrivateCapture',None)
+            if private is not None:_retain(directory,'arch-inner-streams.private.json',private)
+            guard.guard()
+            if result.get('state')!='observed' or result.get('correlationId')!=correlation_id:
+                raise ValueError('source_stage_arch_unverified')
+            if 'refusal'in result:
+                refusal=result['refusal']
+                value={'state':'refused','correlationId':correlation_id,'reason':refusal['reason'],
+                       'sourceExecuted':False,'replayAllowed':False}
+            else:
+                value=result['stage']
+                if (value.get('state')!='staged' or type(value.get('uid'))is not int or not 0<=value['uid']<2**32
+                        or value.get('correlationId')!=correlation_id or value.get('bytes')!=len(caller)
+                        or value.get('sha256')!=source_sha256 or value.get('sourceExecuted')is not False
+                        or value.get('path')!=_stage_path(value,correlation_id)):
+                    raise ValueError('source_stage_arch_receipt')
+            _retain(directory,'result.json',value);guard.guard();guard.close()
+            _retain(directory,'closing.json',{'sourceClosing':True,'correlationId':correlation_id})
+            return value
+        except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError) as error:
+            value={**unknown,'reason':str(error) if type(error)is ValueError and re.fullmatch('[a-z_]{1,80}',str(error)) else 'source_stage_unclassified'}
+            _retain(directory,'unknown.json',value);return value
+
+
+def retained_receipt(root,correlation_id,host=None):
+    """Read original custody only; does not connect or claim fresh remote readiness."""
+    if type(correlation_id)is not str or not re.fullmatch('[0-9a-f]{32}',correlation_id):
+        raise ValueError('source_stage_scope')
+    unknown={'state':'unknown','correlationId':correlation_id,'sourceExecuted':False,
+             'nativeActionAllowed':False,'replayAllowed':False,'remoteReadiness':False}
+    if not direct.coordinator_capable():
+        return {**unknown,'reason':'unsupported_coordinator'}
+    from .native_review_source_closure import _Held
+    from contextlib import closing
+    directory=Path(root).resolve(strict=True)/'.rag_index'/'ssh-source-file-stage'/correlation_id
+    with closing(_Held()) as held:
+        def read(name):
+            path=directory/name
+            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            try:
+                info=os.fstat(fd)
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid()
+                        or info.st_mode&0o077 or info.st_nlink!=1 or info.st_size>8192):
+                    raise ValueError('source_stage_receipt_metadata')
+                body=b''
+                while len(body)<=8192:
+                    chunk=os.read(fd,8193-len(body))
+                    if not chunk:break
+                    body+=chunk
+                if len(body)>8192:raise ValueError('source_stage_receipt_bound')
+            finally:os.close(fd)
+            return json.loads(held.read(str(path),hashlib.sha256(body).hexdigest(),max_bytes=8192))
+        intent=read('intent.json')
+        configured=intent.get('host')
+        if (intent.get('correlationId')!=correlation_id or type(configured)is not str
+                or re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,63}',configured)is None
+                or host is not None and configured!=host):
+            raise ValueError('source_stage_intent')
+        if (directory/'unknown.json').exists():
+            result=read('unknown.json');held.finish();held.final_identity_pass()
+            return {**unknown,'reason':result['reason']}
+        if not (directory/'closing.json').exists():
+            return {**unknown,'reason':'source_stage_terminal_missing'}
+        closing=read('closing.json');result=read('result.json')
+        if closing!={'sourceClosing':True,'correlationId':correlation_id} or result.get('correlationId')!=correlation_id:
+            raise ValueError('source_stage_terminal_binding')
+        if result.get('state')=='staged':
+            held.read(str(directory/'caller.py'),intent['sourceSha256'],max_bytes=files.MAX_SOURCE_BYTES)
+            if (result.get('sha256')!=intent['sourceSha256'] or result.get('bytes')!=intent['sourceBytes']
+                    or result.get('path')!=(_stage_path(result,correlation_id) if 'temporaryRoot'in result else '/tmp/vpn-control-windows-caller-'+correlation_id+'/caller.py')):
+                raise ValueError('source_stage_terminal_binding')
+        elif result.get('state')!='refused':raise ValueError('source_stage_terminal_state')
+        held.finish();held.final_identity_pass()
+        return {**unknown,'state':'recorded','originalState':result['state'],
+                'receipt':result,'sourceClosing':True,'evidenceScope':'retained-original-file-stage'}

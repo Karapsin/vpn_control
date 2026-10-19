@@ -1,0 +1,10 @@
+{
+  "commandSha256Utf16le": "d10c60dadf0b2b360b428071a9bb6d9fb70fe11771d42908cb2630dc9a3fec36",
+  "createProcessLimitIncludingNul": 32767,
+  "encodedArgumentChars": 35516,
+  "nativeOutcomeStillRequiresOriginalError": true,
+  "renderedSimpleCommandUtf16UnitsIncludingNul": 35599,
+  "scriptSha256Utf8": "a252879bba808921c0a96d9b5bfeec18483e4c6fd6669f5e0656dda8a496e3f7",
+  "scriptUtf8Bytes": 13318,
+  "source": "https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw"
+}

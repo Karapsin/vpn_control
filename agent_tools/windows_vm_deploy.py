@@ -31,7 +31,8 @@ def _gateway_main():
             if file_pin(spec['configFile'],body=True)!=config_pin or effective_route(spec)!=route_pin:raise ValueError('config_or_keys_changed')
         guard()
         argv=['ssh','-T','-F',spec['configFile'],'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=none','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','IdentityAgent=none','-o','PreferredAuthentications=publickey','-o','PasswordAuthentication=no','-o','KbdInteractiveAuthentication=no','-o','ConnectTimeout=10',profile,COMMAND]
-        secret_bytes=secret.encode();custody=start_fixed(argv,secret_bytes,route_pin['keyMetadata']);secret=None
+        secret_bytes=secret.encode();custody=Custody()
+        start_fixed(argv,secret_bytes,route_pin['keyMetadata'],custody=custody);secret=None
         if PRIVILEGED:
             sudo=request.pop('sudo')
             if type(sudo)is not str or not 0<len(sudo.encode())<=512 or any(c in sudo for c in ('\r','\n','\0')):raise ValueError('sudo_shape')
@@ -43,15 +44,42 @@ def _gateway_main():
             if not 0<len(raw)<=4096:raise ValueError('payload_bound')
             custody.child.stdin.write(raw);custody.child.stdin.flush();payload=None;raw=None
         custody.child.stdin.close();capture=custody.observe(60)
-        if not capture['complete'] or capture['refusal'] or capture['returnCode']!=0:raise ValueError('program_observation_unknown')
+        if not capture['complete'] or capture['timeout'] or capture['refusal'] or capture.get('captureErrors') or capture['returnCode']!=0:raise ValueError('program_observation_unknown')
         value=json.loads(bytes(custody.raw['stdout']),object_pairs_hook=reject_pairs)
         guard()
-        print(json.dumps({'state':'observed','correlationId':corr,'result':value,'capture':capture,'_operatorPrivateCapture':private_inner(custody,secret_bytes)},sort_keys=True),flush=True)
+        reply={'state':'observed','correlationId':corr,'result':value,'capture':capture,'_operatorPrivateCapture':private_inner(custody,secret_bytes)}
+        parts=[];wire_bytes=1  # print adds one UTF-8 newline.
+        for part in json.JSONEncoder(sort_keys=True).iterencode(reply):
+            wire_bytes+=len(part.encode('utf-8'))
+            if wire_bytes>16*1024**2:raise ValueError('program_reply_bound')
+            parts.append(part)
+        print(''.join(parts),flush=True)
         return 0
     except BaseException as error:
-        print(json.dumps({'state':'unknown','correlationId':locals().get('corr'),'errorClass':type(error).__name__,
-                          '_operatorPrivateCapture':private_inner(custody,secret_bytes) if custody else None},sort_keys=True),flush=True)
-        if custody is not None and not custody.closed:custody.finish_naturally()
+        try:
+            if custody is not None and custody.refusal is None:custody._unknown('stage',error)
+            unknown={'state':'unknown','correlationId':locals().get('corr'),'errorClass':type(error).__name__,
+                     'capture':custody.snapshot() if custody else None,
+                     '_operatorPrivateInitialCaptureSemantics':'prefix_of_final_redacted_streams'}
+            if type(error)is ValueError and str(error)=='program_reply_bound':unknown['reason']='program_reply_bound'
+            initial_sizes={name:len(value) for name,value in custody.raw.items()} if custody else {}
+        finally:
+            if custody is not None and not custody.closed:custody.finish_naturally()
+        unknown['finalCapture']=custody.snapshot() if custody else None
+        streams=private_inner(custody,secret_bytes) if custody else None
+        unknown['_operatorPrivateCapture']=streams
+        initial={}
+        for name,size in initial_sizes.items():
+            final_raw=base64.b64decode(streams[name]['base64'],validate=True)
+            original=bytes(custody.raw[name]);redactions=0;position=0
+            if secret_bytes:
+                while True:
+                    position=original.find(secret_bytes,position)
+                    if position<0 or position>=size:break
+                    redactions+=1;position+=len(secret_bytes)
+            initial[name]={'bytes':size,'sha256':hashlib.sha256(final_raw[:size]).hexdigest(),'redactions':redactions}
+        unknown['_operatorPrivateInitialCapture']=initial if custody else None
+        print(json.dumps(unknown,sort_keys=True),flush=True)
         return 3
 
 
@@ -132,6 +160,7 @@ def _execute(root,spec,mode,*,credential_file=None,setup=None,context=None,paylo
         if mode=='host-resources':paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_resources','native_host_observation','ssh_tmux_resource_admission'))
         if mode in ('start','status','stop','qualify','qualify-status','secure','secure-status'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_resources','native_host_observation','ssh_tmux_resource_admission','windows_vm_unattend','windows_vm_instance','windows_vm_hardware','windows_vm_lifecycle','native_environment'))
         if mode in ('qualify','qualify-status','secure','secure-status'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_guest','windows_guest_input'))
+        if mode in ('qualify','qualify-status','secure','secure-status') and setup.get('purpose')=='windowsUacVisual':paths.append(Path(__file__).with_name('windows_visual_fixture.py'))
         if mode in ('frame','frame-collect'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_instance','windows_vm_unattend'))
         if media_rows:paths.append(Path(media.__file__))
         for path in paths:

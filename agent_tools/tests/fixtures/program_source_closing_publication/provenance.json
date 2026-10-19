@@ -1,0 +1,10 @@
+{
+  "actualNativePreservationIndexSha256": "33d6918ffc000bbf3106c7c49a147a2bb2177dd48df995aae33e04274557a26a",
+  "beforeSha256": "0b0d21e6ec0c7d6a26033a4192ff17cb116079e08d6e8e5fe963db5b11276035",
+  "localMetadataOrderSha256": "6945fcb4ba82db301dd0302c39baf5cf2bb2284ada81f04336d531cc66382e5e",
+  "originalNativeOutcome": "Observation98UNKNOWN/driverexit1 remains unchanged; later local terminal does not rewrite it.",
+  "privateIdentityBeforeSha256": "9f1a76e70759d0aac3d00747c6985f173a8d2f9dfbc3b6c462296e3a5f2e6720",
+  "privateIdentityFinding": "Reviewed private first fix matched owner/intent but not requested directory operation. Whole actual source is preserved for causal foreign-operation PENDING RED/current UNKNOWN GREEN.",
+  "schemaVersion": 1,
+  "scope": "Whole genuine before owner; actual unchanged worker-command publisher and full actual worker in an owned local source session. Only configured transport argv/credential boundary is inert and points to one harmless local Python child. Owned stdin gate holds the original publisher before its source-closing receipt; no remote operation or native action."
+}

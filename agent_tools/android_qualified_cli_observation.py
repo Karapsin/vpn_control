@@ -72,12 +72,33 @@ def _programme(source, profile, correlation):
     return result
 
 class OuterCustody:
+    def _reserve(self):
+        # The consumer retains this owner before launch. Initialize every field
+        # before Popen so a setup failure still leaves the original child owned.
+        self.child=None;self.raw={'stdout':bytearray(),'stderr':bytearray()}
+        self.counts={k:0 for k in self.raw};self.eof={k:False for k in self.raw}
+        self.overflow=False;self.timeout=False;self.closed=False;self.sendError=None
+        self.captureErrors=[];self.selector=selectors.DefaultSelector()
+    def _capture_error(self,phase,error):
+        if len(self.captureErrors)<16:
+            self.captureErrors.append({'phase':phase,'errorClass':type(error).__name__})
+    def _attach(self):
+        try:
+            for name in self.raw:
+                fd=getattr(self.child,name).fileno();os.set_blocking(fd,False)
+                self.selector.register(fd,selectors.EVENT_READ,name)
+        except BaseException as error:
+            self._capture_error('setup',error)
+            raise
     def __init__(self,argv,envelope=None):
-        self.child=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-        self.selector=selectors.DefaultSelector();self.raw={'stdout':bytearray(),'stderr':bytearray()};self.counts={k:0 for k in self.raw};self.eof={k:False for k in self.raw};self.overflow=False;self.timeout=False;self.closed=False;self.sendError=None
-        for name in self.raw:
-            fd=getattr(self.child,name).fileno();os.set_blocking(fd,False);self.selector.register(fd,selectors.EVENT_READ,name)
-        if envelope is not None:self.send(envelope)
+        self._reserve()
+        try:
+            self.child=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            self._attach()
+            if envelope is not None:self.send(envelope)
+        except BaseException:
+            self.finish_naturally()
+            raise
     def send(self,envelope):
         try:
             if not isinstance(envelope,bytes) or not 0<len(envelope)<=4096:raise ValueError('envelope_cap')
@@ -85,12 +106,31 @@ class OuterCustody:
         except (OSError,ValueError) as exc:self.sendError=type(exc).__name__
         finally:self.child.stdin.close()
     def step(self,seconds):
-        for key,_ in self.selector.select(seconds):
-            try:b=os.read(key.fd,4096)
-            except BlockingIOError:continue
-            if not b:self.eof[key.data]=True;self.selector.unregister(key.fd);continue
-            name=key.data;self.counts[name]+=len(b);left=OUTER_CAP-len(self.raw[name]);self.raw[name].extend(b[:max(left,0)])
-            if self.counts[name]>OUTER_CAP:self.overflow=True
+        # Recover a partially attached owner without changing child or streams.
+        # The scalable selector also retains support for valid high-numbered fds.
+        try:
+            for name in self.raw:
+                if self.eof[name]:continue
+                fd=getattr(self.child,name).fileno()
+                try:self.selector.get_key(fd)
+                except KeyError:self.selector.register(fd,selectors.EVENT_READ,name)
+            ready=self.selector.select(seconds)
+        except (OSError,ValueError) as error:
+            self._capture_error('select',error);time.sleep(.01);return
+        for key,_ in ready:
+            name=key.data
+            if self.eof[name]:continue
+            try:block=os.read(key.fd,4096)
+            except (BlockingIOError,InterruptedError):continue
+            except OSError as error:self._capture_error('read',error);continue
+            if not block:
+                self.eof[name]=True
+                try:self.selector.unregister(key.fd)
+                except (OSError,ValueError) as error:self._capture_error('select',error)
+                continue
+            self.counts[name]+=len(block);limit=getattr(self,'capture_limit',OUTER_CAP)
+            left=limit-len(self.raw[name]);self.raw[name].extend(block[:max(left,0)])
+            if self.counts[name]>limit:self.overflow=True
     def observe(self,seconds=60):
         end=time.monotonic()+seconds
         while not (self.child.poll()is not None and all(self.eof.values())):
@@ -99,14 +139,27 @@ class OuterCustody:
             self.step(min(left,.05))
         return self.snapshot()
     def snapshot(self):
-        # Freeze metadata for this same child; never re-observe, reset the
-        # original timeout, or start another process.
-        return {'pid':self.child.pid,'returnCode':self.child.poll(),'complete':self.child.poll()is not None and all(self.eof.values()),'timeout':self.timeout,'overflow':self.overflow,'counts':dict(self.counts),'eof':dict(self.eof),'sendError':self.sendError}
+        code=self.child.poll() if self.child is not None else None
+        return {'pid':self.child.pid if self.child is not None else None,'returnCode':code,
+                'complete':self.child is not None and code is not None and all(self.eof.values()),
+                'timeout':self.timeout,'overflow':self.overflow,'counts':dict(self.counts),
+                'eof':dict(self.eof),'sendError':self.sendError,'captureErrors':list(getattr(self,'captureErrors',()))}
     def finish_naturally(self):
-        if not self.child.stdin.closed:self.child.stdin.close()
+        if self.closed:return
+        if self.child is None:
+            selector=getattr(self,'selector',None)
+            if selector is not None:selector.close()
+            self.closed=True;return
+        # FileCapture owns a concurrent stdin writer. Drain its output while
+        # that writer completes; do not close its input from the reader thread.
+        writer=getattr(self,'writer',None)
+        active_writer=writer is not None and writer.ident is not None
+        if not active_writer and not self.child.stdin.closed:self.child.stdin.close()
         while not (self.child.poll()is not None and all(self.eof.values())):self.step(.05)
+        if active_writer:
+            while writer.is_alive():writer.join(.05)
         self.selector.close();self.child.stdout.close();self.child.stderr.close();self.closed=True
-        ssh_transport.finish_ssh(self.child,failed=self.timeout or self.overflow or self.sendError is not None)
+        ssh_transport.finish_ssh(self.child,failed=self.timeout or self.overflow or self.sendError is not None or bool(getattr(self,'captureErrors',())))
 
 def _project_observation(value):
     """Use the unchanged canonical parser for full owner-consistency semantics."""
@@ -258,7 +311,8 @@ def observe(root, host, device, selector, timeout_seconds=15):
                 "profileSha256": hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest(),
                 "programmeSha256": digest, "selector": SELECTOR, "replayAllowed": False})
         phase = "transport"
-        custody = OuterCustody(argv)
+        custody = OuterCustody.__new__(OuterCustody)
+        custody.__init__(argv)
         _retain(execution, "accepted.private.json", {"pid": custody.child.pid, "parentPid": os.getpid(), "correlationId": corr})
         custody.send(envelope)
         envelope = None
@@ -266,7 +320,7 @@ def observe(root, host, device, selector, timeout_seconds=15):
         _retain(execution, "capture.private.json", capture)
         for name, raw in custody.raw.items():
             _retain(execution, "outer-" + name + ".private", bytes(raw))
-        if not capture["complete"] or capture["overflow"] or capture["sendError"] or custody.raw["stderr"]:
+        if not capture["complete"] or capture["timeout"] or capture["overflow"] or capture["sendError"] or capture["captureErrors"] or custody.raw["stderr"]:
             result.update(reason="qualified_transport_unknown", capture=capture)
         else:
             value = json.loads(bytes(custody.raw["stdout"]))
@@ -306,12 +360,12 @@ def observe(root, host, device, selector, timeout_seconds=15):
                 result = {"state": "unknown", "correlationId": corr, **failure}
             result["closingFailure"] = failure
         finally:
-            if guard is not None:
+            if guard is not None and (custody is None or custody.child is None or custody.closed):
                 guard.close()
         if result.get("state") != "observed":
             from agent_tools import android_observation
             result = {**result, **android_observation._unknown("qualified_observation_unknown")}
-        result.update(sourceClosing=closing, holdersClosed=True, cliArtifact=SELECTOR,
+        result.update(sourceClosing=closing, holdersClosed=custody is None or custody.child is None or custody.closed, cliArtifact=SELECTOR,
                       finalCapture=final_evidence["capture"] if final_evidence else None,
                       finalStreamEvidence=final_evidence["streams"] if final_evidence else None,
                       sourceHead=head, sourceDigest=source_digest, configuredProfileSha256=profile_digest,

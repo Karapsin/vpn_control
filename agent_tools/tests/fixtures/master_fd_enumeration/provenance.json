@@ -1,0 +1,8 @@
+{
+  "beforeSha256": "fb8dfa7cb9a49eb1054acc5668ee5eaa18aef5daf4f6bd9a8d7262bc7eae9a7a",
+  "originalDiagnosticSha256": "08afc0f6815ad6f1ec861ecb864ffce7b70614f3d2ae25adddd77435d73ca783",
+  "originalEvidenceLimit": "Actual vanished FD number/type and underlying cause remain unresolved; original UNKNOWN/staging evidence is immutable.",
+  "originalOperationId": "4835b6ea-e758-44b0-b024-0972f8fe6594",
+  "regressionScope": "Whole authenticated before/current generated snapshot using existing actual socket/TempFS proc-fact fixture. Real removal after FD listing; current must positively bind the unique expected listener and closing actor/socket/source guards. No gateway/native acceptance claim.",
+  "schemaVersion": 1
+}

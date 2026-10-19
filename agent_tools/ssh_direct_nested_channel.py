@@ -95,12 +95,12 @@ def status(root,host,correlation_id,*,_private_capture=None,_private_inventory_d
     return channel._operate(root,host,correlation_id,False,_private_capture,_private_inventory_diagnostic,direct=True)
 
 
-def route_options(root,host,correlation_id,receipt_sha256):
+def route_options(root,host,correlation_id,receipt_sha256,*,_private_capture=None):
     session,channel,_Held=_dependencies()
     channel._corr(correlation_id)
     if type(host)is not str or re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,63}',host)is None:raise ValueError('host')
     if type(receipt_sha256)is not str or re.fullmatch('[0-9a-f]{64}',receipt_sha256)is None:raise ValueError('receipt')
-    result=status(root,host,correlation_id)
+    result=status(root,host,correlation_id,**({"_private_capture":_private_capture}if _private_capture is not None else{}))
     if result.get('state')!='ready':
         refusal={**result,'correlationId':correlation_id} if result.get('state')=='unknown' else channel._public(correlationId=correlation_id)
         raise channel.ChannelUnknown(refusal)

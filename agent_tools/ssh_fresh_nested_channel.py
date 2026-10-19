@@ -46,7 +46,7 @@ class ChannelUnknown(ValueError):
 HOST='archlinux'
 EXPECTED_UID=1000
 EXPECTED_BOOT='25515f23-b966-4c3a-ae63-d38452375578'
-IDLE_SECONDS=60
+IDLE_SECONDS=18000
 _REVIEWED_ENDED_PREDECESSOR='9cc06c7e5e8d5f61815d8f28a955ff63e2452ef10534cbc013c3111db8d3384e'
 _REVIEWED_ENDED_PREDECESSOR_9A='9a7abc8ab6a5c4595d3f0dc0bb8bda33d5a6b1928bf373651a57cfe4e904bfe7'
 _REVIEWED_ENDED_PREDECESSOR_9527='9527a0163d0b532055a12e34c00dbf68c6435b03843b3caa5d334c90f15be33f'
@@ -185,7 +185,7 @@ def snapshot():
  if len(names)>256:raise ValueError('fd_cap')
  for name in names:
   try:link=os.readlink('/proc/%d/fd/%s'%(identity['pid'],name))
-  except FileNotFoundError:raise ValueError('fd_changed')
+  except FileNotFoundError:continue
   match=re.fullmatch(r'socket:\[([0-9]+)\]',link)
   if match:inodes.add(match[1].encode())
  table,_=pin('/proc/net/unix');rows=[]
@@ -220,7 +220,7 @@ try:
    with os.fdopen(fd,'w') as f:f.write('#!/bin/sh\ncat "$VPN_CONTROL_SSH_PASSWORD_FILE"\n')
    env=os.environ.copy();env.update(SSH_ASKPASS=helper,SSH_ASKPASS_REQUIRE='force',DISPLAY='vpn-channel',VPN_CONTROL_SSH_PASSWORD_FILE=password)
    phase='launch'
-   launch=subprocess.run(ssh+['-M','-N','-f','-S',control,'-o','ControlMaster=yes','-o','ControlPersist=60','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','ConnectTimeout=10',profile],stdin=subprocess.DEVNULL,capture_output=True,timeout=20,env=env)
+   launch=subprocess.run(ssh+['-M','-N','-f','-S',control,'-o','ControlMaster=yes','-o','ControlPersist=18000','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','ConnectTimeout=10',profile],stdin=subprocess.DEVNULL,capture_output=True,timeout=20,env=env)
    if launch.returncode!=0:raise ValueError('launch_unknown')
  elif request!={}:raise ValueError('status_input')
  phase='remote_intent'
@@ -862,7 +862,7 @@ def status(root:Path|str,host:str,correlation_id:str,*,_private_capture=None,_pr
     try:return _operate(root,host,correlation_id,False,_private_capture,_private_inventory_diagnostic)
     except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):return _public()
 
-def route_options(root:Path|str,host:str,correlation_id:str,receipt_sha256:str)->dict[str,Any]:
+def route_options(root:Path|str,host:str,correlation_id:str,receipt_sha256:str,*,_private_capture=None)->dict[str,Any]:
     """Read-only current admission. Does not create or renew a connection.
 
     Consumers must call this at actual transport use, rather than cache argv.
@@ -871,7 +871,7 @@ def route_options(root:Path|str,host:str,correlation_id:str,receipt_sha256:str)-
     _corr(correlation_id)
     _host(host)
     if not isinstance(receipt_sha256,str) or re.fullmatch('[0-9a-f]{64}',receipt_sha256) is None:raise ValueError('receipt')
-    result=status(root,host,correlation_id)
+    result=status(root,host,correlation_id,**({"_private_capture":_private_capture}if _private_capture is not None else{}))
     if result.get('state')!='ready':
         refusal={**result,'correlationId':correlation_id} if result.get('state')=='unknown' else _public(correlationId=correlation_id)
         raise ChannelUnknown(refusal)

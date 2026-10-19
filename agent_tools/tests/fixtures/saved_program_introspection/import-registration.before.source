@@ -1,0 +1,327 @@
+"""Private DIRECT, host-only artifact fixture; no VM or guest operations.
+
+This is a saved task fixture, not a new public transport API. Production facts
+are fixed in spec.json. Binary data never uses the source-publication envelope.
+"""
+from __future__ import annotations
+import argparse,ast,base64,hashlib,inspect,json,os,pwd,re,select,selectors,shlex,stat,subprocess,sys,tempfile,threading,time,uuid
+from pathlib import Path
+
+REPOSITORY=Path(__file__).resolve().parents[5]
+if str(REPOSITORY) not in sys.path:sys.path.insert(0,str(REPOSITORY))
+from agent_tools import ssh_source_file_stage as source_files
+from agent_tools import ssh_source_file_stage_direct as source_stage
+from agent_tools import ssh_direct_nested_channel as direct,ssh_transport
+_EXECUTING_CODE=inspect.currentframe().f_code
+
+def generation(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def structure(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid]
+def require(value,reason):
+    if not value:raise ValueError(reason)
+
+class HeldFile:
+    """Retain original immutable file and no-follow ancestor descriptors."""
+    def __init__(self,path,size=None,digest=None,private=True,allowed_owners=None):
+        self.path=Path(path);self.chain=[];self.fd=None
+        require(self.path.is_absolute() and '..'not in self.path.parts,'input_path')
+        try:
+            fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);self.chain.append((fd,None,structure(os.fstat(fd))))
+            for name in self.path.parent.parts[1:]:
+                fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=self.chain[-1][0]);self.chain.append((fd,name,structure(os.fstat(fd))))
+            self.fd=os.open(self.path.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=self.chain[-1][0]);info=os.fstat(self.fd)
+            require(stat.S_ISREG(info.st_mode) and info.st_uid in((os.getuid(),)if allowed_owners is None else allowed_owners) and info.st_nlink==1 and (stat.S_IMODE(info.st_mode)==0o600 if private else not info.st_mode&0o022),'input_metadata')
+            self.pin=generation(info);self.size=info.st_size;self.sha256=self.digest()
+            require((size is None or self.size==size) and (digest is None or self.sha256==digest),'input_identity')
+            self.guard()
+        except BaseException:self.close();raise
+    def digest(self):
+        h=hashlib.sha256();offset=0
+        while offset<self.size:
+            raw=os.pread(self.fd,min(65536,self.size-offset),offset);require(bool(raw),'input_short_read');h.update(raw);offset+=len(raw)
+        require(not os.pread(self.fd,1,offset),'input_trailing');return h.hexdigest()
+    def guard(self,rehash=False):
+        for i,(fd,name,pin)in enumerate(self.chain):
+            named=os.stat('/',follow_symlinks=False)if i==0 else os.stat(name,dir_fd=self.chain[i-1][0],follow_symlinks=False)
+            require(structure(os.fstat(fd))==pin and structure(named)==pin and stat.S_ISDIR(named.st_mode),'input_parent_changed')
+        require(generation(os.fstat(self.fd))==self.pin and generation(os.stat(self.path.name,dir_fd=self.chain[-1][0],follow_symlinks=False))==self.pin,'input_generation_changed')
+        if rehash:require(self.digest()==self.sha256,'input_hash_changed');self.guard()
+    def close(self):
+        if self.fd is not None:os.close(self.fd);self.fd=None
+        for fd,_,_ in reversed(self.chain):os.close(fd)
+        self.chain=[]
+    def __enter__(self):return self
+    def __exit__(self,*exc):self.close()
+
+def retain(directory,name,value):
+    raw=value if type(value)is bytes else(json.dumps(value,sort_keys=True)+'\n').encode()
+    fd=os.open(Path(directory)/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    try:
+        view=memoryview(raw)
+        while view:
+            count=os.write(fd,view);require(count>0,'evidence_short_write');view=view[count:]
+        os.fsync(fd)
+    finally:os.close(fd)
+
+def receiver_main():
+    import hashlib,json,os,pwd,select,stat,sys,time
+    from pathlib import Path
+    def require(value,reason):
+        if not value:raise ValueError(reason)
+    def gen(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+    def shape(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid]
+    root=Path(SPEC['hostRoot']);chain=[];rootfd=packagefd=None;consumed=0;deadline=time.monotonic()+55
+    def closing():
+        for i,(fd,name,pin)in enumerate(chain):
+            named=os.stat('/',follow_symlinks=False)if i==0 else os.stat(name,dir_fd=chain[i-1][0],follow_symlinks=False)
+            require(shape(os.fstat(fd))==pin and shape(named)==pin and stat.S_ISDIR(named.st_mode),'parent_changed')
+        if rootfd is not None:
+            require(shape(os.fstat(rootfd))==rootpin and shape(os.stat(root.name,dir_fd=chain[-1][0],follow_symlinks=False))==rootpin,'root_changed')
+    def save(name,value):
+        fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=rootfd)
+        try:
+            raw=(json.dumps(value,sort_keys=True)+'\n').encode();view=memoryview(raw)
+            while view:
+                n=os.write(fd,view);require(n>0,'receipt_write');view=view[n:]
+            os.fsync(fd)
+        finally:os.close(fd)
+    def read_some(count):
+        while True:
+            left=deadline-time.monotonic();require(left>0,'stream_deadline')
+            if select.select([sys.stdin.buffer],[],[],min(.05,left))[0]:return os.read(sys.stdin.fileno(),count)
+    try:
+        require(root.is_absolute() and '..'not in root.parts and pwd.getpwuid(os.geteuid()).pw_name==SPEC['hostUser'],'root_or_principal')
+        fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);chain.append((fd,None,shape(os.fstat(fd))))
+        for name in root.parent.parts[1:]:
+            fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=chain[-1][0]);info=os.fstat(fd)
+            require(not info.st_mode&0o022 or info.st_uid==0 and bool(info.st_mode&stat.S_ISVTX),'parent_writable')
+            chain.append((fd,name,shape(info)))
+        info=os.fstat(chain[-1][0]);require(info.st_uid==os.geteuid() and not info.st_mode&0o022,'parent_owner');closing()
+        os.mkdir(root.name,0o700,dir_fd=chain[-1][0]);rootfd=os.open(root.name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=chain[-1][0]);rootpin=shape(os.fstat(rootfd))
+        require(rootpin[3]==os.geteuid() and stat.S_IMODE(rootpin[2])==0o700,'root_owner')
+        save('intent.json',{'schemaVersion':1,'spec':SPEC,'receiverSourceSha256':_DECODED_SOURCE_SHA,'replayAllowed':False,'phase':'receiving'})
+        os.fsync(rootfd);os.fsync(chain[-1][0]);closing()
+        packagefd=os.open(SPEC['fileName'],os.O_RDWR|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=rootfd)
+        first=os.fstat(packagefd);require(stat.S_ISREG(first.st_mode)and first.st_nlink==1 and first.st_uid==os.geteuid()and stat.S_IMODE(first.st_mode)==0o600,'file_metadata')
+        digest=hashlib.sha256()
+        while consumed<SPEC['sizeBytes']:
+            raw=read_some(min(65536,SPEC['sizeBytes']-consumed));require(bool(raw),'stream_truncated');digest.update(raw);view=memoryview(raw)
+            while view:
+                count=os.write(packagefd,view);require(count>0,'file_short_write');view=view[count:]
+            consumed+=len(raw)
+        require(not read_some(1),'stream_trailing');require(digest.hexdigest()==SPEC['sha256'],'stream_hash')
+        os.fsync(packagefd);pin=gen(os.fstat(packagefd));check=hashlib.sha256();offset=0
+        while offset<SPEC['sizeBytes']:
+            raw=os.pread(packagefd,min(65536,SPEC['sizeBytes']-offset),offset);require(bool(raw),'physical_short_read');check.update(raw);offset+=len(raw)
+        require(not os.pread(packagefd,1,offset)and check.hexdigest()==SPEC['sha256'],'physical_hash')
+        require(pin==gen(os.fstat(packagefd))and pin==gen(os.stat(SPEC['fileName'],dir_fd=rootfd,follow_symlinks=False))and pin[5]==1,'physical_generation');closing()
+        value={'schemaVersion':1,'state':'staged','hostRoot':str(root),'path':str(root/SPEC['fileName']),'correlationId':SPEC['correlationId'],'sourceSha':SPEC['sourceSha'],'sha256':SPEC['sha256'],'sizeBytes':SPEC['sizeBytes'],'principal':pwd.getpwuid(os.geteuid()).pw_name,'generation':pin,'rootIdentity':rootpin,'receiverSourceSha256':_DECODED_SOURCE_SHA,'nativeActionAllowed':False,'replayAllowed':False}
+        save('terminal.json',value);os.fsync(rootfd);closing()
+        require(pin==gen(os.fstat(packagefd))and pin==gen(os.stat(SPEC['fileName'],dir_fd=rootfd,follow_symlinks=False)),'file_closing')
+        print(json.dumps(value,sort_keys=True),flush=True);return 0
+    except BaseException as error:
+        value={'schemaVersion':1,'state':'failed','errorClass':type(error).__name__,'reason':str(error)if type(error)is ValueError else 'receiver_io','receivedBytes':consumed,'correlationId':SPEC['correlationId'],'replayAllowed':False}
+        if rootfd is not None:
+            try:save('failure.json',value);os.fsync(rootfd)
+            except BaseException:pass
+        print(json.dumps(value,sort_keys=True),file=sys.stderr,flush=True);return 64
+    finally:
+        for fd in(packagefd,rootfd):
+            if fd is not None:os.close(fd)
+        for fd,_,_ in reversed(chain):os.close(fd)
+
+def render_receiver(spec):
+    fields={'hostRoot','hostUser','fileName','sizeBytes','sha256','sourceSha','correlationId'}
+    require(type(spec)is dict and set(spec)==fields,'receiver_spec')
+    require(type(spec['sizeBytes'])is int and 0<spec['sizeBytes']<=1<<30 and re.fullmatch('[0-9a-f]{64}',spec['sha256'])is not None,'receiver_identity')
+    require(Path(spec['hostRoot']).is_absolute()and Path(spec['fileName']).name==spec['fileName']and spec['fileName']not in('.','..'),'receiver_path')
+    raw='SPEC='+repr(spec)+'\n'+inspect.getsource(receiver_main)+"\nif __name__=='__main__':sys.exit(receiver_main())\n"
+    raw='import sys\n'+raw;compile(raw,'saved artifact receiver','exec');return raw.encode()
+
+def artifact_gateway_main():
+    custody=None;writer=None;secret_bytes=None;holds=[];errors=[];sent=0
+    try:
+        corr,config_file,profile,source_sha=sys.argv[1:]
+        if corr!=SPEC['correlationId'] or source_sha!=_DECODED_SOURCE_SHA:raise ValueError('source_binding')
+        deadline=time.monotonic()+55;fd=sys.stdin.fileno();os.set_blocking(fd,False)
+        def read_exact(count):
+            value=bytearray()
+            while len(value)<count:
+                left=deadline-time.monotonic()
+                if left<=0:raise ValueError('input_deadline')
+                if not select.select([fd],[],[],min(.05,left))[0]:continue
+                raw=os.read(fd,min(65536,count-len(value)))
+                if not raw:raise ValueError('input_truncated')
+                value.extend(raw)
+            return bytes(value)
+        length=int.from_bytes(read_exact(4),'big')
+        if not 0<length<=4096:raise ValueError('envelope_bound')
+        request=json.loads(read_exact(length),object_pairs_hook=reject_pairs)
+        if type(request)is not dict or set(request)!={'passphrase'}:raise ValueError('request_shape')
+        secret=request.pop('passphrase')
+        if type(secret)is not str or not 0<len(secret.encode())<=512 or any(x in secret for x in('\r','\n','\0')):raise ValueError('secret_shape')
+        spec={'configFile':config_file or str(Path.home()/'.ssh/config'),'controlPath':'none','remoteHostAlias':profile}
+        config_pin=file_pin(spec['configFile'],body=True);route_pin=effective_route(spec)
+        if config_pin['unsupportedConfigDirectives']or route_pin['user']!=SPEC['hostUser']:raise ValueError('route_identity')
+        holds.append(HeldFile(spec['configFile'],private=False))
+        for path in route_pin['keyMetadata']:holds.append(HeldFile(path))
+        def trust_snapshot():
+            response=subprocess.run([*ssh_options(spec),'-G',profile],capture_output=True,timeout=5)
+            if response.returncode or response.stderr or len(response.stdout)>65536:raise ValueError('trust_route_unknown')
+            paths=[]
+            for line in response.stdout.decode('utf-8','strict').splitlines():
+                name,_,text=line.partition(' ')
+                if name in('userknownhostsfile','globalknownhostsfile'):
+                    for item in shlex.split(text):
+                        if item=='none':continue
+                        path=owned_home_identity(item)['path']
+                        if path not in paths:paths.append(path)
+            rows={path:os.path.lexists(path)for path in paths}
+            if not any(rows.values()):raise ValueError('trust_file_unavailable')
+            return rows
+        trust=trust_snapshot()
+        for path,present in trust.items():
+            if present:holds.append(HeldFile(path,private=False,allowed_owners=(0,os.getuid())))
+        def route_identity(value):
+            return {'effectiveSha256':value['effectiveSha256'],'user':value['user'],'keys':{path:item['generation']for path,item in value['keyMetadata'].items()},'homes':{path:pin[:5]for path,pin in value['ownedHomePins'].items()}}
+        admitted_route=route_identity(route_pin)
+        def guard():
+            for hold in holds:hold.guard(rehash=True)
+            current=file_pin(spec['configFile'],body=True)
+            if any(current[k]!=config_pin[k]for k in('generation','bytes','sha256','unsupportedConfigDirectives'))or route_identity(effective_route(spec))!=admitted_route or trust_snapshot()!=trust:raise ValueError('route_changed')
+        guard()
+        command=shlex.join(('python3','-I','-B','-c',LOADER,RECEIPT['path'],RECEIPT['sha256'],str(RECEIPT['bytes'])))
+        if len(command.encode())>60000:raise ValueError('saved_command_bound')
+        argv=['ssh','-T','-F',spec['configFile'],'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=none','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','IdentityAgent=none','-o','PreferredAuthentications=publickey','-o','PasswordAuthentication=no','-o','KbdInteractiveAuthentication=no','-o','ConnectTimeout=10',profile,command]
+        secret_bytes=secret.encode();custody=start_fixed(argv,secret_bytes,route_pin['keyMetadata']);secret=None
+        os.set_blocking(custody.child.stdin.fileno(),False)
+        def write():
+            nonlocal sent
+            try:
+                while sent<SPEC['sizeBytes']:
+                    raw=read_exact(min(65536,SPEC['sizeBytes']-sent));view=memoryview(raw)
+                    while view:
+                        if time.monotonic()>=deadline:raise ValueError('forward_deadline')
+                        if not select.select([],[custody.child.stdin],[],.05)[1]:continue
+                        count=os.write(custody.child.stdin.fileno(),view)
+                        if count<=0:raise ValueError('forward_short_write')
+                        view=view[count:]
+                    sent+=len(raw)
+                while True:
+                    left=deadline-time.monotonic()
+                    if left<=0:raise ValueError('trailing_deadline')
+                    if not select.select([fd],[],[],min(.05,left))[0]:continue
+                    if os.read(fd,1):raise ValueError('input_trailing')
+                    break
+            except BaseException as error:errors.append(type(error).__name__)
+            finally:custody.child.stdin.close()
+        writer=threading.Thread(target=write,daemon=True);writer.start();capture=custody.observe(60)
+        if not capture['complete']or capture['refusal']or capture['returnCode']!=0:raise ValueError('inner_unknown')
+        writer.join(1)
+        if writer.is_alive()or errors or sent!=SPEC['sizeBytes']:raise ValueError('writer_unclosed')
+        value=json.loads(bytes(custody.raw['stdout']),object_pairs_hook=reject_pairs)
+        if value.get('state')!='staged'or value.get('sha256')!=SPEC['sha256']or value.get('sizeBytes')!=SPEC['sizeBytes']or value.get('correlationId')!=corr or value.get('path')!=SPEC['hostRoot']+'/'+SPEC['fileName']:raise ValueError('receiver_result')
+        guard();print(json.dumps({'state':'observed','correlationId':corr,'artifact':value,'capture':capture,'_operatorPrivateCapture':private_inner(custody,secret_bytes),'replayAllowed':False},sort_keys=True),flush=True);return 0
+    except BaseException as error:
+        print(json.dumps({'state':'unknown','correlationId':SPEC['correlationId'],'errorClass':type(error).__name__,'reason':str(error)if type(error)is ValueError and re.fullmatch('[a-z_]{1,64}',str(error))else 'unclassified','capture':custody.observe(.01)if custody else None,'_operatorPrivateCapture':private_inner(custody,secret_bytes)if custody else None,'replayAllowed':False},sort_keys=True),flush=True)
+        if custody is not None and not custody.closed:custody.finish_naturally()
+        if custody is not None:
+            print(json.dumps({'state':'terminal-after-unknown','correlationId':SPEC['correlationId'],'capture':custody.observe(0),'_operatorPrivateCapture':private_inner(custody,secret_bytes),'replayAllowed':False},sort_keys=True),flush=True)
+        return 3
+    finally:
+        if writer is not None:writer.join(1)
+        for hold in reversed(holds):hold.close()
+
+def render_gateway(spec,receipt):
+    raw=source_files.GATEWAY_SOURCE.read_bytes();require(hashlib.sha256(raw).hexdigest()==source_files.GATEWAY_SHA256,'gateway_helpers_changed')
+    text=raw.decode();node=next(n for n in ast.parse(text).body if isinstance(n,ast.FunctionDef)and n.name=='stage_main')
+    prefix=''.join(text.splitlines(keepends=True)[:node.lineno-1])
+    body=prefix+'\nimport select\n'+inspect.getsource(generation)+'\n'+inspect.getsource(structure)+'\n'+inspect.getsource(require)+'\n'+inspect.getsource(HeldFile)
+    body+='\nSPEC='+repr(spec)+'\nRECEIPT='+repr(receipt)+'\nLOADER='+repr(source_stage.LOADER)+'\n'+inspect.getsource(artifact_gateway_main)+"\nif __name__=='__main__':sys.exit(artifact_gateway_main())\n"
+    compile(body,'complete saved artifact gateway','exec');require(len(body.encode())<=source_files.MAX_SOURCE_BYTES,'gateway_size');return body.encode()
+
+class RawCapture(source_stage.FileCapture):
+    def submit_stream(self,header,held,seconds=55):
+        require(type(header)is bytes and 0<len(header)<=4100,'stream_header')
+        def write():
+            deadline=time.monotonic()+seconds
+            try:
+                chunks=[memoryview(header)];offset=0
+                while chunks or offset<held.size:
+                    if chunks:view=chunks.pop()
+                    else:
+                        held.guard();raw=os.pread(held.fd,min(65536,held.size-offset),offset);require(bool(raw),'writer_short_source');offset+=len(raw);view=memoryview(raw)
+                    while view:
+                        if time.monotonic()>=deadline:raise TimeoutError('writer_deadline')
+                        if self.child.poll()is not None:raise BrokenPipeError('writer_child_exited')
+                        if not select.select([],[self.child.stdin],[],.05)[1]:continue
+                        count=os.write(self.child.stdin.fileno(),view)
+                        if count>0:view=view[count:]
+                held.guard(rehash=True)
+            except BaseException as error:self.writer_errors.append(type(error).__name__)
+            finally:self.child.stdin.close()
+        self.writer=threading.Thread(target=write,daemon=True);self.writer.start()
+
+def collect_stream(directory,argv,header,held,label):
+    require(type(argv)is list and sum(len(x.encode())+1 for x in argv)<=60000,'command_bound')
+    retain(directory,label+'-intent.json',{'argv':argv,'inputPath':str(held.path),'inputGeneration':held.pin,'inputSha256':held.sha256,'inputSize':held.size,'replayAllowed':False})
+    custody=RawCapture(argv);capture=None;primary=None;retention_errors=[]
+    try:
+        retain(directory,label+'-accepted.json',{'pid':custody.child.pid,'parentPid':os.getpid(),'originalChildRetained':True,'replayAllowed':False})
+        custody.submit_stream(header,held);capture=custody.observe(60);retain(directory,label+'-first-observation.json',capture)
+        if not capture['complete']:print(json.dumps({'state':'pending-original-child','pid':custody.child.pid,'replayAllowed':False}),flush=True)
+    except BaseException as error:primary=error
+    finally:
+        # This CLI is the retained supervisor. Tool execution yields its session
+        # while this original owner waits; timeout never kills or replaces it.
+        custody.finish_naturally()
+        if custody.writer is not None:custody.writer.join(1)
+        final=custody.snapshot()
+        for name,value in [(label+'-'+name+'.raw',bytes(raw))for name,raw in custody.raw.items()]+[(label+'-terminal.json',final)]:
+            try:retain(directory,name,value)
+            except BaseException as error:retention_errors.append(type(error).__name__)
+    held.guard(rehash=True)
+    if primary is not None:raise primary
+    require(not retention_errors,'terminal_retention_unknown')
+    require(capture['complete']and not capture['overflow']and not custody.writer.is_alive()and not custody.writer_errors and final['returnCode']==0 and not custody.raw['stderr'],'stream_observation_unknown')
+    return json.loads(bytes(custody.raw['stdout']))
+
+def execute_stage(directory,spec):
+    """Explicit one-shot host-only submission; caller must first approve packet."""
+    directory=Path(directory).resolve(strict=True);root=REPOSITORY
+    require(spec['hostRoot']=='/home/kardinal/vc-art-d493a3731d2c'and spec['hostUser']=='kardinal'and spec['sizeBytes']==131228020 and spec['sha256']=='8167212cb412c0e0d1c3ad1d60f12fdbc5477043725fd35484bdf6b46db25fb6','production_scope')
+    retain(directory,'host-submit-intent.json',{'spec':spec,'host':'archlinux','scope':'host-file-only','guestActionAllowed':False,'replayAllowed':False})
+    with HeldFile(Path(__file__))as caller,HeldFile(directory/'spec.json')as spec_hold,HeldFile(directory/'receiver.py')as receiver,HeldFile(directory/'input.msi',spec['sizeBytes'],spec['sha256'])as package,direct.Guard(root,host='archlinux')as guard:
+        require(_EXECUTING_CODE==compile(os.pread(caller.fd,caller.size,0),__file__,'exec',dont_inherit=True),'executing_source_changed')
+        require(json.loads(os.pread(spec_hold.fd,spec_hold.size,0))==spec,'spec_loaded_changed')
+        for module in(source_stage,source_files,source_stage.capture_module):
+            path=Path(module.__file__);guard.held.read(str(path),hashlib.sha256(path.read_bytes()).hexdigest())
+        guard.held.read(str(source_files.GATEWAY_SOURCE),source_files.GATEWAY_SHA256)
+        caller.guard(rehash=True);spec_hold.guard(rehash=True);receiver.guard(rehash=True);package.guard(rehash=True);guard.guard()
+        receipt=source_stage.publish(root,'archlinux',str(receiver.path),receiver.sha256,uuid.uuid4().hex);retain(directory,'receiver-source-stage.json',receipt)
+        require(receipt.get('state')=='staged','receiver_source_unknown')
+        caller.guard(rehash=True);spec_hold.guard(rehash=True);receiver.guard(rehash=True);package.guard(rehash=True);guard.guard()
+        gateway=render_gateway(spec,receipt);retain(directory,'gateway.py',gateway)
+        caller.guard(rehash=True);spec_hold.guard(rehash=True)
+        with HeldFile(directory/'gateway.py')as gateway_hold:
+            guard.held.read(str(gateway_hold.path),gateway_hold.sha256)
+            target=guard.config.hosts['archlinux'];connection=ssh_transport.connection_host(guard.config,target.gateway)
+            prefix,endpoint=direct.outer_prefix(guard.config,connection);corr=uuid.uuid4().hex
+            argv=[*prefix,*direct.OUTER_OPTIONS,'-T','-o','ClearAllForwardings=yes','-o','PermitLocalCommand=no','-o','UpdateHostKeys=no',endpoint,shlex.join(('python3','-I','-B','-c',source_files.receiver_program(corr)))]
+            caller.guard(rehash=True);spec_hold.guard(rehash=True);receiver.guard(rehash=True);gateway_hold.guard(rehash=True);package.guard(rehash=True);guard.guard()
+            saved=source_stage._run(directory,argv,source_files.source_payload(gateway),'gateway-source');retain(directory,'gateway-source-receipt.json',saved)
+            require(saved.get('state')=='staged'and saved.get('sha256')==gateway_hold.sha256 and saved.get('bytes')==len(gateway),'gateway_source_unknown')
+            argv[-1]=shlex.join(('python3','-I','-B','-c',source_stage.LOADER,saved['path'],gateway_hold.sha256,str(len(gateway)),spec['correlationId'],str(target.remote_config_file or ''),target.remote_host_alias,gateway_hold.sha256))
+            secret=target.password;require(type(secret)is str and 0<len(secret.encode())<=512,'configured_credential')
+            envelope=json.dumps({'passphrase':secret},separators=(',',':')).encode();secret=None;header=len(envelope).to_bytes(4,'big')+envelope
+            guard.guard();caller.guard(rehash=True);spec_hold.guard(rehash=True);receiver.guard(rehash=True);gateway_hold.guard(rehash=True);package.guard(rehash=True)
+            value=collect_stream(directory,argv,header,package,'artifact');envelope=header=None
+            private=value.pop('_operatorPrivateCapture',None)
+            if private is not None:retain(directory,'inner-streams.private.json',private)
+            retain(directory,'result.json',value);guard.guard();caller.guard(rehash=True);spec_hold.guard(rehash=True);receiver.guard(rehash=True);gateway_hold.guard(rehash=True);package.guard(rehash=True)
+            require(value.get('state')=='observed'and value.get('artifact',{}).get('sha256')==spec['sha256'],'artifact_result_unknown')
+            retain(directory,'closing.json',{'sourceClosing':True,'packageClosing':True,'replayAllowed':False})
+            print(json.dumps(value,sort_keys=True),flush=True)
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['stage']);parser.add_argument('directory');args=parser.parse_args()
+    directory=Path(args.directory).resolve(strict=True);execute_stage(directory,json.loads((directory/'spec.json').read_bytes()))

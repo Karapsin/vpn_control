@@ -1,0 +1,130 @@
+{
+  "949ae643-8eda-4f19-8dba-5e4c17b2894e": {
+    "owner-closed.json": {
+      "operationId": "949ae643-8eda-4f19-8dba-5e4c17b2894e",
+      "sourceClosing": true,
+      "terminalSha256": "3514c15d3579909d3b0583844be78341c949605c9024ef5101342dd2ce9829f9"
+    },
+    "owner.json": {
+      "actor": {
+        "birthSha256": "0d37949b364b5c991bf94ff01c0dccb6529b6a9a8ad97638edf75fbed4a5d191",
+        "pid": 28204,
+        "sessionId": 28195,
+        "uid": 503
+      },
+      "operationId": "949ae643-8eda-4f19-8dba-5e4c17b2894e"
+    },
+    "terminal.json": {
+      "capture": {
+        "complete": true,
+        "counts": {
+          "stderr": 17,
+          "stdout": 147
+        },
+        "effectiveTransport": "inline",
+        "eof": {
+          "stderr": true,
+          "stdout": true
+        },
+        "overflow": false,
+        "pid": 28228,
+        "returnCode": 7,
+        "sendError": null,
+        "submittedCommandBounds": {
+          "limitBytes": 60000,
+          "maxArgumentBytes": 4311,
+          "wholeArgvBytes": 4698
+        },
+        "timeout": false
+      },
+      "executionSemantics": "python-c",
+      "exitCode": 7,
+      "host": "archlinux",
+      "language": "python3",
+      "operationId": "949ae643-8eda-4f19-8dba-5e4c17b2894e",
+      "originalCommandBounds": {
+        "limitBytes": 60000,
+        "maxArgumentBytes": 4311,
+        "wholeArgvBytes": 4698
+      },
+      "replayAllowed": false,
+      "requestSha256": "a9202b9d4cde61a2979e5670455acf8c55b4705ae6bd42d3b328b81fc9b3c7ee",
+      "schemaVersion": 1,
+      "sourceBytes": 533,
+      "sourceSha256": "33b73b83718e92df70d560d38c3fd8487ded22fdc34f894513ac794364fde32f",
+      "state": "terminal",
+      "streams": {
+        "stderr": {
+          "bytes": 17,
+          "eof": true,
+          "receivedBytes": 17,
+          "receivedSha256": "fa423bad7eff95c3879508153314c5ff723aabaff7dd9c52a5fd6d9e14000471",
+          "retainedSha256": "fa423bad7eff95c3879508153314c5ff723aabaff7dd9c52a5fd6d9e14000471"
+        },
+        "stdout": {
+          "bytes": 147,
+          "eof": true,
+          "receivedBytes": 147,
+          "receivedSha256": "c2fe12353c18b4b1b5b9e2a8ac6a9df98c618108172fd82b96bb048680e382a9",
+          "retainedSha256": "c2fe12353c18b4b1b5b9e2a8ac6a9df98c618108172fd82b96bb048680e382a9"
+        }
+      },
+      "transport": "inline",
+      "windowsSupported": false
+    }
+  },
+  "bc6ed15f-36ba-492a-88ac-13eaca58fa10": {
+    "owner-closed.json": {
+      "operationId": "bc6ed15f-36ba-492a-88ac-13eaca58fa10",
+      "sourceClosing": true,
+      "terminalSha256": "02e3c459e36162f54a67c04e629c3b49d2d8f3b38e1c9bdfcf8630f041f0d40d"
+    },
+    "owner.json": {
+      "actor": {
+        "birthSha256": "e659b0eb7f5d81e28bb4d472b9a5b3482102a1b7aa75105036b7f56bd1f20a83",
+        "pid": 28408,
+        "sessionId": 28329,
+        "uid": 503
+      },
+      "operationId": "bc6ed15f-36ba-492a-88ac-13eaca58fa10"
+    },
+    "terminal.json": {
+      "capture": null,
+      "errorClass": "SshConfigError",
+      "executionSemantics": "python-c",
+      "host": "archlinux",
+      "language": "python3",
+      "operationId": "bc6ed15f-36ba-492a-88ac-13eaca58fa10",
+      "originalCommandBounds": {
+        "limitBytes": 60000,
+        "maxArgumentBytes": 634436,
+        "wholeArgvBytes": 634823
+      },
+      "reason": "original_execution_unverified",
+      "replayAllowed": false,
+      "requestSha256": "5e31be70064dee5e04bb4cfb28d622a3155a84852fdf24a0d6fb85a4858b6a0c",
+      "schemaVersion": 1,
+      "sourceBytes": 126544,
+      "sourceSha256": "7a5626137b4f7a39e743c8868b56398be27a52f09355fac16ca985b231418f45",
+      "state": "unknown",
+      "streams": {
+        "stderr": {
+          "bytes": 0,
+          "eof": false,
+          "receivedBytes": 0,
+          "receivedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "retainedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stdout": {
+          "bytes": 0,
+          "eof": false,
+          "receivedBytes": 0,
+          "receivedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "retainedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "transport": "saved-file",
+      "windowsSupported": false
+    }
+  }
+}

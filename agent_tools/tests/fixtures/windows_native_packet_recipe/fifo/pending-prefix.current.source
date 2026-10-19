@@ -1,0 +1,333 @@
+"""Private, read-only pending-stream observer; no remote or process actions.
+
+A receipt authenticates bytes, not a pathname's history.  The caller must bind
+the original stream pathname before using this helper.  This helper holds and
+checks its original local FDs throughout one observation.  It deliberately does
+not compare size, mtime, or ctime generations: an owner may append after the
+receipt was issued.  A transient change restored before every observation is
+not provable from these five receipt fields.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import stat
+
+
+MAXIMUM_PREFIX = 16 * 1024 * 1024
+MAXIMUM_LINE = 65536
+MAXIMUM_RECORDS = 4096
+_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+_PIN_KEYS = frozenset(
+    ("bytes", "receivedBytes", "receivedSha256", "retainedSha256", "eof")
+)
+
+
+class PrefixError(ValueError):
+    """The pending receipt, local custody, or complete record is not admissible."""
+
+
+def _identity(value: os.stat_result) -> tuple[int, ...]:
+    # These establish physical object, type, ownership, and access policy.
+    # Appendable generations (size/mtime/ctime) are intentionally absent.
+    return (
+        value.st_dev,
+        value.st_ino,
+        stat.S_IFMT(value.st_mode),
+        value.st_uid,
+        value.st_gid,
+        stat.S_IMODE(value.st_mode),
+    )
+
+
+def _private_directory(value: os.stat_result) -> None:
+    if (
+        not stat.S_ISDIR(value.st_mode)
+        or value.st_uid != os.geteuid()
+        or stat.S_IMODE(value.st_mode) != 0o700
+    ):
+        raise PrefixError("stream directory must be owned and mode 0700")
+
+
+def _private_file(value: os.stat_result) -> None:
+    if (
+        not stat.S_ISREG(value.st_mode)
+        or value.st_uid != os.geteuid()
+        or stat.S_IMODE(value.st_mode) != 0o600
+        or value.st_nlink != 1
+    ):
+        raise PrefixError("stream must be an owned mode-0600 single-link regular file")
+
+
+def _receipt(pin: dict, maximum: int) -> tuple[int, str]:
+    if type(maximum) is not int or not 0 <= maximum <= MAXIMUM_PREFIX:
+        raise PrefixError("prefix maximum exceeds the private hard cap")
+    if type(pin) is not dict or set(pin) != _PIN_KEYS:
+        raise PrefixError("pending stream receipt has unexpected fields")
+    receipt = dict(pin)
+    retained = receipt["bytes"]
+    received = receipt["receivedBytes"]
+    if (
+        type(retained) is not int
+        or type(received) is not int
+        or retained < 0
+        or retained != received
+        or retained > maximum
+    ):
+        raise PrefixError("stream receipt is capped, incoherent, or too large")
+    if receipt["eof"] is not False:
+        raise PrefixError("terminal EOF is outside the pending-prefix reader")
+    for key in ("receivedSha256", "retainedSha256"):
+        if type(receipt[key]) is not str or not _DIGEST.fullmatch(receipt[key]):
+            raise PrefixError("stream receipt has an invalid SHA-256")
+    if receipt["receivedSha256"] != receipt["retainedSha256"]:
+        raise PrefixError("received and retained receipt hashes differ")
+    return retained, receipt["receivedSha256"]
+
+
+class HeldPrefix:
+    """Retain the original local stream FDs across pending/unknown observations.
+
+    Construct only after authenticating the first owner receipt.  Failed reads
+    do not close anything.  There is no automatic destructor or context manager:
+    the caller must retain this object through unknown outcomes and invoke
+    close_known(terminal=True) only after independently establishing the owner's
+    terminal state.  Calls to read()/close_known() must be serialized by one
+    observer; concurrent use of this private object is unsupported.  A
+    pre-first-open same-bytes replacement remains outside what a hash-only
+    receipt can prove.
+    """
+
+    def __init__(self, directory: Path, name: str):
+        if not isinstance(directory, Path) or not directory.is_absolute():
+            raise PrefixError("stream directory must be an absolute Path")
+        if ".." in directory.parts or len(directory.parts) > 256:
+            raise PrefixError("stream directory has an inadmissible ancestry")
+        if (
+            type(name) is not str
+            or not name
+            or name in (".", "..")
+            or "/" in name
+            or "\x00" in name
+            or len(os.fsencode(name)) > 255
+        ):
+            raise PrefixError("stream name must be one bounded component")
+        if os.name != "posix" or not all(
+            hasattr(os, option)
+            for option in ("O_NOFOLLOW", "O_DIRECTORY", "O_CLOEXEC", "pread")
+        ):
+            raise PrefixError("safe local pending reads require POSIX descriptor operations")
+        self._held: list[int] = []
+        self._links: list[tuple[int, str, tuple[int, ...]]] = []
+        self._name = name
+        self._last_prefix = b""
+        self._closed = False
+        try:
+            flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
+            parent = os.open("/", flags | os.O_DIRECTORY)
+            self._held.append(parent)
+            for component in directory.parts[1:]:
+                before = os.stat(component, dir_fd=parent, follow_symlinks=False)
+                if not stat.S_ISDIR(before.st_mode):
+                    raise PrefixError("stream ancestry contains a non-directory or symlink")
+                child = os.open(component, flags | os.O_DIRECTORY, dir_fd=parent)
+                self._held.append(child)
+                opened = os.fstat(child)
+                if _identity(before) != _identity(opened):
+                    raise PrefixError("stream ancestry changed while opening")
+                self._links.append((parent, component, _identity(opened)))
+                parent = child
+            self._directory_fd = parent
+            self._directory_stat = os.fstat(parent)
+            _private_directory(self._directory_stat)
+            before = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            _private_file(before)
+            # A same-owner file-to-FIFO race must not turn this observer into a
+            # blocking reader before the post-open regular-file check.
+            self._stream_fd = os.open(name, flags | os.O_NONBLOCK, dir_fd=parent)
+            self._held.append(self._stream_fd)
+            self._stream_stat = os.fstat(self._stream_fd)
+            _private_file(self._stream_stat)
+            if _identity(before) != _identity(self._stream_stat):
+                raise PrefixError("stream changed while opening")
+            self._check()
+        except (OSError, PrefixError) as exc:
+            for descriptor in reversed(self._held):
+                os.close(descriptor)
+            self._held.clear()
+            self._closed = True
+            if isinstance(exc, PrefixError):
+                raise
+            raise PrefixError("original local prefix custody could not be opened") from exc
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    @property
+    def identity(self) -> dict:
+        """Return original physical identities without mutable generation fields."""
+        return {
+            "directory": list(_identity(self._directory_stat)),
+            "stream": list(_identity(self._stream_stat)),
+            "streamLinks": self._stream_stat.st_nlink,
+            "ancestry": [
+                {"name": component, "identity": list(original)}
+                for _, component, original in self._links
+            ],
+        }
+
+    def _check(self) -> os.stat_result:
+        if self._closed:
+            raise PrefixError("original prefix reader is already closed")
+        current = os.fstat(self._stream_fd)
+        named = os.stat(self._name, dir_fd=self._directory_fd, follow_symlinks=False)
+        _private_file(current)
+        _private_file(named)
+        if (
+            _identity(current) != _identity(self._stream_stat)
+            or _identity(named) != _identity(self._stream_stat)
+            or current.st_size < len(self._last_prefix)
+            or named.st_size < len(self._last_prefix)
+        ):
+            raise PrefixError("original stream custody changed")
+        directory = os.fstat(self._directory_fd)
+        _private_directory(directory)
+        if _identity(directory) != _identity(self._directory_stat):
+            raise PrefixError("original directory policy changed")
+        for parent_fd, component, original in self._links:
+            value = os.stat(component, dir_fd=parent_fd, follow_symlinks=False)
+            if not stat.S_ISDIR(value.st_mode) or _identity(value) != original:
+                raise PrefixError("original stream ancestry changed")
+        return current
+
+    def read(self, pin: dict, maximum: int = MAXIMUM_PREFIX) -> bytes:
+        """Return the exact coherent pending prefix; retain custody on failure."""
+        amount, digest = _receipt(pin, maximum)
+        if amount < len(self._last_prefix):
+            raise PrefixError("pending prefix receipt moved backwards")
+        try:
+            before = self._check()
+            if before.st_size < amount:
+                raise PrefixError("stream lacks the receipt prefix")
+            chunks: list[bytes] = []
+            offset = 0
+            hasher = hashlib.sha256()
+            while offset < amount:
+                block = os.pread(self._stream_fd, min(65536, amount - offset), offset)
+                if not block:
+                    raise PrefixError("stream was truncated during the prefix read")
+                chunks.append(block)
+                hasher.update(block)
+                offset += len(block)
+            if hasher.hexdigest() != digest:
+                raise PrefixError("local prefix differs from received and retained hashes")
+            after = self._check()
+            if after.st_size < amount:
+                raise PrefixError("stream was truncated after the prefix read")
+            raw = b"".join(chunks)
+            if not raw.startswith(self._last_prefix):
+                raise PrefixError("previously authenticated prefix bytes changed")
+            self._last_prefix = raw
+            return raw
+        except OSError as exc:
+            raise PrefixError("local pending prefix could not retain custody") from exc
+
+    def close_known(self, terminal: bool = False) -> None:
+        """Release local read FDs only on an explicit known-terminal assertion.
+
+        This is a caller state assertion, not a remote-status query or proof.
+        Unknown or absent assertions leave every original FD held.  Closing does
+        not delete, rewrite, truncate, or consume any stream or snapshot.
+        """
+        if terminal is not True:
+            raise PrefixError("unknown owner state must retain the original reader")
+        if self._closed:
+            return
+        # The terminal owner may have cleaned its pathname; held FDs still name
+        # the original objects and may be released once terminal is established.
+        while self._held:
+            os.close(self._held[-1])
+            self._held.pop()
+        self._closed = True
+
+
+def read_prefix(
+    directory: Path, name: str, pin: dict, maximum: int = MAXIMUM_PREFIX
+) -> bytes:
+    """One local read, for inert use only; use HeldPrefix for retained owners.
+
+    This convenience has no remote-owner custody and releases its local read
+    descriptors when this one observation ends, including refused observations.
+    """
+    reader = HeldPrefix(directory, name)
+    try:
+        return reader.read(pin, maximum)
+    finally:
+        reader.close_known(terminal=True)
+
+
+def _object(pairs: list[tuple[str, object]]) -> dict:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise PrefixError("complete JSON record contains a duplicate key")
+        result[key] = value
+    return result
+
+
+def _finite(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise PrefixError("complete JSON record contains a non-finite number")
+    return number
+
+
+def _constant(value: str) -> None:
+    raise PrefixError(f"complete JSON record contains forbidden constant {value}")
+
+
+def parse_complete_lines(
+    prefix: bytes, max_line: int = MAXIMUM_LINE
+) -> tuple[list[dict], bytes]:
+    """Decode complete UTF-8 JSON-object lines and return an unaccepted raw tail.
+
+    Duplicate keys (including nested keys), non-finite numbers, overlong lines,
+    more than 4096 records, and malformed complete records are refused.  An
+    incomplete final UTF-8/JSON fragment is retained as bytes, never accepted.
+    The caller owns prefix-growth joins and pending/terminal state transitions.
+    """
+    if type(prefix) is not bytes or len(prefix) > MAXIMUM_PREFIX:
+        raise PrefixError("JSON prefix is not bounded bytes")
+    if type(max_line) is not int or not 1 <= max_line <= MAXIMUM_LINE:
+        raise PrefixError("JSON line maximum exceeds the private hard cap")
+    records: list[dict] = []
+    if prefix.count(b"\n") > MAXIMUM_RECORDS:
+        raise PrefixError("complete JSON record count exceeds the private hard cap")
+    pieces = prefix.split(b"\n")
+    tail = pieces.pop()
+    if len(tail) > max_line:
+        raise PrefixError("incomplete JSON line exceeds the private hard cap")
+    if len(pieces) > MAXIMUM_RECORDS:
+        raise PrefixError("complete JSON record count exceeds the private hard cap")
+    for raw in pieces:
+        if len(raw) > max_line:
+            raise PrefixError("complete JSON line exceeds the private hard cap")
+        try:
+            value = json.loads(
+                raw.decode("utf-8", errors="strict"),
+                object_pairs_hook=_object,
+                parse_float=_finite,
+                parse_constant=_constant,
+            )
+        except (UnicodeDecodeError, ValueError, RecursionError) as exc:
+            raise PrefixError("complete JSON record is inadmissible") from exc
+        if type(value) is not dict:
+            raise PrefixError("complete JSON record must be an object")
+        records.append(value)
+    return records, tail

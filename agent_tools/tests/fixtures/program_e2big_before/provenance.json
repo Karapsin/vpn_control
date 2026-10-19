@@ -1,0 +1,6 @@
+{
+  "sha256": "5afeb431b50294fbb3ed9ba1cceb9a6eaa8d6d8434cc9e49c40d155f56f9b1f4",
+  "bytes": 34718,
+  "source": ".runtime/windows-parity-20261019/program-tool-draft/e2big-before/ssh_program_execution.py.source",
+  "originalFeatureGap": "no recovery for definite kernel prelaunch E2BIG"
+}

@@ -1,0 +1,18 @@
+def launch(self,code):
+        original=subprocess.Popen
+        def run(*a,**kw):return original([sys.executable,'-I','-c',code],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        return run
+
+def test_live_child_and_exact_partial_bytes_retained_before_owned_kill(self):
+        env=scope();env['ROUTING_OUTER_SECONDS']=.05
+        with mock.patch.object(subprocess,'Popen',side_effect=self.launch("import sys,time;sys.stderr.buffer.write(b'notice\\xff');sys.stderr.flush();time.sleep(3)")),self.assertRaisesRegex(ValueError,'getter_command_timeout'):
+            env['getter_bounded'](self.argv(),1,{})
+        record=env['GETTER_RECORDS']['routingPartial'];self.assertEqual(b'notice\xff',base64.b64decode(record['stderrBase64']))
+        measurement=env['GETTER_RECORDS']['routingMeasurement'];self.assertEqual('child_live_at_outer_deadline',measurement['classification']);self.assertIsNone(measurement['exitCode']);self.assertFalse(measurement['stdoutEof'])
+
+def test_exited_parent_with_descendant_held_pipe_is_distinct(self):
+        env=scope();env['ROUTING_OUTER_SECONDS']=.05
+        # A harmless short-lived descendant holds stdout; no persistent job.
+        code="import subprocess,sys;subprocess.Popen([sys.executable,'-I','-c','import time;time.sleep(.12)'])"
+        with mock.patch.object(subprocess,'Popen',side_effect=self.launch(code)),self.assertRaises(ValueError):env['getter_bounded'](self.argv(),1,{})
+        self.assertEqual('child_exited_pipe_open',env['GETTER_RECORDS']['routingMeasurement']['classification'])

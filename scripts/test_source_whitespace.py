@@ -127,6 +127,7 @@ class SourceWhitespaceTest(unittest.TestCase):
         names = [f"agent_tools/tests/fixtures/android_api35_historical_{part}.source"
                  for part in ("arm", "metadata", "readmission")]
         names.append("agent_tools/tests/fixtures/windows_cp117_historical_factory/provider_f54029cf.source")
+        names.append("agent_tools/tests/fixtures/windows_artifact_transfer/qga-helper-length.failed.ps1.source")
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
             subprocess.run(["git", "init", "-q", str(root)], check=True)

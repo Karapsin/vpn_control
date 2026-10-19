@@ -1,0 +1,165 @@
+"""Released read-only canonical build_ssh_argv diagnostic; never executes argv."""
+from pathlib import Path
+from collections import deque
+import hashlib
+import json
+import os
+import sys
+import traceback
+
+ROOT = Path(__file__).resolve().parents[4]
+BASE = Path(__file__).resolve().parent
+OUT = BASE / 'oversized-original-failure-before-diagnosis' / 'same-boundary-diagnostic-v3'
+OUT.mkdir(mode=0o700)
+sys.path.insert(0, str(ROOT))
+from agent_tools import source_module_loader
+from agent_tools import ssh_owned_channel_retirement as canonical_capture
+
+
+def save(name, value):
+    raw = (json.dumps(value, sort_keys=True, indent=2) + '\n').encode()
+    descriptor = os.open(OUT / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        at = 0
+        while at < len(raw):
+            count = os.write(descriptor, raw[at:])
+            if count <= 0:
+                raise OSError('diagnostic_record_short_write')
+            at += count
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def generation(info):
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+
+held = []
+pins = json.loads((BASE / 'source-freeze.json').read_bytes())['sourceFiles']
+extra = json.loads((BASE / 'oversized-original-failure-before-diagnosis' / 'additional-preservation.private.json').read_bytes())['records']
+pins = {str(ROOT / name): value for name, value in pins.items()}
+pins[str(ROOT / '.vm-hosts.local.json')] = extra['config']
+writer_path = ROOT / 'agent_tools/ssh_owned_channel_retirement.py'
+assert hashlib.sha256(writer_path.read_bytes()).hexdigest() == '49a9fa2858217008e876792414e96cb9788a5aba1c4cd8b668f766de61a47b24'
+pins[str(writer_path)] = {'sha256': '49a9fa2858217008e876792414e96cb9788a5aba1c4cd8b668f766de61a47b24', 'generation': generation(writer_path.stat())}
+manifest = json.loads((BASE / 'requests.private.json').read_bytes())
+request_path = Path(manifest['direct-oversized']['requestPath'])
+request_raw = request_path.read_bytes()
+assert hashlib.sha256(request_raw).hexdigest() == manifest['direct-oversized']['requestSha256']
+pins[str(request_path)] = {'sha256': hashlib.sha256(request_raw).hexdigest(), 'generation': generation(request_path.stat())}
+trust = json.loads((BASE / 'oversized-original-failure-before-diagnosis' / 'preservation-manifest.private.json').read_bytes())['nativeOwnedRecords']['currentTrustInput']
+pins['/Users/karapsin_de/.ssh/known_hosts'] = trust
+
+
+def guard():
+    for path, fd, expected in held:
+        assert generation(os.fstat(fd)) == expected['generation'] == generation(os.stat(path, follow_symlinks=False)), path
+        raw = os.pread(fd, expected['generation'][6] + 1, 0)
+        assert hashlib.sha256(raw).hexdigest() == expected['sha256'], path
+
+
+events = deque(maxlen=32)
+event_count = 0
+allowed = {'ssh_automatic_program.py', 'ssh_channel_selection.py', 'ssh_direct_nested_channel.py',
+           'ssh_fresh_nested_channel.py', 'ssh_transport.py', 'private_inventory_lock.py'}
+
+
+def trace(frame, event, argument):
+    global event_count
+    if event == 'exception' and Path(frame.f_code.co_filename).name in allowed:
+        kind, error, _ = argument
+        if isinstance(error, (ValueError, OSError)) and not isinstance(error, BlockingIOError):
+            item = {'file': frame.f_code.co_filename, 'function': frame.f_code.co_name,
+                    'line': frame.f_lineno, 'class': kind.__name__, 'message': str(error)[:512]}
+            if kind.__name__ == 'ChannelUnknown':
+                item['typedResult'] = error.result
+            events.append(item)
+            event_count += 1
+    return trace
+
+
+result = {'schemaVersion': 1, 'programStarted': False, 'argvExecuted': False,
+          'buildCallCountAllowed': 1, 'replayAllowed': False}
+observations = None
+try:
+    for path, expected in pins.items():
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        held.append((path, fd, expected))
+    guard()
+    request = json.loads(request_raw)
+    with source_module_loader.request_scope(ROOT / 'agent_tools'):
+        owner = source_module_loader.adapter(ROOT / 'agent_tools', 'ssh_program_execution')
+        module = owner._module
+        assert module._request('archlinux', request) == {'host': 'archlinux', **request}
+        transport = module.transport
+        command = module.remote.command(request['program'])
+        save('intent.private.json', {'operationId': request['operationId'], 'requestSha256': hashlib.sha256(request_raw).hexdigest(),
+             'sourceSha256': manifest['direct-oversized']['sourceSha256'], 'sourceFilesHeld': len(held),
+             'commandSha256': hashlib.sha256(json.dumps(command, ensure_ascii=False).encode()).hexdigest(),
+             'scope': 'one unchanged canonical read-only argv build; never execute returned argv', 'replayAllowed': False})
+        try:
+            with transport._private_admission_capture() as observations:
+                sys.settrace(trace)
+                try:
+                    config = transport.load_config(ROOT)
+                    argv = transport.build_ssh_argv(config, 'archlinux', 15, command)
+                    result.update(state='current-read-only-build-succeeded', argvType=type(argv).__name__,
+                                  argvByteSizes=transport.argv_byte_sizes(argv))
+                finally:
+                    sys.settrace(None)
+        except BaseException as error:
+            result.update(state='current-read-only-build-refused', exceptionClass=type(error).__name__,
+                          message=str(error)[:512], traceback=traceback.format_exc()[:16384])
+            if type(error).__name__ == 'ChannelUnknown':
+                result['typedResult'] = error.result
+        owner._session.guard()
+    guard()
+    result['sourceClosing'] = True
+finally:
+    sys.settrace(None)
+    result.update(exceptionEvents=list(events), exceptionEventCount=event_count,
+                  eventsTruncated=max(0, event_count - len(events)))
+    # Persist the typed decision and bounded trace before any raw writer.
+    save('result.private.json', result)
+    save('exception-trace.private.json', {'events': list(events), 'total': event_count,
+         'truncated': max(0, event_count - len(events))})
+    written = []
+    try:
+        with canonical_capture.private.Directory(OUT) as output, canonical_capture.direct.Guard(ROOT, 'archlinux') as raw_owner:
+            for ordinal, observation in enumerate((observations or {}).get('observations', [])):
+                capture = observation['capture']
+                name = 'same-call-observation-' + str(ordinal)
+                canonical_capture._capture(output, name, capture)
+                readback = {}
+                for leaf in (name + '.stdout', name + '.stderr', name + '.json'):
+                    if leaf.endswith('.json'):
+                        with canonical_capture.private.Snapshot(output, leaf) as actual:
+                            assert json.loads(actual.body) == {k: v for k, v in capture.items() if k not in ('stdout', 'stderr')}
+                            actual.guard()
+                            readback[leaf] = actual.pin()
+                    else:
+                        expected_raw = capture['stdout' if leaf.endswith('.stdout') else 'stderr']
+                        actual = canonical_capture._third_raw_part(raw_owner, output, leaf, hashlib.sha256(expected_raw).hexdigest())
+                        assert actual.body == expected_raw
+                        actual.guard()
+                        readback[leaf] = actual.pin()
+                output.guard()
+                written.append({'observation': observation['observation'],
+                    'transportSourceSha256': observation['transportSourceSha256'], 'records': readback})
+        guard()
+        save('same-call-native-capture-index.private.json', {'observations': written,
+             'captureFailures': (observations or {}).get('captureFailures', []),
+             'rawReadbackAndSourceClosing': True, 'replayAllowed': False})
+    except BaseException as capture_error:
+        save('raw-retention-failure.private.json', {'errorClass': type(capture_error).__name__,
+             'message': str(capture_error)[:512], 'typedResultAlreadyPersisted': True,
+             'traceAlreadyPersisted': True, 'replayAllowed': False})
+        raise
+    finally:
+        for _, fd, _ in held:
+            os.close(fd)
+print(json.dumps({'state': result.get('state'), 'exceptionClass': result.get('exceptionClass'),
+                  'sourceClosing': result.get('sourceClosing'), 'capturedObservations': len((observations or {}).get('observations', [])),
+                  'traceEvents': len(events), 'programStarted': False, 'replayAllowed': False}, sort_keys=True))

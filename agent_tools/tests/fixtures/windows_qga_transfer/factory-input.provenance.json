@@ -1,0 +1,56 @@
+{
+  "caller": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/probe-packets-v2/probe-direct-probe-caller.py",
+  "callerSha256": "444b6e812d64731479e03985aff2d8b8318b23926dda71cdfe2c714c0906adaa",
+  "canonicalQgaSha256": "028dacbb4ef679270c10b77a272c687c780fb43c9277a033411b098836b351bb",
+  "factory": "render_consumer_caller",
+  "inputs": {
+    "namespace-prelude.source": {
+      "bytes": 69620,
+      "sha256": "d76868309f7f4a35837218d3b84d97c14d06a0d43ffcf500c58f89e3cdc3ba6c"
+    },
+    "operation-body.source": {
+      "bytes": 11318,
+      "sha256": "17628c773bc86d91fb80d1736ba9103782435891ee6ce449a5c78cb703f3bc4b"
+    }
+  },
+  "provenance": "Top-level caller, callerSha256, canonicalQgaSha256 and inputs describe authentic historical factory reproduction only. currentDerivedInput is a separately renewed current-producer binding and does not claim that the unchanged original saved caller reproduces the renewed prelude.",
+  "schemaVersion": 1,
+  "historicalProvenance": "Exact deterministic factory input boundaries recovered from actual builder-produced packet; tracked current factory reproduces complete saved caller byte for byte. No caller modifications.",
+  "currentDerivedInput": {
+    "schemaVersion": 1,
+    "kind": "exact-three-producer-binding-literal-renewal",
+    "authenticPrelude": {
+      "fixture": "namespace-prelude.input.source",
+      "bytes": 69620,
+      "sha256": "d76868309f7f4a35837218d3b84d97c14d06a0d43ffcf500c58f89e3cdc3ba6c"
+    },
+    "currentPrelude": {
+      "fixture": "namespace-prelude.input.source",
+      "bytes": 70031,
+      "sha256": "73255618f35bd3b8bd177ec0bd6c4d83a9154bb7bc7a30c8794786e476d09b7e"
+    },
+    "producer": {
+      "path": "agent_tools/windows_artifact_transfer.py",
+      "bytes": 44601,
+      "sha256": "2938a7c6c25d23adc9683ced126fe2d3c0a88614dab59a7b134a624d6f8b0ee8"
+    },
+    "literalNames": [
+      "EMITTER_SOURCE",
+      "EMITTER_SHA256",
+      "EMITTER_ORIGIN"
+    ],
+    "allOtherPreludeBytesAndLiteralsUnchanged": true,
+    "operationBody": {
+      "fixture": "operation-body.input.source",
+      "bytes": 11318,
+      "sha256": "17628c773bc86d91fb80d1736ba9103782435891ee6ce449a5c78cb703f3bc4b"
+    },
+    "currentFactorySource": {
+      "path": "agent_tools/windows_qga_transfer.py",
+      "bytes": 28116,
+      "sha256": "bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022"
+    },
+    "historicalOriginalCallerSha256": "444b6e812d64731479e03985aff2d8b8318b23926dda71cdfe2c714c0906adaa",
+    "sourceClaim": "Current derived input only; actual complete current-factory caller qualification is recorded separately, without promoting the original caller hash to current."
+  }
+}

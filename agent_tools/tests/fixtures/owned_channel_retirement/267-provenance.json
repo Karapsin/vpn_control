@@ -1,0 +1,39 @@
+{
+  "admission": {
+    "bytes": 24735,
+    "fixture": "267-admission.json",
+    "sha256": "4b8b884691b8fc96c2adbf33c70523b86a8e14e635e67513688693e7b72859be",
+    "sourcePath": ".runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/profile-preparation/intake/profile-admission-intake-v3.private.json"
+  },
+  "beforeHelperSha256": "49a9fa2858217008e876792414e96cb9788a5aba1c4cd8b668f766de61a47b24",
+  "beforeTestSha256": "e50befaf39859ecd0d6a041aa26cae7986becbf3efb5c37b1f2d829ac0f99dd4",
+  "closedUnknown": {
+    "owner-closed.json": {
+      "fixture": "267-closed-unknown-owner-closed.json",
+      "sha256": "b591ea62a459126903163614492d7b7e68d2532eae7cb812728245d4a78a9033"
+    },
+    "terminal.json": {
+      "fixture": "267-closed-unknown-terminal.json",
+      "sha256": "5860350925faa95be1a0e5d6d61257e3f824811957acecb2e6674d9a6f307388"
+    }
+  },
+  "kind": "private-267-profile-authentic-records",
+  "programIntake": {
+    "fixture": "267-program-records-intake.json",
+    "sha256": "a0c10b8f019aa7e251dac2186e42049756519f5a8a902c060d8c631c4f3d24aa",
+    "sourcePath": ".runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/profile-preparation/intake/program-records-union.private.json"
+  },
+  "records": {
+    "267-intent.json": {
+      "bytes": 2202,
+      "sha256": "fe252edef5183fa97ae54889bc0a894318d466326ad06842fa268361397c21d9",
+      "sourcePath": "/Users/karapsin_de/projects/vpn_control/.rag_index/ssh-direct-nested-channel/hosts/archlinux/2670897527834f95bd72cf5bda811155.intent.json"
+    },
+    "267-ready.json": {
+      "bytes": 675,
+      "sha256": "d83430675c84ea2d94e0be6aa7b62617a9c5c05f0530cca0882eaded9e7131a7",
+      "sourcePath": "/Users/karapsin_de/projects/vpn_control/.rag_index/ssh-direct-nested-channel/hosts/archlinux/2670897527834f95bd72cf5bda811155.ready.json"
+    }
+  },
+  "scope": "Whole authentic pre-profile helper and exact 267 intent/ready source bytes; no current copied helper authority."
+}

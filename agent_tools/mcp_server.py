@@ -81,6 +81,7 @@ docs_assistant = _captured_core('docs_assistant')
 local_build_environment = _captured_core('local_build_environment')
 managed_check_lease = _captured_core('managed_check_lease')
 check_output_retention = _captured_core('check_output_retention')
+managed_agent_check = _captured_core('managed_agent_check')
 windows_vm_setup_policy = _captured_core('windows_vm_setup_policy')
 native_workflow_policy = _captured_core('native_workflow_policy')
 _SOURCE_MODULE_LOADER = _captured_native_sources()
@@ -582,7 +583,8 @@ def _run_check_commands(selected_area: str, level: str, commands: list[list[str]
             dispatched_command = _agent_test_runtime_command(command, output_fingerprint)
         except (affected_agent_tests.SelectionError, OSError) as error:
             return _error("run_checks", str(error), blockers=[{"phase": "agent-test-plan", "state": "refused"}], command_results=results)
-        result = _run(dispatched_command, timeout=50 * 60, output_capture=capture)
+        result = _run(dispatched_command, timeout=50 * 60, output_capture=capture,
+                      **({"managed_agent": True} if managed_agent_check.is_private_command(REPO_ROOT, dispatched_command) else {}))
         results.append(result)
         if not result["ok"]:
             return _error(
@@ -1019,11 +1021,11 @@ def _agent_test_selection():
 def _commands_for(area: str, level: str) -> list[list[str]]:
     if level == "prepush":
         commands = [list(command) for command in PREPUSH_COMMANDS]
-        commands[3:3] = _agent_test_selection().commands(AGENT_TEST_PYTHON)
+        commands[3:3] = _agent_test_selection().commands(AGENT_TEST_PYTHON, max_modules_per_command=16)
         return commands
     commands = [list(command) for command in (FOCUSED_COMMANDS.get(area) or FOCUSED_COMMANDS["docs"])]
     if area == "agent_tools":
-        commands[0:0] = _agent_test_selection().commands(AGENT_TEST_PYTHON)
+        commands[0:0] = _agent_test_selection().commands(AGENT_TEST_PYTHON, max_modules_per_command=16)
     return commands
 
 
@@ -1846,6 +1848,7 @@ def _run(
     timeout: int = 120,
     output_limit: int | None = MAX_OUTPUT_CHARS,
     output_capture=None,
+    managed_agent: bool = False,
 ) -> dict[str, Any]:
     try:
         environment = local_build_environment.apply(REPO_ROOT, dict(os.environ))
@@ -1854,16 +1857,21 @@ def _run(
                 "stdout": "", "stderr": str(exc)}
     environment.pop("DYLD_INSERT_LIBRARIES", None)
     try:
-        completed = subprocess.run(
-            command,
-            cwd=REPO_ROOT,
-            text=output_capture is None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout,
-            check=False,
-            env=environment,
-        )
+        owned = None
+        if managed_agent:
+            owned = managed_agent_check.run(command, cwd=REPO_ROOT, env=environment, timeout=timeout)
+            completed = owned.completed
+        else:
+            completed = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                text=output_capture is None,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=False,
+                env=environment,
+            )
         retention = None
         retention_error = None
         if output_capture is not None:
@@ -1886,7 +1894,7 @@ def _run(
             # the caller's exact cap after extracting for very small limits.
             return _failure_log_excerpt(_bounded(value, None), max(2000, output_limit))[-output_limit:]
         return {
-            "ok": completed.returncode == 0 and retention_error is None,
+            "ok": completed.returncode == 0 and retention_error is None and not (owned and owned.timed_out),
             "command": _display(command),
             "returncode": completed.returncode,
             "stdout": excerpt(completed.stdout),
@@ -1895,6 +1903,7 @@ def _run(
                 "completionOutputScope": "repository" if retention and retention["label"].startswith("prepush-") else "runner-source"}
                if retention is not None else {}),
             **({"retentionError": retention_error} if retention_error is not None else {}),
+            **({"managedAgent": owned.metadata()} if owned is not None else {}),
         }
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {
@@ -2258,7 +2267,38 @@ def _native_source_request(function):
 
 @_native_source_request
 def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
-    """Inspect configured SSH hosts, recover a nested connection, or transfer owned fixture helpers."""
+    """Inspect SSH connections, transfer fixtures, or run structured generated programs."""
+    if action in {"program-start", "program-status", "program-collect"}:
+        starting = action == "program-start"
+        if (type(host) is not str or device is not None or type(timeout_seconds) is not int
+                or not 1 <= timeout_seconds <= 60
+                or starting and (identity is not None or type(transfer) is not dict)
+                or not starting and (transfer is not None or type(identity) is not dict)):
+            return _error("ssh_workflow", "Program execution requires an explicit host and one structured program or original operation identity.")
+        if os.name != "posix":
+            original = transfer if starting else identity
+            return {"tool": "ssh_workflow", "ok": False, "state": "refused",
+                    "reason": "program_coordinator_unsupported", "host": host,
+                    "operationId": original.get("operationId"),
+                    "nativeActionAllowed": False, "replayAllowed": False}
+        try:
+            owner = _agent_module("ssh_program_execution")
+            if starting:
+                admission = owner.admit_start(REPO_ROOT, host, transfer)
+                if not admission["ok"]:
+                    return {"tool": "ssh_workflow", "host": host, **admission}
+                result = owner.start(REPO_ROOT, host, transfer, source_context=owner._session)
+            else:
+                method = owner.status if action == "program-status" else owner.collect
+                result = method(REPO_ROOT, host, identity)
+            return {"tool": "ssh_workflow", **result,
+                    "ok": result.get("state") in {"pending", "terminal"}
+                          and (result.get("state") != "terminal" or result.get("exitCode") == 0)}
+        except (OSError, ValueError, TypeError, KeyError, SyntaxError):
+            original = transfer if starting else identity
+            return {"tool": "ssh_workflow", "ok": False, "state": "unknown",
+                    "operationId": original.get("operationId"), "host": host,
+                    "reason": "program_execution_unavailable", "replayAllowed": False}
     if action == "windows-caller-file-receipt":
         if (type(host)is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}",host)is None or transfer is not None or device is not None
                 or type(identity) is not dict or set(identity) != {"correlationId"}):
@@ -2671,6 +2711,8 @@ def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) ->
 
 
 _VM_NATIVE_ADAPTERS = (
+    'ssh_program_execution',
+    'ssh_program_execution_remote',
     'android_observation',
     'android_proxy_recovery',
     'android_qualified_cli_observation',
@@ -8614,7 +8656,14 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
 
 @_core_source_request
 def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
-    """Observe or perform fixed configured SSH fixture actions with durable evidence and safe next steps."""
+    """Manage configured SSH connections and run generated programs with durable evidence.
+
+    program-start accepts an explicit host and structured transfer containing an
+    operationId and Python program/source/args/cwd/targetContext. Oversized source
+    automatically uses verified saved-file transport. program-status and
+    program-collect take identity={operationId} and never submit another execution.
+    Other actions manage configured fixtures and connections.
+    """
     if action == "forward-open":
         return {"tool": "ssh_workflow", "ok": False, "state": "blocked",
                 "reason": "historical_cp117_forward_open_retired",
@@ -8758,7 +8807,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     subparsers.add_parser("serve")
     ssh_parser = subparsers.add_parser("ssh-workflow")
-    ssh_parser.add_argument("action", choices=("windows-caller-file-stage", "windows-caller-file-receipt", "connection-direct-channel-prepare", "connection-direct-channel-status", "connection-direct-channel-select", "connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status", "connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
+    ssh_parser.add_argument("action", choices=("program-start", "program-status", "program-collect", "windows-caller-file-stage", "windows-caller-file-receipt", "connection-direct-channel-prepare", "connection-direct-channel-status", "connection-direct-channel-select", "connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status", "connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
     ssh_parser.add_argument("--host")
     ssh_parser.add_argument("--device")
     ssh_parser.add_argument("--timeout-seconds", type=int, default=15)

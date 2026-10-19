@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/arch_package_integrity.py",
+  "sourceSha256": "f35c1da6433caf42baa9a4f77fa6bcd86c6eaa064b94567f06ad2812e003f00d",
+  "sourceBytes": 1673,
+  "failure": "An exact missing synchronization database advisory preceding the single permitted UID warning rejects policy-matching directory metadata.",
+  "originalNativeEvidence": {
+    "path": ".runtime/windows-parity-20261019/windows-fixture/direct-package-integrity-v2/native-result.json",
+    "sha256": "5fa9a7d1e6d13bbd6aa4d57a72898d43266711f13f3d94bd6d3ff35f14a22c47"
+  },
+  "nativeActionAllowed": false
+}

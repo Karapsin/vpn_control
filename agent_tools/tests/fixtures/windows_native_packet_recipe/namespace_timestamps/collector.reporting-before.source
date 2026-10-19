@@ -1,0 +1,427 @@
+import contextlib,hashlib,io,json,os,pathlib,pwd,re,shutil,socket,stat,struct,subprocess,sys,time,base64
+SPEC={'assets': {'drivers': {'bytes': 789645312, 'path': '/home/kardinal/vpn-control-windows-install-media-20261014-164e20432634406599ce89d386121f6b/virtio-win.iso', 'sha256': 'e14cf2b94492c3e925f0070ba7fdfedeb2048c91eea9c5a5afb30232a3976331'}, 'firmwareCode': {'bytes': 3653632, 'path': '/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd', 'sha256': 'cc150d941d4f1d39e596dedc545384a66ccfb3c9ba5cf9bc3a54d8d427d4d88f'}, 'firmwareVars': {'bytes': 540672, 'path': '/usr/share/edk2/x64/OVMF_VARS.4m.fd', 'sha256': '5d2ac383371b408398accee7ec27c8c09ea5b74a0de0ceea6513388b15be5d1e'}, 'installer': {'bytes': 7092807680, 'path': '/home/kardinal/vpn-control-windows-install-media-20261014-164e20432634406599ce89d386121f6b/windows-x64.iso', 'sha256': 'a61adeab895ef5a4db436e0a7011c92a2ff17bb0357f58b13bbc4062e535e7b9'}}, 'cpus': 4, 'deploymentId': 'd493a373-1d2c-4ab0-bfd4-e93575019dce', 'diskGiB': 96, 'headroomMiB': 8192, 'host': 'archlinux', 'memoryMiB': 6144, 'root': '/home/kardinal/vc-win-d493a3731d2c', 'vncPort': 5955}
+SETUP={'administrator': 'winparityAdmin', 'imageName': 'Windows 11 Enterprise Evaluation', 'locale': 'en-US', 'user': 'winparityUser'}
+CONTEXT={'hostBootId': '25515f23-b966-4c3a-ae63-d38452375578', 'pending': [{'id': 'env-3c4eb7ea8873512d3397aec8fe946a69', 'memoryBytes': 8589934592}, {'id': 'env-11f1a10b21cfea11b504bd9db53dd9a0', 'memoryBytes': 2147483648}, {'id': 'env-d2731056fb591098d64a377ce2dd3698', 'memoryBytes': 2147483648}]}
+root=pathlib.Path(SPEC['root']);held=[];parents=[];pins=[]
+def require(value,reason):
+        if not value:raise ValueError(reason)
+def generation(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def structure(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)
+def chain():
+        fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held.append(fd);parents.append((fd,None,None,structure(os.fstat(fd))))
+        for name in root.parent.parts[1:]:
+            parent=fd;fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);held.append(fd)
+            parents.append((fd,parent,name,structure(os.fstat(fd))))
+        info=os.fstat(fd)
+        require(info.st_uid==os.geteuid() and not info.st_mode&0o022 or info.st_uid==0 and info.st_mode&stat.S_ISVTX,'instance_parent')
+        return fd
+def closing():
+        for fd,parent,name,identity in parents:
+            require(structure(os.fstat(fd))==identity,'instance_parent_changed')
+            require(structure(os.lstat('/') if parent is None else os.stat(name,dir_fd=parent,follow_symlinks=False))==identity,'instance_parent_changed')
+        for fd,path,identity in pins:
+            require(generation(os.fstat(fd))==identity and generation(os.stat(path,follow_symlinks=False))==identity,'instance_source_changed')
+def private(path,directory=False):
+        s=os.lstat(path);require((stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode)) and s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==(0o700 if directory else 0o600) and (directory or s.st_nlink==1),'instance_private');return s
+def read(name):
+        path=root/name;private(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            info=os.fstat(fd);require(info.st_size<=65536,'instance_receipt_bound');raw=os.read(fd,65537)
+            require(len(raw)==info.st_size and generation(os.fstat(fd))==generation(info) and generation(os.lstat(path))==generation(info),'instance_receipt_changed')
+            return json.loads(raw)
+        finally:os.close(fd)
+def birth(pid):
+        with open('/proc/'+str(pid)+'/stat') as f:row=f.read(8193).rsplit(')',1)[1].split()
+        require(row[0] not in ('Z','X') and len(row)>19,'instance_process_dead');return int(row[19])
+def process(row):
+        require(type(row)is dict and set(row)=={'pid','startTicks','argv','commandSha256','executableGeneration'} and type(row['pid'])is int and row['pid']>0 and type(row['startTicks'])is int and row['startTicks']>0,'instance_process_receipt')
+        pid=row['pid'];require(birth(pid)==row['startTicks'],'instance_process_changed');base='/proc/'+str(pid)
+        with open(base+'/cmdline','rb') as f:raw=f.read(32769)
+        require(raw==b'\0'.join(os.fsencode(x) for x in row['argv'])+b'\0' and hashlib.sha256(raw).hexdigest()==row['commandSha256'] and list(generation(os.stat(base+'/exe')))==row['executableGeneration'] and os.stat(base).st_uid==os.geteuid() and birth(pid)==row['startTicks'],'instance_process_changed')
+        return pid
+def owns(pid,path,is_socket=False):
+        fdlist=os.listdir('/proc/'+str(pid)+'/fd');require(len(fdlist)<=8192,'instance_fd_capacity')
+        if is_socket:
+            with open('/proc/net/unix') as f:raw=f.read(1024**2+1)
+            require(len(raw)<=1024**2,'instance_socket_capacity')
+            # Accepted Unix streams retain the bound pathname too. Identify
+            # the listening stream, then prove its descriptor belongs to pid.
+            rows=[r.split() for r in raw.splitlines()[1:]]
+            matches=[r[6] for r in rows if len(r)>=8 and r[-1]==str(path) and
+                     r[3:6]==['00010000','0001','01']]
+            require(len(matches)==1,'instance_socket_identity');target='socket:['+matches[0]+']'
+            require(any(os.readlink('/proc/'+str(pid)+'/fd/'+n)==target for n in fdlist),'instance_socket_owner')
+        else:
+            identity=private(path);found=False
+            for n in fdlist:
+                try:info=os.stat('/proc/'+str(pid)+'/fd/'+n)
+                except FileNotFoundError:continue
+                if (info.st_dev,info.st_ino)==(identity.st_dev,identity.st_ino):found=True
+            require(found,'instance_disk_owner')
+def qmp(command,arguments=None):
+        client=socket.socket(socket.AF_UNIX);client.settimeout(3)
+        try:
+            row=read('qemu-started.json');pid=process(row);named=os.lstat(root/'qmp.sock')
+            client.connect(str(root/'qmp.sock'))
+            peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+            require(peer[:2]==(pid,os.geteuid()) and os.lstat(root/'qmp.sock').st_ino==named.st_ino,'instance_qmp_peer')
+            stream=client.makefile('rwb',buffering=0)
+            def receive():
+                line=stream.readline(65537);require(0<len(line)<=65536,'instance_qmp_bound');return json.loads(line)
+            require('QMP' in receive(),'instance_qmp_greeting')
+            for sequence,(name,args) in enumerate((('qmp_capabilities',None),(command,arguments))):
+                request={'execute':name,'id':sequence}
+                if args is not None:request['arguments']=args
+                stream.write((json.dumps(request)+'\n').encode())
+                for _ in range(32):
+                    value=receive()
+                    if value.get('id')==sequence:break
+                else:raise ValueError('instance_qmp_response')
+                require('return' in value,'instance_qmp_error')
+            process(row);require(os.lstat(root/'qmp.sock').st_ino==named.st_ino,'instance_qmp_changed')
+            return value['return']
+        finally:client.close()
+def guest_state(pid):
+        state={'guestAgentReady':False,'ordinarySessionObserved':False,'osName':None}
+        client=socket.socket(socket.AF_UNIX);client.settimeout(1)
+        try:
+            owns(pid,root/'qga.sock',True);named=os.lstat(root/'qga.sock');client.connect(str(root/'qga.sock'))
+            peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+            require(peer[:2]==(pid,os.geteuid()) and os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_peer')
+            stream=client.makefile('rwb',buffering=0)
+            nonce=int.from_bytes(os.urandom(8),'big')&((1<<63)-1)
+            stream.write(b'\xff'+(json.dumps({'execute':'guest-sync-delimited','arguments':{'id':nonce}})+'\n').encode())
+            def receive():
+                line=stream.readline(65537);require(0<len(line)<=65536,'instance_qga_bound')
+                return json.loads(line.lstrip(b'\xff'))
+            # The flush sentinel can itself produce an error; stale complete
+            # replies and partial JSON may also precede the real response.
+            # QGA requires ignoring all input until a delimited matching nonce.
+            deadline=time.monotonic()+3;consumed=0
+            for _ in range(32):
+                remaining=deadline-time.monotonic();require(remaining>0,'instance_qga_sync')
+                client.settimeout(min(1,remaining));line=stream.readline(65537)
+                consumed+=len(line);require(0<len(line)<=65536 and consumed<=262144,'instance_qga_bound')
+                marker=line.rfind(b'\xff')
+                if marker<0:continue
+                try:reply=json.loads(line[marker+1:])
+                except (ValueError,UnicodeError):continue
+                if type(reply)is dict and type(reply.get('return'))is int and reply['return']==nonce:break
+            else:raise ValueError('instance_qga_sync')
+            client.settimeout(1)
+            def query(command):
+                stream.write((json.dumps({'execute':command})+'\n').encode());response=receive()
+                require('return' in response,'instance_qga_query');return response['return']
+            query('guest-ping');state['guestAgentReady']=True
+            osinfo=query('guest-get-osinfo');name=osinfo.get('pretty-name') or osinfo.get('name')
+            if type(name)is str and 0<len(name)<=256 and not any(ord(c)<32 for c in name):state['osName']=name
+            try:
+                users=query('guest-get-users')
+                if type(users)is list and len(users)<=128:
+                    state['ordinarySessionObserved']=any(type(u)is dict and type(u.get('user'))is str and u['user'].rsplit('\\',1)[-1].casefold()==SETUP['user'].casefold() for u in users)
+            except (OSError,ValueError):pass
+            require(os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_changed')
+        except (OSError,ValueError,KeyError,TypeError):
+            state={'guestAgentReady':False,'ordinarySessionObserved':False,'osName':None}
+        finally:client.close()
+        return state
+def instance_intent():
+        private(root,True);intent=read('intent.json')
+        require(type(intent)is dict and set(intent)=={'schemaVersion','spec','setup','hostBootId','rootIdentity','assetIdentities'} and type(intent['schemaVersion'])is int and intent['schemaVersion']==1,'instance_intent_fields')
+        require(intent['spec']==SPEC and intent['setup']==SETUP and intent['hostBootId']==CONTEXT['hostBootId'] and intent['rootIdentity']==list(structure(os.lstat(root))),'instance_intent')
+        require(type(intent['assetIdentities'])is dict and set(intent['assetIdentities'])=={'firmwareCode','installer','drivers'},'instance_asset_receipt')
+        return intent
+def observed():
+        intent=instance_intent()
+        q=read('qemu-started.json');t=read('swtpm-started.json');pid=process(q);tpid=process(t)
+        mutable=read('mutable-artifacts.json')
+        require(type(mutable)is dict and set(mutable)=={'disk.qcow2','uefi-vars.fd'},'instance_mutable_receipt')
+        for name,identity in mutable.items():
+            require(type(identity)is list and len(identity)==5 and list(structure(private(root/name)))==identity,'instance_mutable_changed')
+            owns(pid,root/name)
+        owns(pid,root/'qmp.sock',True);owns(tpid,root/'swtpm.sock',True)
+        state=qmp('query-status');sets=qmp('query-fdsets')
+        require(type(sets)is list,'instance_asset_descriptors')
+        for name,expected in intent['assetIdentities'].items():
+            require(type(expected)is dict and set(expected)=={'set','generation'} and type(expected['set'])is int and
+                    expected['set']==('firmwareCode','installer','drivers').index(name)+1 and type(expected['generation'])is list and
+                    len(expected['generation'])==9 and all(type(x)is int and x>=0 for x in expected['generation']) and
+                    expected['generation'][6]==SPEC['assets'][name]['bytes'],'instance_asset_receipt')
+            selected=[s for s in sets if s.get('fdset-id')==expected['set']]
+            require(len(selected)==1 and len(selected[0].get('fds',[]))==1,'instance_asset_descriptors')
+            item=selected[0]['fds'][0];require(item.get('opaque')=='asset:'+name and type(item.get('fd'))is int and item['fd']>2,'instance_asset_descriptors')
+            require(list(generation(os.stat('/proc/'+str(pid)+'/fd/'+str(item['fd']))))==expected['generation'],'instance_asset_changed')
+        guest=guest_state(pid);process(q);process(t);closing()
+        return {'qemu':{'pid':q['pid'],'startTicks':q['startTicks']},'swtpm':{'pid':t['pid'],'startTicks':t['startTicks']},'qemuStatus':state.get('status'),**guest,'productReady':False}
+def save(name,value):
+        fd=os.open(root/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        try:
+            raw=value if type(value)is bytes else (json.dumps(value,sort_keys=True)+'\n').encode();offset=0
+            while offset<len(raw):offset+=os.write(fd,raw[offset:])
+            os.fsync(fd)
+        finally:os.close(fd)
+import base64,hashlib,json,os,re,secrets,socket,stat,sys,tempfile,gzip,time,select,struct
+from pathlib import PureWindowsPath
+import struct
+def call(sock, command, args, _deadline=None):
+    received = bytearray()
+    primary = None
+    deadline = min(time.monotonic() + 20, _deadline) if _deadline is not None else time.monotonic() + 20
+    c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+    def budget():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('collection-deadline')
+        c.settimeout(min(20, remaining))
+
+    def receive():
+        budget()
+        return c.recv(1)
+
+    def send(data):
+        budget()
+        c.sendall(data)
+    try:
+        budget()
+        c.connect(sock)
+        peer = struct.unpack('3i', c.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        if peer[:2] != (QGA_PEER_PID, os.geteuid()):
+            raise ValueError('instance_qga_peer')
+        QGA_GUARD()
+        sid = secrets.randbits(63)
+        send(b'\xff' + json.dumps({'execute': 'guest-sync-delimited', 'arguments': {'id': sid}}, separators=(',', ':')).encode() + b'\n')
+        for i in range(8192):
+            x = receive()
+            received.extend(x)
+            if x == b'\xff':
+                break
+        else:
+            raise ValueError()
+
+        def line():
+            raw = bytearray()
+            for i in range(262144):
+                x = receive()
+                received.extend(x)
+                if x == b'\n':
+                    os.write(wire, bytes(raw) + b'\n')
+                    os.fsync(wire)
+                    return json.loads(raw)
+                if not x:
+                    raise ValueError()
+                raw.extend(x)
+            raise ValueError()
+        if line().get('return') != sid:
+            raise ValueError()
+        send(json.dumps({'execute': command, 'arguments': args}, separators=(',', ':')).encode() + b'\n')
+        result = line()
+        if 'return' not in result:
+            raise ValueError()
+        return result['return']
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        try:
+            os.write(partial_wire, bytes(received))
+            os.fsync(partial_wire)
+        except OSError as error:
+            if primary is None:
+                raise
+            primary.readonlyQgaCaptureFailure = {'stage': 'raw_capture', 'errorClass': type(error).__name__, 'errno': error.errno}
+        finally:
+            c.close()
+
+COLLECTOR_ID='65f4ce7a-03fb-417d-ba01-f802b06bc7e7'
+ORIGINAL_PREFIX='native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108'
+ORIGINAL_PROBE_ID='f31cc5f7-32b8-4cd6-aaa2-91226d194108'
+EXPECTED_NAMES=['native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-qga.py', 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-emitter.py', 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json', 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw', 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.intent.json']
+QEMU_EXPECTED={'pid': 3823747, 'startTicks': 137277120}
+EMITTER_SHA256='297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479'
+QGA_SHA256='bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022'
+EXACT_PINS={'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-qga.py': {'bytes': 28116, 'sha256': 'bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022'}, 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-emitter.py': {'bytes': 44195, 'sha256': '297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479'}, 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json': {'bytes': 32805, 'sha256': '8db1bf43f51b325fc620957366af54ff0555696e6c0fd7cd7bfa71963d147c81', 'generation': [66307, 103427561, 33152, 1000, 1000, 1, 32805, 1792434054799778029, 1792434054799778029]}, 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw': {'bytes': 214, 'sha256': '639ec96921964c4e0dc65cfd20603b2ea040de99b5e83792f67c4f156c9bf2f4', 'generation': [66307, 103427562, 33152, 1000, 1000, 1, 214, 1792434054806778027, 1792434054806778027]}}
+EXPECTED_NONCE=8220859838733921813
+
+# Host-only observation. No socket, subprocess, QGA, QMP, signal or cleanup call.
+MAX_FILE=65536
+MAX_TOTAL=131072
+MAX_WIRE=4*1024*1024
+all_files={};file_holds=[];absent=[];bytes_retained=0;actor=None;deadline=time.monotonic()+45
+def budget():require(time.monotonic()<deadline,'collector_read_deadline')
+result={'schemaVersion':1,'state':'preparing','probeId':COLLECTOR_ID,'originalPrefix':ORIGINAL_PREFIX,'originalProbeId':ORIGINAL_PROBE_ID,'canonicalEmitterSha256':EMITTER_SHA256,'canonicalQgaSha256':QGA_SHA256,'hostReadOnly':True,'guestQueries':False,'newSocketOperations':False,'signals':False,'originalHandleClose':False,'productOperation':False,'taskOperation':False,'files':all_files}
+
+def hold_exact_root():
+ parent=parents[-1][0];fd=os.open(root.name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);held.append(fd);info=os.fstat(fd)
+ require(stat.S_ISDIR(info.st_mode)and info.st_uid==os.geteuid()and stat.S_IMODE(info.st_mode)==0o700,'collector_root_private')
+ identity=structure(info);require(structure(os.stat(root.name,dir_fd=parent,follow_symlinks=False))==identity,'collector_root_named_held')
+ parents.append((fd,parent,root.name,identity));result['rootStructureOpening']=list(identity);return fd,identity
+
+def bounded_proc(path,limit):
+ with open(path,'rb')as stream:raw=stream.read(limit+1)
+ require(len(raw)<=limit,'collector_proc_bound');return raw
+
+def prefix_names():
+ return sorted(EXPECTED_NAMES)
+
+def collect_file(name):
+ global bytes_retained
+ budget()
+ path=root/name
+ try:before=os.lstat(path)
+ except FileNotFoundError:
+  all_files[name]={'state':'absent','path':str(path)};absent.append(name);return
+ require(stat.S_ISREG(before.st_mode)and before.st_uid==os.geteuid()and stat.S_IMODE(before.st_mode)==0o600 and before.st_nlink==1,'collector_file_private')
+ require(0<=before.st_size<=MAX_FILE and bytes_retained+before.st_size<=MAX_TOTAL,'collector_file_or_aggregate_bound')
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);opening=generation(os.fstat(fd));require(opening==generation(before),'collector_named_held_opening')
+ chunks=[];size=0;h=hashlib.sha256()
+ while True:
+  chunk=os.read(fd,min(65536,MAX_FILE+1-size))
+  if not chunk:break
+  size+=len(chunk);require(size<=MAX_FILE and bytes_retained+size<=MAX_TOTAL,'collector_read_bound');chunks.append(chunk);h.update(chunk)
+ require(size==opening[6]and generation(os.fstat(fd))==opening and generation(os.lstat(path))==opening,'collector_file_changed_during_read')
+ raw=b''.join(chunks);bytes_retained+=size;digest=h.hexdigest();file_holds.append((fd,path,opening,digest,size));pins.append((fd,path,opening))
+ if name in EXACT_PINS:
+  wanted=EXACT_PINS[name];require(size==wanted['bytes']and digest==wanted['sha256'],'collector_exact_original_bytes')
+  if 'generation'in wanted:require(list(opening)==wanted['generation'],'collector_original_generation_pin')
+ all_files[name]={'state':'complete','path':str(path),'bytes':size,'openingGeneration':list(opening),'openingSha256':digest,'base64':base64.b64encode(raw).decode(),'namedHeldOpening':True}
+
+def files_closing():
+ for fd,path,opening,digest,length in file_holds:
+  budget()
+  require(generation(os.fstat(fd))==opening and generation(os.lstat(path))==opening,'collector_file_generation_closing')
+  os.lseek(fd,0,os.SEEK_SET);h=hashlib.sha256();size=0
+  while True:
+   chunk=os.read(fd,min(65536,MAX_FILE+1-size))
+   if not chunk:break
+   size+=len(chunk);require(size<=MAX_FILE,'collector_closing_bound');h.update(chunk)
+  require(size==length and h.hexdigest()==digest and generation(os.fstat(fd))==opening and generation(os.lstat(path))==opening,'collector_file_hash_closing')
+  all_files[path.name].update(closingGeneration=list(opening),closingSha256=h.hexdigest(),namedHeldClosing=True)
+ for name in absent:
+  try:os.lstat(root/name)
+  except FileNotFoundError:all_files[name]['closingAbsent']=True
+  else:raise ValueError('collector_absence_changed')
+ closing()
+
+def file_bytes(suffix,required=True):
+ name=ORIGINAL_PREFIX+suffix;row=all_files.get(name)
+ if row is None or row.get('state')!='complete':
+  require(not required,'collector_required_original_file_absent');return None
+ return base64.b64decode(row['base64'],validate=True)
+
+def historical_wire_join():
+ qga=file_bytes('.canonical-qga.py');emitter=file_bytes('.canonical-emitter.py')
+ require(hashlib.sha256(qga).hexdigest()==QGA_SHA256 and hashlib.sha256(emitter).hexdigest()==EMITTER_SHA256,'collector_original_canonical_source_hash')
+ raw=file_bytes('.rpc-000083.raw');request=file_bytes('.rpc-000083.request.json');intent=json.loads(file_bytes('.rpc-000083.intent.json'))
+ require(type(intent)is dict and intent.get('sequence')==83 and type(intent.get('nonce'))is int and intent['nonce']==EXPECTED_NONCE and intent.get('requestPath')==str(root/(ORIGINAL_PREFIX+'.rpc-000083.request.json'))and intent.get('rawPath')==str(root/(ORIGINAL_PREFIX+'.rpc-000083.raw'))and intent.get('requestBytes')==len(request)and intent.get('requestSha256')==hashlib.sha256(request).hexdigest(),'collector_original_rpc_intent_join')
+ parsed=json.loads(request);require(type(parsed)is dict and parsed.get('execute')==intent.get('command')=='guest-exec','collector_original_rpc_command_join')
+ matches=0;after_sync=[]
+ for line in raw.splitlines(keepends=True):
+  marker=line.rfind(b'\xff')
+  if marker>=0:
+   try:value=json.loads(line[marker+1:])
+   except(ValueError,UnicodeDecodeError):continue
+   if type(value)is dict and set(value)=={'return'}and type(value['return'])is int and value['return']==intent['nonce']:matches+=1
+  elif matches:
+   after_sync.append(json.loads(line))
+ require(matches==1,'collector_original_sync_nonce_join')
+ require(after_sync==[{'error':{'class':'GenericError','desc':'Failed to execute helper program (Invalid argument)'}}],'collector_original_error_reply_join')
+ return {'canonicalSourceSha256':QGA_SHA256,'canonicalOpenChecksPeerCredentialsBeforeSync':True,'knownQemuPid':QEMU_EXPECTED['pid'],'knownQemuStartTicks':QEMU_EXPECTED['startTicks'],'rpcSequence':83,'command':'guest-exec','requestSha256':hashlib.sha256(request).hexdigest(),'rawSha256':hashlib.sha256(raw).hexdigest(),'rawBytes':len(raw),'nonce':intent['nonce'],'matchingDelimitedSyncReplies':matches,'afterSyncReply':after_sync[0],'originalRpcOutcome':'UNKNOWN','guestChildAbsenceClaimed':False,'guestReplayAllowed':False,'meaning':'Historical complete bf05 source/intent/nonce/raw causal join only; not a fresh socket peer or guest child-state query.'}
+
+def fd_metadata(pid,number,expected_link=None):
+ path='/proc/'+str(pid)+'/fd/'+number;before=os.readlink(path)
+ if expected_link is not None:require(before==expected_link,'collector_actor_fd_link_changed')
+ info=os.stat(path);after=os.readlink(path);require(before==after,'collector_actor_fd_link_changed')
+ return {'fd':int(number),'link':before,'targetGeneration':list(generation(info))}
+
+def process_link_metadata(pid,leaf):
+ path='/proc/'+str(pid)+'/'+leaf;before=os.readlink(path);info=os.stat(path);after=os.readlink(path);require(before==after,'collector_actor_metadata_link_changed')
+ return {'link':before,'targetGeneration':list(generation(info))}
+
+def process_namespace_root(pid):
+ base='/proc/'+str(pid);names=os.listdir(base+'/ns');require(0<len(names)<=32 and all(type(name)is str and re.fullmatch('[a-z_]+',name)for name in names),'collector_namespace_bound')
+ return {'namespaces':{name:process_link_metadata(pid,'ns/'+name)for name in sorted(names)},'processRoot':process_link_metadata(pid,'root')}
+
+def actor_snapshot(pid,required_paths):
+ base='/proc/'+str(pid);require(os.stat(base).st_uid==os.geteuid(),'collector_actor_uid')
+ start=birth(pid);cmd=bounded_proc(base+'/cmdline',1024*1024);status=bounded_proc(base+'/status',65536);exe=os.readlink(base+'/exe');exestat=generation(os.stat(base+'/exe'));argv=cmd.rstrip(b'\0').split(b'\0')
+ require(cmd.endswith(b'\0')and argv and all(b'\0'not in x for x in argv),'collector_actor_cmdline');require(re.fullmatch(r'python3(?:\.[0-9]+)?',pathlib.PurePosixPath(exe).name)is not None,'collector_actor_python')
+ uid_line=[line for line in status.splitlines()if line.startswith(b'Uid:')];require(len(uid_line)==1 and [int(x)for x in uid_line[0].split()[1:]]==[os.geteuid()]*4,'collector_actor_uid_status')
+ numbers=os.listdir(base+'/fd');require(len(numbers)<=8192,'collector_actor_fd_bound');selected={};sockets=[]
+ for number in sorted(numbers,key=lambda x:int(x)if x.isdecimal()else-1):
+  if not number.isdecimal():continue
+  try:link=os.readlink(base+'/fd/'+number)
+  except FileNotFoundError:continue
+  if link in required_paths:
+   metadata=fd_metadata(pid,number,link);require(metadata['targetGeneration']==all_files[pathlib.Path(link).name]['openingGeneration'],'collector_actor_original_fd_identity');selected.setdefault(link,[]).append(metadata)
+  elif re.fullmatch(r'socket:\[[0-9]+\]',link):sockets.append(fd_metadata(pid,number,link))
+ require(set(selected)==set(required_paths)and sockets,'collector_actor_exact_fd_scope')
+ metadata=process_namespace_root(pid)
+ require(birth(pid)==start and os.stat(base).st_uid==os.geteuid()and os.readlink(base+'/exe')==exe and generation(os.stat(base+'/exe'))==exestat and bounded_proc(base+'/cmdline',1024*1024)==cmd,'collector_actor_opening_identity')
+ return {'pid':pid,'uid':os.geteuid(),'startTicks':start,'exe':exe,'executableGeneration':list(exestat),'cmdlineBase64':base64.b64encode(cmd).decode(),'cmdlineSha256':hashlib.sha256(cmd).hexdigest(),'argvBytesBase64':[base64.b64encode(x).decode()for x in argv],'statusBase64':base64.b64encode(status).decode(),'requiredSourceAndRequestFds':selected,'socketFds':sockets,**metadata}
+
+def stable_actor_identity(value):
+ keys=('pid','uid','startTicks','exe','executableGeneration','cmdlineBase64','cmdlineSha256','argvBytesBase64','requiredSourceAndRequestFds','socketFds','namespaces','processRoot')
+ return {key:value[key]for key in keys}
+
+def stable_projection_paths(opening,closing):
+ # Reporting only: paths into the unchanged stable projections, in deterministic order.
+ paths=[]
+ def compare(left,right,path):
+  if left==right:return
+  if type(left)is dict and type(right)is dict:
+   for key in sorted(set(left)|set(right)):
+    if key not in left or key not in right:paths.append(path+[key])
+    else:compare(left[key],right[key],path+[key])
+  elif type(left)is list and type(right)is list:
+   for index in range(max(len(left),len(right))):
+    if index>=len(left)or index>=len(right):paths.append(path+[index])
+    else:compare(left[index],right[index],path+[index])
+  else:paths.append(path)
+ compare(opening,closing,[]);return paths
+
+def discover_actor():
+ required_paths={str(root/(ORIGINAL_PREFIX+s))for s in('.rpc-000083.request.json','.rpc-000083.raw','.canonical-qga.py','.canonical-emitter.py')}
+ entries=os.listdir('/proc');require(len(entries)<=131072,'collector_proc_entry_bound');candidates=[];scan={'sameUidProcesses':0,'racedOrUnreadableProcesses':0}
+ for name in sorted(entries):
+  budget()
+  if not name.isdecimal()or int(name)<=0 or int(name)in(QEMU_EXPECTED['pid'],os.getpid()):continue
+  base='/proc/'+name
+  try:
+   if os.stat(base).st_uid!=os.geteuid():continue
+   scan['sameUidProcesses']+=1;numbers=os.listdir(base+'/fd');require(len(numbers)<=8192,'collector_scan_fd_bound');seen=set();has_socket=False
+   for number in numbers:
+    if not number.isdecimal():continue
+    try:link=os.readlink(base+'/fd/'+number)
+    except FileNotFoundError:continue
+    if link in required_paths:seen.add(link)
+    if re.fullmatch(r'socket:\[[0-9]+\]',link):has_socket=True
+   if seen==required_paths and has_socket:candidates.append(actor_snapshot(int(name),required_paths))
+  except(FileNotFoundError,PermissionError,ProcessLookupError):scan['racedOrUnreadableProcesses']+=1
+ result['actorScan']=scan;result['actorCandidateCount']=len(candidates);result['candidateIdentities']=[{'pid':x['pid'],'startTicks':x['startTicks']}for x in candidates]
+ require(len(candidates)==1,'collector_actor_not_unique');return candidates[0],required_paths
+
+try:
+ chain();root_fd,root_identity=hold_exact_root();instance_intent();closing();qemu=read('qemu-started.json');require(qemu['pid']==QEMU_EXPECTED['pid']and qemu['startTicks']==QEMU_EXPECTED['startTicks'],'collector_qemu_scope');process(qemu);owns(qemu['pid'],root/'qga.sock',True)
+ opening_names=prefix_names();result['selectedFileNames']=opening_names;result['prefixInventoryObserved']=False;result['rootListenerProcNetUnixGuard']=True
+ for name in sorted(set(opening_names)|set(EXPECTED_NAMES)):collect_file(name)
+ result['historicalWireJoin']=historical_wire_join()
+ actor,required_paths=discover_actor();result['actorOpening']=actor
+ result['socketObservation']={'currentPeerRelation':'not-observed-by-readonly-proc-metadata','anonymousSocketIsNotFreshQgaPeerProof':True,'newProtocolQueries':False,'socketPayloadRead':False}
+ actor_closing=actor_snapshot(actor['pid'],required_paths);result['actorClosing']=actor_closing
+ result['actorStableProjectionDiff']=stable_projection_paths(stable_actor_identity(actor),stable_actor_identity(actor_closing))
+ require(stable_actor_identity(actor_closing)==stable_actor_identity(actor),'collector_actor_closing_changed')
+ files_closing();process(qemu);owns(qemu['pid'],root/'qga.sock',True);closing()
+ result['rootStructureClosing']=list(structure(os.fstat(root_fd)));require(result['rootStructureClosing']==list(root_identity),'collector_root_closing');result['rootNamedHeldClosing']=True
+ result.update(state='qualified',sourceClosing=True,allFileBytesComplete=True,allFileBytesReadAndHashesComplete=True,originalFileBytePayloadEmitted=False,aggregateFileBytes=bytes_retained,canonicalSourceFilesJoined=True,scope='exact-original-rpc83-host-actor-identity',collectorId=COLLECTOR_ID,hostProcessMetadataReadOnly=True,foreignFdContentsRead=False,qgaConnectOrRead=False,guestProgramSubmitted=False)
+except BaseException as error:
+ result.update(state='refused',errorClass=type(error).__name__,error=str(error),sourceClosing=False,allFileBytesComplete=False,aggregateFileBytes=bytes_retained)
+finally:
+ for fd in reversed(held):os.close(fd)
+for row in all_files.values():row.pop('base64',None)
+wire=json.dumps(result,sort_keys=True,ensure_ascii=True).encode()
+if len(wire)+1>MAX_WIRE:
+ metadata={name:{k:v for k,v in row.items()if k!='base64'}for name,row in all_files.items()}
+ result={'schemaVersion':1,'state':'refused','probeId':COLLECTOR_ID,'originalPrefix':ORIGINAL_PREFIX,'canonicalEmitterSha256':EMITTER_SHA256,'canonicalQgaSha256':QGA_SHA256,'hostReadOnly':True,'guestQueries':False,'newSocketOperations':False,'signals':False,'originalHandleClose':False,'sourceClosing':False,'allFileBytesComplete':False,'error':'collector_serialized_output_bound','attemptedOutputBytes':len(wire),'noFileBytePayloadEmitted':True,'completeDiagnosticMetadata':metadata,'originalFilesProcessesAndSocketsUntouched':True}
+ wire=json.dumps(result,sort_keys=True,ensure_ascii=True).encode();require(len(wire)+1<=MAX_WIRE,'collector_refusal_output_bound')
+print(wire.decode('ascii'))

@@ -14,7 +14,7 @@ from pathlib import Path
 MAX_SOURCE_BYTES = 8 * 1024 * 1024
 CHUNK_BYTES = 65536
 GATEWAY_SOURCE = Path(__file__).with_name("ssh_source_file_gateway.source")
-GATEWAY_SHA256 = "17ea428f8dc8be814f7906dc478dcb67a4119015a2e48d1ba754a8855598f17b"
+GATEWAY_SHA256 = "3a851bffc83766952bfa29b67d45b10e3e9df91f901b8b1b12da421465342b09"
 
 
 def receive_source(correlation: str, stream, temporary_root=None) -> dict:

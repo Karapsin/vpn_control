@@ -1,0 +1,35 @@
+﻿$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$path='C:\ProgramData\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\continuation-dc11e95f-0207-445b-8f67-5fbec47e96c1.ps1';$parent='C:\ProgramData\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a';$length=14458;$expected='3bbf69ca8e77a1825512697f14140c9bc8c695b4d98afed23732f8fd8be51280';$phase='dc11e95f-0207-445b-8f67-5fbec47e96c1'
+if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -cne 'S-1-5-18'){throw 'TOKEN_STAGE_SYSTEM'}
+$item=Get-Item -LiteralPath $parent -Force;for($part=$item;$null -ne $part;$part=$part.Parent){if(($part.Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw 'TOKEN_STAGE_PARENT_REPARSE'}}
+if((Get-Acl -LiteralPath $parent).Sddl -cne 'O:SYG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;S-1-5-21-4099058025-2437077614-260217637-1001)'){throw 'TOKEN_STAGE_PARENT_ACL'}
+if(Test-Path -LiteralPath $path){throw 'TOKEN_STAGE_ALREADY_EXISTS'}
+Add-Type -TypeDefinition @'
+using System;using System.ComponentModel;using System.Runtime.InteropServices;using Microsoft.Win32.SafeHandles;
+public static class VpnHeldProgram {
+ [StructLayout(LayoutKind.Sequential)]struct Info { public uint Attributes,CreationLow,CreationHigh,AccessLow,AccessHigh,WriteLow,WriteHigh,Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow; }
+ [DllImport("kernel32.dll")]static extern IntPtr GetCurrentProcess();
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool DuplicateHandle(IntPtr process,SafeFileHandle source,IntPtr target,out SafeFileHandle result,uint access,bool inherit,uint options);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(SafeFileHandle source,out Info result);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern SafeFileHandle CreateFile(string path,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);
+ public static SafeFileHandle ReadOnly(SafeFileHandle source){SafeFileHandle result;if(!DuplicateHandle(GetCurrentProcess(),source,GetCurrentProcess(),out result,0x120089,false,0))throw new Win32Exception(Marshal.GetLastWin32Error());return result;}
+ public static string Identity(SafeFileHandle source){Info r;if(!GetFileInformationByHandle(source,out r))throw new Win32Exception(Marshal.GetLastWin32Error());if(r.Links!=1)throw new InvalidOperationException("program-link-count");return r.Volume.ToString("x8")+":"+r.IndexHigh.ToString("x8")+r.IndexLow.ToString("x8");}
+ public static int Refusal(string path,uint access){using(SafeFileHandle h=CreateFile(path,access,7,IntPtr.Zero,3,128,IntPtr.Zero)){return h.IsInvalid?Marshal.GetLastWin32Error():0;}}
+}
+'@ -ReferencedAssemblies @('System','System.Core')
+$inputStream=[Console]::OpenStandardInput();$buffer=New-Object byte[] 6144;$writer=$null;$reader=$null;$duplicate=$null
+try{
+ $writer=[IO.File]::Open($path,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read);$total=0
+ while($total -lt $length){$count=$inputStream.Read($buffer,0,[Math]::Min($buffer.Length,$length-$total));if($count -le 0){throw 'TOKEN_STAGE_TRUNCATED'};$writer.Write($buffer,0,$count);$total+=$count};if($inputStream.ReadByte() -ne -1){throw 'TOKEN_STAGE_TRAILING'};$writer.Flush($true)
+ $id=[VpnHeldProgram]::Identity($writer.SafeFileHandle);$duplicate=[VpnHeldProgram]::ReadOnly($writer.SafeFileHandle);$writer.Dispose();$writer=$null
+ $reader=[IO.FileStream]::new($duplicate,[IO.FileAccess]::Read,6144,$false);$duplicate=$null
+ if(-not $reader.CanRead -or $reader.CanWrite -or $reader.Length -ne $length -or [VpnHeldProgram]::Identity($reader.SafeFileHandle) -cne $id){throw 'TOKEN_SOURCE_CAPABILITY'}
+ $reader.Position=0;$bytes=New-Object byte[] $length;$offset=0;while($offset -lt $length){$count=$reader.Read($bytes,$offset,$length-$offset);if($count -le 0){throw 'TOKEN_SOURCE_READ'};$offset+=$count};$h=[Security.Cryptography.SHA256]::Create();try{$actual=([BitConverter]::ToString($h.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()};if($actual -cne $expected){throw 'TOKEN_SOURCE_HASH'}
+ $writeRefusal=[VpnHeldProgram]::Refusal($path,0x40000000);$deleteRefusal=[VpnHeldProgram]::Refusal($path,0x10000);if($writeRefusal -ne 32 -or $deleteRefusal -ne 32){throw 'TOKEN_SOURCE_SHARING_REFUSAL'}
+ $acl=Get-Acl -LiteralPath $path;$owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value;$rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]));if($owner -cne 'S-1-5-18' -or $rules.Count -ne 3){throw 'TOKEN_SOURCE_ACL'}
+ $seen=@{};foreach($rule in $rules){$sid=$rule.IdentityReference.Value;if($seen.ContainsKey($sid) -or $rule.AccessControlType -ne 'Allow' -or -not $rule.IsInherited){throw 'TOKEN_SOURCE_RULE'};$seen[$sid]=$true;$rights=if($sid -ceq 'S-1-5-18' -or $sid -ceq 'S-1-5-32-544'){0x1f01ff}elseif($sid -ceq 'S-1-5-21-4099058025-2437077614-260217637-1001'){0x1200a9}else{throw 'TOKEN_SOURCE_RULE_SID'};if([int]$rule.FileSystemRights -ne $rights){throw 'TOKEN_SOURCE_RULE_RIGHTS'}}
+ if($bytes[0] -ne 239 -or $bytes[1] -ne 187 -or $bytes[2] -ne 191){throw 'TOKEN_SOURCE_BOM'};$text=[Text.UTF8Encoding]::new($false,$true).GetString($bytes,3,$bytes.Length-3);$tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseInput($text,[ref]$tokens,[ref]$errors);if(@($errors).Count -ne 0){throw 'TOKEN_SOURCE_PARSE'};$program=[scriptblock]::Create($text)
+ $receipt=[ordered]@{phaseId=$phase;path=$path;identity=$id;bytes=$length;sha256=$actual;ownerSid=$owner;sddl=$acl.Sddl;createNew=$true;heldReadOnly=$true;writeOpenError=$writeRefusal;deleteOpenError=$deleteRefusal;parserErrors=@($errors).Count;launch='held-saved-file-scriptblock';productOperation=$false};$raw=[Text.UTF8Encoding]::new($false).GetBytes(($receipt|ConvertTo-Json -Depth 8 -Compress));$r=[IO.File]::Open((Join-Path $parent ('held-source-'+$phase+'.json')),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read);try{$r.Write($raw,0,$raw.Length);$r.Flush($true)}finally{$r.Dispose()}
+ & $program -ExpectedSourceSha256 $expected -HeldSource $reader -SourcePath $path
+ if([VpnHeldProgram]::Identity($reader.SafeFileHandle) -cne $id){throw 'TOKEN_SOURCE_FINAL_IDENTITY'};$reader.Position=0;$h=[Security.Cryptography.SHA256]::Create();try{$closing=([BitConverter]::ToString($h.ComputeHash($reader))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()};if($closing -cne $expected){throw 'TOKEN_SOURCE_FINAL_HASH'}
+}finally{foreach($owned in @($writer,$reader,$duplicate)){if($null -ne $owned){$owned.Dispose()}}}

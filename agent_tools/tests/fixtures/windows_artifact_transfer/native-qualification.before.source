@@ -1,0 +1,537 @@
+"""Inert tests of the complete current Windows artifact producer/decoder.
+
+No PowerShell, VM, network, task, or product action runs here. Native ACL and
+CreateDirectory behavior remain the operator's separate acceptance checks.
+"""
+import ast
+import base64
+import copy
+import hashlib
+import json
+import os
+import re
+import subprocess
+from pathlib import Path
+import sys
+import types
+import unittest
+import uuid
+import xml.etree.ElementTree as ET
+from unittest import mock
+
+from agent_tools import windows_artifact_transfer as producer
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "windows_artifact_transfer"
+FIXTURE_NAMES = ("decoder.before.source", "decoder.sddl-only-overlay.source", "native-source-receipt.json")
+DEPLOYMENT = "d493a373-1d2c-4ab0-bfd4-e93575019dce"
+TRANSFER = "12f8f0ae-7e4a-4aec-940e-739ea2913145"
+PHASE = "72c61e46-caa6-427a-ac1e-8e49327c71fd"
+PID = 6004
+SID = "S-1-5-21-4099058025-2437077614-260217637-1001"
+
+
+def context():
+    return {"deploymentId": DEPLOYMENT, "ordinarySid": SID,
+            "powerShellPath": producer.POWERSHELL_PATH,
+            "sourceWorkspace": r"C:\ProgramData\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a",
+            "boot": {"lastBootUpTimeFileTimeUtc": "134368653065000001",
+                     "machineGuid": "0c1c4e25-f898-429b-a2b4-dc59793dd51f",
+                     "hardwareUuid": "ef958947-6248-4d01-92c4-6078b792ab65"}}
+
+
+def target(name="vpn-control-2.2.13.msi"):
+    return {"deploymentId": DEPLOYMENT, "transferId": TRANSFER, "name": name,
+            "bytes": 131228020, "sha256": "4" * 64}
+
+
+def actor():
+    return {"pid": PID, "birthFileTimeUtc": "134368714165265651", "sessionId": 0,
+            "path": producer.POWERSHELL_PATH, "principalSid": "S-1-5-18",
+            "is64BitProcess": True, "powerShellMajor": 5, "powerShellEdition": "Desktop",
+            "boot": context()["boot"], "tokenElevation": 1, "tokenElevationType": 1}
+
+
+def saved_case():
+    source = producer.render_endpoint(target(), context())
+    plan = producer.build_guest_exec(source, guest_context=context(), phase_id=PHASE)
+    if plan["transport"] != "saved-source":
+        raise AssertionError("test must cover actual saved-source composition")
+    opening = actor()
+    protocol = {"bootstrapOpening": copy.deepcopy(opening), "bootstrapClosing": copy.deepcopy(opening),
+                "guestBootClosing": True, "bootstrapActorClosing": True}
+    native_sddl = json.loads((FIXTURES / "native-source-receipt.json").read_text())["sddl"]
+    expected = plan["savedSource"]
+    held = {"phaseId": expected["phaseId"], "path": expected["path"],
+            "identity": "11223344:00000000abcdef01", "bytes": expected["bytes"],
+            "sha256": expected["sha256"], "ownerSid": "S-1-5-18", "sddl": native_sddl,
+            "createNew": True, "heldReadOnly": True, "writeOpenError": 32, "deleteOpenError": 32,
+            "parserErrors": 0, "bootstrapOpening": copy.deepcopy(opening),
+            "launch": "held-saved-file-scriptblock", "originalOwnerSid": "S-1-5-32-544",
+            "explicitOwnerGreen": True, "productOperation": False, "sourceClosing": True,
+            "finalSourceSha256": expected["sha256"]}
+    return plan, {"state": "protocol-completed", "protocolResult": protocol, "heldSource": held,
+                  "sourceClosing": True, "bootstrapOpening": copy.deepcopy(opening),
+                  "bootstrapClosing": copy.deepcopy(opening)}
+
+
+def historical(name):
+    if name not in FIXTURE_NAMES[:2]:
+        raise ValueError("finite historical source")
+    data = (FIXTURES / name).read_bytes()
+    expected = json.loads((FIXTURES / "provenance.json").read_text())["sources"][name]["sha256"]
+    if hashlib.sha256(data).hexdigest() != expected:
+        raise AssertionError("historical source changed")
+    module_name = "_windows_artifact_" + name.replace(".", "_").replace("-", "_")
+    module = types.ModuleType(module_name)
+    module.__file__ = str(FIXTURES / name)
+    sys.modules[module_name] = module
+    try:
+        exec(compile(data, module.__file__, "exec"), module.__dict__)
+    finally:
+        del sys.modules[module_name]
+    return module
+
+
+# These exact inputs are supplied by the native owner, or read from authenticated
+# fixtures by routine checks. Rendering does no I/O and never launches a child.
+NATIVE_BEFORE_PINS = {
+    "atomic.before.ps1": "93a17aeb84e43d24f2eafae23d54c1f4976062fc479c128189f28207806dfbc0",
+    "owner.before.ps1": "72d70092039baf8525e815f8fa0d2a02cfdab29a30d1f303db73188b9cd4559b",
+    "progress.before.caller.source": "2274f81d34f3cf3b15e3a2f87ebee90ba808f74a8d3e3a6f04f3722477b0fff0",
+}
+
+
+def _one_assignment(source, name):
+    tree = ast.parse(source)
+    nodes = [node for node in tree.body if isinstance(node, ast.Assign)
+             and any(isinstance(item, ast.Name) and item.id == name for item in node.targets)]
+    if len(nodes) != 1:
+        raise ValueError("finite native assignment")
+    value = ast.literal_eval(nodes[0].value)
+    if type(value) is not str:
+        raise ValueError("native assignment text")
+    return value
+
+
+def _one_between(source, start, end):
+    if source.count(start) != 1:
+        raise ValueError("native source selection start")
+    after = source.split(start, 1)[1]
+    if end not in after:
+        raise ValueError("native source selection end")
+    return after.split(end, 1)[0]
+
+
+def _directory_mechanism(source):
+    blocks = re.findall(r"Add-Type -TypeDefinition @'\n.*?\n'@ -ReferencedAssemblies @\('System','System.Core'\)", source, flags=re.S)
+    selected = [block for block in blocks if "public static class VpnCreateArtifactDirectory {" in block]
+    calls = re.findall(r"\[VpnCreateArtifactDirectory\]::[A-Za-z]+\(\$root,\$sddl\)", source)
+    if len(selected) != 1 or not calls or len(set(calls)) != 1:
+        raise ValueError("native directory mechanism selection")
+    return selected[0], calls[0]
+
+
+def native_regression_programs(actual_producer, authenticated_before_bytes, *, scope_ids, object_output=False):
+    """Pure paired native programs from actual consumed producer boundaries.
+
+    The three boundaries are progress serialization, PowerShell static-method
+    dispatch, and explicit SYSTEM file ownership plus its unchanged strict ACL
+    decision. These programs do not prove the full artifact transfer scenario.
+    Each returned source runs in a separate original Windows PowerShell process.
+    The caller retains each original process, complete streams and known exit.
+    """
+    if type(authenticated_before_bytes) is not dict or set(authenticated_before_bytes) != set(NATIVE_BEFORE_PINS):
+        raise ValueError("native before inputs")
+    for name, digest in NATIVE_BEFORE_PINS.items():
+        data = authenticated_before_bytes[name]
+        if type(data) is not bytes or hashlib.sha256(data).hexdigest() != digest:
+            raise ValueError("native before source hash")
+    cases = {family + "-" + phase for family in ("progress", "atomic", "owner") for phase in ("before", "current")}
+    if type(scope_ids) is not dict or set(scope_ids) != cases or type(object_output) is not bool:
+        raise ValueError("native regression scope fields")
+    if any(type(value) is not str or str(uuid.UUID(value)) != value for value in scope_ids.values()) or len(set(scope_ids.values())) != 6:
+        raise ValueError("native regression scope UUID")
+    before = {name: data.decode("utf-8-sig", "strict") for name, data in authenticated_before_bytes.items()}
+    emitted = actual_producer.render_probe_endpoint(TRANSFER, context())
+    endpoint = emitted.decode("utf-8-sig", "strict")
+    handle_blocks = re.findall(r"Add-Type -TypeDefinition @'\n.*?\n'@ -ReferencedAssemblies @\('System','System.Core'\)", endpoint, flags=re.S)
+    handles = [block for block in handle_blocks if "public static class VpnArtifactHandle {" in block]
+    if len(handles) != 1:
+        raise ValueError("native actual held identity mechanism")
+    handles = handles[0]
+    current_header = endpoint.splitlines(keepends=True)[0]
+    original_progress = _one_assignment(before["progress.before.caller.source"], "PS_SCRIPT")
+    old_header = original_progress[:original_progress.index("$path=")]
+    progress_body = ("\nWrite-Progress -Id 913 -Activity 'VPN Control regression' -Status 'bounded progress' -PercentComplete 50\n"
+                     "Write-Progress -Id 913 -Activity 'VPN Control regression' -Completed\n"
+                     "[Console]::WriteLine('{\"state\":\"progress-check\"}')\n")
+    result = {"progress-before": old_header + progress_body, "progress-current": current_header + progress_body}
+    for label, source in (("before", before["atomic.before.ps1"]), ("current", endpoint)):
+        mechanism, invocation = _directory_mechanism(source)
+        # Fresh current-user ACL is an explicit positive input for the native
+        # dispatch mechanism. Product SYSTEM/3-ACE policy stays separately gated.
+        program = current_header + handles + "\n" + mechanism + r'''
+$identity=[Security.Principal.WindowsIdentity]::GetCurrent();try{$sid=$identity.User.Value}finally{$identity.Dispose()}
+$root='__ROOT__'
+$sddl='O:'+$sid+'G:'+$sid+'D:P(A;OICI;FA;;;'+$sid+')'
+if(Test-Path -LiteralPath $root){throw 'REGRESSION_SCOPE_EXISTS'}
+$created=$false;$code=$null;$errorId=$null;$repeated=$false;$rootId=$null;$identityClosing=$false;$rootHeld=$null
+try{ __INVOCATION__ ;$created=$true }catch{$code=$_.Exception.GetBaseException().GetType().FullName;$errorId=$_.FullyQualifiedErrorId}
+if($created){
+ $rootHeld=[VpnArtifactHandle]::HoldDirectory($root);$rootId=[VpnArtifactHandle]::DirectoryIdentity($rootHeld);$openingAcl=(Get-Acl -LiteralPath $root).Sddl
+ try{ __INVOCATION__ ;throw 'REGRESSION_SECOND_CREATE_ACCEPTED'}catch{$native=$_.Exception.GetBaseException();if($native -isnot [ComponentModel.Win32Exception] -or $native.NativeErrorCode -ne 183){throw};$repeated=$true}
+ if((Get-Item -LiteralPath $root -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'REGRESSION_REPARSE'}
+ [VpnArtifactHandle]::DirectoryUnchanged($rootHeld,$root,$rootId);if((Get-Acl -LiteralPath $root).Sddl -cne $openingAcl){throw 'REGRESSION_ROOT_ACL_CHANGED'};$identityClosing=$true;$rootHeld.Dispose()
+}else{if(Test-Path -LiteralPath $root){throw 'REGRESSION_FAILED_CREATE_EFFECT'};$identityClosing=$true}
+$nativeRegressionResult=[pscustomobject]@{state='atomic-check';created=$created;errorClass=$code;errorId=$errorId;repeatedRefused183=$repeated;rootPath=$root;rootIdentity=$rootId;rootIdentityClosing=$identityClosing;probeAssetsRetained=$created}
+[Console]::WriteLine(($nativeRegressionResult|ConvertTo-Json -Compress))
+'''
+        result["atomic-" + label] = program.replace("__INVOCATION__", invocation).replace("__ROOT__", r"C:\ProgramData\VpnControlInfrastructureRegression-" + scope_ids["atomic-" + label])
+    current_plan = actual_producer.build_guest_exec(emitted, guest_context=context(), phase_id=PHASE)
+    held_source = current_plan["launchSource"].decode("utf-8-sig", "strict")
+    for label, source in (("before", before["owner.before.ps1"]), ("current", held_source)):
+        owner_assignment = _one_between(source, "$writer.Flush($true)\n", " $id=[VpnHeldProgram]::Identity")
+        validator = "$acl=Get-Acl -LiteralPath $path" + _one_between(source, "$acl=Get-Acl -LiteralPath $path", " if($bytes[0]")
+        directory_mechanism, directory_invocation = _directory_mechanism(endpoint)
+        program = current_header + handles + "\n" + directory_mechanism + r'''
+$identity=[Security.Principal.WindowsIdentity]::GetCurrent();try{$principal=$identity.User.Value}finally{$identity.Dispose()}
+if($principal -cne 'S-1-5-18'){[Console]::WriteLine('{"state":"unsupported-principal","requires":"SYSTEM"}');exit 0}
+$root='__ROOT__'
+$path=Join-Path $root 'owned.bin';if(Test-Path -LiteralPath $root){throw 'REGRESSION_SCOPE_EXISTS'}
+$sddl='O:SYG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;__ORDINARY_SID__)'
+__DIRECTORY_INVOCATION__
+$rootHeld=[VpnArtifactHandle]::HoldDirectory($root);$rootId=[VpnArtifactHandle]::DirectoryIdentity($rootHeld);$rootAclOpening=(Get-Acl -LiteralPath $root).Sddl
+$writer=[IO.File]::Open($path,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+$rejected=$false;$reason=$null;$ownerBefore=$null;$ownerAfter=$null
+try{
+ $fileId=[VpnArtifactHandle]::Identity($writer.SafeFileHandle)
+ $security=Get-Acl -LiteralPath $path;$security.SetOwner([Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'));[IO.File]::SetAccessControl($path,$security)
+ $ownerBefore=(Get-Acl -LiteralPath $path).GetOwner([Security.Principal.SecurityIdentifier]).Value
+ if($ownerBefore -cne 'S-1-5-32-544'){throw 'REGRESSION_BA_INPUT_NOT_ESTABLISHED'}
+ __OWNER_ASSIGNMENT__
+ try{ __VALIDATOR__ }catch{if($_.Exception.Message -cne 'TOKEN_SOURCE_ACL'){throw};$rejected=$true;$reason=$_.Exception.Message}
+ $ownerAfter=(Get-Acl -LiteralPath $path).GetOwner([Security.Principal.SecurityIdentifier]).Value
+ $fileAcl=(Get-Acl -LiteralPath $path).Sddl
+ if([VpnArtifactHandle]::Identity($writer.SafeFileHandle) -cne $fileId){throw 'REGRESSION_HELD_FILE_CHANGED'}
+ $named=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite);try{if([VpnArtifactHandle]::Identity($named.SafeFileHandle) -cne $fileId){throw 'REGRESSION_NAMED_FILE_CHANGED'}}finally{$named.Dispose()}
+ [VpnArtifactHandle]::DirectoryUnchanged($rootHeld,$root,$rootId);if((Get-Acl -LiteralPath $root).Sddl -cne $rootAclOpening -or (Get-Acl -LiteralPath $path).Sddl -cne $fileAcl){throw 'REGRESSION_ACL_CHANGED'}
+}finally{$writer.Dispose();$rootHeld.Dispose()}
+$nativeRegressionResult=[pscustomobject]@{state='owner-check';originalOwnerSid=$ownerBefore;ownerSid=$ownerAfter;strictValidatorRejected=$rejected;reason=$reason;rootPath=$root;rootIdentity=$rootId;filePath=$path;fileIdentity=$fileId;rootIdentityClosing=$true;fileIdentityClosing=$true;probeAssetsRetained=$true}
+[Console]::WriteLine(($nativeRegressionResult|ConvertTo-Json -Compress))
+'''
+        result["owner-" + label] = program.replace("__ORDINARY_SID__", SID).replace("__OWNER_ASSIGNMENT__", owner_assignment).replace("__VALIDATOR__", validator).replace("__DIRECTORY_INVOCATION__", directory_invocation).replace("__ROOT__", r"C:\ProgramData\VpnControlInfrastructureRegression-" + scope_ids["owner-" + label])
+    if object_output:
+        for name, source in result.items():
+            source = source.replace("[Console]::WriteLine('{\"state\":\"progress-check\"}')", "[pscustomobject]@{state='progress-check'}")
+            source = source.replace("[Console]::WriteLine(($nativeRegressionResult|ConvertTo-Json -Compress))", "$nativeRegressionResult")
+            source = source.replace("[Console]::WriteLine('{\"state\":\"unsupported-principal\",\"requires\":\"SYSTEM\"}');exit 0", "[pscustomobject]@{state='unsupported-principal';requires='SYSTEM'};return")
+            result[name] = source
+    if len(result) != 6 or any("__" in source for source in result.values()):
+        raise ValueError("native regression source binding")
+    return {name: source.encode("utf-8-sig") for name, source in result.items()}
+
+
+def validate_native_regression(case, exit_code, stdout, stderr, *, scope_id):
+    """Validate a complete known native result, including the expected RED.
+
+    Default progress is an intentional known exit-0 negative stream result. It
+    does not adopt or clear the historical strict collector's UNKNOWN record.
+    """
+    if case not in {"progress-before", "progress-current", "atomic-before", "atomic-current", "owner-before", "owner-current"}:
+        raise ValueError("native regression case")
+    if type(exit_code) is not int or exit_code != 0 or type(stdout) is not bytes or type(stderr) is not bytes:
+        raise ValueError("native regression known exit and streams")
+    value = json.loads(stdout.decode("utf-8-sig", "strict"))
+    if case == "progress-before":
+        if value != {"state": "progress-check"} or not stderr.startswith(b"#< CLIXML"):
+            raise ValueError("native default progress RED absent")
+        root = ET.fromstring(stderr[len(b"#< CLIXML"):].strip())
+        tag = "{http://schemas.microsoft.com/powershell/2004/04}"
+        records = list(root)
+        if root.tag != tag + "Objs" or not records or any(item.tag != tag + "Obj" or item.get("S") != "progress" for item in records):
+            raise ValueError("native progress contains non-progress records")
+        if not any(item.text == "VPN Control regression" for record in records for item in record.iter()):
+            raise ValueError("native explicit progress body witness absent")
+    elif case == "progress-current":
+        if value != {"state": "progress-check"} or stderr:
+            raise ValueError("native quiet progress GREEN absent")
+    else:
+        if stderr:
+            raise ValueError("native regression unexpected stderr")
+        if case.startswith("owner") and value == {"state": "unsupported-principal", "requires": "SYSTEM"}:
+            return value
+        if type(scope_id) is not str or str(uuid.UUID(scope_id)) != scope_id or value.get("rootPath") != r"C:\ProgramData\VpnControlInfrastructureRegression-" + scope_id:
+            raise ValueError("native regression exact assigned scope")
+        if value.get("rootIdentityClosing") is not True:
+            raise ValueError("native regression root identity closing")
+        if case == "atomic-before":
+            if value.get("created") is not False or "MethodCountCouldNotFindBest" not in str(value.get("errorId")):
+                raise ValueError("native atomic dispatch RED absent")
+        elif case == "atomic-current":
+            if value.get("created") is not True or value.get("repeatedRefused183") is not True or value.get("errorId") is not None or value.get("probeAssetsRetained") is not True:
+                raise ValueError("native atomic dispatch GREEN absent")
+        elif value.get("originalOwnerSid") != "S-1-5-32-544":
+            raise ValueError("native original BA input")
+        elif case == "owner-before":
+            if value.get("ownerSid") != "S-1-5-32-544" or value.get("strictValidatorRejected") is not True or value.get("reason") != "TOKEN_SOURCE_ACL":
+                raise ValueError("native default owner RED absent")
+        elif value.get("ownerSid") != "S-1-5-18" or value.get("strictValidatorRejected") is not False or value.get("reason") is not None or value.get("fileIdentityClosing") is not True:
+            raise ValueError("native explicit owner GREEN absent")
+    return value
+
+
+# Retain the original test process object through an uncertain observation.
+# There is no automatic kill, rerun, or file cleanup on communicate timeout.
+_NATIVE_PENDING = []
+
+
+def _run_native_regression(source):
+    executable = Path(os.environ["SystemRoot"]) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if not executable.is_file():
+        raise AssertionError("native Windows PowerShell 5.1 is required")
+    argv = [str(executable), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand",
+            base64.b64encode(source.decode("utf-8-sig").encode("utf-16le")).decode("ascii")]
+    record = {"argv": tuple(argv), "sourceBytes": source, "sourceSha256": hashlib.sha256(source).hexdigest(),
+              "child": None, "originalUnknown": None, "stdoutPrefix": b"", "stderrPrefix": b""}
+    _NATIVE_PENDING.append(record)
+    child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    record["child"] = child
+    primary = None
+    try:
+        stdout, stderr = child.communicate(timeout=60)
+    except BaseException as error:
+        primary = error
+        record["originalUnknown"] = error
+        while True:
+            try:
+                stdout, stderr = child.communicate(timeout=1)
+                break
+            except BaseException as observation_error:
+                if isinstance(observation_error, subprocess.TimeoutExpired):
+                    record["stdoutPrefix"] = observation_error.output
+                    record["stderrPrefix"] = observation_error.stderr
+                # Stay in this original owner until original streams reach EOF.
+                # No next test, replay, kill, or cleanup is authorized by timeout.
+                continue
+    record.update(stdout=stdout, stderr=stderr, exitCode=child.returncode, streamsEof=True)
+    _NATIVE_PENDING.remove(record)
+    if primary is not None:
+        raise AssertionError("native regression missed observation deadline; original child now closed pid=" + str(child.pid)) from primary
+    return child.returncode, stdout, stderr
+
+
+class WindowsArtifactTransferTest(unittest.TestCase):
+    def test_authentic_fixture_hashes_and_explicit_partial_overlay(self):
+        rows = json.loads((FIXTURES / "provenance.json").read_text())["sources"]
+        for name in FIXTURE_NAMES:
+            self.assertEqual(hashlib.sha256((FIXTURES / name).read_bytes()).hexdigest(), rows[name]["sha256"])
+        original = (FIXTURES / FIXTURE_NAMES[0]).read_bytes()
+        overlay = (FIXTURES / FIXTURE_NAMES[1]).read_bytes()
+        old = b'sddl = "O:SYG:SYD:(A;ID;FA;;;SY)'
+        self.assertEqual(original.count(old), 1)
+        self.assertEqual(overlay, original.replace(old, b'sddl = "O:SYG:SYD:AI(A;ID;FA;;;SY)', 1))
+
+    def test_native_sddl_accepted_by_actual_saved_decoder(self):
+        plan, envelope = saved_case()
+        decoded = producer.decode_guest_result(plan, envelope, context(), PID)
+        self.assertEqual(decoded, envelope["protocolResult"])
+
+    def test_saved_protocol_actor_must_join_held_outer_actor(self):
+        plan, envelope = saved_case()
+        for key in ("bootstrapOpening", "bootstrapClosing"):
+            envelope["protocolResult"][key]["birthFileTimeUtc"] = "134368714165265653"
+        with self.assertRaisesRegex(ValueError, "transfer_saved_protocol_actor"):
+            producer.decode_guest_result(plan, envelope, context(), PID)
+
+    def test_same_sddl_oracle_is_red_on_authentic_beforeimage(self):
+        global producer
+        current = producer
+        try:
+            producer = historical("decoder.before.source")
+            with self.assertRaisesRegex(ValueError, "transfer_saved_proof_acl"):
+                self.test_native_sddl_accepted_by_actual_saved_decoder()
+        finally:
+            producer = current
+        self.test_native_sddl_accepted_by_actual_saved_decoder()
+
+    def test_same_actor_oracle_is_red_on_declared_sddl_only_overlay(self):
+        global producer
+        current = producer
+        try:
+            producer = historical("decoder.sddl-only-overlay.source")
+            with self.assertRaises(AssertionError):
+                self.test_saved_protocol_actor_must_join_held_outer_actor()
+        finally:
+            producer = current
+        self.test_saved_protocol_actor_must_join_held_outer_actor()
+
+    def test_original_ack_pid_boot_birth_token_and_proof_refusals(self):
+        changes = (("bootstrapOpening", "pid", PID + 1), ("bootstrapOpening", "pid", True),
+                   ("bootstrapOpening", "birthFileTimeUtc", 134368714165265651),
+                   ("bootstrapOpening", "sessionId", 2), ("bootstrapOpening", "tokenElevation", 0),
+                   ("bootstrapOpening", "is64BitProcess", False),
+                   ("heldSource", "writeOpenError", 0), ("heldSource", "parserErrors", 1),
+                   ("heldSource", "bytes", True), ("heldSource", "sourceClosing", False))
+        for group, name, value in changes:
+            with self.subTest(group=group, name=name):
+                plan, envelope = saved_case(); envelope[group][name] = value
+                with self.assertRaises(ValueError):
+                    producer.decode_guest_result(plan, envelope, context(), PID)
+        plan, envelope = saved_case(); envelope["bootstrapClosing"]["boot"]["machineGuid"] = "different"
+        with self.assertRaisesRegex(ValueError, "transfer_actor_boot"):
+            producer.decode_guest_result(plan, envelope, context(), PID)
+
+    def test_all_finite_renderers_use_bounded_exact_payload_and_no_io(self):
+        ctx = context()
+        sources = []
+        with mock.patch("builtins.open", side_effect=AssertionError("renderer opened file")), \
+                mock.patch("subprocess.Popen", side_effect=AssertionError("renderer started child")):
+            for name in sorted(producer.ARTIFACT_LEAVES):
+                item = target(name)
+                sources.append(producer.render_endpoint(item, ctx))
+                sources.append(producer.render_verifier(item, ctx, "11223344:0000000012345678", 0,
+                                                        producer.EMPTY_SHA256, False))
+                sources.append(producer.render_verifier(item, ctx, "11223344:0000000012345678",
+                                                        item["bytes"], item["sha256"], True))
+            sources.extend((producer.render_probe_endpoint(TRANSFER, ctx),
+                            producer.render_probe_verifier(TRANSFER, ctx, "11223344:0000000012345678")))
+            for source in sources:
+                plan = producer.build_guest_exec(source, guest_context=ctx, phase_id=PHASE)
+                self.assertLessEqual(plan["bounds"]["serializedRequestBytes"], 60000)
+                self.assertLessEqual(plan["bounds"]["commandUtf16UnitsIncludingNul"], 32767)
+                self.assertEqual(base64.b64decode(plan["arguments"]["input-data"], validate=True), source)
+                self.assertEqual(plan["bounds"]["payloadSha256"], hashlib.sha256(source).hexdigest())
+
+    def test_small_source_inline_and_oversize_without_context_refuses(self):
+        source = b"\xef\xbb\xbf[pscustomobject]@{state='inert'}\n"
+        plan = producer.build_guest_exec(source)
+        self.assertEqual(plan["transport"], "inline")
+        self.assertNotIn("input-data", plan["arguments"])
+        with self.assertRaisesRegex(ValueError, "transfer_saved_context_required"):
+            producer.build_guest_exec(producer.render_endpoint(target(), context()))
+        with self.assertRaises(ValueError):
+            producer.build_guest_exec(b"no-bom")
+
+    def test_native_emitter_consumes_authenticated_before_and_actual_current_without_io(self):
+        inputs = {name: (FIXTURES / name).read_bytes() for name in NATIVE_BEFORE_PINS}
+        scopes = {family + "-" + phase: str(uuid.uuid4()) for family in ("progress", "atomic", "owner") for phase in ("before", "current")}
+        with mock.patch("builtins.open", side_effect=AssertionError("native emitter opened file")), \
+                mock.patch("subprocess.Popen", side_effect=AssertionError("native emitter launched child")):
+            result = native_regression_programs(producer, inputs, scope_ids=scopes)
+            self.assertEqual(set(result), {family + "-" + phase for family in ("progress", "atomic", "owner") for phase in ("before", "current")})
+            for source in result.values():
+                self.assertTrue(source.startswith(b"\xef\xbb\xbf"))
+                plan = producer.build_guest_exec(source)
+                self.assertEqual(plan["transport"], "inline")
+                self.assertLess(plan["bounds"]["serializedRequestBytes"], 60000)
+        inputs["atomic.before.ps1"] += b" "
+        with self.assertRaisesRegex(ValueError, "native before source hash"):
+            native_regression_programs(producer, inputs, scope_ids=scopes)
+
+    def test_progress_oracle_requires_only_progress_records_and_explicit_body(self):
+        stdout = b'{"state":"progress-check"}\r\n'
+        start = b'#< CLIXML\r\n<Objs xmlns="http://schemas.microsoft.com/powershell/2004/04">'
+        record = b'<Obj S="progress"><MS><S N="Activity">VPN Control regression</S></MS></Obj>'
+        self.assertEqual(validate_native_regression("progress-before", 0, stdout, start + record + b'</Objs>', scope_id=PHASE),
+                         {"state": "progress-check"})
+        for payload in (start + record + b'<S S="Error">unexpected</S></Objs>',
+                        start + record.replace(b'VPN Control regression', b'Preparing modules') + b'</Objs>'):
+            with self.assertRaises(ValueError):
+                validate_native_regression("progress-before", 0, stdout, payload, scope_id=PHASE)
+
+    def assert_native_runner_keeps_original_until_eof(self, implementation):
+        child = mock.Mock(pid=12345, returncode=0)
+        child.communicate.side_effect = [subprocess.TimeoutExpired(["inert"], 60, output=b"original-prefix", stderr=b""),
+                                         subprocess.TimeoutExpired(["inert"], 1, output=b"original-prefix-more", stderr=b""),
+                                         (b"complete-original-output", b"")]
+        with mock.patch.dict(os.environ, {"SystemRoot": r"C:\Windows"}), \
+                mock.patch.object(Path, "is_file", return_value=True), \
+                mock.patch.object(subprocess, "Popen", return_value=child) as launch:
+            with self.assertRaises(AssertionError):
+                implementation._run_native_regression(b"\xef\xbb\xbf[pscustomobject]@{state='inert'}")
+        self.assertEqual(launch.call_count, 1)
+        self.assertEqual(child.communicate.call_count, 3, "original owner returned before original EOF")
+        child.kill.assert_not_called(); child.terminate.assert_not_called()
+        self.assertEqual(implementation._NATIVE_PENDING, [])
+
+    def test_native_runner_unknown_cannot_return_before_original_eof_red_green(self):
+        data = (FIXTURES / "native-runner.before.source").read_bytes()
+        row = json.loads((FIXTURES / "provenance.json").read_text())["sources"]["native-runner.before.source"]
+        self.assertEqual(hashlib.sha256(data).hexdigest(), row["sha256"])
+        before = types.ModuleType("_before_native_runner")
+        before.__file__ = str(FIXTURES / "native-runner.before.source")
+        exec(compile(data, before.__file__, "exec"), before.__dict__)
+        with self.assertRaisesRegex(AssertionError, "returned before original EOF"):
+            self.assert_native_runner_keeps_original_until_eof(before)
+        self.assert_native_runner_keeps_original_until_eof(sys.modules[__name__])
+
+    def test_authentic_35599_unit_command_refused_before_launch_and_saved_plan_fits(self):
+        data = (FIXTURES / "windows-length.before.caller.source").read_bytes()
+        expected = json.loads((FIXTURES / "provenance.json").read_text())["sources"]["windows-length.before.caller.source"]["sha256"]
+        self.assertEqual(hashlib.sha256(data).hexdigest(), expected)
+        script = _one_assignment(data, "PS_SCRIPT")
+        original = (FIXTURES / "windows-length.before.ps1").read_bytes()
+        self.assertEqual(original.decode("utf-8-sig"), script)
+        nodes = [node for node in ast.walk(ast.parse(data)) if isinstance(node, ast.FunctionDef) and node.name == "powershell"]
+        self.assertEqual(len(nodes), 1)
+        namespace = {"base64": base64, "time": __import__("time"), "overall_deadline": __import__("time").monotonic() + 20,
+                     "root": Path("/inert-no-created-root")}
+        attempts = []
+        def launch_boundary(sock, command, arguments, **_):
+            attempts.append((command, arguments))
+            units = len(subprocess.list2cmdline([arguments["path"], *arguments["arg"]]).encode("utf-16le")) // 2 + 1
+            self.assertEqual(units, 35599)
+            raise AssertionError("oversized command reached launch boundary")
+        namespace["call"] = launch_boundary
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), str(FIXTURES / "windows-length.before.caller.source"), "exec"), namespace)
+        with self.assertRaisesRegex(AssertionError, "oversized command reached launch"):
+            namespace["powershell"]("inert", script, 20)
+        self.assertEqual(len(attempts), 1)
+        with self.assertRaisesRegex(ValueError, "transfer_windows_command_chars"):
+            producer._command(original, original)
+        plan = producer.build_guest_exec(original, guest_context=context(), phase_id=PHASE)
+        self.assertEqual(plan["transport"], "saved-source")
+        self.assertEqual(base64.b64decode(plan["arguments"]["input-data"], validate=True), original)
+        self.assertLessEqual(plan["bounds"]["commandUtf16UnitsIncludingNul"], 32767)
+        self.assertLessEqual(plan["bounds"]["serializedRequestBytes"], 60000)
+
+    def test_invalid_scope_and_unsafe_numeric_context_refuse_before_render(self):
+        for key, value in (("name", "arbitrary.exe"), ("bytes", True), ("transferId", "not-uuid"),
+                           ("sha256", "F" * 64)):
+            item = target(); item[key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                producer.render_endpoint(item, context())
+        for birth in (134368653065000001, float(134368653065000001), True, "0", "134368653065000001.0"):
+            ctx = context(); ctx["boot"]["lastBootUpTimeFileTimeUtc"] = birth
+            with self.subTest(birth=birth), self.assertRaises(ValueError):
+                producer.render_endpoint(target(), ctx)
+
+
+@unittest.skipUnless(os.name == "nt", "requires real Windows PowerShell 5.1")
+class WindowsArtifactNativeRegressionTest(unittest.TestCase):
+    def pair(self, family):
+        inputs = {name: (FIXTURES / name).read_bytes() for name in NATIVE_BEFORE_PINS}
+        scopes = {family + "-" + phase: str(uuid.uuid4()) for family in ("progress", "atomic", "owner") for phase in ("before", "current")}
+        sources = native_regression_programs(producer, inputs, scope_ids=scopes)
+        values = []
+        for phase in ("before", "current"):
+            case = family + "-" + phase
+            value = validate_native_regression(case, *_run_native_regression(sources[case]), scope_id=scopes[case])
+            if value.get("state") == "unsupported-principal":
+                self.skipTest("explicit SYSTEM owner regression requires SYSTEM; native guest acceptance must run it")
+            values.append(value)
+        return values
+
+    def test_real_progress_default_red_and_current_quiet_green(self):
+        self.pair("progress")
+
+    def test_real_atomic_new_dispatch_red_and_current_exclusive_green(self):
+        self.pair("atomic")
+
+    def test_real_system_default_ba_owner_red_and_explicit_system_green(self):
+        self.pair("owner")
+
+
+if __name__ == "__main__":
+    unittest.main()

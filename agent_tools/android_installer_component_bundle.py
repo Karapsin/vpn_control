@@ -607,7 +607,8 @@ run() {
  printf 'FRAME\t%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "$rc" "$os" "$es" "$oh" "$eh"
  /system/bin/toybox base64 -w 0 "$n.o"; printf '\n'
  /system/bin/toybox base64 -w 0 "$n.e"; printf '\n'
- test "$(generation "$n.o")" = "$og" && test "$(generation "$n.e")" = "$eg"
+ test "$(generation "$n.o")" = "$og" || exit 1
+ test "$(generation "$n.e")" = "$eg" || exit 1
  guard_parent
 }
 printf 'PHYSICAL-1 CORRELATION\n'
@@ -643,7 +644,7 @@ printf 'EOF CORRELATION CLEANED\n'
 '''.replace('CORRELATION',correlation))
     result=opening+'\n'.join(lines)
     result=result.replace('GENERATION_SAVE',' '.join(str(n)+') og'+str(n)+'=$og; eg'+str(n)+'=$eg;;' for n in range(1,11)))
-    result=result.replace('GENERATION_CHECK',' '.join(str(n)+') test "$(generation "$n.o")" = "$og'+str(n)+'" && test "$(generation "$n.e")" = "$eg'+str(n)+'";;' for n in range(1,11)))
+    result=result.replace('GENERATION_CHECK',' '.join(str(n)+') test "$(generation "$n.o")" = "$og'+str(n)+'" || exit 1; test "$(generation "$n.e")" = "$eg'+str(n)+'" || exit 1;;' for n in range(1,11)))
     return result
 
 

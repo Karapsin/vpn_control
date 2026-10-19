@@ -1,0 +1,200 @@
+"""PRIVATE source-bound renderer; future context is mandatory, no native actions.
+
+This is an engineering template, not a new repository API. Runtime helper bytes
+come from the current canonical owners; all generated source is complete.
+"""
+import ast
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+import textwrap
+import types
+import uuid
+
+ROOT = Path(__file__).resolve().parents[4]
+PRIVATE = Path(__file__).resolve().parent
+OWNERS = ("agent_tools/windows_vm_instance.py", "agent_tools/windows_vm_guest.py",
+          "agent_tools/windows_visual_fixture.py", "scripts/integration/windows_prompt_observation.py",
+          "scripts/capture_visual_windows_qemu.py", "agent_tools/windows_qga_transfer.py",
+          "agent_tools/windows_vm_unattend.py")
+VM_HELPERS = ("require", "generation", "structure", "chain", "closing", "private", "read", "birth", "process", "owns", "qmp", "instance_intent")
+
+
+def require(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+
+class Sources:
+    def __enter__(self):
+        self.held = []
+        self.raw = {}
+        try:
+            for name in (*OWNERS, str(PRIVATE.relative_to(ROOT) / "uac_owner_runtime.py"), str(PRIVATE.relative_to(ROOT) / "uac_program_template.py"), str(PRIVATE.relative_to(ROOT) / "fresh_visual_qualification.py")):
+                path = ROOT / name
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                try:
+                    info = os.fstat(fd)
+                    require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1 and 0 < info.st_size <= 1024 ** 2, "source_identity")
+                    raw = os.pread(fd, 1024 ** 2 + 1, 0)
+                    require(len(raw) == info.st_size, "source_short_read")
+                    self.held.append((fd, path, self.generation(info), hashlib.sha256(raw).hexdigest()))
+                except BaseException:
+                    os.close(fd)
+                    raise
+                self.raw[name] = raw.decode("utf-8")
+            self.guard()
+            return self
+        except BaseException:
+            for fd, _, _, _ in reversed(self.held):
+                os.close(fd)
+            raise
+
+    @staticmethod
+    def generation(value):
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid, value.st_nlink, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+
+    def guard(self):
+        for fd, path, generation, digest in self.held:
+            require(self.generation(os.fstat(fd)) == generation and self.generation(os.lstat(path)) == generation and hashlib.sha256(os.pread(fd, 1024 ** 2 + 1, 0)).hexdigest() == digest, "source_changed")
+
+    def __exit__(self, kind, value, trace):
+        try:
+            self.guard()
+        finally:
+            for fd, _, _, _ in reversed(self.held):
+                os.close(fd)
+
+
+def function(source, name, *, nested=False):
+    tree = ast.parse(source)
+    body = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_vm_main").body if nested else tree.body
+    node = next(node for node in body if isinstance(node, ast.FunctionDef) and node.name == name)
+    return textwrap.dedent(ast.get_source_segment(source, node))
+
+
+def validate(config):
+    fields = {"targetSha", "operationId", "spec", "setup", "context", "qemu", "swtpm", "receiptPins", "securityOperationId", "postSecureQualificationId"}
+    require(type(config) is dict and set(config) == fields, "context_fields")
+    require(re.fullmatch("[0-9a-f]{40}", config["targetSha"]) is not None, "future_verified_source_sha")
+    for key in ("operationId", "securityOperationId", "postSecureQualificationId"):
+        require(type(config[key]) is str and str(uuid.UUID(config[key])) == config[key], "canonical_uuid")
+    setup = config["setup"]
+    require(type(setup) is dict and set(setup) == {"imageName", "locale", "user", "administrator", "purpose"} and setup["purpose"] == "windowsUacVisual" and setup["locale"] == "en-US", "fresh_visual_purpose")
+    require(type(config["spec"]) is dict and config["spec"]["deploymentId"] != config["operationId"] and config["spec"]["deploymentId"] != "d493a373-1d2c-4ab0-bfd4-e93575019dce", "new_visual_deployment")
+    require(type(config["context"]) is dict and set(config["context"]) == {"hostBootId", "pending"}, "host_context")
+    require(str(uuid.UUID(config["context"]["hostBootId"])) == config["context"]["hostBootId"], "host_boot")
+    for key in ("qemu", "swtpm"):
+        require(type(config[key]) is dict and set(config[key]) == {"pid", "startTicks"} and all(type(config[key][x]) is int and config[key][x] > 0 for x in config[key]), "original_actor")
+    q = "qualification-" + config["postSecureQualificationId"]
+    required = {"intent.json", "qemu-started.json", "swtpm-started.json", "visual-session-qualified.json", "secure-intent.json", "secure-terminal.json", q + ".intent.json", q + ".terminal.json"}
+    require(type(config["receiptPins"]) is dict and set(config["receiptPins"]) == required and all(type(x) is str and re.fullmatch("[0-9a-f]{64}", x) for x in config["receiptPins"].values()), "native_receipt_pins")
+
+
+def visual_query_template(sources, setup, operation):
+    # Register and execute complete pinned canonical modules, retaining their
+    # actual imports/namespace rather than synthesizing a replacement query.
+    prefix = "_uac_render_pinned_" + uuid.uuid4().hex
+    package = types.ModuleType(prefix)
+    package.__path__ = [str(ROOT / "agent_tools")]
+    sys.modules[prefix] = package
+    names = ("windows_vm_unattend", "windows_vm_guest", "windows_visual_fixture")
+    try:
+        for name in names:
+            module = types.ModuleType(prefix + "." + name)
+            module.__file__ = str(ROOT / "agent_tools" / (name + ".py"))
+            module.__package__ = prefix
+            sys.modules[module.__name__] = module
+            setattr(package, name, module)
+            exec(compile(sources.raw["agent_tools/" + name + ".py"], module.__file__, "exec"), module.__dict__)
+        return package.windows_visual_fixture.powershell_source(setup, operation)
+    finally:
+        for name in names:
+            sys.modules.pop(prefix + "." + name, None)
+        sys.modules.pop(prefix, None)
+
+
+def render(config):
+    validate(config)
+    with Sources() as sources:
+        vm = sources.raw["agent_tools/windows_vm_instance.py"]
+        legacy = sources.raw["scripts/capture_visual_windows_qemu.py"]
+        command_tree = ast.parse(legacy)
+        uac = next(node for node in command_tree.body if isinstance(node, ast.FunctionDef) and node.name == "capture_uac")
+        commands = [node.args[1].value for node in ast.walk(uac) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_type_command" and len(node.args) == 2 and isinstance(node.args[1], ast.Constant)]
+        require(commands == ["powershell start powershell -verb runas"], "canonical_runas_command")
+        # Execute only the pure canonical ASCII planner, not the VM driver.
+        planner = function(vm, "console_key_plan")
+        namespace = {}
+        exec(compile(planner, "canonical-console-key-planner", "exec"), namespace)
+        key_plan = namespace["console_key_plan"](commands[0])
+        config = json.loads(json.dumps(config))
+        config["keyPlan"] = key_plan
+        config["sourcePins"] = {str(path.relative_to(ROOT)): {"sha256": digest, "generation": list(generation)} for _, path, generation, digest in sources.held}
+        source = "CONFIG=" + repr(config) + "\nSPEC=CONFIG['spec']\nSETUP=CONFIG['setup']\nCONTEXT=CONFIG['context']\n"
+        source += "import contextlib,hashlib,io,json,os,pathlib,pwd,re,shutil,socket,stat,struct,subprocess,sys,time\nroot=pathlib.Path(SPEC['root']);held=[];parents=[];pins=[]\n"
+        helpers = []
+        for name in VM_HELPERS:
+            body = function(vm, name, nested=True)
+            if name == "qmp":
+                marker = "                stream.write((json.dumps(request)+'\\n').encode())"
+                require(body.count(marker) == 1, "canonical_qmp_write_boundary")
+                body = body.replace(marker, "                if name=='send-key':require(time.monotonic()<=UAC_INPUT_DEADLINE,'uac_key_deadline')\n" + marker)
+            helpers.append(body)
+        source += "UAC_INPUT_DEADLINE=-1\n" + "\n".join(helpers) + "\n"
+        source += planner + "\n"
+        source += function(sources.raw["agent_tools/windows_vm_guest.py"], "validate_setup_result") + "\n_standard_validate_setup_result=validate_setup_result\n"
+        source += function(sources.raw["agent_tools/windows_visual_fixture.py"], "_visual_session") + "\n"
+        # Keep the existing pure guard's complete imports/constants/functions,
+        # excluding unrelated credential-login helper definitions.
+        guard = sources.raw["scripts/integration/windows_prompt_observation.py"]
+        guard_tree = ast.parse(guard)
+        guard_nodes = [node for node in guard_tree.body if not isinstance(node, ast.FunctionDef) or node.name in ("_finite_timestamp", "_identity", "_hash", "run_if_current")]
+        source += "\n".join(ast.get_source_segment(guard, node) for node in guard_nodes) + "\n"
+        source += sources.raw[str(PRIVATE.relative_to(ROOT) / "uac_owner_runtime.py")] + "\n"
+        source += "import types\nQGA_MODULE_SOURCE=" + repr(sources.raw["agent_tools/windows_qga_transfer.py"].encode()) + "\n"
+        source += "QGA_MODULE_SHA=" + repr(hashlib.sha256(sources.raw["agent_tools/windows_qga_transfer.py"].encode()).hexdigest()) + "\n"
+        query_operation = "00000000-0000-4000-8000-000000000000"
+        source += "VISUAL_QUERY_TEMPLATE_OPERATION=" + repr(query_operation) + "\n"
+        source += "VISUAL_QUERY_TEMPLATE=" + repr(visual_query_template(sources, config["setup"], query_operation)) + "\n"
+        source += sources.raw[str(PRIVATE.relative_to(ROOT) / "fresh_visual_qualification.py")] + "\n"
+        source += "FRESH_GUEST_QUALIFIER=RetainedVisualQualifier()\n"
+        source += "if __name__=='__main__':serve(CONFIG)\n"
+        compile(source, "future-owned-uac-program", "exec")
+        sources.guard()
+        return source
+
+
+def render_control(operation_id, socket_path, request, expected_owner):
+    require(str(uuid.UUID(operation_id)) == operation_id and request.get("operationId") == operation_id, "control_original_operation")
+    require(type(socket_path) is str and socket_path.startswith("/") and len(os.fsencode(socket_path)) < 104 and type(expected_owner) is dict and set(expected_owner) == {"pid", "startTicks"} and all(type(x) is int and x > 0 for x in expected_owner.values()), "control_endpoint")
+    source = "REQUEST=" + repr(request) + "\nSOCKET_PATH=" + repr(socket_path) + "\nOWNER=" + repr(expected_owner) + "\n"
+    source += '''import json,os,socket,stat,struct
+def owner_birth():
+ with open('/proc/'+str(OWNER['pid'])+'/stat')as stream:row=stream.read(8193).rsplit(')',1)[1].split()
+ if row[0]in('Z','X')or int(row[19])!=OWNER['startTicks']:raise ValueError('original_control_owner_changed')
+owner_birth()
+info=os.lstat(SOCKET_PATH)
+if not stat.S_ISSOCK(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600:raise ValueError('original_control_socket')
+client=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);client.settimeout(10)
+try:
+ client.connect(SOCKET_PATH)
+ peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+ if peer[:2]!=(OWNER['pid'],os.geteuid()) or os.lstat(SOCKET_PATH).st_ino!=info.st_ino:raise ValueError('original_control_peer')
+ owner_birth()
+ raw=json.dumps(REQUEST,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()+b'\\n'
+ if len(raw)>8192:raise ValueError('control_packet_bound')
+ client.sendall(raw)
+ stream=client.makefile('rb',buffering=0);response=stream.readline(65537)
+ if not 0<len(response)<=65536 or not response.endswith(b'\\n'):raise ValueError('control_reply_unknown_no_replay')
+ print(json.dumps(json.loads(response),sort_keys=True),flush=True)
+ stream.close()
+finally:client.close()
+'''
+    compile(source, "future-owned-uac-control", "exec")
+    return source

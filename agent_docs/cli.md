@@ -64,7 +64,8 @@ ssh key status
 ssh key import --input PATH|-
 stats [--watch]
 logs [--follow] [--limit N]
-diagnostics export [--output PATH|-]
+diagnostics export --output PATH|-
+--async diagnostics export
 operations list
 operations status <id>
 operations wait <id> [--output PATH|-]

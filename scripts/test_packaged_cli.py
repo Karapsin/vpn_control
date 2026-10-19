@@ -249,6 +249,108 @@ def implicit_owner_smoke(root, invoke):
         require(not (workspace / "activation.port").exists(), "Implicit owner did not release its endpoint")
 
 
+def source_mode_smoke(workspace, identity, invoke):
+    """Use the public launcher for empty/remembered source modes without fetching or connecting."""
+    def read(*args):
+        return envelope(invoke(workspace, "--json", "--controller-id", identity, *args))
+
+    def observe(mode, subscription_id, revision=None):
+        source = read("source", "show")
+        status = read("status")
+        require(source["controllerId"] == status["controllerId"] == identity
+                and source["final"] is True and status["final"] is True
+                and source["configurationRevision"] == status["configurationRevision"]
+                and status["data"]["runtimeRunning"] is False,
+                "Source selection lost committed metadata or changed the disconnected owner")
+        require(source["data"] == {"mode": mode, "subscriptionId": subscription_id},
+                "Public source selection did not preserve the expected mode and subscription")
+        if revision is not None:
+            require(source["configurationRevision"] == revision,
+                    "Source selection advanced or lost the expected configuration revision")
+        return source["configurationRevision"]
+
+    def select(arguments, revision, expected_revision, expected_id, human=False):
+        args = ("--controller-id", identity, "--if-revision", str(revision), "source", "set", *arguments)
+        result = invoke(workspace, *(() if human else ("--json",)), *args)
+        if human:
+            lines = result.stdout.splitlines()
+            require(result.returncode == 0 and not result.stderr.strip() and lines[:1] == ["OK"]
+                    and f"Controller: {identity}" in lines
+                    and f"Revision: {expected_revision}" in lines and "Completion: final" in lines
+                    and f"  id: {expected_id}" in lines,
+                    "Human source selection did not report durable success on stdout")
+        else:
+            selected = envelope(result)
+            require(selected["controllerId"] == identity and selected["final"] is True
+                    and selected["configurationRevision"] == expected_revision
+                    and selected["data"].get("id") == expected_id,
+                    "JSON source selection lost its committed identity or revision")
+
+    revision = observe("current-locations", None)
+    require(read("subscriptions", "list")["data"]["subscriptions"] == [],
+            "Source-mode smoke requires the fresh empty fixture")
+    require(read("settings", "show", "refresh.policy")["data"]["refresh.policy"] == "off",
+            "Source-mode smoke requires automatic subscription refresh to remain disabled")
+    # Empty subscription mode must be reachable from both renderers, including a no-op retry.
+    select(("subscription",), revision, revision + 1, "subscription")
+    revision = observe("subscription", "", revision + 1)
+    select(("subscription",), revision, revision, "subscription", human=True)
+    observe("subscription", "", revision)
+    select(("current-locations",), revision, revision + 1, "current-locations")
+    revision = observe("current-locations", None, revision + 1)
+    select(("subscription",), revision, revision + 1, "subscription", human=True)
+    revision = observe("subscription", "", revision + 1)
+
+    # Saving validates a dormant URL locally; no refresh or runtime operation is requested.
+    saved = read("subscriptions", "add", "--source", "https://example.test/packaged-mode-only.txt",
+                 "--name", "Packaged source 東京")
+    subscription_id = saved["data"].get("id")
+    require(isinstance(subscription_id, str) and bool(subscription_id)
+            and saved["final"] is True and saved["configurationRevision"] == revision + 1,
+            "Public subscription add did not durably return its fixture identity")
+    revision = observe("subscription", subscription_id, revision + 1)
+    for human in (False, True):
+        # Explicit selection and mode-only return must retain the same opaque subscription ID.
+        select(("current-locations",), revision, revision + 1, "current-locations")
+        revision = observe("current-locations", None, revision + 1)
+        select(("subscription", subscription_id), revision, revision + 1, subscription_id, human)
+        revision = observe("subscription", subscription_id, revision + 1)
+        select(("current-locations",), revision, revision + 1, "current-locations")
+        revision = observe("current-locations", None, revision + 1)
+        select(("subscription",), revision, revision + 1, subscription_id, human)
+        revision = observe("subscription", subscription_id, revision + 1)
+        select(("subscription",), revision, revision, subscription_id, human)
+        observe("subscription", subscription_id, revision)
+
+    invalid = (("source", "set", "missing"),
+               ("source", "set", "subscription", subscription_id, "extra"),
+               ("source", "set", "current-locations", subscription_id),
+               ("source", "set", "all", subscription_id),
+               ("--if-revision", str(revision), "source", "set", "subscription"))
+    for args in invalid:
+        envelope(invoke(workspace, "--json", *args), 1, "INVALID_ARGUMENT")
+        human = invoke(workspace, *args)
+        require(human.returncode == 1 and not human.stdout.strip()
+                and human.stderr.splitlines()[:1] == ["INVALID_ARGUMENT"],
+                "Invalid human source arguments did not fail on stderr")
+        observe("subscription", subscription_id, revision)
+    for guards, target, code in (
+            (("--controller-id", identity, "--if-revision", str(revision - 1)), (), "CONFLICT"),
+            (("--controller-id", "stale-packaged-mode-owner"), (), "CONFLICT"),
+            (("--controller-id", identity, "--if-revision", str(revision)),
+             ("missing-packaged-subscription",), "NOT_FOUND")):
+        envelope(invoke(workspace, "--json", *guards, "source", "set", "subscription", *target), 1, code)
+        observe("subscription", subscription_id, revision)
+
+    select(("current-locations",), revision, revision + 1, "current-locations")
+    revision = observe("current-locations", None, revision + 1)
+    removed = read("subscriptions", "delete", subscription_id)
+    require(removed["final"] is True and removed["configurationRevision"] == revision + 1
+            and read("subscriptions", "list")["data"]["subscriptions"] == [],
+            "Source-mode smoke did not remove its dormant fixture subscription")
+    observe("current-locations", None, revision + 1)
+
+
 def launch_diagnostics(result):
     # Static discovery has no user document payload; retain bounded launcher
     # evidence so native failures can be diagnosed from the ordinary CI log.
@@ -357,6 +459,7 @@ def smoke(launcher, expected_version):
             envelope(waited, 1, terminal["code"])
             require(terminal["final"] is True, "Operation wait returned before completion")
             envelope(invoke(first, "--json", "operations", "status", operation_id), 1, terminal["code"])
+            source_mode_smoke(first, identities[0], invoke)
             streaming_and_qr_smoke(launcher, first, root, identities[0], invoke, environment)
             large_transfer_smoke(first, root, identities[0], invoke)
             implicit_owner_smoke(root, invoke)

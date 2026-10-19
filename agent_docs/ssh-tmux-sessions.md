@@ -36,6 +36,132 @@ of the nested cached socket. A separate admitted fresh nested channel is being
 implemented so canonical socket cleanup does not delay connection recovery.
 No native VM/app job is replayed by these transport observations.
 
+New independent nested test channels use `ControlPersist=18000`, allowing five
+hours without an active client session. An active command keeps the connection
+in use. This setting avoids idle expiry during long preparation pauses; it does
+not change command deadlines or guarantee remote process survival after an
+unexpected active SSH disconnection. Expired channels remain ended; prepare a
+new identity rather than restoring one. The separate foreground tmux master below
+continues to have its own lifecycle.
+
+## Current channel546 trust and recovery boundary
+
+The channel546 generic small/oversized DIRECT and actual fresh-SDK MCP proof
+completed four programs, with original source closing and keeper absence. Its
+receipt is `.runtime/windows-parity-20261019/program-tool-native/final-748-638/native-direct-mcp-qualification.private.json`
+(SHA-256 `55b5b9302d8e5bc6f6e1f0f3c1e712fc26e1c5e9b5155b38bea4e91153edf612`).
+Subsequent `known_hosts` drift makes the old READY authority stale; five-hour idle
+persistence does not extend source or trust authority. Do not adopt old READY,
+restore inferred trust bytes, or replay an unknown program to recover the route.
+
+The once-only original PID4120 status query has completed and observed its create
+terminal result. The full original ba962 probe remains `unknown-unverified`:
+local owner57875 and SSH58163 are absent, original outer custody is lost, and
+original dual EOF/source closing remain unproved. The new status carrier's closure
+cannot recover those original facts. Keep the status result and original full
+probe as separate records; do not repeat the consumptive query.
+
+Stage A's exact helper/fixture/policy adoption passed 37 canonical methods while
+retaining the sixteen original DIRECT sources. Its actual fixed546 retirement is
+now complete: root joined retained outer/exit-client known-zero and dual EOF,
+independent absence and authentic original546 ENDED publication/readback. Receipt
+`.runtime/windows-parity-20261019/stage-a-native-retirement-546-v1/root-retirement-adjudication.private.json`
+has SHA-256 `a405c991fac3d7f6f872d1ec12d1c2820454968a7da91569cf29b6c7562c9fad`.
+This closes only the admitted channel; original ba962 UNKNOWN and lost original
+custody remain unchanged, and historical trust equivalence is not claimed.
+
+Stage B's thirty exact reviewed source overrides and policy `b2041052` are now
+applied against accepted Stage A. All 203 distinct methods in the seven-module
+focused slice pass; its one MCP dependency skip was rerun successfully in the
+project environment. Root's post-check code/policy closure is
+`.runtime/windows-parity-20261019/stage-b-canonical-adoption-v1/root-canonical-adoption.private.json`
+(SHA-256 `df8f3de570f416e399af17b1b41a778e7c0a3b9471f33412ed689c51a5fb4470`).
+At that post-check checkpoint, documentation/version freeze and NEW normal
+prepare/select were still pending. Channel267 has since reached READY/SELECTED and
+qualified its DIRECT small program. Its oversized c79 failed before job creation
+with `SelectionUnknown`; the original cause remains unresolved and unreplayed.
+Later distinct DIRECT-large and actual fresh-SDK MCP small/large operations complete
+all four pre-Stage-C b204/0b0d SSH tool proofs, retaining the earlier small result without rerun.
+Root adjudication is
+`.runtime/windows-parity-20261019/program-tool-native/stage-b-b204-remaining-proof-v1/root-four-program-adjudication.private.json`
+(SHA-256 `fba549716ff1d11e5accd09f22a24af79bf7c59be26da58840b6df7249ab8671`).
+Four actual programs and 41 RPC servers are distinct counts. Original c79 and LOST
+diagnostic1 remain unchanged. Those SSH tool proofs made zero Windows guest actions.
+
+The first later bf05 prerequisite b7 left its original operator UNKNOWN across a
+terminal-publication gap. One pure LOCAL status recovered the original component
+terminal/owner-close and qualified inner/source closing; root adjudication89b4
+preserves original observation98/exec73992 exit1, adds no starts/remote queries and
+leaves the remaining six callers held. This is component recovery, not promotion
+of the original operator or authority to replay it. The final private e286 worker
+candidate has actual whole-before/current UNKNOWN-to-redacted-PENDING causal proof
+and a foreign-operation false-PENDING-to-UNKNOWN counterfactual; its37-method
+private slice passed and is now adopted. The initial aggregate88 remains failed
+with two recipe source-inspection setup errors caused by a stale staged guest
+alias in the test fixture. Stage D's boundary41806/helper0a51 restore exact module
+and parent aliases; actual old-boundary RED3 failures/0 errors and current five-
+method GREEN retain the causal fixture proof. Final source-current88 PASS16.885s
+(program37+retirement/diagnostic46+recipe5), fresh platform2import/7capability PASS,
+and all43 held full-generation/hash source closings are joined in
+`.runtime/windows-parity-20261019/stage-d-canonical-isolation-adoption-v1/joined-validation.private.json`
+(SHA-256 `e0d15f8f9224e060b5b3381c19a9089e96c121bbb671e72d3b8543f973b72e37`).
+Routine enrollment is closed. At that checkpoint, fixed-source native first fresh
+T and the remaining six callers had not run; original caller identity/outcome
+remains unchanged. The later first caller4835 below adds no successful native result.
+Recipe S's five local cases and UAC31/13 controls give no native visual acceptance
+or successor launch authority. All64 Windows/shared memberships and58 scenes remain
+open, with no app installed and no current prepush or push.
+The later post-adoption caller `4835b6ea-e758-44b0-b024-0972f8fe6594` remains
+UNKNOWN: automatic b9 staged a130341-byte wrapper carrying114293 source bytes, then selected-channel guard
+refused `master_closing` / `fd_changed` before program loader admission. Exact
+changed FD/master type and original cause remain UNRESOLVED; original capture
+has no program bytes/EOF proof. Preservation `86702dc6` and journal complement
+`b6c8df1f` retain the original result and absent execution-intent/submission-returned.
+The separate private FD-enumeration candidate179c97 has actual whole-beforefb8dfa
+RED/current GREEN plus strict missing-listener/birth/stat/permission controls:
+private59 PASS16.824s, handoff009c4f96/qualification523eda03, including natural
+same-case old-CURRENT `fd_changed` ERROR/exit1 versus current GREEN. It skips only per-entry disappeared readlinks
+while still positively joining the unique expected listener. This does not identify
+the original4835 FD/type/cause, and supplies no native-acceptance result.
+Retirement-profile/gateway Stage A's twelve sources are adopted (helper18ab,
+testcf8/gatewaya854/policy21df); canonical retirement50+source-stage52 pass102 in
+36.782s. Pure LOCAL real-original17/50 preflight and both absent execution markers
+pass under receipt4ec358ff, with zero native calls/exit claims/source16 changes.
+That preflight is separate from the later once-only actual retirement3f7beb36:
+originalexec11155 natural0, normal publisher/final original status ENDED, complete
+native exit, dual EOF and independent absence. Root qualificationf49f564a joins98
+held records/all50 historical proofs/16 sources unchanged. Original267 is
+closed without changing old unknown outcomes or granting native action. FD Stage B
+then adopted exactly four reviewed sources (provider179c/teste5b5/fixturea3ab), no
+policy write/21df unchanged, receipt6ed71d3b. Fresh109 (provider59+retirement50)
+PASS14.526s on originalsession7246 natural0, retained outputeeebbd4e, closing this
+source-current routine-enrollment gate. At that checkpoint, four-tool proof/native-
+seven successor plans were private and no new channel had been created. No replay
+or remaining-six start is claimed.
+Original prepush90637/frozen8e55 naturally failed one gateway writer-alive assertion;
+all workers closed/root exit1. Separate owned Event-release fixture correction has
+actual controlled late-observation RED/current GREEN,14 private cases and the
+adopted52-method canonical slice (handofff0d24c0a). Original scheduling specifics
+and4835 FD/type/cause remain unresolved. No passing current prepush or push exists;
+app,64native memberships and58visual scenes remain unfinished.
+
+Subsequently fresh11dda7ac was prepared/READY/selected (receipt3af388db,idle18000),
+and four current DIRECT/fresh-SDK MCP small/large programs qualified under held
+engineering21's finally loader, root closinge1840795/full proofe85c9f44. Four program
+starts differ from66 SDK RPC servers; all33 source generations/hashes close unchanged,
+608 held records/141 local actors absent. Stage F then adopted the reusable
+SystemExit guard/getter fix and its existing five-case family (receipt9e20ef17,
+policy688 last); canonical5 PASS5.678s closes this live-source unit gate. Metadata
+renews only two pins/three scope edges; selected source16/core/e286 remain unchanged,
+so consumed-runtime-source tool proofs stay valid. Windows-seven rebinding/runs,
+app installation,64 memberships/58 scenes, fresh prepush and push remain OPEN.
+These tool proofs make zero Windows guest actions; no replay is authorized.
+
+Preparing a fresh channel before Stage B and subsequently changing its bound
+sources would make that authority stale again. The old selection pointer is not
+rewritten as a shortcut. None of this authorizes foreign cleanup, trust-file changes
+or replay of unknown work or the consumed original-status query.
+
 ## Gateway connection
 
 The dedicated gateway companion retains one foreground nested SSH master in a

@@ -538,7 +538,7 @@ class FreshChannelTests(unittest.TestCase):
     def test_remote_source_is_fixed_once_launch_and_readonly_status(self):
         compile(channel._REMOTE,'exact-channel-remote','exec');tree=ast.parse(channel._REMOTE)
         self.assertIn("os.mkdir(stage,0o700)",channel._REMOTE);self.assertIn("save('intent.json'",channel._REMOTE)
-        self.assertIn("'ControlPersist=60'",channel._REMOTE);self.assertIn("'ProxyCommand=false'",channel._REMOTE)
+        self.assertIn("'ControlPersist=18000'",channel._REMOTE);self.assertIn("'ProxyCommand=false'",channel._REMOTE)
         self.assertNotIn('os.kill(',channel._REMOTE);self.assertNotIn('unlink(',channel._REMOTE)
         self.assertIn("elif request!={}:raise ValueError('status_input')",channel._REMOTE)
     def remote_snapshot_fixture(self):
@@ -759,7 +759,21 @@ class FreshChannelTests(unittest.TestCase):
         self.assertFalse(proof['streams']['stdout']['prefixComplete']);self.assertEqual(hashlib.sha256(child['stdout']).hexdigest(),proof['streams']['stdout']['retainedSha256'])
         self.assertLess(len(json.dumps(proof).encode()),3072)
 
-    def whole_remote_status(self,absent=False,publication_drift=False,prepare_collision=False,foreign_member=False,kernel_timestamp_drift=False):
+    def test_new_channel_emits_five_hour_idle_without_extending_command_deadlines(self):
+        self.whole_remote_status(prepare_launch=True)
+        self.assertEqual(1,len(self.emitted_launch_argv))
+        argv=self.emitted_launch_argv[0]
+        self.assertIn('ControlPersist=18000',argv)
+        self.assertNotIn('ControlPersist=60',argv)
+        self.assertIn('ConnectTimeout=10',argv)
+        self.assertEqual(18000,channel.IDLE_SECONDS)
+        launches=[node.value for node in ast.walk(ast.parse(channel._REMOTE))
+                  if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=='launch' for target in node.targets)
+                  and isinstance(node.value,ast.Call)]
+        self.assertEqual(1,len(launches))
+        self.assertEqual(20,ast.literal_eval(launches[0].args[1]))
+
+    def whole_remote_status(self,absent=False,publication_drift=False,prepare_collision=False,foreign_member=False,kernel_timestamp_drift=False,prepare_launch=False):
         # Genuine emitted complete programme. Explicit Linux /proc/path and
         # Arch UID/boot getter fixture seams; real Unix socket/private FS and
         # actual binary SSH children remain. No native readiness assertion.
@@ -786,20 +800,29 @@ class FreshChannelTests(unittest.TestCase):
         executable=self.root/'whole-check.py'
         executable.write_text('import sys,json\nif "-G" in sys.argv:sys.stdout.write("identityfile '+str(self.f.key)+'\\n")\nelif "-O" in sys.argv:sys.stderr.write("Master running (pid='+str(os.getpid())+')\\n")\nelse:print(json.dumps({"uid":1000,"boot":"'+channel.EXPECTED_BOOT+'"}))\n')
         real_popen=subprocess.Popen;facade=types.SimpleNamespace(**{name:getattr(subprocess,name) for name in dir(subprocess)})
+        self.emitted_launch_argv=[]
         def popen(argv,**kw):
             self.assertEqual('ssh',argv[0]);self.assertIn(native_control,argv)
+            if prepare_launch and '-M' in argv:
+                self.emitted_launch_argv.append(list(argv))
+                return real_popen([sys.executable,'-I','-B','-c',
+                                  "import sys;sys.stderr.write('owned launch refusal\\n');sys.exit(255)"],**kw)
             return real_popen([sys.executable,'-I','-B',str(executable),*argv[1:]],**kw)
         facade.Popen=popen
         def run(argv,**kw):
             self.assertEqual('ssh',argv[0]);self.assertIn('-G',argv)
             return subprocess.run([sys.executable,'-I','-B',str(executable),*argv[1:]],**kw)
         facade.run=run
-        remote_sys=types.SimpleNamespace(argv=['fixed',self.corr,'prepare' if prepare_collision else 'status',config,'fixture',channel._source()],stdin=types.SimpleNamespace(buffer=io.BytesIO(b'{"passphrase":"inert fixture"}' if prepare_collision else b'{}')))
+        preparing=prepare_collision or prepare_launch
+        remote_sys=types.SimpleNamespace(argv=['fixed',self.corr,'prepare' if preparing else 'status',config,'fixture',channel._source()],stdin=types.SimpleNamespace(buffer=io.BytesIO(b'{"passphrase":"inert fixture"}' if preparing else b'{}')))
+        temporary=types.SimpleNamespace(TemporaryDirectory=lambda *args,**kw:
+            tempfile.TemporaryDirectory(*args,**{**kw,'dir':translate(kw['dir'])}))
         original_import=builtins.__import__
         def importing(name,*args,**kw):
             if name=='os':return mapped
             if name=='subprocess':return facade
             if name=='sys':return remote_sys
+            if name=='tempfile' and prepare_launch:return temporary
             return original_import(name,*args,**kw)
         # Exact updated original-intent DTO; all metadata facts come from the
         # genuine producer functions, with source SHA bound to current module.
@@ -808,6 +831,9 @@ class FreshChannelTests(unittest.TestCase):
                 'sourceSha256':channel._source(),'configPin':namespace['file_pin'](config,body=True),
                 'effectiveRoute':namespace['effective_route'](new_spec)}
         (physical/'intent.json').write_text(json.dumps(intent));(physical/'intent.json').chmod(0o600)
+        if prepare_launch:
+            namespace['_test_socket'].close();(physical/'m').unlink();(physical/'intent.json').unlink();physical.rmdir()
+            table.write_bytes(header)
         if foreign_member:(physical/'foreign').write_bytes(b'inert real foreign member')
         if absent:
             namespace['_test_socket'].close();(physical/'m').unlink();(physical/'intent.json').unlink();physical.rmdir();table.write_bytes(header)
@@ -836,6 +862,11 @@ class FreshChannelTests(unittest.TestCase):
             self.assertEqual('unknown',value['state']);self.assertEqual(3,code)
         elif prepare_collision:
             self.assertEqual('unknown',value['state']);self.assertEqual('prepare_stage',value.get('failurePhase'));self.assertEqual(3,code)
+        elif prepare_launch:
+            self.assertEqual('unknown',value['state']);self.assertEqual('launch',value.get('failurePhase'));self.assertEqual(3,code)
+            self.assertEqual(255,value['launchCapture']['returnCode'])
+            self.assertTrue(value['launchCapture']['complete'])
+            self.assertEqual({'stdout':True,'stderr':True},value['launchCapture']['eof'])
         elif publication_drift:
             self.assertEqual('unknown',value['state']);self.assertEqual(3,code);self.assertTrue((physical/'ready.json').exists())
         elif absent:
@@ -856,6 +887,102 @@ class FreshChannelTests(unittest.TestCase):
         self.assertTrue(channel._master_shape(value))
         for key,bad in (('pid',True),('startTicks',0),('uid',True)):
             altered={**value,'actor':{**value['actor'],key:bad}};self.assertFalse(channel._master_shape(altered))
+
+    FD_ENUMERATION_CAUSAL=[]
+
+    def fd_enumeration_before(self):
+        path=Path(__file__).parent/'fixtures/master_fd_enumeration/ssh_fresh_nested_channel.py.before.source'
+        raw=path.read_bytes()
+        provenance=json.loads((path.parent/'provenance.json').read_bytes())
+        self.assertEqual(provenance['beforeSha256'],hashlib.sha256(raw).hexdigest())
+        module=types.ModuleType('agent_tools._master_fd_enumeration_before')
+        module.__file__=str(path);module.__package__='agent_tools'
+        exec(compile(raw,str(path),'exec'),module.__dict__)
+        return module
+
+    def fd_enumeration_fixture(self,provider,name):
+        physical=self.root/name;physical.mkdir(mode=0o700)
+        with mock.patch.object(self,'root',physical),mock.patch.dict(globals(),{'channel':provider}):
+            return self.remote_snapshot_fixture()
+
+    def fd_disappearance_after_listing(self,namespace,leaf,after=None):
+        # Real owned TempFS symlink removal, after the original listdir has
+        # returned its names. Linux /proc facts are the existing explicit seam.
+        facade=namespace['os'];listed=facade.listdir;links=facade.readlink;observed=[]
+        fdroot=Path(namespace['stage']).parent/'proc'/str(os.getpid())/'fd'
+        if leaf!='3':(fdroot/leaf).symlink_to('pipe:[998877]')
+        target='/proc/%d/fd'%os.getpid()
+        def listing(path,*args,**kwargs):
+            names=listed(path,*args,**kwargs)
+            if path==target:
+                names=sorted(names,key=int)  # Declared deterministic proc-entry order.
+                self.assertIn(leaf,names);self.assertIn('3',names)
+                (fdroot/leaf).unlink()
+                if after is not None:after()
+            return names
+        def reading(path,*args,**kwargs):
+            try:
+                value=links(path,*args,**kwargs);observed.append((path,value));return value
+            except FileNotFoundError:
+                observed.append((path,'FileNotFoundError'));raise
+        facade.listdir=listing;facade.readlink=reading
+        return observed
+
+    def test_actual_unrelated_master_fd_disappearance_before_red_current_ready(self):
+        for provider,fixed in [(self.fd_enumeration_before(),False),(channel,True)]:
+            with self.subTest(fixed=fixed):
+                namespace,table,header,row=self.fd_enumeration_fixture(provider,'fixed' if fixed else 'before')
+                observed=self.fd_disappearance_after_listing(namespace,'99')
+                def ready_oracle():
+                    value=namespace['snapshot']()
+                    self.assertEqual(row.split()[6].decode(),value['listenerInode'])
+                    self.assertEqual(os.getpid(),value['actor']['pid'])
+                    return value
+                if fixed:value=ready_oracle();failure=None
+                else:
+                    with self.assertRaisesRegex(ValueError,'^fd_changed$') as caught:ready_oracle()
+                    value=None;failure={'exceptionClass':type(caught.exception).__name__,'reason':str(caught.exception)}
+                self.assertEqual(1,sum(path.endswith('/99')and result=='FileNotFoundError' for path,result in observed))
+                self.assertTrue(any(path.endswith('/3')and result=='socket:['+row.split()[6].decode()+']' for path,result in observed))
+                self.FD_ENUMERATION_CAUSAL.append({'fixed':fixed,'sourceSha256':hashlib.sha256(Path(provider.__file__).read_bytes()).hexdigest(),
+                    'expectedPositiveListener':row.split()[6].decode(),'failure':failure,'snapshot':value,
+                    'readlinks':observed,'listedUnrelatedFdRemovedExactlyOnce':True})
+
+    def test_actual_missing_control_listener_fd_still_refuses(self):
+        namespace,table,header,row=self.fd_enumeration_fixture(channel,'missing-listener')
+        observed=self.fd_disappearance_after_listing(namespace,'3')
+        with self.assertRaisesRegex(ValueError,'^listener_owner$'):namespace['snapshot']()
+        self.assertEqual([('/proc/%d/fd/3'%os.getpid(),'FileNotFoundError')],observed)
+
+    def test_actual_changed_actor_birth_or_lost_stat_still_refuses_after_fd_skip(self):
+        for lost in [False,True]:
+            with self.subTest(lostStat=lost):
+                namespace,table,header,row=self.fd_enumeration_fixture(channel,'lost-stat' if lost else 'changed-birth')
+                actor=Path(namespace['stage']).parent/'proc'/str(os.getpid())/'stat'
+                def changed():
+                    if lost:actor.unlink()
+                    else:
+                        raw=actor.read_bytes();end=raw.rindex(b')')+2;tail=raw[end:].split();tail[19]=b'2'
+                        actor.write_bytes(raw[:end]+b' '.join(tail))
+                observed=self.fd_disappearance_after_listing(namespace,'99',changed)
+                if lost:
+                    with self.assertRaises(FileNotFoundError):namespace['snapshot']()
+                else:
+                    with self.assertRaisesRegex(ValueError,'^closing$'):namespace['snapshot']()
+                self.assertTrue(any(path.endswith('/99')and value=='FileNotFoundError' for path,value in observed))
+
+    def test_actual_unreadable_master_fd_error_is_not_suppressed(self):
+        namespace,table,header,row=self.fd_enumeration_fixture(channel,'unreadable-fd')
+        facade=namespace['os'];reading=facade.readlink
+        fdroot=Path(namespace['stage']).parent/'proc'/str(os.getpid())/'fd';(fdroot/'99').symlink_to('pipe:[998877]')
+        target='/proc/%d/fd/99'%os.getpid();failure=PermissionError(13,'explicit proc-fact permission refusal',target)
+        def unreadable(path,*args,**kwargs):
+            if path==target:raise failure
+            return reading(path,*args,**kwargs)
+        facade.readlink=unreadable
+        with self.assertRaises(PermissionError) as caught:namespace['snapshot']()
+        self.assertIs(failure,caught.exception)
+
 
 @unittest.skipUnless(os.name=='posix' and hasattr(os,'O_NOFOLLOW'),'POSIX bounded pin')
 class ProcUnixPinTests(unittest.TestCase):

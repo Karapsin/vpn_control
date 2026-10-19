@@ -1,0 +1,8 @@
+{
+  "beforeSha256": "c73ac3b83b7ea120525435c076dc2a0e965ae5238b2d9389f147b3cf519fdd9d",
+  "reviewFindings": [
+    "Private raw stream mode not600 accepted by generic _Held",
+    "Capture records first pinned at publication, permitting post-probe replacement as new evidence"
+  ],
+  "scope": "Complete private candidate frozen for independent review; actual raw0644 and post-probe replacement RED/current GREEN use declared inert gateway/closure facts. Not native acceptance."
+}

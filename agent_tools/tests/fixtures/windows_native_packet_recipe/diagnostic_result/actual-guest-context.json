@@ -1,0 +1,11 @@
+{
+  "boot": {
+    "hardwareUuid": "D493A373-1D2C-4AB0-BFD4-E93575019DCE",
+    "lastBootUpTimeFileTimeUtc": "134368653065000000",
+    "machineGuid": "7b109066-c50e-4138-8969-f83555499b60"
+  },
+  "deploymentId": "d493a373-1d2c-4ab0-bfd4-e93575019dce",
+  "ordinarySid": "S-1-5-21-4099058025-2437077614-260217637-1001",
+  "powerShellPath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+  "sourceWorkspace": "C:\\ProgramData\\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a"
+}

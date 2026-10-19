@@ -9,9 +9,11 @@ visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
 # Keep Git blobs intact when Windows enables automatic line-ending conversion.
 /agent_tools/**/*.py -text
 /agent_tools/ssh_source_file_gateway.source -text
+/agent_tools/windows_ordinary_task_owner.ps1 -text
 
 # Historical source fixtures retain the exact bytes named by their provenance.
 /agent_tools/tests/fixtures/**/*.source -text
+/agent_tools/tests/fixtures/windows_ordinary_task/original-task.xml -text
 /agent_tools/tests/fixtures/native_wire_event_evidence/*.fragment -text
 /agent_tools/tests/fixtures/windows_cp117_publisher_boundary/*.fragment -text
 /agent_tools/tests/fixtures/fast_workflow_budget/before.yml -text
@@ -75,3 +77,4 @@ agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
 /agent_tools/tests/fixtures/ssh_late_ready_handshake/ready.before.source -text
 /agent_tools/tests/fixtures/windows_powershell_environment/native_module_i.before.ps1 -text
 /agent_tools/tests/fixtures/windows_powershell_environment/native_provider_custody.ps1 -text
+/agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/06-rpc83.raw.bin -text

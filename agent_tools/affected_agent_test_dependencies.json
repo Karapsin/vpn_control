@@ -19,11 +19,13 @@
       ]
     },
     "agent_tools/android_installer_component_bundle.py": {
+      "reason": "Finite existing FILES registry is unchanged. Current physical batch adds early/final regular-file generation checks around its owned spool; no source-discovery authority is expanded.",
       "scopes": [
         "@files:FILES"
       ],
       "sourceSha256": [
-        "e5bdaf09353f979af3ebbcb40091fd7f661ec563159bb7e900ea1a2a659ede0a"
+        "e5bdaf09353f979af3ebbcb40091fd7f661ec563159bb7e900ea1a2a659ede0a",
+        "d990faeebcba12eaf764e6be5b175beb4c18ddd19baf1e7d7c3ab6d8d2e20ce4"
       ]
     },
     "agent_tools/linux_deb_arch_guest_prepare_remote.py": {
@@ -40,12 +42,13 @@
       ]
     },
     "agent_tools/mcp_server.py": {
-      "reason": "Exact current executable MCP uses finite _VM_NATIVE_ADAPTERS and _KEEPER_ROLES registries plus literal captured core policies. Saved-file staging, independent held-byte imports, historical new-work refusals and original read/closure guards remain source-bound; this declaration does not qualify archival held MCP roles as executable current source. Explicit macOS stage start/status/collect dispatch uses the new allowlisted module and supplied environment context; the old implicit guest start remains retired. Final generic channel aliases are explicit; original-only keeper new work is retired before source loading, with unchanged original status/custody checks. Native request bootstrap now captures the exact loader and Windows custody backend in a private empty-path package before any ordinary import can adopt prior-compiler bytecode; strict source/code/closing guards remain intact.",
+      "reason": "Exact current executable MCP uses finite _VM_NATIVE_ADAPTERS and _KEEPER_ROLES registries plus literal captured core policies. Saved-file staging, independent held-byte imports, historical new-work refusals and original read/closure guards remain source-bound; this declaration does not qualify archival held MCP roles as executable current source. Explicit macOS stage start/status/collect dispatch uses the new allowlisted module and supplied environment context; the old implicit guest start remains retired. Final generic channel aliases are explicit; original-only keeper new work is retired before source loading, with unchanged original status/custody checks. Native request bootstrap now captures the exact loader and Windows custody backend in a private empty-path package before any ordinary import can adopt prior-compiler bytecode; strict source/code/closing guards remain intact. Managed agent commands use the exact captured cancellation owner; structured program actions use only the finite native adapter registry. No new directory scope is admitted. Structured program actions refuse unsupported coordinator platforms before importing the POSIX execution owner.",
       "scopes": [
         "@modules:_VM_NATIVE_ADAPTERS",
         "@files:_KEEPER_ROLES",
         "agent_tools/source_module_loader.py",
-        "agent_tools/windows_source_custody.py"
+        "agent_tools/windows_source_custody.py",
+        "agent_tools/managed_agent_check.py"
       ],
       "sourceSha256": [
         "5b782a08381d67fbaa3ffae04684004097618727458fa9a1c7051305553f6f7c",
@@ -73,11 +76,14 @@
         "aa56be5ba778a1b3d23784132a23ea664ad62eef9af8da326955aa69e1d256ca",
         "81a31edfeb03b63624aa316f021a70e4e50fb18a866f6e2d105a27a8b94b4eaa",
         "9ba5cb86a41efcc0b60e26dbe85b6fbbf5217de2c0c72716a01e29ae18df0725",
-        "36ecd6b24c2097478c458b72f2064e7bf332845d0b33e79f04d3d448acb76ff6"
+        "36ecd6b24c2097478c458b72f2064e7bf332845d0b33e79f04d3d448acb76ff6",
+        "603c8602124289cfdaf93b38d7e86b2df3992ae7b9f397bd725007f4ef71b3e1",
+        "df6e54b0404a3ce95e6db98e84ba9f9cae0d019f73f2da16ed90115305002768",
+        "748841ba33bd7e3a8d58d6cff249305095dfa8dff14fc908ec30ec72219f1ee3"
       ]
     },
     "agent_tools/source_module_loader.py": {
-      "reason": "Private captured-source namespace and scoped import_module resolver. Ordinary stdlib dotted imports first import the requested module before refreshing the importlib view; all actual repository imports remain covered. Fixed closure bootstrap now establishes bounded physical POSIX/Windows custody before executing its bytes; existing supported agent_tools/scripts package scopes are unchanged.",
+      "reason": "Private captured-source namespace and scoped import_module resolver. Ordinary stdlib dotted imports first import the requested module before refreshing the importlib view; all actual repository imports remain covered. Fixed closure bootstrap now establishes bounded physical POSIX/Windows custody before executing its bytes; existing supported agent_tools/scripts package scopes are unchanged. Optional expected-source manifests are a supplied exact path/digest capability checked before any imported code executes; default import authority and package scopes are unchanged.",
       "scopes": [
         "agent_tools/",
         "scripts/"
@@ -90,7 +96,8 @@
         "37c3bd1c2c6610228fe5e5017d4ca40298df01c1d8446534cfdeac990a8cfcb9",
         "4e887b03de3e21ae655c7762c561d727cad691af251bd7f08515b4112a2347dc",
         "39942d49073906fcbc6d6aec9c9a816ef18d37de4f2b48ca8632c8ebc75864ca",
-        "2e1265aefe4f9ebc4822e936c1fb92775acd296c6385f8df1f1772ad4dcfa8a8"
+        "2e1265aefe4f9ebc4822e936c1fb92775acd296c6385f8df1f1772ad4dcfa8a8",
+        "2f5a5e3f65ee571d608a54602b3a6934818ddbff3b8a4e45c3f6fb42f9f93431"
       ]
     },
     "agent_tools/ssh_acceptance_observation_routes.py": {
@@ -181,6 +188,115 @@
         "6d2ff26ae551d1d7c3b2b7ba7428b02fdd1e28e91beb760a4a4ee12de7738a85"
       ]
     },
+    "agent_tools/tests/fixtures/capture_custody/android_original_host_status.py.before.source": {
+      "reason": "Exact complete original status module is executed by the custody regression with __package__ agent_tools. These are its finite real relative imports and the unchanged adjacent dispatch bytes read for source custody; the test selects either the complete retained or current Android capture owner. No historical remote body is submitted.",
+      "scopes": [
+        "agent_tools/android_installer_tool_bundle.py",
+        "agent_tools/android_observation.py",
+        "agent_tools/android_original_host_wire.py",
+        "agent_tools/android_qualified_cli_observation.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/fixtures/capture_custody/android_installer_dispatch.py",
+        "agent_tools/tests/fixtures/capture_custody/android_qualified_cli_observation.py.before.source"
+      ],
+      "sourceSha256": [
+        "660fe14865aedd165d230861f7264967d1e8920d9ded11b7bbe3c87ed43fb6ec"
+      ]
+    },
+    "agent_tools/tests/fixtures/capture_custody/ssh_source_file_stage.py.before.source": {
+      "reason": "Exact complete original producer is copied with its exact original template into an owned directory under their actual sibling names before physical import. Its actual gateway_program call reads only that byte-authenticated retained template; generated caller/receiver bytes add no repository authority.",
+      "scopes": [
+        "agent_tools/tests/fixtures/capture_custody/ssh_source_file_gateway.source.before.source"
+      ],
+      "sourceSha256": [
+        "0fc515e7e118b846ea154cd979e5571afdfc1ea474beb4197c9e1a8237d2b3c9"
+      ]
+    },
+    "agent_tools/tests/fixtures/capture_custody/ssh_source_file_stage.reserved-selector.before.source": {
+      "reason": "Exact complete unadopted producer is copied with the corresponding complete pre-fix reserved-selector gateway into an owned directory under their actual sibling names. The no-child regression calls the actual gateway_program output and authenticates both files without overriding __file__, the template path or its historical digest.",
+      "scopes": [
+        "agent_tools/tests/fixtures/capture_custody/ssh_source_file_gateway.reserved-selector.before.source"
+      ],
+      "sourceSha256": [
+        "8cb40ada5f4be6972ceccc2b0f52a89fe29ea2b991d15a54f66306a85d1daba3"
+      ]
+    },
+    "agent_tools/tests/fixtures/capture_custody/ssh_source_file_stage_direct.py.before.source": {
+      "reason": "Exact complete original DIRECT staging module is executed with the genuine agent_tools package and controlled full retained Android capture module. Its named current imports and native source-custody helper remain explicit; generated temporary caller, driver, stream and receipt paths are owned invocation data and grant no source-discovery authority.",
+      "scopes": [
+        "agent_tools/android_qualified_cli_observation.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_source_file_stage.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/fixtures/capture_custody/android_qualified_cli_observation.py.before.source"
+      ],
+      "sourceSha256": [
+        "d793ead7f9954ddac8d5c7251e838dd8a534df9a5a87069fe784dc1221970d99"
+      ]
+    },
+    "agent_tools/tests/fixtures/capture_custody/windows_vm_deploy.duplicate-output.before.source": {
+      "reason": "Exact complete unadopted Windows producer before the bounded exception-frame fix is copied to an owned physical windows_vm_deploy.py and imported under agent_tools. Its actual gateway_program output exercises finite local streams against the unchanged 16 MiB outer limit. All genuine relative imports remain exact; the retained source adds no VM, remote or package discovery authority.",
+      "scopes": [
+        "agent_tools/native_environment.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/native_vm_spec.py",
+        "agent_tools/private_credential_file.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_source_file_stage.py",
+        "agent_tools/ssh_source_file_stage_direct.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/windows_vm_deploy_remote.py",
+        "agent_tools/windows_vm_media.py",
+        "agent_tools/windows_vm_resources.py",
+        "agent_tools/windows_vm_unattend.py"
+      ],
+      "sourceSha256": [
+        "f38835e5deb0d58be37fc19c7b8985711f947cf9617f9da05fb32d5e7217e243"
+      ]
+    },
+    "agent_tools/tests/fixtures/capture_custody/windows_vm_deploy.observed-output.before.source": {
+      "reason": "Exact complete prior Windows deployment producer is copied to an owned physical windows_vm_deploy.py and imported under agent_tools before its actual gateway_program output is exercised. The observed-success regression authenticates this complete f4a5 source and compares its duplicated result/raw frame against the unchanged 16 MiB outer bound using finite local streams. These are the same 12 genuine relative imports as the other reviewed whole Windows producers; no VM, SSH, package discovery or runtime authority is added.",
+      "scopes": [
+        "agent_tools/native_environment.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/native_vm_spec.py",
+        "agent_tools/private_credential_file.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_source_file_stage.py",
+        "agent_tools/ssh_source_file_stage_direct.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/windows_vm_deploy_remote.py",
+        "agent_tools/windows_vm_media.py",
+        "agent_tools/windows_vm_resources.py",
+        "agent_tools/windows_vm_unattend.py"
+      ],
+      "sourceSha256": [
+        "f4a5c34029f644edcbbb54dadd51bed8d56e351506cf4f032cf5ada54bb3ac0f"
+      ]
+    },
+    "agent_tools/tests/fixtures/capture_custody/windows_vm_deploy.py.before.source": {
+      "reason": "Exact complete original Windows deployment producer is copied to an owned physical windows_vm_deploy.py and imported with package agent_tools before calling its actual gateway_program emitter. These are its finite genuine relative imports, including the current shared staging producer/template reached through the named module. The retained historical gateway entry alone is compared with current code using finite local IO peers; no VM, SSH or guest action is submitted.",
+      "scopes": [
+        "agent_tools/native_environment.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/native_vm_spec.py",
+        "agent_tools/private_credential_file.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_source_file_stage.py",
+        "agent_tools/ssh_source_file_stage_direct.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/windows_vm_deploy_remote.py",
+        "agent_tools/windows_vm_media.py",
+        "agent_tools/windows_vm_resources.py",
+        "agent_tools/windows_vm_unattend.py"
+      ],
+      "sourceSha256": [
+        "00c22a5c39414ce9f3f58e75df72cd37c8a199d34d97e9e6b4ddee1db4e6f0d9"
+      ]
+    },
     "agent_tools/tests/fixtures/cp117_fixture_context_portability/context.before.source": {
       "reason": "Exact complete original context bytes are authenticated and parsed only for the two named inert source-reader/remote-recipe definitions. The supplied namespace retains the actual current context filename and fixed two public source labels. Original unnecessary coordinator imports must refuse under the private capability recorder; full historical factory module initialization is not executed.",
       "scopes": [
@@ -263,6 +379,15 @@
         "b5c1469e6f541e43b3ba16811353ad41511ac071cb009f357efb1f7d94fd7236"
       ]
     },
+    "agent_tools/tests/fixtures/expected_source_manifest/before.source": {
+      "reason": "Exact complete original loader is executed only against generated owned entry/helper files and the explicitly copied current custody primitive in the causal manifest test. Its temporary directory is supplied by the test, never a repository search root; no package directory authority is declared.",
+      "scopes": [
+        "agent_tools/native_review_source_closure.py"
+      ],
+      "sourceSha256": [
+        "2e1265aefe4f9ebc4822e936c1fb92775acd296c6385f8df1f1772ad4dcfa8a8"
+      ]
+    },
     "agent_tools/tests/fixtures/fixture_build_guest_dependency/before.source": {
       "reason": "Immutable complete hosted workflow before guest-independent build admission. Fixed local package imports and script version metadata remain its transitive consumers; never a current dispatcher.",
       "scopes": [
@@ -288,6 +413,13 @@
       ],
       "sourceSha256": [
         "3ca0db900635ae8c65ff9a98746d6fdc7873df30c71e58720b36de3d11cb9e1f"
+      ]
+    },
+    "agent_tools/tests/fixtures/managed_agent_timeout/mcp_server.py.before.source": {
+      "reason": "Authentic complete original MCP is parsed, then only _run, _display, _bounded and _failure_log_excerpt are compiled into a predeclared inert command-boundary namespace. Full module startup, adapter registries, source discovery and remote bodies never execute. Current helper/runner/before inputs are declared on the owning test.",
+      "scopes": [],
+      "sourceSha256": [
+        "36ecd6b24c2097478c458b72f2064e7bf332845d0b33e79f04d3d448acb76ff6"
       ]
     },
     "agent_tools/tests/fixtures/mcp_core_capture_native_setup/before.source": {
@@ -387,6 +519,20 @@
         "d0cb496543e5930ccd1addb9577a09479d1f7f9922e6a55469666ac60dc19a52"
       ]
     },
+    "agent_tools/tests/fixtures/owned_channel_retirement/546-route-fixture.before.source": {
+      "reason": "The exact pinned parent authenticates this complete preserved prior test module, compiles it at its real source path under agent_tools.tests, and invokes only OwnedChannelRetirementTests.setUp and _native. Module initialization has only standard-library imports, its own physical path constants, declarations, and a false __main__ guard. The genuine ssh_owned_channel_retirement import and all static references remain analyzed normally. The invoked _native builds owned temporary route facts and consumes the already supplied current helper/channel code; ROOT-based repository readers, other test methods, and carrier helpers remain uncalled declarations. This exact archive digest adds no dynamic repository reader/import scope or native authority.",
+      "scopes": [],
+      "sourceSha256": [
+        "60e8ff7d895d10ea9b0ec45f31b316cd08d8c253353c39d2ed48feb265f8e6d9"
+      ]
+    },
+    "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_transport.py.before.source": {
+      "reason": "Exact whole transport beforeimage is preserved archival provenance data for the original missing worker-diagnostic investigation. No test imports, compiles, executes or reads this context beforeimage; only the separate whole worker beforeimage is executable in its declared owning regression. Its historical dynamic import path is never active and grants no production/runtime/directory authority. The owning regression family declares its exact file edge for conservative change selection.",
+      "scopes": [],
+      "sourceSha256": [
+        "86a897ee00d843a38b16357dab4c4b8415d11503cc6883f525fd1cf7fbe3ac55"
+      ]
+    },
     "agent_tools/tests/fixtures/runner_self_input/mcp_import_before.source": {
       "reason": "Exact f227 import-time prefix is executed as agent_tools.mcp_server in an owned package; only captured selector and check-runner source readers run. Full f227 beforeimage provenance is retained; no unrelated adapter routes execute.",
       "scopes": [
@@ -428,6 +574,13 @@
       "scopes": [],
       "sourceSha256": [
         "87d819fbe4a94e9e3a590ca34c74f13ab189782794fa6a7a96f9bcbe2f830c88"
+      ]
+    },
+    "agent_tools/tests/fixtures/saved_program_introspection/import-registration.qualifier.before.source": {
+      "reason": "Authentic qualifier caller is hash-checked text for two literal contextual assertions only. It is not compiled, imported or executed; historical runtime paths, subprocess bodies and source inventories grant no repository or execution authority.",
+      "scopes": [],
+      "sourceSha256": [
+        "518901db9f3a6fefa04199f240b24ae9a12bbea29308ee1fe8dfa034520c96c3"
       ]
     },
     "agent_tools/tests/fixtures/source_loader_bootstrap/before.source": {
@@ -607,6 +760,40 @@
       ],
       "sourceSha256": [
         "9a652e16946b2ce3c71fa10347145d016098f2250a7e152a675a9e14289dd440"
+      ]
+    },
+    "agent_tools/tests/fixtures/transport_close_pin/frozen-transport.before.source": {
+      "reason": "Authentic whole transport16cbc is compiled in the owning inert closed five-file SourceSession fixture, with its exact source digest required by the unchanged historical close helper. Active gate paths consume only its configuration and option helpers against owned temporary inventory; historical dynamic native-module imports and command dispatch never run. Other real copied closure owners are explicitly declared on the parent test; this source grants no further repository/native/runtime reader authority.",
+      "scopes": [],
+      "sourceSha256": [
+        "16cbcfc396ba33e660d2550f4bb70b30a39367f1b823fd57eeee2281f844a367"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_artifact_transfer/constructor-no-start.before.source": {
+      "reason": "Authentic whole prior artifact test module executes only its ordinary current artifact-producer import and definitions. The owning causal tests invoke the original native runner at a mock same-original-child constructor/attachment boundary; the qualification beforeimage additionally parses synthetic receipt data through its original pure validator. Historical fixture-reader/test bodies, native launch mechanisms and runtime source paths remain uncalled. No external executable or broad directory is repository-source authority.",
+      "scopes": [
+        "agent_tools/windows_artifact_transfer.py"
+      ],
+      "sourceSha256": [
+        "107d9767a903419ed6661f020b77f4b4cd3612ac0eb48fdec1a8b59ae2961707"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_artifact_transfer/native-qualification.before.source": {
+      "reason": "Authentic whole prior artifact test module executes only its ordinary current artifact-producer import and definitions. The owning causal tests invoke the original native runner at a mock same-original-child constructor/attachment boundary; the qualification beforeimage additionally parses synthetic receipt data through its original pure validator. Historical fixture-reader/test bodies, native launch mechanisms and runtime source paths remain uncalled. No external executable or broad directory is repository-source authority.",
+      "scopes": [
+        "agent_tools/windows_artifact_transfer.py"
+      ],
+      "sourceSha256": [
+        "46dce7b73ef3bc71bfc15b648fc47250fd44fc58c5825744976ebba96c6c3c5d"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_artifact_transfer/native-runner.before.source": {
+      "reason": "Authentic whole original test module executes its ordinary canonical artifact import and defines helpers/tests, then only the original _run_native_regression helper runs under a declared mock original-child/Path executable seam. Other historical test bodies and native fixtures never run or read. No supplied SystemRoot/native executable path is repository source authority.",
+      "scopes": [
+        "agent_tools/windows_artifact_transfer.py"
+      ],
+      "sourceSha256": [
+        "d04c7e72c1e112388a4eb156f4c54c5aa8467cf7d0899778e3d57977c4480804"
       ]
     },
     "agent_tools/tests/fixtures/windows_complete_program_transfer/carrier.before.source": {
@@ -1837,6 +2024,198 @@
         "da891225fc3b912eb8eea0235943f9879426abf7a01dfedf5415cf4e7faf50c7"
       ]
     },
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/boundary.py": {
+      "reason": "Original finite whole-entry boundary executes complete authenticated loader, DIRECT/MCP operators, registered saved SDK client and inert IO peer; current SourceSession _request/remote.validate remain actual. The seven sibling fixtures and21 exact canonical readers are the entire repository input boundary. Server748 is authenticated data only. Logical ledgers are owned World data; source replacement touches only an owned temporary file. The existing loader boundary additionally reads only the two exact inert SystemExit entry fixtures listed here. They execute under an owned temporary directory with sys.argv as the declared peer; source bytes and whole loader namespaces stay complete. No SDK, native server, network or original runtime directory executes.",
+      "scopes": [
+        "agent_tools/android_qualified_cli_observation.py",
+        "agent_tools/check_output_retention.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/ssh_channel_keeper.py",
+        "agent_tools/ssh_channel_keeper_entry.py",
+        "agent_tools/ssh_connection_recovery.py",
+        "agent_tools/ssh_connection_session.py",
+        "agent_tools/ssh_fresh_nested_channel.py",
+        "agent_tools/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/ssh_nested_socket_retirement.py",
+        "agent_tools/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/ssh_program_execution.py",
+        "agent_tools/ssh_program_execution_remote.py",
+        "agent_tools/ssh_recovery_adoption.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/held-loader.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/mcp_io_peer.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/mcp_server.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/operator-direct.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/operator-mcp.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/provenance.json",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/ssh_program_mcp_client.source",
+        "agent_tools/windows_artifact_transfer.py",
+        "agent_tools/windows_qga_transfer.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/systemexit-replacement.entry.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/systemexit-three-argv.entry.source"
+      ],
+      "sourceSha256": [
+        "71a9b1e2bd1596fc2900adcb7ef9e2fea0856ffefcd9498a8a99cc3880db244d",
+        "5b77cdd0f76217bd96ef9a881a416694fe763501db2e8c07b44ea36c2d8b9167"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/fifo/qualify-pending-prefix.source": {
+      "reason": "Complete historical FIFO qualifier executes only its original single FIFO test against the caller-staged complete prefix. Both exact prefix source origins are declared. All filesystem/FIFO/thread/descriptor evidence is caller-owned; no original runtime directory or other historical qualifier method executes.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/fifo/pending-prefix.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/fifo/pending-prefix.current.source"
+      ],
+      "sourceSha256": [
+        "0bb83f1aba8d1742f969dad39534642d3bd310e4cc0572ef5b10905383da0e1d"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/boundary.py": {
+      "reason": "One finite hostassetdecoder whole-entry causal boundary authenticates the exact four sibling source/data/provenance fixtures and normally loads the existing shared packet boundary. Both caller sources are whole exact originalbytes; currentloader is passed from existing livegetter. Only logical filesystem/backend data and one repository-literal virtual alias are declared peers. The same real registered production_request path and raw/EOF/terminal/sourceclosing oracle runs before/after; the original TypeError is captured from actualexecute traceback, never fabricated. No ignoredruntimepath, hostassetpreimage, API/network/native action or source rewrite is routine authority.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/operator.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/collector.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/positive-result.json",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/provenance.json",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/boundary.py"
+      ],
+      "sourceSha256": [
+        "42933a09f7091bc0b87b92ba99179ead7aea4f8604bfdd7471a7eba7a33f1c98"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/boundary.py": {
+      "reason": "Exact complete boundary authenticates the finite provenance and nine listed data/source fixtures, stages their full bytes in an owned temporary repository, and normally registers the complete pinned qualifier. The one positive oracle is identical for whole native-before/current collectors; native metadata, process and network effects remain inert. Provenance stagePath strings do not grant ignored runtime-tree discovery. The added retained-refusal entry uses those same inputs and one identical whole-source child oracle to require both actor snapshots and nonempty raw/identity diagnostics; the original timestamp pair remains unchanged.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/provenance.json",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/00-qualify_collector.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/01-namespace-timestamp-oracle.private.json.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/02-qualify_collector.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/03-qualify_collector.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/04-harness.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/05-rpc83.request.json.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/06-rpc83.raw.bin",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/07-windows_qga_transfer.candidate.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/08-artifact-probe-d053e44c-5652-4fc2-9b1d-bbcc7413398e.canonical-emitter.py.source"
+      ],
+      "sourceSha256": [
+        "fd178f43d9392a57da7f9fb78e8e57aa7a56a15da217348507b419e337cd4d3d",
+        "830dc840d1384f387a94c5c545913b4c1021a525e1ff577ba4761faf874ce05a"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/00-qualify_collector.py.source": {
+      "reason": "Exact complete saved qualifier is normally registered by the namespace boundary and imports only the retained complete 03 metadata peer, which imports the retained 04 harness. It authenticates 02 as data without importing/executing it, reads the exact paired namespace JSON and RPC request/raw data, and authenticates retained bf05/297 module bytes solely as historical inert peer data. The passed collector source and outputs are owned temporary files, not repository discovery or current-producer reassignment.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/01-namespace-timestamp-oracle.private.json.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/02-qualify_collector.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/03-qualify_collector.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/04-harness.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/05-rpc83.request.json.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/06-rpc83.raw.bin",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/07-windows_qga_transfer.candidate.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/08-artifact-probe-d053e44c-5652-4fc2-9b1d-bbcc7413398e.canonical-emitter.py.source"
+      ],
+      "sourceSha256": [
+        "bbda64bc87935e65e97835a04a873c3e835f7a5212af85643f4b0e3e28b66dc9"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/03-qualify_collector.py.source": {
+      "reason": "Exact complete retained metadata peer imports only the staged 04 harness and reads the two finite staged historical bf05/297 module specimens for hash-authenticated inert observations. Their original temporary agent_tools paths are rebound by the reviewed boundary provenance; no current production module or ignored runtime source tree is a new dependency. Generic path arguments consume only owned temporary collector/output files.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/04-harness.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/07-windows_qga_transfer.candidate.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/08-artifact-probe-d053e44c-5652-4fc2-9b1d-bbcc7413398e.canonical-emitter.py.source"
+      ],
+      "sourceSha256": [
+        "fd420b83e273de49755d3bc3058731e1bf22485f21002011e3ac79194943a42b"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/boundary.py": {
+      "reason": "Complete routing boundary physically stages only15 exact local source/data origins plus13 current canonical proper-owner inputs. It executes the original selected whole entry oracle against three operator variants, preserving registered namespaces and source functions; capture-only tracing and unused socket IO are declared peers. Original .runtime stagePath topology exists only under an owned temporary root.",
+      "scopes": [
+        "agent_tools/mcp_server.py",
+        "agent_tools/ssh_program_execution_remote.py",
+        "agent_tools/ssh_program_mcp_client.py",
+        "agent_tools/tests/__init__.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/fresh_visual_qualification.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/inert_control_peer.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/mcp_io_peer.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/pending_prefix.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/private-recipe-enrollment-handoff.private.json.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_fresh_binding.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_inert.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_outer_entry.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/retained-api-operator-held-loader-closing.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/uac_owner_runtime.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/uac_program_template.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/operator.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/operator.current.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/operator.eof-before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/provenance.private.json",
+        "agent_tools/tests/fixtures/windows_powershell_environment.py",
+        "agent_tools/tests/test_windows_vm_guest.py",
+        "agent_tools/windows_qga_transfer.py",
+        "agent_tools/windows_visual_fixture.py",
+        "agent_tools/windows_vm_guest.py",
+        "agent_tools/windows_vm_instance.py",
+        "agent_tools/windows_vm_unattend.py",
+        "scripts/capture_visual_windows_qemu.py",
+        "scripts/integration/windows_prompt_observation.py"
+      ],
+      "sourceSha256": [
+        "ea3ba3a93f28dc2fb50c3db2f3eed718342747cb79b6e115a3eb34f5f8132cad",
+        "41806de58c759d49eb1a6c3ea26d4f4fb99e03bac707942ed193664e29e6440d"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_fresh_binding.py.source": {
+      "reason": "Complete archived fresh qualifier is staged under the owned physical routing world. The executed selected entry loads the exact qualify_inert sibling origin; ordinary GuestQualificationTests imports remain automatically analyzed. No original runtime tree is read.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_inert.py.source"
+      ],
+      "sourceSha256": [
+        "9b91f8916d37e001c0ffc967507ecd08790b4280e6a514f52cf3decbace34cdb"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_inert.py.source": {
+      "reason": "Complete archived inert qualifier in the owned physical routing world loads the exact template, owner runtime and fresh-visual source origins; template rendering reads the seven exact canonical OWNERS paths. Other archived methods remain declarations; ordinary genuine imports stay automatic.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/fresh_visual_qualification.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/uac_owner_runtime.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/uac_program_template.py.source",
+        "agent_tools/windows_qga_transfer.py",
+        "agent_tools/windows_visual_fixture.py",
+        "agent_tools/windows_vm_guest.py",
+        "agent_tools/windows_vm_instance.py",
+        "agent_tools/windows_vm_unattend.py",
+        "scripts/capture_visual_windows_qemu.py",
+        "scripts/integration/windows_prompt_observation.py"
+      ],
+      "sourceSha256": [
+        "5c04ebdc3e603323de75751d729399da64259cc2499b966a51c1dcc4c4818473"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_outer_entry.py.source": {
+      "reason": "Complete archived outer qualifier executes only the selected DIRECT terminal/EOF positive oracle in the owned physical world, against three exact operator variants and seven exact private fixture origins. World reads current saved-client and server bytes for explicit pins; source-function and remote.validate imports remain automatically analyzed. No original runtime tree or network/native operation is authority.",
+      "scopes": [
+        "agent_tools/mcp_server.py",
+        "agent_tools/ssh_program_mcp_client.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/inert_control_peer.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/mcp_io_peer.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/pending_prefix.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/private-recipe-enrollment-handoff.private.json.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_fresh_binding.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/retained-api-operator-held-loader-closing.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/uac_program_template.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/operator.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/operator.current.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/operator.eof-before.source"
+      ],
+      "sourceSha256": [
+        "ec500429b601e5485f19c4e3eed8e31e237a24117e0036546654d4bd4a060c8e"
+      ]
+    },
     "agent_tools/tests/fixtures/windows_powershell_environment/native_owner.before.source": {
       "reason": "Exact original imports and NativeTargetOwnerTests class are extracted from this held source and run only until the unchanged actual stage-generator subprocess boundary. The real stage module is the sole repository import consumed by the retained class; no native owner action is executed in the portable boundary control.",
       "scopes": [
@@ -1894,6 +2273,16 @@
       ],
       "sourceSha256": [
         "7cf2b17814ed31af50a7f56a31d62f26bdd82d628262068e5b9e050a88278d76"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_qga_transfer/whole-protocol-peer.source": {
+      "reason": "Authenticated whole local peer module runs only in the owning test private temporary layout, alongside the exact whole caller peer and pinned native SDDL data. Its inherited peer import layer supplies explicit inert external primitives; the only delegated actual imports are standard-library types, uuid and __future__. Original native artifact paths remain peer data and no native source, network or repository directory is read.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_qga_transfer/whole-caller-peer.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/native-source-receipt.json"
+      ],
+      "sourceSha256": [
+        "f4f01ff6f3343f030d9e0388210c6453c8c2e24989e8266406d710cacee88537"
       ]
     },
     "agent_tools/tests/fixtures/windows_standard_token/input.before.source": {
@@ -1975,7 +2364,7 @@
       ]
     },
     "agent_tools/tests/test_agent_test_runner_self_input.py": {
-      "reason": "Physical runner copied-source/self-input controls retain finite SOURCE_FILES and immutable runner beforeimages. The complete current copied MCP includes captured Windows setup/native workflow policies and the source loader/Windows custody backend; generated temporary modules remain inert owned inputs.",
+      "reason": "Physical runner copied-source/self-input controls retain finite SOURCE_FILES and immutable runner beforeimages. The complete current copied MCP includes captured Windows setup/native workflow policies and the source loader/Windows custody backend; generated temporary modules remain inert owned inputs. The current copied MCP also captures the finite managed_agent_check.py owner at startup.",
       "scopes": [
         "agent_tools/affected_agent_test_dependencies.json",
         "agent_tools/affected_agent_tests.py",
@@ -2012,13 +2401,15 @@
         "agent_tools/tests/test_ssh_direct_nested_channel.py",
         "agent_tools/tests/test_ssh_fresh_nested_channel.py",
         "agent_tools/windows_source_custody.py",
-        "agent_tools/windows_vm_setup_policy.py"
+        "agent_tools/windows_vm_setup_policy.py",
+        "agent_tools/managed_agent_check.py"
       ],
       "sourceSha256": [
         "293f697a8a3ec26bc20469bdfffcd247e72ec5bff092f75079767aca38e21a85",
         "94c7426dfe8fb41e67a278af4ab96f8741d7e14a969a16465216e4832890d09d",
         "52f25a2957059fa4fcdfbf90feb91475710cd2d3cbd1471d3077bc980720e634",
-        "97229e44988b276bd49e7b084c56c569b55c0650295fcda0435a14b2e3759f47"
+        "97229e44988b276bd49e7b084c56c569b55c0650295fcda0435a14b2e3759f47",
+        "1ee43db75575678173f13bfb9624d6ba60df5c9195349f8953e396b8cd0e400c"
       ]
     },
     "agent_tools/tests/test_android_api35_proxy_stage_diagnostic.py": {
@@ -2056,12 +2447,18 @@
       ]
     },
     "agent_tools/tests/test_android_installer_component_bundle.py": {
+      "reason": "Exact current component bundle plus authentic original physical producer function and original indented test-method fragment/provenance. The latter is hash-checked and placed unchanged in a separate synthetic class wrapper before compiling only that method in its predeclared owned fixture namespace. Actual generated shell, delay, source-drift, original-process and duplicate-stream closure controls use fresh temporary files; no broader repository input is admitted.",
       "scopes": [
-        "agent_tools/android_installer_component_bundle.py"
+        "agent_tools/android_installer_component_bundle.py",
+        "agent_tools/tests/fixtures/android_installer_hermetic/physical-batch-source.before.source",
+        "agent_tools/tests/fixtures/android_installer_hermetic/physical-batch-test.before.source",
+        "agent_tools/tests/fixtures/android_installer_hermetic/physical-batch-source.provenance.json"
       ],
       "sourceSha256": [
         "c210c10c1ffe90b752f668ea153c4d8ba8bd54fcf975bb21299d3b4ebbb941ea",
-        "1b538a0f7795a1407e92158e04c7b66dde6f3a344c49113dbf509599ef6e7856"
+        "1b538a0f7795a1407e92158e04c7b66dde6f3a344c49113dbf509599ef6e7856",
+        "da268fd99fc33951626ecabee638a1b048c35e99a6572157500fed330132f8b5",
+        "9df6e5c082c1d4a00015a6db162fb39c1c08a496a5c2eea37e7af78cca72c806"
       ]
     },
     "agent_tools/tests/test_android_installer_jdk_source_context.py": {
@@ -2120,6 +2517,18 @@
         "098687cc4b1482f4d9b7f5dea459cf8d1937cac48e639d32bbd33e12ada1eae8"
       ]
     },
+    "agent_tools/tests/test_android_original_host_status.py": {
+      "reason": "Finite whole original-status custody regressions execute the exact complete retained status and Android capture owners under agent_tools, with controlled current transport boundaries and finite local peers. The immutable provenance authenticates those full sources; no original remote operation is replayed.",
+      "scopes": [
+        "agent_tools/tests/fixtures/capture_custody/android_original_host_status.py.before.source",
+        "agent_tools/tests/fixtures/capture_custody/android_qualified_cli_observation.py.before.source",
+        "agent_tools/tests/fixtures/capture_custody/provenance.json"
+      ],
+      "sourceSha256": [
+        "a831b71b9f9fac95522e32f136d7cd0595d511c4cd81d3031ef58aaf95d189d6",
+        "7efd52998c7f1d8030200f13f16b3960f910f2e51401e66d0c09e6f37ac43a18"
+      ]
+    },
     "agent_tools/tests/test_android_packaged_component_read_transport.py": {
       "reason": "Reviewed actual test body: finite loader callsites or hash-checked fixture override for preserved temporary RED inputs; runtime output files are not repository source inputs.",
       "scopes": [
@@ -2127,6 +2536,20 @@
       ],
       "sourceSha256": [
         "a5e4d94fada8cf24824931ea7c7dca3bc1babb0c436587f1f89ce30be4a4e2ea"
+      ]
+    },
+    "agent_tools/tests/test_android_qualified_cli_observation.py": {
+      "reason": "Finite whole-owner custody regressions execute only the two exact complete retained Android owners, their unchanged adjacent observer input, and the complete unchanged ssh_program_execution consumer under the fixed agent_tools package. Existing inert source readers and copied fixture inputs remain unchanged; no SSH, native, dynamic package or remote authority is added.",
+      "scopes": [
+        "agent_tools/ssh_program_execution.py",
+        "agent_tools/tests/fixtures/capture_custody/android_qualified_cli_observation.py.before.source",
+        "agent_tools/tests/fixtures/capture_custody/android_qualified_cli_observation.select.before.source",
+        "agent_tools/tests/fixtures/capture_custody/android_qualified_cli_remote.source",
+        "agent_tools/tests/fixtures/capture_custody/provenance.json"
+      ],
+      "sourceSha256": [
+        "e102e12750fcc9ef7ca5b89559567f2aa0607bb536def561ede88462742c230c",
+        "1bbaf257ea24568209236f9ac6ce146c65ab6158d1b4fcdd862ff293db4eefd6"
       ]
     },
     "agent_tools/tests/test_android_retained_result_binary_collection.py": {
@@ -2312,6 +2735,21 @@
         "1f2e7c54ec077cfa44dd14dc4d4f093e511ecc952d81795c00da362dcea71696"
       ]
     },
+    "agent_tools/tests/test_managed_agent_check.py": {
+      "reason": "Exact current/before AST command boundary and Selection class counterfactuals, one authentic immediately-before cancellation owner, and an actual copied runner. Readiness side channels, tiny package modules, work gates and fixture cleanup refer only to fresh owned temporary data. No generic repository source override is admitted.",
+      "scopes": [
+        "agent_tools/mcp_server.py",
+        "agent_tools/affected_agent_tests.py",
+        "agent_tools/agent_test_runner.py",
+        "agent_tools/tests/fixtures/managed_agent_timeout/mcp_server.py.before.source",
+        "agent_tools/tests/fixtures/managed_agent_timeout/affected_agent_tests.py.before.source",
+        "agent_tools/tests/fixtures/managed_agent_timeout/managed_agent_check.py.before.source",
+        "agent_tools/tests/fixtures/managed_agent_timeout/provenance.json"
+      ],
+      "sourceSha256": [
+        "f87f29b9c45725a1345e4cb90019f16a6449e02bfe30c0475b95375cf20b05d4"
+      ]
+    },
     "agent_tools/tests/test_mcp_core_capture_windows.py": {
       "reason": "Exact owned core-capture regression AST-extracts only _captured_core from the explicit current server or its complete retained function beforeimage, with fixed standard-library globals and an owned generated policy.py. It also extracts only the named native test method from its current self or the exact c680 test beforeimage, with an explicit physical-file clock model namespace. Native setup changes only FILE_BASIC_INFO.ChangeTime on the newly owned inert file and verifies readback; actual native CI remains separate. No server/test top-level dispatcher, adapters, prior runtime evidence or additional repository source is executed or read.",
       "scopes": [
@@ -2342,7 +2780,7 @@
       ]
     },
     "agent_tools/tests/test_mcp_source_bootstrap.py": {
-      "reason": "Exact complete-entry bootstrap regression copies only the finite current core/loader/backend/selector/runner closure and the authentic full original entry. Registered inventory uses a generated inert adapter/policy in its private package. Owned timestamp-valid bytecode, canonical-cache poison, source drift, native Windows backend and namespace cleanup controls exercise unchanged guards; no subprocess native effect or remote authority is admitted.",
+      "reason": "Exact complete-entry bootstrap regression copies only the finite current core/loader/backend/selector/runner closure and the authentic full original entry. Registered inventory uses a generated inert adapter/policy in its private package. Owned timestamp-valid bytecode, canonical-cache poison, source drift, native Windows backend and namespace cleanup controls exercise unchanged guards; no subprocess native effect or remote authority is admitted. The current copied MCP also captures the finite managed_agent_check.py owner at startup.",
       "scopes": [
         "agent_tools/mcp_server.py",
         "agent_tools/docs_assistant.py",
@@ -2358,7 +2796,8 @@
         "agent_tools/agent_test_runner.py",
         "agent_tools/native_review_source_closure.py",
         "agent_tools/tests/fixtures/mcp_source_bootstrap/mcp_server.before.source",
-        "agent_tools/tests/fixtures/mcp_source_bootstrap/provenance.json"
+        "agent_tools/tests/fixtures/mcp_source_bootstrap/provenance.json",
+        "agent_tools/managed_agent_check.py"
       ],
       "sourceSha256": [
         "722130f098eb4e3e619c002b15d7f7a4fa75f482253268f4f8fcc67331309ef7"
@@ -2519,7 +2958,7 @@
       ]
     },
     "agent_tools/tests/test_recovery_route_source_custody.py": {
-      "reason": "Exact reviewed physical complete-server counterfactual: copies six literal captured core policies and finite runner/source dependencies; three recovery adapters and their policy are inert generated temporary fixtures. The optional test-only source override runs preserved original complete-server RED and does not expand repository source authority.",
+      "reason": "Exact reviewed physical complete-server counterfactual: copies six literal captured core policies and finite runner/source dependencies; three recovery adapters and their policy are inert generated temporary fixtures. The optional test-only source override runs preserved original complete-server RED and does not expand repository source authority. The current copied MCP also captures the finite managed_agent_check.py owner at startup.",
       "scopes": [
         "agent_tools/affected_agent_test_dependencies.json",
         "agent_tools/affected_agent_tests.py",
@@ -2535,11 +2974,32 @@
         "agent_tools/tests/fixtures/cached_recovery_source/before.json",
         "agent_tools/tests/fixtures/cached_recovery_source/provenance.json",
         "agent_tools/windows_vm_setup_policy.py",
-        "agent_tools/windows_source_custody.py"
+        "agent_tools/windows_source_custody.py",
+        "agent_tools/managed_agent_check.py"
       ],
       "sourceSha256": [
         "f2d2c2a67c0de6dcf7f586797aa8105732a302e4d4e0b5e468a506f3e67559f7",
         "7b645378af3cfb99fd382c0b7f0d91eaac6c3e401701fe0b5d3ee17226378401"
+      ]
+    },
+    "agent_tools/tests/test_saved_program_introspection.py": {
+      "reason": "Exact complete retained callers and their finite current saved-file gateway/import closure execute in an owned temporary source tree. Embedded worker strings consume only these twelve explicit repository inputs; metadata runtime paths and named regression labels are evidence data, not source authority.",
+      "scopes": [
+        "agent_tools/tests/fixtures/saved_program_introspection/import-registration.before.source",
+        "agent_tools/tests/fixtures/saved_program_introspection/import-registration.qualifier.before.source",
+        "agent_tools/tests/fixtures/saved_program_introspection/saved-capsule.before.source",
+        "agent_tools/tests/fixtures/saved_program_introspection/metadata.public.json",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/ssh_source_file_stage.py",
+        "agent_tools/ssh_source_file_stage_direct.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/android_qualified_cli_observation.py",
+        "agent_tools/ssh_source_file_gateway.source"
+      ],
+      "sourceSha256": [
+        "a9221730830ea9529cfd93aab82f9bd8bc6b4896bbc0c2a2915af956a8347730"
       ]
     },
     "agent_tools/tests/test_source_file_return_capture.py": {
@@ -2580,7 +3040,7 @@
       ]
     },
     "agent_tools/tests/test_source_module_loader.py": {
-      "reason": "Actual owned complete copied-server startup and temporary-package cache/lifetime counterfactuals. The finite server/selector/core inputs include captured Windows and native workflow policies; synthetic adapters/helpers are owned test data. Source tuples and all module bytes stay explicit and reviewed.",
+      "reason": "Actual owned complete copied-server startup and temporary-package cache/lifetime counterfactuals. The finite server/selector/core inputs include captured Windows and native workflow policies; synthetic adapters/helpers are owned test data. Source tuples and all module bytes stay explicit and reviewed. The current copied MCP also captures the finite managed_agent_check.py owner at startup.",
       "scopes": [
         "agent_tools/affected_agent_test_dependencies.json",
         "agent_tools/affected_agent_tests.py",
@@ -2594,7 +3054,8 @@
         "agent_tools/native_workflow_policy.py",
         "agent_tools/source_module_loader.py",
         "agent_tools/windows_vm_setup_policy.py",
-        "agent_tools/windows_source_custody.py"
+        "agent_tools/windows_source_custody.py",
+        "agent_tools/managed_agent_check.py"
       ],
       "sourceSha256": [
         "1feb8ae9731f78b23fe96ab1522149ec415e571b213216e448ab79525a248c9f",
@@ -2602,7 +3063,8 @@
         "d0602ef088656461a461a595c2b8a55f4fe922e5c6dd6bc2be1b1a935b50f96a",
         "3d42d5f28f8f7d6ea532ffe97270ec1351169e1f4c20453343c622a91ff4b83b",
         "85901a837b2134eeb821d798dd096a8617c824a2bdea32735a81f4c32f12c245",
-        "91450c25e567f207310d65bfff1522a1af622e6d8c647253793e2a755ef4ab79"
+        "91450c25e567f207310d65bfff1522a1af622e6d8c647253793e2a755ef4ab79",
+        "e99a994e68f74d22668034242c70b2ec40dfb22426f2610218f295550d1fd8cc"
       ]
     },
     "agent_tools/tests/test_source_terminal_closing.py": {
@@ -2618,7 +3080,7 @@
       ]
     },
     "agent_tools/tests/test_ssh_automatic_program.py": {
-      "reason": "Exact physical automatic-staging counterfactuals consume four current source owners and seven immutable fixture/provenance inputs. Computed before_module names and named preserved-stage/cache inputs are this finite map; fake SSH executes only emitted programs in owned local trees. No network, package, native environment or arbitrary repository loader authority is supplied. The complete public-entry counterfactual also consumes the explicitly listed core/loader/backend/selector/runner inputs discovered from the current captured-core literals; these inputs are now included in the finite declaration.",
+      "reason": "Exact physical automatic-staging counterfactuals consume four current source owners and seven immutable fixture/provenance inputs. Computed before_module names and named preserved-stage/cache inputs are this finite map; fake SSH executes only emitted programs in owned local trees. No network, package, native environment or arbitrary repository loader authority is supplied. The complete public-entry counterfactual also consumes the explicitly listed core/loader/backend/selector/runner inputs discovered from the current captured-core literals; these inputs are now included in the finite declaration. The current copied MCP also captures the finite managed_agent_check.py owner at startup.",
       "scopes": [
         "agent_tools/native_review_source_closure.py",
         "agent_tools/ssh_automatic_program.py",
@@ -2642,7 +3104,8 @@
         "agent_tools/windows_source_custody.py",
         "agent_tools/affected_agent_tests.py",
         "agent_tools/affected_agent_test_dependencies.json",
-        "agent_tools/agent_test_runner.py"
+        "agent_tools/agent_test_runner.py",
+        "agent_tools/managed_agent_check.py"
       ],
       "sourceSha256": [
         "56cdc216cf825c5c59d785bc89a501662d55d4f84eef376cff5963ee74c2f656",
@@ -2688,18 +3151,23 @@
       ]
     },
     "agent_tools/tests/test_ssh_connection_session_close.py": {
-      "reason": "Execute only immutable preserved generic close helper in the fixed agent_tools package against the same inert original session; close source/config/process IO remains physically guarded. No real SSH close occurs. Reviewed e167 baseline imports/resources remain supported for the mandatory old/current dependency union; static edges are retained alongside this finite current map.",
+      "reason": "Execute only immutable preserved generic close helper in the fixed agent_tools package against the same inert original session; close source/config/process IO remains physically guarded. No real SSH close occurs. Reviewed e167 baseline imports/resources remain supported for the mandatory old/current dependency union; static edges are retained alongside this finite current map. The inert fixture now compiles authentic complete pinned transport16cbc alongside unchanged current close/session/inventory/custody bytes inside an owned five-file SourceSession expected-source namespace. Existing close regressions bind the same held modules, never rewrite production source pins or adopt live historical records. An explicit namespace with complete current transport bytes must refuse before any child/intent and close its held source view. Only these exact current loader/custody owners and two original-transport fixture/provenance files are additional source inputs.",
       "scopes": [
         "agent_tools/ssh_connection_session_close.py",
         "agent_tools/ssh_connection_session.py",
         "agent_tools/ssh_transport.py",
         "agent_tools/private_inventory_lock.py",
         "agent_tools/tests/fixtures/transport_close_pin/before.source",
-        "agent_tools/tests/fixtures/transport_close_pin/provenance.json"
+        "agent_tools/tests/fixtures/transport_close_pin/provenance.json",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/tests/fixtures/transport_close_pin/frozen-transport.before.source",
+        "agent_tools/tests/fixtures/transport_close_pin/frozen-transport.provenance.json"
       ],
       "sourceSha256": [
         "7bc6e35cae0473d91484c9a4352a590abeb3a8705e8a4100095fcdb4eaf1cd52",
-        "f77abfd3e7f0542d9ae3fedd34a6149c1736204dd6f7d1b503ca055a936ce208"
+        "f77abfd3e7f0542d9ae3fedd34a6149c1736204dd6f7d1b503ca055a936ce208",
+        "58a9a4f9b2abdd75c04b4816345ec008021c06e1870c19410f70eed7a28e9ca1"
       ]
     },
     "agent_tools/tests/test_ssh_direct_ended_inventory_successor.py": {
@@ -2830,6 +3298,155 @@
         "9c0b11063829551c5b0d567524c378ec9ea5aec9cdd1821302e84787ae5d3693"
       ]
     },
+    "agent_tools/tests/test_ssh_owned_channel_retirement.py": {
+      "reason": "Exact fixed16 direct-channel source members and the current source loader are read into an owned temporary source view for real expected-manifest and held-generation guards. Historical MCP is supplied data, deliberately excluded from the expected executable manifest, and checked only for the exact six-line current guard transition. One authenticated whole original retirement owner is compiled under the existing package for the None-config causal control; route/native fact seams stay inert and real local child streams/EOF execute. Fixture intent/ready and original read-only probe evidence are finite data, never operation replay authority. No directory or wildcard source scope is admitted. The second exact owned connection is authenticated only by these four additional original records. A whole authenticated previous fbac-only retirement owner is compiled under the existing package solely for the second-connection probe rejection counterfactual; the current fixed probe receives the same inert native facts. These finite records do not authorize archive replay or other connection identities. Fixed546 adds exactly twelve authentic record/beforeimage fixtures and retains the original sixteen source members. The complete original and private pre-fix owners are causal counterfactuals only. Exact original write-FD generations stay held into publication. Fixed actual once-only guest status, host abandonment and lost-custody receipts admit only the original channel retirement scope; bc6 remains UNKNOWN and ba962 lost capture is explicitly abandoned without EOF, owner-closed, source-closing, full-probe qualification or trust equivalence promotion. The archive call boundary remains setUp/_native only. Nine diagnostic-retention routine cases additionally read exactly the finite provenance-listed canonical source inputs and the exact helper49a into their own physical World, authenticate four complete saved diagnostic entries plus provenance, and run each whole entry in a clean local Python process. Normal copied helper/program namespaces and actual capture/Guard implementations remain intact; only the declared loader/transport admission and entry OS/sys boundaries are inert. The hardcoded trust token is redirected to an owned harmless fixture, and every entry open is confined to the owned World. Runtime/config/request/trust/output files are owned invocation data, not repository discovery authority. Complete archive entries remain normally statically analyzable and receive no new opaque-loader declaration. Fixed267 adds only eight exact authentic profile/intake/before-helper/closed-UNKNOWN fixtures. Current synthetic publication contexts explicitly bind the present source16 and remote template while authentic original intent/ready/admission remain separately verified. Historical diagnostic before/v2/v3 retain whole49 fixture bytes; currentv4 binds physical current18ab through reviewed provenance and derives complete saved held source from immutable7853 with exactly two authenticated SHA-token replacements. Existing current source inputs and diagnostic template/provenance paths remain declared; runtime proof paths are owned invocation data, not repository source discovery or operation replay authority.",
+      "scopes": [
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_fresh_nested_channel.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/ssh_connection_session.py",
+        "agent_tools/ssh_connection_recovery.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/check_output_retention.py",
+        "agent_tools/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/ssh_nested_socket_retirement.py",
+        "agent_tools/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/ssh_recovery_adoption.py",
+        "agent_tools/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/ssh_channel_selection.py",
+        "agent_tools/mcp_server.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/ssh_owned_channel_retirement.py",
+        "agent_tools/tests/fixtures/owned_channel_retirement/intent.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/ready.json",
+        "agent_tools/tests/fixtures/retirement_default_config/before.source",
+        "agent_tools/tests/fixtures/retirement_default_config/probe-request.json",
+        "agent_tools/tests/fixtures/retirement_default_config/probe.json",
+        "agent_tools/tests/fixtures/retirement_default_config/probe.stderr",
+        "agent_tools/tests/fixtures/retirement_default_config/provenance.json",
+        "agent_tools/tests/fixtures/retirement_default_config/submission-intent.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/315-intent.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/315-ready.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/315-programs.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/315-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/fbac-only.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-intent.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-ready.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-helper.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-empty-stderr.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-private-preparation-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-capture-custody.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-capture-custody-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-high-fd.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-high-fd-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-route-fixture.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/546-route-fixture-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/diagnostic-retention-before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/diagnostic-retention-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/diagnostic-retention-v2.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/diagnostic-retention-v3.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/diagnostic-retention-v4.source",
+        "agent_tools/affected_agent_test_dependencies.json",
+        "agent_tools/android_original_host_status.py",
+        "agent_tools/android_qualified_cli_observation.py",
+        "agent_tools/ssh_automatic_program.py",
+        "agent_tools/ssh_channel_keeper.py",
+        "agent_tools/ssh_channel_keeper_entry.py",
+        "agent_tools/ssh_program_execution.py",
+        "agent_tools/ssh_program_execution_remote.py",
+        "agent_tools/ssh_source_file_gateway.source",
+        "agent_tools/ssh_source_file_stage.py",
+        "agent_tools/ssh_source_file_stage_direct.py",
+        "agent_tools/windows_artifact_transfer.py",
+        "agent_tools/windows_qga_transfer.py",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-admission.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-closed-unknown-owner-closed.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-closed-unknown-terminal.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-helper.before.source",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-intent.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-program-records-intake.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-provenance.json",
+        "agent_tools/tests/fixtures/owned_channel_retirement/267-ready.json"
+      ],
+      "sourceSha256": [
+        "a55dd3170e8b64a7c14e0fa445a59716536cfbf070d26c9f3a38763f7a8578e0",
+        "3f6e0ed3ec5a4e43405140dd93873c1f13dbc9af2cabe288046b59610dfb0c95",
+        "ba8be2c27ecaa02e655bb2c604b49b087d747977952aa626a51ef1b4c4c82d19",
+        "e50befaf39859ecd0d6a041aa26cae7986becbf3efb5c37b1f2d829ac0f99dd4",
+        "cf8a125c7480641a418bd96ae9e625bb38624904cdd2c8d9a2220114d063ab2c"
+      ]
+    },
+    "agent_tools/tests/test_ssh_program_execution.py": {
+      "reason": "Physical local configured-peer controls use the exact current SourceSession import closure, copy its held capsule into a fresh owned temporary tree, and substitute only these two authenticated original program files for causal controls. Runtime intent, stream, actor and capsule records are owned data; no repository directory scan or SSH host execution authority is granted. Genuine prelaunch E2BIG and fast original-child exit counterfactuals substitute only their two additional authenticated whole owner/provenance pairs. Private failure-diagnostic controls additionally read the whole authentic original worker and its provenance, invoking only that original worker under controlled admission/transport/capture seams. The other four exact context beforeimages are archival data owned by this finite regression family, never imported, read or executed by these tests. Current worker code-filename reads are finite current-worker or original-worker files; owned diagnostic/intent/stream outputs are temporary invocation data. Source-closing publication-gap controls additionally authenticate the complete original0b0d owner, the whole private9f1 requested-identity beforeimage and their provenance. The actual SourceSession publisher and unchanged whole worker execute under a configured harmless local argv/credential boundary, with an owned stdin gate holding the original publisher between terminal and source-closing receipt. The existing source import closure is reused; owner/actor/receipt/raw-stream records remain owned invocation data. No remote/native replay, extra repository discovery or archive loader declaration is introduced.",
+      "scopes": [
+        "agent_tools/ssh_program_execution.py",
+        "agent_tools/ssh_program_execution_remote.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/tests/test_ssh_automatic_program.py",
+        "agent_tools/tests/fixtures/program_execution_before/ssh_program_execution.py.source",
+        "agent_tools/tests/fixtures/program_execution_before/ssh_program_execution_remote.py.source",
+        "agent_tools/tests/fixtures/program_execution_before/provenance.json",
+        "agent_tools/tests/fixtures/program_fast_child_before/ssh_program_execution.py.source",
+        "agent_tools/tests/fixtures/program_fast_child_before/provenance.json",
+        "agent_tools/tests/fixtures/program_e2big_before/ssh_program_execution.py.source",
+        "agent_tools/tests/fixtures/program_e2big_before/provenance.json",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/provenance.json",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_channel_selection.py.before.source",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_direct_nested_channel.py.before.source",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_fresh_nested_channel.py.before.source",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_program_execution.py.before.source",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_transport.py.before.source",
+        "agent_tools/tests/fixtures/program_source_closing_publication/provenance.json",
+        "agent_tools/tests/fixtures/program_source_closing_publication/ssh_program_execution.private-identity.before.source",
+        "agent_tools/tests/fixtures/program_source_closing_publication/ssh_program_execution.py.before.source"
+      ],
+      "sourceSha256": [
+        "d9e9da95dbf5594859a1ea80655febc57e52fac3b90d270ba66f800b758dc2b8",
+        "3b9b9388983484dead30daabcdd62a20d713eacc5ecd5e9ee1ef0a50f0e8c695",
+        "a44fd5eb9250d06bf4be2de877a6945fbe5457dd7dc8e6b7d2925ae542771444",
+        "f50f0b183e7c6ad90329e905dd7188ea5b245f531273406bde283f84f1613545"
+      ]
+    },
+    "agent_tools/tests/test_ssh_program_selected_source.py": {
+      "reason": "Exact genuine selected-route policy and owned source trees consume the finite observed production SourceSession closure, the original full before owner/provenance, and the explicit local channel/test-discovery helpers. Saved bootstrap, actual source generations/selection admission and real program/descendant EOF are unchanged; synthetic native master facts are the declared boundary. Temporary copied trees are supplied owned data, never repository directory authority. Fresh blocked-pwd discovery reads only the named current test modules. Read-only private-capture forwarding controls consume the same existing current provider/selection/transport owners and synthetic capture objects, with no extra source or operation authority.",
+      "scopes": [
+        "agent_tools/android_qualified_cli_observation.py",
+        "agent_tools/check_output_retention.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/ssh_channel_keeper.py",
+        "agent_tools/ssh_channel_keeper_entry.py",
+        "agent_tools/ssh_channel_selection.py",
+        "agent_tools/ssh_connection_recovery.py",
+        "agent_tools/ssh_connection_session.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_fresh_nested_channel.py",
+        "agent_tools/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/ssh_nested_socket_retirement.py",
+        "agent_tools/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/ssh_program_execution.py",
+        "agent_tools/ssh_program_execution_remote.py",
+        "agent_tools/ssh_recovery_adoption.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/test_ssh_fresh_nested_channel.py",
+        "agent_tools/tests/test_ssh_connection_session.py",
+        "agent_tools/tests/test_ssh_program_execution.py",
+        "agent_tools/tests/test_ssh_saved_program_force.py",
+        "agent_tools/tests/fixtures/program_selected_source/ssh_program_execution.py.source",
+        "agent_tools/tests/fixtures/program_selected_source/provenance.json"
+      ],
+      "sourceSha256": [
+        "7a44047082a4ede1ef0e33ce322fe140d513444cfbe2c12d0b218a1ec42d1e4b",
+        "ec44f28b9747abe1415777e8494bc6798a0695ed77218190cd6d0a73f941d718"
+      ]
+    },
     "agent_tools/tests/test_ssh_session_retirement_routes.py": {
       "reason": "Fresh script-context counterfactual chooses only the original bare helper name and its package-qualified equivalent; the unit dispatch seam is explicit and finite. Reviewed e167 baseline imports/resources remain supported for the mandatory old/current dependency union; static edges are retained alongside this finite current map.",
       "scopes": [
@@ -2839,6 +3456,26 @@
       "sourceSha256": [
         "6f6821ad2261f50beab172120c7683843b060de87ba01a660585bc0e75637e0e",
         "8aa9e7d72c3923dd5f6b0143dc8f62b8d35620a51dd66653f4aa3ada94228fa5"
+      ]
+    },
+    "agent_tools/tests/test_ssh_source_file_stage.py": {
+      "reason": "Finite complete source-staging and Windows deployment gateway custody regressions execute only the named full retained DIRECT and Android owners, two byte-authenticated producer/template pairs copied under their actual sibling names, and three complete retained Windows producers imported from owned physical files under agent_tools. Actual gateway_program outputs run only against finite local IO peers. This exact map covers historical canonical and final current test bytes without directory, package or remote authority.",
+      "scopes": [
+        "agent_tools/tests/fixtures/capture_custody/android_qualified_cli_observation.py.before.source",
+        "agent_tools/tests/fixtures/capture_custody/provenance.json",
+        "agent_tools/tests/fixtures/capture_custody/ssh_source_file_gateway.reserved-selector.before.source",
+        "agent_tools/tests/fixtures/capture_custody/ssh_source_file_gateway.source.before.source",
+        "agent_tools/tests/fixtures/capture_custody/ssh_source_file_stage.py.before.source",
+        "agent_tools/tests/fixtures/capture_custody/ssh_source_file_stage.reserved-selector.before.source",
+        "agent_tools/tests/fixtures/capture_custody/ssh_source_file_stage_direct.py.before.source",
+        "agent_tools/tests/fixtures/capture_custody/windows_vm_deploy.duplicate-output.before.source",
+        "agent_tools/tests/fixtures/capture_custody/windows_vm_deploy.observed-output.before.source",
+        "agent_tools/tests/fixtures/capture_custody/windows_vm_deploy.py.before.source"
+      ],
+      "sourceSha256": [
+        "5e1d2d20441e707c48ff2dc62f643217bac2951f28447ca171d5c8492692b91c",
+        "69da19f4250fed981f1c260571b855e5e663627d1d0087c6a3b5dea898b1f167",
+        "a854e3c2b25d2b1af841d24d453481e5cf6c0e0023f3f6f41f0a1677b62d760a"
       ]
     },
     "agent_tools/tests/test_whole_observer_binary_fixture.py": {
@@ -2851,6 +3488,31 @@
       ],
       "sourceSha256": [
         "e4bfc59fe742ec04b904eca87d1478c8916b68cd9c33edf23d4db069a04b050c"
+      ]
+    },
+    "agent_tools/tests/test_windows_artifact_transfer.py": {
+      "reason": "Complete current artifact producer and these exact authenticated before modules, source literals, native receipts and regression inputs are the only repository readers. Two whole original decoders execute as registered controlled modules; old callers supply exact PS literals or one original launch function AST at an inert primitive. The whole original native-runner test module is compiled but only its original runner is called against one mock child handle. Optional real Windows regression programs use explicit native infrastructure scopes and remain distinct from repository source authority. No native executable or supplied target path becomes a repository directory dependency. Two further exact whole original test modules provide the qualification and constructor-attachment counterfactuals; only their original runner/pure receipt validator are invoked. One additional exact whole producer-before module and exact failed PowerShell payload provide the same prelaunch saved-source oracle for the supported1024-UTF16 QGA transport reservation. Raw32767 and60000-byte caps, exact stdin payload and original UNKNOWN non-replay remain separate. The saved PowerShell payload is authenticated data, not Python or source-loading authority; no universal GLib helper-size/native-cause claim is made.",
+      "scopes": [
+        "agent_tools/windows_artifact_transfer.py",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/atomic.before.ps1",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/decoder.before.source",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/decoder.sddl-only-overlay.source",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/native-runner.before.source",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/native-source-receipt.json",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/owner.before.ps1",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/progress.before.caller.source",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/provenance.json",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/windows-length.before.caller.source",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/windows-length.before.ps1",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/windows-length.native-bound.json",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/native-qualification.before.source",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/constructor-no-start.before.source",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/qga-helper-length.before.source",
+        "agent_tools/tests/fixtures/windows_artifact_transfer/qga-helper-length.failed.ps1.source"
+      ],
+      "sourceSha256": [
+        "f3b818f1837254edf2ce8aba750d8e5ca1cf65e64a73eeb1ae858cc7e4ad118a",
+        "f780171eae0a9b99de564cd267ba23805ffcdad91cd5b1008b446110b0e28d95"
       ]
     },
     "agent_tools/tests/test_windows_census_child_imports.py": {
@@ -3010,7 +3672,7 @@
       ]
     },
     "agent_tools/tests/test_windows_fixture_checkout_bytes.py": {
-      "reason": "Exact raw-byte checkout regression reads only the two unchanged current specimen reader definitions, their authenticated standalone before functions and attributes, and the explicit public HTTPS/cleanup fixture families. Fresh owned local Git checkouts use isolated Git configuration and actual core.autocrlf conversion; no native execution, global Git settings, historical source pin changes or prior-attempt data. All payload/provenance guards and unlisted text conversion remain active.",
+      "reason": "Exact raw-byte checkout regression reads only the two unchanged current specimen reader definitions, their authenticated standalone before functions and attributes, and the explicit public HTTPS/cleanup fixture families. Fresh owned local Git checkouts use isolated Git configuration and actual core.autocrlf conversion; no native execution, global Git settings, historical source pin changes or prior-attempt data. All payload/provenance guards and unlisted text conversion remain active. Two exact raw ordinary-task owner/XML payloads are additionally compared through real isolated Git checkout conversion; other source/path authority is unchanged.",
       "scopes": [
         ".gitattributes",
         "agent_tools/tests/fixtures/windows_fixture_checkout_bytes/attributes.before",
@@ -3042,11 +3704,14 @@
         "scripts/windows_task_admission.ps1",
         "scripts/windows_credential_validity_qga.py",
         "agent_tools/tests/fixtures/windows_cp117_stage_checkout/attributes.before",
-        "agent_tools/tests/fixtures/windows_cp117_stage_checkout/provenance.json"
+        "agent_tools/tests/fixtures/windows_cp117_stage_checkout/provenance.json",
+        "agent_tools/windows_ordinary_task_owner.ps1",
+        "agent_tools/tests/fixtures/windows_ordinary_task/original-task.xml"
       ],
       "sourceSha256": [
         "896f45821e49477e088c0b0796f5f8b54bfbe786d5ebbc6d00e076be88ccd54b",
-        "3bd182c1d53ee88a2acf7bf77c80b07c7d491cb547925e8c65027eebe9083423"
+        "3bd182c1d53ee88a2acf7bf77c80b07c7d491cb547925e8c65027eebe9083423",
+        "2cbc4aaf1f6349bbe222f5b59a9b9ce41975e3f28167884519937b22c2387863"
       ]
     },
     "agent_tools/tests/test_windows_fixture_guest_independence.py": {
@@ -3310,6 +3975,66 @@
         "b897f6440d9bca9de0b1154a5d0e8e43281f29199030266cd03a638abfc2d52d"
       ]
     },
+    "agent_tools/tests/test_windows_native_packet_recipe.py": {
+      "reason": "Finite native-packet routine cases authenticate the explicitly listed fixture inputs, render the reviewed private operator/loader/prefix recipes and execute complete whole-entry peers. POSIX infrastructure is skipped only when the required capabilities are absent; the same pure recipe getters remain live producer inputs. No ignored runtime source/evidence tree or native action is routine authority. The existing third method additionally authenticates the exact complete d03 loader beforefixture, renders the finally-protected closing loader and checks SystemExit source replacement plus explicit three-argument SDK dispatch. The four other methods and five-case portable inventory remain unchanged. A sixth additive case derives the complete owned host actor collector/wrapper from exact whole retained beforeimages and runs the same positive namespace-timestamp oracle against whole native-before/current bytes. It excludes only namespace generation timestamps from identity comparison, retains raw observations, and preserves eight structural refusal controls. Its finite namespace boundary and metadata-peer inputs live in canonical fixtures; prior five method ASTs and all existing edges remain unchanged. The same sixth method also runs one identical retained-refusal child oracle against whole native-before/current collectors, requiring both snapshots plus raw and identity diagnostics under the existing exact socket-refusal control. The same live getter derives the complete diagnostic body from its exact retained PowerShell beforeimage. A separate PowerShell-capable class executes whole before/current bodies and the four property assignments emitted by the complete pinned current artifact producer. Its finite fixtures include the declared own-child CIM peer, authentic native draft/context, and provenance; real Windows bootstrap guards and the original native scenario remain separate requirements. An eighth finite method executes authentic complete115836 hostassetobserver beforebytes and the exact rename-derived97e28 caller under the current wholef9 loader and existing normalSourceSession/real_request boundary. The identical positive metadata/terminal oracle produces actual TypeError plus one leaked owned virtual terminal descriptor onbefore and success/closedFDs onafter; three existing custody controls remain. A finite path alias relocates the original repository literal as declaredfilesystemdata without source rewriting. Its five explicit fixtures include authenticbefore, collector request source, originalcontrolledpositive and provenance; no ignored runtime path is opened. The separate diagnostic case reads the actual producer file bytes directly after honest PowerShellavailability selection, without importing an unnecessary package; directscriptentry now discovers all eight methods.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/boundary.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/fifo/boundary.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/fifo/pending-prefix.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/fifo/pending-prefix.current.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/fifo/provenance.private.json",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/fifo/qualify-pending-prefix.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/held-loader.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/mcp_io_peer.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/mcp_server.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/operator-direct.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/operator-mcp.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/provenance.json",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/boundary.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/fresh_visual_qualification.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/inert_control_peer.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/mcp_io_peer.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/pending_prefix.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/private-recipe-enrollment-handoff.private.json.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_fresh_binding.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_inert.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/qualify_outer_entry.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/retained-api-operator-held-loader-closing.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/uac_owner_runtime.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/inputs/private/uac_program_template.py.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/operator.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/operator.current.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/operator.eof-before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/routing/provenance.private.json",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/ssh_program_mcp_client.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/held-loader-systemexit.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/boundary.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/collector.native-before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/collector.reporting-before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/wrapper.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/diagnostic_result/diagnostic-body.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/diagnostic_result/object_boundary.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/diagnostic_result/object-boundary.ps1.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/diagnostic_result/diagnostic-draft.native-before.ps1.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/diagnostic_result/actual-guest-context.json",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/diagnostic_result/object-provenance.json",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/boundary.py",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/operator.before.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/collector.source",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/positive-result.json",
+        "agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/provenance.json",
+        "agent_tools/windows_artifact_transfer.py"
+      ],
+      "sourceSha256": [
+        "450365365e7cb4ff7d8ad7c60c735e5f87218431e1c5f9ed5ba3918d739dd761",
+        "0a51b1e69e374c502e2570ebc6d69e699a0d9cb061ada9fe81bf0730d318a828",
+        "c0162eb8b9fb4382418e050421c4951889a19b63a925f705113ceb2a3071d19e",
+        "08f0f76ec6b188449519274d3dc740188f3abcd551592206ee48387f718ec1b2",
+        "c1c627f96ee4cebf09cdd79ab32496b5f62f1d35e856b06504401c68199e7a0c",
+        "e3df792b1c74aa1ad2b5a34625681aac928d195cb23dd7133be027f7a233cf6a",
+        "b86af8d601ba0ad81f65aecc7109b9453150ce319d5313bb8cdaa4514d025f05"
+      ]
+    },
     "agent_tools/tests/test_windows_ordinary_https.py": {
       "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
       "scopes": [
@@ -3321,6 +4046,23 @@
       "sourceSha256": [
         "81587335a05a0720a163be2f7c7f06e738c4d703d39c168fdba46e8dd68ca331",
         "53a77113be52b6291a6ef2f89286701985dddc58b26f3970afda93a2e0a9dde6"
+      ]
+    },
+    "agent_tools/tests/test_windows_ordinary_task.py": {
+      "reason": "Authentic original task XML, original source text, native policy receipt and provenance are finite inputs. The old PowerShell launcher is text only: its one exact TOKEN_TASK_XML policy if-statement is extracted for the historical validator causal test, never the task/MSI/source launcher. Current three-owner inventory consumes those exact source bytes; synthetic runtime, installer, request and temp paths are planner data. No directory, runtime, native executable or profile source authority is granted. An authenticated complete original Python planner is compiled only to invoke its original validate_task_policy for the extra-action counterfactual; its inventory, render and native launch functions remain uncalled.",
+      "scopes": [
+        "agent_tools/windows_ordinary_task.py",
+        "agent_tools/windows_ordinary_process_owner.py",
+        "agent_tools/windows_ordinary_task_owner.ps1",
+        "agent_tools/tests/fixtures/windows_ordinary_task/original-launch.before.source",
+        "agent_tools/tests/fixtures/windows_ordinary_task/original-task.xml",
+        "agent_tools/tests/fixtures/windows_ordinary_task/original-current-task.json",
+        "agent_tools/tests/fixtures/windows_ordinary_task/native-policy-receipt.json",
+        "agent_tools/tests/fixtures/windows_ordinary_task/provenance.json",
+        "agent_tools/tests/fixtures/windows_ordinary_task/extra-action.before.source"
+      ],
+      "sourceSha256": [
+        "0f17c83d95f1e860ca153d0d72e8ab1d0597ff7f8159713b27778acb6caa19ae"
       ]
     },
     "agent_tools/tests/test_windows_powershell_environment.py": {
@@ -3396,6 +4138,32 @@
         "2914230b702f690c0c1cdb38487daa155a661b8e75fe98b1e34272ff6350e7d8"
       ]
     },
+    "agent_tools/tests/test_windows_qga_transfer.py": {
+      "reason": "Finite current QGA and artifact modules, exact retained-RPC/whole-caller beforeimages and these authenticated complete peers/builder inputs are consumed in owned inert temporary layouts. The park-loop AST reader opens only current QGA code or the three named historical QGA code files through their actual function code filenames. The actual current factory embeds complete registered canonical modules; its saved prelude must carry exact current producer bytes. Peer and caller executions replace only local external primitives and never grant arbitrary repository import/read authority. Local real AF_UNIX regressions additionally consume only the exact complete pre-recv-poll module and its provenance. The actual whole-source factory emits and executes a registered full canonical namespace; a Darwin-only SO_PEERCRED metadata seam does not replace connect/send/recv/timeouts/EOF. Delayed SYNC and reply wait for observed real original socket timeout events; they cannot authorize replay or deadline extension.",
+      "scopes": [
+        "agent_tools/windows_qga_transfer.py",
+        "agent_tools/windows_artifact_transfer.py",
+        "agent_tools/tests/fixtures/windows_qga_transfer/caller-args.before.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/caller-global.before.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/canonical-raw-generation.before.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/factory-input.provenance.json",
+        "agent_tools/tests/fixtures/windows_qga_transfer/journal.before.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/namespace-prelude.input.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/native-source-receipt.json",
+        "agent_tools/tests/fixtures/windows_qga_transfer/operation-body.input.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/provenance.json",
+        "agent_tools/tests/fixtures/windows_qga_transfer/v10.before.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/v5.before.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/whole-caller-peer.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/whole-protocol-peer.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/recv-poll.before.source",
+        "agent_tools/tests/fixtures/windows_qga_transfer/recv-poll.provenance.json"
+      ],
+      "sourceSha256": [
+        "5e7353ab07099d0b67657239b07b04180b0df8747d7502bfca467e7859d509d5",
+        "9ff2648b86ba6905341221f82cdd85e183498bac32484cb8cacee66979aca124"
+      ]
+    },
     "agent_tools/tests/test_windows_secondary_ordinary_read.py": {
       "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
       "scopes": [
@@ -3430,6 +4198,18 @@
       "sourceSha256": [
         "3b9146608a5748b9f0384ea1661e400b3e85957293ae9fbdd7bad6be40941842",
         "a9e11bdd39648eb38effb2da6a1a38f36ccf9112b0b30b931c32f0b27cbf8f2e"
+      ]
+    },
+    "agent_tools/tests/test_windows_visual_fixture.py": {
+      "reason": "Authentic visual-purpose counterfactuals compile exactly the three provenance-pinned complete before modules in a fresh registered private package. Their original relative imports resolve through the current finite production import graph; only those declared before modules and their metadata are supplied historical source. Current emitted definition/source-capsule checks use current owners and owned temporary output, never repository directory discovery. The provenance-computed filenames otherwise omit these real reader edges.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_visual_purpose/windows_vm_unattend.py.before.source",
+        "agent_tools/tests/fixtures/windows_visual_purpose/windows_vm_deploy_remote.py.before.source",
+        "agent_tools/tests/fixtures/windows_visual_purpose/windows_vm_deploy.py.before.source",
+        "agent_tools/tests/fixtures/windows_visual_purpose/provenance.json"
+      ],
+      "sourceSha256": [
+        "377d0891368ee01e46f81e2d500efd1009ff864732ab16f80ec1bddf14ee0967"
       ]
     },
     "agent_tools/tests/test_windows_vm_deploy_coordinator.py": {
@@ -3595,20 +4375,30 @@
   },
   "nonPythonResources": {
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
+    "agent_tools/tests/fixtures/android_installer_hermetic/physical-batch-test.before.source": "c2ce4b523bfea95bff788b1102ca56b17a486a711c355c42c6c4829503a85846",
     "agent_tools/tests/fixtures/cp117_fixture_context_portability/geometry-imports.before.fragment": "48cca7e905f2a806671694d51bf9f5dd7a66ff5ecfa63173b70c75891d6ea0ac",
     "agent_tools/tests/fixtures/cp117_fixture_context_portability/windowless-imports.before.fragment": "f981b5c22f951cc236bf0fac120d1fb9c440cbc325cb48bc8328e51005bb146d",
     "agent_tools/tests/fixtures/guest_progress/before.source": "1b8f18fa406f513f36dd773c33da1e398fb143b7c9d47213a955a262e11079d2",
     "agent_tools/tests/fixtures/msi_qga_fixture_bounds/receive.before.fragment": "142b4f66c31007ee273bbd1f04781c52c21302aeaa40638e747dd9359c41aa75",
     "agent_tools/tests/fixtures/qemu_projection_birth/projection.before.fragment": "beab62becfbb8b2e9947243ba5d2ec7c848bb91998480e6f1ef21d2c7d7cbad6",
     "agent_tools/tests/fixtures/whole_observer_binary/fixture.before.fragment": "26c0f22608797c55fe2fbc54c617078dd9deb27646a868ece332771d68d70e4b",
+    "agent_tools/tests/fixtures/windows_artifact_transfer/qga-helper-length.failed.ps1.source": "e00783a9b9ca9d9d711901703edb387ac7689c070084a06be671cc5ee6ad8ecc",
     "agent_tools/tests/fixtures/windows_complete_program_transfer/decoder.before.fragment": "278b19f6cb5bdea5b30ea9699960ac209cd029432331bbf6718b98b6c9544a92",
     "agent_tools/tests/fixtures/windows_complete_program_transfer/haderrors.before.fragment": "ae6e4dd8359acc4a8f1ed7d9fa405119694ce59ee50abb80509aad01d4f02629",
     "agent_tools/tests/fixtures/windows_cp117_catalogue_path_context/before.fragment": "f7b72d3ecded96b1c78cbdbe9a016b621a61231af146131edb49dac5a6e9c013",
     "agent_tools/tests/fixtures/windows_cp117_publisher_boundary/publisher_boundary.before.fragment": "86cbb8440a5dc0e34f5172db40428412cb7e4c7dcf6bff176db8ac4538f2974b",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-loss.source": "24001dcaed1e666438e18497abde4594b6f3121b28c339a569b11955da0d3a21",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-restored.source": "dc4ea223703ea8b16faa07d1b6d231d45b30d078f09e4e1e4954241a3be9efa6",
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/diagnostic_result/diagnostic-body.before.source": "b076b5caacbeebc04e2b78e2ba27de5e026d6c04bf9666ea231eacf7ca5c2359",
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/diagnostic_result/diagnostic-draft.native-before.ps1.source": "49c6f7810584229e829b8929816bcafc72c736dcd76584d79bcaac5cec30f5e8",
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/diagnostic_result/object-boundary.ps1.source": "29bcc5a361b77686e8830409e415bbc3cf4bc6dfd49070c974d172506ba664c0",
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/mcp_server.source": "748841ba33bd7e3a8d58d6cff249305095dfa8dff14fc908ec30ec72219f1ee3",
+    "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/02-qualify_collector.py.source": "12263d0bc555035b7de6e19a4a9119b333e89a829b530441a00c5c4179b0a67c",
+    "agent_tools/tests/fixtures/windows_ordinary_task/original-launch.before.source": "72e19420f2eeeddab61a0a76181e2e1dc0cae6dd5bd97523e48553ed559c1618",
     "agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.before.fragment": "e10c6535655a51c3244f93dfb29c819789bb69247a14e021d850703422080924",
     "agent_tools/tests/fixtures/windows_powershell_environment/native_g_document.before.fragment": "1aea351d4fecee39c7fe330edc65f11bf8381d8f15fa606aa2bcfea84102d6e5",
+    "agent_tools/tests/fixtures/windows_program_v5/bootstrap.proven.source": "6bbf0a01c39aef522638f0f08d9829d5af8bf041bcde19a70c7065b08aad3c97",
+    "agent_tools/tests/fixtures/windows_program_v5/held_program.proven.source": "db13e3d4ca89d1c1e39ff279bfe59f2100da9c27978060c832aa4ebe69eb8fb7",
     "scripts/testdata/macos-vm-resource-monitor-dispatch/stop-timeout.before.fragment": "995464bf10a441029a7e8124eaeb4832bbd8d92d875fc2f022adab8063c639b5"
   },
   "schemaVersion": 1

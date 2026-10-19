@@ -7,8 +7,11 @@ This module never includes passwords in command arguments, exceptions, or probe 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
+import copy
 from enum import Enum
+import errno
 import json
 import hashlib
 import importlib
@@ -40,6 +43,23 @@ _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 class SshConfigError(ValueError):
     """A private VM inventory is missing or cannot safely be used."""
+
+
+class PrelaunchE2Big(OSError):
+    """Actual inline exec refusal; the SSH executable did not start.
+
+    Only ``popen_ssh`` creates this at its plain-list Popen boundary. The
+    operation owner must retain it before deciding on one saved-file fallback;
+    this exception does not itself retry or authorize a different request.
+    """
+    def __init__(self, original_error, attempted_argv_sha256):
+        if not isinstance(original_error, OSError) or original_error.errno != errno.E2BIG:
+            raise ValueError('ssh_prelaunch_e2big_cause')
+        super().__init__(original_error.errno, original_error.strerror, original_error.filename)
+        self.original_error = original_error
+        self.argv_sha256 = attempted_argv_sha256
+        self.child_handle_returned = False
+        self.executable_started = False
 
 
 class ProbeStatus(str, Enum):
@@ -574,12 +594,51 @@ def _selection_module():
     return module
 
 
+_PRIVATE_ADMISSION_CAPTURE = ContextVar("ssh_private_admission_capture", default=None)
+
+
+@contextmanager
+def _private_admission_capture():
+    # Request-local diagnostic data, never route or replay authority.
+    records = {"observations": [], "captureFailures": []}
+    token = _PRIVATE_ADMISSION_CAPTURE.set(records)
+    try:
+        yield records
+    finally:
+        _PRIVATE_ADMISSION_CAPTURE.reset(token)
+
+
+def _retain_private_admission(capture):
+    records = _PRIVATE_ADMISSION_CAPTURE.get()
+    if records is None:
+        return
+    try:
+        if type(capture) is not dict:
+            raise ValueError("private_admission_capture_shape")
+        records["observations"].append({"observation": len(records["observations"]) + 1,
+            "transportSourceSha256": _LOADED_SOURCE_SHA, "capture": copy.deepcopy(capture)})
+    except BaseException as error:
+        records["captureFailures"].append(type(error).__name__)
+
+
 def _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary):
     selection=_selection_module()
     session=_session_module()
+    captures=[]; capture_failures=[]
+    def retain_private_capture(capture):
+        # This is the same already-required read-only observation, not a query.
+        # Failure of diagnostic retention never changes its admission decision.
+        try:
+            frozen=copy.deepcopy(dict(capture))
+            captures.append({"observation":len(captures)+1,"transportSourceSha256":_LOADED_SOURCE_SHA,
+                             "capture":frozen})
+            _retain_private_admission(frozen)
+        except BaseException as error:
+            capture_failures.append(type(error).__name__)
     try:
         host=route[0].alias
-        metadata=selection.selected_route_options(config.root,host,config)
+        capture_options={"_private_capture":retain_private_capture} if _PRIVATE_ADMISSION_CAPTURE.get() is not None else {}
+        metadata=selection.selected_route_options(config.root,host,config,**capture_options)
         if metadata is None or len(route)!=2:raise SshConfigError('Selected SSH channel is unavailable.')
         selected_config=session.transport.load_config(config.root)
         if asdict(selected_config)!=asdict(config):raise SshConfigError('Selected SSH configuration changed.')
@@ -593,8 +652,16 @@ def _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary)
         inner.extend(('-T','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no',nested.remote_host_alias,shlex.join(command)))
         extra=['-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no'] if metadata.get('transportMode')=='direct' else []
         return [ssh_binary,*prefix[1:],*metadata['outerOptions'],*extra,'-T',endpoint,shlex.join(inner)]
-    except (selection.SelectionUnknown,session.SessionUnknown,selection.transport.SshConfigError):
-        raise SshConfigError('Explicitly selected SSH channel is unavailable; observe or renew it explicitly.') from None
+    except (selection.SelectionUnknown,session.SessionUnknown,selection.transport.SshConfigError) as error:
+        refusal=SshConfigError('Explicitly selected SSH channel is unavailable; observe or renew it explicitly.')
+        try:
+            refusal._private_selected_admission={"stage":"selected-route-admission",
+                "host":route[0].alias,"rawCaptureAvailable":bool(captures),
+                "captureFailures":capture_failures,"observations":captures,
+                "transportSourceSha256":_LOADED_SOURCE_SHA}
+        except BaseException:
+            pass
+        raise refusal from None
 
 
 def _build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
@@ -701,6 +768,21 @@ def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_
                           ssh_binary, nested_ssh_binary, argv)
 
 
+def build_saved_program_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+                            command: Sequence[str] = ('true',), ssh_binary: str = 'ssh',
+                            nested_ssh_binary: str = 'ssh'):
+    """Bind the normal saved-program transport even when inline argv fits.
+
+    This pure internal builder supplies no retry policy or no-start evidence.
+    Its caller owns that decision and retains the plan before submission.
+    Every existing residual-command, route and source guard remains in force.
+    """
+    argv = _build_ssh_argv(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary)
+    automatic = _automatic_module()
+    return automatic.bind(config, host, timeout_seconds, tuple(command),
+                          ssh_binary, nested_ssh_binary, argv, force_file=True)
+
+
 def automatic_submission(argv):
     """Internal actual-submission boundary; never infer a route from an argv."""
     if isinstance(argv, list):
@@ -716,7 +798,12 @@ def popen_ssh(argv, **kwargs):
     if isinstance(argv, list):
         if sum(len(part.encode('utf-8')) + 1 for part in argv) > 60000:
             raise SshConfigError('Unbound oversized SSH command refuses submission.')
-        return subprocess.Popen(argv, **kwargs)
+        try:
+            return subprocess.Popen(argv, **kwargs)
+        except OSError as error:
+            if error.errno == errno.E2BIG:
+                raise PrelaunchE2Big(error, argv_sha256(argv)) from error
+            raise
     automatic = _automatic_module()
     return automatic.SubmittedProcess(argv, **kwargs)
 

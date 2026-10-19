@@ -1,0 +1,4 @@
+from pathlib import Path
+import os
+p=Path(__file__);r=p.read_bytes();x=p.with_name('replacement.py');x.write_bytes(r);os.replace(x,p)
+raise SystemExit(0)

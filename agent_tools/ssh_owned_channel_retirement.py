@@ -1,0 +1,1803 @@
+"""Internal, finite retirement of four exact owned test connections.
+
+There is no public mutator, arbitrary archive execution, renewal or replay.
+Historical MCP bytes are data only; every executed capsule equals current
+reviewed source. A new operation records its sole exit request before launch.
+"""
+from __future__ import annotations
+
+import ast
+from contextlib import ExitStack, closing, contextmanager
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+import uuid
+from types import SimpleNamespace
+from .native_review_source_closure import _Held
+
+from . import private_inventory_lock as private
+from . import source_module_loader as loader
+from . import ssh_channel_selection as selection
+from . import ssh_direct_nested_channel as direct
+from . import ssh_fresh_nested_channel as channel
+from . import ssh_transport as transport
+
+_LOADED_BYTES = Path(__file__).read_bytes()
+if sys._getframe().f_code != compile(_LOADED_BYTES, __file__, "exec", dont_inherit=True, optimize=sys.flags.optimize):
+    raise ValueError("retirement_loaded_source_changed")
+_LOADED_SHA = hashlib.sha256(_LOADED_BYTES).hexdigest()
+
+CORRELATION = "fbac0defae0349caa8a9f445cc7278cc"
+INTENT_SHA = "f1c7a0e00967054ccd50ea95100d604442df6852be87386900bec723c81cd469"
+READY_SHA = "c9fd5b249f01eeaa93b6b1f7fb84c0455075013773414560a68c4e1164bce8ec"
+BEFORE_MCP = "df6e54b0404a3ce95e6db98e84ba9f9cae0d019f73f2da16ed90115305002768"
+CURRENT_MCP = "748841ba33bd7e3a8d58d6cff249305095dfa8dff14fc908ec30ec72219f1ee3"
+PROGRAMS = ("fe53bef8-7d4e-4d26-93e2-92241a7f7f73", "0178c308-1d41-490c-a390-1c0d42883e98",
+            "264686dc-c3bc-4afd-9eca-bf931a7bc1d6", "48f55cb9-65af-49a3-aaae-5236d49fe8eb")
+
+
+# Exact authentic terminal/closing records from the four qualified operations.
+PROGRAM_RECORDS = {
+    "0178c308-1d41-490c-a390-1c0d42883e98": {
+        "intent.json": "271bd59634712a9ee0b7644f7e86294c2f135439ac3951370e17204d33ed7f9a",
+        "owner-closed.json": "ff2571c0dc15c55402e1197d39b4f7cb00265a26c8cb04843881addba321e694",
+        "owner.json": "3a60286fe103791b5672aac326fb9af9b9edaeec6e527eb0ecb223bac41d18f6",
+        "terminal.json": "7887543136577e3feb8d031ea7081733f6c33ce9b532a109cf775d107477f664"
+    },
+    "264686dc-c3bc-4afd-9eca-bf931a7bc1d6": {
+        "intent.json": "e22c347cb2ce0d2310699630354485c3484d492a30e835df91ff34702f7bd309",
+        "owner-closed.json": "5716686365d9e81ca6a5828cf28c9f2ff1a195d7c8e91621efb45187c545c3dc",
+        "owner.json": "2eb418d073d98c3046901188b1d3aec527e659f3f6e1e0926fd24833b921c29e",
+        "terminal.json": "7d65d3681956f5e68dd7b4466919546f1bb4f72712641b345f7febcec7d0afa5"
+    },
+    "48f55cb9-65af-49a3-aaae-5236d49fe8eb": {
+        "intent.json": "8e6a1798901f35f91ab0cb90c177032202b3d8824f44036bd7c0d8e24434b55e",
+        "owner-closed.json": "b8bfbb5011be918ed74bcea9094a6159baf5e32f8bf48f2fc7c5516043b8948a",
+        "owner.json": "b2ae3906c1ab30ebea65e57f7389b4f612f65be834bd4c3ccb8b3bf3ff4f80d6",
+        "terminal.json": "eb0be35ecd63d485f97c1fd1842341e804365c9705e1e1cadc7bc9c28c4a2a74"
+    },
+    "fe53bef8-7d4e-4d26-93e2-92241a7f7f73": {
+        "intent.json": "1c77678df0bc684f98be853e155b077478782272e4f0efb0228aebf86ae9a561",
+        "owner-closed.json": "abbc8ce1d9777d354357b2f933f506a2e3df9fe50d016c939f2c3d49adccc31b",
+        "owner.json": "3ca7b76b6e1be2a54eb395f15f7aef53edb6445e659784b496df3f6ab08962f2",
+        "terminal.json": "9361952925fa799c960853f1389b666ac450a60d971b324b42e12578a253785b"
+    }
+}
+
+SECOND_CORRELATION = "315960df95134764a39cca602d36df76"
+SECOND_INTENT_SHA = "cedefb1c54195c6be2988f9e5059933e8c3a76b9cb75e04adfedf5b3e28778bb"
+SECOND_READY_SHA = "7cc8478dfa90f8bd4ce9cbd72da505abda818a40f2f5f915406083df921c46a5"
+SECOND_UNKNOWN = "bc6ed15f-36ba-492a-88ac-13eaca58fa10"
+SECOND_PROGRAM_RECORDS = {**PROGRAM_RECORDS,
+    "949ae643-8eda-4f19-8dba-5e4c17b2894e": {
+        "intent.json": "5a9a9f0adcfac71845349c6c8bb82e37ed391a3e81545f31ae05fd098e6c1b65",
+        "owner.json": "6287211550115367d3c2b526763087999bd703a28847728cefa67c0a947483a4",
+        "owner-closed.json": "b4f012d1f527b1d4356384cd6ec918f1f73b8b2571fa946e16573ca04e2db06d",
+        "terminal.json": "3514c15d3579909d3b0583844be78341c949605c9024ef5101342dd2ce9829f9"},
+    SECOND_UNKNOWN: {
+        "intent.json": "19b5a52b58a4f3ebd6e70f0e2f4f665b44307e83af8fafa204c3b484f79d9f26",
+        "owner.json": "5ddde551b4d6bc5f749f273de9e3f69d067eaad0dbcb7c33f2e13725fabc5011",
+        "owner-closed.json": "b6ffff517704f4f0d5a3121e16d08df69aa22d115e74f2017f16c84818b51cde",
+        "terminal.json": "02e3c459e36162f54a67c04e629c3b49d2d8f3b38e1c9bdfcf8630f041f0d40d"}}
+
+
+THIRD_CORRELATION = "546de96429aa4b9c8ea6332b1c549182"
+THIRD_INTENT_SHA = "d83df5cd1090c965c404cf810de697da143893541c4f781859a91800a8a8ceb0"
+THIRD_READY_SHA = "e929879537f8a7e266bfc94045bc45343d7590f355f65173758a7ac8f3928f0a"
+THIRD_UNKNOWN = "ba9620b4-e5d3-4f61-82a9-ee4ce38522ec"
+THIRD_UNKNOWN_INTENT_SHA = "29f4bf187a7ce24231ee9a2e633d38b811390fea76b47536e99b298966ddd59e"
+THIRD_ORIGINAL_AUTHORITY = "a0bf2aba949fe60c70f181edb96684b8f8d1b2a806d71c163bcf1a63aebc8394"
+THIRD_CURRENT_AUTHORITY = "7c45a305489b45f9142343262688c79348fdaee34986bd028eab9402028fbe2e"
+THIRD_ORIGINAL_TRUST = "c907aa5bc91e23ffe31a1490b5515227c64412607e878ce6f1c379aa91bdae67"
+THIRD_CURRENT_TRUST = "20bb94d7611f2ff2fb7115a3a45be7b69d9f30e23ba1834ba49c291f03030294"
+# Exact root-reviewed actual recovery receipts. This admits only preparation
+# of the fixed original channel exit; it does not qualify lost original scopes.
+_THIRD_ADMISSION = {'baLeafNames': ['capsule',
+                 'child.json',
+                 'execution-intent.json',
+                 'intent.json',
+                 'observation-00000000.json',
+                 'observation-00000001.json',
+                 'observation-00000002.json',
+                 'observation-00000003.json',
+                 'observation-00000004.json',
+                 'observation-00000005.json',
+                 'observation-00000006.json',
+                 'observation-00000007.json',
+                 'observation-00000008.json',
+                 'observation-00000009.json',
+                 'observation-00000010.json',
+                 'observation-00000011.json',
+                 'observation-00000012.json',
+                 'observation-00000013.json',
+                 'observation-00000014.json',
+                 'observation-00000015.json',
+                 'observation-00000016.json',
+                 'observation-00000017.json',
+                 'observation-00000018.json',
+                 'observation-00000019.json',
+                 'observation-00000020.json',
+                 'observation-00000021.json',
+                 'observation-00000022.json',
+                 'observation-00000023.json',
+                 'observation-00000024.json',
+                 'observation-00000025.json',
+                 'observation-00000026.json',
+                 'observation-00000027.json',
+                 'observation-00000028.json',
+                 'observation-00000029.json',
+                 'observation-00000030.json',
+                 'observation-00000031.json',
+                 'observation-00000032.json',
+                 'observation-00000033.json',
+                 'observation-00000034.json',
+                 'observation-00000035.json',
+                 'observation-00000036.json',
+                 'observation-00000037.json',
+                 'observation-00000038.json',
+                 'observation-00000039.json',
+                 'observation-00000040.json',
+                 'observation-00000041.json',
+                 'observation-00000042.json',
+                 'observation-00000043.json',
+                 'observation-00000044.json',
+                 'observation-00000045.json',
+                 'observation-00000046.json',
+                 'observation-00000047.json',
+                 'observation-00000048.json',
+                 'observation-00000049.json',
+                 'observation-00000050.json',
+                 'observation-00000051.json',
+                 'observation-00000052.json',
+                 'observation-00000053.json',
+                 'observation-00000054.json',
+                 'observation-00000055.json',
+                 'observation-00000056.json',
+                 'observation-00000057.json',
+                 'observation-00000058.json',
+                 'observation-00000059.json',
+                 'observation-00000060.json',
+                 'observation-00000061.json',
+                 'observation-00000062.json',
+                 'observation-00000063.json',
+                 'observation-00000064.json',
+                 'observation-00000065.json',
+                 'observation-00000066.json',
+                 'observation-00000067.json',
+                 'observation-00000068.json',
+                 'observation-00000069.json',
+                 'observation-00000070.json',
+                 'observation-00000071.json',
+                 'observation-00000072.json',
+                 'observation-00000073.json',
+                 'observation-00000074.json',
+                 'observation-00000075.json',
+                 'observation-00000076.json',
+                 'observation-00000077.json',
+                 'observation-00000078.json',
+                 'observation-00000079.json',
+                 'observation-00000080.json',
+                 'observation-00000081.json',
+                 'observation-00000082.json',
+                 'observation-00000083.json',
+                 'observation-00000084.json',
+                 'observation-00000085.json',
+                 'observation-00000086.json',
+                 'observation-00000087.json',
+                 'observation-00000088.json',
+                 'observation-00000089.json',
+                 'observation-00000090.json',
+                 'observation-00000091.json',
+                 'observation-00000092.json',
+                 'observation-00000093.json',
+                 'observation-00000094.json',
+                 'observation-00000095.json',
+                 'observation-00000096.json',
+                 'observation-00000097.json',
+                 'observation-00000098.json',
+                 'observation-00000099.json',
+                 'observation-00000100.json',
+                 'observation-00000101.json',
+                 'observation-00000102.json',
+                 'observation-00000103.json',
+                 'observation-00000104.json',
+                 'observation-00000105.json',
+                 'observation-00000106.json',
+                 'observation-00000107.json',
+                 'observation-00000108.json',
+                 'observation-00000109.json',
+                 'observation-00000110.json',
+                 'observation-00000111.json',
+                 'observation-00000112.json',
+                 'observation-00000113.json',
+                 'observation-00000114.json',
+                 'observation-00000115.json',
+                 'observation-00000116.json',
+                 'observation-00000117.json',
+                 'observation-00000118.json',
+                 'observation-00000119.json',
+                 'observation-00000120.json',
+                 'observation-00000121.json',
+                 'observation-00000122.json',
+                 'observation-00000123.json',
+                 'observation-00000124.json',
+                 'observation-00000125.json',
+                 'observation-00000126.json',
+                 'observation-00000127.json',
+                 'observation-00000128.json',
+                 'observation-00000129.json',
+                 'observation-00000130.json',
+                 'observation-00000131.json',
+                 'observation-00000132.json',
+                 'observation-00000133.json',
+                 'observation-00000134.json',
+                 'observation-00000135.json',
+                 'observation-00000136.json',
+                 'observation-00000137.json',
+                 'observation-00000138.json',
+                 'observation-00000139.json',
+                 'observation-00000140.json',
+                 'observation-00000141.json',
+                 'observation-00000142.json',
+                 'observation-00000143.json',
+                 'observation-00000144.json',
+                 'observation-00000145.json',
+                 'observation-00000146.json',
+                 'observation-00000147.json',
+                 'observation-00000148.json',
+                 'observation-00000149.json',
+                 'observation-00000150.json',
+                 'observation-00000151.json',
+                 'observation-00000152.json',
+                 'observation-00000153.json',
+                 'observation-00000154.json',
+                 'observation-00000155.json',
+                 'observation-00000156.json',
+                 'observation-00000157.json',
+                 'owner.json',
+                 'source-manifest.json',
+                 'spawn-intent.json',
+                 'stderr.private',
+                 'stdout.private',
+                 'worker.py',
+                 'worker.stderr.private',
+                 'worker.stdout.private'],
+ 'facts': {'channelId': '546de96429aa4b9c8ea6332b1c549182',
+           'guestReplayAllowed': False,
+           'historicalTrustEquivalent': False,
+           'hostCustodyDropped': True,
+           'operationId': 'ba9620b4-e5d3-4f61-82a9-ee4ce38522ec',
+           'originalCaptureCompletion': 'lost',
+           'originalCaptureScopesAbandoned': True,
+           'originalClosureQualified': False,
+           'originalEofClaimed': False,
+           'originalGuestCreateState': 'created-terminal-observed',
+           'originalGuestStatusReconciled': True,
+           'originalLocalActorsAbsent': True,
+           'originalSourceClosingClaimed': False,
+           'originalUnknownPreserved': True},
+ 'programRecords': {'0178c308-1d41-490c-a390-1c0d42883e98': {'intent.json': '271bd59634712a9ee0b7644f7e86294c2f135439ac3951370e17204d33ed7f9a',
+                                                             'owner-closed.json': 'ff2571c0dc15c55402e1197d39b4f7cb00265a26c8cb04843881addba321e694',
+                                                             'owner.json': '3a60286fe103791b5672aac326fb9af9b9edaeec6e527eb0ecb223bac41d18f6',
+                                                             'terminal.json': '7887543136577e3feb8d031ea7081733f6c33ce9b532a109cf775d107477f664'},
+                    '138e8eeb-ca78-40b8-acb0-6f91fb855873': {'intent.json': 'e29f8a0d811125caa3b7bf48a18de3a0d6a63b49a835594cd8e5719e00e32398',
+                                                             'owner-closed.json': 'c3a3684f49833cc3ba4c2c12c3a76e41766b49dd73288e830948de91e9df7e5e',
+                                                             'owner.json': 'b620b60f550072cafe8f5d0a2e6248ba5b3fe7e80eac19dc19f71d66b9c1b5e4',
+                                                             'terminal.json': 'f35d9ac5aed4ecc3b02da0f9c00e6dce1237aa76aee3703ab3dc0e606493a204'},
+                    '264686dc-c3bc-4afd-9eca-bf931a7bc1d6': {'intent.json': 'e22c347cb2ce0d2310699630354485c3484d492a30e835df91ff34702f7bd309',
+                                                             'owner-closed.json': '5716686365d9e81ca6a5828cf28c9f2ff1a195d7c8e91621efb45187c545c3dc',
+                                                             'owner.json': '2eb418d073d98c3046901188b1d3aec527e659f3f6e1e0926fd24833b921c29e',
+                                                             'terminal.json': '7d65d3681956f5e68dd7b4466919546f1bb4f72712641b345f7febcec7d0afa5'},
+                    '2690c7cd-a4e4-4c0a-832a-1364ab325755': {'intent.json': '256cbf1fd3e8337eab92d4040c240e1526422770b0b52a78d8c0fb7f29f7b836',
+                                                             'owner-closed.json': '2a0692736e14ea2d0d224abccae7cb737516fb39ccc15f5e4ccdc01945c6108c',
+                                                             'owner.json': '04308a6572d6076d07a2cdffbb2022511e6a982173854b657895839f5da07682',
+                                                             'terminal.json': '1fbead2f392db7c1dc33a95c71e9afb148709e0460cc0653c94d8657c6c06185'},
+                    '48f55cb9-65af-49a3-aaae-5236d49fe8eb': {'intent.json': '8e6a1798901f35f91ab0cb90c177032202b3d8824f44036bd7c0d8e24434b55e',
+                                                             'owner-closed.json': 'b8bfbb5011be918ed74bcea9094a6159baf5e32f8bf48f2fc7c5516043b8948a',
+                                                             'owner.json': 'b2ae3906c1ab30ebea65e57f7389b4f612f65be834bd4c3ccb8b3bf3ff4f80d6',
+                                                             'terminal.json': 'eb0be35ecd63d485f97c1fd1842341e804365c9705e1e1cadc7bc9c28c4a2a74'},
+                    '949ae643-8eda-4f19-8dba-5e4c17b2894e': {'intent.json': '5a9a9f0adcfac71845349c6c8bb82e37ed391a3e81545f31ae05fd098e6c1b65',
+                                                             'owner-closed.json': 'b4f012d1f527b1d4356384cd6ec918f1f73b8b2571fa946e16573ca04e2db06d',
+                                                             'owner.json': '6287211550115367d3c2b526763087999bd703a28847728cefa67c0a947483a4',
+                                                             'terminal.json': '3514c15d3579909d3b0583844be78341c949605c9024ef5101342dd2ce9829f9'},
+                    'ba9620b4-e5d3-4f61-82a9-ee4ce38522ec': {'child.json': '14d797b40ce84f50d3369278dd1a2fc5bb5878a703e7a5d30fcd4e3b9667da5a',
+                                                             'intent.json': '29f4bf187a7ce24231ee9a2e633d38b811390fea76b47536e99b298966ddd59e',
+                                                             'owner.json': 'a034ae177bef7c4cf340af0c485d657b944e6fe7b2e5bd083ec8921e8a18281e',
+                                                             'stderr.private': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+                                                             'stdout.private': '155f2c44ef3c77c1b7ba2f340596067ca11f52f39b4f09483bebdf1aad5e4bab'},
+                    'bc6ed15f-36ba-492a-88ac-13eaca58fa10': {'intent.json': '19b5a52b58a4f3ebd6e70f0e2f4f665b44307e83af8fafa204c3b484f79d9f26',
+                                                             'owner-closed.json': 'b6ffff517704f4f0d5a3121e16d08df69aa22d115e74f2017f16c84818b51cde',
+                                                             'owner.json': '5ddde551b4d6bc5f749f273de9e3f69d067eaad0dbcb7c33f2e13725fabc5011',
+                                                             'terminal.json': '02e3c459e36162f54a67c04e629c3b49d2d8f3b38e1c9bdfcf8630f041f0d40d'},
+                    'bd18cb94-e6a2-4003-99d5-9edc792ed05c': {'intent.json': '929b4ed7fe0f7c2b8f7ea6341b262abaa46e66d6e37e2a5a3a4fb6dfab8a7070',
+                                                             'owner-closed.json': '74a20e508ca35ae2351d6bf3b660f7cc9c34d5d5485a8fded512891c7073ec0a',
+                                                             'owner.json': 'c926f9362b06a4e074eb0f72ef424907fd47eefe79f44ca6fb0b57fdb04f1bd4',
+                                                             'terminal.json': '60179af2aef2bdf01b8319694bb6dd1ef97e0cb7ff2325138361c2d14492bc28'},
+                    'bf8fc478-c548-42c5-955b-b3698b6905c0': {'intent.json': '4f6a3108a89bb12ceb6dea99daddc241755d6360bbcdab12a88632bcd12b9163',
+                                                             'owner-closed.json': '2d3a9cbb2a93d5f83701b5530e4b94c5e7a37661d76f76a4a6da040a05a6af14',
+                                                             'owner.json': '5839ac091a0490c07b6a0f8baacd06dedec6f2af2e469231d8cd20c84b02d4fa',
+                                                             'terminal.json': '8cfac3a65606b25d2791de6bdba998abae85afd04f323dab47890c4930a0ece2'},
+                    'fe53bef8-7d4e-4d26-93e2-92241a7f7f73': {'intent.json': '1c77678df0bc684f98be853e155b077478782272e4f0efb0228aebf86ae9a561',
+                                                             'owner-closed.json': 'abbc8ce1d9777d354357b2f933f506a2e3df9fe50d016c939f2c3d49adccc31b',
+                                                             'owner.json': '3ca7b76b6e1be2a54eb395f15f7aef53edb6445e659784b496df3f6ab08962f2',
+                                                             'terminal.json': '9361952925fa799c960853f1389b666ac450a60d971b324b42e12578a253785b'}},
+ 'proofs': {'.runtime/windows-parity-20261019/artifacts/host-abandon-direct-preparation-v1/packet-final-v2/inner-stdout.raw': '336061e5b62d1a93c9a39fb4ce1bf4af862d07f5d24904726acc90029625c666',
+            '.runtime/windows-parity-20261019/artifacts/host-abandon-direct-preparation-v1/packet-final-v2/result.json': 'bf848f4c629706c0110652beabee0244944be5883abd1e737f547c34d1b51c92',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/closing.json': 'cebe46473e91382db89a22c5f60a52363a090489be3ffbb5cea5968a34a5728b',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/connection-terminal.json': '44061219f9ab5fc380944b8f7187456e9164ca1d5a5c02564dd6905a583fae1c',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/inner-stdout.raw': '5bdeb26bac80cb6391e0015cc738ecf47a5cd35e5015af804306a4f89731ed11',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/operator-exec32139-completion.private.json': 'c20d6a0ad1802b631c4601a94dd5e6d43dba2a67bf2d68ef2921583cd8146ece',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/operator-joined-status-observation.private.json': '9d4b748bd9977220031dbb487e48e0d8dea59d640dc972e41ced50625ea58846',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/result.json': 'e8fb95501b23d9855887b35de16e9b646b4844fb4307a3654d1e1dd2dbe0900b',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/root-recovery-adjudication.private.json': '38a9780e1ec1b47a6715fc38ff3195d12c0fb83d6a885262031e31b9e2ef46c1',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/source-final-closing.json': '5eb81e7c53a9552a98660b59a525f685546500892b52fcedb5cde0e377a02d55',
+            '.runtime/windows-parity-20261019/windows-fixture/original-ba962-local-closure-after-abandonment-v1/current-original-job-manifest.private.json': 'd4879ce89c401de2ac2273ad19ed09b379ee909ca90b8251e6514ca29d5c63c2',
+            '.runtime/windows-parity-20261019/windows-fixture/original-ba962-local-closure-after-abandonment-v1/joined-custody-evidence.private.json': '758b32958a7e5329e85b54886412c83d676e3d19adead87fed063d784dd8798e'}}
+_THIRD_FACTS = {"operationId": THIRD_UNKNOWN, "channelId": THIRD_CORRELATION,
+    "originalLocalActorsAbsent": True, "originalGuestStatusReconciled": True,
+    "originalGuestCreateState": "created-terminal-observed", "originalCaptureScopesAbandoned": True,
+    "originalUnknownPreserved": True, "originalEofClaimed": False,
+    "originalSourceClosingClaimed": False, "originalCaptureCompletion": "lost",
+    "originalClosureQualified": False, "historicalTrustEquivalent": False,
+    "hostCustodyDropped": True, "guestReplayAllowed": False}
+
+
+def _third_release():
+    value = _THIRD_ADMISSION
+    if (type(value) is not dict or set(value) != {"facts", "proofs", "programRecords", "baLeafNames"}
+            or type(value["facts"]) is not dict or set(value["facts"]) != set(_THIRD_FACTS)
+            or any(type(value["facts"][key]) is not type(item) or value["facts"][key] != item for key, item in _THIRD_FACTS.items())
+            or type(value["proofs"]) is not dict
+            or not 1 <= len(value["proofs"]) <= 16 or type(value["programRecords"]) is not dict
+            or set(value["programRecords"]) != set(SECOND_PROGRAM_RECORDS) | {
+                "bd18cb94-e6a2-4003-99d5-9edc792ed05c", "138e8eeb-ca78-40b8-acb0-6f91fb855873",
+                "bf8fc478-c548-42c5-955b-b3698b6905c0", "2690c7cd-a4e4-4c0a-832a-1364ab325755", THIRD_UNKNOWN}
+            or type(value["baLeafNames"]) is not list or len(value["baLeafNames"]) > 8192
+            or len(set(value["baLeafNames"])) != len(value["baLeafNames"])):
+        raise ValueError("retirement_546_evidence_unavailable")
+    for name, digest in value["proofs"].items():
+        path = Path(name)
+        if (type(name) is not str or path.is_absolute() or ".." in path.parts or not path.parts
+                or path.parts[0] != ".runtime" or type(digest) is not str
+                or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)):
+            raise ValueError("retirement_546_evidence_identity")
+    if any(type(name) is not str or Path(name).name != name for name in value["baLeafNames"]):
+        raise ValueError("retirement_546_evidence_identity")
+    return value
+
+
+def _third_raw_part(current, directory, name, digest):
+    # Reuse the existing complete descriptor/name/generation custody, which
+    # supports empty binary streams; private JSON snapshots forbid empty files.
+    directory.guard()
+    path = str(directory.path / name)
+    raw = current.held.read(path, digest, max_bytes=40 * 1024**2)
+    generation = current.held.files[path][1]
+    if generation[2] & 0o7777 != 0o600:
+        raise ValueError("retirement_private_stream_mode")
+    def guard():
+        directory.guard(); current.held.finish(); current.held.final_identity_pass()
+    guard()
+    return SimpleNamespace(body=raw, digest=digest, guard=guard,
+        pin=lambda: {"generation": list(generation), "size": len(raw), "sha256": digest})
+
+
+def _third_authority(current, original, original_program):
+    """Separate current trust from historical metadata; never assert equivalence."""
+    if (current.authority_sha != THIRD_CURRENT_AUTHORITY
+            or original["outerAuthoritySha256"] != THIRD_ORIGINAL_AUTHORITY):
+        raise ValueError("retirement_authority")
+    pins = original_program["connectionPins"]
+    old = _parse(_json(current.authority))
+    changed = []
+    for row in old["files"]:
+        pin = pins.get(row["path"])
+        if type(pin) is not dict or set(pin) != {"generation", "sha256"}:
+            raise ValueError("retirement_historical_authority")
+        generation = pin["generation"]
+        if (type(generation) is not list or len(generation) != 9
+                or any(type(item) is not int for item in generation)):
+            raise ValueError("retirement_historical_authority")
+        prior = {"path": row["path"], "sha256": pin["sha256"],
+                 "fingerprint": generation[:4] + generation[5:]}
+        if row != prior:
+            if (Path(row["path"]).name != "known_hosts" or row["sha256"] != THIRD_CURRENT_TRUST
+                    or prior["sha256"] != THIRD_ORIGINAL_TRUST):
+                raise ValueError("retirement_unreviewed_authority_delta")
+            changed.append(row["path"])
+        row.update(prior)
+    if len(changed) != 1 or _sha(_json(old)) != THIRD_ORIGINAL_AUTHORITY:
+        raise ValueError("retirement_historical_authority")
+    return {"historicalAuthoritySha256": THIRD_ORIGINAL_AUTHORITY,
+            "currentAuthoritySha256": THIRD_CURRENT_AUTHORITY,
+            "changedTrustPath": changed[0], "historicalTrustBytesAvailable": False,
+            "historicalTrustEquivalent": False}
+
+
+
+FOURTH_CORRELATION = "2670897527834f95bd72cf5bda811155"
+FOURTH_INTENT_SHA = "fe252edef5183fa97ae54889bc0a894318d466326ad06842fa268361397c21d9"
+FOURTH_READY_SHA = "d83430675c84ea2d94e0be6aa7b62617a9c5c05f0530cca0882eaded9e7131a7"
+FOURTH_AUTHORITY = "7c45a305489b45f9142343262688c79348fdaee34986bd028eab9402028fbe2e"
+FOURTH_UNKNOWN = "4835b6ea-e758-44b0-b024-0972f8fe6594"
+_FOURTH_NEW_PROGRAMS = frozenset((
+    "b7b993d9-653b-41ac-b3ae-4f71a6ef40f7", "2525f4ef-7643-4d73-8846-d914749f7a4e",
+    "e5ffaccf-63d6-4038-bf7b-fd137a1dbb8e", "1ee7a205-2f7d-47b1-b39e-56583a9cfbbd",
+    "7e6ed39d-d015-494b-9e8d-f2626c429764", FOURTH_UNKNOWN))
+_FOURTH_FACTS = {'automaticHostSourceStaged': True,
+ 'b7GenericTerminalExitCode': 0,
+ 'b7OperatorUnknownPreserved': True,
+ 'channelId': '2670897527834f95bd72cf5bda811155',
+ 'completedStatusCallCount': 1,
+ 'completedStatusSourceClosing': True,
+ 'completedStatusState': 'ready',
+ 'globalProgramMemberCount': 17,
+ 'globalProgramMembershipEqualsHistoricalThirdPlusExactNewSix': True,
+ 'guestReplayAllowed': False,
+ 'guestStateObserved': False,
+ 'historicalThirdReleaseFactsPreserved': True,
+ 'original4835CaptureIsNull': True,
+ 'original4835ChildRecordAbsent': True,
+ 'original4835SourceClosing': True,
+ 'original4835State': 'unknown',
+ 'originalBaUnknownPreserved': True,
+ 'originalBc6UnknownPreserved': True,
+ 'originalCallerProgramLoaderSubmitted': False,
+ 'outerAuthoritySha256': '7c45a305489b45f9142343262688c79348fdaee34986bd028eab9402028fbe2e',
+ 'statusProgramStarted': False,
+ 'statusReplayAllowed': False,
+ 'statusRetirementRequested': False}
+_FOURTH_ADMISSION = {'baLeafNames': ['capsule',
+                 'child.json',
+                 'execution-intent.json',
+                 'intent.json',
+                 'observation-00000000.json',
+                 'observation-00000001.json',
+                 'observation-00000002.json',
+                 'observation-00000003.json',
+                 'observation-00000004.json',
+                 'observation-00000005.json',
+                 'observation-00000006.json',
+                 'observation-00000007.json',
+                 'observation-00000008.json',
+                 'observation-00000009.json',
+                 'observation-00000010.json',
+                 'observation-00000011.json',
+                 'observation-00000012.json',
+                 'observation-00000013.json',
+                 'observation-00000014.json',
+                 'observation-00000015.json',
+                 'observation-00000016.json',
+                 'observation-00000017.json',
+                 'observation-00000018.json',
+                 'observation-00000019.json',
+                 'observation-00000020.json',
+                 'observation-00000021.json',
+                 'observation-00000022.json',
+                 'observation-00000023.json',
+                 'observation-00000024.json',
+                 'observation-00000025.json',
+                 'observation-00000026.json',
+                 'observation-00000027.json',
+                 'observation-00000028.json',
+                 'observation-00000029.json',
+                 'observation-00000030.json',
+                 'observation-00000031.json',
+                 'observation-00000032.json',
+                 'observation-00000033.json',
+                 'observation-00000034.json',
+                 'observation-00000035.json',
+                 'observation-00000036.json',
+                 'observation-00000037.json',
+                 'observation-00000038.json',
+                 'observation-00000039.json',
+                 'observation-00000040.json',
+                 'observation-00000041.json',
+                 'observation-00000042.json',
+                 'observation-00000043.json',
+                 'observation-00000044.json',
+                 'observation-00000045.json',
+                 'observation-00000046.json',
+                 'observation-00000047.json',
+                 'observation-00000048.json',
+                 'observation-00000049.json',
+                 'observation-00000050.json',
+                 'observation-00000051.json',
+                 'observation-00000052.json',
+                 'observation-00000053.json',
+                 'observation-00000054.json',
+                 'observation-00000055.json',
+                 'observation-00000056.json',
+                 'observation-00000057.json',
+                 'observation-00000058.json',
+                 'observation-00000059.json',
+                 'observation-00000060.json',
+                 'observation-00000061.json',
+                 'observation-00000062.json',
+                 'observation-00000063.json',
+                 'observation-00000064.json',
+                 'observation-00000065.json',
+                 'observation-00000066.json',
+                 'observation-00000067.json',
+                 'observation-00000068.json',
+                 'observation-00000069.json',
+                 'observation-00000070.json',
+                 'observation-00000071.json',
+                 'observation-00000072.json',
+                 'observation-00000073.json',
+                 'observation-00000074.json',
+                 'observation-00000075.json',
+                 'observation-00000076.json',
+                 'observation-00000077.json',
+                 'observation-00000078.json',
+                 'observation-00000079.json',
+                 'observation-00000080.json',
+                 'observation-00000081.json',
+                 'observation-00000082.json',
+                 'observation-00000083.json',
+                 'observation-00000084.json',
+                 'observation-00000085.json',
+                 'observation-00000086.json',
+                 'observation-00000087.json',
+                 'observation-00000088.json',
+                 'observation-00000089.json',
+                 'observation-00000090.json',
+                 'observation-00000091.json',
+                 'observation-00000092.json',
+                 'observation-00000093.json',
+                 'observation-00000094.json',
+                 'observation-00000095.json',
+                 'observation-00000096.json',
+                 'observation-00000097.json',
+                 'observation-00000098.json',
+                 'observation-00000099.json',
+                 'observation-00000100.json',
+                 'observation-00000101.json',
+                 'observation-00000102.json',
+                 'observation-00000103.json',
+                 'observation-00000104.json',
+                 'observation-00000105.json',
+                 'observation-00000106.json',
+                 'observation-00000107.json',
+                 'observation-00000108.json',
+                 'observation-00000109.json',
+                 'observation-00000110.json',
+                 'observation-00000111.json',
+                 'observation-00000112.json',
+                 'observation-00000113.json',
+                 'observation-00000114.json',
+                 'observation-00000115.json',
+                 'observation-00000116.json',
+                 'observation-00000117.json',
+                 'observation-00000118.json',
+                 'observation-00000119.json',
+                 'observation-00000120.json',
+                 'observation-00000121.json',
+                 'observation-00000122.json',
+                 'observation-00000123.json',
+                 'observation-00000124.json',
+                 'observation-00000125.json',
+                 'observation-00000126.json',
+                 'observation-00000127.json',
+                 'observation-00000128.json',
+                 'observation-00000129.json',
+                 'observation-00000130.json',
+                 'observation-00000131.json',
+                 'observation-00000132.json',
+                 'observation-00000133.json',
+                 'observation-00000134.json',
+                 'observation-00000135.json',
+                 'observation-00000136.json',
+                 'observation-00000137.json',
+                 'observation-00000138.json',
+                 'observation-00000139.json',
+                 'observation-00000140.json',
+                 'observation-00000141.json',
+                 'observation-00000142.json',
+                 'observation-00000143.json',
+                 'observation-00000144.json',
+                 'observation-00000145.json',
+                 'observation-00000146.json',
+                 'observation-00000147.json',
+                 'observation-00000148.json',
+                 'observation-00000149.json',
+                 'observation-00000150.json',
+                 'observation-00000151.json',
+                 'observation-00000152.json',
+                 'observation-00000153.json',
+                 'observation-00000154.json',
+                 'observation-00000155.json',
+                 'observation-00000156.json',
+                 'observation-00000157.json',
+                 'owner.json',
+                 'source-manifest.json',
+                 'spawn-intent.json',
+                 'stderr.private',
+                 'stdout.private',
+                 'worker.py',
+                 'worker.stderr.private',
+                 'worker.stdout.private'],
+ 'closedUnknownLeafNames': {'4835b6ea-e758-44b0-b024-0972f8fe6594': ['capsule',
+                                                                     'execution-intent.json',
+                                                                     'failure-diagnostic.private.json',
+                                                                     'intent.json',
+                                                                     'owner-closed.json',
+                                                                     'owner.json',
+                                                                     'selected-admission-00000001.private.json',
+                                                                     'selected-admission-00000002.private.json',
+                                                                     'selected-admission-00000003.private.json',
+                                                                     'selected-admission-00000004.private.json',
+                                                                     'selected-admission-00000005.private.json',
+                                                                     'selected-admission-00000006.private.json',
+                                                                     'selected-admission-00000007.private.json',
+                                                                     'selected-admission-00000008.private.json',
+                                                                     'selected-admission-00000009.private.json',
+                                                                     'selected-admission-00000010.private.json',
+                                                                     'selected-admission-00000011.private.json',
+                                                                     'selected-admission-00000012.private.json',
+                                                                     'selected-admission-00000013.private.json',
+                                                                     'selected-admission-00000014.private.json',
+                                                                     'selected-admission-00000015.private.json',
+                                                                     'selected-admission-00000016.private.json',
+                                                                     'selected-admission-00000017.private.json',
+                                                                     'selected-admission-00000018.private.json',
+                                                                     'selected-admission-00000019.private.json',
+                                                                     'selected-admission-00000020.private.json',
+                                                                     'selected-admission-00000021.private.json',
+                                                                     'selected-admission-00000022.private.json',
+                                                                     'selected-admission-00000023.private.json',
+                                                                     'selected-admission-00000024.private.json',
+                                                                     'selected-admission-00000025.private.json',
+                                                                     'source-manifest.json',
+                                                                     'spawn-intent.json',
+                                                                     'stderr.private',
+                                                                     'stdout.private',
+                                                                     'terminal.json',
+                                                                     'worker.py',
+                                                                     'worker.stderr.private',
+                                                                     'worker.stdout.private']},
+ 'facts': {'automaticHostSourceStaged': True,
+           'b7GenericTerminalExitCode': 0,
+           'b7OperatorUnknownPreserved': True,
+           'channelId': '2670897527834f95bd72cf5bda811155',
+           'completedStatusCallCount': 1,
+           'completedStatusSourceClosing': True,
+           'completedStatusState': 'ready',
+           'globalProgramMemberCount': 17,
+           'globalProgramMembershipEqualsHistoricalThirdPlusExactNewSix': True,
+           'guestReplayAllowed': False,
+           'guestStateObserved': False,
+           'historicalThirdReleaseFactsPreserved': True,
+           'original4835CaptureIsNull': True,
+           'original4835ChildRecordAbsent': True,
+           'original4835SourceClosing': True,
+           'original4835State': 'unknown',
+           'originalBaUnknownPreserved': True,
+           'originalBc6UnknownPreserved': True,
+           'originalCallerProgramLoaderSubmitted': False,
+           'outerAuthoritySha256': '7c45a305489b45f9142343262688c79348fdaee34986bd028eab9402028fbe2e',
+           'statusProgramStarted': False,
+           'statusReplayAllowed': False,
+           'statusRetirementRequested': False},
+ 'programRecords': {'0178c308-1d41-490c-a390-1c0d42883e98': {'intent.json': '271bd59634712a9ee0b7644f7e86294c2f135439ac3951370e17204d33ed7f9a',
+                                                             'owner-closed.json': 'ff2571c0dc15c55402e1197d39b4f7cb00265a26c8cb04843881addba321e694',
+                                                             'owner.json': '3a60286fe103791b5672aac326fb9af9b9edaeec6e527eb0ecb223bac41d18f6',
+                                                             'terminal.json': '7887543136577e3feb8d031ea7081733f6c33ce9b532a109cf775d107477f664'},
+                    '138e8eeb-ca78-40b8-acb0-6f91fb855873': {'intent.json': 'e29f8a0d811125caa3b7bf48a18de3a0d6a63b49a835594cd8e5719e00e32398',
+                                                             'owner-closed.json': 'c3a3684f49833cc3ba4c2c12c3a76e41766b49dd73288e830948de91e9df7e5e',
+                                                             'owner.json': 'b620b60f550072cafe8f5d0a2e6248ba5b3fe7e80eac19dc19f71d66b9c1b5e4',
+                                                             'terminal.json': 'f35d9ac5aed4ecc3b02da0f9c00e6dce1237aa76aee3703ab3dc0e606493a204'},
+                    '1ee7a205-2f7d-47b1-b39e-56583a9cfbbd': {'intent.json': '1d93a6712ee5c32e26204468f444142dae62af203f0a325338a54e23b77c207a',
+                                                             'owner-closed.json': 'f09d7a33f201ca0dc51d31f64847f413cea69506e0712cef889c3c67a30082eb',
+                                                             'owner.json': '1fb414a715270da5607ad5ae0f5b3d718bbf7c4a087b1d2aa3f0396f438785db',
+                                                             'terminal.json': '6d5abeff0f1a4cb5e96aa8069bd7a94491751c3e7b1026931ef72a74ef48fe3b'},
+                    '2525f4ef-7643-4d73-8846-d914749f7a4e': {'intent.json': 'f7f8f7dc348d0587729de581892ad57636d1bcb0339bdaa0c83061e36c1fc249',
+                                                             'owner-closed.json': '6b1a63c9b299382da79ab80e0fe0d22e660afb996012254621e863ef6de0ad54',
+                                                             'owner.json': 'dbb65d13f3b2444a4f14cdb2b79c853c28316668a10d471915c10f2b5f0039ef',
+                                                             'terminal.json': 'f90a21020c3d0b407114691ebc8fe77fa1ffad4c5807651a692d2fee0bce6067'},
+                    '264686dc-c3bc-4afd-9eca-bf931a7bc1d6': {'intent.json': 'e22c347cb2ce0d2310699630354485c3484d492a30e835df91ff34702f7bd309',
+                                                             'owner-closed.json': '5716686365d9e81ca6a5828cf28c9f2ff1a195d7c8e91621efb45187c545c3dc',
+                                                             'owner.json': '2eb418d073d98c3046901188b1d3aec527e659f3f6e1e0926fd24833b921c29e',
+                                                             'terminal.json': '7d65d3681956f5e68dd7b4466919546f1bb4f72712641b345f7febcec7d0afa5'},
+                    '2690c7cd-a4e4-4c0a-832a-1364ab325755': {'intent.json': '256cbf1fd3e8337eab92d4040c240e1526422770b0b52a78d8c0fb7f29f7b836',
+                                                             'owner-closed.json': '2a0692736e14ea2d0d224abccae7cb737516fb39ccc15f5e4ccdc01945c6108c',
+                                                             'owner.json': '04308a6572d6076d07a2cdffbb2022511e6a982173854b657895839f5da07682',
+                                                             'terminal.json': '1fbead2f392db7c1dc33a95c71e9afb148709e0460cc0653c94d8657c6c06185'},
+                    '4835b6ea-e758-44b0-b024-0972f8fe6594': {'intent.json': 'c674f8b286b136d1105b1b21a9ae10a905d2ddd9940e3bf0ecc1679d36399a5b',
+                                                             'owner-closed.json': 'b591ea62a459126903163614492d7b7e68d2532eae7cb812728245d4a78a9033',
+                                                             'owner.json': '3039d7f30072e17f87df7aefd04e915f2c4710f0637014e80b588d1fc2d9edc4',
+                                                             'terminal.json': '5860350925faa95be1a0e5d6d61257e3f824811957acecb2e6674d9a6f307388'},
+                    '48f55cb9-65af-49a3-aaae-5236d49fe8eb': {'intent.json': '8e6a1798901f35f91ab0cb90c177032202b3d8824f44036bd7c0d8e24434b55e',
+                                                             'owner-closed.json': 'b8bfbb5011be918ed74bcea9094a6159baf5e32f8bf48f2fc7c5516043b8948a',
+                                                             'owner.json': 'b2ae3906c1ab30ebea65e57f7389b4f612f65be834bd4c3ccb8b3bf3ff4f80d6',
+                                                             'terminal.json': 'eb0be35ecd63d485f97c1fd1842341e804365c9705e1e1cadc7bc9c28c4a2a74'},
+                    '7e6ed39d-d015-494b-9e8d-f2626c429764': {'intent.json': 'c5f76e839ac3abca421898daf7c6e7d558719956b16f302e960f68cf9a14442c',
+                                                             'owner-closed.json': '2338dd01eec805a236213a25072d3d72728a044226ed0cea58db194ff070984c',
+                                                             'owner.json': '5e1adcc6bc160c80d33dc683e7eba03295750325616f5668f06636437da86471',
+                                                             'terminal.json': '1e391b4e32c182bf275241b3bcfba640627fd34e46c577188a773f53b248c3a6'},
+                    '949ae643-8eda-4f19-8dba-5e4c17b2894e': {'intent.json': '5a9a9f0adcfac71845349c6c8bb82e37ed391a3e81545f31ae05fd098e6c1b65',
+                                                             'owner-closed.json': 'b4f012d1f527b1d4356384cd6ec918f1f73b8b2571fa946e16573ca04e2db06d',
+                                                             'owner.json': '6287211550115367d3c2b526763087999bd703a28847728cefa67c0a947483a4',
+                                                             'terminal.json': '3514c15d3579909d3b0583844be78341c949605c9024ef5101342dd2ce9829f9'},
+                    'b7b993d9-653b-41ac-b3ae-4f71a6ef40f7': {'intent.json': '29dac4479e47da937bec05ad96fe20bc469b30b937ea4b2fdf7e79d427ff3c6b',
+                                                             'owner-closed.json': '33fcf3d3babbaef04a27014eadf6c1529a06ca93b8c2d5886ac8a965185e308a',
+                                                             'owner.json': '8e23541a086f38e6523b9925144915c0e83ba0bb9d77671f0c6137adab544907',
+                                                             'terminal.json': 'f5ec7ca9898504253ab3c88b73e1475bbd84b9284777c71e00001d4c56d1a65a'},
+                    'ba9620b4-e5d3-4f61-82a9-ee4ce38522ec': {'child.json': '14d797b40ce84f50d3369278dd1a2fc5bb5878a703e7a5d30fcd4e3b9667da5a',
+                                                             'intent.json': '29f4bf187a7ce24231ee9a2e633d38b811390fea76b47536e99b298966ddd59e',
+                                                             'owner.json': 'a034ae177bef7c4cf340af0c485d657b944e6fe7b2e5bd083ec8921e8a18281e',
+                                                             'stderr.private': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+                                                             'stdout.private': '155f2c44ef3c77c1b7ba2f340596067ca11f52f39b4f09483bebdf1aad5e4bab'},
+                    'bc6ed15f-36ba-492a-88ac-13eaca58fa10': {'intent.json': '19b5a52b58a4f3ebd6e70f0e2f4f665b44307e83af8fafa204c3b484f79d9f26',
+                                                             'owner-closed.json': 'b6ffff517704f4f0d5a3121e16d08df69aa22d115e74f2017f16c84818b51cde',
+                                                             'owner.json': '5ddde551b4d6bc5f749f273de9e3f69d067eaad0dbcb7c33f2e13725fabc5011',
+                                                             'terminal.json': '02e3c459e36162f54a67c04e629c3b49d2d8f3b38e1c9bdfcf8630f041f0d40d'},
+                    'bd18cb94-e6a2-4003-99d5-9edc792ed05c': {'intent.json': '929b4ed7fe0f7c2b8f7ea6341b262abaa46e66d6e37e2a5a3a4fb6dfab8a7070',
+                                                             'owner-closed.json': '74a20e508ca35ae2351d6bf3b660f7cc9c34d5d5485a8fded512891c7073ec0a',
+                                                             'owner.json': 'c926f9362b06a4e074eb0f72ef424907fd47eefe79f44ca6fb0b57fdb04f1bd4',
+                                                             'terminal.json': '60179af2aef2bdf01b8319694bb6dd1ef97e0cb7ff2325138361c2d14492bc28'},
+                    'bf8fc478-c548-42c5-955b-b3698b6905c0': {'intent.json': '4f6a3108a89bb12ceb6dea99daddc241755d6360bbcdab12a88632bcd12b9163',
+                                                             'owner-closed.json': '2d3a9cbb2a93d5f83701b5530e4b94c5e7a37661d76f76a4a6da040a05a6af14',
+                                                             'owner.json': '5839ac091a0490c07b6a0f8baacd06dedec6f2af2e469231d8cd20c84b02d4fa',
+                                                             'terminal.json': '8cfac3a65606b25d2791de6bdba998abae85afd04f323dab47890c4930a0ece2'},
+                    'e5ffaccf-63d6-4038-bf7b-fd137a1dbb8e': {'intent.json': '190479d7e9163dd23ec85aedf656766a8aa8d62163f06a2e4ab50ab8f3985d73',
+                                                             'owner-closed.json': 'c5392427daa14aa1bbc266a1aff764ad9261f34e9b7237578712bcd4b544513a',
+                                                             'owner.json': '0913851d2ea94a70ba32e20ea3ac48d970b5a2f31672b7dc26b0eb1fdc0acb4b',
+                                                             'terminal.json': '5203f7011cdec6d024505c83168157e56035368e86c00ac311050ec0861b56cd'},
+                    'fe53bef8-7d4e-4d26-93e2-92241a7f7f73': {'intent.json': '1c77678df0bc684f98be853e155b077478782272e4f0efb0228aebf86ae9a561',
+                                                             'owner-closed.json': 'abbc8ce1d9777d354357b2f933f506a2e3df9fe50d016c939f2c3d49adccc31b',
+                                                             'owner.json': '3ca7b76b6e1be2a54eb395f15f7aef53edb6445e659784b496df3f6ab08962f2',
+                                                             'terminal.json': '9361952925fa799c960853f1389b666ac450a60d971b324b42e12578a253785b'}},
+ 'proofs': {'.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/intent.json': '5977a61a40bd21114f8c8677988d5d4723edf9f0ab285ffb4a48d8802852f6b7',
+            '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/program.source': 'bf26ab054366ece3624f63dd1020b3bc01c573258cb587da510df6045668bc4a',
+            '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/stage.observation.json': '1447c708a25376a966059950ca930d0b19c1a6c3c6807ae8056eb575a5d62139',
+            '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/stage.stderr': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/stage.stdout': '52d19aeefcbc9af834d4b586b4a06d97fa14c62f395cb83ad07ef9962243b50d',
+            '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/staged.json': '20e163c718d540c7080694e24ef6ff1a446993d396e83a593747096c7563c4dc',
+            '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/unknown.json': '66dad4cad19a51e5254daa08ced47f6101d19b4d46f2f56ea585f4219ba44710',
+            '.rag_index/ssh-program-execution/1ee7a205-2f7d-47b1-b39e-56583a9cfbbd/child.json': 'cd24c7822cd4b7b756cd13e0a62e1c90ab1b555deab3cac0622e0c3ebb55a911',
+            '.rag_index/ssh-program-execution/1ee7a205-2f7d-47b1-b39e-56583a9cfbbd/stderr.private': 'fa423bad7eff95c3879508153314c5ff723aabaff7dd9c52a5fd6d9e14000471',
+            '.rag_index/ssh-program-execution/1ee7a205-2f7d-47b1-b39e-56583a9cfbbd/stdout.private': 'e13b7e519fe5047dc757f8d35202000f7f29e3742f4185e8f210e8fd07f0399e',
+            '.rag_index/ssh-program-execution/2525f4ef-7643-4d73-8846-d914749f7a4e/child.json': '9b54514d0617bea02cf991f8528258a9817375de8835a5bd1f2fa22411b617e2',
+            '.rag_index/ssh-program-execution/2525f4ef-7643-4d73-8846-d914749f7a4e/stderr.private': 'fa423bad7eff95c3879508153314c5ff723aabaff7dd9c52a5fd6d9e14000471',
+            '.rag_index/ssh-program-execution/2525f4ef-7643-4d73-8846-d914749f7a4e/stdout.private': 'bf1102c30ce6790805f85952026ef9a68f75e5eae50f943f0c90bd972c008aef',
+            '.rag_index/ssh-program-execution/4835b6ea-e758-44b0-b024-0972f8fe6594/stderr.private': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            '.rag_index/ssh-program-execution/4835b6ea-e758-44b0-b024-0972f8fe6594/stdout.private': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            '.rag_index/ssh-program-execution/7e6ed39d-d015-494b-9e8d-f2626c429764/child.json': '0c8c9c3d7bf7e7a868eb572e7c41500236e5f58c96aa167f64b6fa61d11f0c82',
+            '.rag_index/ssh-program-execution/7e6ed39d-d015-494b-9e8d-f2626c429764/stderr.private': 'fa423bad7eff95c3879508153314c5ff723aabaff7dd9c52a5fd6d9e14000471',
+            '.rag_index/ssh-program-execution/7e6ed39d-d015-494b-9e8d-f2626c429764/stdout.private': 'f2ceffbedcbe1850e487f528e93890c33994807b7b9d4523081f5dc91e6055a8',
+            '.rag_index/ssh-program-execution/b7b993d9-653b-41ac-b3ae-4f71a6ef40f7/child.json': 'fcc8302f8a960272643c395f0c61533c1000607c3604cbd6b10333be32906aec',
+            '.rag_index/ssh-program-execution/b7b993d9-653b-41ac-b3ae-4f71a6ef40f7/stderr.private': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            '.rag_index/ssh-program-execution/b7b993d9-653b-41ac-b3ae-4f71a6ef40f7/stdout.private': '7e75d631e85016d9d4cd2cd6b7faa65b9a6123118d217ac99157198192c27555',
+            '.rag_index/ssh-program-execution/e5ffaccf-63d6-4038-bf7b-fd137a1dbb8e/child.json': 'f4c43e600a6b4a20a3efa3385ee46a19a6703c2702d262302fe7e0eeadf8a961',
+            '.rag_index/ssh-program-execution/e5ffaccf-63d6-4038-bf7b-fd137a1dbb8e/stderr.private': 'fa423bad7eff95c3879508153314c5ff723aabaff7dd9c52a5fd6d9e14000471',
+            '.rag_index/ssh-program-execution/e5ffaccf-63d6-4038-bf7b-fd137a1dbb8e/stdout.private': '42d21897e61fb9fc4effc192856067e2289ec53607ff261ac27458846a3ba2ea',
+            '.runtime/windows-parity-20261019/artifacts/host-abandon-direct-preparation-v1/packet-final-v2/inner-stdout.raw': '336061e5b62d1a93c9a39fb4ce1bf4af862d07f5d24904726acc90029625c666',
+            '.runtime/windows-parity-20261019/artifacts/host-abandon-direct-preparation-v1/packet-final-v2/result.json': 'bf848f4c629706c0110652beabee0244944be5883abd1e737f547c34d1b51c92',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/closing.json': 'cebe46473e91382db89a22c5f60a52363a090489be3ffbb5cea5968a34a5728b',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/connection-terminal.json': '44061219f9ab5fc380944b8f7187456e9164ca1d5a5c02564dd6905a583fae1c',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/inner-stdout.raw': '5bdeb26bac80cb6391e0015cc738ecf47a5cd35e5015af804306a4f89731ed11',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/operator-exec32139-completion.private.json': 'c20d6a0ad1802b631c4601a94dd5e6d43dba2a67bf2d68ef2921583cd8146ece',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/operator-joined-status-observation.private.json': '9d4b748bd9977220031dbb487e48e0d8dea59d640dc972e41ced50625ea58846',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/result.json': 'e8fb95501b23d9855887b35de16e9b646b4844fb4307a3654d1e1dd2dbe0900b',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/root-recovery-adjudication.private.json': '38a9780e1ec1b47a6715fc38ff3195d12c0fb83d6a885262031e31b9e2ef46c1',
+            '.runtime/windows-parity-20261019/artifacts/original-pid4120-status-direct-preparation-v1/packet-final/source-final-closing.json': '5eb81e7c53a9552a98660b59a525f685546500892b52fcedb5cde0e377a02d55',
+            '.runtime/windows-parity-20261019/program-tool-native/stage-b-b204-remaining-proof-v1/native-direct-mcp-qualification.private.json': 'f88104b12b0fdfe995ef362d312915d7c6044205f04028430c87b25a761858ba',
+            '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/local-custody/local-ps-observation.private.json': '0bbe369d0d7e870828e34dc06bf12b2d563737637d92056ad5849f0b8a39ee88',
+            '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/local-custody/read-capsule.private.json': 'a9f7ef86884d860ac31881403a6b84a3a42ef99ebd1d8505ecb032bde0fb67a8',
+            '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/local-custody/summary.private.json': '95f1bc1d27442f416ff7ab8ddec3127819ed32c2bade826cc5cd7773a82c69a9',
+            '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/profile-preparation/intake/b9-staging-source-join.private.json': '82e05cf3ba8b3b9bbee82c793500f006d6144a8b765147d3d5996c2554e78624',
+            '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/operator-execution-v1/original-tool-completion.private.json': 'eddc3d15836c88be0c01e8c8a727d78ed4c9a022c905f92949ad91e91d78a020',
+            '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/original-status-once-output/result.private.json': 'f031c76ccfe6ff389067e3b87fc84705e5fd65abc40dfdfce43d00afe5439668',
+            '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/original-status-once-output/same-call-capture-0.json': '6186b771f414f14b9189d74425ae45f21a905807ccc50e7d4ef69ca0dd08f874',
+            '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/original-status-once-output/same-call-capture-0.stderr': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/original-status-once-output/same-call-capture-0.stdout': '5899e4fe62866d2bd8152641fa4fa506364480a149d3cb23dad06738e18375bc',
+            '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/original-status-once-output/same-call-native-capture-index.private.json': 'f23d67515247e645409a8ee6a9b80895b0b35c1d1e52e23c3f1496efb1f35ec7',
+            '.runtime/windows-parity-20261019/windows-fixture/original-ba962-local-closure-after-abandonment-v1/current-original-job-manifest.private.json': 'd4879ce89c401de2ac2273ad19ed09b379ee909ca90b8251e6514ca29d5c63c2',
+            '.runtime/windows-parity-20261019/windows-fixture/original-ba962-local-closure-after-abandonment-v1/joined-custody-evidence.private.json': '758b32958a7e5329e85b54886412c83d676e3d19adead87fed063d784dd8798e',
+            '.runtime/windows-parity-20261019/windows-fixture/post-program-adoption-prerequisite-preparation-v1/native-run-v1/first4835-unknown-preservation-v1/automatic-journal-preservation.private.json': 'b6c8df1f7d5b575b79b6198c2c2ea497b55367fd4464331ede771b6597c7c39a',
+            '.runtime/windows-parity-20261019/windows-fixture/seven-engineering-b204-native-v1/retained-probe-cleanup-custody.private.json': 'de81a04a7edde24089e17a5edb96820d9147dafa464f5a88153033175c403e77',
+            '.runtime/windows-parity-20261019/windows-fixture/seven-engineering-b204-native-v1/root-b7-recovered-component-adjudication.private.json': '89b4fd740117f0f0e42d07f3451f7907b17ce53ae26cdc7e5c248bf0f5e2c426'}}
+_FOURTH_PROOF_NAMES = frozenset(('.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/intent.json',
+ '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/program.source',
+ '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/stage.observation.json',
+ '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/stage.stderr',
+ '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/stage.stdout',
+ '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/staged.json',
+ '.rag_index/ssh-automatic-program/b9ab4023bd544d08a5e0451e18b67260/unknown.json',
+ '.rag_index/ssh-program-execution/1ee7a205-2f7d-47b1-b39e-56583a9cfbbd/child.json',
+ '.rag_index/ssh-program-execution/1ee7a205-2f7d-47b1-b39e-56583a9cfbbd/stderr.private',
+ '.rag_index/ssh-program-execution/1ee7a205-2f7d-47b1-b39e-56583a9cfbbd/stdout.private',
+ '.rag_index/ssh-program-execution/2525f4ef-7643-4d73-8846-d914749f7a4e/child.json',
+ '.rag_index/ssh-program-execution/2525f4ef-7643-4d73-8846-d914749f7a4e/stderr.private',
+ '.rag_index/ssh-program-execution/2525f4ef-7643-4d73-8846-d914749f7a4e/stdout.private',
+ '.rag_index/ssh-program-execution/4835b6ea-e758-44b0-b024-0972f8fe6594/stderr.private',
+ '.rag_index/ssh-program-execution/4835b6ea-e758-44b0-b024-0972f8fe6594/stdout.private',
+ '.rag_index/ssh-program-execution/7e6ed39d-d015-494b-9e8d-f2626c429764/child.json',
+ '.rag_index/ssh-program-execution/7e6ed39d-d015-494b-9e8d-f2626c429764/stderr.private',
+ '.rag_index/ssh-program-execution/7e6ed39d-d015-494b-9e8d-f2626c429764/stdout.private',
+ '.rag_index/ssh-program-execution/b7b993d9-653b-41ac-b3ae-4f71a6ef40f7/child.json',
+ '.rag_index/ssh-program-execution/b7b993d9-653b-41ac-b3ae-4f71a6ef40f7/stderr.private',
+ '.rag_index/ssh-program-execution/b7b993d9-653b-41ac-b3ae-4f71a6ef40f7/stdout.private',
+ '.rag_index/ssh-program-execution/e5ffaccf-63d6-4038-bf7b-fd137a1dbb8e/child.json',
+ '.rag_index/ssh-program-execution/e5ffaccf-63d6-4038-bf7b-fd137a1dbb8e/stderr.private',
+ '.rag_index/ssh-program-execution/e5ffaccf-63d6-4038-bf7b-fd137a1dbb8e/stdout.private',
+ '.runtime/windows-parity-20261019/program-tool-native/stage-b-b204-remaining-proof-v1/native-direct-mcp-qualification.private.json',
+ '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/local-custody/local-ps-observation.private.json',
+ '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/local-custody/read-capsule.private.json',
+ '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/local-custody/summary.private.json',
+ '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/profile-preparation/intake/b9-staging-source-join.private.json',
+ '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/operator-execution-v1/original-tool-completion.private.json',
+ '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/original-status-once-output/result.private.json',
+ '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/original-status-once-output/same-call-capture-0.json',
+ '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/original-status-once-output/same-call-capture-0.stderr',
+ '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/original-status-once-output/same-call-capture-0.stdout',
+ '.runtime/windows-parity-20261019/windows-fixture/267-retirement-preparation-v1/status-read-preparation/original-status-once-output/same-call-native-capture-index.private.json',
+ '.runtime/windows-parity-20261019/windows-fixture/post-program-adoption-prerequisite-preparation-v1/native-run-v1/first4835-unknown-preservation-v1/automatic-journal-preservation.private.json',
+ '.runtime/windows-parity-20261019/windows-fixture/seven-engineering-b204-native-v1/retained-probe-cleanup-custody.private.json',
+ '.runtime/windows-parity-20261019/windows-fixture/seven-engineering-b204-native-v1/root-b7-recovered-component-adjudication.private.json'))
+
+
+def _fourth_release():
+    value = _FOURTH_ADMISSION
+    old = _third_release()
+    if (type(value) is not dict
+            or set(value) != {"facts", "proofs", "programRecords", "baLeafNames", "closedUnknownLeafNames"}
+            or type(value["facts"]) is not dict or set(value["facts"]) != set(_FOURTH_FACTS)
+            or any(type(value["facts"][key]) is not type(item) or value["facts"][key] != item
+                   for key, item in _FOURTH_FACTS.items())
+            or type(value["programRecords"]) is not dict
+            or set(value["programRecords"]) != set(old["programRecords"]) | _FOURTH_NEW_PROGRAMS
+            or any(value["programRecords"].get(key) != item for key, item in old["programRecords"].items())
+            or value["baLeafNames"] != old["baLeafNames"]
+            or type(value["proofs"]) is not dict or not 12 < len(value["proofs"]) <= 128
+            or set(value["proofs"]) != set(old["proofs"]) | _FOURTH_PROOF_NAMES
+            or any(value["proofs"].get(key) != item for key, item in old["proofs"].items())
+            or type(value["closedUnknownLeafNames"]) is not dict
+            or set(value["closedUnknownLeafNames"]) != {FOURTH_UNKNOWN}):
+        raise ValueError("retirement_267_evidence_unavailable")
+    for identifier in _FOURTH_NEW_PROGRAMS:
+        records = value["programRecords"][identifier]
+        if (type(records) is not dict or set(records) != {"intent.json", "owner.json", "terminal.json", "owner-closed.json"}
+                or any(type(digest) is not str or re.fullmatch("[0-9a-f]{64}", digest) is None for digest in records.values())):
+            raise ValueError("retirement_267_evidence_identity")
+    leaves = value["closedUnknownLeafNames"][FOURTH_UNKNOWN]
+    if (type(leaves) is not list or len(leaves) != 39
+            or any(type(name) is not str or Path(name).name != name or name in ("", ".", "..") for name in leaves)
+            or len(set(leaves)) != len(leaves)
+            or "child.json" in leaves or not {"capsule", "intent.json", "owner.json", "terminal.json", "owner-closed.json", "stdout.private", "stderr.private"} <= set(leaves)
+            or any(type(name) is not str or Path(name).name != name or name in ("", ".", "..") for name in leaves)):
+        raise ValueError("retirement_267_evidence_identity")
+    for name, digest in value["proofs"].items():
+        if type(name) is not str:
+            raise ValueError("retirement_267_evidence_identity")
+        path = Path(name)
+        program_part = (len(path.parts) == 4 and path.parts[:2] == (".rag_index", "ssh-program-execution")
+                        and path.parts[2] in _FOURTH_NEW_PROGRAMS
+                        and path.parts[3] in ("child.json", "stdout.private", "stderr.private"))
+        automatic_part = (len(path.parts) == 4 and path.parts[:3] == (".rag_index", "ssh-automatic-program", "b9ab4023bd544d08a5e0451e18b67260")
+                          and path.parts[3] in ("intent.json", "program.source", "stage.observation.json", "stage.stderr", "stage.stdout", "staged.json", "unknown.json"))
+        if (path.is_absolute() or ".." in path.parts or not path.parts
+                or not (path.parts[0] == ".runtime" or program_part or automatic_part)
+                or type(digest) is not str or re.fullmatch("[0-9a-f]{64}", digest) is None):
+            raise ValueError("retirement_267_evidence_identity")
+    return value
+
+
+def _profile(correlation):
+    if correlation == CORRELATION:
+        return INTENT_SHA, READY_SHA, PROGRAM_RECORDS
+    if correlation == SECOND_CORRELATION:
+        return SECOND_INTENT_SHA, SECOND_READY_SHA, SECOND_PROGRAM_RECORDS
+    if correlation == THIRD_CORRELATION:
+        return THIRD_INTENT_SHA, THIRD_READY_SHA, _third_release()["programRecords"]
+    if correlation == FOURTH_CORRELATION:
+        return FOURTH_INTENT_SHA, FOURTH_READY_SHA, _fourth_release()["programRecords"]
+    raise ValueError("retirement_identity")
+
+
+def _sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _parse(raw):
+    return json.loads(raw, object_pairs_hook=transport._reject_duplicate_keys)
+
+
+def _local_absent(pid):
+    if type(pid) is not int or pid <= 0:
+        raise ValueError("retirement_local_actor")
+    result = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "pid="],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, timeout=3, check=False)
+    if result.returncode != 1 or result.stdout or result.stderr:
+        raise ValueError("retirement_local_owner_present")
+
+
+def _mcp_data_transition(before, current):
+    """The exact reviewed six-line guard is the only historical data edge."""
+    if _sha(before) != BEFORE_MCP or _sha(current) != CURRENT_MCP:
+        raise ValueError("retirement_mcp_source")
+    old, new = ast.parse(before), ast.parse(current)
+    functions = [node for node in new.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and node.name == "_ssh_workflow_impl"]
+    if len(functions) != 1:
+        raise ValueError("retirement_mcp_shape")
+    guards = [node for node in ast.walk(functions[0]) if isinstance(node, ast.If)
+              and ast.unparse(node.test) == "os.name != 'posix'"]
+    if len(guards) != 1:
+        raise ValueError("retirement_mcp_guard")
+    guard = guards[0]
+    expected = ast.parse('''if os.name != "posix":
+        original = transfer if starting else identity
+        return {"tool": "ssh_workflow", "ok": False, "state": "refused",
+                "reason": "program_coordinator_unsupported", "host": host,
+                "operationId": original.get("operationId"),
+                "nativeActionAllowed": False, "replayAllowed": False}
+''').body[0]
+    if ast.dump(guard, include_attributes=False) != ast.dump(expected, include_attributes=False):
+        raise ValueError("retirement_mcp_guard")
+    for parent in ast.walk(new):
+        for _, value in ast.iter_fields(parent):
+            if isinstance(value, list) and guard in value:
+                value.remove(guard)
+    if ast.dump(old, include_attributes=False) != ast.dump(new, include_attributes=False):
+        raise ValueError("retirement_mcp_delta")
+
+
+def _write(directory, name, raw):
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory.fd)
+    try:
+        offset = 0
+        while offset < len(raw):
+            count = os.write(fd, raw[offset:])
+            if count <= 0:
+                raise OSError("retirement_short_write")
+            offset += count
+        os.fsync(fd)
+        written = {"generation": list(private._generation(os.fstat(fd))), "size": len(raw), "sha256": _sha(raw)}
+    finally:
+        os.close(fd)
+    os.fsync(directory.fd)
+    return written
+
+
+@contextmanager
+def _original(root, host, correlation, operation):
+    if host != "archlinux" or str(uuid.UUID(operation)) != operation:
+        raise ValueError("retirement_identity")
+    intent_sha, ready_sha, program_records = _profile(correlation)
+    root = Path(root).resolve(strict=True)
+    with ExitStack() as stack:
+        presented, _, lock = stack.enter_context(private.ownership(root))
+        journal = stack.enter_context(private.Directory(channel._context_journal(root, host, correlation, False, True)))
+        intent = stack.enter_context(private.Snapshot(journal, correlation + ".intent.json"))
+        ready = stack.enter_context(private.Snapshot(journal, correlation + ".ready.json"))
+        if intent.digest != intent_sha or ready.digest != ready_sha:
+            raise ValueError("retirement_original_records")
+        value, receipt = _parse(intent.body), _parse(ready.body)
+        if receipt["intent"] != intent.pin() or receipt["result"]["correlationId"] != correlation:
+            raise ValueError("retirement_ready_binding")
+        current = stack.enter_context(direct.Guard(root, host))
+        current.held.read(str(Path(__file__).absolute()), _LOADED_SHA)
+        current.held.read(str(Path(loader.__file__).absolute()), loader._LOADED_SHA)
+        extra = []
+        trust = None
+        if correlation in (THIRD_CORRELATION, FOURTH_CORRELATION):
+            release = _third_release() if correlation == THIRD_CORRELATION else _fourth_release()
+            for name, digest in release["proofs"].items():
+                folder = stack.enter_context(private.Directory(root / Path(name).parent))
+                evidence = (_third_raw_part(current, folder, Path(name).name, digest) if correlation == FOURTH_CORRELATION
+                            else stack.enter_context(private.Snapshot(folder, Path(name).name)))
+                if evidence.digest != digest:
+                    raise ValueError("retirement_546_evidence_changed")
+                extra.append(evidence)
+            ba_directory = stack.enter_context(private.Directory(root / ".rag_index/ssh-program-execution" / THIRD_UNKNOWN))
+            ba_intent = stack.enter_context(private.Snapshot(ba_directory, "intent.json"))
+            if ba_intent.digest != THIRD_UNKNOWN_INTENT_SHA:
+                raise ValueError("retirement_original_program")
+            extra.append(ba_intent)
+            if correlation == THIRD_CORRELATION:
+                trust = _third_authority(current, value, _parse(ba_intent.body))
+            elif current.authority_sha != value["outerAuthoritySha256"] or current.authority_sha != FOURTH_AUTHORITY:
+                raise ValueError("retirement_authority")
+        elif current.authority_sha != value["outerAuthoritySha256"]:
+            raise ValueError("retirement_authority")
+        config = stack.enter_context(private.Snapshot(stack.enter_context(private.Directory(root)), transport.CONFIG_FILENAME))
+        if config.pin() != value["inventory"]:
+            raise ValueError("retirement_inventory")
+        sources = {"remote": value["remoteSourceSha256"], "ssh_fresh_nested_channel.py": value["sourceSha256"], **value["directSourcePins"]}
+        if set(value["directSourcePins"]) != set(direct._SOURCE_NAMES):
+            raise ValueError("retirement_source_members")
+        capsules = {}
+        for name, digest in sources.items():
+            part = stack.enter_context(private.Snapshot(journal, correlation + "." + name + ".source"))
+            if part.digest != digest:
+                raise ValueError("retirement_capsule_bytes")
+            capsules[name] = part
+            canonical = channel._REMOTE.encode() if name == "remote" else Path(__file__).with_name(name).read_bytes()
+            if name == "mcp_server.py":
+                if correlation == CORRELATION:
+                    _mcp_data_transition(part.body, canonical)
+                elif part.body != canonical or part.digest != CURRENT_MCP:
+                    raise ValueError("retirement_mcp_source")
+            elif part.body != canonical:
+                raise ValueError("retirement_executable_source_changed")
+        # Block every cooperating selected-route admission during observation
+        # and exit. Each admitted borrower has exact closure or explicitly abandoned
+        # lost capture custody; native client/master/socket absence remains required.
+        selected = stack.enter_context(private.Directory(selection._selected_directory(root, host)))
+        selected_lock = stack.enter_context(selection._Lock(selected))
+        owners = []
+        program_group = stack.enter_context(private.Directory(root / ".rag_index/ssh-program-execution"))
+        if set(os.listdir(program_group.fd)) != set(program_records):
+            raise ValueError("retirement_unaccounted_program")
+        for identifier in program_records:
+            directory = stack.enter_context(private.Directory(root / ".rag_index/ssh-program-execution" / identifier))
+            records = {}
+            for name, digest in program_records[identifier].items():
+                part = (_third_raw_part(current, directory, name, digest) if correlation in (THIRD_CORRELATION, FOURTH_CORRELATION) and identifier == THIRD_UNKNOWN and name in ("stdout.private", "stderr.private")
+                        else stack.enter_context(private.Snapshot(directory, name)))
+                if part.digest != digest:
+                    raise ValueError("retirement_program_record_changed")
+                owners.append(part); records[name] = part
+            if correlation in (THIRD_CORRELATION, FOURTH_CORRELATION) and identifier == THIRD_UNKNOWN:
+                # Positive local absence and reviewed custody loss do not prove original
+                # EOF, terminal or source closing. Abandon that unproved capture scope;
+                # preserve UNKNOWN and independently require native quiescence below.
+                if (set(os.listdir(directory.fd)) != set(release["baLeafNames"])
+                        or "terminal.json" in release["baLeafNames"]
+                        or "owner-closed.json" in release["baLeafNames"]
+                        or not {"intent.json", "owner.json", "child.json", "stdout.private", "stderr.private"} <= set(records)):
+                    raise ValueError("retirement_original_unknown_changed")
+                owner, child = _parse(records["owner.json"].body), _parse(records["child.json"].body)
+                if owner["actor"]["pid"] != 57875 or child["actor"]["pid"] != 58163:
+                    raise ValueError("retirement_original_unknown_actor")
+                _local_absent(57875); _local_absent(58163)
+                continue
+            terminal = _parse(records["terminal.json"].body)
+            closing = _parse(records["owner-closed.json"].body)
+            # The exact pinned bc6 UNKNOWN is never promoted to terminal or
+            # treated as no-start. Its keeper must be closed; native mux/client
+            # quiescence below independently gates the connection exit.
+            closed_unknown = (correlation in (SECOND_CORRELATION, THIRD_CORRELATION, FOURTH_CORRELATION) and identifier == SECOND_UNKNOWN
+                              and terminal.get("state") == "unknown" and terminal.get("capture") is None)
+            if (correlation == FOURTH_CORRELATION and identifier == SECOND_UNKNOWN
+                    and (terminal.get("state") != "unknown" or terminal.get("capture") is not None)):
+                raise ValueError("retirement_original_unknown_changed")
+            if correlation == FOURTH_CORRELATION and identifier == FOURTH_UNKNOWN:
+                leaves = release["closedUnknownLeafNames"][FOURTH_UNKNOWN]
+                if (set(os.listdir(directory.fd)) != set(leaves) or os.path.lexists(directory.path / "child.json")
+                        or terminal.get("state") != "unknown" or terminal.get("capture") is not None):
+                    raise ValueError("retirement_original_unknown_changed")
+                closed_unknown = True
+            known_terminal = (terminal.get("state") == "terminal" and type(terminal.get("exitCode")) is int
+                              and terminal["exitCode"] != 255 and terminal["capture"]["complete"] is True
+                              and terminal["capture"]["eof"] == {"stdout": True, "stderr": True})
+            if (not (known_terminal or closed_unknown)
+                    or closing != {"operationId": identifier, "terminalSha256": records["terminal.json"].digest, "sourceClosing": True}):
+                raise ValueError("retirement_program_not_terminal")
+            owner = _parse(records["owner.json"].body)
+            _local_absent(owner["actor"]["pid"])
+        group = root / ".rag_index/ssh-owned-channel-retirement"
+        group.mkdir(mode=0o700, exist_ok=True)
+        stack.enter_context(private.Directory(group))
+        with private.Directory(group.parent) as parent:
+            os.fsync(parent.fd)
+        path = group / operation
+        path.mkdir(mode=0o700)
+        output = stack.enter_context(private.Directory(path))
+        with private.Directory(group) as parent:
+            os.fsync(parent.fd)
+        def guard():
+            presented.guard(); lock.guard(); journal.guard(); intent.guard(); ready.guard(); config.guard()
+            current.guard(); selected.guard(); selected_lock.guard()
+            program_group.guard()
+            if set(os.listdir(program_group.fd)) != set(program_records):
+                raise ValueError("retirement_program_membership_changed")
+            if correlation in (THIRD_CORRELATION, FOURTH_CORRELATION):
+                if set(os.listdir(ba_directory.fd)) != set(release["baLeafNames"]):
+                    raise ValueError("retirement_original_unknown_changed")
+                ba_directory.guard()
+            if correlation == FOURTH_CORRELATION:
+                unknown_path = root / ".rag_index/ssh-program-execution" / FOURTH_UNKNOWN
+                if set(os.listdir(unknown_path)) != set(release["closedUnknownLeafNames"][FOURTH_UNKNOWN]):
+                    raise ValueError("retirement_original_unknown_changed")
+            for part in (*capsules.values(), *owners, *extra):
+                part.guard()
+            output.guard()
+        guard()
+        pins = {name: part.pin() for name, part in capsules.items()}
+        _write(output, "intent.json", _json({"operationId": operation, "correlationId": correlation,
+            "intent": intent.pin(), "ready": ready.pin(), "sourceCapsules": pins,
+            "sourceViewUsesRealGenerations": True, "historicalMcpExecutionAllowed": False,
+            "replayAllowed": False, **({"trustSeparation": trust, "currentAuthority": current.authority, "closureProofs": release["proofs"],
+                "originalUnknownPreserved": True, "originalEofClaimed": False, "originalSourceClosingClaimed": False,
+                "originalCaptureScopesAbandoned": True}
+                if correlation == THIRD_CORRELATION else
+                {"currentAuthority": current.authority, "originalAuthorityEqualsCurrent": True,
+                 "closureProofs": release["proofs"], "historicalUnknownScope": dict(_THIRD_FACTS),
+                 "closedUnknownPreserved": [SECOND_UNKNOWN, FOURTH_UNKNOWN], "guestReplayAllowed": False}
+                if correlation == FOURTH_CORRELATION else {})}))
+        local_intent = stack.enter_context(private.Snapshot(output, "intent.json"))
+        original_guard = guard
+        def guard():
+            original_guard(); local_intent.guard()
+        inventory_locked = [True]
+        def release_inventory_for_status():
+            guard()
+            if not inventory_locked[0]:
+                raise ValueError("retirement_status_already_admitted")
+            # The authentic status acquires this same cooperative lock itself.
+            # Keep the original descriptor/snapshot and all authority guards;
+            # release only ownership, never fake a successful reentrant flock.
+            private.fcntl.flock(lock.snapshot.fd, private.fcntl.LOCK_UN)
+            inventory_locked[0] = False
+            guard()
+        yield root, value, receipt["result"], current, output, capsules, guard, release_inventory_for_status
+        guard()
+
+
+_PROBE = r'''
+request=json.loads(sys.stdin.buffer.read(4097),object_pairs_hook=reject_pairs)
+if request['action'] not in ('observe','retire') or re.fullmatch('[0-9a-f-]{36}',request['operationId']) is None:raise ValueError('request')
+corr=request['ready']['correlationId'];ready=request['ready'];master=ready['master']
+stage='/tmp/vpn-channel-'+corr;control=ready['controlPath']
+if control!=stage+'/m' or os.getuid()!=master['actor']['uid']:raise ValueError('identity')
+boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+if boot!=master['gatewayBoot']:raise ValueError('boot')
+held=[];retirement_directory=None
+config_file=request['config'] if request['config'] else str(Path.home()/'.ssh/config')
+def pin(path):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);info=os.fstat(fd)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1:raise ValueError('private')
+ body=os.read(fd,65537)
+ if len(body)!=info.st_size or len(body)>65536:raise ValueError('bound')
+ held.append((path,fd,generation(info),body));return json.loads(body,object_pairs_hook=reject_pairs)
+def guards():
+ for path,fd,identity,body in held:
+  if generation(os.fstat(fd))!=identity or generation(os.lstat(path))!=identity or os.pread(fd,len(body)+1,0)!=body:raise ValueError('changed')
+ if [getattr(os.lstat(stage),k) for k in ('st_dev','st_ino','st_mode','st_uid','st_gid')]!=master['directory']:raise ValueError('directory')
+ if set(os.listdir(stage)) not in ({'m','intent.json','ready.json'},{'intent.json','ready.json'}):raise ValueError('directory_membership')
+ if retirement_directory is not None and [getattr(os.lstat(retirement_directory[0]),k) for k in ('st_dev','st_ino','st_mode','st_uid','st_gid')]!=retirement_directory[1]:raise ValueError('retirement_directory_changed')
+ if json.dumps(file_pin(config_file,body=True),sort_keys=True)!=json.dumps(remote_intent['configPin'],sort_keys=True) or json.dumps(effective_route(spec),sort_keys=True)!=json.dumps(remote_intent['effectiveRoute'],sort_keys=True):raise ValueError('route')
+remote_intent=pin(stage+'/intent.json');remote_ready=pin(stage+'/ready.json')
+if json.dumps(remote_ready,sort_keys=True)!=json.dumps(ready,sort_keys=True) or set(remote_intent)!={'correlationId','gatewayBoot','gatewayUid','sourceSha256','configPin','effectiveRoute'} or any(json.dumps(remote_intent[k])!=json.dumps(v) for k,v in {'correlationId':corr,'gatewayBoot':boot,'gatewayUid':os.getuid(),'sourceSha256':request['sourceSha256']}.items()):raise ValueError('original')
+spec={'configFile':config_file,'controlPath':control,'remoteHostAlias':request['profile']}
+def actor_present():
+ path='/proc/'+str(master['actor']['pid'])
+ if not os.path.lexists(path):return False
+ raw=Path(path+'/stat').read_bytes();tail=raw[raw.rindex(b')')+2:].split()
+ if int(tail[19])!=master['actor']['startTicks'] or os.stat(path).st_uid!=master['actor']['uid'] or tail[0] in (b'Z',b'X'):raise ValueError('actor')
+ return True
+def proc_bytes(path):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);parts=[];total=0;deadline=time.monotonic()+2
+ try:
+  while True:
+   if time.monotonic()>deadline:raise ValueError('proc_deadline')
+   part=os.read(fd,min(65536,1048577-total))
+   if not part:break
+   parts.append(part);total+=len(part)
+   if total>1048576:raise ValueError('proc_bound')
+  return b''.join(parts)
+ finally:os.close(fd)
+def rows():
+ raw=proc_bytes('/proc/net/unix')
+ if len(raw)>1048576 or not raw.startswith(b'Num       RefCount Protocol Flags    Type St Inode Path\n') or not raw.endswith(b'\n'):raise ValueError('table')
+ result=[];seen=set()
+ for line in raw.splitlines()[1:]:
+  row=line.split(maxsplit=7)
+  if len(row) not in (7,8) or not re.fullmatch(rb'[0-9a-fA-F]+:',row[0]) or any(re.fullmatch(rb'[0-9a-fA-F]+',v) is None for v in row[1:6]) or not row[6].isdigit() or row[6] in seen:raise ValueError('table_row')
+  seen.add(row[6]);result.append(row)
+ return result
+def owned_row(row):return len(row)==8 and re.fullmatch(re.escape(control.encode())+rb'(\.[A-Za-z0-9]{16})?',row[7]) is not None
+def census():
+ names=os.listdir('/proc')
+ if len(names)>8192:raise ValueError('process_bound')
+ for name in names:
+  if not name.isdecimal() or int(name) in (os.getpid(),master['actor']['pid']):continue
+  path='/proc/'+name
+  try:
+   info=os.stat(path)
+   if info.st_uid!=os.getuid():continue
+   raw=Path(path+'/cmdline').read_bytes()
+   if len(raw)>1048576:raise ValueError('command_bound')
+   if control.encode() in raw or corr.encode() in raw.split(b'\0'):raise ValueError('client_present')
+  except FileNotFoundError:
+   if os.path.lexists(path):raise ValueError('process_race')
+def snapshot():
+ guards();table=rows();present=actor_present();socket_present=os.path.lexists(control)
+ if not present and not socket_present:
+  if any(owned_row(r) for r in table):raise ValueError('listener_present')
+  census();guards();return {'state':'ended','gatewayBoot':boot,'correlationId':corr,'independentAbsence':True}
+ if not present or not socket_present or generation(os.lstat(control))!=master['socket']:raise ValueError('partial')
+ matches=[r for r in table if owned_row(r)]
+ if len(matches)!=1 or matches[0][6].decode()!=master['listenerInode'] or matches[0][3:6]!=[b'00010000',b'0001',b'01']:raise ValueError('listener')
+ fds=os.listdir('/proc/%d/fd'%master['actor']['pid'])
+ if len(fds)>256:raise ValueError('fd_bound')
+ inodes=set()
+ for name in fds:
+  link=os.readlink('/proc/%d/fd/%s'%(master['actor']['pid'],name));match=re.fullmatch(r'socket:\[([0-9]+)\]',link)
+  if match:inodes.add(match[1].encode())
+ unix={r[6] for r in table}&inodes
+ if unix!={master['listenerInode'].encode()}:raise ValueError('mux_client_active')
+ tcp=set()
+ for path in ('/proc/net/tcp','/proc/net/tcp6'):
+  raw=proc_bytes(path)
+  if not raw.endswith(b'\n') or b'local_address' not in raw.splitlines()[0]:raise ValueError('tcp_table')
+  for line in raw.splitlines()[1:]:
+   row=line.split()
+   if len(row)<10 or not row[9].isdigit():raise ValueError('tcp_row')
+   if row[9] in inodes:
+    if row[3]!=b'01':raise ValueError('forwarding_socket')
+    tcp.add(row[9])
+ if len(tcp)!=1 or inodes!=unix|tcp:raise ValueError('unexplained_socket')
+ census();guards()
+ if not actor_present() or generation(os.lstat(control))!=master['socket']:raise ValueError('closing')
+ return {'state':'ready','gatewayBoot':boot,'correlationId':corr,'unixListenerOnly':True,'socketInodes':sorted(x.decode() for x in inodes)}
+first=snapshot();second=snapshot()
+if first!=second:raise ValueError('snapshot_changed')
+if request['action']=='retire' and first['state']=='ready':
+ operation='/tmp/vpn-retire-'+corr
+ os.mkdir(operation,0o700)
+ parent_fd=os.open('/tmp',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ os.fsync(parent_fd);os.close(parent_fd)
+ retirement_directory=(operation,[getattr(os.lstat(operation),k) for k in ('st_dev','st_ino','st_mode','st_uid','st_gid')])
+ fd=os.open(operation+'/intent.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w') as f:json.dump(request,f,sort_keys=True);f.flush();os.fsync(f.fileno())
+ directory_fd=os.open(operation,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ os.fsync(directory_fd)
+ if json.dumps(pin(operation+'/intent.json'),sort_keys=True)!=json.dumps(request,sort_keys=True):raise ValueError('retirement_intent_changed')
+ if snapshot()!=first:raise ValueError('exit_boundary_changed')
+ command=['ssh']+(['-F',request['config']] if request['config'] else [])+['-S',control,'-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-O','exit',request['profile']]
+ capture=inner(command,5)
+ fd=os.open(operation+'/exit.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ saved={k:v for k,v in capture.items() if k not in ('stdout','stderr')};saved.update(stdoutBase64=base64.b64encode(capture['stdout']).decode(),stderrBase64=base64.b64encode(capture['stderr']).decode())
+ with os.fdopen(fd,'w') as f:json.dump(saved,f,sort_keys=True);f.flush();os.fsync(f.fileno())
+ if not capture['complete'] or capture['returnCode']!=0:raise ValueError('exit_unknown')
+ deadline=time.monotonic()+3
+ while time.monotonic()<deadline:
+  if not os.path.lexists(control) and not os.path.lexists('/proc/'+str(master['actor']['pid'])):break
+  time.sleep(.02)
+ final=snapshot()
+ if final['state']!='ended':raise ValueError('absence_unknown')
+ final['exitCapture']=saved;first=final
+guards();print(json.dumps(first,sort_keys=True))
+'''
+
+
+def _remote_program(correlation=None):
+    # These are the current reviewed provider's complete route guards and
+    # binary child collector. No historical module top-level is executed.
+    prefix = "import base64,hashlib,json,os,re,stat,subprocess,sys,time,pwd,selectors\nfrom pathlib import Path\n_SOCKET_CAPTURE_BYTES=4096\n"
+    pairs = "def reject_pairs(pairs):\n value={}\n for key,item in pairs:\n  if key in value:raise ValueError('duplicate')\n  value[key]=item\n return value\n"
+    return prefix + channel._guard_program + (_fixed546_inner_source() if correlation in (THIRD_CORRELATION, FOURTH_CORRELATION) else channel._inner_source) + pairs + _PROBE
+
+
+def _capture(output, name, capture):
+    written = {}
+    for stream in ("stdout", "stderr"):
+        leaf = name + "." + stream
+        written[leaf] = _write(output, leaf, capture[stream])
+    leaf = name + ".json"
+    written[leaf] = _write(output, leaf, _json({key: value for key, value in capture.items() if key not in ("stdout", "stderr")}))
+    return written
+
+
+def _source_view(output, capsules):
+    view = output.path / "source-view"
+    view.mkdir(mode=0o700)
+    with private.Directory(view) as directory:
+        for name, part in capsules.items():
+            if name != "remote":
+                _write(directory, name, part.body)
+    expected = {str(view / name): part.digest for name, part in capsules.items()
+                if name not in ("remote", "mcp_server.py")}
+    return view, expected
+
+
+@contextmanager
+def _claim_exit(output, operation, correlation=CORRELATION):
+    # A different UUID cannot replay an uncertain prior exit for this channel.
+    _profile(correlation)
+    with private.Directory(output.path.parent) as group:
+        _write(group, correlation + ".exit-intent.json", _json({"operationId": operation,
+            "correlationId": correlation, "action": "single-owned-mux-exit", "replayAllowed": False}))
+        with private.Snapshot(group, correlation + ".exit-intent.json") as claim:
+            claim.guard()
+            yield claim
+            claim.guard()
+
+
+def _probe(context, operation, action):
+    root, value, ready, current, output, _, guard, _ = context
+    target = current.config.hosts["archlinux"]
+    gateway = transport.connection_host(current.config, target.gateway)
+    prefix, endpoint = direct.outer_prefix(current.config, gateway)
+    source = _remote_program(correlation=ready.get("correlationId"))
+    argv = [*prefix, *direct.OUTER_OPTIONS, "-T", "-o", "PermitLocalCommand=no", "-o", "ClearAllForwardings=yes", "-o", "UpdateHostKeys=no", endpoint,
+            shlex.join(("python3", "-I", "-B", "-c", source))]
+    packet = None
+    if ready.get("correlationId") in (THIRD_CORRELATION, FOURTH_CORRELATION):
+        fixed_payload = _json({"operationId": operation, "action": action, "ready": ready,
+            "sourceSha256": value["sourceSha256"], "config": str(target.remote_config_file or ""), "profile": target.remote_host_alias})
+        packet = _fixed546_transport_packet(prefix, endpoint, source, fixed_payload)
+        argv = packet["argv"]
+    sizes = transport.argv_byte_sizes(argv)
+    whole, maximum = sum(size + 1 for size in sizes), max(sizes)
+    if whole > 60000 or maximum > 60000:
+        raise ValueError("retirement_command_bound")
+    correlation = ready["correlationId"]
+    _profile(correlation)
+    payload = _json({"operationId": operation, "action": action, "ready": ready,
+                     "sourceSha256": value["sourceSha256"], "config": str(target.remote_config_file or ""), "profile": target.remote_host_alias})
+    guard(); request_written = _write(output, "probe-request.json", payload)
+    submission_written = _write(output, "submission-intent.json", _json({"operationId": operation, "correlationId": correlation,
+        "action": action, "programmeSha256": _sha(source.encode()), "helperSha256": _LOADED_SHA,
+        "loaderSha256": loader._LOADED_SHA, "argvSha256": _sha(_json(argv)),
+        "wholeArgvBytes": whole, "maxArgumentBytes": maximum, "limitBytes": 60000,
+        "requestSha256": _sha(payload), "replayAllowed": False}))
+    guard()
+    with private.Snapshot(output, "probe-request.json") as request_held, private.Snapshot(output, "submission-intent.json") as submission:
+        request_held.guard(); submission.guard(); guard()
+        if correlation in (THIRD_CORRELATION, FOURTH_CORRELATION):
+            if packet["argv"] != argv:
+                raise ValueError("retirement_transport_changed")
+            capture = _fixed546_collect(packet, 30)
+        else:
+            capture = channel._collect(argv, payload, 30)
+        if correlation in (THIRD_CORRELATION, FOURTH_CORRELATION):
+            capture["rawStreamSha256"] = {name: _sha(capture[name]) for name in ("stdout", "stderr")}
+        capture_written = _capture(output, "probe", capture)
+        if correlation in (THIRD_CORRELATION, FOURTH_CORRELATION):
+            for name, pin in {"probe-request.json": request_written, "submission-intent.json": submission_written, **capture_written}.items():
+                current.held.read(str(output.path / name), pin["sha256"], tuple(pin["generation"]), max_bytes=40 * 1024**2)
+        guard(); request_held.guard(); submission.guard()
+    if not capture["complete"] or capture["returnCode"] != 0 or capture["stderr"]:
+        raise ValueError("retirement_probe_unknown")
+    result = _parse(capture["stdout"])
+    if result.get("correlationId") != correlation or result.get("state") not in ("ready", "ended"):
+        raise ValueError("retirement_probe_binding")
+    return result
+
+
+def _publish_ended(context, native=None):
+    root, _, ready, _, output, capsules, guard, release_inventory = context
+    if ready["correlationId"] == THIRD_CORRELATION:
+        return _third_publish_ended(context, native)
+    view, expected = _source_view(output, capsules)
+    guard()
+    with closing(loader.SourceSession(view, "ssh_direct_nested_channel", expected_sources=expected)) as session:
+        captures = []
+        release_inventory()
+        result = session.module.status(root, "archlinux", ready["correlationId"], _private_capture=captures.append)
+        for index, capture in enumerate(captures):
+            _capture(output, "original-status-" + str(index), capture)
+        if result.get("state") != "ended":
+            raise ValueError("retirement_original_status_not_ended")
+        session.guard(); guard()
+        _write(output, "source-view.json", _json({"expectedSources": expected,
+            "heldSources": {name: {"sha256": _sha(raw), "realGeneration": list(session.held.files[name][1])}
+                            for name, raw in ((path, data) for path, data in session.cache.values())},
+            "historicalMcpExecutionAllowed": False}))
+    return result
+
+
+def observe_original(root, host, correlation, operation):
+    """Fixed readonly native observation; never creates or adopts READY."""
+    with _original(root, host, correlation, operation) as context:
+        result = _probe(context, operation, "observe")
+        if result.get("state") == "ended" and result.get("independentAbsence") is True:
+            result["originalStatus"] = _publish_ended(context, result)
+        _write(context[4], "result.json", _json(result))
+        return result
+
+
+def retire_owned(root, host, correlation, operation):
+    """One fixed owned exit; any existing operation refuses before transport."""
+    with _original(root, host, correlation, operation) as context:
+        with _claim_exit(context[4], operation, correlation) as claim:
+            claim.guard()
+            result = _probe(context, operation, "retire")
+            claim.guard()
+            if result.get("state") != "ended" or result.get("independentAbsence") is not True:
+                raise ValueError("retirement_absence_unproved")
+            ended = _publish_ended(context, result)
+            _write(context[4], "result.json", _json({"native": result, "originalStatus": ended, "replayAllowed": False}))
+            claim.guard()
+            return ended
+
+
+
+def _third_publish_ended(context, native):
+    """Create only a positively proved original terminal; never repair old jobs."""
+    root, value, ready, current, output, _, guard, release_inventory = context
+    if ready["correlationId"] != THIRD_CORRELATION:
+        raise ValueError("retirement_identity")
+    _third_release()
+    with ExitStack() as stack:
+        records = {name: stack.enter_context(private.Snapshot(output, name)) for name in
+            ("intent.json", "probe.json", "probe-request.json", "submission-intent.json")}
+        capture = _parse(records["probe.json"].body)
+        for name in ("stdout", "stderr"):
+            records["probe." + name] = _third_raw_part(current, output, "probe." + name, capture["rawStreamSha256"][name])
+        request = _parse(records["probe-request.json"].body)
+        submission = _parse(records["submission-intent.json"].body)
+        intent = _parse(records["intent.json"].body)
+        expected = {"state": "ended", "correlationId": THIRD_CORRELATION,
+                    "gatewayBoot": ready["master"]["gatewayBoot"], "independentAbsence": True}
+        if (type(native) is not dict or set(native) not in (set(expected), set(expected) | {"exitCapture"})
+                or any(type(native[key]) is not type(item) or native[key] != item for key, item in expected.items())
+                or _parse(records["probe.stdout"].body) != native or records["probe.stderr"].body
+                or capture.get("complete") is not True or type(capture.get("returnCode")) is not int or capture["returnCode"] != 0
+                or capture.get("eof") != {"stdout": True, "stderr": True}
+                or capture.get("counts") != {"stdout": len(records["probe.stdout"].body), "stderr": 0}
+                or any(capture.get(name) for name in ("timeout", "overflow", "readError", "firstUnknown"))
+                or request.get("ready") != ready or request.get("sourceSha256") != value["sourceSha256"]
+                or request.get("action") not in ("observe", "retire")
+                or submission.get("requestSha256") != records["probe-request.json"].digest
+                or submission.get("helperSha256") != _LOADED_SHA
+                or submission.get("loaderSha256") != loader._LOADED_SHA
+                or submission.get("programmeSha256") != _sha(_remote_program(THIRD_CORRELATION).encode())
+                or submission.get("action") != request["action"]
+                or submission.get("operationId") != request.get("operationId") or request.get("operationId") != intent.get("operationId")
+                or submission.get("correlationId") != THIRD_CORRELATION
+                or submission.get("limitBytes") != 60000
+                or any(type(submission.get(key)) is not int or not 0 < submission[key] <= 60000 for key in ("wholeArgvBytes", "maxArgumentBytes"))
+                or intent.get("currentAuthority") != current.authority
+                or intent.get("trustSeparation", {}).get("historicalTrustEquivalent") is not False):
+            raise ValueError("retirement_absence_unproved")
+        if "exitCapture" in native:
+            exit_capture = native["exitCapture"]
+            if (request["action"] != "retire" or type(exit_capture) is not dict
+                    or exit_capture.get("complete") is not True or type(exit_capture.get("returnCode")) is not int or exit_capture["returnCode"] != 0
+                    or exit_capture.get("eof") != {"stdout": True, "stderr": True}
+                    or any(exit_capture.get(name) for name in ("timeout", "overflow", "readError", "firstUnknown"))):
+                raise ValueError("retirement_exit_unproved")
+        journal = stack.enter_context(private.Directory(channel._context_journal(root, "archlinux", THIRD_CORRELATION, False, True)))
+        original = stack.enter_context(private.Snapshot(journal, THIRD_CORRELATION + ".intent.json"))
+        original_ready = stack.enter_context(private.Snapshot(journal, THIRD_CORRELATION + ".ready.json"))
+        if (original.digest != THIRD_INTENT_SHA or original_ready.digest != THIRD_READY_SHA
+                or original.pin() != intent["intent"] or original_ready.pin() != intent["ready"]):
+            raise ValueError("retirement_original_records")
+        terminal = {"state": "ended", "correlationId": THIRD_CORRELATION,
+                    "receiptSha256": original_ready.digest, "intentSha256": original.digest,
+                    "gatewayBoot": ready["master"]["gatewayBoot"]}
+        def closing():
+            guard(); original.guard(); original_ready.guard(); journal.guard()
+            for part in records.values(): part.guard()
+        closing()
+        proof = {"correlationId": THIRD_CORRELATION, "originalIntent": original.pin(),
+                 "originalReady": original_ready.pin(), "currentAuthority": current.authority,
+                 "nativeEvidence": {name: part.pin() for name, part in records.items()},
+                 "terminalSha256": _sha(_json(terminal)), "originalUnknownPreserved": True,
+                 "originalCaptureScopesAbandoned": True,
+                 "originalEofClaimed": False, "originalSourceClosingClaimed": False,
+                 "historicalTrustEquivalent": False, "replayAllowed": False}
+        _write(output, "terminal-publication-intent.json", _json(proof))
+        publication = stack.enter_context(private.Snapshot(output, "terminal-publication-intent.json"))
+        closing(); publication.guard()
+        name = THIRD_CORRELATION + ".terminal.json"
+        if not os.path.lexists(journal.path / name):
+            channel.session._create(journal.path / name, terminal, parent_fd=journal.fd)
+        saved = stack.enter_context(private.Snapshot(journal, name))
+        if _parse(saved.body) != terminal:
+            raise ValueError("retirement_terminal_conflict")
+        closing(); publication.guard(); saved.guard()
+        release_inventory()
+        captures = []
+        result = direct.status(root, "archlinux", THIRD_CORRELATION, _private_capture=captures.append)
+        if result.get("state") != "ended" or captures:
+            raise ValueError("retirement_terminal_readback")
+        closing(); publication.guard(); saved.guard()
+        _write(output, "terminal-publication.json", _json({"terminal": saved.pin(),
+            "publication": publication.pin(), "originalStatus": result,
+            "sourceExecutionFromArchive": False, "historicalTrustEquivalent": False}))
+        return result
+
+
+"""Private fixed546 gateway transport fragment; no entry point or public API.
+
+Adapted from the complete reviewed foreground carrier:
+direct_host_abandon.py a9ef684d2779a9fbf7921254f458e520471ff373f09f71ee5cd8744ccba8f483.
+OuterOwner's reserve/start/step/observe/submit/finish principles are retained.
+There is one gateway hop and no Arch execution, route adoption, or signal here.
+The integrating helper owns all input/source/authority guards and evidence writes.
+"""
+import base64
+import hashlib
+import inspect
+import json
+import os
+import re
+import select
+import selectors
+import shlex
+import subprocess
+import threading
+import time
+import zlib
+
+_FIXED546 = "546de96429aa4b9c8ea6332b1c549182"
+_FIXED546_LIMIT = 60000
+_FIXED546_SOURCE_LIMIT = 8 * 1024**2
+
+
+def _fixed546_sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+class _Fixed546Owner:
+    """Owner exists before Popen; the returned original handle is assigned first."""
+    def __init__(self, *, popen=None, clock=None, capture_limit=40 * 1024**2):
+        self.child = None
+        self.raw = {"stdout": bytearray(), "stderr": bytearray()}
+        self.counts = {name: 0 for name in self.raw}
+        self.eof = {name: False for name in self.raw}
+        self.capture_limit = capture_limit
+        self.overflow = False
+        self.timeout = False
+        self.closed = False
+        self.writer = None
+        self.writer_errors = []
+        self.read_errors = []
+        self.forwarded_bytes = 0
+        self._popen = subprocess.Popen if popen is None else popen
+        self._clock = time.monotonic if clock is None else clock
+
+    def start(self, argv, *, environment=None, input_allowed=True):
+        self.child = self._popen(argv, stdin=subprocess.PIPE if input_allowed else subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 bufsize=0, env=environment)
+        for name in self.raw:
+            os.set_blocking(getattr(self.child, name).fileno(), False)
+        if input_allowed:
+            os.set_blocking(self.child.stdin.fileno(), False)
+
+    def step(self, seconds):
+        mapping = {getattr(self.child, name).fileno(): name for name in self.raw if not self.eof[name]}
+        if not mapping:
+            time.sleep(min(seconds, .01))
+            return
+        try:
+            with selectors.DefaultSelector() as readiness:
+                for fd in mapping:
+                    readiness.register(fd, selectors.EVENT_READ)
+                ready = [key.fd for key, _ in readiness.select(seconds)]
+        except (OSError, ValueError) as error:
+            if len(self.read_errors) < 16:
+                self.read_errors.append(type(error).__name__)
+            time.sleep(.01)
+            return
+        for fd in ready:
+            name = mapping[fd]
+            try:
+                raw = os.read(fd, 65536)
+            except (BlockingIOError, InterruptedError):
+                continue
+            except OSError as error:
+                if len(self.read_errors) < 16:
+                    self.read_errors.append(type(error).__name__)
+                continue
+            if not raw:
+                self.eof[name] = True
+                continue
+            self.counts[name] += len(raw)
+            left = self.capture_limit - len(self.raw[name])
+            self.raw[name].extend(raw[:max(left, 0)])
+            if self.counts[name] > self.capture_limit:
+                self.overflow = True
+
+    def snapshot(self):
+        return {"pid": self.child.pid, "returnCode": self.child.poll(),
+                "complete": self.child.poll() is not None and all(self.eof.values()),
+                "timeout": self.timeout, "overflow": self.overflow,
+                "counts": dict(self.counts), "eof": dict(self.eof),
+                "readErrors": list(self.read_errors), "writerErrors": list(self.writer_errors),
+                "forwardedBytes": self.forwarded_bytes,
+                "stdinClosed": self.child.stdin is None or self.child.stdin.closed}
+
+    def observe(self, seconds):
+        deadline = self._clock() + seconds
+        while not (self.child.poll() is not None and all(self.eof.values())):
+            left = deadline - self._clock()
+            if left <= 0:
+                self.timeout = True
+                break
+            self.step(min(.05, left))
+        return self.snapshot()
+
+    def submit(self, payload):
+        if type(payload) is not bytes or not 4 < len(payload) <= _FIXED546_SOURCE_LIMIT + 4100:
+            raise ValueError("fixed546_input_bound")
+        expected = _fixed546_sha(payload)
+        def write():
+            view = memoryview(payload)
+            deadline = self._clock() + 60
+            try:
+                while view:
+                    if self._clock() >= deadline:
+                        raise TimeoutError("fixed546_writer_deadline")
+                    if self.child.poll() is not None:
+                        raise BrokenPipeError("fixed546_original_child_exited")
+                    with selectors.DefaultSelector() as readiness:
+                        readiness.register(self.child.stdin, selectors.EVENT_WRITE)
+                        writable = readiness.select(.05)
+                    if not writable:
+                        continue
+                    count = os.write(self.child.stdin.fileno(), view[:65536])
+                    if count > 0:
+                        view = view[count:]
+                        self.forwarded_bytes += count
+                if _fixed546_sha(payload) != expected:
+                    raise ValueError("fixed546_input_changed")
+            except BaseException as error:
+                self.writer_errors.append(type(error).__name__)
+            finally:
+                self.child.stdin.close()
+        self.writer = threading.Thread(target=write, daemon=True)
+        self.writer.start()
+
+    def finish_naturally(self):
+        if self.child is None:
+            return
+        if self.child.stdin is not None and (self.writer is None or self.writer.ident is None):
+            if not self.child.stdin.closed:
+                self.child.stdin.close()
+        # Pump before joining: the original writer can depend on the reader.
+        while not (self.child.poll() is not None and all(self.eof.values())):
+            self.step(.05)
+        if self.writer is not None and self.writer.ident is not None:
+            while self.writer.is_alive():
+                self.writer.join(.05)
+        self.child.stdout.close()
+        self.child.stderr.close()
+        self.closed = True
+
+
+def _fixed546_streams(raw):
+    return {name: {"base64": base64.b64encode(bytes(body)).decode("ascii"),
+                   "bytes": len(body), "sha256": _fixed546_sha(body)} for name, body in raw.items()}
+
+
+def _fixed546_capture(argv, payload, timeout_seconds, *, environment=None,
+                      input_allowed=True, _popen=None, _clock=None,
+                      _capture_limit=40 * 1024**2):
+    if (not isinstance(argv, (tuple, list)) or not argv
+            or not all(type(value) is str and '\0' not in value for value in argv)):
+        raise ValueError("fixed546_argv_shape")
+    sizes = [len(os.fsencode(value)) for value in argv]
+    if sum(value + 1 for value in sizes) > _FIXED546_LIMIT or max(sizes) > _FIXED546_LIMIT:
+        raise ValueError("fixed546_command_bound")
+    owner = _Fixed546Owner(popen=_popen, clock=_clock, capture_limit=_capture_limit)
+    first = None
+    primary = None
+    try:
+        owner.start(argv, environment=environment, input_allowed=input_allowed)
+        if input_allowed:
+            owner.submit(payload)
+        first = owner.observe(timeout_seconds)
+        first["streams"] = _fixed546_streams(owner.raw)
+    except BaseException as error:
+        primary = {"errorClass": type(error).__name__,
+                   "errno": error.errno if isinstance(error, OSError) else None}
+    finally:
+        owner.finish_naturally()
+    terminal = owner.snapshot() if owner.child is not None else {
+        "state": "unknown", "creationUnproved": True, "originalHandleUnavailable": True}
+    good = (first is not None and first["complete"] and not first["timeout"]
+            and not first["overflow"] and not owner.read_errors and not owner.writer_errors
+            and primary is None and owner.closed
+            and (not input_allowed or owner.forwarded_bytes == len(payload)))
+    return {"stdout": bytes(owner.raw["stdout"]), "stderr": bytes(owner.raw["stderr"]),
+            "counts": dict(owner.counts), "eof": dict(owner.eof),
+            "returnCode": owner.child.returncode if owner.child is not None else None,
+            "complete": good, "timeout": owner.timeout, "overflow": owner.overflow,
+            "readError": bool(owner.read_errors), "writeError": bool(owner.writer_errors),
+            "firstCapture": first, "originalTerminal": terminal,
+            "originalPopenRetained": owner.child is not None,
+            "originalStreamsClosed": owner.closed, "inputSourceClosing": primary is None and not owner.writer_errors,
+            "primaryError": primary, "replayAllowed": False}
+
+
+def _fixed546_transport_packet(prefix, endpoint, source, request):
+    """One gateway hop; prelaunch inline/source-stream selection, no execution."""
+    if type(source) is not str or not 0 < len(source.encode()) <= _FIXED546_SOURCE_LIMIT:
+        raise ValueError("fixed546_source_bound")
+    raw = source.encode("utf-8", "strict")
+    compile(raw, "fixed546-retirement-gateway", "exec")
+    if type(request) is not bytes or not 0 < len(request) <= 4096:
+        raise ValueError("fixed546_request_bound")
+    value = json.loads(request)
+    if (type(value) is not dict or set(value) != {"operationId", "action", "ready", "sourceSha256", "config", "profile"}
+            or value["ready"].get("correlationId") not in (_FIXED546, FOURTH_CORRELATION)
+            or value["action"] not in ("observe", "retire")
+            or re.fullmatch(r"[0-9a-f-]{36}", value["operationId"]) is None):
+        raise ValueError("fixed546_request_identity")
+    if not isinstance(prefix, (tuple, list)) or not all(type(x) is str and "\0" not in x for x in prefix):
+        raise ValueError("fixed546_prefix")
+    if type(endpoint) is not str or not endpoint or "\0" in endpoint:
+        raise ValueError("fixed546_endpoint")
+    inline = None
+    for mode in ("inline", "source-stream"):
+        packed = base64.b64encode(zlib.compress(raw)).decode("ascii") if mode == "inline" else None
+        receiver = """import base64,hashlib,io,json,os,select,sys,time,zlib
+_deadline=time.monotonic()+55
+_fd=sys.stdin.fileno();os.set_blocking(_fd,False)
+def _read_exact(_count):
+ _parts=[];_size=0
+ while _size<_count:
+  _left=_deadline-time.monotonic()
+  if _left<=0:raise ValueError('fixed546_input_deadline')
+  if not select.select([_fd],[],[],min(.05,_left))[0]:continue
+  _part=os.read(_fd,min(65536,_count-_size))
+  if not _part:raise ValueError('fixed546_input_truncated')
+  _parts.append(_part);_size+=len(_part)
+ return b''.join(_parts)
+_length=int.from_bytes(_read_exact(4),'big')
+if not 0<_length<=4096:raise ValueError('fixed546_header_bound')
+_request=_read_exact(_length)
+if hashlib.sha256(_request).hexdigest()!=@@REQUESTSHA@@:raise ValueError('fixed546_request_hash')
+_source=_read_exact(@@SIZE@@) if @@MODE@@=='source-stream' else zlib.decompress(base64.b64decode(@@PACKED@@,validate=True))
+while True:
+ _left=_deadline-time.monotonic()
+ if _left<=0:raise ValueError('fixed546_trailing_deadline')
+ if not select.select([_fd],[],[],min(.05,_left))[0]:continue
+ if os.read(_fd,1):raise ValueError('fixed546_input_trailing')
+ break
+if len(_source)!=@@SIZE@@ or hashlib.sha256(_source).hexdigest()!=@@SHA@@:raise ValueError('fixed546_source_hash')
+_original_stdin=sys.stdin
+sys.stdin=io.TextIOWrapper(io.BytesIO(_request),encoding='utf-8')
+try:exec(compile(_source.decode('utf-8','strict'),'fixed546-retirement-gateway','exec'),{'__name__':'__main__','__file__':'fixed546-retirement-gateway'})
+finally:
+ sys.stdin=_original_stdin
+ if hashlib.sha256(_source).hexdigest()!=@@SHA@@:raise ValueError('fixed546_source_closing')
+"""
+        for key, replacement in {"@@REQUESTSHA@@": repr(_fixed546_sha(request)), "@@SIZE@@": str(len(raw)),
+                                 "@@MODE@@": repr(mode), "@@PACKED@@": repr(packed), "@@SHA@@": repr(_fixed546_sha(raw))}.items():
+            receiver = receiver.replace(key, replacement)
+        command = shlex.join(("python3", "-I", "-B", "-c", receiver))
+        argv = [*prefix, "-S", "none", "-o", "ControlMaster=no", "-o", "ControlPersist=no",
+                "-T", "-o", "PermitLocalCommand=no", "-o", "ClearAllForwardings=yes",
+                "-o", "UpdateHostKeys=no", "-o", "StrictHostKeyChecking=yes",
+                "-o", "PasswordAuthentication=no", "-o", "KbdInteractiveAuthentication=no",
+                "-o", "IdentityAgent=none", "-o", "ProxyCommand=none", "-o", "ForkAfterAuthentication=no",
+                endpoint, command]
+        sizes = [len(os.fsencode(x)) for x in argv]
+        metrics = {"wholeArgvBytes": sum(x + 1 for x in sizes), "maxArgumentBytes": max(sizes),
+                   "commandBytes": len(command.encode()), "limitBytes": _FIXED546_LIMIT}
+        if mode == "inline":
+            inline = dict(metrics)
+        if all(metrics[key] <= _FIXED546_LIMIT for key in ("wholeArgvBytes", "maxArgumentBytes", "commandBytes")):
+            return {"argv": argv, "stdin": len(request).to_bytes(4, "big") + request + (raw if mode == "source-stream" else b""),
+                    "sourceTransport": mode, "programmeSha256": _fixed546_sha(raw), "programmeBytes": len(raw),
+                    "requestSha256": _fixed546_sha(request), "requestBytes": len(request),
+                    "receiverSha256": _fixed546_sha(receiver.encode()), "inlineCandidateMetrics": inline,
+                    "remoteSourceFilesCreated": False, "replayAllowed": False, **metrics}
+    raise ValueError("fixed546_command_bound")
+
+
+def _fixed546_collect(packet, timeout_seconds=30, *, _popen=None, _clock=None):
+    argv = packet["argv"]
+    sizes = [len(os.fsencode(x)) for x in argv]
+    if sum(x + 1 for x in sizes) > _FIXED546_LIMIT or max(sizes) > _FIXED546_LIMIT:
+        raise ValueError("fixed546_command_bound")
+    capture = _fixed546_capture(argv, packet["stdin"], timeout_seconds, _popen=_popen, _clock=_clock)
+    capture["transport"] = {k: v for k, v in packet.items() if k not in ("argv", "stdin")}
+    return capture
+
+
+def _fixed546_inner_source():
+    """Fixed546 only: replacement compatible with the existing `inner` call."""
+    names = (_fixed546_sha, _Fixed546Owner, _fixed546_streams, _fixed546_capture)
+    prefix = "import base64,hashlib,os,select,selectors,subprocess,threading,time\n_FIXED546_SOURCE_LIMIT=8*1024**2\n_FIXED546_LIMIT=60000\n"
+    body = "\n\n".join(inspect.getsource(item) for item in names)
+    return prefix + body + "\ndef inner(argv, timeout_seconds, environment=None):\n return _fixed546_capture(argv,None,timeout_seconds,environment=environment,input_allowed=False,_capture_limit=4096)\n"

@@ -1,0 +1,505 @@
+"""Fresh ordinary Windows task plans and observed privilege-policy validation.
+
+This module never registers a task, publishes a file, or starts a process.
+
+Requires actual native pin records from separately qualified current admission.
+This planner is not evidence that the files/VM/token/boot were admitted.
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+from pathlib import Path, PureWindowsPath
+import re
+import subprocess
+import uuid
+import xml.etree.ElementTree as ET
+
+PS = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
+PYTHON_FLAGS = ("/quiet", "InstallAllUsers=0", "PrependPath=0", "Include_launcher=0",
+                "Include_pip=0", "Include_test=0")
+PIN_FIELDS = {"path", "nativeIdentity", "security", "sha256"}
+FILE_ID_FIELDS = {"volumeSerial", "fileIndex", "attributes", "sizeBytes", "links",
+                  "creationFileTime", "lastWriteFileTime"}
+DIR_ID_FIELDS = {"volumeSerial", "fileIndex", "attributes"}
+PYTHON_REQUIRED_FILES = {"python.exe", "python313.dll", "Lib/os.py", "Lib/subprocess.py",
+                         "Lib/threading.py", "Lib/json/__init__.py",
+                         "Lib/ctypes/__init__.py", "DLLs/_ctypes.pyd"}
+SOURCE_PATHS = ("agent_tools/windows_ordinary_task.py",
+                "agent_tools/windows_ordinary_process_owner.py",
+                "agent_tools/windows_ordinary_task_owner.ps1")
+POLICY_FIELDS = ("UserId", "LogonType", "ExecutionTimeLimit", "MultipleInstancesPolicy",
+                 "WorkingDirectory", "Command", "Arguments")
+COMMON_FIELDS = {"schemaVersion", "context", "operationId", "operationRoot", "filePins",
+                 "directoryPins", "treePins", "rawStreamLimitBytes"}
+ACTION_FIELDS = {"pythonRuntime", "action", "msiPath", "installerLogPath", "qualificationArgv",
+                 "expectedExitCode", "cliPath", "workspace", "productVersion", "casesPath",
+                 "harnessPath", "bootstrap"}
+
+
+def source_inventory():
+    """Read only the three original canonical files actually consumed by plans."""
+    root = Path(__file__).resolve().parent.parent
+    result = {}
+    for name in SOURCE_PATHS:
+        body = (root / name).read_bytes()
+        result[name] = {"path": str(root / name), "sha256": hashlib.sha256(body).hexdigest(),
+                        "sizeBytes": len(body)}
+    return result
+
+
+def need(value, code):
+    if not value:
+        raise ValueError(code)
+
+
+def data(value):
+    result = (json.dumps(value, sort_keys=True, ensure_ascii=False,
+                         separators=(",", ":")) + "\n").encode("utf-8", "strict")
+    need(len(result) <= 4 * 1024 * 1024, "request-byte-bound")
+    return result
+
+
+def path(value):
+    need(type(value) is str and not any(ord(c) < 32 for c in value) and len(value) <= 1000,
+         "path-type-or-bound")
+    item = PureWindowsPath(value)
+    need(len(item.drive) == 2 and item.drive[1] == ":" and item.root == "\\"
+         and str(item) == value and not any(part in {".", ".."} or part.endswith((".", " "))
+             or any(c in '<>:"|?*' for c in part) for part in item.parts[1:]),
+         "normalized-absolute-drive-path")
+    need(not any(part.split(".")[0].upper() in {"CON", "PRN", "AUX", "NUL",
+              *{f"COM{i}" for i in range(1, 10)}, *{f"LPT{i}" for i in range(1, 10)}}
+                 for part in item.parts[1:]), "windows-device-path")
+    return item
+
+
+def validate_context(context):
+    required = {"deploymentId", "ordinarySid", "ordinarySessionId", "profileRoot",
+                "localAppData", "machineGuid", "bootIdentifier", "bootFileTimeUtc"}
+    need(type(context) is dict and set(context) == required, "context-schema")
+    for field in ("deploymentId", "machineGuid", "bootIdentifier"):
+        need(type(context[field]) is str and str(uuid.UUID(context[field])) == context[field]
+             and uuid.UUID(context[field]).int != 0, "context-canonical-guid")
+    need(re.fullmatch(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+", context["ordinarySid"])
+         and type(context["ordinarySessionId"]) is int and context["ordinarySessionId"] > 0,
+         "ordinary-context")
+    need(type(context["bootFileTimeUtc"]) is str
+         and re.fullmatch(r"[1-9][0-9]{0,18}", context["bootFileTimeUtc"]),
+         "actual-cim-boot-required")
+    profile, local = path(context["profileRoot"]), path(context["localAppData"])
+    need(local == profile / "AppData" / "Local", "ordinary-profile-local-binding")
+
+
+def validate_pin(record, directory=False):
+    need(type(record) is dict and set(record) == (PIN_FIELDS - {"sha256"} if directory else PIN_FIELDS),
+         "native-pin-schema")
+    candidate = path(record["path"])
+    need(type(record["nativeIdentity"]) is dict and set(record["nativeIdentity"]) ==
+         (DIR_ID_FIELDS if directory else FILE_ID_FIELDS), "native-file-id-schema")
+    need(all(type(value) is int and value >= 0 for key, value in record["nativeIdentity"].items()
+             if key not in {"creationFileTime", "lastWriteFileTime"})
+         and all(type(record["nativeIdentity"][key]) is str
+                 and re.fullmatch(r"[0-9]{1,19}", record["nativeIdentity"][key])
+                 for key in ({"creationFileTime", "lastWriteFileTime"} if not directory else set())),
+         "native-file-id-types")
+    need(not record["nativeIdentity"]["attributes"] & 0x400
+         and bool(record["nativeIdentity"]["attributes"] & 0x10) == directory,
+         "native-reparse-or-type")
+    if not directory:
+        need(record["nativeIdentity"]["links"] == 1 and type(record["sha256"]) is str
+             and re.fullmatch(r"[0-9a-f]{64}", record["sha256"]), "single-link-file-digest")
+    need(type(record["security"]) is dict and set(record["security"]) == {"ownerSid", "sddl"}
+         and type(record["security"]["ownerSid"]) is str
+         and type(record["security"]["sddl"]) is str and len(record["security"]["sddl"]) <= 16384,
+         "actual-owner-dacl-sddl-required")
+    return candidate
+
+
+def validate_closure(request):
+    need(type(request) is dict and COMMON_FIELDS <= set(request)
+         and set(request) <= COMMON_FIELDS | ACTION_FIELDS
+         and type(request["schemaVersion"]) is int and request["schemaVersion"] == 1,
+         "request-schema")
+    need(type(request["filePins"]) is list and 1 <= len(request["filePins"]) <= 4096
+         and type(request["directoryPins"]) is list and 1 <= len(request["directoryPins"]) <= 1024
+         and type(request["treePins"]) is list and len(request["treePins"]) <= 32,
+         "pin-list-schema-or-bound")
+    validate_context(request["context"])
+    root = path(request["operationRoot"])
+    need(root.is_relative_to(path(request["context"]["localAppData"]))
+         and root != path(request["context"]["localAppData"]), "ordinary-private-operation-root")
+    need(str(uuid.UUID(request["operationId"])) == request["operationId"], "operation-id")
+    need(len(request["filePins"]) <= 4096 and len(request["directoryPins"]) <= 1024,
+         "pin-resource-bound")
+    files = {validate_pin(item) for item in request["filePins"]}
+    directories = {validate_pin(item, True) for item in request["directoryPins"]}
+    need(len(files) == len(request["filePins"]) and len(directories) == len(request["directoryPins"]),
+         "duplicate-pin")
+    need(root in directories, "operation-root-native-pin")
+    for item in files | {root}:
+        need(set(item.parents) <= directories, "every-ancestor-native-pin-required")
+    for tree in request["treePins"]:
+        need(type(tree) is dict and set(tree) == {"role", "root", "files"}
+             and tree["role"] in {"python-runtime", "installed-app", "source"}, "tree-role-schema")
+        tree_root = path(tree["root"])
+        need(tree_root in directories and type(tree["files"]) is list and len(tree["files"]) <= 8192,
+             "complete-tree-schema")
+        names = set()
+        for name in tree["files"]:
+            need(type(name) is str and name and "\\" not in name and not name.startswith("/"),
+                 "tree-relative-name")
+            candidate = path(str(tree_root / PureWindowsPath(name)))
+            need(candidate.is_relative_to(tree_root) and candidate != tree_root
+                 and candidate in files and name.casefold() not in names, "tree-file-pin-or-alias")
+            names.add(name.casefold())
+    need(type(request["rawStreamLimitBytes"]) is int
+         and 4096 <= request["rawStreamLimitBytes"] <= 64 * 1024 * 1024,
+         "raw-stream-resource-bound")
+    data(request)
+    return files
+
+
+def validate_python_runtime(request, interpreter_path=None):
+    runtime = request.get("pythonRuntime")
+    need(type(runtime) is dict and set(runtime) == {"root", "interpreterPath", "version", "architecture"}
+         and runtime["version"] == "3.13.15" and runtime["architecture"] == "amd64",
+         "actual-admitted-python-runtime-role-required")
+    root = path(runtime["root"])
+    need(path(runtime["interpreterPath"]) == root / "python.exe", "python-runtime-interpreter-path")
+    if interpreter_path is not None:
+        need(path(interpreter_path) == path(runtime["interpreterPath"]), "exact-python-interpreter-binding")
+    trees = [tree for tree in request["treePins"]
+             if tree.get("role") == "python-runtime" and path(tree["root"]) == root]
+    need(len(trees) == 1 and PYTHON_REQUIRED_FILES <= set(trees[0]["files"]),
+         "complete-role-bound-python-runtime-tree")
+
+
+def python_installer_arguments(target_dir, log_path, ordinary_local, operation_root):
+    target, log = path(target_dir), path(log_path)
+    need(target.is_relative_to(path(ordinary_local)) and target != path(ordinary_local),
+         "explicit-new-per-user-python-target")
+    need(log.parent == path(operation_root), "explicit-new-private-python-log")
+    # CPython v3.13.15 Doc/using/windows.rst lines129-141 documents /log and
+    # TargetDir; the first six arguments are already the repository's exact pin.
+    return [*PYTHON_FLAGS, "/log", log_path, "TargetDir=" + target_dir]
+
+
+def common_request(context, operation_id, operation_root, file_pins, directory_pins,
+                   tree_pins, raw_stream_limit=16 * 1024 * 1024, python_runtime=None):
+    request = {"schemaVersion": 1, "context": context, "operationId": operation_id,
+               "operationRoot": operation_root, "filePins": file_pins,
+               "directoryPins": directory_pins, "treePins": tree_pins,
+               "rawStreamLimitBytes": raw_stream_limit}
+    if python_runtime is not None:
+        request["pythonRuntime"] = python_runtime
+    validate_closure(request)
+    return request
+
+
+def worker_request(common, action, **inputs):
+    need(type(common) is dict and set(common) in (COMMON_FIELDS, COMMON_FIELDS | {"pythonRuntime"}),
+         "common-request-fields")
+    request = dict(common)
+    files = validate_closure(request)
+    validate_python_runtime(request)
+    if action == "qualification":
+        need(set(inputs) == {"qualificationArgv", "expectedExitCode"}, "qualification-input-schema")
+        need(type(inputs["qualificationArgv"]) is list and 1 <= len(inputs["qualificationArgv"]) <= 128
+             and all(type(arg) is str and "\0" not in arg for arg in inputs["qualificationArgv"])
+             and path(inputs["qualificationArgv"][0]) in files,
+             "qualification-executable-and-argv-pins")
+        need(type(inputs["expectedExitCode"]) is int and 0 <= inputs["expectedExitCode"] <= 255,
+             "qualification-expected-exit")
+    elif action == "msi-install":
+        need(set(inputs) == {"msiPath", "installerLogPath"}, "msi-worker-input-schema")
+        need(path(inputs["msiPath"]) in files and
+             path(r"C:\Windows\System32\msiexec.exe") in files, "msi-and-native-installer-pins")
+        need(path(inputs["installerLogPath"]).parent == path(request["operationRoot"]),
+             "private-msi-log-parent")
+    else:
+        need(action in {"baseline-source-mode", "fixed-source-mode"}, "worker-action")
+        need(set(inputs) == {"cliPath", "workspace", "productVersion", "casesPath", "harnessPath"},
+             "cli-worker-input-schema")
+        need(all(path(inputs[name]) in files for name in ("cliPath", "casesPath", "harnessPath")),
+             "full-cli-and-assertion-source-pins")
+        need(path(inputs["workspace"]).parent == path(request["operationRoot"]), "private-workspace")
+        need(type(inputs["productVersion"]) is str
+             and re.fullmatch(r"(?:[1-9]|1[0-9])\.(?:[0-9]|1[0-9])\.(?:[0-9]|1[0-9])",
+                              inputs["productVersion"]), "product-version")
+        if action == "baseline-source-mode":
+            need(inputs["productVersion"] == "2.2.13", "baseline-artifact-version")
+    request.update(action=action, **inputs)
+    data(request)
+    return request
+
+
+def bootstrap_request(common, mode, **inputs):
+    need(type(common) is dict and set(common) in (COMMON_FIELDS, COMMON_FIELDS | {"pythonRuntime"}),
+         "common-request-fields")
+    request = dict(common)
+    files = validate_closure(request)
+    if mode == "qualification":
+        need(set(inputs) == {"qualificationSourcePath", "qualificationArguments"}
+             and path(inputs["qualificationSourcePath"]) in files and path(PS) in files,
+             "PS51-qualification-source-and-engine-pins")
+        need(type(inputs["qualificationArguments"]) is list
+             and len(inputs["qualificationArguments"]) <= 64
+             and all(type(arg) is str and "\0" not in arg for arg in inputs["qualificationArguments"]),
+             "qualification-argument-schema")
+        executable = PS
+        argv = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+                inputs["qualificationSourcePath"], *inputs["qualificationArguments"]]
+    elif mode == "python-install":
+        required = {"pythonInstallerPath", "pythonTargetDir", "pythonLogPath",
+                    "pythonInstallerSignerCertificateSha256"}
+        need(set(inputs) == required and path(inputs["pythonInstallerPath"]) in files,
+             "python-installer-input-schema")
+        pin = next(item for item in request["filePins"] if item["path"] == inputs["pythonInstallerPath"])
+        need(pin["sha256"] == "edec09c4853aeae9ac36efb8c9f95b6b8e2fee65eee56d9767a8b7c69c574403"
+             and pin["nativeIdentity"]["sizeBytes"] == 29452944, "exact-python-installer")
+        need(re.fullmatch(r"[0-9a-f]{64}", inputs["pythonInstallerSignerCertificateSha256"]),
+             "actual-PSF-signer-certificate-required")
+        argv = python_installer_arguments(inputs["pythonTargetDir"], inputs["pythonLogPath"],
+                                         request["context"]["localAppData"], request["operationRoot"])
+        executable = inputs["pythonInstallerPath"]
+    else:
+        required = {"pythonPath", "workerPath", "workerRequestPath", "workerRequestSha256",
+                    "workerRequestPinBase64"}
+        need(mode == "python-worker" and set(inputs) == required, "python-worker-input-schema")
+        validate_python_runtime(request, inputs["pythonPath"])
+        need(all(path(inputs[name]) in files for name in ("pythonPath", "workerPath", "workerRequestPath")),
+             "python-worker-input-pins")
+        nested_pin = json.loads(base64.b64decode(inputs["workerRequestPinBase64"], validate=True))
+        validate_pin(nested_pin)
+        need(nested_pin["path"] == inputs["workerRequestPath"]
+             and nested_pin["sha256"] == inputs["workerRequestSha256"]
+             and nested_pin in request["filePins"], "nested-worker-request-native-binding")
+        worker_pin = next(item for item in request["filePins"] if item["path"] == inputs["workerPath"])
+        canonical_worker = source_inventory()["agent_tools/windows_ordinary_process_owner.py"]
+        need(worker_pin["sha256"] == canonical_worker["sha256"]
+             and worker_pin["nativeIdentity"]["sizeBytes"] == canonical_worker["sizeBytes"],
+             "canonical-original-worker-source-required")
+        executable = inputs["pythonPath"]
+        argv = ["-I", "-S", "-B", inputs["workerPath"], "--request", inputs["workerRequestPath"],
+                "--request-sha256", inputs["workerRequestSha256"],
+                "--request-pin-base64", inputs["workerRequestPinBase64"]]
+    line = subprocess.list2cmdline([executable, *argv])
+    need(len(line.encode("utf-16le")) // 2 + 1 <= 32767
+         and len(data({"path": executable, "arg": argv})) <= 60000, "bootstrap-native-command-bounds")
+    request["bootstrap"] = {"mode": mode, **inputs}
+    data(request)
+    return request
+
+
+def render_task(request, source_pin, request_pin):
+    """Render a new task XML and exact argv; never register/start it.
+
+    First publish the canonical request bytes CreateNew and obtain its ACTUAL
+    native identity/security. Then supply that external request_pin here. Request
+    pins are external to their own bytes, avoiding a self-referential checksum.
+    """
+    files = validate_closure(request)
+    need(set(request) in (COMMON_FIELDS | {"bootstrap"},
+                         COMMON_FIELDS | {"pythonRuntime", "bootstrap"})
+         and type(request["bootstrap"]) is dict, "task-bootstrap-request-schema")
+    validate_pin(source_pin)
+    validate_pin(request_pin)
+    need(path(source_pin["path"]) in files and source_pin in request["filePins"],
+         "whole-powershell-source-pin")
+    sources = source_inventory()
+    canonical_ps = sources["agent_tools/windows_ordinary_task_owner.ps1"]
+    need(source_pin["sha256"] == canonical_ps["sha256"]
+         and source_pin["nativeIdentity"]["sizeBytes"] == canonical_ps["sizeBytes"],
+         "canonical-original-powershell-source-required")
+    request_bytes = data(request)
+    need(hashlib.sha256(request_bytes).hexdigest() == request_pin["sha256"]
+         and len(request_bytes) == request_pin["nativeIdentity"]["sizeBytes"],
+         "published-request-bytes-pin")
+    need(path(request_pin["path"]).parent == path(request["operationRoot"]),
+         "private-request-root")
+    encoded_pin = base64.b64encode(data(request_pin)).decode("ascii")
+    argv = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+            source_pin["path"], "-RequestPath", request_pin["path"], "-RequestSha256",
+            request_pin["sha256"], "-RequestPinBase64", encoded_pin]
+    line = subprocess.list2cmdline([PS, *argv])
+    command_units = len(line.encode("utf-16le")) // 2 + 1
+    need(command_units <= 32767, "task-command-utf16-bound")
+    wire = data({"path": PS, "arg": argv, "capture-output": True})
+    need(len(wire) <= 60000, "task-command-json-bound")
+    ET.register_namespace("", NS)
+    element = lambda tag, **kwargs: ET.Element(f"{{{NS}}}{tag}", kwargs)
+    task = element("Task", version="1.4")
+    principals = ET.SubElement(task, f"{{{NS}}}Principals")
+    principal = ET.SubElement(principals, f"{{{NS}}}Principal", {"id": "OrdinaryUser"})
+    for name, value in (("UserId", request["context"]["ordinarySid"]),
+                        ("LogonType", "InteractiveToken"), ("RunLevel", "LeastPrivilege")):
+        ET.SubElement(principal, f"{{{NS}}}{name}").text = value
+    settings = ET.SubElement(task, f"{{{NS}}}Settings")
+    for name, value in (("MultipleInstancesPolicy", "IgnoreNew"),
+                        ("DisallowStartIfOnBatteries", "false"),
+                        ("StopIfGoingOnBatteries", "false"), ("AllowHardTerminate", "false"),
+                        ("StartWhenAvailable", "false"), ("RunOnlyIfNetworkAvailable", "false"),
+                        ("Enabled", "true"), ("Hidden", "false"),
+                        ("ExecutionTimeLimit", "PT0S"), ("WakeToRun", "false")):
+        ET.SubElement(settings, f"{{{NS}}}{name}").text = value
+    actions = ET.SubElement(task, f"{{{NS}}}Actions", {"Context": "OrdinaryUser"})
+    action = ET.SubElement(actions, f"{{{NS}}}Exec")
+    for name, value in (("Command", PS), ("Arguments", subprocess.list2cmdline(argv)),
+                        ("WorkingDirectory", request["operationRoot"])):
+        ET.SubElement(action, f"{{{NS}}}{name}").text = value
+    xml_text = ET.tostring(task, encoding="utf-8", xml_declaration=True).decode("utf-8")
+    expected_policy = policy_fields(xml_text)
+    return {"taskName": "VpnControlOrdinary-" + request["operationId"],
+            "xmlUtf8": xml_text, "policyExpected": expected_policy,
+            "policyValidatorPowerShell": task_policy_powershell(expected_policy),
+            "canonicalSourceFiles": sources,
+            "requestSha256": request_pin["sha256"], "sourceSha256": source_pin["sha256"],
+            "commandUtf16Units": command_units, "commandJsonBytes": len(wire),
+            "argv": [PS, *argv], "nativeActionAllowed": False,
+            "remainingAdmission": ["native-PS5.1-parser", "exact-task-XML-COM-policy",
+                "current-boot-typed-ABI", "held-source-and-native-file-pins",
+                "harmless-direct-complete-owner-scenarios", "matching-current-MCP-scenarios"]}
+
+
+def _policy_xml(xml_text):
+    need(type(xml_text) is str and 0 < len(xml_text.encode("utf-8")) <= 65536
+         and "<!DOCTYPE" not in xml_text.upper() and "<!ENTITY" not in xml_text.upper(),
+         "task-xml-bound-or-declaration")
+    # Windows exported UTF-8 TEXT retains an encoding=UTF-16 declaration. Parse
+    # decoded Unicode; never rewrite authentic before bytes or guess their codec.
+    tree = ET.fromstring(xml_text)
+    need(tree.tag == f"{{{NS}}}Task", "task-xml-root")
+    return tree
+
+
+def policy_fields(xml_text):
+    tree = _policy_xml(xml_text)
+    result = {}
+    for field in POLICY_FIELDS:
+        matches = tree.findall(f".//{{{NS}}}{field}")
+        need(len(matches) == 1 and matches[0].text is not None, "task-xml-field-" + field)
+        result[field] = matches[0].text
+    return result
+
+
+def validate_task_policy(xml_text, native, expected):
+    """Validate observed XML plus independently captured typed native facts.
+
+    Pure validation is not a native admission capability. The registered task's
+    cmdlet and COM values must be read by the actual sole operator before start;
+    request JSON or this return value alone never authorizes registration/start.
+    """
+    need(type(expected) is dict and set(expected) == set(POLICY_FIELDS), "task-expected-fields")
+    need(type(expected["UserId"]) is str
+         and re.fullmatch(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+", expected["UserId"])
+         and expected["LogonType"] == "InteractiveToken"
+         and expected["ExecutionTimeLimit"] == "PT0S"
+         and expected["MultipleInstancesPolicy"] == "IgnoreNew"
+         and expected["Command"] == PS, "ordinary-task-required-policy")
+    need(type(native) is dict and set(native) == {"cmdletSid", "cmdletRunLevel", "cmdletLogonType",
+         "comSid", "comRunLevel", "comLogonType"}, "native-principal-schema")
+    need(type(native["cmdletSid"]) is str and type(native["comSid"]) is str
+         and native["cmdletSid"] == native["comSid"] == expected["UserId"]
+         and type(native["cmdletRunLevel"]) is str and native["cmdletRunLevel"] == "Limited"
+         and type(native["cmdletLogonType"]) is str and native["cmdletLogonType"] == "Interactive"
+         and type(native["comRunLevel"]) is int and native["comRunLevel"] == 0
+         and type(native["comLogonType"]) is int and native["comLogonType"] == 3,
+         "native-principal-policy")
+    tree = _policy_xml(xml_text)
+    need(policy_fields(xml_text) == expected, "task-xml-fields-changed")
+    levels = tree.findall(f".//{{{NS}}}RunLevel")
+    need(len(levels) <= 1 and (not levels or levels[0].text == "LeastPrivilege"),
+         "task-xml-runlevel")
+    need(len(tree.findall(f".//{{{NS}}}Principal")) == 1
+         and len(tree.findall(f".//{{{NS}}}Exec")) == 1
+         and all(len(element) == 0 for element in tree.findall(f".//{{{NS}}}Triggers")),
+         "task-xml-ambiguous-or-triggered")
+    return {"xmlRunLevel": "LeastPrivilege" if levels else "omitted-native-limited",
+            "typedNativePrincipalMatched": True, "nativeActionAllowed": False}
+
+
+def _ps_literal(value):
+    need(type(value) is str and "\0" not in value, "powershell-data-literal")
+    return "'" + value.replace("'", "''") + "'"
+
+
+def task_policy_powershell(expected):
+    """Actual emitted validator consumed by the task plan's pre-start operator.
+
+    This is the native-proven V5 decision generalized to the supplied exact task.
+    It reads no task and performs no effect; its parameters are actual native
+    cmdlet/COM observations, not caller readiness flags.
+    """
+    need(type(expected) is dict and set(expected) == set(POLICY_FIELDS), "task-expected-fields")
+    fields = ";".join(name + "=" + _ps_literal(expected[name]) for name in POLICY_FIELDS)
+    return r'''function Assert-OrdinaryTaskPolicy {
+ param([string]$Xml,[string]$CmdletSid,[object]$CmdletRunLevel,[object]$CmdletLogonType,[string]$ComSid,[object]$ComRunLevel,[object]$ComLogonType)
+ $fields=[ordered]@{@FIELDS@}
+ if($CmdletSid -cne $fields.UserId -or $ComSid -cne $CmdletSid -or $CmdletRunLevel -isnot [string] -or $CmdletRunLevel -cne 'Limited' -or $CmdletLogonType -isnot [string] -or $CmdletLogonType -cne 'Interactive' -or $ComRunLevel -isnot [int] -or $ComRunLevel -ne 0 -or $ComLogonType -isnot [int] -or $ComLogonType -ne 3){throw 'TOKEN_NATIVE_PRINCIPAL_POLICY'}
+ if([Text.Encoding]::UTF8.GetByteCount($Xml) -gt 65536 -or $Xml.ToUpperInvariant().Contains('<!DOCTYPE') -or $Xml.ToUpperInvariant().Contains('<!ENTITY')){throw 'TOKEN_XML_DECLARATION_OR_BOUND'}
+ $settings=[Xml.XmlReaderSettings]::new();$settings.DtdProcessing=[Xml.DtdProcessing]::Prohibit;$settings.XmlResolver=$null;$settings.MaxCharactersInDocument=65536
+ $textReader=[IO.StringReader]::new($Xml);$reader=[Xml.XmlReader]::Create($textReader,$settings)
+ try{$policyDoc=[Xml.XmlDocument]::new();$policyDoc.XmlResolver=$null;$policyDoc.Load($reader)}finally{$reader.Dispose();$textReader.Dispose()}
+ if($policyDoc.DocumentElement.LocalName -cne 'Task' -or $policyDoc.DocumentElement.NamespaceURI -cne 'http://schemas.microsoft.com/windows/2004/02/mit/task'){throw 'TOKEN_XML_ROOT'}
+ $policyNs=[Xml.XmlNamespaceManager]::new($policyDoc.NameTable);$policyNs.AddNamespace('t','http://schemas.microsoft.com/windows/2004/02/mit/task')
+ foreach($name in $fields.Keys){$nodes=$policyDoc.SelectNodes('//t:'+$name,$policyNs);if($nodes.Count -ne 1 -or $nodes[0].InnerText -cne $fields[$name]){throw ('TOKEN_XML_FIELD_'+$name)}}
+ $levels=$policyDoc.SelectNodes('//t:RunLevel',$policyNs);if($levels.Count -gt 1 -or ($levels.Count -eq 1 -and $levels[0].InnerText -cne 'LeastPrivilege')){throw 'TOKEN_XML_RUNLEVEL'}
+ if($policyDoc.SelectNodes('//t:Principal',$policyNs).Count -ne 1 -or $policyDoc.SelectNodes('//t:Exec',$policyNs).Count -ne 1 -or $policyDoc.SelectNodes('//t:Triggers/*',$policyNs).Count -ne 0){throw 'TOKEN_XML_AMBIGUOUS'}
+}
+'''.replace("@FIELDS@", fields)
+
+
+def policy_regression_program(before_source, xml_text, native, mode):
+    """Emit finite no-task/no-install causal proof for the original XML failure.
+
+    `before` runs the exact original if-statement on the authentic XML and exits
+    nonzero with TOKEN_TASK_XML. `after` runs the actual current emitted validator
+    against the same XML/native facts and every native phase's ambiguity control.
+    The full preserved before source is data; no historical launcher is replayed.
+    """
+    need(mode in {"before", "after"}, "policy-regression-mode")
+    expected = policy_fields(xml_text)
+    needle = "if($doc.SelectSingleNode('//t:UserId'"
+    lines = [line for line in before_source.splitlines() if line.startswith(needle)]
+    need(len(lines) == 1 and lines[0].endswith("{throw 'TOKEN_TASK_XML'}"), "authentic-before-statement")
+    validate_task_policy(xml_text, native, expected)
+    prefix = ("$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';"
+              "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n"
+              "$xml=" + _ps_literal(xml_text) + "\n")
+    if mode == "before":
+        return (prefix + "$output=" + _ps_literal(expected["WorkingDirectory"]) + "\n"
+                "[xml]$doc=$xml;$ns=[Xml.XmlNamespaceManager]::new($doc.NameTable);"
+                "$ns.AddNamespace('t','http://schemas.microsoft.com/windows/2004/02/mit/task')\n"
+                + lines[0] + "\nthrow 'UNEXPECTED_OLD_ACCEPTANCE'\n")
+    facts = ("$facts=@{CmdletSid=" + _ps_literal(native["cmdletSid"]) + ";CmdletRunLevel='Limited';"
+             "CmdletLogonType='Interactive';ComSid=" + _ps_literal(native["comSid"]) +
+             ";ComRunLevel=[int]0;ComLogonType=[int]3}\n")
+    controls = r'''$controls=@(
+ @{name='original-default-omitted';xml=$xml;accept=$true},
+ @{name='explicit-least';xml=$xml.Replace('</LogonType>','</LogonType><RunLevel>LeastPrivilege</RunLevel>');accept=$true},
+ @{name='xml-elevated';xml=$xml.Replace('</LogonType>','</LogonType><RunLevel>HighestAvailable</RunLevel>');accept=$false},
+ @{name='xml-empty';xml=$xml.Replace('</LogonType>','</LogonType><RunLevel/>');accept=$false},
+ @{name='xml-duplicate';xml=$xml.Replace('</LogonType>','</LogonType><RunLevel>LeastPrivilege</RunLevel><RunLevel>LeastPrivilege</RunLevel>');accept=$false},
+ @{name='native-com-elevated';changes=@{ComRunLevel=[int]1};accept=$false},
+ @{name='native-cmdlet-elevated';changes=@{CmdletRunLevel='Highest'};accept=$false},
+ @{name='native-com-null';changes=@{ComRunLevel=$null};accept=$false},
+ @{name='native-com-ambiguous-string';changes=@{ComRunLevel='0'};accept=$false},
+ @{name='native-logon-wrong';changes=@{ComLogonType=[int]2};accept=$false},
+ @{name='xml-user-wrong';xml=$xml.Replace(@SID@,'S-1-5-18');accept=$false},
+ @{name='xml-auto-kill';xml=$xml.Replace('PT0S','PT1M');accept=$false},
+ @{name='xml-trigger';xml=$xml.Replace('<Triggers />','<Triggers><BootTrigger/></Triggers>');accept=$false}
+)
+$observed=@()
+foreach($control in $controls){
+ $args=$facts.Clone();$args.Xml=$xml;if($control.ContainsKey('xml')){$args.Xml=$control.xml}
+ if($control.ContainsKey('changes')){foreach($key in $control.changes.Keys){$args[$key]=$control.changes[$key]}}
+ $accepted=$true;$reason=$null;try{Assert-OrdinaryTaskPolicy @args}catch{$accepted=$false;$reason=$_.Exception.Message}
+ if($accepted -ne $control.accept){throw ('POLICY_CONTROL_'+$control.name)}
+ $observed+=,@{name=$control.name;expected=$control.accept;accepted=$accepted;reason=$reason}
+}
+[Console]::Out.WriteLine((@{schemaVersion=1;phase='ordinary-task-policy-causal';fixedValidator='GREEN';controls=$observed;productOperation=$false;nativeActionAllowed=$false}|ConvertTo-Json -Depth 8 -Compress))
+'''.replace("@SID@", _ps_literal(expected["UserId"]))
+    return prefix + task_policy_powershell(expected) + facts + controls

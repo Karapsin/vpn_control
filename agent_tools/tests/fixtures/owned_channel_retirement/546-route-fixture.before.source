@@ -1,0 +1,1250 @@
+"""Finite historical admission, real source-view custody and no-replay fence."""
+import ast
+from contextlib import closing
+import hashlib
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import socket
+import shutil
+import sys
+import tempfile
+import types
+import unittest
+import uuid
+import re
+import time
+import base64
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[2]
+FIXTURE = Path(__file__).parent / "fixtures/owned_channel_retirement"
+
+
+@unittest.skipUnless(os.name == "posix", "POSIX private channel coordinator")
+class OwnedChannelRetirementTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools import ssh_owned_channel_retirement as subject
+        self.subject = subject
+        self.temporary = tempfile.TemporaryDirectory(prefix="owned-channel-retire-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name).resolve()
+        self.root.chmod(0o700)
+
+    def test_authentic_original_records_and_all_capsule_members_are_bound(self):
+        subject = self.subject
+        provenance = json.loads((FIXTURE / "provenance.json").read_bytes())
+        records = {}
+        for name, digest in (("intent", subject.INTENT_SHA), ("ready", subject.READY_SHA)):
+            raw = (FIXTURE / (name + ".json")).read_bytes()
+            self.assertEqual(digest, hashlib.sha256(raw).hexdigest())
+            self.assertEqual({"sha256": digest, "bytes": len(raw), "role": provenance["records"][name]["role"]}, provenance["records"][name])
+            records[name] = json.loads(raw)
+        self.assertEqual(subject.CORRELATION, records["intent"]["correlationId"])
+        self.assertEqual(subject.READY_SHA, provenance["records"]["ready"]["sha256"])
+        self.assertEqual(set(subject.direct._SOURCE_NAMES), set(records["intent"]["directSourcePins"]))
+        self.assertEqual(records["intent"]["sourceSha256"], records["intent"]["directSourcePins"]["ssh_fresh_nested_channel.py"])
+        self.assertTrue(subject.channel._master_shape(records["ready"]["result"]["master"]))
+        # Input identities are rejected before opening any repository/private file.
+        for host, corr in (("other", subject.CORRELATION), ("archlinux", "0" * 32)):
+            with self.assertRaisesRegex(ValueError, "retirement_identity"):
+                with subject._original(self.root, host, corr, str(uuid.uuid4())):
+                    self.fail("identity must not enter")
+
+    def test_exact_guard_only_historical_mcp_data_transition(self):
+        subject = self.subject
+        current = (ROOT / "agent_tools/mcp_server.py").read_bytes()
+        tree = ast.parse(current)
+        function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_ssh_workflow_impl")
+        guard = next(node for node in ast.walk(function) if isinstance(node, ast.If) and ast.unparse(node.test) == "os.name != 'posix'")
+        lines = current.splitlines(keepends=True)
+        before = b"".join(lines[:guard.lineno - 1] + lines[guard.end_lineno:])
+        self.assertEqual(subject.BEFORE_MCP, hashlib.sha256(before).hexdigest())
+        subject._mcp_data_transition(before, current)
+        for old, new in ((before + b"\n", current), (before, current + b"\n"), (current, before)):
+            with self.assertRaisesRegex(ValueError, "retirement_mcp_source"):
+                subject._mcp_data_transition(old, new)
+
+    def _view(self):
+        subject = self.subject
+        directory = subject.private.Directory(self.root)
+        self.addCleanup(directory.close)
+        capsules = {}
+        for name in subject.direct._SOURCE_NAMES:
+            raw = (ROOT / "agent_tools" / name).read_bytes()
+            # Historical MCP is deliberately untrusted data. The real loader
+            # must reject this import without executing even one statement.
+            if name == "mcp_server.py":
+                raw = ("from pathlib import Path\nPath(" + repr(str(self.root / "EXECUTED")) + ").touch()\n").encode()
+            capsules[name] = types.SimpleNamespace(body=raw, digest=hashlib.sha256(raw).hexdigest())
+        return subject._source_view(directory, capsules)
+
+    def test_real_capsule_namespace_and_historical_mcp_import_refusal(self):
+        subject = self.subject
+        view, expected = self._view()
+        self.assertNotIn(str(view / "mcp_server.py"), expected)
+        with closing(subject.loader.SourceSession(view, "ssh_direct_nested_channel", expected_sources=expected)) as session:
+            self.assertEqual(str(view / "ssh_direct_nested_channel.py"), session.module.__file__)
+            self.assertNotEqual((ROOT / "agent_tools/ssh_direct_nested_channel.py").stat().st_ino,
+                                (view / "ssh_direct_nested_channel.py").stat().st_ino)
+            native = session.load("ssh_fresh_nested_channel")
+            self.assertEqual(subject.channel._REMOTE, native._REMOTE)
+            for name, (path, raw) in session.cache.items():
+                self.assertEqual(Path(path).read_bytes(), raw)
+                self.assertEqual(subject.private._generation(Path(path).stat()), session.held.files[path][1])
+            with self.assertRaisesRegex(ValueError, "expected_source_bytes_changed"):
+                session.load("mcp_server")
+            self.assertFalse((self.root / "EXECUTED").exists())
+            session.guard()
+
+    def test_capsule_replacement_is_rejected_by_real_held_generations(self):
+        subject = self.subject
+        view, expected = self._view()
+        with closing(subject.loader.SourceSession(view, "ssh_direct_nested_channel", expected_sources=expected)) as session:
+            path = view / "ssh_direct_nested_channel.py"
+            replacement = view / "replacement"
+            replacement.write_bytes(path.read_bytes()); replacement.chmod(0o600)
+            replacement.replace(path)
+            with self.assertRaises(ValueError):
+                session.guard()
+
+    def test_exclusive_selection_fence_blocks_real_shared_admission(self):
+        subject = self.subject
+        with subject.private.Directory(self.root) as directory:
+            with subject.selection._Lock(directory):
+                script = "import fcntl,os,sys;f=os.open(sys.argv[1],os.O_RDONLY);fcntl.flock(f,fcntl.LOCK_SH|fcntl.LOCK_NB)"
+                child = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(self.root / "selection.lock")],
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+                self.assertNotEqual(0, child.returncode)
+                self.assertIn(b"BlockingIOError", child.stderr)
+
+    def test_real_config_lock_handoff_allows_authentic_status_lock(self):
+        subject = self.subject
+        with subject.private.Directory(self.root) as directory:
+            with subject.private.InventoryLock(directory) as original:
+                with self.assertRaises(BlockingIOError):
+                    subject.private.InventoryLock(directory)
+                subject.private.fcntl.flock(original.snapshot.fd, subject.private.fcntl.LOCK_UN)
+                with subject.private.InventoryLock(directory) as status:
+                    status.guard(); original.guard()
+                original.guard()
+
+    def test_single_exit_claim_blocks_every_later_uuid_after_lost_ack(self):
+        subject = self.subject
+        operation = self.root / str(uuid.uuid4()); operation.mkdir(mode=0o700)
+        with subject.private.Directory(operation) as output:
+            with subject._claim_exit(output, operation.name):
+                pass
+        first = (self.root / (subject.CORRELATION + ".exit-intent.json")).read_bytes()
+        # A lost collector acknowledgment cannot turn a new ID into another exit.
+        other = self.root / str(uuid.uuid4()); other.mkdir(mode=0o700)
+        with subject.private.Directory(other) as output:
+            with self.assertRaises(FileExistsError):
+                with subject._claim_exit(output, other.name):
+                    self.fail("second exit claim")
+        self.assertEqual(first, (self.root / (subject.CORRELATION + ".exit-intent.json")).read_bytes())
+
+    def test_real_original_child_terminal_dual_eof_capture_and_positive_absence(self):
+        subject = self.subject
+        process = subprocess.Popen([sys.executable, "-I", "-B", "-c", "import time;time.sleep(30)"],
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.addCleanup(lambda: process.poll() is None and process.kill())
+        self.addCleanup(process.wait)
+        with self.assertRaisesRegex(ValueError, "retirement_local_owner_present"):
+            subject._local_absent(process.pid)
+        process.terminate(); process.communicate(timeout=5)
+        subject._local_absent(process.pid)
+        capture = subject.channel._collect([sys.executable, "-I", "-B", "-c",
+            "import sys;sys.stdin.buffer.read();sys.stdout.buffer.write('Ω'.encode());sys.stderr.buffer.write(b'raw');raise SystemExit(7)"], b"{}", 5)
+        self.assertTrue(capture["complete"])
+        self.assertEqual({"stdout": True, "stderr": True}, capture["eof"])
+        self.assertEqual(7, capture["returnCode"])
+        self.assertEqual(("Ω".encode(), b"raw"), (capture["stdout"], capture["stderr"]))
+        with subject.private.Directory(self.root) as output:
+            subject._capture(output, "actual-child", capture)
+        self.assertEqual(capture["stdout"], (self.root / "actual-child.stdout").read_bytes())
+        subject._local_absent(capture["pid"])
+
+    def _native(self, *, active_unix=False, tcp_state="01", birth=123, missing_ready=False,
+                action="observe", exit_code=0, subject=None, default_config=False, correlation=None):
+        """Unchanged current native body, private inert Linux facts and real child.
+
+        Native route facts are the declared seam; the production host admission,
+        snapshot/census/parser/claim code and actual child EOF collector execute.
+        This is a routine logic fixture, never a native acceptance receipt.
+        """
+        subject = subject or self.subject
+        short = tempfile.TemporaryDirectory(prefix="r-", dir="/tmp")
+        self.addCleanup(short.cleanup)
+        native = Path(short.name).resolve()
+        corr = correlation or subject.CORRELATION; stage = native / "tmp" / ("vpn-channel-" + corr)
+        stage.mkdir(parents=True, mode=0o700)
+        sock = socket.socket(socket.AF_UNIX)
+        self.addCleanup(sock.close)
+        sock.bind(str(stage / "m")); (stage / "m").chmod(0o600)
+        proc = native / "proc"; (proc / "net").mkdir(parents=True)
+        (proc / "sys/kernel/random").mkdir(parents=True)
+        boot = "00000000-0000-0000-0000-000000000001"
+        (proc / "sys/kernel/random/boot_id").write_text(boot + "\n")
+        actor = proc / "98765"; (actor / "fd").mkdir(parents=True)
+        (actor / "stat").write_bytes(b"98765 (ssh) " + b" ".join([b"S"] + [b"0"] * 18 + [str(birth).encode()]) + b"\n")
+        for index, inode in enumerate((444, 666, *((555,) if active_unix else ()))):
+            (actor / "fd" / str(index)).symlink_to("socket:[%d]" % inode)
+        table = b"Num       RefCount Protocol Flags    Type St Inode Path\n00000000: 00000002 00000000 00010000 0001 01 444 " + ("/tmp/vpn-channel-" + corr + "/m").encode() + b"\n"
+        if active_unix:
+            table += b"00000000: 00000003 00000000 00000000 0001 03 555\n"
+        (proc / "net/unix").write_bytes(table)
+        (proc / "net/tcp").write_text("  sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n 0: 0100007F:1234 0200007F:0016 " + tcp_state + " 0:0 0:0 0 0 0 666\n")
+        (proc / "net/tcp6").write_text("  sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n")
+        home = native / "home/fixture"; (home / ".ssh").mkdir(parents=True, mode=0o700)
+        config_path = home / ".ssh/config"
+        config_path.write_text("Host fixture\n HostName example.test\n"); config_path.chmod(0o600)
+        master = {"actor": {"pid": 98765, "startTicks": 123, "uid": os.getuid()},
+                  "socket": list(subject.private._generation((stage / "m").stat())),
+                  "directory": list(subject.private._directory_identity(stage.stat())),
+                  "listenerInode": "444", "gatewayBoot": boot}
+        ready = {"state": "ready", "correlationId": corr, "controlPath": "/tmp/vpn-channel-" + corr + "/m",
+                 "arch": {"uid": 1000, "boot": boot}, "master": master}
+        intent = {"correlationId": corr, "gatewayBoot": boot, "gatewayUid": os.getuid(),
+                  "sourceSha256": "a" * 64, "configPin": {"fixture": "config"}, "effectiveRoute": {"fixture": "route"}}
+        for name, value in (("intent", intent), ("ready", ready)):
+            path = stage / (name + ".json"); path.write_text(json.dumps(value)); path.chmod(0o600)
+        if missing_ready:
+            (stage / "ready.json").unlink()
+        request = {"operationId": str(uuid.uuid4()), "action": action, "ready": ready,
+                   "sourceSha256": "a" * 64, "config": "" if default_config else str(config_path), "profile": "fixture"}
+        def mapped(path):
+            value = os.fspath(path)
+            return str(native / value[1:]) if value.startswith(("/proc", "/tmp")) else value
+        facade = types.SimpleNamespace(**vars(os))
+        for name in ("open", "stat", "lstat", "listdir", "readlink", "mkdir"):
+            original = getattr(os, name)
+            setattr(facade, name, lambda path, *args, _original=original, **kwargs: _original(mapped(path), *args, **kwargs))
+        facade.path = types.SimpleNamespace(**vars(os.path))
+        facade.path.lexists = lambda path: os.path.lexists(mapped(path))
+        class NativePath:
+            def __new__(cls, path):
+                return Path(mapped(path))
+            @staticmethod
+            def home():
+                return home
+        calls = []
+        def inner(argv, timeout):
+            calls.append(argv)
+            collector = (lambda argv, payload, timeout: subject._fixed546_capture(argv, None, timeout, input_allowed=False)) if corr == getattr(subject, "THIRD_CORRELATION", None) else subject.channel._collect
+            capture = collector([sys.executable, "-I", "-B", "-c",
+                "import sys;sys.stdin.buffer.read();sys.stderr.write('Exit request sent.\\n');raise SystemExit(" + str(exit_code) + ")"], b"{}", timeout)
+            if exit_code == 0:
+                (stage / "m").unlink(); shutil.rmtree(actor)
+                (proc / "net/unix").write_bytes(table.splitlines(keepends=True)[0])
+            return capture
+        namespace = {"json": json, "sys": types.SimpleNamespace(stdin=types.SimpleNamespace(buffer=io.BytesIO(json.dumps(request).encode()))),
+                     "os": facade, "Path": NativePath, "stat": __import__("stat"),
+                     "re": re, "time": time, "base64": base64, "hashlib": hashlib,
+                     "generation": lambda info: list(subject.private._generation(info)),
+                     "reject_pairs": subject.transport._reject_duplicate_keys,
+                     "effective_route": lambda *args: intent["effectiveRoute"], "inner": inner}
+        exec(compile(subject.channel._guard_program, "unchanged-native-route-guards", "exec"), namespace)
+        # Real owner/no-follow ancestry/descriptor/name/bytes guard on a real
+        # private file. Only the native home getter and ssh-G route facts are
+        # seams; no local home or guessed gateway path is used by production.
+        intent["configPin"] = namespace["file_pin"](config_path, body=True)
+        (stage / "intent.json").write_text(json.dumps(intent))
+        namespace["effective_route"] = lambda *args: intent["effectiveRoute"]
+        def execute():
+            stream = io.StringIO()
+            namespace["sys"].stdin.buffer = io.BytesIO(json.dumps(request).encode())
+            try:
+                with mock.patch("sys.stdout", stream):
+                    exec(compile(subject._PROBE, "unchanged-owned-retirement-body", "exec"), namespace)
+            finally:
+                for _, fd, _, _ in namespace.get("held", ()):
+                    os.close(fd)
+                if "directory_fd" in namespace:
+                    os.close(namespace.pop("directory_fd"))
+            return json.loads(stream.getvalue())
+        execute.request = request
+        execute.config_path = config_path
+        return execute, calls, native
+
+    def test_unchanged_native_probe_accepts_exact_idle_master_without_effect(self):
+        execute, calls, _ = self._native()
+        result = execute()
+        self.assertEqual("ready", result["state"])
+        self.assertTrue(result["unixListenerOnly"])
+        self.assertEqual([], calls)
+
+    def test_unchanged_native_probe_rejects_active_unnamed_mux_and_tcp_forwarder(self):
+        for facts, reason in (({"active_unix": True}, "mux_client_active"), ({"tcp_state": "0A"}, "forwarding_socket")):
+            execute, calls, _ = self._native(**facts)
+            with self.assertRaisesRegex(ValueError, reason):
+                execute()
+            self.assertEqual([], calls)
+
+    def test_unchanged_native_probe_rejects_pid_reuse_and_missing_original_ready(self):
+        for facts, error in (({"birth": 124}, ValueError), ({"missing_ready": True}, FileNotFoundError)):
+            execute, calls, _ = self._native(**facts)
+            with self.assertRaises(error):
+                execute()
+            self.assertEqual([], calls)
+
+    def test_unchanged_native_exit_retains_real_child_eof_and_independent_absence(self):
+        execute, calls, native = self._native(action="retire")
+        result = execute()
+        self.assertEqual("ended", result["state"])
+        self.assertTrue(result["independentAbsence"])
+        self.assertEqual(1, len(calls))
+        self.assertEqual(["-O", "exit", "fixture"], calls[0][-3:])
+        self.assertEqual({"stdout": True, "stderr": True}, result["exitCapture"]["eof"])
+        self.assertTrue(result["exitCapture"]["complete"])
+        self.assertTrue((native / "tmp" / ("vpn-retire-" + self.subject.CORRELATION) / "exit.json").is_file())
+
+    def test_unchanged_native_unknown_exit_cannot_replay_even_with_same_body(self):
+        execute, calls, _ = self._native(action="retire", exit_code=255)
+        with self.assertRaisesRegex(ValueError, "exit_unknown"):
+            execute()
+        self.assertEqual(1, len(calls))
+        # Reset only stdin to model a later observer; preserve all native facts
+        # and the durable correlation-level claim from the original execution.
+        with self.assertRaises(FileExistsError):
+            execute()
+        self.assertEqual(1, len(calls))
+
+    def test_emitted_programme_is_complete_and_bounded(self):
+        programme = self.subject._remote_program()
+        compile(programme, "owned-retirement-native", "exec")
+        self.assertLess(len(programme.encode()), 60000)
+
+    def test_fully_rendered_oversized_command_refuses_before_collector_or_intent(self):
+        subject = self.subject
+        config = types.SimpleNamespace(hosts={"archlinux": types.SimpleNamespace(
+            gateway="gateway", remote_config_file="/home/fixture/.ssh/config", remote_host_alias="fixture")})
+        current = types.SimpleNamespace(config=config)
+        with subject.private.Directory(self.root) as output:
+            context = (self.root, {"sourceSha256": "a" * 64}, {}, current, output, {}, lambda: None, lambda: None)
+            with mock.patch.object(subject, "_remote_program", return_value="x" * 60001), \
+                    mock.patch.object(subject.transport, "connection_host", return_value=object()), \
+                    mock.patch.object(subject.direct, "outer_prefix", return_value=(["/usr/bin/ssh"], "fixture")), \
+                    mock.patch.object(subject.channel, "_collect", side_effect=AssertionError("unexpected effect")) as collect:
+                with self.assertRaisesRegex(ValueError, "retirement_command_bound"):
+                    subject._probe(context, str(uuid.uuid4()), "retire")
+                collect.assert_not_called()
+            self.assertEqual([], os.listdir(output.fd))
+
+    def test_authentic_none_config_whole_before_probe_is_red_and_current_is_green(self):
+        subject = self.subject
+        fixture = FIXTURE.parent / "retirement_default_config"
+        raw = (fixture / "before.source").read_bytes()
+        provenance = json.loads((fixture / "provenance.json").read_bytes())
+        self.assertEqual(provenance["beforeSha256"], hashlib.sha256(raw).hexdigest())
+        before = types.ModuleType("agent_tools._retirement_before_" + uuid.uuid4().hex)
+        before.__package__ = "agent_tools"; before.__file__ = str(fixture / "before.source")
+        sys.modules[before.__name__] = before
+        self.addCleanup(sys.modules.pop, before.__name__, None)
+        exec(compile(raw, before.__file__, "exec"), before.__dict__)
+        real_collect = subject.channel._collect
+        for owner, fixed in ((before, False), (subject, True)):
+            execute, calls, _ = self._native(subject=owner, default_config=True)
+            output_path = self.root / uuid.uuid4().hex; output_path.mkdir(mode=0o700)
+            current = types.SimpleNamespace(config=types.SimpleNamespace(hosts={"archlinux": types.SimpleNamespace(
+                gateway="gateway", remote_config_file=None, remote_host_alias="fixture")}))
+            def collect(argv, payload, timeout):
+                execute.request["config"] = json.loads(payload)["config"]
+                result = execute()
+                # Preserve genuine child/dual-EOF plumbing after the complete
+                # actual body has parsed and guarded the inert native facts.
+                return real_collect([sys.executable, "-I", "-B", "-c", "import sys;sys.stdin.buffer.read();print(" + repr(json.dumps(result)) + ")"], b"{}", timeout)
+            with owner.private.Directory(output_path) as output:
+                context = (self.root, {"sourceSha256": "a" * 64}, execute.request["ready"], current, output, {}, lambda: None, lambda: None)
+                with mock.patch.object(owner.transport, "connection_host", return_value=object()), \
+                        mock.patch.object(owner.direct, "outer_prefix", return_value=(["/usr/bin/ssh"], "fixture")), \
+                        mock.patch.object(owner.channel, "_collect", side_effect=collect):
+                    if fixed:
+                        result = owner._probe(context, str(uuid.uuid4()), "observe")
+                        self.assertEqual("ready", result["state"])
+                    else:
+                        with self.assertRaisesRegex(ValueError, "route_parent_unsafe"):
+                            owner._probe(context, str(uuid.uuid4()), "observe")
+                self.assertEqual([], calls, "neither readonly programme may submit an exit")
+        # Explicit config still works through the same real native file guard.
+        execute, calls, _ = self._native()
+        self.assertEqual("ready", execute()["state"])
+        execute.config_path.write_text("Host changed\n")
+        with self.assertRaisesRegex(ValueError, "route"):
+            execute()
+        self.assertEqual([], calls)
+
+    def test_authentic_second_connection_and_unknown_records_stay_exactly_bound(self):
+        subject = self.subject
+        provenance = json.loads((FIXTURE / "315-provenance.json").read_bytes())
+        intent_raw = (FIXTURE / "315-intent.json").read_bytes()
+        ready_raw = (FIXTURE / "315-ready.json").read_bytes()
+        intent, ready = json.loads(intent_raw), json.loads(ready_raw)
+        self.assertEqual(subject.SECOND_INTENT_SHA, hashlib.sha256(intent_raw).hexdigest())
+        self.assertEqual(subject.SECOND_READY_SHA, hashlib.sha256(ready_raw).hexdigest())
+        self.assertEqual(subject.SECOND_CORRELATION, intent["correlationId"])
+        self.assertEqual(intent["correlationId"], ready["result"]["correlationId"])
+        self.assertEqual(subject.CURRENT_MCP, intent["directSourcePins"]["mcp_server.py"])
+        self.assertNotIn("ssh_owned_channel_retirement.py", intent["directSourcePins"])
+        self.assertEqual(subject.SECOND_PROGRAM_RECORDS, provenance["programRecords"])
+        records = json.loads((FIXTURE / "315-programs.json").read_bytes())
+        for identifier, parts in records.items():
+            for name, value in parts.items():
+                self.assertEqual(subject.SECOND_PROGRAM_RECORDS[identifier][name],
+                                 hashlib.sha256(subject._json(value)).hexdigest())
+            self.assertEqual({"operationId": identifier, "sourceClosing": True,
+                              "terminalSha256": subject.SECOND_PROGRAM_RECORDS[identifier]["terminal.json"]},
+                             parts["owner-closed.json"])
+        unknown = records[subject.SECOND_UNKNOWN]["terminal.json"]
+        self.assertEqual("unknown", unknown["state"])
+        self.assertIsNone(unknown["capture"])
+        self.assertEqual("SshConfigError", unknown["errorClass"])
+        for correlation in ("0" * 32, str(uuid.uuid4())):
+            with self.assertRaisesRegex(ValueError, "retirement_identity"):
+                subject._profile(correlation)
+
+    def test_whole_fbac_only_before_rejects_second_probe_and_current_accepts(self):
+        subject = self.subject
+        raw = (FIXTURE / "fbac-only.before.source").read_bytes()
+        provenance = json.loads((FIXTURE / "315-provenance.json").read_bytes())
+        self.assertEqual(provenance["helperBeforeSha256"], hashlib.sha256(raw).hexdigest())
+        before = types.ModuleType("agent_tools._retirement_fbac_before_" + uuid.uuid4().hex)
+        before.__package__ = "agent_tools"; before.__file__ = str(FIXTURE / "fbac-only.before.source")
+        sys.modules[before.__name__] = before
+        self.addCleanup(sys.modules.pop, before.__name__, None)
+        exec(compile(raw, before.__file__, "exec"), before.__dict__)
+        real_collect = subject.channel._collect
+        for owner, fixed in ((before, False), (subject, True)):
+            execute, calls, _ = self._native(subject=owner, correlation=subject.SECOND_CORRELATION)
+            current = types.SimpleNamespace(config=types.SimpleNamespace(hosts={"archlinux": types.SimpleNamespace(
+                gateway="gateway", remote_config_file=str(execute.config_path), remote_host_alias="fixture")}))
+            output_path = self.root / uuid.uuid4().hex; output_path.mkdir(mode=0o700)
+            def collect(argv, payload, timeout):
+                payload_value = json.loads(payload)
+                self.assertEqual(subject.SECOND_CORRELATION, payload_value["ready"]["correlationId"])
+                result = execute()
+                return real_collect([sys.executable, "-I", "-B", "-c", "import sys;sys.stdin.buffer.read();print(" + repr(json.dumps(result)) + ")"], b"{}", timeout)
+            with owner.private.Directory(output_path) as output:
+                context = (self.root, {"sourceSha256": "a" * 64}, execute.request["ready"], current, output, {}, lambda: None, lambda: None)
+                with mock.patch.object(owner.transport, "connection_host", return_value=object()), \
+                        mock.patch.object(owner.direct, "outer_prefix", return_value=(["/usr/bin/ssh"], "fixture")), \
+                        mock.patch.object(owner.channel, "_collect", side_effect=collect):
+                    if fixed:
+                        result = owner._probe(context, str(uuid.uuid4()), "observe")
+                        self.assertEqual(subject.SECOND_CORRELATION, result["correlationId"])
+                        self.assertEqual("ready", result["state"])
+                    else:
+                        with self.assertRaisesRegex(ValueError, "retirement_probe_binding"):
+                            owner._probe(context, str(uuid.uuid4()), "observe")
+                self.assertEqual([], calls)
+
+    def test_second_exit_claim_is_distinct_and_never_replays(self):
+        subject = self.subject
+        for correlation in (subject.CORRELATION, subject.SECOND_CORRELATION):
+            operation = self.root / str(uuid.uuid4()); operation.mkdir(mode=0o700)
+            with subject.private.Directory(operation) as output:
+                with subject._claim_exit(output, operation.name, correlation):
+                    pass
+            other = self.root / str(uuid.uuid4()); other.mkdir(mode=0o700)
+            with subject.private.Directory(other) as output:
+                with self.assertRaises(FileExistsError):
+                    with subject._claim_exit(output, other.name, correlation):
+                        self.fail("lost acknowledgment must not create another exit")
+        for correlation in (subject.CORRELATION, subject.SECOND_CORRELATION):
+            self.assertEqual(correlation, json.loads((self.root / (correlation + ".exit-intent.json")).read_bytes())["correlationId"])
+
+    def test_same_native_probe_retires_only_second_owned_control(self):
+        subject = self.subject
+        execute, calls, _ = self._native(action="retire", correlation=subject.SECOND_CORRELATION)
+        result = execute()
+        self.assertEqual("ended", result["state"])
+        self.assertTrue(result["independentAbsence"])
+        self.assertEqual(subject.SECOND_CORRELATION, result["correlationId"])
+        self.assertEqual(1, len(calls))
+        self.assertEqual("/tmp/vpn-channel-" + subject.SECOND_CORRELATION + "/m", calls[0][calls[0].index("-S") + 1])
+        self.assertEqual({"stdout": True, "stderr": True}, result["exitCapture"]["eof"])
+
+
+
+
+def _run_fixed546_carrier_controls(module, run):
+    # Actual integrated helper functions run. Only the external SSH peer is a
+    # harmless local Python child; historical kill is trapped without a signal.
+    import errno, random, selectors, shlex
+    FRAGMENT = Path(module.__file__)
+    REPO = ROOT
+    rows = []
+    def sha(raw):
+        return hashlib.sha256(raw).hexdigest()
+    def save(name, value):
+        raw = value if isinstance(value, bytes) else (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+        fd = os.open(run / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+    def serial(capture):
+        return {key: ({"base64": base64.b64encode(value).decode(), "bytes": len(value), "sha256": sha(value)}
+                      if isinstance(value, bytes) else value) for key, value in capture.items()}
+    def record(name, condition, **facts):
+        if not condition:
+            save("failure.json", {"case": name, **facts})
+            raise AssertionError(name)
+        rows.append({"case": name, **facts})
+    request = json.dumps({'operationId': str(uuid.uuid4()), 'action': 'observe',
+                          'ready': {'correlationId': module._FIXED546}, 'sourceSha256': '0' * 64,
+                          'config': '', 'profile': 'inert-only'}, sort_keys=True).encode()
+    body = "import json,sys\nr=json.load(sys.stdin)\nassert r['action']=='observe'\nprint('EXACT ACTION ü')\nsys.stderr.write('EXACT STDERR\\n')\n"
+
+
+    class LocalPeer:
+        def __init__(self, delay=0):
+            self.children = []
+            self.argv = []
+            self.delay = delay
+
+        def __call__(self, argv, **kwargs):
+            # Sole peer seam: exact rendered gateway loader executes locally.
+            command = shlex.split(argv[-1])
+            assert command[:4] == ['python3', '-I', '-B', '-c']
+            self.argv.append(argv)
+            code = ("import time\ntime.sleep(" + repr(self.delay) + ")\n" + command[4])
+            child = subprocess.Popen([sys.executable, '-I', '-B', '-c', code], **kwargs)
+            self.children.append(child)
+            return child
+
+
+    def invoke(name, packet, *, seconds=3, peer=None, **kwargs):
+        peer = LocalPeer() if peer is None else peer
+        result = module._fixed546_collect(packet, seconds, _popen=peer, **kwargs)
+        save(name + '.json', serial(result))
+        record(name + ' one original harmless child naturally reaped',
+               len(peer.children) == 1 and peer.children[0].returncode is not None
+               and peer.children[0].stdout.closed and peer.children[0].stderr.closed,
+               pid=peer.children[0].pid)
+        return result
+
+
+    packet = module._fixed546_transport_packet(['ssh-inert-only'], 'gateway-inert-only', body, request)
+    result = invoke('inline', packet)
+    record('small source automatically inline and exact gateway source executes',
+           packet['sourceTransport'] == 'inline' and result['complete']
+           and result['stdout'] == 'EXACT ACTION ü\n'.encode() and result['stderr'] == b'EXACT STDERR\n'
+           and result['originalTerminal']['complete'] and result['originalPopenRetained'])
+
+    noise = base64.b64encode(random.Random(546).randbytes(100000)).decode()
+    large = body + '\n#' + noise + '\n'
+    large_packet = module._fixed546_transport_packet(['ssh-inert-only'], 'gateway-inert-only', large, request)
+    result = invoke('source-stream', large_packet)
+    record('large source automatically stdin transfers with short command and exact hash',
+           large_packet['sourceTransport'] == 'source-stream'
+           and large_packet['programmeSha256'] == sha(large.encode()) and result['complete']
+           and result['stdout'] == 'EXACT ACTION ü\n'.encode()
+           and result['originalTerminal']['forwardedBytes'] == len(large_packet['stdin'])
+           and large_packet['wholeArgvBytes'] <= 60000
+           and large_packet['inlineCandidateMetrics']['wholeArgvBytes'] > 60000,
+           metrics={k: large_packet[k] for k in ('wholeArgvBytes', 'maxArgumentBytes', 'commandBytes')})
+
+    # Actual full argv boundary, including option overhead. This uses no process.
+    medium = body + '\n#' + noise[:18000] + '\n'
+    base = module._fixed546_transport_packet(['ssh-inert-only', ''], 'gateway-inert-only', medium, request)
+    padding = 60000 - base['wholeArgvBytes']
+    at = module._fixed546_transport_packet(['ssh-inert-only', 'x' * padding], 'gateway-inert-only', medium, request)
+    over = module._fixed546_transport_packet(['ssh-inert-only', 'x' * (padding + 1)], 'gateway-inert-only', medium, request)
+    record('actual full argv 60000 permits inline and 60001 automatically streams prelaunch',
+           at['sourceTransport'] == 'inline' and at['wholeArgvBytes'] == 60000
+           and over['sourceTransport'] == 'source-stream'
+           and over['inlineCandidateMetrics']['wholeArgvBytes'] == 60001 and over['wholeArgvBytes'] < 60000)
+
+    result = invoke('timeout-late-eof', large_packet, seconds=.02, peer=LocalPeer(.12))
+    record('first timeout remains unknown after same child writer and both late EOFs close',
+           not result['complete'] and result['timeout'] and not result['firstCapture']['complete']
+           and result['firstCapture']['timeout'] and result['originalTerminal']['complete']
+           and result['stdout'] == 'EXACT ACTION ü\n'.encode()
+           and result['originalTerminal']['forwardedBytes'] == len(large_packet['stdin'])
+           and result['originalTerminal']['stdinClosed'] and result['originalStreamsClosed'])
+
+    for fault in ('truncated', 'hash', 'trailing', 'header'):
+        malformed = dict(large_packet)
+        raw = large_packet['stdin']
+        if fault == 'truncated':
+            malformed['stdin'] = raw[:-1]
+        elif fault == 'hash':
+            malformed['stdin'] = raw[:-1] + bytes([raw[-1] ^ 1])
+        elif fault == 'trailing':
+            malformed['stdin'] = raw + b'x'
+        else:
+            malformed['stdin'] = (4097).to_bytes(4, 'big') + raw[4:]
+        value = invoke('refusal-' + fault, malformed)
+        record('gateway ' + fault + ' source admission refuses before inert action',
+               value['returnCode'] != 0 and value['stdout'] == b'' and b'fixed546_' in value['stderr'])
+
+    attempts = []
+    def no_handle(argv, **kwargs):
+        attempts.append(argv)
+        raise OSError(errno.E2BIG, 'inert no returned handle')
+    value = module._fixed546_collect(large_packet, _popen=no_handle)
+    save('no-handle.json', serial(value))
+    record('unexpected OS E2BIG has no handle and never retries or falls back',
+           len(attempts) == 1 and not value['complete'] and not value['originalPopenRetained']
+           and value['originalTerminal']['creationUnproved']
+           and value['primaryError'] == {'errorClass': 'OSError', 'errno': errno.E2BIG})
+
+    original_set_blocking = module.os.set_blocking
+    armed = [True]
+    def post_start(fd, block):
+        if armed[0]:
+            armed[0] = False
+            raise OSError(errno.EIO, 'inert post Popen setup')
+        return original_set_blocking(fd, block)
+    module.os.set_blocking = post_start
+    try:
+        value = invoke('post-popen-setup', packet)
+    finally:
+        module.os.set_blocking = original_set_blocking
+    record('post-Popen setup error keeps original handle drains stderr and closes naturally',
+           not value['complete'] and value['originalPopenRetained'] and value['originalTerminal']['complete']
+           and value['primaryError']['errorClass'] == 'OSError' and value['stdout'] == b'')
+
+    original_thread_start = module.threading.Thread.start
+    def thread_start_refused(self):
+        raise RuntimeError('inert thread start refusal')
+    module.threading.Thread.start = thread_start_refused
+    try:
+        value = invoke('unstarted-writer', packet)
+    finally:
+        module.threading.Thread.start = original_thread_start
+    record('unstarted writer closes input and retains original error plus natural terminal',
+           not value['complete'] and value['originalTerminal']['complete']
+           and value['primaryError']['errorClass'] == 'RuntimeError' and value['stdout'] == b'')
+
+    original_owner_init = module._Fixed546Owner.__init__
+    def bounded_owner_init(self, **kwargs):
+        kwargs['capture_limit'] = 4
+        original_owner_init(self, **kwargs)
+    module._Fixed546Owner.__init__ = bounded_owner_init
+    try:
+        value = invoke('overflow', large_packet)
+    finally:
+        module._Fixed546Owner.__init__ = original_owner_init
+    record('overflow remains unknown with actual full counts and positive EOF',
+           not value['complete'] and value['overflow'] and value['originalTerminal']['complete']
+           and value['counts']['stdout'] > len(value['stdout']) == 4)
+
+    original_read = module.os.read
+    read_fault = [True]
+    def once_read_error(fd, count):
+        if read_fault[0] and sys._getframe(1).f_code.co_name == 'step':
+            read_fault[0] = False
+            raise OSError(errno.EIO, 'inert one read refusal')
+        return original_read(fd, count)
+    module.os.read = once_read_error
+    try:
+        value = invoke('read-error', packet)
+    finally:
+        module.os.read = original_read
+    record('transient read uncertainty stays unknown after same original full late streams and EOF',
+           not value['complete'] and value['readError'] and value['originalTerminal']['complete']
+           and value['stdout'] == 'EXACT ACTION ü\n'.encode() and value['stderr'] == b'EXACT STDERR\n')
+
+    original_write = module.os.write
+    def partial_write(fd, data):
+        if sys._getframe(1).f_code.co_name == 'write':
+            return original_write(fd, data[:111])
+        return original_write(fd, data)
+    module.os.write = partial_write
+    try:
+        value = invoke('partial-writes', large_packet)
+    finally:
+        module.os.write = original_write
+    record('partial writes forward all exact source and request bytes before positive EOF',
+           value['complete'] and value['originalTerminal']['forwardedBytes'] == len(large_packet['stdin'])
+           and value['stdout'] == 'EXACT ACTION ü\n'.encode())
+
+    write_fault = [True]
+    def once_write_error(fd, data):
+        if write_fault[0] and sys._getframe(1).f_code.co_name == 'write':
+            write_fault[0] = False
+            raise OSError(errno.EIO, 'inert writer refusal')
+        return original_write(fd, data)
+    module.os.write = once_write_error
+    try:
+        value = invoke('writer-error', large_packet)
+    finally:
+        module.os.write = original_write
+    record('writer input uncertainty remains unknown and same original terminal closes without action',
+           not value['complete'] and value['writeError'] and value['originalTerminal']['complete']
+           and value['stdout'] == b'')
+
+    # Exact historical function only. No historical module is imported or executed.
+    historical_path = REPO / 'agent_tools/ssh_connection_recovery.py'
+    historical_raw = historical_path.read_bytes()
+    historical_text = historical_raw.decode()
+    node = next(n for n in ast.parse(historical_text).body if isinstance(n, ast.FunctionDef) and n.name == '_bounded_socket_query')
+    historical = ast.get_source_segment(historical_text, node)
+    save('authentic-before-whole.source', historical_raw)
+    save('authentic-before-function.source', historical.encode())
+    kill_attempts = []
+    children = []
+
+
+    class NoSignalChild:
+        def __init__(self, child):
+            self._child = child
+        def __getattr__(self, name):
+            return getattr(self._child, name)
+        def kill(self):
+            # A declared safety seam: record the authentic branch without a signal.
+            kill_attempts.append(self._child.pid)
+
+
+    def harmless_child(argv, **kwargs):
+        assert argv[0] == sys.executable
+        child = subprocess.Popen(argv, **kwargs)
+        children.append(child)
+        return NoSignalChild(child)
+
+
+    peer_subprocess = types.SimpleNamespace(Popen=harmless_child, DEVNULL=subprocess.DEVNULL,
+        PIPE=subprocess.PIPE, SubprocessError=subprocess.SubprocessError, TimeoutExpired=subprocess.TimeoutExpired)
+    scope = {'os': os, 'selectors': selectors, 'subprocess': peer_subprocess, 'time': time, '_SOCKET_CAPTURE_BYTES': 4096}
+    exec(compile(historical, str(historical_path) + ':actual-before-function', 'exec'), scope)
+    argv = [sys.executable, '-I', '-B', '-c', "import sys,time;time.sleep(.12);sys.stdout.write('LATE OUT\\n');sys.stdout.flush();sys.stderr.write('LATE ERR\\n')"]
+    before = scope['_bounded_socket_query'](argv, .02)
+    save('authentic-before-timeout.json', serial(before))
+    before_red = False
+    try:
+        assert not kill_attempts and before['eof'] == {'stdout': True, 'stderr': True} and before['stdout'] == b'LATE OUT\n'
+    except AssertionError:
+        before_red = True
+    record('authentic old timeout RED: kill attempted and late streams plus EOF lost; no actual signal',
+           before_red and len(kill_attempts) == 1 and before['timeout'] and children[-1].returncode == 0,
+           wholeBeforeSha256=sha(historical_raw), functionBeforeSha256=sha(historical.encode()),
+           killSafetySeam='record only; no signal sent')
+
+    new_scope = {}
+    exec(compile(module._fixed546_inner_source(), 'actual-fixed546-generated-inner', 'exec'), new_scope)
+    new_scope['subprocess'] = peer_subprocess
+    attempt_count = len(kill_attempts)
+    fixed = new_scope['inner'](argv, .02)
+    save('fixed-inner-timeout.json', serial(fixed))
+    record('fixed546 actual generated inner GREEN: first timeout unknown and original late bytes/dual EOF retained',
+           len(kill_attempts) == attempt_count and not fixed['complete'] and fixed['timeout']
+           and fixed['originalTerminal']['complete'] and fixed['eof'] == {'stdout': True, 'stderr': True}
+           and fixed['stdout'] == b'LATE OUT\n' and fixed['stderr'] == b'LATE ERR\n'
+           and fixed['originalStreamsClosed'] and children[-1].returncode == 0)
+    fixed = new_scope['inner']([sys.executable, '-I', '-B', '-c', "import sys;print('NOW');sys.stderr.write('ERR\\n');sys.exit(7)"], 3)
+    save('fixed-inner-exit7.json', serial(fixed))
+    record('fixed546 generated inner immediate known exit preserves both streams and exit7',
+           fixed['complete'] and fixed['returnCode'] == 7 and fixed['stdout'] == b'NOW\n'
+           and fixed['stderr'] == b'ERR\n' and len(kill_attempts) == attempt_count)
+
+    before_children = len(children)
+    bound_refused = False
+    try:
+        new_scope['inner']([sys.executable, 'x' * 60001], 3)
+    except ValueError as error:
+        bound_refused = str(error) == 'fixed546_command_bound'
+    record('fixed546 generated inner keeps complete 60000 byte command bound before Popen',
+           bound_refused and len(children) == before_children)
+
+    save('summary.json', {'schemaVersion': 1, 'sourceSha256': sha(FRAGMENT.read_bytes()),
+        'cases': rows, 'caseCount': len(rows), 'networkSubmitted': False, 'nativeAcceptanceClaim': False,
+        'signalsSent': 0, 'sshCommandsStarted': 0,
+        'seams': ['Exact gateway loader uses a harmless local Python process in place of the outer SSH route.',
+                  'Synthetic fixed546 request has no actual gateway/master facts.',
+                  'Historical kill method records its call and sends no signal; the real harmless child exits naturally.'],
+        'reviewedCarrierSha256': 'a9ef684d2779a9fbf7921254f458e520471ff373f09f71ee5cd8744ccba8f483',
+        'evidenceDirectory': str(run)})
+    return rows
+
+
+@unittest.skipUnless(os.name == "posix", "POSIX private channel coordinator")
+class Fixed546RetirementTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools import ssh_owned_channel_retirement as subject
+        self.subject = subject
+        self.temporary = tempfile.TemporaryDirectory(prefix="fixed546-retire-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name).resolve()
+        self.root.chmod(0o700)
+
+    def release(self):
+        subject = self.subject
+        ids = set(subject.SECOND_PROGRAM_RECORDS) | {subject.THIRD_UNKNOWN,
+            "bd18cb94-e6a2-4003-99d5-9edc792ed05c", "138e8eeb-ca78-40b8-acb0-6f91fb855873",
+            "bf8fc478-c548-42c5-955b-b3698b6905c0", "2690c7cd-a4e4-4c0a-832a-1364ab325755"}
+        return {"facts": dict(subject._THIRD_FACTS),
+                "proofs": {".runtime/inert-only/closure.json": "0" * 64},
+                "programRecords": {name: {} for name in ids},
+                "baLeafNames": ["intent.json", "owner.json", "child.json", "stdout.private", "stderr.private"]}
+
+    def before(self):
+        raw = (FIXTURE / "546-helper.before.source").read_bytes()
+        provenance = json.loads((FIXTURE / "546-provenance.json").read_bytes())
+        self.assertEqual(provenance["beforeHelperSha256"], hashlib.sha256(raw).hexdigest())
+        module = types.ModuleType("agent_tools._546_before_" + uuid.uuid4().hex)
+        module.__package__ = "agent_tools"; module.__file__ = str(FIXTURE / "546-helper.before.source")
+        sys.modules[module.__name__] = module
+        self.addCleanup(sys.modules.pop, module.__name__, None)
+        exec(compile(raw, module.__file__, "exec"), module.__dict__)
+        return module
+
+    def test_authentic_546_original_intent_and_ready_are_bound_not_adopted(self):
+        subject = self.subject
+        provenance = json.loads((FIXTURE / "546-provenance.json").read_bytes())
+        records = {}
+        for name in ("intent", "ready"):
+            raw = (FIXTURE / ("546-" + name + ".json")).read_bytes()
+            self.assertEqual(provenance["records"][name]["sha256"], hashlib.sha256(raw).hexdigest())
+            records[name] = json.loads(raw)
+        self.assertEqual(subject.THIRD_INTENT_SHA, provenance["records"]["intent"]["sha256"])
+        self.assertEqual(subject.THIRD_READY_SHA, provenance["records"]["ready"]["sha256"])
+        self.assertEqual(subject.THIRD_CORRELATION, records["intent"]["correlationId"])
+        self.assertEqual(subject.THIRD_INTENT_SHA, records["ready"]["intent"]["sha256"])
+        self.assertEqual(subject.THIRD_ORIGINAL_AUTHORITY, records["intent"]["outerAuthoritySha256"])
+        self.assertEqual(1785600, records["ready"]["result"]["master"]["actor"]["pid"])
+        self.assertEqual(39465725, records["ready"]["result"]["master"]["actor"]["startTicks"])
+
+    def test_missing_actual_original_closure_or_status_refuses_before_files_or_transport(self):
+        subject = self.subject
+        for function in (subject.observe_original, subject.retire_owned):
+            with mock.patch.object(subject, "_THIRD_ADMISSION", None), \
+                    mock.patch.object(subject.private, "ownership", side_effect=AssertionError("must not open")), \
+                    mock.patch.object(subject, "_fixed546_collect", side_effect=AssertionError("must not start")):
+                with self.assertRaisesRegex(ValueError, "retirement_546_evidence_unavailable"):
+                    function(self.root, "archlinux", subject.THIRD_CORRELATION, str(uuid.uuid4()))
+        self.assertEqual([], list(self.root.iterdir()))
+
+    def test_authentic_before_profile_red_and_fixed_exact_profile_green_with_declared_inert_release(self):
+        subject, before = self.subject, self.before()
+        original_admission = subject._THIRD_ADMISSION
+        with self.assertRaisesRegex(ValueError, "retirement_identity"):
+            before._profile(subject.THIRD_CORRELATION)
+        release = self.release()
+        with mock.patch.object(subject, "_THIRD_ADMISSION", release):
+            self.assertEqual((subject.THIRD_INTENT_SHA, subject.THIRD_READY_SHA, release["programRecords"]),
+                             subject._profile(subject.THIRD_CORRELATION))
+            for other in ("0" * 32, str(uuid.uuid4())):
+                with self.assertRaisesRegex(ValueError, "retirement_identity"):
+                    subject._profile(other)
+        self.assertIs(original_admission, subject._THIRD_ADMISSION)
+
+    def test_every_lost_closing_fact_is_required_and_never_promoted(self):
+        subject = self.subject
+        for field in ("originalUnknownPreserved", "originalEofClaimed", "originalSourceClosingClaimed",
+                      "originalCaptureCompletion", "originalClosureQualified", "historicalTrustEquivalent",
+                      "originalGuestStatusReconciled", "originalLocalActorsAbsent", "hostCustodyDropped", "guestReplayAllowed"):
+            release = self.release()
+            value = release["facts"][field]
+            release["facts"][field] = not value if type(value) is bool else "qualified"
+            with mock.patch.object(subject, "_THIRD_ADMISSION", release):
+                with self.assertRaisesRegex(ValueError, "retirement_546_evidence_unavailable"):
+                    subject._third_release()
+        for path in ("/absolute/private.json", "../escape.json", ".runtime/../escape.json", "agent_tools/fixture.json"):
+            release = self.release(); release["proofs"] = {path: "0" * 64}
+            with mock.patch.object(subject, "_THIRD_ADMISSION", release):
+                with self.assertRaisesRegex(ValueError, "retirement_546_evidence_identity"):
+                    subject._third_release()
+
+    def test_separate_historical_and_current_authority_exact_one_trust_delta(self):
+        subject = self.subject
+        # Declared inert historical authority metadata; no key or trust bytes,
+        # current config reads, or network facts are replaced with this model.
+        rows = [{"path": "/inert/identity", "sha256": "1" * 64, "fingerprint": [1,2,3,4,6,7,8,9]},
+                {"path": "/inert/known_hosts", "sha256": subject.THIRD_CURRENT_TRUST, "fingerprint": [9,8,7,6,4,3,2,1]}]
+        oldpins = {"/inert/identity": {"sha256": "1" * 64, "generation": [1,2,3,4,5,6,7,8,9]},
+                   "/inert/known_hosts": {"sha256": subject.THIRD_ORIGINAL_TRUST, "generation": [7,6,5,4,3,2,1,0,9]}}
+        authority = {"files": rows, "fixed": "inert-only"}
+        historical = json.loads(json.dumps(authority))
+        historical["files"][1].update(sha256=subject.THIRD_ORIGINAL_TRUST, fingerprint=[7,6,5,4,2,1,0,9])
+        oldsha, newsha = subject._sha(subject._json(historical)), subject._sha(subject._json(authority))
+        current = types.SimpleNamespace(authority=authority, authority_sha=newsha)
+        with mock.patch.multiple(subject, THIRD_ORIGINAL_AUTHORITY=oldsha, THIRD_CURRENT_AUTHORITY=newsha):
+            value = subject._third_authority(current, {"outerAuthoritySha256": oldsha}, {"connectionPins": oldpins})
+            self.assertFalse(value["historicalTrustEquivalent"])
+            self.assertFalse(value["historicalTrustBytesAvailable"])
+            self.assertEqual(authority, current.authority)
+            for bad in ("key", "trust", "generation", "oldbinding", "currentbinding"):
+                c = types.SimpleNamespace(authority=json.loads(json.dumps(authority)), authority_sha=newsha)
+                original = {"outerAuthoritySha256": oldsha}; pins = json.loads(json.dumps(oldpins))
+                if bad == "key": c.authority["files"][0]["sha256"] = "2" * 64
+                elif bad == "trust": c.authority["files"][1]["sha256"] = "2" * 64
+                elif bad == "generation": pins["/inert/identity"]["generation"][1] += 1
+                elif bad == "oldbinding": original["outerAuthoritySha256"] = "0" * 64
+                else: c.authority_sha = "0" * 64
+                with self.assertRaises(ValueError): subject._third_authority(c, original, {"connectionPins": pins})
+
+    def test_fixed_546_uses_retained_inner_and_historical_bodies_remain_identical(self):
+        subject = self.subject
+        before = self.before()
+        for correlation in (None, subject.CORRELATION, subject.SECOND_CORRELATION):
+            self.assertEqual(before._remote_program(), subject._remote_program(correlation))
+        source = subject._remote_program(subject.THIRD_CORRELATION)
+        compile(source, "whole-fixed546-gateway", "exec")
+        self.assertIn("class _Fixed546Owner", source)
+        tree = ast.parse(source)
+        self.assertFalse(any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                             and node.func.attr in ("kill", "terminate") for node in ast.walk(tree)))
+        self.assertIn(subject._PROBE, source)
+        self.assertNotIn("guest-exec", source)
+
+    def publication_context(self):
+        subject = self.subject
+        root = self.root
+        (root / ".rag_index/ssh-direct-nested-channel/hosts/archlinux").mkdir(parents=True, mode=0o700)
+        for path in (root / ".rag_index", root / ".rag_index/ssh-direct-nested-channel", root / ".rag_index/ssh-direct-nested-channel/hosts", root / ".rag_index/ssh-direct-nested-channel/hosts/archlinux"):
+            path.chmod(0o700)
+        journal = root / ".rag_index/ssh-direct-nested-channel/hosts/archlinux"
+        intent = json.loads((FIXTURE / "546-intent.json").read_bytes())
+        original = journal / (subject.THIRD_CORRELATION + ".intent.json")
+        original.write_bytes(subject._json(intent)); original.chmod(0o600)
+        directory = subject.private.Directory(journal)
+        self.addCleanup(directory.close)
+        held = subject.private.Snapshot(directory, original.name)
+        self.addCleanup(held.close)
+        ready = json.loads((FIXTURE / "546-ready.json").read_bytes())["result"]
+        ready_path = journal / (subject.THIRD_CORRELATION + ".ready.json")
+        ready_path.write_bytes(subject._json({"intent": held.pin(), "result": ready})); ready_path.chmod(0o600)
+        ready_held = subject.private.Snapshot(directory, ready_path.name)
+        self.addCleanup(ready_held.close)
+        for name, digest in {"remote": intent["remoteSourceSha256"], "ssh_fresh_nested_channel.py": intent["sourceSha256"], **intent["directSourcePins"]}.items():
+            raw = subject.channel._REMOTE.encode() if name == "remote" else (ROOT / "agent_tools" / name).read_bytes()
+            self.assertEqual(digest, hashlib.sha256(raw).hexdigest())
+            path = journal / (subject.THIRD_CORRELATION + "." + name + ".source")
+            path.write_bytes(raw); path.chmod(0o600)
+        output_path = root / "output"; output_path.mkdir(mode=0o700)
+        output = subject.private.Directory(output_path); self.addCleanup(output.close)
+        raw_held = subject._Held(); self.addCleanup(raw_held.close)
+        current = types.SimpleNamespace(held=raw_held, authority={"declaredInertCurrentAuthority": True}, config=types.SimpleNamespace(hosts={"archlinux": types.SimpleNamespace(gateway="inert", remote_config_file="", remote_host_alias="inert")}))
+        private_intent = {"operationId": str(uuid.uuid4()), "correlationId": subject.THIRD_CORRELATION,
+            "intent": held.pin(), "ready": ready_held.pin(), "currentAuthority": current.authority,
+            "trustSeparation": {"historicalTrustEquivalent": False}, "originalUnknownPreserved": True,
+            "originalEofClaimed": False, "originalSourceClosingClaimed": False}
+        subject._write(output, "intent.json", subject._json(private_intent))
+        context = (root, intent, ready, current, output, {}, lambda: (held.guard(), ready_held.guard(), raw_held.finish(), raw_held.final_identity_pass()), lambda: None)
+        return context, directory, held, ready_held
+
+    def write_probe(self, context, *, altered=None):
+        subject = self.subject
+        _, value, ready, _, output, _, _, _ = context
+        native = {"state": "ended", "correlationId": subject.THIRD_CORRELATION,
+            "gatewayBoot": ready["master"]["gatewayBoot"], "independentAbsence": True}
+        request = {"operationId": json.loads((output.path / "intent.json").read_bytes())["operationId"], "action": "observe", "ready": ready,
+            "sourceSha256": value["sourceSha256"], "config": "", "profile": "inert"}
+        raw = subject._json(native)
+        capture = {"pid": 12345, "returnCode": 0, "complete": True,
+            "counts": {"stdout": len(raw), "stderr": 0}, "eof": {"stdout": True, "stderr": True},
+            "timeout": False, "overflow": False, "readError": False}
+        capture["rawStreamSha256"] = {"stdout": subject._sha(raw), "stderr": subject._sha(b"")}
+        if altered: capture.update(altered)
+        subject._capture(output, "probe", {**capture, "stdout": raw, "stderr": b""})
+        body = subject._json(request); subject._write(output, "probe-request.json", body)
+        subject._write(output, "submission-intent.json", subject._json({"requestSha256": subject._sha(body), "helperSha256": subject._LOADED_SHA, "loaderSha256": subject.loader._LOADED_SHA,
+            "programmeSha256": subject._sha(subject._remote_program(subject.THIRD_CORRELATION).encode()), "action": request["action"], "operationId": request["operationId"],
+            "correlationId": subject.THIRD_CORRELATION, "limitBytes": 60000, "wholeArgvBytes": 1234, "maxArgumentBytes": 1000}))
+        return native
+
+    def test_real_v2_publication_preserves_original_refs_and_lost_job_without_archive_execution(self):
+        subject = self.subject
+        context, directory, held, ready_held = self.publication_context()
+        native = self.write_probe(context)
+        before = {p.name: p.read_bytes() for p in directory.path.iterdir()}
+        calls = []
+        def status(root, host, correlation, **kwargs):
+            calls.append((host, correlation))
+            with subject.ExitStack() as stack:
+                admitted = subject.channel._retained_v2_terminal(stack, directory, held, json.loads(held.body), host)
+                self.assertIsNotNone(admitted); admitted()
+            return subject.channel._public("ended", correlationId=correlation)
+        with mock.patch.object(subject, "_THIRD_ADMISSION", self.release()), \
+                mock.patch.multiple(subject, THIRD_INTENT_SHA=held.digest, THIRD_READY_SHA=ready_held.digest), \
+                mock.patch.object(subject.direct, "status", side_effect=status), \
+                mock.patch.object(subject.channel, "_collect", side_effect=AssertionError("must not use old transport")), \
+                mock.patch.object(subject, "_source_view", side_effect=AssertionError("must not execute archive")):
+            result = subject._publish_ended(context, native)
+        self.assertEqual("ended", result["state"])
+        self.assertEqual([("archlinux", subject.THIRD_CORRELATION)], calls)
+        terminal = json.loads((directory.path / (subject.THIRD_CORRELATION + ".terminal.json")).read_bytes())
+        self.assertEqual(held.digest, terminal["intentSha256"])
+        self.assertEqual(ready_held.digest, terminal["receiptSha256"])
+        for name, raw in before.items(): self.assertEqual(raw, (directory.path / name).read_bytes())
+        self.assertFalse((self.root / ".rag_index/ssh-program-execution").exists(), "no fabricated original job records")
+        proof = json.loads((context[4].path / "terminal-publication-intent.json").read_bytes())
+        self.assertFalse(proof["historicalTrustEquivalent"])
+        self.assertFalse(proof["originalEofClaimed"])
+        self.assertFalse(proof["originalSourceClosingClaimed"])
+
+    def test_positive_absence_and_complete_custody_are_both_required_for_publication(self):
+        subject = self.subject
+        mutations = ({"complete": False}, {"timeout": True}, {"overflow": True}, {"readError": True},
+            {"eof": {"stdout": False, "stderr": True}}, {"returnCode": 255}, {"counts": {"stdout": 0, "stderr": 0}})
+        for mutation in mutations:
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory(dir=self.root) as temporary:
+                oldroot = self.root; self.root = Path(temporary)
+                try:
+                    context, directory, held, ready_held = self.publication_context()
+                    native = self.write_probe(context, altered=mutation)
+                    with mock.patch.object(subject, "_THIRD_ADMISSION", self.release()), \
+                            mock.patch.multiple(subject, THIRD_INTENT_SHA=held.digest, THIRD_READY_SHA=ready_held.digest):
+                        with self.assertRaisesRegex(ValueError, "retirement_absence_unproved"):
+                            subject._publish_ended(context, native)
+                    self.assertFalse((directory.path / (subject.THIRD_CORRELATION + ".terminal.json")).exists())
+                finally: self.root = oldroot
+
+    def test_whole_fixed_probe_uses_actual_complete_body_and_only_owned_gateway_exit(self):
+        subject = self.subject
+        native_case = OwnedChannelRetirementTests("runTest"); native_case.setUp()
+        self.addCleanup(native_case.doCleanups)
+        execute, exit_calls, _ = native_case._native(subject=subject, correlation=subject.THIRD_CORRELATION, action="retire")
+        context, directory, held, ready_held = self.publication_context()
+        ready = execute.request["ready"]
+        context[3].config.hosts["archlinux"].remote_host_alias = "fixture"
+        context = (context[0], {**context[1], "sourceSha256": "a" * 64}, ready, *context[3:])
+        # Actual full helper producer and payload execute; Linux proc/socket/ssh
+        # observations are the declared native seam inherited from _native.
+        real_capture = subject._fixed546_capture
+        packets = []
+        def collect(packet, timeout):
+            packets.append(packet)
+            self.assertEqual(subject._sha(subject._remote_program(subject.THIRD_CORRELATION).encode()), packet["programmeSha256"])
+            execute.request.update(json.loads(packet["stdin"][4:4+int.from_bytes(packet["stdin"][:4], "big")]))
+            result = execute()
+            code = "import sys;sys.stdin.buffer.read();sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]))"
+            return real_capture([sys.executable, "-I", "-B", "-c", code, subject._json(result).hex()], b"inert", 3)
+        before = self.before()
+        with mock.patch.object(before.transport, "connection_host", return_value=object()), \
+                mock.patch.object(before.direct, "outer_prefix", return_value=(["ssh-inert-only"], "gateway-inert-only")), \
+                mock.patch.object(before.channel, "_collect", side_effect=AssertionError("before must refuse before transport")):
+            with self.assertRaisesRegex(ValueError, "retirement_identity"):
+                before._probe(context, str(uuid.uuid4()), "retire")
+        with mock.patch.object(subject, "_THIRD_ADMISSION", self.release()), \
+                mock.patch.object(subject.transport, "connection_host", return_value=object()), \
+                mock.patch.object(subject.direct, "outer_prefix", return_value=(["ssh-inert-only"], "gateway-inert-only")), \
+                mock.patch.object(subject, "_fixed546_collect", side_effect=collect), \
+                mock.patch.object(subject.channel, "_collect", side_effect=AssertionError("old collector forbidden")):
+            result = subject._probe(context, str(uuid.uuid4()), "retire")
+        self.assertEqual("ended", result["state"])
+        self.assertTrue(result["independentAbsence"])
+        self.assertEqual(1, len(packets)); self.assertEqual(1, len(exit_calls))
+        self.assertEqual(["-O", "exit", "fixture"], exit_calls[0][-3:])
+        self.assertEqual("/tmp/vpn-channel-" + subject.THIRD_CORRELATION + "/m", exit_calls[0][exit_calls[0].index("-S")+1])
+
+    def test_private_empty_stderr_before_is_actual_red_and_current_publication_green(self):
+        subject = self.subject
+        raw = (FIXTURE / "546-empty-stderr.before.source").read_bytes()
+        provenance = json.loads((FIXTURE / "546-private-preparation-provenance.json").read_bytes())
+        self.assertEqual(provenance["beforeSha256"], hashlib.sha256(raw).hexdigest())
+        before = types.ModuleType("agent_tools._546_empty_before_" + uuid.uuid4().hex)
+        before.__package__ = "agent_tools"; before.__file__ = str(FIXTURE / "546-empty-stderr.before.source")
+        sys.modules[before.__name__] = before; self.addCleanup(sys.modules.pop, before.__name__, None)
+        exec(compile(raw, before.__file__, "exec"), before.__dict__)
+        for owner, fixed in ((before, False), (subject, True)):
+            with self.subTest(fixed=fixed), tempfile.TemporaryDirectory(dir=self.root) as temporary:
+                oldroot = self.root; self.root = Path(temporary)
+                try:
+                    context, directory, held, ready_held = self.publication_context()
+                    native = self.write_probe(context)
+                    def status(root, host, correlation, **kwargs):
+                        with subject.ExitStack() as stack:
+                            admitted = subject.channel._retained_v2_terminal(stack, directory, held, json.loads(held.body), host)
+                            self.assertIsNotNone(admitted); admitted()
+                        return subject.channel._public("ended", correlationId=correlation)
+                    with mock.patch.object(owner, "_THIRD_ADMISSION", self.release()), \
+                            mock.patch.multiple(owner, THIRD_INTENT_SHA=held.digest, THIRD_READY_SHA=ready_held.digest), \
+                            mock.patch.object(owner.direct, "status", side_effect=status):
+                        if fixed:
+                            self.assertEqual("ended", owner._publish_ended(context, native)["state"])
+                        else:
+                            with self.assertRaisesRegex(ValueError, "unsafe private file"):
+                                owner._publish_ended(context, native)
+                finally: self.root = oldroot
+
+    def test_third_claim_is_once_only_across_operation_uuids(self):
+        subject = self.subject
+        with mock.patch.object(subject, "_THIRD_ADMISSION", self.release()):
+            for index in range(2):
+                operation = self.root / str(uuid.uuid4()); operation.mkdir(mode=0o700)
+                with subject.private.Directory(operation) as output:
+                    if index == 0:
+                        with subject._claim_exit(output, operation.name, subject.THIRD_CORRELATION): pass
+                    else:
+                        with self.assertRaises(FileExistsError):
+                            with subject._claim_exit(output, operation.name, subject.THIRD_CORRELATION):
+                                self.fail("must not send a second exit")
+        claim = json.loads((self.root / (subject.THIRD_CORRELATION + ".exit-intent.json")).read_bytes())
+        self.assertFalse(claim["replayAllowed"])
+        self.assertEqual(subject.THIRD_CORRELATION, claim["correlationId"])
+
+    def test_empty_binary_raw_stream_has_real_generation_and_replacement_refuses(self):
+        subject = self.subject
+        path = self.root / "stderr.private"; path.write_bytes(b""); path.chmod(0o600)
+        with subject.private.Directory(self.root) as directory:
+            current = types.SimpleNamespace(held=subject._Held())
+            try:
+                part = subject._third_raw_part(current, directory, path.name, subject._sha(b""))
+                self.assertEqual(0, part.pin()["size"]); self.assertEqual(b"", part.body)
+                replacement = self.root / "replacement"; replacement.write_bytes(b""); replacement.chmod(0o600)
+                replacement.replace(path)
+                with self.assertRaises(ValueError): part.guard()
+            finally: current.held.close()
+
+    def reviewed_before(self):
+        raw = (FIXTURE / "546-capture-custody.before.source").read_bytes()
+        provenance = json.loads((FIXTURE / "546-capture-custody-provenance.json").read_bytes())
+        self.assertEqual(provenance["beforeSha256"], hashlib.sha256(raw).hexdigest())
+        module = types.ModuleType("agent_tools._546_custody_before_" + uuid.uuid4().hex)
+        module.__package__ = "agent_tools"; module.__file__ = str(FIXTURE / "546-capture-custody.before.source")
+        sys.modules[module.__name__] = module; self.addCleanup(sys.modules.pop, module.__name__, None)
+        exec(compile(raw, module.__file__, "exec"), module.__dict__)
+        return module
+
+    def test_actual_reviewed_before_accepts_public_raw_mode_red_and_current_refuses(self):
+        for owner, fixed in ((self.reviewed_before(), False), (self.subject, True)):
+            with tempfile.TemporaryDirectory(dir=self.root) as temporary:
+                path = Path(temporary) / "raw"; path.write_bytes(b""); path.chmod(0o644)
+                with owner.private.Directory(Path(temporary)) as directory:
+                    current = types.SimpleNamespace(held=owner._Held())
+                    try:
+                        if fixed:
+                            with self.assertRaisesRegex(ValueError, "retirement_private_stream_mode"):
+                                owner._third_raw_part(current, directory, path.name, owner._sha(b""))
+                        else:
+                            part = owner._third_raw_part(current, directory, path.name, owner._sha(b""))
+                            self.assertEqual(0o644, part.pin()["generation"][2] & 0o7777)
+                    finally: current.held.close()
+
+    def test_probe_writer_generation_and_bytes_remain_held_until_publication(self):
+        # Use actual whole producer, private writer, binary capture, and real
+        # late EOF. Only gateway proc/socket facts and SSH peer are inert seams.
+        subject = self.subject
+        for owner, fixed in ((self.reviewed_before(), False), (subject, True)):
+            for mutation in ("same-bytes-replacement", "metadata-change"):
+                with self.subTest(fixed=fixed, mutation=mutation), tempfile.TemporaryDirectory(dir=self.root) as temporary:
+                    oldroot = self.root; self.root = Path(temporary)
+                    try:
+                        native_case = OwnedChannelRetirementTests("runTest"); native_case.setUp()
+                        self.addCleanup(native_case.doCleanups)
+                        execute, _, _ = native_case._native(subject=subject, correlation=subject.THIRD_CORRELATION, action="observe")
+                        # Inert old master is already absent, preserving all
+                        # original ready/intent records; no exit is submitted.
+                        native = {"state": "ended", "correlationId": subject.THIRD_CORRELATION,
+                                  "gatewayBoot": "f0efe38b-5ce1-40f1-a7d6-a2a1e816d1fe", "independentAbsence": True}
+                        context, directory, held, ready_held = self.publication_context()
+                        operation = json.loads((context[4].path / "intent.json").read_bytes())["operationId"]
+                        real_capture = owner._fixed546_capture
+                        def collect(packet, timeout):
+                            code = "import sys;sys.stdin.buffer.read();sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]))"
+                            return real_capture([sys.executable, "-I", "-B", "-c", code, owner._json(native).hex()], b"inert", 3)
+                        with mock.patch.object(owner, "_THIRD_ADMISSION", self.release()), \
+                                mock.patch.object(owner.transport, "connection_host", return_value=object()), \
+                                mock.patch.object(owner.direct, "outer_prefix", return_value=(["ssh-inert-only"], "gateway-inert-only")), \
+                                mock.patch.object(owner, "_fixed546_collect", side_effect=collect):
+                            observed = owner._probe(context, operation, "observe")
+                        path = context[4].path / "probe.json"
+                        raw = path.read_bytes()
+                        if mutation == "metadata-change":
+                            value = json.loads(raw); value["primaryError"] = {"errorClass": "forged"}; raw = owner._json(value)
+                        replacement = context[4].path / "replacement"; replacement.write_bytes(raw); replacement.chmod(0o600); replacement.replace(path)
+                        def status(root, host, correlation, **kwargs):
+                            return owner.channel._public("ended", correlationId=correlation)
+                        with mock.patch.object(owner, "_THIRD_ADMISSION", self.release()), \
+                                mock.patch.multiple(owner, THIRD_INTENT_SHA=held.digest, THIRD_READY_SHA=ready_held.digest), \
+                                mock.patch.object(owner.direct, "status", side_effect=status):
+                            if fixed:
+                                with self.assertRaises(ValueError): owner._publish_ended(context, observed)
+                                self.assertFalse((directory.path / (subject.THIRD_CORRELATION + ".terminal.json")).exists())
+                            else:
+                                self.assertEqual("ended", owner._publish_ended(context, observed)["state"])
+                    finally: self.root = oldroot
+
+    def test_whole_high_fd_reader_writer_red_and_scalable_outer_inner_green(self):
+        import resource, selectors, shlex
+        subject = self.subject
+        path = FIXTURE / "546-high-fd.before.source"
+        raw = path.read_bytes(); provenance = json.loads((FIXTURE / "546-high-fd-provenance.json").read_bytes())
+        self.assertEqual(provenance["beforeSha256"], hashlib.sha256(raw).hexdigest())
+        before = types.ModuleType("agent_tools._546_highfd_before_" + uuid.uuid4().hex)
+        before.__package__ = "agent_tools"; before.__file__ = str(path)
+        sys.modules[before.__name__] = before; self.addCleanup(sys.modules.pop, before.__name__, None)
+        exec(compile(raw, before.__file__, "exec"), before.__dict__)
+        request = json.dumps({"operationId": str(uuid.uuid4()), "action": "observe",
+            "ready": {"correlationId": subject.THIRD_CORRELATION}, "sourceSha256": "a" * 64,
+            "config": "", "profile": "inert-only"}, sort_keys=True).encode()
+        source = "import json,sys\njson.load(sys.stdin)\nprint('EXACT HIGHFD OUT')\nsys.stderr.write('EXACT HIGHFD ERR\\n')\n"
+        rescues = []
+        def rescue_original(owner):
+            # Safety seam only after authentic1433 readiness failure: drain the
+            # same original harmless child without a signal, retry, or replay.
+            self.assertTrue("ValueError" in owner.read_errors or "ValueError" in owner.writer_errors)
+            first = owner.snapshot(); deadline = time.monotonic() + 5
+            with selectors.DefaultSelector() as readiness:
+                for key in owner.raw:
+                    if not owner.eof[key]: readiness.register(getattr(owner.child, key), selectors.EVENT_READ, key)
+                while readiness.get_map():
+                    self.assertLess(time.monotonic(), deadline, "original harmless child remains owned")
+                    for key, _ in readiness.select(.05):
+                        try: data = os.read(key.fd, 65536)
+                        except (BlockingIOError, InterruptedError): continue
+                        if not data: owner.eof[key.data] = True; readiness.unregister(key.fileobj)
+                        else: owner.counts[key.data] += len(data); owner.raw[key.data].extend(data)
+            if owner.writer is not None and owner.writer.ident is not None:
+                owner.writer.join(1); self.assertFalse(owner.writer.is_alive())
+            owner.child.wait(timeout=1); owner.child.stdout.close(); owner.child.stderr.close(); owner.closed = True
+            rescues.append(first)
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE); desired = 3564
+        if soft < desired:
+            if hard != resource.RLIM_INFINITY and hard < desired: self.skipTest("hard FD limit cannot reproduce real3308 FD ownership")
+            resource.setrlimit(resource.RLIMIT_NOFILE, (desired, hard))
+        held = []
+        try:
+            while not held or held[-1] < 3308: held.append(os.open("/dev/null", os.O_RDONLY))
+            self.assertGreaterEqual(max(held), 3308)
+            for owner, fixed in ((before, False), (subject, True)):
+                children = []
+                def peer(argv, **kwargs):
+                    command = shlex.split(argv[-1]); self.assertEqual(["python3", "-I", "-B", "-c"], command[:4])
+                    child = subprocess.Popen([sys.executable, "-I", "-B", "-c", command[4]], **kwargs)
+                    children.append(child); return child
+                packet = owner._fixed546_transport_packet(["ssh-inert-only"], "gateway-inert-only", source, request)
+                if fixed:
+                    result = owner._fixed546_collect(packet, 3, _popen=peer)
+                else:
+                    with mock.patch.object(owner._Fixed546Owner, "finish_naturally", rescue_original):
+                        result = owner._fixed546_collect(packet, .08, _popen=peer)
+                self.assertEqual(1, len(children)); self.assertTrue(result["originalTerminal"]["complete"])
+                self.assertTrue(result["originalStreamsClosed"])
+                self.assertEqual({"stdout": True, "stderr": True}, result["eof"])
+                if fixed:
+                    self.assertTrue(result["complete"]); self.assertFalse(result["readError"]); self.assertFalse(result["writeError"])
+                    self.assertEqual(b"EXACT HIGHFD OUT\n", result["stdout"]); self.assertEqual(b"EXACT HIGHFD ERR\n", result["stderr"])
+                    self.assertEqual(len(packet["stdin"]), result["originalTerminal"]["forwardedBytes"])
+                else:
+                    self.assertFalse(result["complete"]); self.assertTrue(result["readError"]); self.assertTrue(result["writeError"])
+                    self.assertEqual(b"", result["stdout"]); self.assertEqual(0, result["originalTerminal"]["forwardedBytes"])
+                # Execute the actual emitted complete inner source as well;
+                # only the control command is a finite harmless local child.
+                scope = {}; exec(compile(owner._fixed546_inner_source(), "actual-highfd-generated-inner", "exec"), scope)
+                argv = [sys.executable, "-I", "-B", "-c", "import sys;print('INNER HIGHFD OUT');sys.stderr.write('INNER HIGHFD ERR\\n');sys.exit(7)"]
+                if fixed:
+                    inner = scope["inner"](argv, 3)
+                else:
+                    with mock.patch.object(scope["_Fixed546Owner"], "finish_naturally", rescue_original):
+                        inner = scope["inner"](argv, .08)
+                self.assertTrue(inner["originalTerminal"]["complete"])
+                self.assertEqual(b"INNER HIGHFD OUT\n", inner["stdout"]); self.assertEqual(b"INNER HIGHFD ERR\n", inner["stderr"])
+                self.assertEqual(7, inner["returnCode"])
+                self.assertEqual(fixed, inner["complete"]); self.assertEqual(not fixed, inner["readError"])
+            self.assertEqual(2, len(rescues))
+        finally:
+            for fd in reversed(held): os.close(fd)
+            if soft < desired: resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
+
+    def test_integrated_automatic_gateway_and_inner_carrier_causal_controls(self):
+        rows = _run_fixed546_carrier_controls(self.subject, self.root)
+        self.assertEqual(32, len(rows))
+
+
+if __name__ == "__main__":
+    unittest.main()

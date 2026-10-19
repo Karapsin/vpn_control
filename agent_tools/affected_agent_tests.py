@@ -53,7 +53,10 @@ class Selection:
                 "modules": list(self.modules), "selectedModuleCount": len(self.modules),
                 "totalModuleCount": self.total_modules}
 
-    def commands(self, python: str):
+    def commands(self, python: str, *, max_modules_per_command: int | None = None):
+        if max_modules_per_command is not None and (type(max_modules_per_command) is not int
+                                                    or not 1 <= max_modules_per_command <= 2000):
+            raise SelectionError("Invalid managed test batch size")
         modules = list(self.modules)
         gate = "agent_tools.tests.test_ssh_connection_session_close"
         result = []
@@ -61,7 +64,9 @@ class Selection:
             result.append([python, "-m", "unittest", gate])
             modules.remove(gate)
         if modules:
-            result.append([python, "-m", "unittest", *modules])
+            size = max_modules_per_command or len(modules)
+            for start in range(0, len(modules), size):
+                result.append([python, "-m", "unittest", *modules[start:start + size]])
         return result
 
 

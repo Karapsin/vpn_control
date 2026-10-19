@@ -19,15 +19,95 @@ from agent_tools import private_inventory_lock as inventory
 from agent_tools import ssh_connection_session as session
 from agent_tools import ssh_connection_session_close as close
 from agent_tools.tests.test_ssh_connection_session import SessionTests
+from agent_tools.tests import test_ssh_connection_session as session_fixture
+from agent_tools import source_module_loader as source_loader
+from agent_tools import native_review_source_closure as source_custody
+from contextlib import contextmanager
+import tempfile
+
+_CURRENT_SESSION = session
+_CURRENT_CLOSE = close
+_CURRENT_INVENTORY = inventory
+
+
+@contextmanager
+def historical_close_namespace(*, current_transport=False):
+    """Real full source bytes in a closed, held fixture import namespace."""
+    folder = Path(__file__).parent / 'fixtures/transport_close_pin'
+    before = (folder / 'frozen-transport.before.source').read_bytes()
+    provenance = json.loads((folder / 'frozen-transport.provenance.json').read_bytes())
+    if (len(before) != provenance['sourceBytes']
+            or hashlib.sha256(before).hexdigest() != provenance['sourceSha256']
+            or provenance['sourceSha256'] != _CURRENT_CLOSE._TRANSPORT_SOURCE):
+        raise AssertionError('authentic historical transport changed')
+    transport = Path(_CURRENT_SESSION.transport.__file__).read_bytes() if current_transport else before
+    bodies = {
+        'ssh_transport.py': transport,
+        'ssh_connection_session.py': Path(_CURRENT_SESSION.__file__).read_bytes(),
+        'ssh_connection_session_close.py': Path(_CURRENT_CLOSE.__file__).read_bytes(),
+        'private_inventory_lock.py': Path(_CURRENT_INVENTORY.__file__).read_bytes(),
+        'native_review_source_closure.py': Path(source_custody.__file__).read_bytes(),
+    }
+    with tempfile.TemporaryDirectory(prefix='close-source-', dir=Path('/tmp').resolve()) as temporary:
+        directory = Path(temporary).resolve()
+        expected = {}
+        for name, body in bodies.items():
+            path = directory / name
+            path.write_bytes(body)
+            path.chmod(0o600)
+            expected[str(path)] = hashlib.sha256(body).hexdigest()
+        held = source_loader.SourceSession(directory, 'ssh_connection_session_close',
+                                           expected_sources=expected)
+        try:
+            fixture = SimpleNamespace(close=held.module,
+                session=held.load('ssh_connection_session'),
+                inventory=held.load('private_inventory_lock'), held=held)
+            held.guard()
+            yield fixture
+            held.guard()
+        finally:
+            held.close()
+
 
 
 @unittest.skipUnless(os.name == 'posix', 'POSIX only')
 class CloseTests(SessionTests):
+    def setUp(self):
+        fixture = self.enterContext(historical_close_namespace())
+        # Bind the existing inert fixture to the real historical source graph.
+        # Production source digests and every close implementation stay intact.
+        for name, module in (('session', fixture.session), ('close', fixture.close),
+                             ('inventory', fixture.inventory)):
+            self.enterContext(mock.patch.dict(globals(), {name: module}))
+        self.enterContext(mock.patch.object(session_fixture, 's', fixture.session))
+        super().setUp()
+
+    def test_current_transport_is_not_original_close_authority(self):
+        ready = self.ready()
+        original = {p.name: p.read_bytes() for p in self.journal().iterdir()}
+        with historical_close_namespace(current_transport=True) as current:
+            actual = Path(current.session.transport.__file__).read_bytes()
+            self.assertEqual(actual, Path(_CURRENT_SESSION.transport.__file__).read_bytes())
+            self.assertNotEqual(current.close._TRANSPORT_SOURCE,
+                                hashlib.sha256(actual).hexdigest())
+            with mock.patch.object(current.close.subprocess, 'Popen',
+                                   side_effect=AssertionError('no current transport exit')) as launch:
+                value = current.close.close(self.root, 'archlinux', ready['receiptSha256'])
+            self.assertEqual('unknown', value['state'])
+            launch.assert_not_called()
+            self.assertFalse(current.close._paths(self.root, 'archlinux',
+                                                ready['receiptSha256'])[3].exists())
+            self.assertEqual(original, {p.name: p.read_bytes() for p in self.journal().iterdir()})
+            current.held.guard()
+        self.assertTrue(current.held.closed)
+        self.assertFalse(any(name == current.held.prefix or name.startswith(current.held.prefix + '.')
+                             for name in sys.modules))
+
     def test_preserved_transport_pin_blocks_current_source_fixed_pin_closes_original(self):
         folder=Path(__file__).parent/'fixtures/transport_close_pin'
         raw=(folder/'before.source').read_bytes();metadata=json.loads((folder/'provenance.json').read_bytes())
         self.assertEqual(metadata['sourceSha256'],hashlib.sha256(raw).hexdigest())
-        before=types.ModuleType('agent_tools._close_pin_before');before.__package__='agent_tools'
+        before=types.ModuleType(session.__package__+'._close_pin_before');before.__package__=session.__package__
         before.__file__=str(folder/'before.source')
         exec(compile(raw,before.__file__,'exec'),before.__dict__)
         ready=self.ready();original={p.name:p.read_bytes() for p in self.journal().iterdir()}
@@ -83,7 +163,7 @@ class CloseTests(SessionTests):
         return ready, close._paths(self.root, 'archlinux', ready['receiptSha256'])
 
     def test_actual_current_source_pin_closes_only_original_outer_master(self):
-        # Production pins are deliberately not replaced by the fixture.
+        # Production pins are unchanged; the full authentic pinned transport is compiled in this fixture.
         ready, paths = self.successful_close('')
         self.assertEqual(close._TRANSPORT_SOURCE,
                          session._sha(Path(session.transport.__file__).read_bytes()))

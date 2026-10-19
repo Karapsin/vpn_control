@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import ast
 import json
+import os
+import shutil
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import check_python_platform_contracts as subject
 
@@ -105,6 +109,61 @@ class AndroidTestCapabilityProbeTest(unittest.TestCase):
 class ManifestTest(unittest.TestCase):
     def test_all_explicit_contracts_pass(self):
         self.assertEqual([], subject.check_contracts())
+
+
+class WindowsNativePacketCapabilityProbeTest(unittest.TestCase):
+    @staticmethod
+    def without_powershell(**kwargs):
+        """Remove runtime discovery only; execute the unchanged whole helper."""
+        with tempfile.TemporaryDirectory(prefix="packet-no-powershell-") as empty_path:
+            with patch.dict(os.environ, {"PATH": empty_path}):
+                os.environ.pop("VPN_CONTROL_TEST_POWERSHELL", None)
+                return subject.probe_windows_native_packet_recipe_test_suite(**kwargs)
+
+    def summary(self, result):
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        summary = json.loads(result.stdout.splitlines()[-1])
+        self.assertEqual(8, summary["testsRun"])
+        self.assertEqual(7, len(summary["posixTestIds"]))
+        self.assertEqual(1, len(summary["diagnosticTestIds"]))
+        self.assertEqual([], summary["errors"])
+        self.assertEqual([], summary["failures"])
+        return summary
+
+    def test_windows_like_suite_skips_posix_and_absent_powershell_separately(self):
+        summary = self.summary(self.without_powershell())
+        self.assertIsNone(summary["diagnosticPowerShellRuntime"])
+        self.assertEqual(set(summary["testIds"]), {item["test"] for item in summary["skipped"]})
+        diagnostic = next(item for item in summary["skipped"]
+                          if item["test"] in summary["diagnosticTestIds"])
+        self.assertIn("PowerShell runtime unavailable", diagnostic["reason"])
+
+    @unittest.skipUnless(os.name == "posix" and hasattr(os, "O_NOFOLLOW") and hasattr(os, "getuid"),
+                         "requires POSIX descriptor operations")
+    def test_posix_suite_retains_all_seven_bodies_when_powershell_is_absent(self):
+        summary = self.summary(self.without_powershell(windows_like=False))
+        self.assertEqual(set(summary["posixTestIds"]), set(summary["passed"]))
+        self.assertEqual(set(summary["diagnosticTestIds"]), {item["test"] for item in summary["skipped"]})
+
+    def test_explicit_powershell_runs_diagnostic_while_windows_like_posix_tests_skip(self):
+        runtime = (os.environ.get("VPN_CONTROL_TEST_POWERSHELL")
+                   or (shutil.which("powershell.exe") if os.name == "nt" else None)
+                   or shutil.which("pwsh"))
+        if runtime is None:
+            self.skipTest("PowerShell runtime unavailable; explicit-runtime coverage requires the runtime")
+        runtime = os.path.abspath(shutil.which(runtime) or runtime)
+        with tempfile.TemporaryDirectory(prefix="packet-explicit-powershell-") as empty_path:
+            with patch.dict(os.environ, {"PATH": empty_path, "VPN_CONTROL_TEST_POWERSHELL": runtime}):
+                summary = self.summary(subject.probe_windows_native_packet_recipe_test_suite())
+        self.assertEqual(runtime, summary["diagnosticPowerShellRuntime"])
+        self.assertEqual(set(summary["diagnosticTestIds"]), set(summary["passed"]))
+        self.assertEqual(set(summary["posixTestIds"]), {item["test"] for item in summary["skipped"]})
+
+    def test_whole_suite_probe_still_rejects_a_wrong_total_case_count(self):
+        result = self.without_powershell(expected_tests=9)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("exact helper case count changed", result.stderr)
+        self.assertEqual(8, json.loads(result.stdout.splitlines()[-1])["testsRun"])
 
 
 if __name__ == "__main__":

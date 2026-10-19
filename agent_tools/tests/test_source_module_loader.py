@@ -31,7 +31,7 @@ class AdapterSourceTests(unittest.TestCase):
         # operational data; changing it must not select different executable code.
         if not hasattr(self,'public_server'):
             source=Path(server.__file__).parent
-            for name in ('mcp_server.py','docs_assistant.py','local_build_environment.py',
+            for name in ('managed_agent_check.py','mcp_server.py','docs_assistant.py','local_build_environment.py',
                          'managed_check_lease.py','check_output_retention.py','windows_vm_setup_policy.py',
                          'native_workflow_policy.py',
                          'source_module_loader.py','windows_source_custody.py',

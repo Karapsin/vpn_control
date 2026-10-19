@@ -1,0 +1,83 @@
+﻿$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+
+function Read-ProgramBootstrap {
+ $os=Get-CimInstance Win32_OperatingSystem;$self=Get-Process -Id $PID;$machine=(Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid).MachineGuid;$hardware=(Get-CimInstance Win32_ComputerSystemProduct).UUID;$identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+ try{return [ordered]@{pid=$PID;birthFileTimeUtc=$self.StartTime.ToUniversalTime().ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture);sessionId=$self.SessionId;path=$self.Path;principalSid=$identity.User.Value;is64BitProcess=[Environment]::Is64BitProcess;powerShellMajor=$PSVersionTable.PSVersion.Major;powerShellEdition=$PSVersionTable.PSEdition;boot=[ordered]@{lastBootUpTimeFileTimeUtc=$os.LastBootUpTime.ToUniversalTime().ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture);machineGuid=[string]$machine;hardwareUuid=[string]$hardware}}}finally{$identity.Dispose()}
+}
+$expectedBoot='134368653065000000';$expectedMachine='7b109066-c50e-4138-8969-f83555499b60';$expectedHardware='D493A373-1D2C-4AB0-BFD4-E93575019DCE';$expectedPowerShell='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+
+$bootstrapOpening=Read-ProgramBootstrap
+if($bootstrapOpening.boot.lastBootUpTimeFileTimeUtc -cne $expectedBoot -or $bootstrapOpening.boot.machineGuid -cne $expectedMachine -or $bootstrapOpening.boot.hardwareUuid -cne $expectedHardware -or $bootstrapOpening.path -cne $expectedPowerShell -or $bootstrapOpening.sessionId -ne 0 -or $bootstrapOpening.principalSid -cne 'S-1-5-18' -or -not $bootstrapOpening.is64BitProcess -or $bootstrapOpening.powerShellMajor -ne 5 -or $bootstrapOpening.powerShellEdition -cne 'Desktop'){[Console]::WriteLine((@{state='refused-before-file-effects';code='GUEST_BOOT_OR_ACTOR_MISMATCH';fileEffects=$false;bootstrapOpening=$bootstrapOpening;expectedBoot=$expectedBoot;productOperation=$false;taskOperation=$false}|ConvertTo-Json -Depth 8 -Compress));exit 3}
+Add-Type -TypeDefinition @'
+using System;using System.ComponentModel;using System.Runtime.InteropServices;
+public static class VpnArtifactToken {
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool GetTokenInformation(IntPtr token,int kind,out int value,int size,out int used);
+ static int Value(IntPtr token,int kind){int value,used;if(!GetTokenInformation(token,kind,out value,4,out used))throw new Win32Exception(Marshal.GetLastWin32Error());if(used!=4)throw new InvalidOperationException("token-information-size");return value;}
+ public static int[] Read(IntPtr token){return new int[]{Value(token,20),Value(token,18)};}
+}
+'@ -ReferencedAssemblies @('System','System.Core')
+$tokenIdentity=[Security.Principal.WindowsIdentity]::GetCurrent();try{$tokenOpening=[VpnArtifactToken]::Read($tokenIdentity.Token)}finally{$tokenIdentity.Dispose()};if($tokenOpening[0] -ne 1 -or $tokenOpening[1] -notin @(1,2)){throw 'ARTIFACT_SYSTEM_ELEVATION'};$bootstrapOpening.tokenElevation=$tokenOpening[0];$bootstrapOpening.tokenElevationType=$tokenOpening[1]
+
+foreach($name in @('C:\ProgramData','C:\')){if(((Get-Item -LiteralPath $name -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw 'ARTIFACT_PARENT_REPARSE'}}
+$caseResult= & {
+Add-Type -TypeDefinition @'
+using System;using System.ComponentModel;using System.Runtime.InteropServices;using Microsoft.Win32.SafeHandles;
+public static class VpnArtifactHandle {
+ [StructLayout(LayoutKind.Sequential)]struct Info { public uint Attributes,CreationLow,CreationHigh,AccessLow,AccessHigh,WriteLow,WriteHigh,Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow; }
+ [DllImport("kernel32.dll")]static extern IntPtr GetCurrentProcess();
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool DuplicateHandle(IntPtr process,SafeFileHandle source,IntPtr target,out SafeFileHandle result,uint access,bool inherit,uint options);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(SafeFileHandle source,out Info result);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern SafeFileHandle CreateFile(string path,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);
+
+ public static SafeFileHandle HoldDirectory(string path){SafeFileHandle h=CreateFile(path,0x20080,3,IntPtr.Zero,3,0x2200000,IntPtr.Zero);if(h.IsInvalid){int error=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(error);}return h;}
+ public static string DirectoryIdentity(SafeFileHandle source){Info r;if(!GetFileInformationByHandle(source,out r))throw new Win32Exception(Marshal.GetLastWin32Error());if((r.Attributes&0x10)==0||(r.Attributes&0x400)!=0||r.Links<1)throw new InvalidOperationException("artifact-root-kind");return r.Volume.ToString("x8")+":"+r.IndexHigh.ToString("x8")+r.IndexLow.ToString("x8");}
+ public static void DirectoryUnchanged(SafeFileHandle source,string path,string identity){if(DirectoryIdentity(source)!=identity)throw new InvalidOperationException("artifact-held-root-changed");using(SafeFileHandle named=HoldDirectory(path)){if(DirectoryIdentity(named)!=identity)throw new InvalidOperationException("artifact-named-root-changed");}}
+ public static SafeFileHandle ReadOnly(SafeFileHandle source){SafeFileHandle result;if(!DuplicateHandle(GetCurrentProcess(),source,GetCurrentProcess(),out result,0x120089,false,0))throw new Win32Exception(Marshal.GetLastWin32Error());return result;}
+ public static string Identity(SafeFileHandle source){Info r;if(!GetFileInformationByHandle(source,out r))throw new Win32Exception(Marshal.GetLastWin32Error());if(r.Links!=1)throw new InvalidOperationException("program-link-count");return r.Volume.ToString("x8")+":"+r.IndexHigh.ToString("x8")+r.IndexLow.ToString("x8");}
+ public static int Refusal(string path,uint access){using(SafeFileHandle h=CreateFile(path,access,7,IntPtr.Zero,3,128,IntPtr.Zero)){return h.IsInvalid?Marshal.GetLastWin32Error():0;}}
+}
+'@ -ReferencedAssemblies @('System','System.Core')
+Add-Type -TypeDefinition @'
+using System;using System.ComponentModel;using System.Runtime.InteropServices;
+public static class VpnCreateArtifactDirectory {
+ [StructLayout(LayoutKind.Sequential)]struct Attributes {public int Length;public IntPtr Descriptor;[MarshalAs(UnmanagedType.Bool)]public bool Inherit;}
+ [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool ConvertStringSecurityDescriptorToSecurityDescriptor(string text,uint revision,out IntPtr descriptor,out uint size);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateDirectory(string path,ref Attributes attributes);
+ [DllImport("kernel32.dll")]static extern IntPtr LocalFree(IntPtr memory);
+ public static void CreateExclusive(string path,string sddl){IntPtr descriptor;uint size;if(!ConvertStringSecurityDescriptorToSecurityDescriptor(sddl,1,out descriptor,out size))throw new Win32Exception(Marshal.GetLastWin32Error());try{Attributes a=new Attributes();a.Length=Marshal.SizeOf(typeof(Attributes));a.Descriptor=descriptor;a.Inherit=false;if(!CreateDirectory(path,ref a))throw new Win32Exception(Marshal.GetLastWin32Error());}finally{LocalFree(descriptor);}}
+}
+'@ -ReferencedAssemblies @('System','System.Core')
+$identity=[Security.Principal.WindowsIdentity]::GetCurrent();try{$principal=$identity.User.Value}finally{$identity.Dispose()}
+if($principal -cne 'S-1-5-18'){[pscustomobject]@{state='unsupported-principal';requires='SYSTEM'};return}
+$root='C:\ProgramData\VpnControlInfrastructureRegression-e62e2a3e-d249-4509-b6bb-f2edf4e51b22'
+$path=Join-Path $root 'owned.bin';if(Test-Path -LiteralPath $root){throw 'REGRESSION_SCOPE_EXISTS'}
+$sddl='O:SYG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;S-1-5-21-4099058025-2437077614-260217637-1001)'
+[VpnCreateArtifactDirectory]::CreateExclusive($root,$sddl)
+$rootHeld=[VpnArtifactHandle]::HoldDirectory($root);$rootId=[VpnArtifactHandle]::DirectoryIdentity($rootHeld);$rootAclOpening=(Get-Acl -LiteralPath $root).Sddl
+$writer=[IO.File]::Open($path,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+$rejected=$false;$reason=$null;$ownerBefore=$null;$ownerAfter=$null
+try{
+ $fileId=[VpnArtifactHandle]::Identity($writer.SafeFileHandle)
+ $security=Get-Acl -LiteralPath $path;$security.SetOwner([Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'));[IO.File]::SetAccessControl($path,$security)
+ $ownerBefore=(Get-Acl -LiteralPath $path).GetOwner([Security.Principal.SecurityIdentifier]).Value
+ if($ownerBefore -cne 'S-1-5-32-544'){throw 'REGRESSION_BA_INPUT_NOT_ESTABLISHED'}
+ 
+ try{ $acl=Get-Acl -LiteralPath $path;$owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value;$rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]));if($owner -cne 'S-1-5-18' -or $rules.Count -ne 3){throw 'TOKEN_SOURCE_ACL'}
+ $seen=@{};foreach($rule in $rules){$sid=$rule.IdentityReference.Value;if($seen.ContainsKey($sid) -or $rule.AccessControlType -ne 'Allow' -or -not $rule.IsInherited){throw 'TOKEN_SOURCE_RULE'};$seen[$sid]=$true;$rights=if($sid -ceq 'S-1-5-18' -or $sid -ceq 'S-1-5-32-544'){0x1f01ff}elseif($sid -ceq 'S-1-5-21-4099058025-2437077614-260217637-1001'){0x1200a9}else{throw 'TOKEN_SOURCE_RULE_SID'};if([int]$rule.FileSystemRights -ne $rights){throw 'TOKEN_SOURCE_RULE_RIGHTS'}}
+ }catch{if($_.Exception.Message -cne 'TOKEN_SOURCE_ACL'){throw};$rejected=$true;$reason=$_.Exception.Message}
+ $ownerAfter=(Get-Acl -LiteralPath $path).GetOwner([Security.Principal.SecurityIdentifier]).Value
+ $fileAcl=(Get-Acl -LiteralPath $path).Sddl
+ if([VpnArtifactHandle]::Identity($writer.SafeFileHandle) -cne $fileId){throw 'REGRESSION_HELD_FILE_CHANGED'}
+ $named=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite);try{if([VpnArtifactHandle]::Identity($named.SafeFileHandle) -cne $fileId){throw 'REGRESSION_NAMED_FILE_CHANGED'}}finally{$named.Dispose()}
+ [VpnArtifactHandle]::DirectoryUnchanged($rootHeld,$root,$rootId);if((Get-Acl -LiteralPath $root).Sddl -cne $rootAclOpening -or (Get-Acl -LiteralPath $path).Sddl -cne $fileAcl){throw 'REGRESSION_ACL_CHANGED'}
+}finally{$writer.Dispose();$rootHeld.Dispose()}
+$nativeRegressionResult=[pscustomobject]@{state='owner-check';originalOwnerSid=$ownerBefore;ownerSid=$ownerAfter;strictValidatorRejected=$rejected;reason=$reason;rootPath=$root;rootIdentity=$rootId;filePath=$path;fileIdentity=$fileId;rootIdentityClosing=$true;fileIdentityClosing=$true;probeAssetsRetained=$true}
+$nativeRegressionResult
+
+}
+
+if($caseResult -isnot [Management.Automation.PSCustomObject]){throw 'NATIVE_CASE_RESULT_TYPE'}
+
+$bootstrapClosing=Read-ProgramBootstrap;$tokenIdentity=[Security.Principal.WindowsIdentity]::GetCurrent();try{$tokenClosing=[VpnArtifactToken]::Read($tokenIdentity.Token)}finally{$tokenIdentity.Dispose()};$bootstrapClosing.tokenElevation=$tokenClosing[0];$bootstrapClosing.tokenElevationType=$tokenClosing[1]
+if($bootstrapClosing.pid -ne $bootstrapOpening.pid -or $bootstrapClosing.birthFileTimeUtc -cne $bootstrapOpening.birthFileTimeUtc -or $bootstrapClosing.sessionId -ne $bootstrapOpening.sessionId -or $bootstrapClosing.path -cne $bootstrapOpening.path -or $bootstrapClosing.principalSid -cne 'S-1-5-18' -or $bootstrapClosing.tokenElevation -ne 1 -or $bootstrapClosing.tokenElevationType -ne $bootstrapOpening.tokenElevationType -or -not $bootstrapClosing.is64BitProcess -or $bootstrapClosing.powerShellMajor -ne 5 -or $bootstrapClosing.powerShellEdition -cne 'Desktop' -or $bootstrapClosing.boot.lastBootUpTimeFileTimeUtc -cne $expectedBoot -or $bootstrapClosing.boot.machineGuid -cne $expectedMachine -or $bootstrapClosing.boot.hardwareUuid -cne $expectedHardware){throw 'BOOTSTRAP_ACTOR_OR_BOOT_CLOSING'}
+[pscustomobject]@{state='regression-observed';case='owner-before';scopeId='e62e2a3e-d249-4509-b6bb-f2edf4e51b22';caseResult=$caseResult;bootstrapOpening=$bootstrapOpening;bootstrapClosing=$bootstrapClosing;guestBootClosing=$true;bootstrapActorClosing=$true}

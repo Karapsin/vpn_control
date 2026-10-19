@@ -1,0 +1,46 @@
+"""Declared in-memory IPC peer for executing the complete actual control carrier.
+
+Only its socket, /proc read and socket lstat boundaries are inert. No native or
+Unix socket opens. The JSON line protocol and supplied UacOwner dispatch execute.
+"""
+import builtins,contextlib,io,json,os,stat,struct,types
+
+def execute(source,owner,endpoint,*,fail_ack=False):
+    audit={'packets':[],'replies':[],'clientClosed':False,'streamClosed':False}
+    actor=owner.backend.owner_actor()
+    class Peer:
+        def settimeout(self,value):audit['timeout']=value
+        def connect(self,path):assert path==endpoint;audit['connected']=True
+        def getsockopt(self,*args):return struct.pack('3i',actor['pid'],os.geteuid(),0)
+        def sendall(self,raw):
+            audit['packets'].append(bytes(raw))
+            if not raw.endswith(b'\n'):raise TimeoutError('declared owner line reader received no actual LF')
+            request=json.loads(raw)
+            try:reply={'state':'observed','result':owner.dispatch(request)}
+            except BaseException as error:reply={'state':'unknown'if owner.effect_uncertain else'refused','errorClass':type(error).__name__,'reason':str(error),'automaticReplay':False}
+            audit['replies'].append(reply)
+            self.reply=(json.dumps(reply,sort_keys=True)+'\n').encode()
+        def makefile(self,*args,**kwargs):return self
+        def readline(self,limit):
+            if fail_ack:raise TimeoutError('declared original control reply lost')
+            return self.reply[:limit]
+        def close(self):
+            if audit['streamClosed']:audit['clientClosed']=True
+            else:audit['streamClosed']=True
+    api=types.SimpleNamespace(AF_UNIX=1,SOCK_STREAM=1,SOL_SOCKET=1,SO_PEERCRED=17,socket=lambda *args:Peer())
+    os_api=types.SimpleNamespace(lstat=lambda path:types.SimpleNamespace(st_mode=stat.S_IFSOCK|0o600,st_uid=os.geteuid(),st_ino=711),geteuid=os.geteuid)
+    def opened(path,*args,**kwargs):
+        assert path=='/proc/'+str(actor['pid'])+'/stat'
+        return io.StringIO(str(actor['pid'])+' (inert owner) S '+' '.join(['0']*18+[str(actor['startTicks'])])+'\n')
+    original_import=builtins.__import__
+    def imported(name,globals=None,locals=None,fromlist=(),level=0):
+        if name=='socket':return api
+        if name=='os':return os_api
+        return original_import(name,globals,locals,fromlist,level)
+    builtin=dict(vars(builtins));builtin['__import__']=imported;builtin['open']=opened
+    output=io.StringIO();namespace={'__name__':'__main__','__builtins__':builtin}
+    error=None
+    try:
+        with contextlib.redirect_stdout(output):exec(compile(source,'<complete-uac-control-carrier>','exec'),namespace)
+    except BaseException as caught:error=caught
+    return output.getvalue().encode(),error,audit

@@ -1,0 +1,7 @@
+{
+  "source": "agent_tools/ssh_transport.py",
+  "sourceCommit": "d24c19047ec15689948404ede40f50c5ec284e77",
+  "sourceSha256": "16cbcfc396ba33e660d2550f4bb70b30a39367f1b823fd57eeee2281f844a367",
+  "sourceBytes": 44904,
+  "role": "Authentic complete transport used only in isolated inert historical-close fixture; no current/native connection authority"
+}
