@@ -4,6 +4,10 @@ This directory contains the repository-local MCP workflow server and its documen
 
 ## Automatic MCP Setup
 
+Codex and Claude Code start the same STDIO server, tools, and safety boundaries.
+
+### Codex
+
 Run `python3 agent_tools/configure_codex.py` once in a new checkout before opening its Codex session. The tracked `agent_tools/codex-config.toml.in` template generates ignored `.codex/config.toml`, deriving absolute launcher and working-directory paths from the checkout. Existing local settings are preserved; `--replace` makes a private ignored backup before regeneration. Rerun after moving the checkout. The generated configuration starts `agent_tools/mcp_server.sh` for trusted checkouts. The launcher:
 
 1. Locates Python 3.
@@ -12,6 +16,14 @@ Run `python3 agent_tools/configure_codex.py` once in a new checkout before openi
 4. Starts the STDIO server with all operational logging on stderr so the protocol on stdout remains clean.
 
 Do not commit `.agent_venv/` or `.rag_index/`. Restart the Codex session after changing project MCP configuration because a running session does not reload its MCP inventory.
+
+### Claude Code
+
+The tracked `.mcp.json` defines the `vpn_control` STDIO server and `CLAUDE.md` imports `AGENTS.md` with a literal `@AGENTS.md` line. Claude Code sets `CLAUDE_PROJECT_DIR` in the server process; the inline guard reads that runtime value, requires an absolute checkout root containing `.mcp.json` and `agent_tools/mcp_server.sh`, and then runs that launcher. It never falls back to the working directory or another checkout, and it fails with a `[vpn-control MCP] CLAUDE_PROJECT_DIR` message on stderr otherwise. Claude does not expand `${CLAUDE_PROJECT_DIR}` in project `args`, so the guard must not use brace syntax.
+
+The tracked `.claude/settings.json` approves only `vpn_control` (`enabledMcpjsonServers`), allows only `mcp__vpn_control__*`, and sets `MCP_TIMEOUT=300000` (300-second startup). `.mcp.json` sets a 3,600,000 ms per-tool `timeout` and `alwaysLoad: true`, so the tools are not deferred behind tool search. Claude waits at most about five seconds for `alwaysLoad` tools before the first turn; a warm launcher answers in under a second, while a cold `.agent_venv/` bootstrap finishes in the background within the startup timeout. Project settings apply only after the workspace trust prompt; no hooks or permission bypass are configured, so startup never fetches, switches branches, or runs checks.
+
+Check the connection with `/mcp` and loaded instructions with `/context` or `/memory`. Restart the session after changing `.mcp.json`, `.claude/settings.json`, or the launcher. Personal overrides belong in ignored `.claude/settings.local.json` and a root CLAUDE.local.md file.
 
 If the desktop app does not export a toolchain path, put it in ignored
 `.codex/build-env.local.json`, for example `{"JAVA_HOME":"/absolute/path/to/jdk"}`.

@@ -33,11 +33,11 @@ The app is built around `sing-box`. Android uses Android VPN APIs and bundled na
 
 ## Mandatory Agent Startup
 
-The project MCP configured in `.codex/config.toml` is the normal entry point for repository work. For implementation, testing, build, release, commit, or other state-changing tasks:
+The project `vpn_control` MCP server is the normal entry point for repository work. Codex starts it from the generated, ignored `.codex/config.toml`; Claude Code starts it from the tracked `.mcp.json` and `.claude/settings.json`, with `CLAUDE.md` importing this file. Both clients use the same launcher, tools, and rules. For implementation, testing, build, release, commit, or other state-changing tasks:
 
 1. Call `prepare_start` before normal repository searches, file inspection, tests, or edits.
 2. Read the instruction files returned by the tool. Use its local `docs` RAG and `change_impact` result before broad exploratory searches.
-3. If `.codex/config.toml` is missing, generate it with `python3 agent_tools/configure_codex.py`; it is local and ignored. If MCP is not yet available, allow `agent_tools/mcp_server.sh` to create `.agent_venv/` and install `agent_tools/requirements-mcp.txt`, then restart the session if its MCP inventory is already fixed.
+3. For Codex, if `.codex/config.toml` is missing, generate it with `python3 agent_tools/configure_codex.py`; it is local and ignored. For Claude Code, trust the workspace and confirm `vpn_control` with `/mcp`. If MCP is not yet available, allow `agent_tools/mcp_server.sh` to create `.agent_venv/` and install `agent_tools/requirements-mcp.txt`, then restart the session if its MCP inventory is already fixed.
 4. If the transport still cannot be used, run the equivalent `agent_tools/mcp_tool.sh` command and report the MCP limitation.
 
 The only startup-sync exception is a clearly read-only request where current remote state is irrelevant. State explicitly that sync was skipped and findings may be stale. This exception does not authorize edits, tests that create meaningful repository state, commits, pushes, or releases.

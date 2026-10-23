@@ -114,7 +114,9 @@ def changed_paths(root, baseline):
 
 
 VERSION_ONLY_METADATA = {"gradle.properties"}
-PROSE_FILES = {"README.md", "AGENTS.md", "agent_tools/README.md"}
+PROSE_FILES = {"README.md", "AGENTS.md", "CLAUDE.md", "agent_tools/README.md"}
+# Tracked client configuration outside agent_tools/ that tests must consume.
+ROOT_AGENT_CONFIG = {".mcp.json", ".claude/settings.json"}
 
 
 def is_document(path):
@@ -126,7 +128,7 @@ def is_document(path):
 
 
 def potentially_agent_input(path):
-    return path.startswith(("agent_tools/", "scripts/", ".github/workflows/")) or path in {".github/required-workflows.json", ".codex/config.toml", ".gitattributes"}
+    return path.startswith(("agent_tools/", "scripts/", ".github/workflows/")) or path in {".github/required-workflows.json", ".codex/config.toml", ".gitattributes", *ROOT_AGENT_CONFIG}
 
 
 def is_python_source(path):
@@ -631,7 +633,7 @@ def select_from_sources(sources, changed, baseline="inert", existing_tests=None)
         reachable.add(path)
         pending.extend(graph.get(path, ()))
     consumed = reachable & relevant
-    unmapped = {p for p in relevant if p.startswith("agent_tools/") and p not in consumed and not p.startswith("agent_tools/tests/test_")}
+    unmapped = {p for p in relevant if (p.startswith("agent_tools/") or p in ROOT_AGENT_CONFIG) and p not in consumed and not p.startswith("agent_tools/tests/test_")}
     if unmapped:
         raise SelectionError("Changed agent dependency has no known consumers: " + ", ".join(sorted(unmapped)))
     return Selection(baseline, tuple(sorted(changed)), tuple(p[:-3].replace("/", ".") for p in selected), len(tests))

@@ -13,7 +13,7 @@ Source files that should be edited and committed:
 - Status localization catalogs under `shared/ui/src/commonMain/resources/i18n-status/`.
 - Language manifest at `shared/model/src/commonMain/resources/languages.json`.
 - Public documentation under `README.md` and `docs/`.
-- Agent documentation and tooling under `AGENTS.md`, `agent_docs/`, and `agent_tools/`.
+- Agent documentation and tooling under `AGENTS.md`, `CLAUDE.md`, `agent_docs/`, `agent_tools/`, and the shared Claude Code configuration `.mcp.json` and `.claude/settings.json`.
 - Scripts under `scripts/`.
 
 Generated or local files that should not be committed:
@@ -23,6 +23,7 @@ Generated or local files that should not be committed:
 - `.runtime/`
 - downloaded or extracted `sing-box` runtime binaries
 - generated local MCP configuration `.codex/config.toml` (derive it with `agent_tools/configure_codex.py`)
+- personal Claude Code overrides `.claude/settings.local.json` and a root CLAUDE.local.md file
 - agent-only environments and indexes under `.agent_venv/` and `.rag_index/`
 - Gradle caches and IDE state
 
@@ -43,7 +44,7 @@ git diff --name-status
 Classify changes by bucket before staging:
 
 - Public documentation: `README.md`, `docs/`.
-- Agent instructions and tooling: `AGENTS.md`, `agent_docs/`, `agent_tools/`, `.codex/config.toml`.
+- Agent instructions and tooling: `AGENTS.md`, `CLAUDE.md`, `agent_docs/`, `agent_tools/`, `.codex/config.toml`, `.mcp.json`, `.claude/settings.json`.
 - Android runtime/config/UI: `app/`.
 - Desktop runtime/tray/lifecycle: `desktopApp/`.
 - Shared model/core behavior: `shared/model/`, `shared/core/`, `shared/storage-api/`.

@@ -8,6 +8,8 @@
 .agent_venv/
 .rag_index/
 .codex/*
+.claude/settings.local.json
+CLAUDE.local.md
 /.vm-hosts.local.json
 __pycache__/
 *.py[cod]

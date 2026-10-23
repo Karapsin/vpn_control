@@ -1,0 +1,14 @@
+{
+  "enableAllProjectMcpServers": false,
+  "enabledMcpjsonServers": [
+    "vpn_control"
+  ],
+  "env": {
+    "MCP_TIMEOUT": "300000"
+  },
+  "permissions": {
+    "allow": [
+      "mcp__vpn_control__*"
+    ]
+  }
+}

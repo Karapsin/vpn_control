@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "vpn_control": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "-c",
+        "root=\"$CLAUDE_PROJECT_DIR\"; case \"$root\" in /*|[A-Za-z]:[\\\\/]*) ;; *) echo \"[vpn-control MCP] CLAUDE_PROJECT_DIR must be the absolute vpn_control checkout root; got: '$root'\" >&2; exit 1;; esac; if [ ! -f \"$root/.mcp.json\" ] || [ ! -f \"$root/agent_tools/mcp_server.sh\" ]; then echo \"[vpn-control MCP] CLAUDE_PROJECT_DIR is not a vpn_control checkout root: '$root'\" >&2; exit 1; fi; exec bash \"$root/agent_tools/mcp_server.sh\""
+      ],
+      "timeout": 3600000,
+      "alwaysLoad": true
+    }
+  }
+}

@@ -997,7 +997,7 @@ def _infer_area(task: str, area: str | None, paths: list[str]) -> str:
         return aliases.get(normalized, normalized)
     joined = " ".join([task.lower(), *(path.lower() for path in paths)])
     rules = [
-        ("agent_tools", ("mcp", "rag", "agent_tools", ".codex")),
+        ("agent_tools", ("mcp", "rag", "agent_tools", ".codex", ".claude/", "claude code")),
         ("localization", ("localization", "i18n", "catalog", "translation", "settings_home")),
         ("ssh", ("ssh", "routing")),
         ("release", ("package", "release", "workflow", ".github")),

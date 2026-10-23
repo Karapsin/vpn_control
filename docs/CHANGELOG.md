@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.14 - 2026-10-23
 
 - Make MCP PowerShell checks reproducible across native module layouts.
 - Make MCP SSH readiness fixtures reproducible and keep dependency selection complete.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Validate genuine PowerShell function bodies across runtime AST forms.
 - Run every explicit Windows causal CI check even when its module is unchanged.
 - Ignore access-time changes in the Android remaining-stage admission test oracle.
+- Added shared Claude Code project configuration that uses the repository MCP workflow, instructions, and delivery tools.
 
 ## 2.2.13 - 2026-10-16
 

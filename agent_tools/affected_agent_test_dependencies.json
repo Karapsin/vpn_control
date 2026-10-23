@@ -73,7 +73,8 @@
         "aa56be5ba778a1b3d23784132a23ea664ad62eef9af8da326955aa69e1d256ca",
         "81a31edfeb03b63624aa316f021a70e4e50fb18a866f6e2d105a27a8b94b4eaa",
         "9ba5cb86a41efcc0b60e26dbe85b6fbbf5217de2c0c72716a01e29ae18df0725",
-        "36ecd6b24c2097478c458b72f2064e7bf332845d0b33e79f04d3d448acb76ff6"
+        "36ecd6b24c2097478c458b72f2064e7bf332845d0b33e79f04d3d448acb76ff6",
+        "934f118caa0b521bec3adf74339f48a7f21b0182fdf30fa4059cfe0dd7d72d92"
       ]
     },
     "agent_tools/source_module_loader.py": {
