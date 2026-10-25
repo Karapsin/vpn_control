@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-ci-beforeimages",
+  "nativeFailureClaimed": false,
+  "finding": "cc2873b5 made seventeen visual test cases depend on Unix-domain sockets, the POSIX StoragePlans lock or POSIX process launch, so Windows release hygiene failed both modules.",
+  "originalFailure": {
+    "workflow": "Windows Desktop Package",
+    "job": "Build EXE and MSI",
+    "step": "Check release hygiene",
+    "runId": 40187428207,
+    "headSha": "cc2873b5ed0ada7b09c24e854539c85660a627c2",
+    "previousGreenSha": "2dfa2f2e7b64bc6535dcf163f7c42f40084a73cd",
+    "runner": "windows-2025-vs2026 20261021.278.1, CPython 3.12.10, Git Bash",
+    "stepLogSha256": "5293e53e970f1770cf1f5ae3dd97b89bcceeeef9a4ff604cca809d42fc51d7f4",
+    "ciTestModule": "__main__",
+    "summaries": [
+      "python3 scripts/test_visual_platform.py: Ran 95 tests in 13.903s, FAILED (failures=1, errors=6, skipped=1)",
+      "python3 scripts/test_visual_target.py: Ran 12 tests in 0.353s, FAILED (failures=5, errors=5)"
+    ]
+  },
+  "failureTypes": {
+    "unix-stream-server-absent": {
+      "cause": "Each case imports run_qualified_android_capture from agent_tools.tests.test_readiness_entrypoints, whose controlled readiness Provider subclasses socketserver.UnixStreamServer. Windows CPython defines no Unix socketserver class.",
+      "origin": "File \"D:\\a\\vpn_control\\vpn_control\\agent_tools\\tests\\test_readiness.py\", line 22, in <module>: class Provider(socketserver.UnixStreamServer):",
+      "fix": "skipUnless(hasattr(socketserver, \"UnixStreamServer\"))",
+      "cases": {
+        "test_visual_platform.VisualPlatformTest.test_android_capture_handles_native_python_crlf_before_any_device_mutation": {
+          "outcome": "error",
+          "excerpt": "AttributeError: module 'socketserver' has no attribute 'UnixStreamServer'"
+        },
+        "test_visual_platform.VisualPlatformTest.test_android_capture_rejects_a_foreign_avd_before_any_device_mutation": {
+          "outcome": "error",
+          "excerpt": "AttributeError: module 'socketserver' has no attribute 'UnixStreamServer'"
+        },
+        "test_visual_platform.VisualPlatformTest.test_android_capture_rejects_stale_owned_geometry_before_any_mutation_or_output": {
+          "outcome": "error",
+          "excerpt": "AttributeError: module 'socketserver' has no attribute 'UnixStreamServer'"
+        },
+        "test_visual_platform.VisualPlatformTest.test_android_capture_removes_native_python_crlf_from_scene_arguments_after_device_guard": {
+          "outcome": "error",
+          "excerpt": "AttributeError: module 'socketserver' has no attribute 'UnixStreamServer'"
+        },
+        "test_visual_platform.VisualPlatformTest.test_local_android_capture_guard_ignores_inherited_hosted_provider": {
+          "outcome": "error",
+          "excerpt": "AttributeError: module 'socketserver' has no attribute 'UnixStreamServer'"
+        }
+      }
+    },
+    "storage-plan-lock-unsupported": {
+      "cause": "_admit_visual_start now calls _admit_fixture_storage. Its StoragePlans ledger lock refuses non-POSIX hosts with fixture_storage_lock_unsupported, while the cases stub only the resource lock, host system and memory snapshot.",
+      "origin": "File \"D:\\a\\vpn_control\\vpn_control\\scripts\\visual_platform.py\", line 485, in _admit_fixture_storage: raise VisualPlatformError(str(error)) from None",
+      "fix": "skipUnless(os.name == \"posix\"), the StoragePlans lock gate already used by test_other_owned_provider_growth_blocks_bootstrap_and_start",
+      "cases": {
+        "test_visual_platform.VisualPlatformTest.test_low_available_memory_denies_before_visual_start": {
+          "outcome": "failure",
+          "excerpt": "AssertionError: \"available host memory\" does not match \"fixture_storage_lock_unsupported\""
+        },
+        "test_visual_platform.VisualPlatformTest.test_resource_reservation_rejects_same_platform_and_malformed_top_level": {
+          "outcome": "error",
+          "excerpt": "visual_platform.VisualPlatformError: fixture_storage_lock_unsupported"
+        }
+      }
+    },
+    "qmp-peer-af-unix-absent": {
+      "cause": "The harmless QMP peer child binds socket.AF_UNIX, and _qmp_execute plus visual_target.QmpDisk require a Unix-domain peer. Windows CPython has no AF_UNIX.",
+      "origin": "File \"<string>\", line 3, in <module>: server=socket.socket(socket.AF_UNIX), started by VisualTargetTests.server at test_visual_target.py line 70",
+      "fix": "skipUnless(hasattr(socket, \"AF_UNIX\"))",
+      "cases": {
+        "test_visual_target.VisualTargetTests.test_foreign_socket_peer_holding_another_disk_is_never_mutated": {
+          "outcome": "failure",
+          "excerpt": "AttributeError: module 'socket' has no attribute 'AF_UNIX'"
+        },
+        "test_visual_target.VisualTargetTests.test_missing_stop_target_cannot_send_power_to_default_vm": {
+          "outcome": "failure",
+          "excerpt": "AttributeError: module 'socket' has no attribute 'AF_UNIX'"
+        },
+        "test_visual_target.VisualTargetTests.test_reused_peer_pid_birth_is_rejected_before_capabilities_or_power": {
+          "outcome": "failure",
+          "excerpt": "AttributeError: module 'socket' has no attribute 'AF_UNIX'"
+        },
+        "test_visual_target.VisualTargetTests.test_unsafe_actual_disk_parent_returns_typed_blocker_without_power": {
+          "outcome": "failure",
+          "excerpt": "AttributeError: module 'socket' has no attribute 'AF_UNIX'"
+        },
+        "test_visual_target.VisualTargetTests.test_valid_selected_disk_and_actual_peer_owner_accept_one_power_packet": {
+          "outcome": "failure",
+          "excerpt": "AttributeError: module 'socket' has no attribute 'AF_UNIX'"
+        }
+      }
+    },
+    "shebang-image-launch": {
+      "cause": "The generated ADB fake is a '#!' script that visual_platform._running_android_avds launches directly. Windows CreateProcess maps only executable images.",
+      "origin": "File \"D:\\a\\vpn_control\\vpn_control\\scripts\\visual_platform.py\", line 606, in _running_android_avds: completed = _run([adb, \"devices\"], timeout=30)",
+      "fix": "skipUnless(os.name == \"posix\")",
+      "cases": {
+        "test_visual_target.VisualTargetTests.test_actual_generated_adb_caller_never_freezes_foreign_avd_on_selected_port": {
+          "outcome": "error",
+          "excerpt": "OSError: [WinError 193] %1 is not a valid Win32 application"
+        }
+      }
+    },
+    "posix-bin-bash-absent": {
+      "cause": "The Windows bootstrap, READY-marker and hosted-workflow callers run POSIX host shell scripts and '#!' fakes through the literal /bin/bash, which does not exist for Windows CreateProcess.",
+      "origin": "subprocess.run(['/bin/bash', ...]) at test_visual_target.py lines 186, 211, 218 and 233",
+      "fix": "skipUnless(os.name == \"posix\" and os.path.isfile(\"/bin/bash\"))",
+      "cases": {
+        "test_visual_target.VisualTargetTests.test_actual_hosted_workflow_caller_forwards_its_created_avd": {
+          "outcome": "error",
+          "excerpt": "FileNotFoundError: [WinError 2] The system cannot find the file specified"
+        },
+        "test_visual_target.VisualTargetTests.test_full_marker_refuses_missing_target_before_ready_write": {
+          "outcome": "error",
+          "excerpt": "FileNotFoundError: [WinError 2] The system cannot find the file specified"
+        },
+        "test_visual_target.VisualTargetTests.test_marker_forwards_exact_selected_target_and_failed_probe_never_marks_ready": {
+          "outcome": "error",
+          "excerpt": "FileNotFoundError: [WinError 2] The system cannot find the file specified"
+        },
+        "test_visual_target.VisualTargetTests.test_windows_bootstrap_full_shell_cannot_create_default_disk_without_target": {
+          "outcome": "error",
+          "excerpt": "FileNotFoundError: [WinError 2] The system cannot find the file specified"
+        }
+      }
+    }
+  },
+  "files": {
+    "test_visual_platform.py.before.source": {
+      "path": "scripts/test_visual_platform.py",
+      "baseline": "cc2873b5ed0ada7b09c24e854539c85660a627c2",
+      "bytes": 100034,
+      "sha256": "0ea3e9d02137793dfd1d7ef517f3da572f45cee77ffb0c133e84bb4e7e0b3fa0"
+    },
+    "test_visual_target.py.before.source": {
+      "path": "scripts/test_visual_target.py",
+      "baseline": "cc2873b5ed0ada7b09c24e854539c85660a627c2",
+      "bytes": 14746,
+      "sha256": "847664f92431615b5f27a3c2409a68d030b3ea5d235a4e61423e8b0a25189d22"
+    }
+  },
+  "reproducer": "scripts/check_python_platform_contracts.py probe_windows_visual_test_suites executes these whole sources with AF_UNIX and the Unix socketserver classes removed (child -c interpreters included), a module-local os named nt for the test modules and native_fixture_storage, and CreateProcess launch rules on POSIX hosts.",
+  "causalAssertion": "scripts/test_python_platform_contracts.py VisualTestCapabilityProbeTest: every recorded case fails with its recorded outcome and final line (WinError/Errno prefix normalized); the fixed modules skip exactly these cases while four portable siblings pass.",
+  "routineSuite": "scripts/check_release_hygiene.sh runs scripts/test_python_platform_contracts.py and scripts/check_python_platform_contracts.py in Fast Checks, Android, Linux, macOS and Windows release hygiene.",
+  "nativeEvidenceLimit": "Only the Windows runner supplies real CreateProcess, PATHEXT, drive-relative path, Git Bash and CPython socket semantics; there the same probe runs against the actual platform. The POSIX model covers only the absences recorded here and no visual VM, emulator or capture scenario."
+}

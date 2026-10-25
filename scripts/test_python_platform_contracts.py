@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
+from pathlib import Path
+import re
 import unittest
 
 import check_python_platform_contracts as subject
@@ -100,6 +103,58 @@ class AndroidTestCapabilityProbeTest(unittest.TestCase):
         self.assertGreater(summary["passed"], len(subject.ANDROID_WINDOWS_METHODS))
         self.assertEqual([], summary["errors"])
         self.assertEqual([], summary["failures"])
+
+
+class VisualTestCapabilityProbeTest(unittest.TestCase):
+    FIXTURES = subject.SCRIPTS / "tests/fixtures/windows_visual_test_capabilities"
+
+    @classmethod
+    def provenance(cls):
+        return json.loads((cls.FIXTURES / "provenance.json").read_bytes())
+
+    @classmethod
+    def beforeimages(cls):
+        """Whole unfixed modules from Windows run 40187428207, authenticated by raw SHA-256."""
+        sources = {}
+        for name, entry in cls.provenance()["files"].items():
+            raw = (cls.FIXTURES / name).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != entry["sha256"]:
+                raise AssertionError("preserved visual test beforeimage changed: " + name)
+            sources[Path(entry["path"]).stem] = raw.decode("utf-8")
+        return sources
+
+    @staticmethod
+    def final_line(line):
+        # Windows prints [WinError n]; the POSIX CreateProcess model raises [Errno n].
+        return re.sub(r"\[(?:WinError|Errno) \d+\] ", "", line)
+
+    def test_unfixed_visual_tests_reproduce_every_recorded_windows_failure(self):
+        result = subject.probe_windows_visual_test_suites(self.beforeimages())
+        self.assertNotEqual(0, result.returncode)
+        summary = json.loads(result.stdout.splitlines()[-1])
+        observed = {**{test: ("error", line) for test, line in summary["errors"].items()},
+                    **{test: ("failure", line) for test, line in summary["failures"].items()}}
+        recorded = {test: (kind, case) for kind, failure in self.provenance()["failureTypes"].items()
+                    for test, case in failure["cases"].items()}
+        self.assertEqual(set(recorded), set(observed))
+        for test, (kind, case) in recorded.items():
+            with self.subTest(failure=kind, test=test):
+                self.assertEqual(case["outcome"], observed[test][0])
+                self.assertEqual(self.final_line(case["excerpt"]), self.final_line(observed[test][1]))
+        self.assertEqual([], summary["skipped"])
+        self.assertEqual(set(subject.VISUAL_WINDOWS_METHODS), set(summary["portablePassed"]))
+
+    def test_fixed_visual_tests_skip_exactly_the_recorded_cases_and_keep_portable_coverage(self):
+        result = subject.probe_windows_visual_test_suites()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        summary = json.loads(result.stdout.splitlines()[-1])
+        expected = {module + "." + method for module, methods in subject.VISUAL_POSIX_METHODS.items() for method in methods}
+        recorded = {test for failure in self.provenance()["failureTypes"].values() for test in failure["cases"]}
+        self.assertEqual(recorded, expected)
+        self.assertEqual(expected, set(summary["skipped"]))
+        self.assertEqual(set(subject.VISUAL_WINDOWS_METHODS), set(summary["portablePassed"]))
+        self.assertEqual({}, summary["errors"])
+        self.assertEqual({}, summary["failures"])
 
 
 class ManifestTest(unittest.TestCase):

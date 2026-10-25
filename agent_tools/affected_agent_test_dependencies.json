@@ -4,7 +4,8 @@
       "reason": "Explicit CI-only projector reads only the freshly allocated runner directory and explicit public artifact inputs. Its bounded nofollow readers and private-field filtering introduce no repository source discovery or source execution. Runtime report, timing and artifact files are owned invocation data, not additional repository authority.",
       "scopes": [],
       "sourceSha256": [
-        "d6786781dc488184090f40949ebaef32bd09220b55007211e334059c2c8f6c43"
+        "d6786781dc488184090f40949ebaef32bd09220b55007211e334059c2c8f6c43",
+        "f407e1026efcc55c7794de7514f17cfd2ef74d7971a59643ad1dd5d1a8627358"
       ]
     },
     "agent_tools/agent_test_runner.py": {
@@ -138,7 +139,8 @@
         "agent_tools/readiness_windows_creator_attempts.py"
       ],
       "sourceSha256": [
-        "1040eb0aad36e59308973abf59e6c6708ac2a170c220b0a5bc158a1dbbb2618e"
+        "1040eb0aad36e59308973abf59e6c6708ac2a170c220b0a5bc158a1dbbb2618e",
+        "5e30acbe371f6edb2269540c48db8c968cc877fd208932074f110784480679cd"
       ]
     },
     "agent_tools/source_module_loader.py": {
@@ -758,6 +760,33 @@
       ],
       "sourceSha256": [
         "ebeff5bd44e5cd61accff05f7872cc2b04fa9605b9e55126f795a854ddf6a58b"
+      ]
+    },
+    "agent_tools/tests/fixtures/prevm_census_scenario_lifetime/test_windows_creator_prevm_refusal_recovery.py.before.source": {
+      "reason": "Authentic whole unfixed cc2873b5 generation of test_windows_creator_prevm_refusal_recovery.py (Fast Checks run 40187427911), held byte-for-byte for the real-procfs scenario-lifetime RED. test_prevm_census_scenario_lifetime compiles it only on Linux in a ModuleType whose __file__ is the current public module and runs exactly its test_linux_real_procfs_holder_census_regressions case. Like that generation it reads only the same frozen evidence, executing-creator and stage-1 writer beforeimages and pinned production sources as the reviewed current module.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_creator_prevm_refusal_recovery/",
+        "agent_tools/tests/fixtures/windows_managed_creator_unix_address/managed_create.before.source",
+        "agent_tools/tests/fixtures/windows_managed_creator_unix_address/provenance.json",
+        "scripts/native_fixture_storage.py",
+        "agent_tools/readiness_resources.py",
+        "agent_tools/native_environment.py",
+        "agent_tools/readiness.py",
+        "agent_tools/readiness_windows_creator_registry.py",
+        "agent_tools/readiness_windows_managed_create.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/readiness_windows_host_jobs.py",
+        "agent_tools/readiness_windows_remote.py",
+        "agent_tools/readiness_windows_lifecycle.py",
+        "agent_tools/windows_vm_instance.py",
+        "agent_tools/windows_vm_media.py",
+        "agent_tools/windows_vm_resources.py",
+        "agent_tools/windows_vm_unattend.py",
+        "agent_tools/native_vm_spec.py"
+      ],
+      "sourceSha256": [
+        "097826ef1351938b5e6993063de7259ebf06731d361185a745311646ce25f919"
       ]
     },
     "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_transport.py.before.source": {
@@ -2148,6 +2177,13 @@
         "a088df1dfcd24fdc836b16d8c5011cb61e26397bcfc3265630624e2814926e51"
       ]
     },
+    "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.drop_observation_candidate.source": {
+      "reason": "Only exact whole Proxy ClassDef AST executes in a finite namespace. Imports/main/readiness/credentials/protected-history functions outside that class are never compiled or executed by this caller. No dynamic repository dependency is reachable from selected class, which uses stdlib sockets/selectors/threading and a fixed controlled save callback.",
+      "scopes": [],
+      "sourceSha256": [
+        "ca1dab8bc2f7dbab4f2910156705c4ab242bb13e99db986bd73f7da0da60cbc4"
+      ]
+    },
     "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.selector_candidate.source": {
       "reason": "Only exact whole Proxy ClassDef AST executes in a finite namespace. Imports/main/readiness/credentials/protected-history functions outside that class are never compiled or executed by this caller. No dynamic repository dependency is reachable from selected class, which uses stdlib sockets/selectors/threading and a fixed controlled save callback.",
       "scopes": [],
@@ -2156,14 +2192,16 @@
       ]
     },
     "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/test_proxy_high_descriptors.py": {
-      "reason": "Whole exact fixed test caller executes; only complete Proxy class AST from three SHA-pinned sources compiles. Child argv is exact current interpreter,-I,-B,this same fixed file,--high-fd-case; real loopback endpoints and owned descriptor files only. No other original controller functions execute.",
+      "reason": "Whole exact fixed test caller executes; only complete Proxy class AST from four SHA-pinned sources compiles. Child argv is exact current interpreter,-I,-B,this same fixed file,--high-fd-case; real loopback endpoints and owned descriptor files only. No other original controller functions execute.",
       "scopes": [
         "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.a088.before.source",
         "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.5011.before.source",
-        "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.selector_candidate.source"
+        "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.selector_candidate.source",
+        "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.drop_observation_candidate.source"
       ],
       "sourceSha256": [
-        "1304732776a8d11c655fd4a1090a84b97eead1dd19356c443e1a74391f05084e"
+        "1304732776a8d11c655fd4a1090a84b97eead1dd19356c443e1a74391f05084e",
+        "7e76772e0fd7f3e6319295f298b35840fac2da6968b3201d6a65d2607bbc6bca"
       ]
     },
     "agent_tools/tests/fixtures/ssh_stream_e2big/android_admission_readback.py.before.source": {
@@ -4273,6 +4311,46 @@
         "903bcbb3eba1d92e50baec2243ed0788f616942c64a02eb6284aac583a98bb38"
       ]
     },
+    "agent_tools/tests/fixtures/windows_powershell_script/compile_followup.before.source": {
+      "reason": "Exact whole unfixed agent_tools/tests/test_windows_compile_followup.py at cc2873b5, retained as TEST-001 beforeimage of CI run 40187428207 and SHA-authenticated by test_windows_powershell_script. That test parses it, removes ONLY the skip decorator of its Windows PowerShell method, executes the complete module with __file__ bound to the current module path so its hardcoded HASHES fixture reads stay under the same fixed fixture directory, and runs ONLY that method against a POSIX shebang stand-in for powershell.exe: the public console-host intake model, its Add-Type error-flow model or a recorded public CI reply, stopping at the first reply the harness accepts or rejects. Its other classes are defined but never run; it has the same finite source reads as the original module scopes. No real interpreter, VM/private inventory, network or native authority.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_compile_followup/child.before.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/child.fixed.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/dispatch.before.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/dispatch.fixed.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/json_decoder.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/native.before.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/native.exit-fixed.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/native.fixed.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/parent.before.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/parent.fixed.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/provenance.json",
+        "agent_tools/tests/fixtures/windows_compile_followup/result_gate.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/stream_capture.source",
+        "agent_tools/tests/fixtures/windows_compile_followup/validator.source"
+      ],
+      "sourceSha256": [
+        "d6af8dddbcc0b24d1856e7c0490623bae4c1decb2ed8295bb0adc934f105f054"
+      ]
+    },
+    "agent_tools/tests/fixtures/windows_powershell_script/public_compile_causals.before.source": {
+      "reason": "Exact whole unfixed agent_tools/tests/test_windows_public_compile_causals.py at cc2873b5, retained as TEST-001 beforeimage of CI run 40187428207 and SHA-authenticated by test_windows_powershell_script. That test parses it, removes ONLY the skip decorator of its Windows PowerShell method, executes the complete module with __file__ bound to the current module path so its hardcoded HASHES fixture reads stay under the same fixed fixture directory, and runs ONLY that method against a POSIX shebang stand-in for powershell.exe: the public console-host intake model or a recorded public CI reply, stopping at the first reply the harness accepts or rejects. Its other classes are defined but never run; it has the same finite source reads as the original module scopes. No real interpreter, VM/private inventory, network or native authority.",
+      "scopes": [
+        "agent_tools/readiness_windows_remote.py",
+        "agent_tools/tests/fixtures/windows_public_compile/collector.before.source",
+        "agent_tools/tests/fixtures/windows_public_compile/collector.fixed.source",
+        "agent_tools/tests/fixtures/windows_public_compile/interpreter.source",
+        "agent_tools/tests/fixtures/windows_public_compile/parent.before.source",
+        "agent_tools/tests/fixtures/windows_public_compile/parent.fixed.source",
+        "agent_tools/tests/fixtures/windows_public_compile/provenance.json",
+        "agent_tools/tests/fixtures/windows_public_compile/public_failure.source",
+        "agent_tools/tests/fixtures/windows_public_compile/receipt.before.source",
+        "agent_tools/tests/fixtures/windows_public_compile/receipt.fixed.source"
+      ],
+      "sourceSha256": [
+        "c75a5750d74d99740aac19e92ba102a1d3acaa74d0c4f94c90005ff86d4e5064"
+      ]
+    },
     "agent_tools/tests/fixtures/windows_public_compile/public_failure.source": {
       "reason": "Authentic entire historical Python producer is SHA-authenticated source input, but test does NOT compile/execute its module, imports, packet() or validate(). It AST-selects ONLY the literal packet.action assignment, strips its fixed chained replace calls, verifies Constant str and substitutes two controlled literal public IDs. COMPLETE emitted HOST action is then compiled/executed unchanged against owned 0700 TemporaryDirectory with exact 0600 public JSON records, actual os/private/generation FD boundaries and caller-provided stdlib json/hashlib/base64. Action contains no import statements, repository module loads, RPC or network; its nested pairs() only rejects duplicate intent keys. Outer producer __file__/HERE/PRODUCERS reads, owner/remote production generation and inspect function guards are not executed. Exact selected-AST scope justifies no runtime dependency on those dormant whole-producer operations; ordinary conservative lexical/static edges remain unsuppressed.",
       "scopes": [],
@@ -4395,18 +4473,21 @@
       ]
     },
     "agent_tools/tests/test_agent_ci_evidence.py": {
-      "reason": "Finite projector controls consume only the actual current projector and runner. Malformed reports, event privacy, disjoint current-attempt receipts, FIFO refusal and cancellation use newly generated owned files or inert local child tests; no repository source is dynamically selected beyond these two explicit inputs and no prior invocation is reused.",
+      "reason": "Finite projector controls consume only the actual current projector and runner. Malformed reports, event privacy, disjoint current-attempt receipts, FIFO refusal and cancellation use newly generated owned files or inert local child tests; no repository source is dynamically selected beyond these two explicit inputs and no prior invocation is reused. The authenticated whole cc2873b5 projector is executed only in an isolated namespace as the unfixed coverage verifier.",
       "scopes": [
         "agent_tools/agent_ci_evidence.py",
-        "agent_tools/agent_test_runner.py"
+        "agent_tools/agent_test_runner.py",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.provenance.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.evidence.before.source"
       ],
       "sourceSha256": [
         "7fbf5c7663ae815f1cef57a570b4813a5796bef0f2f47becd2b34fcaf1e29fa8",
-        "83a1392a48fc19bad97fb1c5b292a3875bc4b3a4e468a4daddf583cd8e2799f2"
+        "83a1392a48fc19bad97fb1c5b292a3875bc4b3a4e468a4daddf583cd8e2799f2",
+        "e9f527ecd87a6ef338f704034d6a2f61b83e2bf38647d98224a49d6c5f96c90b"
       ]
     },
     "agent_tools/tests/test_agent_ci_shards.py": {
-      "reason": "Physical CLI controls copy only the explicit current selector, manifest, runner and projector into fresh inert Git checkouts. The source-bound original selector and workflow are exact provenance inputs for unchanged scaled deadlines; saved producers, reports and readiness markers are owned generated data. Global unknown dependency refusal, source drift, disjoint coverage and default dispatch guards remain strict.",
+      "reason": "Physical CLI controls copy only the explicit current selector, manifest, runner and projector into fresh inert Git checkouts. The source-bound original selector and workflow are exact provenance inputs for unchanged scaled deadlines; saved producers, reports and readiness markers are owned generated data. Global unknown dependency refusal, source drift, disjoint coverage and default dispatch guards remain strict. The authenticated whole cc2873b5 workflow and selector (only its shard_selection is AST-extracted) and the derived run 40187427911 timing are capacity inputs, never allocation inputs.",
       "scopes": [
         "agent_tools/affected_agent_tests.py",
         "agent_tools/affected_agent_test_dependencies.json",
@@ -4415,12 +4496,17 @@
         ".github/workflows/fast-checks.yml",
         "agent_tools/tests/fixtures/agent_ci_shards/selector.before.source",
         "agent_tools/tests/fixtures/agent_ci_shards/workflow.before.yml",
-        "agent_tools/tests/fixtures/agent_ci_shards/provenance.json"
+        "agent_tools/tests/fixtures/agent_ci_shards/provenance.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.provenance.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.timing.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.workflow.before.yml",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.selector.before.source"
       ],
       "sourceSha256": [
         "af4b9cd76d085cac6f3a6340f264e5695f3ad616236b3a4fd0ff0d494ea45aef",
         "903e4f3334cc19433be1d1ab6bc002a87f796adcda6c097a818a3969161e17b7",
-        "dbcb85f58050e841a9b0cfb104b15a080e5d6ca89ead3e4573a5e1fd99211b33"
+        "dbcb85f58050e841a9b0cfb104b15a080e5d6ca89ead3e4573a5e1fd99211b33",
+        "35ea52a7f239793c0ae13614ac214a533f99a42a58856d02d1d47bf49795f0ae"
       ]
     },
     "agent_tools/tests/test_agent_test_runner.py": {
@@ -4840,34 +4926,42 @@
       ]
     },
     "agent_tools/tests/test_fast_agent_shards.py": {
-      "reason": "Source-bound workflow regression reads the current Fast Checks workflow, exact original workflow/provenance, its actual current test and the retained failed wiring test. Its saved isolated no-site child exercises the same positive with the authentic missing-YAML beforeimage and standard-library fix. Static controls verify both audit branches, source selection, current-attempt artifacts, parent acceptance and the entire unchanged original validation tail without CI or product dispatch.",
+      "reason": "Source-bound workflow regression reads the current Fast Checks workflow, exact original workflow/provenance, its actual current test and the retained failed wiring test. Its saved isolated no-site child exercises the same positive with the authentic missing-YAML beforeimage and standard-library fix. Static controls verify both audit branches, source selection, current-attempt artifacts, parent acceptance and the entire unchanged original validation tail without CI or product dispatch. The same wiring positives also read the authenticated whole cc2873b5 workflow as their RED input.",
       "scopes": [
         ".github/workflows/fast-checks.yml",
         "agent_tools/tests/fixtures/agent_ci_shards/workflow.before.yml",
         "agent_tools/tests/fixtures/agent_ci_shards/provenance.json",
         "agent_tools/tests/test_fast_agent_shards.py",
-        "agent_tools/tests/fixtures/agent_ci_shards/wiring.before.source"
+        "agent_tools/tests/fixtures/agent_ci_shards/wiring.before.source",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.provenance.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.workflow.before.yml"
       ],
       "sourceSha256": [
         "a370eae9d81cf38e14c306ee4bd816d21336f8582e719932e725319eff2cef57",
         "fb5788387d21e0eff51fa965a8894cbd54295b0f5df3e36a38fe28f1d2e35c40",
-        "7e8a719c3c62d501a96e06c12eb5ded6959e34cabe13766acea8dbc8ff2f16ca"
+        "7e8a719c3c62d501a96e06c12eb5ded6959e34cabe13766acea8dbc8ff2f16ca",
+        "6b256a3ec752d8cd9b5385ea93bafe66d3e8030ea3a4b417312b1ddace77b1d5"
       ]
     },
     "agent_tools/tests/test_fast_workflow_budget.py": {
-      "reason": "Exact source-bound scaled deadline regression reads only the current Fast Checks workflow, current managed check owner and immutable original workflow/provenance. It AST-extracts the existing 50-minute command limit without importing MCP, parses only the fixed CI job/agent step and executes a newly saved inert producer in an owned temporary directory. Runtime marker/output readers consume only that generated fixture. No actual CI/native/SSH work, historical attempt inputs, arbitrary source roots or replay authority are introduced.",
+      "reason": "Exact source-bound scaled deadline regression reads only the current Fast Checks workflow, current managed check owner and immutable original workflow/provenance. It AST-extracts the existing 50-minute command limit without importing MCP, parses only the fixed CI job/agent step and executes a newly saved inert producer in an owned temporary directory. Runtime marker/output readers consume only that generated fixture. No actual CI/native/SSH work, historical attempt inputs, arbitrary source roots or replay authority are introduced. The measured hosted share comes from test_agent_ci_shards over the authenticated run 40187427911 timing, current or whole cc2873b5 workflow and selector.",
       "scopes": [
         ".github/workflows/fast-checks.yml",
         "agent_tools/mcp_server.py",
         "agent_tools/tests/fixtures/fast_workflow_budget/before.yml",
         "agent_tools/tests/fixtures/fast_workflow_budget/provenance.json",
         "agent_tools/tests/fixtures/agent_ci_shards/budget.before.source",
-        "agent_tools/tests/fixtures/agent_ci_shards/provenance.json"
+        "agent_tools/tests/fixtures/agent_ci_shards/provenance.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.provenance.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.timing.json",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.workflow.before.yml",
+        "agent_tools/tests/fixtures/agent_ci_shards/hosted-capacity.selector.before.source"
       ],
       "sourceSha256": [
         "d9af6ce627c06d7d186cf9e42324fc9ad1a749c9a2a6210954d6dcfe56e17bed",
         "1e7985f1c1ae168b3887eda7ad9ec348fd4c039bfe8b002711a0e508b36b7a62",
-        "8867140e0c41e838e8e44a7af19684b0076d72854796f2dedbf6bece34ecb1f0"
+        "8867140e0c41e838e8e44a7af19684b0076d72854796f2dedbf6bece34ecb1f0",
+        "625834f7469a997e821a88bc1ac4daa89529c31472add134044e842f11060574"
       ]
     },
     "agent_tools/tests/test_fast_workflow_interpreter_order.py": {
@@ -4885,7 +4979,8 @@
         "053aa4f9869106d41b7225386571e68a276e5a31135039e85763a552f076ebf9",
         "6ed66c5a1f99afe5cf30bfddeb4c58e2cc8a919fa0f4edee9d4a32b5872bcf9d",
         "5da64c4a33e56cf38e651d9db1ca42da911caf6f59d0958124ad7c9f88781b0b",
-        "c83aafcead00723b23db0a96dba6cb7a09986358e3e65b9db8efa262d89255c0"
+        "c83aafcead00723b23db0a96dba6cb7a09986358e3e65b9db8efa262d89255c0",
+        "990ba43e671205b9b3a945a1402059f54d2a9fbcd72b82b641e287ea4ae849d3"
       ]
     },
     "agent_tools/tests/test_gateway_tmux_routes.py": {
@@ -5088,7 +5183,8 @@
         "d3f7d82793cd9f832273f12170bc5f49671e56aa2b71a16e14bfc68c53556d1a",
         "7b0bc5f45490e926d84b7abddb82c46c2abfb8ed94d766bcee98c03c70972e97",
         "d85b565ea5e16fd645b0486d1b335eeb71f8e03619237ffce6785a9d3b069dd5",
-        "c1c7f2aaf4d7e669fc351e3e31b63a745684ede523afa14a56240d52c0298d50"
+        "c1c7f2aaf4d7e669fc351e3e31b63a745684ede523afa14a56240d52c0298d50",
+        "295fb0dde2363148729439da89559b4cfbe9734b10c3be3141ac9bf6eaac8d27"
       ]
     },
     "agent_tools/tests/test_inventory_fd_baseline.py": {
@@ -6021,7 +6117,8 @@
       ],
       "sourceSha256": [
         "25274836ab02b3e445266f2aed28e8fde80567d7c752fa24824c58687be5ece1",
-        "7d0795aee26bf2e958eda8c34963d052520df2e3dc4e02846273603a5c6b484f"
+        "7d0795aee26bf2e958eda8c34963d052520df2e3dc4e02846273603a5c6b484f",
+        "a842004a22c4f38eabb5321c1cd4b1333c0e2b990930270cb4d2df8517f0e26f"
       ]
     },
     "agent_tools/tests/test_readiness_windows_host_work.py": {
@@ -7222,18 +7319,20 @@
       ]
     },
     "agent_tools/tests/test_ssh_proxy_high_descriptors.py": {
-      "reason": "Authenticate exact seven fixture byte inputs before compile; execute complete controlled loopback test source and normalize diagnostic evidence only. No native target/config/input or mutation authority.",
+      "reason": "Authenticate exact eight fixture byte inputs before compile; execute complete controlled loopback test source and normalize diagnostic evidence only. No native target/config/input or mutation authority.",
       "scopes": [
         "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controlled-high-fd.actual.json",
         "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.5011.before.source",
         "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.a088.before.source",
+        "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.drop_observation_candidate.source",
         "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controller.selector_candidate.source",
         "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/native-select-phase.json",
         "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/provenance.json",
         "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/test_proxy_high_descriptors.py"
       ],
       "sourceSha256": [
-        "679b0abb1899157f09ffb7d1fea69474348d302e68976a6a8f7a284eda4dd017"
+        "679b0abb1899157f09ffb7d1fea69474348d302e68976a6a8f7a284eda4dd017",
+        "55e0673792071096b2be867a0d59b2975eb4da352ab55c4f426701c255232368"
       ]
     },
     "agent_tools/tests/test_ssh_session_retirement_routes.py": {
@@ -7711,7 +7810,8 @@
         "scripts/native_fixture_storage.py"
       ],
       "sourceSha256": [
-        "f27a4b0d8830d4ed69a5e3cabf28373e91c58ee6815ab35fd53382515e9eb176"
+        "f27a4b0d8830d4ed69a5e3cabf28373e91c58ee6815ab35fd53382515e9eb176",
+        "f180f701998ea23cff1a5e07be17757a5959438d1f2a56cc216c5370959570ea"
       ]
     },
     "agent_tools/tests/test_tart_macos_profile_preload.py": {
@@ -8053,7 +8153,8 @@
         "agent_tools/tests/fixtures/windows_compile_followup/validator.source"
       ],
       "sourceSha256": [
-        "d6af8dddbcc0b24d1856e7c0490623bae4c1decb2ed8295bb0adc934f105f054"
+        "d6af8dddbcc0b24d1856e7c0490623bae4c1decb2ed8295bb0adc934f105f054",
+        "5bb08bcd8bf625b2e5e88bbe8aac782ff8dd4d86664368e2fedcb67c1d520067"
       ]
     },
     "agent_tools/tests/test_windows_consumed_claim.py": {
@@ -8238,7 +8339,8 @@
         "agent_tools/native_vm_spec.py"
       ],
       "sourceSha256": [
-        "097826ef1351938b5e6993063de7259ebf06731d361185a745311646ce25f919"
+        "097826ef1351938b5e6993063de7259ebf06731d361185a745311646ce25f919",
+        "ce3604fbdcf86082bcc78a650bf89ac77b40fd5ea49580ac3058829807eff750"
       ]
     },
     "agent_tools/tests/test_windows_credential_explicit_target.py": {
@@ -8417,7 +8519,8 @@
         "agent_tools/tests/test_readiness_windows_host_work.py"
       ],
       "sourceSha256": [
-        "cadaf81c76d0ac8e54e2194719653e67581661fe66a67992b0e85950291e12d9"
+        "cadaf81c76d0ac8e54e2194719653e67581661fe66a67992b0e85950291e12d9",
+        "6dd8b50db806cb77bc6cece7f05ba734c65be8be36ce9df30d1184647afe5116"
       ]
     },
     "agent_tools/tests/test_windows_hosted_fixture_workflow.py": {
@@ -8884,7 +8987,8 @@
         "agent_tools/tests/fixtures/windows_public_compile/receipt.fixed.source"
       ],
       "sourceSha256": [
-        "c75a5750d74d99740aac19e92ba102a1d3acaa74d0c4f94c90005ff86d4e5064"
+        "c75a5750d74d99740aac19e92ba102a1d3acaa74d0c4f94c90005ff86d4e5064",
+        "6f35b9430f09753d8803c7335b7dbef796f0119c024390bec6b697ba2f0ab68d"
       ]
     },
     "agent_tools/tests/test_windows_python_fixture_io.py": {
@@ -9244,7 +9348,7 @@
     "agent_tools/tests/fixtures/ssh_acceptance_preparation/prepare_absolute_epoch.syntax-before.source": "cc24003d0d764807d7250c0a66af29e584e6da7f4bdb6bf8aacfed9e0a61cfc2",
     "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controlled-high-fd.actual.json": "f8938698fa4e93d5d1b3a5af152f89a33b73b3120f2e03fb9ffc26b9640daefd",
     "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/native-select-phase.json": "791c85947eec3550fc3651989f93287cf765c70b453d59349962dfce9544e8b2",
-    "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/provenance.json": "872453c7b71bb95b39732fb97430ceff3160f243d1cf7a0ae27dd9c37c2a96f9",
+    "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/provenance.json": "acd3de91861f4dc140ab05b2f7c21adabb4097dbf7092a6079b73cc550609e63",
     "agent_tools/tests/fixtures/ssh_successor_after_ended/readiness_nested_channel.before.source": "9a3eca2af528a66b4e7f76ecfbbeaf72040a0310b0b372b43fb6b20395ae09ca",
     "agent_tools/tests/fixtures/ssh_successor_after_ended/readiness_transport.before.source": "c85e37230be1e171010f13f4c385e860f3ba04b34362b40a3d7f8c4a8297be53",
     "agent_tools/tests/fixtures/whole_observer_binary/fixture.before.fragment": "26c0f22608797c55fe2fbc54c617078dd9deb27646a868ece332771d68d70e4b",

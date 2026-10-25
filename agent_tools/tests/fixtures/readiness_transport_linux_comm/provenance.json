@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-test-module-beforeimage",
+  "sourcePath": "agent_tools/tests/test_readiness_transport.py",
+  "sourceBaseline": "cc2873b5 (pushed dev commit of Fast Checks run 40187427911)",
+  "sourceBytes": 15618,
+  "sourceSha256": "7d0795aee26bf2e958eda8c34963d052520df2e3dc4e02846273603a5c6b484f",
+  "originalFailureTestId": "agent_tools.tests.test_readiness_transport.ReadinessTransportTests.test_preserved_implicit_daemonization_cannot_authorize_replacement",
+  "originalFailure": "Fast Checks run 40187427911, job 121151078435 'Hygiene, Localization, Unit Tests' (agent shard 1 of 2, ubuntu-latest x86_64, CPython 3.12.15): FAIL at line 255 with 'AssertionError: MasterUnknown not raised' after 0.496 s.",
+  "originalFailureTrace": [
+    "======================================================================",
+    "FAIL: test_preserved_implicit_daemonization_cannot_authorize_replacement (agent_tools.tests.test_readiness_transport.ReadinessTransportTests.test_preserved_implicit_daemonization_cannot_authorize_replacement)",
+    "----------------------------------------------------------------------",
+    "Traceback (most recent call last):",
+    "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/tests/test_readiness_transport.py\", line 255, in test_preserved_implicit_daemonization_cannot_authorize_replacement",
+    "    with self.assertRaisesRegex(master.MasterUnknown,'master_daemon_actor_unproved'):",
+    "         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "AssertionError: MasterUnknown not raised"
+  ],
+  "originalFailureTraceSha256": "243b87ba94f7117379eaddfd5bad469434e0aad61703d9e7396e334fbfb3b662",
+  "originalFailureEvent": {
+    "elapsedSeconds": 0.496312293000301,
+    "event": "finished",
+    "outcome": "failure",
+    "publicTestId": "agent_tools.tests.test_readiness_transport.ReadinessTransportTests.test_preserved_implicit_daemonization_cannot_authorize_replacement",
+    "schemaVersion": 1
+  },
+  "originalFailureEventSha256": "4f53a378a2600cdffb2415e1d34832debebab41f9c1fb850308174a18cf7c612",
+  "originalFailureLogSha256": "c59047162b2958f39aaac69a20625a1f630044085ea5727ff31806242d80a8aa",
+  "originalFailureLogScope": "gh run view 40187427911 --log-failed output (failed steps of both agent shard jobs and the coverage verifier); the trace above is its job 121151078435 excerpt with timestamps removed.",
+  "confirmedCause": "The fixture daemon is os.fork() of the inert ssh_peer.source script that the production _spawn executes through its '#!' interpreter. Linux sets a process's comm to the basename of the executed file, so ps -o comm= reports 'ssh' for the script and its forked daemon; Darwin reports the interpreter path. readiness_ssh_master._reconcile_daemon_locked admits a daemon only when ssh_connection_session._pid_generation sees an 'ssh' comm, so on Linux it proved the fixture daemon through its private control socket and authenticated peer probe and start() returned the reconciled original generation ('ready', recovery f*64) instead of raising MasterUnknown('master_daemon_actor_unproved'). The unfixed case pinned the Darwin-only outcome. No replacement was launched on either platform.",
+  "fix": "The case now derives the expected finite outcome from the same /bin/ps comm rule the production code applies: an 'ssh' comm must reconcile exactly the original daemon (ready, recovery f*64, the observed daemon pid), any other comm must raise master_daemon_actor_unproved. Both branches additionally require no new owner launch, the original generation still selected and no e*64 intent. Every assertion carries complete diagnostics (platform, ps comm/args, master records, status, children).",
+  "controlledRegression": "agent_tools.tests.test_readiness_transport_linux_comm runs the original case of this whole beforeimage (compiled from these bytes in a private module whose __file__ is the current module's) and of the current module while subprocess.run answers every /bin/ps ... -o comm= query by the Linux rule (basename of the executed file, the script for a '#!' launch, at most 15 bytes) and passes every other call through unchanged.",
+  "failingEvidence": "Unfixed: under the Linux comm rule the beforeimage case fails at line 255 with 'AssertionError: MasterUnknown not raised', identical to run 40187427911; the production _pid_generation query saw the daemon as 'ssh'. Natively on this Darwin host the same beforeimage case passes.",
+  "passingEvidence": "Fixed: natively (Darwin, CPython 3.14 and 3.12) the case takes the unproved branch; under the Linux comm rule it takes the reconciliation branch; both keep one owner launch and the original generation selected.",
+  "routineSuite": "agent_tools.tests.test_readiness_transport_linux_comm runs in the affected agent-test stage of the managed pre-push tier and the Fast Checks agent shards whenever the selector reaches it, including changes to test_readiness_transport.py, readiness_ssh_master.py, ssh_connection_session.py, the readiness_transport fixtures, this beforeimage or this provenance.",
+  "nativeFailureClaimed": false,
+  "nativeEvidenceLimit": "Hosted-runner test-harness outcome only: the fixture daemon is the inert local ssh_peer script, not OpenSSH. Only the next Linux Fast Checks run confirms the reconciliation branch with the native kernel comm; no SSH host, VM, guest or product native behavior is involved or claimed."
+}

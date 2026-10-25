@@ -602,10 +602,12 @@ agent concurrency.
 
 Managed `run_checks` (prepush, and focused `agent_tools`) plans the selected
 modules as separately bounded commands: the SSH-close gate alone first as plain
-`unittest`, then the two hosted CI shards from `shard_selection` (sorted and
+`unittest`, then the two halves of the `shard_selection` partition (sorted and
 alternating over the whole selection, duplicates refused) without the gate, each
-shard in its own runner. Every command has the 50-minute managed bound, and a
-failed gate stops the commands planned after it. On timeout `_run` sends SIGTERM,
+half in its own runner. Hosted Fast Checks runs the same partition as six shard
+jobs, so each half is exactly the hosted shards of its index parity. Every
+command has the 50-minute managed bound, and a failed gate stops the commands
+planned after it. On timeout `_run` sends SIGTERM,
 so the runner's cancellation handler stops its worker sessions before the next
 command starts; `_run` keeps draining output and sends SIGKILL only after a
 30-second grace (or the command's shorter bound). The result still reports no
@@ -616,8 +618,8 @@ not decode. A timed-out, unparsed or import-failed command
 splits it recursively: the gate alone when it was recorded, then the remaining
 modules by index parity in the sorted union of the current selection and those
 modules. While every remaining module is still selected, each group is the
-row's part of one current CI shard, so for an unchanged selection a recorded
-shard reruns as itself; a changed selection regroups it. A row whose modules
+row's part of one current half, so for an unchanged selection a recorded
+half reruns as itself; a changed selection regroups it. A row whose modules
 were all removed, including a single-module row, is skipped. Regrouping two or
 more non-gate modules runs the selector once per pass, so a selector refusal
 blocks that pass with the `agent-test-selection` blocker.

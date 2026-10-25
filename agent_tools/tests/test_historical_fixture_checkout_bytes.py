@@ -418,7 +418,7 @@ SSH_PROXY_DESCRIPTOR_ATTRIBUTES_BEFORE = WINDOWS_ACL_CREATION_ATTRIBUTES_BEFORE 
 )
 SSH_PROXY_DESCRIPTOR_BYTE_FIXTURES = (
     ('agent_tools/tests/fixtures/ssh_proxy_high_descriptors/provenance.json',
-     '872453c7b71bb95b39732fb97430ceff3160f243d1cf7a0ae27dd9c37c2a96f9', None),
+     'acd3de91861f4dc140ab05b2f7c21adabb4097dbf7092a6079b73cc550609e63', None),
     ('agent_tools/tests/fixtures/ssh_proxy_high_descriptors/native-select-phase.json',
      '791c85947eec3550fc3651989f93287cf765c70b453d59349962dfce9544e8b2', None),
     ('agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controlled-high-fd.actual.json',

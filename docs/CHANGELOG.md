@@ -10,6 +10,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Report a durable SSH program as finished when its owner exits during a status check.
 - Keep agent tool tests stable on directory-bound hosts and while worker errors are still being written.
 - Finish agent test cleanup on macOS when a process group holds only zombies.
+- Recognize the Windows creator's credential listener on Linux and keep reviewed source digests stable across Python versions.
+- Run hosted agent tests in six shards and keep agent tests portable to Windows and Linux runners.
 
 ## 2.2.14 - 2026-10-23
 

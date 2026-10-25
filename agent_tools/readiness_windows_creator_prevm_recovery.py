@@ -191,7 +191,7 @@ _PRODUCTION = _Expected(
  ('native_environment.py', 'e842650c8308d5b2cd8d9770afcd86d930556c0ae0836dea9b76d4cb864147cf'),
  ('readiness.py', 'eda12770d2141a1933159d0151eb8e512effb04663e6475a29dca90ea0a39a23'),
  ('readiness_windows_creator_registry.py', 'd1f06ac9df5f1ce232570b0fb077d7fbf857fdacf643ff93d23ed6e985f0ef7c'),
- ('readiness_windows_managed_create.py', '6ad3dae753c961c5576d76bc8a3f080a6ac79397c8d74d54423f800d222eda1c'),
+ ('readiness_windows_managed_create.py', 'e778dda736c7752038ec599df43e79593334202cc8683b8e992e7fdcf8f758cc'),
  ('durable_remote_job.py', 'f3b4707528c16f176b80781dd86208c324c1e10d6eb2c14451dcf4be08d0e734'),
  ('private_inventory_lock.py', '0ef6e2dda29a396a201368e1c3bce2ad52c441a3c9cc8647d8cadce198b73d42'),
  ('readiness_windows_host_jobs.py', 'b66e54ff485416422a4cfcf7fabe959fa0f8f2b117de0cbb614d6feeff56c0cb'),

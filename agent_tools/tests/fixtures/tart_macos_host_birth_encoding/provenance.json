@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-test-module-beforeimages",
+  "files": {
+    "test_tart_macos_precredential.py.before.source": {
+      "path": "agent_tools/tests/test_tart_macos_precredential.py",
+      "baseline": "cc2873b5",
+      "bytes": 12379,
+      "sha256": "f27a4b0d8830d4ed69a5e3cabf28373e91c58ee6815ab35fd53382515e9eb176"
+    },
+    "test_tart_macos_unlock_observer.py.before.source": {
+      "path": "agent_tools/tests/test_tart_macos_unlock_observer.py",
+      "baseline": "cc2873b5",
+      "bytes": 19735,
+      "sha256": "42538e9fcf15168cec05e4eae30632105a172427a40cef5935baa8399988daa8"
+    }
+  },
+  "originalFailure": "Fast Checks run 40187427911, job 121151078654 'Agent Tools Shard 2' (ubuntu-latest x86_64, CPython 3.12.15): precredential incident case failure after 2.0 s; credential/auth/capture/image/recipient/field/benchmark, recipient and source/sink cases error after 14.0, 4.0 and 2.0 s; both original-observer receipt cases error after 0.35 s. The shard step hit its 50-minute timeout before unittest printed tracebacks, so only these public per-test events survive.",
+  "originalFailureEvents": [
+    {
+      "elapsedSeconds": 2.0044254119998186,
+      "event": "finished",
+      "outcome": "failure",
+      "publicTestId": "agent_tools.tests.test_tart_macos_precredential.Checks.test_authentic_incident_fault_old_masks_and_leaks_new_retains_and_closes",
+      "schemaVersion": 1
+    },
+    {
+      "elapsedSeconds": 14.027331455999956,
+      "event": "finished",
+      "outcome": "error",
+      "publicTestId": "agent_tools.tests.test_tart_macos_precredential.Checks.test_each_credential_auth_capture_image_recipient_field_benchmark_boundary",
+      "schemaVersion": 1
+    },
+    {
+      "elapsedSeconds": 4.008141629999955,
+      "event": "finished",
+      "outcome": "error",
+      "publicTestId": "agent_tools.tests.test_tart_macos_precredential.Checks.test_old_recipient_guard_masked_new_has_exact_owned_code",
+      "schemaVersion": 1
+    },
+    {
+      "elapsedSeconds": 2.004490397000154,
+      "event": "finished",
+      "outcome": "error",
+      "publicTestId": "agent_tools.tests.test_tart_macos_precredential.Checks.test_source_generation_loss_and_diagnostic_sink_fault_always_close_observer",
+      "schemaVersion": 1
+    },
+    {
+      "elapsedSeconds": 0.3474783289998413,
+      "event": "finished",
+      "outcome": "error",
+      "publicTestId": "agent_tools.tests.test_tart_macos_unlock_observer.OriginalObserverReceiptTests.test_forged_terminal_hash_or_other_original_cannot_reuse_real_owner_receipt",
+      "schemaVersion": 1
+    },
+    {
+      "elapsedSeconds": 0.3474441889998161,
+      "event": "finished",
+      "outcome": "error",
+      "publicTestId": "agent_tools.tests.test_tart_macos_unlock_observer.OriginalObserverReceiptTests.test_original_durable_owner_after_client_death_has_one_execution_complete_streams",
+      "schemaVersion": 1
+    }
+  ],
+  "originalFailureEventsSha256": "53cbc9c23cc7731583ee815d664ec334ac32310ed7d5353f0f64ee62a7b567b6",
+  "originalFailureEventsFileSha256": "13655c2e24dbf3ec089cf08f82b746f7c26001f2d2ac7571885d898fb004e281",
+  "originalFailureEventsScope": "artifact agent-test-shard-40187427911-1-1/events.jsonl of that run",
+  "confirmedCause": "Both modules built a macOS guest actor identity from this host. Precredential run_case gave its controlled custody guard the actor {'pid': os.getpid(), 'birth': durable_remote_job._birth(os.getpid())}; MacTartBackend.operation_scope -> _host -> readiness_tart_macos._actor admits only 'darwin:<seconds>:<microseconds>', and on Linux _birth is 'linux:<start ticks>', so MacBlocked('macos_actor_invalid') was raised before the precredential block: the incident case saw no observer (observerLeakedBeforeHarnessCleanup False, its one AssertionError) and the other cases indexed a None diagnostic (TypeError). Each case waited the RFB peer's 2 s accept timeout, hence the 2/4/14 s durations. The receipt cases ran an actual local durable owner; on Linux its owner record carries the Linux birth and readiness_tart_macos_unlock_observer._terminal raised the same MacBlocked instead of admitting or refusing the forged fields. Reproduced on Darwin by giving exactly these births the Linux encoding: identical outcome pattern (1 failure + 3 errors; 2 errors).",
+  "fix": "The precredential custody stand-in reports a fixed controlled guest operator birth in the macOS encoding (GUEST_ACTOR_BIRTH) on every host. The receipt cases keep the actual detached owner and its actual receipt. When the owner's birth is not a macOS one they first assert that _terminal refuses that birth with macos_actor_invalid (reached only after every earlier terminal check passed), then check the same receipt with one macOS guest birth (GUEST_OWNER_BIRTH) in both owner identities, so the admission (one execution, exit 0, closed streams) and the refusal of each forged originalOperationId, counter and stdout run on every host. Their assertions now carry the actual owner, status, streams or forged field on failure.",
+  "controlledRegression": "agent_tools.tests.test_tart_macos_host_birth_encoding runs two precredential cases (one per original outcome type) and both receipt cases of these whole beforeimages (compiled from these bytes in private modules whose __file__ is the current module's) and of the current modules: precredential with durable_remote_job._birth returning the same process start as linux:<ticks>, receipts with durable_remote_job.observe returning owner identities in that encoding, as a Linux owner writes them, while the owner birth and outcome of every readiness_tart_macos_unlock_observer._terminal call are recorded. The fixed receipt cases must succeed with exactly these calls: Linux birth refused, guest-birth receipt admitted, Linux birth refused, three forged fields refused with QualificationBlocked. On Darwin it also requires the fixed receipt cases to admit the actual darwin owner natively, with no guest birth substituted.",
+  "failingEvidence": "Unfixed under the Linux encoding: incident case failure ('False is not true') and recipient case error (TypeError on a None diagnostic); both receipt cases error with MacBlocked macos_actor_invalid (their _terminal calls: the Linux birth refused; the forged originalOperationId refused before the actor check; the forged counter meets the Linux birth). Natively on Darwin both beforeimages pass.",
+  "passingEvidence": "Fixed: precredential cases pass natively and under the Linux encoding; receipt cases pass natively on Darwin with the actual darwin owner and, under the Linux encoding, assert the Linux birth's refusal, then admit the guest-birth receipt and refuse all three forged fields.",
+  "routineSuite": "agent_tools.tests.test_tart_macos_host_birth_encoding runs in the affected agent-test stage of the managed pre-push tier and the Fast Checks agent shards whenever the selector reaches it, including changes to either test module, readiness_tart_macos*.py, durable_remote_job.py, these beforeimages or this provenance.",
+  "nativeFailureClaimed": false,
+  "nativeEvidenceLimit": "Hosted-runner test-harness outcome only; no Tart VM, macOS guest, VNC credential or input event is involved or claimed. The Linux encoding was emulated on this Darwin host: only the next Linux Fast Checks run confirms the precredential cases, the receipt refusal and the guest-birth receipt admission with a native Linux owner. An actual darwin owner's admission stays covered on macOS hosts (the managed pre-push)."
+}

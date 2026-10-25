@@ -52,6 +52,22 @@ def _read(root, relative):
     return registry._body(path)
 
 
+def _syntax(node):
+    """ast.dump(node, include_attributes=False) text of Python 3.13/3.14 on any interpreter.
+
+    Reviewed digests must not follow the running ast.dump: 3.12 also prints empty
+    list fields (3.11 has no type_params) and 3.15 adds is_lazy=0, omits ctx=Load().
+    """
+    if isinstance(node, list):
+        return '[' + ', '.join(map(_syntax, node)) + ']'
+    if not isinstance(node, ast.AST):
+        return repr(node)
+    return type(node).__name__ + '(' + ', '.join(
+        name + '=' + _syntax(value) for name, value in ast.iter_fields(node)
+        if not (value is None and getattr(type(node), name, ...) is None or value == []
+                or name == 'is_lazy' and value == 0)) + ')'
+
+
 def _source(raw, phase, spec, setup, host_boot):
     """Authenticate reviewed historical control flow; old Python never executes."""
     _need(phase in _REVIEWED)
@@ -63,7 +79,7 @@ def _source(raw, phase, spec, setup, host_boot):
             assignments[name] = ast.literal_eval(node.value)
         elif isinstance(node, ast.FunctionDef):
             _need(node.name not in functions)
-            functions[node.name] = hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
+            functions[node.name] = hashlib.sha256(_syntax(node).encode()).hexdigest()
         elif isinstance(node, ast.Expr):
             _need(isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
                   and node.value.func.id == 'main' and not node.value.args and not node.value.keywords)

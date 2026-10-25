@@ -309,11 +309,39 @@ print(json.dumps(proof,sort_keys=True))
 """
         result = subprocess.run([sys.executable, '-I', '-B', '-c', code, fixture.__file__],
                                 capture_output=True, timeout=8)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        proof = json.loads(result.stdout)
-        self.assertEqual(len(proof['identities']), 2)
-        self.assertTrue(proof['allDescendantsExited'])
-        self.assertEqual(proof['originalSubreaper'], proof['restoredSubreaper'])
+        details = lambda: 'returncode=%r\nstdout=%s\nstderr=%s\nhost=%s' % (
+            result.returncode, result.stdout.decode(errors='replace'), result.stderr.decode(errors='replace'), host_facts())
+        self.assertEqual(result.returncode, 0, details())
+        try:
+            proof = json.loads(result.stdout)
+        except ValueError as error:
+            error.add_note(details())
+            raise
+        self.assertEqual(len(proof['identities']), 2, details())
+        self.assertTrue(proof['allDescendantsExited'], details())
+        self.assertEqual(proof['originalSubreaper'], proof['restoredSubreaper'], details())
+
+
+def host_facts():
+    """Kernel and credential facts the owned-descendant code depends on, for a failing run."""
+    import ctypes
+    import resource
+    facts = {'release': os.uname().release, 'python': sys.version.split()[0], 'executable': sys.executable,
+             'childrenFile': os.path.exists('/proc/%d/task/%d/children' % (os.getpid(), os.getpid())),
+             'groups': os.getgroups(), 'uid': os.getuid(), 'gid': os.getgid(),
+             'nproc': resource.getrlimit(resource.RLIMIT_NPROC), 'nofile': resource.getrlimit(resource.RLIMIT_NOFILE),
+             'tmpdir': os.environ.get('TMPDIR'), 'cwdExists': os.path.isdir(os.getcwd())}
+    try:
+        value = ctypes.c_int()
+        facts['subreaper'] = (ctypes.CDLL(None, use_errno=True).prctl(37, ctypes.byref(value), 0, 0, 0), value.value)
+    except Exception as error:
+        facts['subreaper'] = '%s(%s)' % (type(error).__name__, error)
+    try:
+        facts['status'] = [line for line in Path('/proc/self/status').read_text().splitlines()
+                           if line.split(':')[0] in ('Uid', 'Gid', 'Groups', 'Umask', 'SigIgn', 'SigBlk', 'NoNewPrivs', 'Seccomp', 'NSpid')]
+    except OSError as error:
+        facts['status'] = type(error).__name__
+    return json.dumps(facts, default=repr, sort_keys=True)
 
 
 class DebuggerControlTests(unittest.TestCase):

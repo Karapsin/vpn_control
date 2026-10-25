@@ -1,11 +1,60 @@
 {
+  "dropObservation": {
+    "beforeimage": {
+      "baseline": "committed unchanged at cc2873b5ed0ada7b09c24e854539c85660a627c2",
+      "file": "controller.selector_candidate.source",
+      "sha256": "902f9713f7ea728b490a143729fbd4f9a768bcbaef7806b2d7b9a4b1e6c52767"
+    },
+    "confirmedCause": "The selector candidate's forward thread keeps both pair sockets registered in one persistent selectors.DefaultSelector (EpollSelector on Linux, KqueueSelector on macOS). drop_once runs on another thread and called shutdown(SHUT_RDWR) and then close() on each socket. Closing a registered descriptor removes it, with any readiness its shutdown queued, from the kernel selector. Unless the forward thread read that readiness between a socket's shutdown and its close, select(.1) never reports either socket again: the thread stays alive in phase select, pair closed and the diagnostic row stay false until close_owned_route, and a second drop_once is accepted for the dead pair. The earlier select.select Proxy passed the socket objects on every cycle and saw the closed socket as ValueError, so the race came with the selector registration. The 3 s observation bound is not the cause: a lost drop was never observed later.",
+    "controlledRegression": "ProxyObservationTests.test_drop_while_forwarder_is_outside_its_selector_wait_red_before_green_current loads each whole Proxy class with a real DefaultSelector wrapper that holds the forward thread's next select() outside the kernel wait until drop_once has returned, then releases it and records each later selector cycle's ready count. On the unchanged selector candidate the first three released cycles report [0, 0, 0], the forward thread is alive in phase select, the pair stays live with both descriptors closed and a second drop_once writes a second fault receipt. On the fix the first released cycle reports the shut-down sockets, the row closes at eof and the replay is refused. The original drop test runs on the fix, and every observation timeout reports the complete bounded state.",
+    "failingEvidence": "Owned clones with the whole beforeimage as the current Proxy and every pin moved to its digest: the controlled regression failed 45 of 45 runs (43 on Python 3.14, 2 on Python 3.12; 21 of them with this final patch) with 'bounded controlled loopback observation timeout', 29 released KqueueSelector cycles all 0, the forward thread alive in phase select and the pair live with both descriptors closed; the original drop test failed 1 of 40 loop runs with the same state.",
+    "fix": "drop_once still writes its receipt first but only shuts both sockets down. The owning forward thread keeps them registered, readable at EOF, reads the drop on its next selector cycle and closes them in its finally block. Proxy.drop_once is the only changed node of the complete controller.",
+    "fixed": {
+      "file": "controller.drop_observation_candidate.source",
+      "sha256": "ca1dab8bc2f7dbab4f2910156705c4ab242bb13e99db986bd73f7da0da60cbc4"
+    },
+    "kind": "whole-source-beforeimage-ci-race",
+    "localReproduction": "macOS arm64, Python 3.14, owned loopback only. A probe of the original drop sequence lost the drop in 46 of 300 idle iterations with the selector candidate (none observed within 8 s; observed drops closed within 8 ms), 0 of 300 with the 5011 select.select Proxy and 0 of 300 with the fix. The unchanged routine module failed 17 of 80 runs in two concurrent loops with 12 owned CPU burners, every failure this test with the CI assertion.",
+    "nativeEvidenceLimits": "No native failure is claimed. EpollSelector was not run locally: epoll(7) drops a registration when its only descriptor is closed, the same silent loss, which the controlled regression forces deterministically. Only the next Linux Fast Checks run confirms the epoll RED/GREEN and the absence of the original failure there. The three ssh_acceptance_* controller.fixed.source successors carry the same unfixed drop_once; no native controller with this fix has run.",
+    "nativeFailureClaimed": false,
+    "originalFailure": {
+      "elapsedSeconds": 3.1193934780003474,
+      "failedStepLogSha256": "c59047162b2958f39aaac69a20625a1f630044085ea5727ff31806242d80a8aa",
+      "headSha": "cc2873b5ed0ada7b09c24e854539c85660a627c2",
+      "job": 121151078435,
+      "jobName": "Hygiene, Localization, Unit Tests",
+      "run": 40187427911,
+      "runner": "ubuntu-latest x86_64, Python 3.12, agent test shard index 0 of 2",
+      "sameShaWindowsRun": "Windows Desktop Package run 40187428207 does not execute this POSIX-only module",
+      "shardEventsArtifact": "agent-test-shard-40187427911-1-0/events.jsonl",
+      "shardEventsSha256": "1851600172eab964c28b92abb068643630f6a291e558ca153d37d0cd906699b3",
+      "testId": "agent_tools.tests.test_ssh_proxy_high_descriptors.ProxyObservationTests.test_exact_owned_drop_once_receipt_and_no_live_pair_replay",
+      "trace": [
+        "======================================================================",
+        "FAIL: test_exact_owned_drop_once_receipt_and_no_live_pair_replay (_routine_proxy_high_descriptors.ProxyObservationTests.test_exact_owned_drop_once_receipt_and_no_live_pair_replay)",
+        "----------------------------------------------------------------------",
+        "Traceback (most recent call last):",
+        "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/tests/fixtures/ssh_proxy_high_descriptors/test_proxy_high_descriptors.py\", line 67, in test_exact_owned_drop_once_receipt_and_no_live_pair_replay",
+        "    proxy.drop_once(path,master);wait(lambda:proxy.diagnostic_snapshot()['attempts'][0]['closed']);value=json.loads(path.read_bytes());self.assertEqual(1,value['faultCount']);self.assertFalse(value['remoteJobSignalAllowed'])",
+        "                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/tests/fixtures/ssh_proxy_high_descriptors/test_proxy_high_descriptors.py\", line 23, in wait",
+        "##[error]    raise AssertionError('bounded controlled loopback observation timeout')",
+        "AssertionError: bounded controlled loopback observation timeout"
+      ],
+      "traceDigest": "sha256 of these failed-step log lines, without the job, step and timestamp columns, joined with LF plus a final LF; the ##[error] marker is the runner annotation",
+      "traceSha256": "e1250b13ef20b0f608309d38b0e6da2ca7069bce5eee3afba361cd81e72fb67c",
+      "workflow": "Fast Checks"
+    },
+    "passingEvidence": "The fix passed the controlled regression 100 of 100 loop runs and the original drop test 300 of 300; the complete routine module passed 80 of 80 runs in two concurrent loops with 12 owned CPU burners."
+  },
   "files": {
     "controlled-high-fd.actual.json": "f8938698fa4e93d5d1b3a5af152f89a33b73b3120f2e03fb9ffc26b9640daefd",
     "controller.5011.before.source": "5011866be6fb1b384f3af0ed0e0c8d053ddc0ea0aeae3478fb76436ab80b7d0f",
     "controller.a088.before.source": "a088df1dfcd24fdc836b16d8c5011cb61e26397bcfc3265630624e2814926e51",
+    "controller.drop_observation_candidate.source": "ca1dab8bc2f7dbab4f2910156705c4ab242bb13e99db986bd73f7da0da60cbc4",
     "controller.selector_candidate.source": "902f9713f7ea728b490a143729fbd4f9a768bcbaef7806b2d7b9a4b1e6c52767",
     "native-select-phase.json": "791c85947eec3550fc3651989f93287cf765c70b453d59349962dfce9544e8b2",
-    "test_proxy_high_descriptors.py": "1304732776a8d11c655fd4a1090a84b97eead1dd19356c443e1a74391f05084e"
+    "test_proxy_high_descriptors.py": "7e76772e0fd7f3e6319295f298b35840fac2da6968b3201d6a65d2607bbc6bca"
   },
   "schemaVersion": 1,
   "scope": "Whole source Proxy AST, controlled loopback and isolated high-FD child only; native evidence is normalized diagnostic metadata, no effect/replay authority."

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "cc2873b5ed0ada7b09c24e854539c85660a627c2",
+  "failure": "Fast Checks run 40187427911 (push, attempt 1, head cc2873b5) split the 815-module affected agent selection into the two hosted shards of the workflow and selector below. Both 'Test affected agent tools' steps ended with \"The action 'Test affected agent tools' has timed out after 50 minutes.\" Shard 0 ran its 4543 tests in 2869.749 s of runner time after 115.5 s of selection and was cancelled while still relaying its public events; shard 1 was cancelled after 50 min 12.5 s with 105 of its 407 modules never started. Verify Agent Shard Coverage then refused both failed parents.",
+  "nativeFailureClaimed": false,
+  "ci": {
+    "workflow": "Fast Checks",
+    "runId": "40187427911",
+    "runAttempt": "1",
+    "event": "push",
+    "head": "cc2873b5ed0ada7b09c24e854539c85660a627c2",
+    "baseline": "2dfa2f2e7b64bc6535dcf163f7c42f40084a73cd",
+    "globalDigest": "4f30f1a3697a8dc9043d5c289e421ff8b05cf978a8810a98015477e2da33d434",
+    "jobs": [
+      {"name": "Hygiene, Localization, Unit Tests", "shardIndex": 0, "conclusion": "failure"},
+      {"name": "Agent Tools Shard 2", "shardIndex": 1, "conclusion": "failure"},
+      {"name": "Verify Agent Shard Coverage", "conclusion": "failure", "line": "Public agent shard coverage verification failed"}
+    ]
+  },
+  "timing": {
+    "path": "hosted-capacity.timing.json",
+    "canonicalSha256": "8de7e9780462b1bd5e58396bfd7fff46c4e02aaee9f1433efb7a631cb67fdeba",
+    "derivation": "modules, globalDigest and the plan fields are copied from both shards' identical public plan.json; the digest is recomputed from them. measuredSeconds sums elapsedSeconds of every finished public event per module from both events.jsonl files; the SSH-close gate has no runner events and takes its 'Ran 29 tests in 3.988s' log line. Modules without a finished event never started before the timeouts. selectionSeconds runs from each step's start to its printed global selection. The digests of the four public artifact files are recorded in the timing file."
+  },
+  "files": [
+    {
+      "path": "hosted-capacity.workflow.before.yml",
+      "sourcePath": ".github/workflows/fast-checks.yml",
+      "sourceSha256": "b1c870ad549cf9d0f8d4883dc0d122be42d630268287a39f4e94e900a16547ff",
+      "sourceBytes": 16707,
+      "capture": "Exact whole file at cc2873b5, the commit Fast Checks run 40187427911 checked out."
+    },
+    {
+      "path": "hosted-capacity.selector.before.source",
+      "sourcePath": "agent_tools/affected_agent_tests.py",
+      "sourceSha256": "7938c526fe64f9c1019b41e9db1a93906d4d53a9f4dee5919b2fcdf50983ce67",
+      "sourceBytes": 44646,
+      "capture": "Exact whole file at cc2873b5; only its shard_selection is AST-extracted by the regressions."
+    },
+    {
+      "path": "hosted-capacity.evidence.before.source",
+      "sourcePath": "agent_tools/agent_ci_evidence.py",
+      "sourceSha256": "d6786781dc488184090f40949ebaef32bd09220b55007211e334059c2c8f6c43",
+      "sourceBytes": 19255,
+      "capture": "Exact whole file at cc2873b5; executed only in an isolated namespace as the unfixed coverage verifier."
+    }
+  ]
+}

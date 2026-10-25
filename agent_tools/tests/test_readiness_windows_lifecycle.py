@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,21 @@ from agent_tools.tests.test_native_vm_spec import request
 from agent_tools.tests.test_readiness_windows_sockets import identity
 
 FIXTURE=Path(__file__).parent/'fixtures/windows_existing_start_topology'
+
+
+def endpoint_interpreter(candidates=None):
+    """A qemu/swtpm stand-in executable that the production lineage pin admits.
+
+    The packet pins each actor's /proc/<pid>/exe and refuses a group- or
+    world-writable executable, as for real qemu. The hosted runner's interpreter
+    lives under its chmod -R 777 /opt tool cache, so fall back to the system one.
+    """
+    for candidate in (sys.executable,'/usr/bin/python3') if candidates is None else candidates:
+        path=os.path.realpath(candidate)
+        try:info=os.stat(path)
+        except OSError:continue
+        if stat.S_ISREG(info.st_mode) and not info.st_mode&0o022 and os.access(path,os.X_OK):return path
+    return None
 
 
 def binding():
@@ -121,6 +137,8 @@ class ExistingWindowsTopologyTests(unittest.TestCase):
 @unittest.skipUnless(sys.platform=='linux','actual Linux executable generations and Unix socket FD ownership')
 class CompleteWindowsLineageTests(unittest.TestCase):
     def setUp(self):
+        self.interpreter=endpoint_interpreter()
+        if self.interpreter is None:self.skipTest('no interpreter that the lineage executable pin admits (regular, not group/world-writable)')
         self.temp=tempfile.TemporaryDirectory(prefix='vc-lineage-',dir='/tmp');self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name);self.root.chmod(0o700);self.binding=binding();spec=self.binding['spec'];spec['root']=str(self.root)
         self.binding['context']['hostBootId']=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
@@ -142,7 +160,7 @@ class CompleteWindowsLineageTests(unittest.TestCase):
         save('intent.json',{'schemaVersion':1,'spec':spec,'setup':self.binding['setup'],'hostBootId':self.binding['context']['hostBootId'],
                            'rootIdentity':structure(self.root),'assetIdentities':{'firmwareCode':{'set':1,'generation':firmware_gen},'installer':{},'drivers':{}}})
         for role,name in [('qemu','qemu-started.json'),('tpm','swtpm-started.json')]:
-            child=subprocess.Popen([sys.executable,'-I','-B',str(FIXTURE/'endpoint.py'),str(self.root),role,
+            child=subprocess.Popen([self.interpreter,'-I','-B',str(FIXTURE/'endpoint.py'),str(self.root),role,
                                     '--tpmstate','dir='+str(self.root/'tpm'),'-uuid',spec['deploymentId'],'-m',str(spec['memoryMiB']),'-smp',str(spec['cpus'])],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
             def close(child=child):
                 child.terminate();child.communicate(timeout=5)
@@ -157,17 +175,27 @@ class CompleteWindowsLineageTests(unittest.TestCase):
         self.assertEqual(0,result.returncode,result.stderr.decode(errors='replace'));self.assertFalse(result.stderr)
         return json.loads(result.stdout)
 
+    def diagnostics(self,result):
+        """The packet's own reason plus the stand-in executables it pinned."""
+        def mode(path):
+            try:info=os.stat(path);return '%s uid=%d mode=%o'%(path,info.st_uid,stat.S_IMODE(info.st_mode))
+            except OSError as error:return '%s %s'%(path,type(error).__name__)
+        return 'packet=%r\ninterpreter=%s\nsys.executable=%s'%(result,mode(self.interpreter),mode(os.path.realpath(sys.executable)))
+
     def test_actual_held_binary_firmware_and_original_actors_without_any_RPC(self):
-        result=self.run_packet();lineage=subject.validate_lineage(self.binding,result)
-        self.assertEqual(json.loads((self.root/'qemu-started.json').read_text()),result['qemu'])
-        self.assertEqual(os.path.realpath(sys.executable),result['executables']['qemu']['path'])
+        result=self.run_packet()
+        try:lineage=subject.validate_lineage(self.binding,result)
+        except ValueError as error:
+            error.add_note(self.diagnostics(result));raise
+        self.assertEqual(json.loads((self.root/'qemu-started.json').read_text()),result['qemu'],self.diagnostics(result))
+        self.assertEqual(self.interpreter,result['executables']['qemu']['path'],self.diagnostics(result))
         plan=subject.existing_start_plan(self.binding,lineage);self.assertEqual(self.binding['spec']['deploymentId'],plan.machine)
         self.assertFalse(list(self.root.glob('*.contact')));self.assertFalse(list(self.root.glob('*.wire')))
         self.assertFalse(list(self.root.glob('readiness-recovery-*')))
 
     def test_replaced_firmware_or_mutable_inode_refuses_before_source_receipt(self):
         old=self.root/'disk.qcow2';old.rename(self.root/'original-disk');old.write_bytes(b'REPLACEMENT');old.chmod(0o600)
-        result=self.run_packet();self.assertEqual('blocked',result['state']);self.assertEqual('instance_mutable_changed',result['reason'])
+        result=self.run_packet();self.assertEqual(('blocked','instance_mutable_changed'),(result.get('state'),result.get('reason')),self.diagnostics(result))
         self.assertFalse(list(self.root.glob('*.contact')))
 
 

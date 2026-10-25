@@ -1,4 +1,5 @@
-"""Finite whole-Proxy high-descriptor regressions; owned loopback only."""
+"""Finite whole-Proxy high-descriptor and drop-observation regressions; owned loopback only."""
+import ast
 import hashlib
 import json
 import os
@@ -8,20 +9,21 @@ from types import ModuleType
 import unittest
 
 FIXTURE = Path(__file__).parent / 'fixtures/ssh_proxy_high_descriptors'
-PROVENANCE_SHA = '872453c7b71bb95b39732fb97430ceff3160f243d1cf7a0ae27dd9c37c2a96f9'
-FILES = ['controlled-high-fd.actual.json', 'controller.5011.before.source', 'controller.a088.before.source', 'controller.selector_candidate.source', 'native-select-phase.json', 'test_proxy_high_descriptors.py']
+PROVENANCE_SHA = 'acd3de91861f4dc140ab05b2f7c21adabb4097dbf7092a6079b73cc550609e63'
+FILES = ['controlled-high-fd.actual.json', 'controller.5011.before.source', 'controller.a088.before.source', 'controller.drop_observation_candidate.source', 'controller.selector_candidate.source', 'native-select-phase.json', 'test_proxy_high_descriptors.py']
 
 
 def authenticated_fixture():
     raw = (FIXTURE / 'provenance.json').read_bytes()
     if hashlib.sha256(raw).hexdigest() != PROVENANCE_SHA:
-        raise AssertionError('proxy fixture provenance changed')
+        raise AssertionError('proxy fixture provenance changed: expected ' + PROVENANCE_SHA + ', actual ' + hashlib.sha256(raw).hexdigest())
     value = json.loads(raw)
     if value['schemaVersion'] != 1 or set(value['files']) != set(FILES):
-        raise AssertionError('finite proxy fixture scope changed')
+        raise AssertionError('finite proxy fixture scope changed: ' + json.dumps({'schemaVersion': value['schemaVersion'], 'files': sorted(value['files']), 'expected': FILES}))
     for name in FILES:
-        if hashlib.sha256((FIXTURE / name).read_bytes()).hexdigest() != value['files'][name]:
-            raise AssertionError('proxy fixture bytes changed: ' + name)
+        actual = hashlib.sha256((FIXTURE / name).read_bytes()).hexdigest()
+        if actual != value['files'][name]:
+            raise AssertionError('proxy fixture bytes changed: ' + name + ' expected ' + value['files'][name] + ', actual ' + actual)
 
 
 authenticated_fixture()
@@ -60,6 +62,32 @@ class NativePhaseEvidenceTests(unittest.TestCase):
         self.assertGreaterEqual(min(controlled['before']['inputDescriptors']), 1024)
         self.assertTrue(controlled['fixed']['bidirectional'] and controlled['fixed']['halfClosePreserved'])
         self.assertEqual(0, controlled['externalNetworkCalls'])
+
+
+class DropObservationEvidenceTests(unittest.TestCase):
+    def test_ci_failure_binds_whole_unfixed_candidate_and_fix_changes_only_drop_once(self):
+        authenticated_fixture()
+        value = json.loads((FIXTURE / 'provenance.json').read_bytes())['dropObservation']
+        failure = value['originalFailure']
+        self.assertIs(False, value['nativeFailureClaimed'])
+        self.assertEqual((40187427911, 'cc2873b5ed0ada7b09c24e854539c85660a627c2'), (failure['run'], failure['headSha']))
+        self.assertEqual(failure['traceSha256'], hashlib.sha256(('\n'.join(failure['trace']) + '\n').encode()).hexdigest())
+        self.assertEqual('AssertionError: bounded controlled loopback observation timeout', failure['trace'][-1], failure['trace'])
+        parts = {}
+        for role in ('beforeimage', 'fixed'):
+            raw = (FIXTURE / value[role]['file']).read_bytes()
+            self.assertEqual(value[role]['sha256'], hashlib.sha256(raw).hexdigest(), role)
+            tree = ast.parse(raw)
+            proxy = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'Proxy')
+            drop = next(n for n in proxy.body if isinstance(n, ast.FunctionDef) and n.name == 'drop_once')
+            parts[role] = ([ast.dump(n) for n in tree.body if n is not proxy] + [ast.dump(n) for n in proxy.body if n is not drop],
+                           [ast.unparse(n) for n in drop.body])
+        # The complete controller is unchanged except that drop_once no longer closes the
+        # forward thread's registered sockets after shutting them down.
+        self.assertEqual(parts['beforeimage'][0], parts['fixed'][0])
+        before, fixed = parts['beforeimage'][1], parts['fixed'][1]
+        self.assertEqual((before[:-1], before[-1].replace('\n    s.close()', '')), (fixed[:-1], fixed[-1]), (before, fixed))
+        self.assertIn('\n    s.close()', before[-1], before)
 
 
 if __name__ == '__main__':

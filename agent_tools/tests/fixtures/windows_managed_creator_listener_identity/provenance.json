@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": false,
+  "finding": "the unix-address creator binds credentials.sock through its held job descriptor as /proc/self/fd/<d>/credentials.sock and Linux /proc/net/unix keeps that sun_path verbatim, but _creator_status accepted only a listening row whose path equals the canonical job pathname, so listenerReady stayed false on every Linux HOST before any credential handoff",
+  "ciFailure": {
+    "workflow": "Fast Checks",
+    "runId": 40187427911,
+    "jobId": 121151078435,
+    "job": "Hygiene, Localization, Unit Tests",
+    "step": "Test affected agent tools",
+    "headSha": "cc2873b5ed0ada7b09c24e854539c85660a627c2",
+    "runner": "ubuntu-latest",
+    "python": "3.12.15",
+    "publicTestId": "agent_tools.tests.test_windows_managed_create.CredentialWireTests.test_fixed_generated_sender_original_owner_lost_ack_never_resends",
+    "elapsedSeconds": 0.20833827700016627,
+    "log": [
+      "2026-10-25T12:00:06.7254644Z FAIL: test_fixed_generated_sender_original_owner_lost_ack_never_resends (agent_tools.tests.test_windows_managed_create.CredentialWireTests.test_fixed_generated_sender_original_owner_lost_ack_never_resends)",
+      "2026-10-25T12:00:06.7256695Z   File \"/home/runner/work/vpn_control/vpn_control/agent_tools/tests/test_windows_managed_create.py\", line 137, in test_fixed_generated_sender_original_owner_lost_ack_never_resends",
+      "2026-10-25T12:00:06.7257513Z     self.assertTrue(json.loads(observed.stdout)['listenerReady'])",
+      "2026-10-25T12:00:06.7257873Z AssertionError: False is not true"
+    ]
+  },
+  "reviewedFirstFix": {
+    "sha256": "39f54981f397b43e1c5f978be10eb2995835684b2c234e0583e1656a3d8d1a47",
+    "landed": false,
+    "retained": false,
+    "finding": "review only: the first fix read /proc/net/unix as text, split it with splitlines() and took any one matching row, but the kernel ends a row only at a newline and prints a socket name verbatim, so a local socket name could carry a row naming a creator socket that was not its live listener"
+  },
+  "nativeEvidenceLimits": "the synthetic /proc reproduces only the kernel output format; the actual bind, /proc/net/unix, verbatim names and descriptor links are qualified on Linux by CredentialWireTests and the actual-kernel listener test, and no native creator attempt has met this status yet",
+  "files": {
+    "managed_create_listener.before.source": {
+      "path": "agent_tools/readiness_windows_managed_create.py",
+      "sha256": "6ad3dae753c961c5576d76bc8a3f080a6ac79397c8d74d54423f800d222eda1c"
+    }
+  }
+}

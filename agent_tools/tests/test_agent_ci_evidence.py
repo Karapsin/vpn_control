@@ -17,11 +17,15 @@ from unittest import mock
 
 from agent_tools import agent_ci_evidence as subject
 from agent_tools import agent_test_runner as runner
+from agent_tools.tests import test_agent_ci_shards as fixture
 
 
 GATE = "agent_tools.tests.test_ssh_connection_session_close"
-MODULES = sorted(["agent_tools.tests.test_evidence_a", GATE,
-                  "agent_tools.tests.test_evidence_z"])
+# The gate sorts last, so with the hosted count the first shard holds it after
+# one ordinary module and every other shard one ordinary module.
+MODULES = sorted(["agent_tools.tests.test_evidence_" + name for name in "abcdef"] + [GATE])
+COUNT = subject.SHARD_COUNT
+SUCCESS = ["success"] * COUNT
 PRIVATE = "PRIVATE_PROJECTION_SENTINEL"
 REJECTIONS = (OSError, ValueError, KeyError, TypeError)
 COUNTS = ("testsRun", "failures", "errors", "skipped", "expectedFailures", "unexpectedSuccesses")
@@ -116,21 +120,25 @@ class PublicEventTests(unittest.TestCase):
 
 
 class PlanTests(unittest.TestCase):
-    def test_two_indexes_bind_one_exact_sorted_global_plan(self):
-        first, second = plan(0), plan(1)
-        global_value = {"baseline": first["baseline"], "head": first["head"],
-                        "sourceFingerprint": first["sourceFingerprint"], "modules": MODULES,
+    maxDiff = None
+
+    def test_every_index_binds_one_exact_sorted_global_plan(self):
+        values = [plan(index) for index in range(COUNT)]
+        global_value = {"baseline": values[0]["baseline"], "head": values[0]["head"],
+                        "sourceFingerprint": values[0]["sourceFingerprint"], "modules": MODULES,
                         "runId": "987654321", "runAttempt": "4"}
         expected = hashlib.sha256(json.dumps(global_value, sort_keys=True,
                                               separators=(",", ":")).encode()).hexdigest()
-        self.assertEqual(expected, first["globalDigest"])
-        self.assertEqual(expected, second["globalDigest"])
-        self.assertEqual(MODULES[::2], first["assignedModules"])
-        self.assertEqual(MODULES[1::2], second["assignedModules"])
-        self.assertEqual(MODULES, sorted(first["assignedModules"] + second["assignedModules"]))
+        self.assertEqual(6, COUNT)
+        for index, value in enumerate(values):
+            self.assertEqual(expected, value["globalDigest"])
+            self.assertEqual(COUNT, value["shardCount"])
+            self.assertEqual(MODULES[index::COUNT], value["assignedModules"])
+        self.assertEqual([MODULES[0], GATE], values[0]["assignedModules"])
+        self.assertEqual(MODULES, sorted(name for value in values for name in value["assignedModules"]))
 
     def test_invalid_global_or_shard_inputs_refuse_before_receipt_creation(self):
-        changes = [{"index": True}, {"index": -1}, {"index": 2},
+        changes = [{"index": True}, {"index": -1}, {"index": COUNT},
                    {"modules": list(reversed(MODULES))}, {"modules": MODULES + [MODULES[-1]]},
                    {"modules": ["os"]}, {"modules": [MODULES[0] + ".C.test_one"]},
                    {"baseline": "a" * 39}, {"head": "z" * 40},
@@ -146,7 +154,7 @@ class PlanTests(unittest.TestCase):
                     subject.plan_value(**values)
 
     def test_plan_schema_partition_and_digest_cannot_be_aliased_or_tampered(self):
-        for changes in ({"schemaVersion": True}, {"shardCount": True}, {"shardCount": 3},
+        for changes in ({"schemaVersion": True}, {"shardCount": True}, {"shardCount": 3}, {"shardCount": 2},
                         {"assignedModules": []}, {"globalDigest": "0" * 64},
                         {"unexpected": PRIVATE}):
             with self.subTest(fields=sorted(changes)):
@@ -315,9 +323,11 @@ class EvidenceJournalTests(unittest.TestCase):
 @unittest.skipUnless(os.name == "posix" and hasattr(os, "O_NOFOLLOW"),
                      "actual managed runner requires private POSIX custody")
 class ActualReceiptTests(unittest.TestCase):
+    maxDiff = None
+
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix="vc-two-shard-receipts-")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="vc-shard-receipts-")
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.root = Path(cls.temporary.name).resolve()
         cls.pairs = {}
@@ -333,7 +343,7 @@ class ActualReceiptTests(unittest.TestCase):
                 (checkout / (module.replace(".", "/") + ".py")).write_text(
                     "import unittest\nclass C(unittest.TestCase):\n def test_owned(self): pass\n")
             directories = []
-            for index in (0, 1):
+            for index in range(COUNT):
                 value = plan(index, modules)
                 evidence = subject.Evidence(base / ("public-" + str(index)), value, stream=io.StringIO())
                 try:
@@ -387,14 +397,14 @@ class ActualReceiptTests(unittest.TestCase):
 
     def rejects(self, directories, results=None):
         with self.assertRaises(REJECTIONS):
-            subject.verify(directories, ["success", "success"] if results is None else results)
+            subject.verify(directories, SUCCESS if results is None else results)
 
-    def test_exact_two_actual_receipts_cover_one_global_plan(self):
+    def test_exact_actual_receipts_of_every_shard_cover_one_global_plan(self):
         directories = self.receipts()
-        result = subject.verify(directories, ["success", "success"])
+        result = subject.verify(directories, SUCCESS)
         self.assertEqual({"schemaVersion": 1, "successful": True,
                           "globalDigest": plan(0)["globalDigest"], "coveredModules": len(MODULES)}, result)
-        self.assertEqual(result, subject.verify(list(reversed(directories)), ["success", "success"]))
+        self.assertEqual(result, subject.verify(list(reversed(directories)), SUCCESS))
         summaries = [read(path / "summary.json") for path in directories]
         gate = next(command for summary in summaries for command in summary["commands"] if command["modules"] == [GATE])
         self.assertEqual({"modules", "returncode", "state"}, set(gate))
@@ -408,14 +418,15 @@ class ActualReceiptTests(unittest.TestCase):
 
     def test_missing_duplicate_or_extra_receipts_refuse(self):
         directories = self.receipts()
-        for candidate in ([], directories[:1], [directories[0], directories[0]], directories + directories[:1]):
+        for candidate in ([], directories[:1], directories[:-1], directories[:-1] + directories[:1],
+                          directories + directories[:1]):
             with self.subTest(receipt_count=len(candidate)):
                 self.rejects(candidate)
 
-    def test_actual_parent_results_must_both_be_success(self):
+    def test_actual_parent_results_must_all_be_success(self):
         directories = self.receipts()
-        for results in (["failed", "success"], ["success", "skipped"], ["cancelled", "success"],
-                        ["success", "timed_out"], ["success"], ["success", "success", "success"]):
+        for results in (["failed"] + SUCCESS[1:], SUCCESS[:-1] + ["skipped"], ["cancelled"] + SUCCESS[1:],
+                        SUCCESS[:-1] + ["timed_out"], SUCCESS[:-1], SUCCESS + ["success"], ["success", "success"]):
             with self.subTest(results=results):
                 self.rejects(directories, results)
 
@@ -437,7 +448,7 @@ class ActualReceiptTests(unittest.TestCase):
 
     def test_coherent_previous_run_attempt_or_head_cannot_satisfy_current_invocation(self):
         expected = {"runId": "987654321", "runAttempt": "4", "head": "b" * 40}
-        self.assertIs(subject.verify(self.receipts(name="current"), ["success", "success"],
+        self.assertIs(subject.verify(self.receipts(name="current"), SUCCESS,
                                      expected=expected)["successful"], True)
         for field, replacement in (("run_id", "987654320"), ("attempt", "3"), ("head", "d" * 40)):
             with self.subTest(field=field):
@@ -447,7 +458,7 @@ class ActualReceiptTests(unittest.TestCase):
                     write(directory / "plan.json", changed)
                     self.summary_change(directories, lambda summary: summary.update(globalDigest=changed["globalDigest"]), index)
                 with self.assertRaises(REJECTIONS):
-                    subject.verify(directories, ["success", "success"], expected=expected)
+                    subject.verify(directories, SUCCESS, expected=expected)
 
     def test_corrupt_missing_or_extra_receipt_fields_refuse(self):
         for filename in ("plan.json", "summary.json"):
@@ -550,7 +561,7 @@ class ActualReceiptTests(unittest.TestCase):
 
     def test_empty_bucket_is_explicit_and_bound_to_the_same_actual_global_plan(self):
         directories = self.receipts("empty-bucket")
-        result = subject.verify(directories, ["success", "success"])
+        result = subject.verify(directories, SUCCESS)
         self.assertEqual(1, result["coveredModules"])
         empty = read(directories[1] / "summary.json")
         self.assertEqual("empty-shard", empty["state"])
@@ -558,14 +569,39 @@ class ActualReceiptTests(unittest.TestCase):
         self.summary_change(directories, lambda summary: summary.update(successful=False), 1)
         self.rejects(directories)
 
-    def test_both_empty_buckets_still_require_two_actual_successful_receipts(self):
+    def test_all_empty_buckets_still_require_every_actual_successful_receipt(self):
         directories = self.receipts("empty")
-        result = subject.verify(directories, ["success", "success"])
+        result = subject.verify(directories, SUCCESS)
         self.assertEqual(0, result["coveredModules"])
         for directory in directories:
             self.assertEqual("empty-shard", read(directory / "summary.json")["state"])
-        self.rejects(directories, ["success", "skipped"])
+        self.rejects(directories, SUCCESS[:-1] + ["skipped"])
         self.rejects(directories[:1])
+        self.rejects(directories[:-1])
+
+    def test_whole_two_shard_verifier_cannot_prove_the_hosted_receipts(self):
+        # RED on the whole cc2873b5 verifier: it accepts only two receipts of a
+        # two-way plan, so it refuses the complete hosted coverage; GREEN now.
+        path = fixture.FIXTURE / "hosted-capacity.evidence.before.source"
+        before = {"__name__": "preserved_agent_ci_evidence", "__file__": str(path)}
+        exec(compile(fixture.preserved("evidence.before.source"), str(path), "exec"), before)
+        directories = self.receipts()
+        expected = {"runId": "987654321", "runAttempt": "4", "head": "b" * 40}
+        outcomes = {}
+        for label, verify in (("before", before["verify"]), ("current", subject.verify)):
+            try:
+                outcomes[label] = verify(directories, SUCCESS, expected=expected)
+            except REJECTIONS as error:
+                outcomes[label] = type(error).__name__ + ": " + str(error)
+        try:
+            before["validate_plan"](plan(0))
+        except REJECTIONS as error:
+            outcomes["beforePlan"] = type(error).__name__ + ": " + str(error)
+        print(json.dumps({"event": "hosted-coverage-causal", "outcomes": outcomes}, sort_keys=True))
+        self.assertEqual("ValueError: Both actual shard jobs must succeed", outcomes["before"], outcomes)
+        self.assertEqual("ValueError: Invalid public shard schema", outcomes.get("beforePlan"), outcomes)
+        self.assertEqual({"schemaVersion": 1, "successful": True, "globalDigest": plan(0)["globalDigest"],
+                          "coveredModules": len(MODULES)}, outcomes["current"], outcomes)
 
     def test_owned_controller_cancellation_retains_started_and_closes_same_runner(self):
         checkout = self.case / "checkout"

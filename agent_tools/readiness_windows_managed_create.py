@@ -440,7 +440,7 @@ def _handoff_source(job,expected):
 
 
 def _creator_status(job,expected,owner_source,machine,vm_root):
-    import json,os,pathlib,stat
+    import json,os,pathlib,re,stat
     result={'schemaVersion':1,'kind':'windows-managed-creator-status-v1','operationId':expected['operationId'],'machine':machine,'vmRoot':vm_root,'listenerReady':False,'replayAllowed':False}
     try:
         import types,sys
@@ -466,17 +466,30 @@ def _creator_status(job,expected,owner_source,machine,vm_root):
                 if not(row['operationId']==expected['operationId']and module._birth(pid)==actor['birth']and int(words[1])==owner['pid']
                     and pin(os.stat(base/'exe'))==row['executableGeneration']and stat.S_ISSOCK(named.st_mode)and stat.S_IMODE(named.st_mode)==0o600
                     and named.st_uid==os.geteuid()and structure(named)==row['socketIdentity']):raise ValueError()
-                wire=pathlib.Path('/proc/net/unix').read_text();rows=[line.split()for line in wire.splitlines()[1:]]
+                # Linux keeps a bound sun_path verbatim and the creator binds through its
+                # held job descriptor: only its own socket inodes join a listening row, at
+                # the canonical path or at a descriptor resolving to this exact job directory.
+                held=structure(module._private(job,directory=True))
+                def holds():
+                    descriptors=list((base/'fd').iterdir())
+                    if len(descriptors)>8192:raise ValueError()
+                    inodes=set();paths={os.fsencode(endpoint)}
+                    for descriptor in descriptors:
+                        try:
+                            link=os.readlink(descriptor);inode=re.fullmatch(r'socket:\[([0-9]+)\]',link)
+                            if inode:inodes.add(inode.group(1).encode())
+                            elif link==str(job)and structure(os.stat(descriptor))==held:paths.add(b'/proc/self/fd/'+descriptor.name.encode()+b'/credentials.sock')
+                        except FileNotFoundError:continue
+                    return inodes,paths
+                inodes,paths=holds();wire=pathlib.Path('/proc/net/unix').read_bytes()
                 if len(wire)>1024**2:raise ValueError()
-                matches=[line[6]for line in rows if len(line)>=8 and line[-1]==str(endpoint)and line[3:6]==['00010000','0001','01']]
-                if len(matches)!=1:raise ValueError()
-                descriptors=list((base/'fd').iterdir())
-                if len(descriptors)>8192:raise ValueError()
-                found=False
-                for descriptor in descriptors:
-                    try:found=found or os.readlink(descriptor)=='socket:['+matches[0]+']'
-                    except FileNotFoundError:continue
-                if not found:raise ValueError()
+                # Only b'\n' ends a row and names print verbatim, so a name can carry a forged row:
+                # a live socket's own row then repeats its inode, a closed one is no longer held.
+                rows=[text.split(None,7)for text in wire.split(b'\n')[1:]];matches=[line for line in rows
+                    if len(line)==8 and line[6]in inodes and line[7]in paths and line[3:6]==[b'00010000',b'0001',b'01']]
+                if len(matches)!=1 or[line[6]for line in rows if len(line)>=7].count(matches[0][6])!=1:raise ValueError()
+                inodes,paths=holds()
+                if matches[0][6]not in inodes or matches[0][7]not in paths:raise ValueError()
                 _channel_identity(job,expected,owner_source)
                 if module._birth(pid)!=actor['birth']or structure(os.lstat(endpoint))!=row['socketIdentity']:raise ValueError()
                 result['listenerReady']=True

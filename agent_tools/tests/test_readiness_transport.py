@@ -1,4 +1,5 @@
 """Actual complete generated callers and Unix control sockets, no VM/VPN."""
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -252,9 +253,47 @@ class ReadinessTransportTests(unittest.TestCase):
         with self.assertRaises(AssertionError):oracle(before)
         oracle(master)
         before_count=len(self.children)
-        with self.assertRaisesRegex(master.MasterUnknown,'master_daemon_actor_unproved'):
-            master.start(self.root,'explicit-peer','e'*64,deadline=time.monotonic()+3)
-        self.assertEqual(before_count,len(self.children))
+        # Only the production actor rule chooses between the two finite outcomes:
+        # the daemon is reconciled only when /bin/ps names its process an actual
+        # same-user 'ssh' executable. Linux reports this fixture's shebang script
+        # basename ('ssh') as comm, Darwin its interpreter path. Neither outcome
+        # may launch a replacement or publish the new generation.
+        comm=subprocess.run(['/bin/ps','-p',str(pid),'-o','comm='],stdin=subprocess.DEVNULL,capture_output=True,timeout=3)
+        with diagnosed(lambda:self.daemon_diagnostics(pid,comm,before_count)):
+            self.assertEqual((0,b''),(comm.returncode,comm.stderr))
+            if Path(comm.stdout.decode().strip()).name=='ssh':
+                value=master.start(self.root,'explicit-peer','e'*64,deadline=time.monotonic()+3)
+                self.assertEqual(('ready','f'*64,pid),(value['state'],value['recoveryId'],value['child']['pid']))
+            else:
+                with self.assertRaisesRegex(master.MasterUnknown,'master_daemon_actor_unproved'):
+                    master.start(self.root,'explicit-peer','e'*64,deadline=time.monotonic()+3)
+            self.assertEqual(before_count,len(self.children))
+            with private_directory(master._path(self.root,'explicit-peer')) as directory:
+                self.assertEqual('f'*64,master._current(directory))
+            self.assertFalse(os.path.lexists(master._path(self.root,'explicit-peer')/('e'*64+'.intent.json')))
+
+    def daemon_diagnostics(self,pid,comm,before_count):
+        """Complete failure context, computed only after an assertion failed."""
+        rows=['platform=%s release=%s'%(sys.platform,os.uname().release),
+              'ps comm: rc=%r stdout=%r stderr=%r'%(comm.returncode,comm.stdout,comm.stderr)]
+        args=subprocess.run(['/bin/ps','-p',str(pid),'-o','args='],stdin=subprocess.DEVNULL,capture_output=True,timeout=3)
+        rows.append('ps args: rc=%r stdout=%r stderr=%r'%(args.returncode,args.stdout,args.stderr))
+        directory=master._path(self.root,'explicit-peer')
+        rows.append('records=%r'%(sorted(path.name for path in directory.iterdir()) if directory.is_dir() else None))
+        try:value=master.status(self.root,'explicit-peer');rows.append('status=%r'%({k:value.get(k)for k in ('state','recoveryId','child')},))
+        except Exception as error:rows.append('status error=%s(%s)'%(type(error).__name__,error))
+        rows.append('children before=%d now=%r'%(before_count,[(child.pid,child.poll())for child in self.children]))
+        return '\n'.join(rows)
+
+
+@contextmanager
+def diagnosed(describe):
+    """Attach complete diagnostics to any failure or error, keeping its traceback."""
+    try:yield
+    except Exception as error:
+        try:note=describe()
+        except Exception as problem:note='diagnostics unavailable: %s(%s)'%(type(problem).__name__,problem)
+        error.add_note(note);raise
 
 
 from agent_tools.private_inventory_lock import Directory as private_directory

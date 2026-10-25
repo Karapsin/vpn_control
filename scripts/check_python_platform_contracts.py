@@ -95,6 +95,42 @@ ANDROID_WINDOWS_METHODS = (
     "test_android_installer_lifecycle.InstallerLifecycleTest.test_windows_stat_boundary_keeps_two_phase_owner_replacement_flow",
     "test_android_installer_lifecycle.InstallerEarlyReplyEvidenceTest.test_uncaught_terminal_guard_stderr_and_other_record_guards_never_dump_payload",
 )
+# Visual cases observed failing on the Windows runner (run 40187428207).
+VISUAL_POSIX_METHODS = {
+    "test_visual_platform": (
+        # The qualified capture provider is a socketserver.UnixStreamServer.
+        "VisualPlatformTest.test_android_capture_handles_native_python_crlf_before_any_device_mutation",
+        "VisualPlatformTest.test_android_capture_rejects_a_foreign_avd_before_any_device_mutation",
+        "VisualPlatformTest.test_android_capture_rejects_stale_owned_geometry_before_any_mutation_or_output",
+        "VisualPlatformTest.test_android_capture_removes_native_python_crlf_from_scene_arguments_after_device_guard",
+        "VisualPlatformTest.test_local_android_capture_guard_ignores_inherited_hosted_provider",
+        # Visual start admission takes the POSIX-only StoragePlans lock.
+        "VisualPlatformTest.test_low_available_memory_denies_before_visual_start",
+        "VisualPlatformTest.test_resource_reservation_rejects_same_platform_and_malformed_top_level",
+    ),
+    "test_visual_target": (
+        # The QMP peer and its custody check use AF_UNIX sockets.
+        "VisualTargetTests.test_foreign_socket_peer_holding_another_disk_is_never_mutated",
+        "VisualTargetTests.test_missing_stop_target_cannot_send_power_to_default_vm",
+        "VisualTargetTests.test_reused_peer_pid_birth_is_rejected_before_capabilities_or_power",
+        "VisualTargetTests.test_unsafe_actual_disk_parent_returns_typed_blocker_without_power",
+        "VisualTargetTests.test_valid_selected_disk_and_actual_peer_owner_accept_one_power_packet",
+        # CreateProcess runs neither a '#!' fake nor POSIX /bin/bash.
+        "VisualTargetTests.test_actual_generated_adb_caller_never_freezes_foreign_avd_on_selected_port",
+        "VisualTargetTests.test_actual_hosted_workflow_caller_forwards_its_created_avd",
+        "VisualTargetTests.test_full_marker_refuses_missing_target_before_ready_write",
+        "VisualTargetTests.test_marker_forwards_exact_selected_target_and_failed_probe_never_marks_ready",
+        "VisualTargetTests.test_windows_bootstrap_full_shell_cannot_create_default_disk_without_target",
+    ),
+}
+# Siblings that pass on the Windows runner. The probe does not model Git Bash,
+# so a portable entry must not launch the test's POSIX shell.
+VISUAL_WINDOWS_METHODS = (
+    "test_visual_platform.VisualPlatformTest.test_low_disk_blocks_emulator_before_reservation_or_process",
+    "test_visual_platform.VisualPlatformTest.test_unsupported_lock_host_fails_before_reservation_or_launch",
+    "test_visual_target.VisualTargetTests.test_capture_rejects_target_before_output_creation_or_driver",
+    "test_visual_target.VisualTargetTests.test_wrong_or_missing_selectors_refuse_all_mutation_paths_before_processes",
+)
 
 
 def probe_windows_android_test_suites(
@@ -181,6 +217,118 @@ assert required_skips == skipped, "Android tests have missing POSIX skips or ski
 assert portable <= result.passed, "Portable Windows admission/redaction coverage was skipped"
 raise SystemExit(not result.wasSuccessful())
 ''', input_text=json.dumps(source_overrides or {}))
+
+
+def probe_windows_visual_test_suites(
+    source_overrides: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run the observed visual test bodies with Windows CPython capabilities.
+
+    AF_UNIX and every Unix socketserver class are removed. The test modules and
+    the storage-plan lock see a module-local Windows os. On POSIX hosts launches
+    follow CreateProcess: a '#!' file is not an executable image, the /bin and
+    /usr/bin trees are absent and a child Python lacks AF_UNIX as well. Windows
+    hosts supply these semantics natively. Overrides let causal tests execute
+    preserved unfixed test sources against the same probe.
+    """
+    payload = {"sources": source_overrides or {}, "posix": VISUAL_POSIX_METHODS,
+               "portable": VISUAL_WINDOWS_METHODS}
+    return _run('''import builtins
+from contextlib import ExitStack, redirect_stdout
+import errno
+import io
+import json
+import os
+from pathlib import Path
+import socket
+import socketserver
+import subprocess
+import sys
+from types import ModuleType
+import unittest
+from unittest.mock import patch
+
+payload = json.load(sys.stdin)
+for variable in ("VPN_CONTROL_VISUAL_TARGET_BEFORE", "VPN_CONTROL_VISUAL_QMP_ANCESTRY_BEFORE"):
+    os.environ.pop(variable, None)
+if hasattr(socket, "AF_UNIX"):
+    del socket.AF_UNIX
+for name in [name for name in vars(socketserver) if "Unix" in name]:
+    delattr(socketserver, name)
+
+class WindowsOs:
+    name = "nt"
+    def __getattr__(self, name):
+        if name in {"getuid", "geteuid", "O_DIRECTORY", "O_NOFOLLOW"}:
+            raise AttributeError(name)
+        return getattr(os, name)
+
+surface = WindowsOs()
+original_import = builtins.__import__
+def local_import(name, *args, **kwargs):
+    return surface if name == "os" else original_import(name, *args, **kwargs)
+
+class CreateProcess(subprocess.Popen):
+    def __init__(self, args, *rest, **kwargs):
+        if os.name == "posix" and isinstance(args, (list, tuple)) and args and not kwargs.get("shell"):
+            args = list(args)
+            program = os.fspath(args[0])
+            if program == sys.executable:
+                if "-c" in args[1:]:
+                    source = args.index("-c", 1) + 1
+                    args[source] = "import socket as _windows;del _windows.AF_UNIX;" + args[source]
+            elif program.startswith(("/bin/", "/sbin/", "/usr/bin/", "/usr/sbin/")):
+                raise FileNotFoundError(errno.ENOENT, "The system cannot find the file specified")
+            elif os.sep in program:
+                image = os.path.join(os.fspath(kwargs.get("cwd") or ""), program)
+                if os.path.isfile(image):
+                    with open(image, "rb") as stream:
+                        if stream.read(2) == b"#!":
+                            raise OSError(errno.ENOEXEC, "%1 is not a valid Win32 application")
+        super().__init__(args, *rest, **kwargs)
+
+expected = payload["posix"]
+portable = set(payload["portable"])
+suite = unittest.TestSuite()
+for name in ("test_visual_platform", "test_visual_target"):
+    path = Path(name + ".py").resolve()
+    module = ModuleType(name)
+    module.__file__ = str(path)
+    module.__dict__["__builtins__"] = dict(vars(builtins), __import__=local_import)
+    sys.modules[name] = module
+    source = payload["sources"].get(name) or path.read_text(encoding="utf-8")
+    exec(compile(source, str(path), "exec"), module.__dict__)
+    selected = [*expected[name], *(test[len(name) + 1:] for test in sorted(portable) if test.startswith(name + "."))]
+    suite.addTests(unittest.TestLoader().loadTestsFromNames(selected, module))
+
+class Result(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.passed = set()
+    def addSuccess(self, test):
+        self.passed.add(test.id())
+        super().addSuccess(test)
+
+def final_line(trace):
+    return [line.strip() for line in trace.splitlines() if line.strip()][-1]
+
+import native_fixture_storage
+with ExitStack() as stack:
+    stack.enter_context(patch.object(native_fixture_storage, "os", surface))
+    stack.enter_context(patch.object(subprocess, "Popen", CreateProcess))
+    stack.enter_context(redirect_stdout(io.StringIO()))
+    result = unittest.TextTestRunner(verbosity=1, resultclass=Result).run(suite)
+skipped = {test.id() for test, reason in result.skipped}
+required_skips = {module + "." + method for module, names in expected.items() for method in names}
+summary = {"testsRun": result.testsRun, "passed": len(result.passed), "skipped": sorted(skipped),
+    "errors": {test.id(): final_line(trace) for test, trace in result.errors},
+    "failures": {test.id(): final_line(trace) for test, trace in result.failures},
+    "portablePassed": sorted(portable & result.passed)}
+print(json.dumps(summary, sort_keys=True))
+assert required_skips == skipped, "Visual tests have missing POSIX skips or skipped portable coverage"
+assert portable <= result.passed, "Portable Windows visual coverage was skipped"
+raise SystemExit(not result.wasSuccessful())
+''', timeout=120, input_text=json.dumps(payload))
 
 
 def probe_absent_getuid() -> subprocess.CompletedProcess[str]:
@@ -323,7 +471,8 @@ def check_contracts(root: Path = ROOT) -> list[str]:
         errors.append(_failure("absent-os-getuid native_fixture_preflight", result))
     for name, probe in (("windows-phase-recorder", probe_windows_phase_recorder),
                         ("windows-android-installer", probe_windows_android_installer_boundary),
-                        ("windows-android-test-suites", probe_windows_android_test_suites)):
+                        ("windows-android-test-suites", probe_windows_android_test_suites),
+                        ("windows-visual-test-suites", probe_windows_visual_test_suites)):
         result = probe()
         if result.returncode:
             errors.append(_failure(name, result))
@@ -336,7 +485,7 @@ def main() -> int:
         print("Python platform contract check failed:", file=sys.stderr)
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 4} capability probes)")
+    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 5} capability probes)")
     return 0
 
 

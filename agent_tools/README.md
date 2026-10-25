@@ -64,15 +64,16 @@ Pre-push captures source content before and after checks and refuses to publish
 a new receipt when content changes during validation. Freeze edits, wait for the
 current run to exit, then run a fresh pre-push tier.
 
-The managed agent stage runs the SSH-close gate alone first, then the two hosted
-CI shards without it, each as its own command with the 50-minute bound; a failed
+The managed agent stage runs the SSH-close gate alone first, then the two halves
+of the hosted CI partition without it (each half is the hosted shards of one
+index parity), each as its own command with the 50-minute bound; a failed
 gate stops what follows. A timed-out command receives SIGTERM, so the agent test
 runner stops its worker sessions before the next command starts; SIGKILL follows
 only after a 30-second grace, and only the original timeout is reported.
 `run_checks(level="failed")` reruns a timed-out, unparsed or import-failed agent
 command once without removed modules: the gate alone if recorded, then the rest
 by index parity in the sorted union of the current selection and those modules.
-For an unchanged selection a recorded shard therefore reruns as itself; a
+For an unchanged selection a recorded half therefore reruns as itself; a
 changed selection regroups it, and regrouping runs the selector once per pass.
 Recorded failed modules still narrow their rerun.
 
@@ -241,15 +242,17 @@ HEAD, omit consumers, or use an unrequested full-suite fallback. Full selector,
 parallelism, output-custody and receipt rules remain in
 [the test procedure](../agent_docs/tools/lifecycle-and-api.md#tests).
 
-Fast Checks uses two fresh Ubuntu checkouts with explicit paired
-`--shard-index 0|1 --shard-count 2` arguments after complete global selection.
-Its optional `--ci-evidence-dir` records bounded public progress and requires
-`--run`, an explicit shard and a new output directory. Pooled worker evidence
-requires POSIX; the final coverage job verifies both successful current-attempt
-receipts and their exact disjoint union. Private worker output stays local.
-Managed checks run the SSH-close gate alone, then the same two shards' modules
-without it; Windows `--include` retains its existing path, and managed prepush
-writes its own content-bound receipt.
+Fast Checks uses six fresh Ubuntu checkouts (`CI_SHARD_COUNT`) with explicit
+`--shard-index 0..5 --shard-count 6` arguments after complete global selection;
+each hosted shard's share of the last measured selection must stay within 60%
+of its 50-minute phase bound. Its optional `--ci-evidence-dir` records bounded
+public progress and requires `--run`, an explicit shard and a new output
+directory. Pooled worker evidence requires POSIX; the final coverage job
+verifies every successful current-attempt receipt and their exact disjoint
+union. Private worker output stays local. Managed checks run the SSH-close gate
+alone, then the two halves of the same partition without it; Windows
+`--include` retains its existing path, and managed prepush writes its own
+content-bound receipt.
 
 ## Recipe Index
 

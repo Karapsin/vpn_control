@@ -153,6 +153,8 @@ agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
 
 # The capability regression executes this whole source at its exact raw SHA.
 /scripts/tests/fixtures/visual_availability_qualification/visual_platform.before.source -text
+# The Windows capability probe executes these whole test sources at exact raw SHAs.
+/scripts/tests/fixtures/windows_visual_test_capabilities/** -text
 
 # Exact raw-SHA inputs for the finite recovery caller regressions.
 /agent_tools/tests/fixtures/ssh_acceptance_preparation/audit_prepared_sources.py -text

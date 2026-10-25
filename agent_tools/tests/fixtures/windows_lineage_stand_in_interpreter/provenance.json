@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-test-module-beforeimage",
+  "sourcePath": "agent_tools/tests/test_readiness_windows_lifecycle.py",
+  "sourceBaseline": "cc2873b5 (pushed dev commit of Fast Checks run 40187427911)",
+  "sourceBytes": 12505,
+  "sourceSha256": "79816d7959a2bd92970bb98417768e2e09d12c5a677405d08f0d547487be5347",
+  "originalFailureTestId": "agent_tools.tests.test_readiness_windows_lifecycle.CompleteWindowsLineageTests.test_actual_held_binary_firmware_and_original_actors_without_any_RPC",
+  "originalFailure": "Fast Checks run 40187427911, job 121151078654 'Agent Tools Shard 2' (ubuntu-latest x86_64 image ubuntu24/20261012.334, CPython 3.12.15 from /opt/hostedtoolcache): outcome error after 0.22 s. The shard step hit its 50-minute timeout before unittest printed tracebacks, so only the public per-test event below survives; the sibling case that refuses at the earlier mutable-inode guard passed.",
+  "originalFailureEvent": {
+    "elapsedSeconds": 0.22288916100023926,
+    "event": "finished",
+    "outcome": "error",
+    "publicTestId": "agent_tools.tests.test_readiness_windows_lifecycle.CompleteWindowsLineageTests.test_actual_held_binary_firmware_and_original_actors_without_any_RPC",
+    "schemaVersion": 1
+  },
+  "originalFailureEventSha256": "f8fb1611c098c8b5a9d7d194409ad16a8a36e934ce0580ffdfdc4f48a7bbf000",
+  "originalFailureEventsSha256": "13655c2e24dbf3ec089cf08f82b746f7c26001f2d2ac7571885d898fb004e281",
+  "runnerImageEvidence": "actions/runner-images images/ubuntu/scripts/build/configure-system.sh runs 'chmod -R 777 /opt' after the tool cache is installed (Install-Toolset.ps1 extracts and runs each tool's setup.sh, then only chowns); actions/setup-python reported 'Successfully set up CPython (3.12.15)' from that cache (pythonLocation /opt/hostedtoolcache/Python/3.12.15/x64).",
+  "confirmedCause": "The case's qemu and swtpm stand-ins ran sys.executable. The generated lineage packet's _capture_existing_lineage pins each actor's /proc/<pid>/exe with windows_vm_instance's pin(path, executable=True), which requires a regular file without group/other write bits, as for real qemu. The hosted runner's interpreter is world-writable, so the packet printed {'state': 'blocked', 'reason': 'instance_source'} and validate_lineage raised ValueError('windows_lifecycle_lineage_invalid') - an error, with no failing assertion. On a developer Linux host the interpreter is root-owned 0755 and the case passes. Only the actor executable is environment dependent among the checks after the mutable guard that the passing sibling case already reached.",
+  "fix": "The case selects its stand-in executable with endpoint_interpreter(): the first of this interpreter and /usr/bin/python3 that is a regular, executable, not group/world-writable file (the production policy), else an explicit skip. Its assertions report the packet result and the modes of both interpreters on failure.",
+  "controlledRegression": "agent_tools.tests.test_windows_lineage_stand_in_interpreter executes the exact pin the packet inlines from windows_vm_instance._vm_main on every host: it refuses a world-writable stand-in (instance_source) and admits the one endpoint_interpreter selects. On Linux it runs the original case of this whole beforeimage and of the current module with sys.executable set to a world-writable private copy of this interpreter.",
+  "failingEvidence": "Unfixed (Linux half): the beforeimage case errors with windows_lifecycle_lineage_invalid; portable half: the production pin refuses the world-writable stand-in that the unfixed case would launch on the runner.",
+  "passingEvidence": "Fixed: endpoint_interpreter never returns a refused executable and the production pin admits its choice; on Linux the current case closes the whole lineage with the system interpreter.",
+  "routineSuite": "agent_tools.tests.test_windows_lineage_stand_in_interpreter runs in the affected agent-test stage of the managed pre-push tier and the Fast Checks agent shards whenever the selector reaches it, including changes to test_readiness_windows_lifecycle.py, readiness_windows_lifecycle.py, windows_vm_instance.py, readiness_windows_remote.py, the windows_existing_start_topology fixtures, this beforeimage or this provenance.",
+  "nativeFailureClaimed": false,
+  "nativeEvidenceLimit": "Hosted-runner test-harness outcome only; no qemu, swtpm, Windows VM or host native behavior is involved or claimed. This macOS development host cannot run the Linux half: only the next Linux Fast Checks run confirms the beforeimage error and the fixed lineage natively."
+}

@@ -113,6 +113,23 @@ class ManagedCreateTests(unittest.TestCase):
 
 
 
+def listener_evidence(job,observed):
+    """Complete public Linux listener facts for a refused status; no frame exists before it."""
+    def probe(read):
+        try:return read()
+        except Exception as error:return type(error).__name__
+    identity=lambda i:[i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid,i.st_nlink,i.st_size,i.st_mtime_ns,i.st_ctime_ns]
+    row=probe(lambda:json.loads((job/'creator-listener.json').read_bytes()));pid=probe(lambda:row['actor']['pid']);base=Path('/proc')/str(pid)
+    links=probe(lambda:{fd.name:probe(lambda:os.readlink(fd))for fd in (base/'fd').iterdir()})
+    inodes={link[8:-1]for link in links.values()if link.startswith('socket:[')}if type(links)is dict else set()
+    return json.dumps({'returncode':observed.returncode,'stdout':observed.stdout.decode(errors='replace'),'stderr':observed.stderr.decode(errors='replace'),
+        'listener':row,'owner':probe(lambda:json.loads((job/'owner.json').read_bytes())),'creatorStat':probe(lambda:(base/'stat').read_text()),
+        'creatorExe':probe(lambda:identity(os.stat(base/'exe'))),'endpoint':probe(lambda:identity(os.lstat(job/'credentials.sock'))),
+        'job':str(job),'jobIdentity':probe(lambda:identity(os.lstat(job))),'jobEntries':probe(lambda:sorted(os.listdir(job))),'descriptors':links,
+        'descriptorIdentities':probe(lambda:{name:probe(lambda:identity(os.stat(base/'fd'/name)))for name,link in links.items()if not link.startswith(('socket:','pipe:','anon_inode:'))}),
+        'unixRows':probe(lambda:[text for text in Path('/proc/net/unix').read_bytes().decode(errors='replace').split('\n')if 'credentials.sock'in text or any(' '+inode+' 'in text+' 'for inode in inodes)])},sort_keys=True,indent=1)
+
+
 @unittest.skipUnless(sys.platform.startswith('linux')and os.geteuid()>0,'actual Linux selected HOST peer contract')
 class CredentialWireTests(unittest.TestCase):
     def test_fixed_generated_sender_original_owner_lost_ack_never_resends(self):
@@ -134,12 +151,16 @@ class CredentialWireTests(unittest.TestCase):
             while not(job/'creator-listener.json').exists():self.assertLess(time.monotonic(),end);time.sleep(.02)
             status=root/'status.py';status.write_bytes(subject._status_source(str(job),expected,'selected-vm-machine',str(root/'never-created-vm')))
             observed=subprocess.run([sys.executable,'-I','-B',str(status)],capture_output=True,timeout=5)
-            self.assertTrue(json.loads(observed.stdout)['listenerReady'])
+            try:ready=json.loads(observed.stdout)['listenerReady']is True
+            except(ValueError,KeyError,TypeError):ready=False
+            if not ready:self.fail(listener_evidence(job,observed))
             sender=root/'handoff.py';sender.write_bytes(subject._handoff_source(str(job),expected));sender.chmod(0o600)
             frame=json.dumps({'user':'U'*25,'administrator':'A'*25}).encode()
             first=subprocess.run([sys.executable,'-I','-B',str(sender)],input=frame,capture_output=True,timeout=5)
             self.assertEqual(first.stderr,b'');self.assertEqual(json.loads(first.stdout)['state'],'credentials-accepted')
-            intent=(job/'credentials-handoff.intent.json').stat()
+            # The repeat reads the once fence, so relatime may move its access time; nothing else.
+            fence=lambda:(lambda i:[i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid,i.st_nlink,i.st_size,i.st_mtime_ns,i.st_ctime_ns])((job/'credentials-handoff.intent.json').stat())
+            intent=fence()
             while True:
                 status=jobs.observe(remote,operation,binding,generation=generation)
                 if status['state']=='terminal':break
@@ -148,7 +169,7 @@ class CredentialWireTests(unittest.TestCase):
             self.assertEqual(status['terminal']['exitCode'],0);self.assertEqual(err,b'');self.assertNotIn(frame,out)
             repeat=subprocess.run([sys.executable,'-I','-B',str(sender)],input=frame,capture_output=True,timeout=5)
             self.assertEqual(json.loads(repeat.stdout)['state'],'original-observation-required')
-            self.assertEqual(intent,(job/'credentials-handoff.intent.json').stat())
+            self.assertEqual(intent,fence())
             for path in job.iterdir():
                 if path.is_file():self.assertNotIn(frame,path.read_bytes(),path.name)
 

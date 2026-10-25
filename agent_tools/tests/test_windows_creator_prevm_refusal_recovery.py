@@ -2438,53 +2438,88 @@ class CreatorPreVmClosure(unittest.TestCase):
    self.assertTrue(line.startswith(b'ready'), line)
    return child, line.split()[1:]
   ticks = lambda pid: int(Path('/proc/%d/stat' % pid).read_bytes().rsplit(b')', 1)[1].split()[19])
+  def explain(tree, value):
+   """Complete failure context: the result, the newest receipts and the census culprit."""
+   import resource
+   rows = receipts(tree)[-3:]
+   culprits = [row[1].get('detail', {}).get('pid') for row in rows if isinstance(row[1], dict) and isinstance(row[1].get('detail'), dict)]
+   def command(pid):
+    try:return Path('/proc/%d/cmdline' % pid).read_bytes()[:300]
+    except (OSError, TypeError) as error:return type(error).__name__
+   return 'value=%r\nreceipts=%r\ncensus culprits=%r\nscenario children=%r\nnofile=%r' % (
+    value, rows, [(pid, command(pid)) for pid in culprits], [(child.pid, child.poll()) for child in tree.children],
+    resource.getrlimit(resource.RLIMIT_NOFILE))
+  def check(tree, reason):
+   value = tree.proof()
+   self.assertEqual(value.get('reason'), reason, explain(tree, value))
+   return value
+  # Every scenario ends its own holders before the next one starts: a holder that
+  # outlived its scenario would be scanned by every later census (the hosted runner's
+  # 65536 descriptor limit runs (b), whose 8200-descriptor holder then refused (c)-(e)).
   # (a) A non-dumpable same-account holder known only by its descriptor (its argv does
   # not name the job): denied, never skipped (M12); only the root census decides.
   tree = Tree(self)
-  child, _ = spawn(tree, "import ctypes,os,time;fd=os.open(os.environ['PREVM_HOLD'],os.O_RDONLY);ctypes.CDLL(None).prctl(4,0,0,0,0);"
-   "print('ready',flush=True);time.sleep(60)", env={'PREVM_HOLD': str(tree.job / 'stdout.bin')})
-  tree.write_control(root={'references': 1})
-  self.assertEqual(tree.proof()['reason'], 'actor_reference_present')
-  self.assertTrue(any('[%d, %d]' % (child.pid, ticks(child.pid)) in source for source in tree.privileged_sources))
-  tree.write_control(privilegedUnavailable=True)
-  self.assertEqual(tree.proof()['reason'], 'privileged_census_unavailable')
+  try:
+   child, _ = spawn(tree, "import ctypes,os,time;fd=os.open(os.environ['PREVM_HOLD'],os.O_RDONLY);ctypes.CDLL(None).prctl(4,0,0,0,0);"
+    "print('ready',flush=True);time.sleep(60)", env={'PREVM_HOLD': str(tree.job / 'stdout.bin')})
+   tree.write_control(root={'references': 1})
+   check(tree, 'actor_reference_present')
+   self.assertTrue(any('[%d, %d]' % (child.pid, ticks(child.pid)) in source for source in tree.privileged_sources), explain(tree, None))
+   tree.write_control(privilegedUnavailable=True)
+   check(tree, 'privileged_census_unavailable')
+  finally:
+   tree.cleanup()
   # (a') A non-dumpable holder whose argv names the job is a reference at once: no root census.
   tree = Tree(self)
-  named, _ = spawn(tree, "import ctypes,os,sys,time;fd=os.open(sys.argv[1],os.O_RDONLY);ctypes.CDLL(None).prctl(4,0,0,0,0);"
-   "print('ready',flush=True);time.sleep(60)", tree.job / 'stdout.bin')
-  tree.write_control(privilegedUnavailable=True)
-  self.assertEqual((tree.proof()['reason'], tree.privileged_sources), ('actor_reference_present', []))
-  detail = receipts(tree)[-1][1]['detail']
-  self.assertEqual((detail['substep'], detail['pid'], detail['startTicks']), ('reference-cmdline', named.pid, ticks(named.pid)))
+  try:
+   named, _ = spawn(tree, "import ctypes,os,sys,time;fd=os.open(sys.argv[1],os.O_RDONLY);ctypes.CDLL(None).prctl(4,0,0,0,0);"
+    "print('ready',flush=True);time.sleep(60)", tree.job / 'stdout.bin')
+   tree.write_control(privilegedUnavailable=True)
+   value = tree.proof()
+   self.assertEqual((value.get('reason'), tree.privileged_sources), ('actor_reference_present', []), explain(tree, value))
+   detail = receipts(tree)[-1][1]['detail']
+   self.assertEqual((detail['substep'], detail['pid'], detail['startTicks']), ('reference-cmdline', named.pid, ticks(named.pid)), explain(tree, value))
+  finally:
+   tree.cleanup()
   # (b) More than 8192 descriptors in one same-account process: typed refusal (M13).
   with self.subTest('descriptor-limit'):
    tree = Tree(self)
-   spawn(tree, "import os,resource,time\nsoft,hard=resource.getrlimit(resource.RLIMIT_NOFILE)\n"
-    "if hard!=resource.RLIM_INFINITY and hard<8300:print('skip: descriptor hard limit',hard,flush=True);time.sleep(60)\n"
-    "resource.setrlimit(resource.RLIMIT_NOFILE,(8300,hard));held=[os.open('/dev/null',os.O_RDONLY) for _ in range(8200)]\n"
-    "print('ready',flush=True);time.sleep(60)")
-   self.assertEqual(tree.proof()['reason'], 'actor_descriptor_limit')
+   try:
+    spawn(tree, "import os,resource,time\nsoft,hard=resource.getrlimit(resource.RLIMIT_NOFILE)\n"
+     "if hard!=resource.RLIM_INFINITY and hard<8300:print('skip: descriptor hard limit',hard,flush=True);time.sleep(60)\n"
+     "resource.setrlimit(resource.RLIMIT_NOFILE,(8300,hard));held=[os.open('/dev/null',os.O_RDONLY) for _ in range(8200)]\n"
+     "print('ready',flush=True);time.sleep(60)")
+    check(tree, 'actor_descriptor_limit')
+   finally:
+    tree.cleanup()
   # (c) A cwd-only holder and (d) a map-only holder of the original job.
   with self.subTest('cwd-only'):
    tree = Tree(self)
-   spawn(tree, "import time;print('ready',flush=True);time.sleep(60)", cwd=tree.job)
-   self.assertEqual(tree.proof()['reason'], 'actor_reference_present')
+   try:
+    spawn(tree, "import time;print('ready',flush=True);time.sleep(60)", cwd=tree.job)
+    check(tree, 'actor_reference_present')
+   finally:
+    tree.cleanup()
   with self.subTest('map-only'):
    tree = Tree(self)
-   spawn(tree, "import mmap,os,sys,time;fd=os.open(sys.argv[1],os.O_RDONLY);m=mmap.mmap(fd,0,prot=mmap.PROT_READ);os.close(fd)\n"
-    "print('ready',flush=True);time.sleep(60)", tree.job / 'stdout.bin')
-   self.assertEqual(tree.proof()['reason'], 'actor_reference_present')
+   try:
+    spawn(tree, "import mmap,os,sys,time;fd=os.open(sys.argv[1],os.O_RDONLY);m=mmap.mmap(fd,0,prot=mmap.PROT_READ);os.close(fd)\n"
+     "print('ready',flush=True);time.sleep(60)", tree.job / 'stdout.bin')
+    check(tree, 'actor_reference_present')
+   finally:
+    tree.cleanup()
   # (e) A same-account zombie is a non-holder bound into P, never into N.
   tree = Tree(self)
   plain = tree.proof()
+  self.assertEqual(plain.get('state'), 'proven', explain(tree, plain))
   parent, rows = spawn(tree, "import os,time\npid=os.fork()\nif pid==0:os._exit(0)\ntime.sleep(.5);print('ready',pid,flush=True);time.sleep(60)")
   zombie = int(rows[0])
   self.assertEqual(Path('/proc/%d/stat' % zombie).read_bytes().rsplit(b')', 1)[1].split()[0], b'Z')
   bound = tree.proof()
-  self.assertEqual(bound['state'], 'proven', bound)
-  self.assertIn([zombie, parent.pid, 'Z', ticks(zombie)], newest_observation(tree)['processes']['zombies'])
-  self.assertEqual(bound['factsSha256'], plain['factsSha256'])
-  self.assertNotEqual(bound['proofSha256'], plain['proofSha256'])
+  self.assertEqual(bound.get('state'), 'proven', explain(tree, bound))
+  self.assertIn([zombie, parent.pid, 'Z', ticks(zombie)], newest_observation(tree)['processes']['zombies'], explain(tree, bound))
+  self.assertEqual(bound['factsSha256'], plain['factsSha256'], explain(tree, bound))
+  self.assertNotEqual(bound['proofSha256'], plain['proofSha256'], explain(tree, bound))
 
  @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux /proc, SO_PEERCRED and boot_id native boundaries')
  def test_linux_native_boundaries_match_old_creator_manager_rules(self):

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import shutil
+import socket
 import time
 import unittest
 
@@ -17,6 +18,9 @@ import visual_platform as current
 import visual_target
 
 BEFORE=Path(__file__).parent/'tests/fixtures/visual_target_before/visual_platform.py.source'
+# Host shell callers launch /bin/bash, which runs their '#!' fakes; Windows
+# CreateProcess finds no /bin/bash and cannot run a '#!' file.
+POSIX_BASH=os.name=='posix' and os.path.isfile('/bin/bash')
 
 
 def subject():
@@ -71,6 +75,7 @@ class VisualTargetTests(unittest.TestCase):
             time.sleep(.01)
         self.assertTrue(self.ready.exists())
 
+    @unittest.skipUnless(hasattr(socket,'AF_UNIX'),'requires Unix-domain sockets')
     def test_missing_stop_target_cannot_send_power_to_default_vm(self):
         module=subject();self.server()
         module.RUNTIME_ROOT=self.root;module.RESOURCE_RESERVATIONS_PATH=self.root/'reservations.json'
@@ -85,6 +90,7 @@ class VisualTargetTests(unittest.TestCase):
         except module.VisualPlatformError:pass
         self.assertFalse(self.effects.exists(),'missing target sent actual system_powerdown')
 
+    @unittest.skipUnless(hasattr(socket,'AF_UNIX'),'requires Unix-domain sockets')
     def test_valid_selected_disk_and_actual_peer_owner_accept_one_power_packet(self):
         self.server()
         actor={'pid':self.process.pid,'birth':visual_target.jobs._birth(self.process.pid)}
@@ -92,6 +98,7 @@ class VisualTargetTests(unittest.TestCase):
         self.process.wait(timeout=3)
         self.assertEqual(self.effects.read_text(),'system_powerdown\n')
 
+    @unittest.skipUnless(hasattr(socket,'AF_UNIX'),'requires Unix-domain sockets')
     def test_foreign_socket_peer_holding_another_disk_is_never_mutated(self):
         other=self.root/'other.qcow2';other.write_bytes(b'other');other.chmod(0o600)
         self.server(disk=other)
@@ -106,6 +113,7 @@ class VisualTargetTests(unittest.TestCase):
         self.assertFalse(self.effects.exists(),'foreign actual peer received power')
         self.assertTrue(blocked);self.assertIsNone(self.process.poll())
 
+    @unittest.skipUnless(hasattr(socket,'AF_UNIX'),'requires Unix-domain sockets')
     def test_reused_peer_pid_birth_is_rejected_before_capabilities_or_power(self):
         self.server()
         with self.assertRaises((current.VisualPlatformError,visual_target.TargetError)):
@@ -113,6 +121,7 @@ class VisualTargetTests(unittest.TestCase):
                 expected_actor={'pid':self.process.pid,'birth':'darwin:1:1'})
         self.assertFalse(self.effects.exists())
 
+    @unittest.skipUnless(hasattr(socket,'AF_UNIX'),'requires Unix-domain sockets')
     def test_unsafe_actual_disk_parent_returns_typed_blocker_without_power(self):
         from unittest import mock
         self.server();helper=visual_target
@@ -147,6 +156,7 @@ class VisualTargetTests(unittest.TestCase):
             current.run_local_driver('android','/usr/bin/true',output,[],target='android:foreign')
         self.assertFalse(output.exists())
 
+    @unittest.skipUnless(os.name=='posix','the generated ADB fake is a #! script, which CreateProcess cannot run')
     def test_actual_generated_adb_caller_never_freezes_foreign_avd_on_selected_port(self):
         from unittest import mock
         module=subject();adb=self.root/'adb';effects=self.root/'android-effects'
@@ -174,6 +184,7 @@ class VisualTargetTests(unittest.TestCase):
             except module.VisualPlatformError:pass
         self.assertFalse(effects.exists(),'generated ADB caller mutated foreign AVD')
 
+    @unittest.skipUnless(POSIX_BASH,'host shell callers run with POSIX /bin/bash')
     def test_windows_bootstrap_full_shell_cannot_create_default_disk_without_target(self):
         tree=self.root/'repo';scripts=tree/'scripts';scripts.mkdir(parents=True)
         before=bool(os.environ.get('VPN_CONTROL_VISUAL_TARGET_BEFORE'))
@@ -206,12 +217,14 @@ class VisualTargetTests(unittest.TestCase):
             'PYTHONPATH':str(current.ROOT),'PROBE_LOG':str(log)}
         return scripts/'mark_windows_visual_vm_ready.sh',disk,runtime/'READY',log,environment
 
+    @unittest.skipUnless(POSIX_BASH,'host shell callers run with POSIX /bin/bash')
     def test_full_marker_refuses_missing_target_before_ready_write(self):
         script,disk,ready,log,env=self.marker_fixture(before=bool(os.environ.get('VPN_CONTROL_VISUAL_TARGET_BEFORE')))
         subprocess.run(['/bin/bash',str(script),'--agent-confirmed'],env=env,capture_output=True,timeout=3)
         self.assertFalse(ready.exists(),'marker wrote READY for an implicit default VM')
         self.assertFalse(log.exists())
 
+    @unittest.skipUnless(POSIX_BASH,'host shell callers run with POSIX /bin/bash')
     def test_marker_forwards_exact_selected_target_and_failed_probe_never_marks_ready(self):
         script,disk,ready,log,env=self.marker_fixture();target='qemu:'+str(disk)
         command=['/bin/bash',str(script),'--target',target,'--agent-confirmed']
@@ -222,6 +235,7 @@ class VisualTargetTests(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr.decode())
         self.assertIn('target='+target,ready.read_text())
 
+    @unittest.skipUnless(POSIX_BASH,'host shell callers run with POSIX /bin/bash')
     def test_actual_hosted_workflow_caller_forwards_its_created_avd(self):
         path=BEFORE.parent/'visual-regression.yml.source'if os.environ.get('VPN_CONTROL_VISUAL_TARGET_BEFORE')else current.ROOT/'.github/workflows/visual-regression.yml'
         source=path.read_text()

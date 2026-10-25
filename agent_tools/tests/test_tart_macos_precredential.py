@@ -35,17 +35,23 @@ def block(path,current):
   program=[copy.deepcopy(stage),inner]
  else:program=body[:end+1]
  return compile(ast.Module(body=setup+program,type_ignores=[]),str(path),'exec')
+# The controlled custody stands in for the macOS guest: its operator identity is
+# always the guest's darwin:<seconds>:<microseconds> birth, never this host's own
+# durable birth (linux:<start ticks> on a Linux runner), which MacTartBackend refuses.
+GUEST_ACTOR_BIRTH='darwin:1700000000:0'
 RESULTS=[]
+def diagnosed(value,key):
+ return (value['diagnostic']or{}).get(key)
 @unittest.skipUnless(os.name=='posix','real POSIX protected FDs and process generations required')
 class Checks(unittest.TestCase):
  def run_case(self,current,fault):
-  selected=binding();expected=identity();children=[];opened=[];counter={'guard':0};failure=None;records={};sourcepaths=[Path(x.__file__)for x in(U,V,MAT)]
+  selected=binding();expected=identity();children=[];opened=[];counter={'guard':0};failure=None;reason=None;records={};sourcepaths=[Path(x.__file__)for x in(U,V,MAT)]
   pins={p:hashlib.sha256(p.read_bytes()).hexdigest()for p in sourcepaths};scope={}
   with tempfile.TemporaryDirectory(prefix='precredential-controlled-')as temporary,ExitStack()as held:
    root=Path(temporary).resolve();root.chmod(0o700);credential=root/'controlled-vnc-input';credential.write_bytes(b'controlled-public-fixture');credential.chmod(0o600);holder=R.HeldArtifact(credential);held.callback(holder.close)
    endpoint=RfbEndpoint(size=(3,1),rejected=fault=='auth',malformed='count'if fault=='capture'else None);held.callback(endpoint.close)
    source_file=root/'controlled-public-source.py';source_file.write_bytes(b'# controlled public source\n');source_file.chmod(0o600);source=R.PublicProof(source_file,{'generation':list(P._generation(source_file.stat())),'sha256':hashlib.sha256(source_file.read_bytes()).hexdigest()});held.callback(source.close);injected={'value':False}
-   actor={'pid':os.getpid(),'birth':J._birth(os.getpid())};operation='44444444-4444-4444-8444-444444444444'
+   actor={'pid':os.getpid(),'birth':GUEST_ACTOR_BIRTH};operation='44444444-4444-4444-8444-444444444444'
    class Custody:
     binding=selected
     @contextmanager
@@ -87,7 +93,10 @@ class Checks(unittest.TestCase):
      with ExitStack()as stack:
       scope['stack']=stack;stack.enter_context(backend.operation_scope(deadline=scope['deadline']))
       exec(block(NEW if current else OLD,current),scope)
-   except BaseException as error:failure=type(error).__name__
+   except BaseException as error:
+    failure=type(error).__name__
+    # Typed blocked errors carry only finite reason codes; other text is never retained.
+    reason=str(error)if isinstance(error,(M.MacBlocked,V.VncBlocked,U.UnlockBlocked,Q.QualificationBlocked))else None
    observer=scope.get('observer');leaked=observer is not None and observer.process.poll()is None
    diagnostic=records.get('precredential-failure.json')
    if observer is not None:observer.close()
@@ -98,25 +107,25 @@ class Checks(unittest.TestCase):
     with self.assertRaises(OSError):os.fstat(fd)
    self.assertEqual(endpoint.events,[])
    self.assertNotIn('SYNTHETIC_UNEXPECTED_MESSAGE',json.dumps(diagnostic));self.assertFalse(any('ordinary'in name for name in records))
-   value={'current':current,'fault':fault,'failureClass':failure,'observerLeakedBeforeHarnessCleanup':leaked,'diagnostic':diagnostic,'allObserverPipesClosed':True,'allObserverBirthsAbsent':True,'allReturnedVncFdsClosed':True,'sourceGuards':counter['guard'],'inputEvents':0}
+   value={'current':current,'fault':fault,'failureClass':failure,'failureReason':reason,'observerLeakedBeforeHarnessCleanup':leaked,'diagnostic':diagnostic,'allObserverPipesClosed':True,'allObserverBirthsAbsent':True,'allReturnedVncFdsClosed':True,'sourceGuards':counter['guard'],'inputEvents':0}
    RESULTS.append(value);return value
  def test_authentic_incident_fault_old_masks_and_leaks_new_retains_and_closes(self):
-  old=self.run_case(False,'incident');self.assertEqual(old['failureClass'],'MacBlocked');self.assertTrue(old['observerLeakedBeforeHarnessCleanup']);self.assertIsNone(old['diagnostic'])
-  new=self.run_case(True,'incident');self.assertEqual(new['failureClass'],'MacBlocked');self.assertFalse(new['observerLeakedBeforeHarnessCleanup']);self.assertEqual(new['diagnostic']['stage'],'incident_setup');self.assertEqual(new['diagnostic']['code'],'macos_unlock_original_pending')
+  old=self.run_case(False,'incident');self.assertEqual(old['failureClass'],'MacBlocked',old);self.assertTrue(old['observerLeakedBeforeHarnessCleanup'],old);self.assertIsNone(old['diagnostic'],old)
+  new=self.run_case(True,'incident');self.assertEqual(new['failureClass'],'MacBlocked',new);self.assertFalse(new['observerLeakedBeforeHarnessCleanup'],new);self.assertEqual(diagnosed(new,'stage'),'incident_setup',new);self.assertEqual(diagnosed(new,'code'),'macos_unlock_original_pending',new)
  def test_each_credential_auth_capture_image_recipient_field_benchmark_boundary(self):
   stages={'credential':'vnc_credential_open','auth':'vnc_auth','capture':'capture_initial','image':'image_decode','recipient':'recipient_match','field':'field_empty','benchmark':'guard_benchmark'}
   for fault,stage in stages.items():
    with self.subTest(fault=fault):
-    value=self.run_case(True,fault);self.assertIsNotNone(value['failureClass']);self.assertFalse(value['observerLeakedBeforeHarnessCleanup']);self.assertEqual(value['diagnostic']['stage'],stage);self.assertFalse(value['diagnostic']['rawExceptionTextRetained'])
+    value=self.run_case(True,fault);self.assertIsNotNone(value['failureClass'],value);self.assertFalse(value['observerLeakedBeforeHarnessCleanup'],value);self.assertEqual(diagnosed(value,'stage'),stage,value);self.assertIs(diagnosed(value,'rawExceptionTextRetained'),False,value)
  def test_source_generation_loss_and_diagnostic_sink_fault_always_close_observer(self):
-  source=self.run_case(True,'source_guard');self.assertFalse(source['observerLeakedBeforeHarnessCleanup']);self.assertEqual(source['diagnostic']['stage'],'capture_initial');self.assertEqual(source['diagnostic']['code'],'vnc_binding_changed')
-  sink=self.run_case(True,'sink');self.assertFalse(sink['observerLeakedBeforeHarnessCleanup']);self.assertIsNone(sink['diagnostic']);self.assertEqual(sink['failureClass'],'MacBlocked')
+  source=self.run_case(True,'source_guard');self.assertFalse(source['observerLeakedBeforeHarnessCleanup'],source);self.assertEqual(diagnosed(source,'stage'),'capture_initial',source);self.assertEqual(diagnosed(source,'code'),'vnc_binding_changed',source)
+  sink=self.run_case(True,'sink');self.assertFalse(sink['observerLeakedBeforeHarnessCleanup'],sink);self.assertIsNone(sink['diagnostic'],sink);self.assertEqual(sink['failureClass'],'MacBlocked',sink)
  def test_typed_unlisted_error_text_never_enters_diagnostic(self):
   tree=ast.parse(NEW.read_bytes());setup=[n for n in tree.body if isinstance(n,ast.ClassDef)and n.name=='PublicGuard'or isinstance(n,ast.FunctionDef)and n.name=='precredential_failure'or isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id in{'_PUBLIC_GUARD_CODES','_PRECREDENTIAL_STAGES','_UNLOCK_DIAGNOSTIC_CODES','_VNC_DIAGNOSTIC_CODES','_INCIDENT_DIAGNOSTIC_CODES'}for t in n.targets)]
   rows=[];scope={'U':U,'V':V,'Q':Q,'args':SimpleNamespace(operation_id='44444444-4444-4444-8444-444444444444'),'native_record':lambda name,value:rows.append(value)};exec(compile(ast.Module(body=setup,type_ignores=[]),str(NEW),'exec'),scope)
   scope['precredential_failure'](V.VncBlocked('SYNTHETIC_UNEXPECTED_MESSAGE'),'vnc_auth');self.assertEqual(rows[-1]['code'],'unclassified');self.assertNotIn('SYNTHETIC_UNEXPECTED_MESSAGE',json.dumps(rows[-1]))
   scope['precredential_failure'](U.UnlockBlocked('macos_unlock_screen_unrecognized'),'image_decode');self.assertEqual(rows[-1]['code'],'macos_unlock_screen_unrecognized')
  def test_old_recipient_guard_masked_new_has_exact_owned_code(self):
-  old=self.run_case(False,'recipient');self.assertEqual(old['failureClass'],'MacBlocked');self.assertIsNone(old['diagnostic'])
-  new=self.run_case(True,'recipient');self.assertEqual(new['diagnostic']['code'],'public_recipient_changed');self.assertEqual(new['diagnostic']['failureClass'],'PublicGuard')
+  old=self.run_case(False,'recipient');self.assertEqual(old['failureClass'],'MacBlocked',old);self.assertIsNone(old['diagnostic'],old)
+  new=self.run_case(True,'recipient');self.assertEqual(diagnosed(new,'code'),'public_recipient_changed',new);self.assertEqual(diagnosed(new,'failureClass'),'PublicGuard',new)
 if __name__=='__main__':unittest.main(verbosity=2)

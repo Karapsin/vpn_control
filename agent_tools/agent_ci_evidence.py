@@ -27,6 +27,8 @@ COUNTS = ("testsRun", "failures", "errors", "skipped", "expectedFailures", "unex
 MAX_JSON = 8 * 1024 * 1024
 MAX_LINE = 16384
 MAX_EVENTS = 200000
+# Hosted Fast Checks agent shard jobs; affected_agent_tests.CI_SHARD_COUNT.
+SHARD_COUNT = 6
 
 
 def canonical(value):
@@ -34,7 +36,7 @@ def canonical(value):
 
 
 def plan_value(*, baseline, head, fingerprint, modules, index, run_id="local", attempt="1"):
-    if (type(index) is not int or index not in (0, 1) or not COMMIT.fullmatch(baseline)
+    if (type(index) is not int or not 0 <= index < SHARD_COUNT or not COMMIT.fullmatch(baseline)
             or not COMMIT.fullmatch(head) or not HEX.fullmatch(fingerprint)
             or len(modules) > 2000 or modules != sorted(set(modules))
             or any(not isinstance(name, str) or not MODULE.fullmatch(name) for name in modules)
@@ -44,12 +46,12 @@ def plan_value(*, baseline, head, fingerprint, modules, index, run_id="local", a
     global_plan = {"baseline": baseline, "head": head, "sourceFingerprint": fingerprint, "modules": modules,
                    "runId": run_id, "runAttempt": attempt}
     return {"schemaVersion": 1, **global_plan, "globalDigest": hashlib.sha256(canonical(global_plan)).hexdigest(),
-            "shardIndex": index, "shardCount": 2, "assignedModules": modules[index::2]}
+            "shardIndex": index, "shardCount": SHARD_COUNT, "assignedModules": modules[index::SHARD_COUNT]}
 
 
 def validate_plan(value):
     if (not isinstance(value, dict) or type(value.get("schemaVersion")) is not int or value.get("schemaVersion") != 1
-            or type(value.get("shardCount")) is not int or value.get("shardCount") != 2):
+            or type(value.get("shardCount")) is not int or value.get("shardCount") != SHARD_COUNT):
         raise ValueError("Invalid public shard schema")
     expected = plan_value(baseline=value["baseline"], head=value["head"], fingerprint=value["sourceFingerprint"],
                           modules=value["modules"], index=value["shardIndex"], run_id=value["runId"], attempt=value["runAttempt"])
@@ -275,13 +277,14 @@ def assigned_or_gate_first(modules):
 
 
 def verify(directories, parent_results, *, expected=None):
-    if parent_results != ["success", "success"] or len(directories) != 2:
-        raise ValueError("Both actual shard jobs must succeed")
+    if parent_results != ["success"] * SHARD_COUNT or len(directories) != SHARD_COUNT:
+        raise ValueError("Every actual shard job must succeed")
     plans, summaries = [], []
     for directory in directories:
         plans.append(validate_plan(read_json(Path(directory) / "plan.json")))
         summaries.append(read_json(Path(directory) / "summary.json"))
-    if {value["shardIndex"] for value in plans} != {0, 1} or plans[0]["globalDigest"] != plans[1]["globalDigest"]:
+    if ({value["shardIndex"] for value in plans} != set(range(SHARD_COUNT))
+            or {value["globalDigest"] for value in plans} != {plans[0]["globalDigest"]}):
         raise ValueError("Shard identities do not cover one global plan")
     if expected is not None:
         if (set(expected) != {"runId", "runAttempt", "head"}
@@ -323,8 +326,8 @@ def verify(directories, parent_results, *, expected=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", nargs=2, required=True, type=Path)
-    parser.add_argument("--parent-results", nargs=2, required=True)
+    parser.add_argument("--verify", nargs=SHARD_COUNT, required=True, type=Path)
+    parser.add_argument("--parent-results", nargs=SHARD_COUNT, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--run-attempt", required=True)
     parser.add_argument("--head", required=True)

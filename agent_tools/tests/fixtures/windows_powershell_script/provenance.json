@@ -1,0 +1,87 @@
+{
+  "causes": {
+    "compile": "-Command - runs each line as its own statement; after its non-terminating compiler diagnostics Add-Type throws the terminating COMPILER_ERRORS error, which -ErrorAction Continue, -ErrorVariable and 2>$null do not capture, so the host wrote it to stderr and continued to the JSON line.",
+    "stream": "-Command - executes redirected stdin like typed console input; line 8 opens a multi-line function, block mode waits for a blank line that the program never contains, and end of input discards lines 8-43 without executing the final output statement (exit 0, empty streams)."
+  },
+  "ci": {
+    "headSha": "cc2873b5ed0ada7b09c24e854539c85660a627c2",
+    "interpreter": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command - (program on stdin)",
+    "job": "Build EXE and MSI",
+    "runId": 40187428207,
+    "step": "Verify Windows readiness native causal guards",
+    "summary": "AGENT_TEST_SUMMARY {\"counts\": {\"errors\": 1, \"expectedFailures\": 0, \"failures\": 1, \"skipped\": 0, \"testsRun\": 24, \"unexpectedSuccesses\": 0}, \"elapsedSeconds\": 14.937999999999988, \"mode\": \"serial-stdout\", \"schemaVersion\": 1, \"sourceFingerprint\": \"31a64d6aae7fb23f8b9a9c8cf789e35ca6d26baac84a3834d33c64967bd623a3\", \"successful\": false}",
+    "workflow": "Windows Desktop Package"
+  },
+  "inputs": {
+    "compile_followup.before.source": {
+      "bytes": 10784,
+      "ciFailureExcerpt": [
+        "FAIL: test_actual_complete_before_sources_RED_fixed_GREEN_without_methods_invoked (agent_tools.tests.test_windows_compile_followup.NativeCompiler.test_actual_complete_before_sources_RED_fixed_GREEN_without_methods_invoked)",
+        "----------------------------------------------------------------------",
+        "Traceback (most recent call last):",
+        "  File \"D:\\a\\vpn_control\\vpn_control\\agent_tools\\tests\\test_windows_compile_followup.py\", line 41, in test_actual_complete_before_sources_RED_fixed_GREEN_without_methods_invoked",
+        "    self.assertEqual(p.returncode,0,p.stderr.decode(errors='replace'));self.assertEqual(p.stderr,b'');rows.append(json.loads(p.stdout))",
+        "                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "AssertionError: b\"Add-Type : Cannot add type. Compilation [377 chars]\\r\\n\" != b''"
+      ],
+      "originalStreams": {
+        "returncode": 0,
+        "stderrRetained": "shortened unittest repr only: 40-character prefix plus [377 chars] and \\r\\n",
+        "stdoutRetained": false
+      },
+      "sha256": "d6af8dddbcc0b24d1856e7c0490623bae4c1decb2ed8295bb0adc934f105f054",
+      "sourcePath": "agent_tools/tests/test_windows_compile_followup.py",
+      "testId": "agent_tools.tests.test_windows_compile_followup.NativeCompiler.test_actual_complete_before_sources_RED_fixed_GREEN_without_methods_invoked"
+    },
+    "public_compile_causals.before.source": {
+      "bytes": 12491,
+      "ciFailureExcerpt": [
+        "ERROR: test_actual_windows_powershell_old_RED_fixed_GREEN (agent_tools.tests.test_windows_public_compile_causals.StreamRetention.test_actual_windows_powershell_old_RED_fixed_GREEN)",
+        "----------------------------------------------------------------------",
+        "Traceback (most recent call last):",
+        "  File \"D:\\a\\vpn_control\\vpn_control\\agent_tools\\tests\\test_windows_public_compile_causals.py\", line 39, in test_actual_windows_powershell_old_RED_fixed_GREEN",
+        "    result=json.loads(reply.stdout);self.assertTrue(result['causalQualified']);self.assertFalse(result['inputAuthority']);self.assertFalse(result['nativeCompilerQualified']);self.assertTrue(all(x['oldRed']and x['newGreen']for x in result['cases']));self.assertEqual(result['awaiter']['oldType'],'System.Threading.Tasks.VoidTaskResult');self.assertEqual(result['awaiter']['newCount'],0)",
+        "           ^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\json\\__init__.py\", line 346, in loads",
+        "    return _default_decoder.decode(s)",
+        "           ^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\json\\decoder.py\", line 338, in decode",
+        "    obj, end = self.raw_decode(s, idx=_w(s, 0).end())",
+        "               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\json\\decoder.py\", line 356, in raw_decode",
+        "    raise JSONDecodeError(\"Expecting value\", s, err.value) from None",
+        "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+      ],
+      "originalStreams": {
+        "returncode": 0,
+        "stderr": "",
+        "stdout": ""
+      },
+      "sha256": "c75a5750d74d99740aac19e92ba102a1d3acaa74d0c4f94c90005ff86d4e5064",
+      "sourcePath": "agent_tools/tests/test_windows_public_compile_causals.py",
+      "testId": "agent_tools.tests.test_windows_public_compile_causals.StreamRetention.test_actual_windows_powershell_old_RED_fixed_GREEN"
+    }
+  },
+  "model": {
+    "basis": [
+      "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1",
+      "https://github.com/PowerShell/PowerShell/blob/v6.0.0/src/Microsoft.PowerShell.ConsoleHost/host/msh/ConsoleHost.cs (InputLoop.Run, HandleErrors, ReportException, DoRunspaceLoop, the -File exception path)",
+      "https://github.com/PowerShell/PowerShell/issues/21644",
+      "https://github.com/PowerShell/PowerShell/blob/v6.0.0/src/Microsoft.PowerShell.Commands.Utility/commands/utility/AddType.cs (HandleCompilerErrors, OutputError)",
+      "https://github.com/PowerShell/PowerShell/blob/v6.0.0/src/System.Management.Automation/engine/MshCommandRuntime.cs (ThrowTerminatingError, ManageException, SetupVariable)"
+    ],
+    "errorFlow": "fake_console_host.py with VPN_CONTROL_FAKE_PS51_EXECUTE=add-type runs only the compile programs' statement forms and refuses any other statement, Add-Type source or error preference. Add-Type puts one SOURCE_CODE_ERROR per modelled diagnostic into -ErrorVariable (2>$null discards the error stream), appends the CmdletInvocationException and throws the terminating COMPILER_ERRORS record; under $ErrorActionPreference='Stop' an uncaught error ends the running script and try/catch receives it as $_. -File reports it on stderr and exits 1; -Command - reports it, reads the next line and exits with $? of the last line. Diagnostics sit on the lines where each authenticated windows_compile_followup source differs from the compiling native.fixed; their compiler text is modelled.",
+    "fakeConsoleHost": "fake_console_host.py",
+    "localCrossCheck": "PowerShell 7.4.21 osx-arm64: -Command - executed lines 1-7 of the stream program and never ran lines 8-43; the unfixed compiler skeleton returned exit 0 with Add-Type COMPILER_ERRORS on stderr and still printed the JSON under -Command -, and exit 1 with COMPILER_ERRORS on stderr and no JSON under -File, as did the fixed skeleton without its try/catch; -Command - exited 1 when its last line ended with that uncaught error and 0 when a later line succeeded; the fixed skeleton under -File returned exit 0, empty stderr and the caught COMPILER_ERRORS. Not Windows PowerShell 5.1 evidence."
+  },
+  "nativeFailureClaimed": false,
+  "purpose": "TEST-001 whole unfixed harness beforeimages for the Windows PowerShell 5.1 -Command - stdin delivery failures",
+  "schemaVersion": 1,
+  "sourceCommit": "cc2873b5ed0ada7b09c24e854539c85660a627c2",
+  "windowsRunnerOnly": [
+    "Windows PowerShell 5.1 console-host intake itself",
+    "Windows PowerShell 5.1 Add-Type on .NET Framework (CodeDom/csc): the actual diagnostics of the three C# sources and the real terminating COMPILER_ERRORS flow into the fixed try/catch",
+    "the complete interpreter.source stream, ACL and Task awaiter results on .NET Framework",
+    "Windows PowerShell 5.1 -File ANSI script decoding, ExecutionPolicy Bypass and the private temporary directory on the runner"
+  ]
+}

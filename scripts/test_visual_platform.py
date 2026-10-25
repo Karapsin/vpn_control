@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import shutil
+import socketserver
 import subprocess
 import sys
 import tempfile
@@ -77,6 +78,11 @@ def _shell_failure(completed: subprocess.CompletedProcess[str]) -> str:
         f"returncode={completed.returncode}; stdout={completed.stdout!r}; "
         f"stderr={completed.stderr!r}"
     )
+
+
+# run_qualified_android_capture serves its readiness provider through
+# socketserver.UnixStreamServer, which Windows CPython does not define.
+UNIX_STREAM_SERVER = hasattr(socketserver, "UnixStreamServer")
 
 
 class VisualPlatformTest(unittest.TestCase):
@@ -599,9 +605,11 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('emulator_serial="${ANDROID_SERIAL:?Android hosted visual capture requires ANDROID_SERIAL}"', script)
         self.assertIn('if [[ "$provider" == "hosted" ]]; then', script)
 
+    @unittest.skipUnless(UNIX_STREAM_SERVER, "qualified Android capture provider requires Unix-domain sockets")
     def test_android_capture_rejects_a_foreign_avd_before_any_device_mutation(self) -> None:
         self._assert_foreign_avd_guard()
 
+    @unittest.skipUnless(UNIX_STREAM_SERVER, "qualified Android capture provider requires Unix-domain sockets")
     def test_android_capture_rejects_stale_owned_geometry_before_any_mutation_or_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             temporary_path = Path(temporary)
@@ -658,13 +666,16 @@ class VisualPlatformTest(unittest.TestCase):
             )
             self.assertFalse(output.exists())
 
+    @unittest.skipUnless(UNIX_STREAM_SERVER, "qualified Android capture provider requires Unix-domain sockets")
     def test_android_capture_handles_native_python_crlf_before_any_device_mutation(self) -> None:
         self._assert_foreign_avd_guard(python_crlf=True)
 
+    @unittest.skipUnless(UNIX_STREAM_SERVER, "qualified Android capture provider requires Unix-domain sockets")
     def test_local_android_capture_guard_ignores_inherited_hosted_provider(self) -> None:
         with mock.patch.dict(os.environ, {"VPN_CONTROL_VISUAL_PROVIDER": "hosted"}):
             self._assert_foreign_avd_guard()
 
+    @unittest.skipUnless(UNIX_STREAM_SERVER, "qualified Android capture provider requires Unix-domain sockets")
     def test_android_capture_removes_native_python_crlf_from_scene_arguments_after_device_guard(self) -> None:
         """The Git Bash wrapper must not pass CRLF scene IDs to Gradle or stamping."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -960,6 +971,7 @@ class VisualPlatformTest(unittest.TestCase):
                 with self.assertRaisesRegex(visual_platform.VisualPlatformError, "does not exist"):
                     visual_platform._resource_policy()
 
+    @unittest.skipUnless(os.name == "posix", "shared storage plans require POSIX locks")
     def test_resource_reservation_rejects_same_platform_and_malformed_top_level(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -982,6 +994,7 @@ class VisualPlatformTest(unittest.TestCase):
                     with self.assertRaisesRegex(visual_platform.VisualPlatformError, "malformed VM reservations"):
                         visual_platform._read_reservations()
 
+    @unittest.skipUnless(os.name == "posix", "shared storage plans require POSIX locks")
     def test_low_available_memory_denies_before_visual_start(self) -> None:
         probe = {"ready": False, "infrastructureAvailable": True, "backend": "tart-macos", "capabilities": ["app"], "detail": ""}
         stopped = mock.Mock(returncode=0, stdout="vpn-control-visual-macos stopped\n", stderr="")

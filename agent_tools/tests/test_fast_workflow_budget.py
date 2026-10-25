@@ -4,6 +4,11 @@ The producer is a saved local program and does no CI, SSH or native work. Five
 prelude, 42 tool and one tail model-minutes are a synthetic allowed schedule,
 not a measurement or promise about the actual Gradle tail. The actual workflow
 limits and unchanged managed command limit determine the real deadlines.
+
+The measured tool phase is the slowest hosted shard's share of the selection
+measured in Fast Checks run 40187427911 (test_agent_ci_shards.shard_minutes).
+It must finish within PHASE_SHARE (60%) of the unchanged 50-minute phase bound,
+which the two hosted shards of that run overran.
 """
 import ast
 import hashlib
@@ -20,11 +25,16 @@ import time
 import unittest
 from unittest import mock
 
+from agent_tools import affected_agent_tests as selector
+from agent_tools.tests import test_agent_ci_shards as shards
+
 
 ROOT = Path(__file__).resolve().parents[2]
 CURRENT = ROOT / '.github/workflows/fast-checks.yml'
 FIXTURES = Path(__file__).with_name('fixtures') / 'fast_workflow_budget'
 BEFORE = FIXTURES / 'before.yml'
+# Whole cc2873b5 workflow whose two hosted agent steps timed out in run 40187427911.
+TWO_SHARD_BEFORE = shards.FIXTURE / 'hosted-capacity.workflow.before.yml'
 MANAGED_SOURCE = ROOT / 'agent_tools/mcp_server.py'
 SCALE_SECONDS_PER_MINUTE = 0.08
 MAX_OUTPUT_BYTES = 65536
@@ -74,7 +84,7 @@ def managed_minutes():
 
 def workflow_limits(source):
     source = Path(source)
-    if source not in (CURRENT, BEFORE):
+    if source not in (CURRENT, BEFORE, TWO_SHARD_BEFORE):
         raise ValueError('Unknown workflow source')
     raw = source.read_bytes()
     if source == BEFORE:
@@ -82,6 +92,8 @@ def workflow_limits(source):
         if (len(raw) != provenance['sourceBytes']
                 or hashlib.sha256(raw).hexdigest() != provenance['sourceSha256']):
             raise ValueError('Preserved actual workflow changed')
+    elif source == TWO_SHARD_BEFORE and raw != shards.preserved('workflow.before.yml'):
+        raise ValueError('Preserved actual workflow changed')
     lines = raw.decode().splitlines()
     starts = [index for index, line in enumerate(lines) if line == '  fast-checks:']
     if len(starts) != 1:
@@ -131,7 +143,7 @@ def workflow_limits(source):
                     raise ValueError('Unexpected public retention step')
                 continue
             tail.append(name)
-    if retention_steps != (1 if source == CURRENT else 0):
+    if retention_steps != (0 if source == BEFORE else 1):
         raise ValueError('Required public retention step unavailable')
     limits = [int(match[1]) for line in step
               if (match := re.fullmatch(r'        timeout-minutes: ([1-9][0-9]*)', line))]
@@ -272,7 +284,9 @@ def run_schedule(policy, *, work_minutes=42):
 
 
 class FastWorkflowBudgetTests(unittest.TestCase):
+    maxDiff = None
     workflow_source = CURRENT
+    partition = staticmethod(selector.shard_selection)
 
     def assert_allowed_schedule_finishes(self, source):
         result = run_schedule(workflow_limits(source))
@@ -307,6 +321,42 @@ class FastWorkflowBudgetTests(unittest.TestCase):
         self.assertNotIn('tool_completed.json', result['markers'])
         self.assertNotIn('tail_completed.json', result['markers'])
         self.assertTrue(result['reaped'] and result['readersClosed'], result)
+
+    def test_measured_hosted_share_finishes_inside_the_phase_margin(self):
+        policy = workflow_limits(self.workflow_source)
+        jobs = shards.shard_minutes(Path(self.workflow_source).read_bytes(), self.partition)
+        work = max(job['minutes'] for job in jobs)
+        margin = dict(policy, phaseMinutes=policy['managedMinutes'] * shards.PHASE_SHARE)
+        self.assertEqual(policy['managedMinutes'], policy['phaseMinutes'])
+        result = run_schedule(margin, work_minutes=work)
+        self.assertEqual('complete', result['reason'], {'jobs': jobs, 'result': result})
+        self.assertIn('tool_completed.json', result['markers'])
+        self.assertIn('tail_completed.json', result['markers'])
+
+    def test_preserved_two_shard_share_reproduces_the_hosted_phase_timeout(self):
+        # RED on the whole cc2873b5 workflow and selector: their slowest measured
+        # share overruns even the whole unchanged phase, as both hosted steps
+        # did, and the same margin positive fails. GREEN on the hosted shards now.
+        partition = shards.preserved_partition()
+        jobs = shards.shard_minutes(TWO_SHARD_BEFORE.read_bytes(), partition)
+        result = run_schedule(workflow_limits(TWO_SHARD_BEFORE), work_minutes=max(job['minutes'] for job in jobs))
+        self.assertEqual('phase_timeout', result['reason'], {'jobs': jobs, 'result': result})
+        self.assertNotIn('tool_completed.json', result['markers'])
+        self.assertNotIn('tail_completed.json', result['markers'])
+        records = {}
+        for label, source, chosen in (('before', TWO_SHARD_BEFORE, partition), ('current', CURRENT, selector.shard_selection)):
+            case = type(self)('test_measured_hosted_share_finishes_inside_the_phase_margin')
+            case.workflow_source, case.partition = source, chosen
+            outcome = unittest.TestResult()
+            case.run(outcome)
+            records[label] = {'testsRun': outcome.testsRun, 'failures': [text for unused, text in outcome.failures],
+                              'errors': [text for unused, text in outcome.errors]}
+        print(json.dumps({'event': 'budget-hosted-share-causal', 'records': records}, sort_keys=True), flush=True)
+        self.assertEqual((1, 1, []), (records['before']['testsRun'], len(records['before']['failures']),
+                                      records['before']['errors']), records)
+        self.assertIn("'complete' != 'phase_timeout'", records['before']['failures'][0])
+        self.assertEqual((1, [], []), (records['current']['testsRun'], records['current']['failures'],
+                                       records['current']['errors']), records)
 
     def test_existing_build_and_validation_tail_stays_after_agent_phase(self):
         current = workflow_limits(CURRENT)

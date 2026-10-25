@@ -1,6 +1,7 @@
 """PUBLIC-only whole-caller regressions; no VM inventory or private inputs."""
 from pathlib import Path
 import ast,base64,hashlib,json,os,re,stat,subprocess,tempfile,time,types,unittest
+from agent_tools.tests.windows_powershell_script import json_reply,run_program
 FIX=Path(__file__).resolve().parent/'fixtures/windows_public_compile'
 HASHES={'parent.before.source': '21e1bec9016cf11039caa54c51fa5158df2334ba962058e5e6ebfef8513359c6', 'parent.fixed.source': 'c9db69ccfddef08a283d010471109e760020d52a1bff8ba0a2bdc174da80fbbd', 'interpreter.source': '25caad62f5f01fd7b216c3fdb05db344bd86c482ff77c2d2fe333572f66ff23c', 'receipt.before.source': 'bcd8910f154bcfcbce03945060a0ca4448f25494c16c7503509ed9529da2cccd', 'receipt.fixed.source': '274a256d0d3c052b57cfa5f673b99c958685037a4c009efe260f5347b844b568', 'public_failure.source': '153e8d118e9e1383ddb3315c4b44654d41332f384ea5dd0d44b6513f9913b2bb', 'collector.before.source': '5b7068d5ca9356acf1b033f69806ab95e91c4d17c6dd8cb860b444c48db01839', 'collector.fixed.source': '9fe3bb812c2f4cc9d8c2c4e5a6a9664127b26ab2078ef0f3a4fd4e337aa6cce0'}
 def payload(name):
@@ -34,9 +35,9 @@ class StreamRetention(unittest.TestCase):
  @unittest.skipUnless(os.name=='nt','Windows Framework PowerShell interpreter required')
  def test_actual_windows_powershell_old_RED_fixed_GREEN(self):
   ps=Path(os.environ['SystemRoot'])/'System32/WindowsPowerShell/v1.0/powershell.exe';self.assertTrue(ps.is_file())
-  reply=subprocess.run([str(ps),'-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command','-'],input=self.program(),capture_output=True,timeout=30)
-  self.assertEqual(reply.returncode,0,reply.stderr.decode(errors='replace'));self.assertEqual(reply.stderr,b'')
-  result=json.loads(reply.stdout);self.assertTrue(result['causalQualified']);self.assertFalse(result['inputAuthority']);self.assertFalse(result['nativeCompilerQualified']);self.assertTrue(all(x['oldRed']and x['newGreen']for x in result['cases']));self.assertEqual(result['awaiter']['oldType'],'System.Threading.Tasks.VoidTaskResult');self.assertEqual(result['awaiter']['newCount'],0)
+  # One complete -File script: -Command - stdin would drop everything after the first unterminated multi-line function.
+  result,detail=json_reply(self,run_program(ps,self.program(),30))
+  self.assertTrue(result['causalQualified'],detail);self.assertFalse(result['inputAuthority'],detail);self.assertFalse(result['nativeCompilerQualified'],detail);self.assertTrue(all(x['oldRed']and x['newGreen']for x in result['cases']),detail);self.assertEqual(result['awaiter']['oldType'],'System.Threading.Tasks.VoidTaskResult',detail);self.assertEqual(result['awaiter']['newCount'],0,detail)
 
 class ReceiptOutputBoundary(unittest.TestCase):
  def script(self):

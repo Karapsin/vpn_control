@@ -1167,7 +1167,9 @@ others' sources:
 - test-isolation fixes, the managed-runner stdin fix and the shared-worker umask and
   socket-root fixes found by the TEST-006 full audit, and the durable program status
   race, the gateway fixture cleanup wait, the runner's Darwin zombie-group cleanup
-  and the test-timing flakes found by the managed pre-push and its load sweep;
+  and the test-timing flakes found by the managed pre-push and its load sweep, and
+  the Windows, Linux and Python 3.12 portability fixes, six hosted agent shards and
+  the re-pinned creator listener identity fix found by exact-SHA CI;
 - the Android staged update substitution and the stage-1 Windows creator pre-VM
   closure with its Fast Checks root-census enrollment;
 - the `TEST-006` managed checks: every failure in one pass, failed-first reruns, and

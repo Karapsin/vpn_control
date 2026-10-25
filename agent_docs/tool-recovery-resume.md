@@ -51,7 +51,7 @@ A missing process or QGA record does not supply a historical terminal result.
 
 ## Current implementation checkpoint
 
-This task remains incomplete. The current dependency manifest is `acf11e7d`;
+This task remains incomplete. The current dependency manifest is `ff0456a7`;
 attributes are `ecbb6c32`. No native source set is held. Submitted packets and original receipts remain immutable.
 Capture current sources for a new admission; never relabel an old source epoch.
 

@@ -1,6 +1,7 @@
 """Whole public compiler/source/capture causals; no infrastructure inventory."""
 from pathlib import Path
 import ast,base64,copy,hashlib,json,os,re,subprocess,tempfile,types,unittest
+from agent_tools.tests.windows_powershell_script import json_reply,run_program
 FIX=Path(__file__).resolve().parent/'fixtures/windows_compile_followup'
 HASHES={'native.before.source': 'd6873f948fa50eabeb9ddf5507b9c3765d522abe5b4cdd25abcc023334699740', 'native.exit-fixed.source': '69158117dc5ca71234cec0b60bb07932863536da957a5df6114ef1d093bd5ff1', 'native.fixed.source': '813ef9554080dd4b4e2b2d82c1e56b73992d09b233b98ad1d53698fd885bbea3', 'parent.before.source': 'c9db69ccfddef08a283d010471109e760020d52a1bff8ba0a2bdc174da80fbbd', 'parent.fixed.source': 'bfa40e47cf66d42f301cdb86e84a63468391ffa6db466220b54c8415ee9d8c30', 'child.before.source': '3c132bcdbc9dd57fc1225ebdac39ca3eb56f0dbfcb313dd6db0512bb58ee20dc', 'child.fixed.source': 'a4a7d3a3262a839f890144cdf2fb40aaeb5388c3336868c78b8517389767e5fa', 'stream_capture.source': 'c03698567e7ed831a2f9ddb30b0b34dacfe8a5b7ab947d548a17c71fac61fe12', 'dispatch.before.source': 'db73848757d6b81834aa77a9378a0117504f602e0eba31150f49a8ab4905ae0b', 'dispatch.fixed.source': 'a5378094d881b495d80a41ee0dbb787c1bcde5c8f52e639a37dd0c730f79339d', 'validator.source': '9e34738a1e04ef0b8dc62d212c4a6b24c26815f05b9d5a6ccdf346948d0a437e', 'json_decoder.source': '25665d6e56326d2ff466dd2f029285a509e75f91292d423ecd48bb272c3ef058', 'result_gate.source': '35703df681e151a7bee0c7af5d31e5fd6371b150b3344ee5eab01507f26dd7f0'}
 def raw(name):
@@ -24,23 +25,26 @@ class NativeCompiler(unittest.TestCase):
  @unittest.skipUnless(os.name=='nt','Actual Framework Add-Type compiler requires Windows')
  def test_actual_complete_before_sources_RED_fixed_GREEN_without_methods_invoked(self):
   paths=[str((FIX/n).resolve())for n in ('native.before.source','native.exit-fixed.source','native.fixed.source')]
-  # Each assembly is compiled in a separate interpreter, never executed.
+  # Each assembly is compiled in a separate interpreter script, never executed.
+  # Add-Type writes each compiler diagnostic, then throws terminating COMPILER_ERRORS: both are collected.
   source=r'''$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 'UIAutomationClient','UIAutomationTypes','WindowsBase','System.Management','System.Web.Extensions'|ForEach-Object {[void][Reflection.Assembly]::LoadWithPartialName($_)}
 $native=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__SOURCE__'))
-$errors=@()
-Add-Type -ReferencedAssemblies @('System.dll','System.Core.dll','System.Management.dll','System.Web.Extensions.dll',[Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.ControlType].Assembly.Location,[Windows.Rect].Assembly.Location) -TypeDefinition $native -ErrorAction Continue -ErrorVariable errors 2>$null
+$errors=@();$terminatingErrors=@()
+try{Add-Type -ReferencedAssemblies @('System.dll','System.Core.dll','System.Management.dll','System.Web.Extensions.dll',[Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.ControlType].Assembly.Location,[Windows.Rect].Assembly.Location) -TypeDefinition $native -ErrorAction Continue -ErrorVariable errors 2>$null}catch{$terminatingErrors=@($_)}
 # Compiler diagnostics only. No newly compiled type/member is read/invoked.
-$result=[ordered]@{compiled=(@($errors).Count -eq 0);errors=@($errors|ForEach-Object {$_.ToString()});inputAuthority=$false;methodsInvoked=$false}
+$result=[ordered]@{compiled=(@($errors).Count -eq 0 -and @($terminatingErrors).Count -eq 0);errors=@($errors|ForEach-Object {$_.ToString()});terminatingErrors=@($terminatingErrors|ForEach-Object {$_.FullyQualifiedErrorId+': '+$_.ToString()});inputAuthority=$false;methodsInvoked=$false}
 [Console]::WriteLine(($result|ConvertTo-Json -Compress))
 '''
-  ps=Path(os.environ['SystemRoot'])/'System32/WindowsPowerShell/v1.0/powershell.exe';self.assertTrue(ps.is_file());rows=[]
+  ps=Path(os.environ['SystemRoot'])/'System32/WindowsPowerShell/v1.0/powershell.exe';self.assertTrue(ps.is_file());rows=[];details=[]
   for path in paths:
-   program=source.replace('__SOURCE__',base64.b64encode(raw(Path(path).name)).decode()).encode();p=subprocess.run([str(ps),'-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command','-'],input=program,capture_output=True,timeout=60)
-   self.assertEqual(p.returncode,0,p.stderr.decode(errors='replace'));self.assertEqual(p.stderr,b'');rows.append(json.loads(p.stdout))
-  self.assertFalse(rows[0]['compiled']);self.assertFalse(rows[1]['compiled']);self.assertTrue(rows[2]['compiled']);self.assertTrue(rows[0]['errors']);self.assertTrue(rows[1]['errors']);self.assertEqual(rows[2]['errors'],[]);self.assertTrue(all(not r['inputAuthority']and not r['methodsInvoked']for r in rows))
-  self.assertIn('uint exit;Need',json.dumps(rows[0]['errors']));self.assertIn('Correlate(Read(path),value)',json.dumps(rows[1]['errors']))
+   program=source.replace('__SOURCE__',base64.b64encode(raw(Path(path).name)).decode()).encode();row,detail=json_reply(self,run_program(ps,program,60))
+   rows.append(row);details.append(Path(path).name+': '+detail)
+  detail='\n'.join(details)
+  self.assertFalse(rows[0]['compiled'],detail);self.assertFalse(rows[1]['compiled'],detail);self.assertTrue(rows[2]['compiled'],detail);self.assertTrue(rows[0]['errors'],detail);self.assertTrue(rows[1]['errors'],detail);self.assertEqual(rows[2]['errors'],[],detail);self.assertTrue(all(not r['inputAuthority']and not r['methodsInvoked']for r in rows),detail)
+  self.assertIn('uint exit;Need',json.dumps(rows[0]['errors']),detail);self.assertIn('Correlate(Read(path),value)',json.dumps(rows[1]['errors']),detail)
+  self.assertTrue(all(r['terminatingErrors']and all(e.startswith('COMPILER_ERRORS,')for e in r['terminatingErrors'])for r in rows[:2]),detail);self.assertEqual(rows[2]['terminatingErrors'],[],detail)
 
 class AllErrorsAndEnvelope(unittest.TestCase):
  def test_entire_child_add_type_change_preserves_all_diagnostics_before_success(self):

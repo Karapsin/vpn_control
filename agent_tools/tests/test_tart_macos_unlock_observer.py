@@ -19,11 +19,16 @@ from uuid import uuid4
 import zlib
 
 from agent_tools import durable_remote_job as jobs
+from agent_tools import readiness_tart_macos as backend_module
 from agent_tools import readiness_tart_macos_unlock_observer as observer
 from agent_tools import readiness_tart_macos_unlock_qualification as qualification
 from agent_tools import readiness_tart_macos_registry as registry
 from agent_tools.tests.test_readiness_tart_macos import binding
 from agent_tools.tests.test_tart_macos_unlock_material import identity
+
+# A macOS guest owner's darwin:<seconds>:<microseconds> birth, for an actual local
+# owner whose durable birth has another host's encoding (linux:<start ticks>).
+GUEST_OWNER_BIRTH = 'darwin:1700000000:0'
 
 
 class ObserverBuilderTests(unittest.TestCase):
@@ -236,27 +241,47 @@ class OriginalObserverReceiptTests(unittest.TestCase):
                  "J.submit(" + repr(str(folder)) + "," + repr(operation) + ",J.MachineBinding.from_dict(" + repr(asdict(current)) + "),"
                  "J.Program(" + repr(program.purpose) + "," + repr(program.source) + ",8192),generation=" + repr(generation) + ")\nos._exit(77)\n")
         result = subprocess.run([sys.executable, '-c', child], cwd=Path(__file__).parents[2], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
-        self.assertEqual(result.returncode, 77); self.assertEqual(result.stderr, b'')
+        self.assertEqual(result.returncode, 77, result.stderr); self.assertEqual(result.stderr, b'')
         end = time.monotonic() + 5
         while time.monotonic() < end:
             status = jobs.observe(folder, operation, current, generation=generation)
             if status['state'] == 'terminal': break
             time.sleep(.01)
-        self.assertEqual(status['state'], 'terminal')
+        self.assertEqual(status['state'], 'terminal', status)
         _, stdout, stderr = jobs.collect(folder, operation, current, generation=generation)
         parameters = {'namespace': packet, 'binding': asdict(current), 'originalOperationId': original,
                       'observerOperationId': operation, 'originalPins': pins}
         reply = {**parameters, 'status': status, 'stdout': base64.b64encode(stdout).decode(),
                  'stderr': base64.b64encode(stderr).decode(), 'counter': base64.b64encode((folder / operation / 'probe-executed.txt').read_bytes()).decode()}
+        self.actual_owner = status.get('owner')
+        if not str((self.actual_owner or {}).get('birth')).startswith('darwin:'):
+            # The actual owner carries this host's durable birth (linux:<start ticks> on a
+            # Linux runner); the observer admits only a macOS guest owner's
+            # darwin:<seconds>:<microseconds>, so after every earlier terminal check that
+            # birth itself is refused.
+            try:
+                observer._terminal(reply, parameters, program); refusal = None
+            except Exception as error:
+                refusal = (type(error), str(error))
+            self.assertEqual((backend_module.MacBlocked, 'macos_actor_invalid'), refusal, 'status=%r stdout=%r stderr=%r' % (status, stdout, stderr))
+            # The same actual receipt is then the one a macOS guest owner reports: one
+            # macOS-encoded birth in both owner identities, every other byte actual.
+            self.assertEqual(status['owner'], status['terminal']['owner'], status)
+            reply['status'] = {**status, 'owner': {**status['owner'], 'birth': GUEST_OWNER_BIRTH},
+                               'terminal': {**status['terminal'], 'owner': {**status['owner'], 'birth': GUEST_OWNER_BIRTH}}}
         return reply, parameters, program
 
     def test_original_durable_owner_after_client_death_has_one_execution_complete_streams(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary).resolve(); folder.chmod(0o700)
             reply, parameters, program = self.actual_reply(folder)
-            value, terminal = observer._terminal(reply, parameters, program)
-            self.assertEqual(value['executions'], 1); self.assertEqual(terminal['exitCode'], 0)
-            self.assertTrue(terminal['streamsClosed'])
+            try:
+                value, terminal = observer._terminal(reply, parameters, program)
+            except Exception as error:
+                error.add_note('actualOwner=%r status=%r stdout=%r stderr=%r' % (self.actual_owner, reply['status'], reply['stdout'], reply['stderr']))
+                raise
+            self.assertEqual(value['executions'], 1, value); self.assertEqual(terminal['exitCode'], 0, terminal)
+            self.assertTrue(terminal['streamsClosed'], terminal)
 
     def test_forged_terminal_hash_or_other_original_cannot_reuse_real_owner_receipt(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -264,8 +289,12 @@ class OriginalObserverReceiptTests(unittest.TestCase):
             reply, parameters, program = self.actual_reply(folder)
             for field, value in (('originalOperationId', str(uuid4())), ('counter', base64.b64encode(b'execution\nexecution\n').decode()),
                                  ('stdout', base64.b64encode(b'PRIVATE-DO-NOT-ECHO').decode())):
-                with self.subTest(field=field), self.assertRaises(qualification.QualificationBlocked) as error:
-                    observer._terminal({**reply, field: value}, parameters, program)
+                with self.subTest(field=field), self.assertRaises(qualification.QualificationBlocked, msg='forged %s accepted: actualOwner=%r status=%r' % (field, self.actual_owner, reply['status'])) as error:
+                    try:
+                        observer._terminal({**reply, field: value}, parameters, program)
+                    except Exception as refused:
+                        refused.add_note('forged %s: actualOwner=%r status=%r' % (field, self.actual_owner, reply['status']))
+                        raise
                 self.assertNotIn('PRIVATE', str(error.exception))
 
 

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": false,
+  "finding": "readiness_windows_host_work._source authenticated reviewed historical define/start control flow with sha256(ast.dump(node, include_attributes=False)) per function. _REVIEWED was recorded with the Python 3.13/3.14 default form, which omits empty list fields; CPython 3.12 prints them, so hosted Fast Checks refused the authentic fixture sources as windows_host_work_source_unreviewed",
+  "cause": "ast.dump output is interpreter dependent: 3.12 prints empty list fields, 3.13 omits them unless show_empty, 3.11 has no type_params, 3.15 adds is_lazy=0 and omits ctx=Load(). A stored digest of ast.dump text cannot authenticate across interpreters",
+  "causalAssertion": "agent_tools.tests.test_windows_host_work_ast_digest",
+  "ciFailure": {
+    "workflow": "Fast Checks",
+    "runId": 40187427911,
+    "jobId": 121151078435,
+    "job": "Hygiene, Localization, Unit Tests",
+    "step": "Test affected agent tools",
+    "headSha": "cc2873b5ed0ada7b09c24e854539c85660a627c2",
+    "python": "CPython 3.12.15 (actions/setup-python python-version 3.12, ubuntu-latest x86_64)",
+    "summary": "Ran 4543 tests in 2863.594s FAILED (failures=3, errors=8, skipped=78)",
+    "errors": [
+      "agent_tools.tests.test_readiness_windows_host_work.HostWorkTests.test_accepted_metadata_is_explicit_create_only_and_normal_lookup_is_pure",
+      "agent_tools.tests.test_readiness_windows_host_work.HostWorkTests.test_actual_old_consumer_schema_failure_and_strict_original_phase_green",
+      "agent_tools.tests.test_readiness_windows_host_work.HostWorkTests.test_exact_actual_original_documents_source_graph_and_complete_eof_join",
+      "agent_tools.tests.test_readiness_windows_host_work.HostWorkTests.test_intent_result_source_xml_uuid_or_phase_changes_do_not_match_original_proof",
+      "agent_tools.tests.test_readiness_windows_host_work.HostWorkTests.test_source_changed_native_eof_incomplete_or_custody_changed_never_closes",
+      "agent_tools.tests.test_windows_host_work_acceptance.AcceptanceOriginalPinsTests.test_full_before_rebuilds_changed_pins_current_refuses_bytes_and_same_content_inode (mode='whitespace')",
+      "agent_tools.tests.test_windows_host_work_acceptance.AcceptanceOriginalPinsTests.test_full_before_rebuilds_changed_pins_current_refuses_bytes_and_same_content_inode (mode='same-content-inode')",
+      "agent_tools.tests.test_windows_host_work_acceptance.AcceptanceOriginalPinsTests.test_legacy_unpinned_record_stays_unchanged_and_requires_separate_explicit_admission"
+    ],
+    "traceback": [
+      "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/readiness_windows_host_work.py\", line 199, in libvirt_lifecycle_proofs",
+      "    define_op = _source(payloads[define_source], 'define', spec, setup, host_boot)",
+      "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/readiness_windows_host_work.py\", line 73, in _source",
+      "    _need(set(assignments) == {'SPEC','SETUP','CONTEXT','OP'} and functions == _REVIEWED[phase] and called == 1,",
+      "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/readiness_windows_host_work.py\", line 33, in _need",
+      "    raise ValueError(reason)",
+      "ValueError: windows_host_work_source_unreviewed"
+    ],
+    "acceptanceTraceback": [
+      "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/tests/fixtures/windows_host_work_acceptance/before.source\", line 73, in _source",
+      "ValueError: windows_host_work_source_unreviewed"
+    ],
+    "notStarted": "Agent Tools Shard 2 (job 121151078654) hit its 50-minute step timeout in test_windows_creator_prevm_refusal_recovery before test_windows_host_phase_integration, whose BackendOriginalHostPhaseTests.setUp registers these proofs; locally on CPython 3.12.13 its five portable tests raise the same error",
+    "windowsPackageRun": "Windows Desktop Package run 40187428207 listed these modules in its selection plans only; its --include sets did not execute them"
+  },
+  "python312Digests": {
+    "define:_actor_absent": "c429411764451a815b393d8a183423c01f708d17a022b3559bb42b2ca4d5e05f",
+    "define:main": "7f4b8c18cada27e3f82ee3e3e899326ea432ed7828cfd5e8c44186b8a0473f30",
+    "start:_actor_absent": "c429411764451a815b393d8a183423c01f708d17a022b3559bb42b2ca4d5e05f",
+    "start:main": "2573b74e8add95c196d1628a36257ee49738bc7bf8eee4df4cb85df95b18879d"
+  },
+  "files": {
+    "readiness_windows_host_work.py.before.source": {
+      "path": "agent_tools/readiness_windows_host_work.py",
+      "baseline": "cc2873b5",
+      "sha256": "dbe31bbd29785d4c5fcdce33efaa782a3c099c1a5e685a183e09e495b5acd455"
+    }
+  }
+}

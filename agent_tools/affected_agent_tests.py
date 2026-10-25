@@ -65,10 +65,19 @@ class Selection:
         return result
 
 
+# Hosted Fast Checks runs this many explicit agent shards, each its own job and
+# receipt. The managed local stage keeps two halves of the same sorted
+# alternating partition; with an even hosted count each half is exactly the
+# union of the hosted shards whose index has its parity.
+CI_SHARD_COUNT = 6
+
+
 def shard_selection(selection, index, count):
     """Partition the complete already-validated plan, never dependency discovery."""
-    if type(index) is not int or type(count) is not int or count != 2 or index not in (0, 1):
-        raise SelectionError("CI shards require index 0 or 1 and count 2")
+    if (type(index) is not int or type(count) is not int or count not in (2, CI_SHARD_COUNT)
+            or not 0 <= index < count):
+        raise SelectionError("Shards require count 2 (managed halves) or %d (hosted CI) and an index below it"
+                             % CI_SHARD_COUNT)
     modules = tuple(sorted(selection.modules))
     if len(modules) != len(set(modules)):
         raise SelectionError("Duplicate global test module")
@@ -727,13 +736,15 @@ def main(argv=None):
     parser.add_argument("--audit", action="store_true", help="Intentional full suite audit")
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--include", nargs="+", help="Run only these existing CI test IDs when their agent module is affected; explicit script IDs remain product checks")
-    parser.add_argument("--shard-index", type=int, help="Explicit hosted CI bucket, 0 or 1")
-    parser.add_argument("--shard-count", type=int, help="Explicit hosted CI bucket count, currently 2")
+    parser.add_argument("--shard-index", type=int, help="Explicit hosted CI bucket, 0 to %d" % (CI_SHARD_COUNT - 1))
+    parser.add_argument("--shard-count", type=int, help="Explicit hosted CI bucket count, currently %d" % CI_SHARD_COUNT)
     parser.add_argument("--ci-evidence-dir", type=Path, help="New public CI evidence directory; requires explicit shard and --run")
     args = parser.parse_args(argv)
     sharded = args.shard_index is not None or args.shard_count is not None
-    if sharded and (args.shard_index not in (0, 1) or args.shard_count != 2 or args.include is not None):
-        parser.error("Both shard arguments require count 2, index 0 or 1, and no --include")
+    if sharded and (args.shard_index not in range(CI_SHARD_COUNT) or args.shard_count != CI_SHARD_COUNT
+                    or args.include is not None):
+        parser.error("Both shard arguments require count %d, an index from 0 to %d, and no --include"
+                     % (CI_SHARD_COUNT, CI_SHARD_COUNT - 1))
     if args.ci_evidence_dir is not None and (not sharded or not args.run):
         parser.error("Public CI evidence requires explicit shards and --run")
     try:

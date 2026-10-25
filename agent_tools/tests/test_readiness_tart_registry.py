@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import hashlib
 from dataclasses import replace
@@ -326,8 +327,13 @@ class TartCustodyTest(unittest.TestCase):
         before = custody_module._disk_pin(disk)
         with disk.open("r+b") as stream: stream.write(b"other")
         self.assertEqual(custody_module._disk_pin(disk), before)
-        disk.unlink(); disk.write_bytes(b"owned")
-        self.assertNotEqual(custody_module._disk_pin(disk), before)
+        # Replace while the original inode is still allocated, as a running VM holds
+        # it: Linux reissues a freed inode number at once, APFS (the Tart host) never.
+        with disk.open("rb") as original:
+            disk.unlink(); disk.write_bytes(b"owned")
+            replaced = custody_module._disk_pin(disk)
+            self.assertNotEqual(replaced, before, "platform=%s original=%r replacement=%r" % (
+                sys.platform, os.fstat(original.fileno()), disk.lstat()))
 
 
 if __name__ == "__main__":

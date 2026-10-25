@@ -15,6 +15,12 @@ from agent_tools.tests import test_agent_ci_shards as fixture
 
 
 ROOT = Path(__file__).resolve().parents[2]
+ORDINALS = ('FIRST', 'SECOND', 'THIRD', 'FOURTH', 'FIFTH', 'SIXTH', 'SEVENTH', 'EIGHTH')
+
+
+def hosted_job_keys():
+    """Shard 0 stays in the original Fast Checks job; each other shard has its own job."""
+    return ['fast-checks'] + ['agent-tests-shard-%d' % index for index in range(1, fixture.selector.CI_SHARD_COUNT)]
 
 
 def workflow_jobs(raw):
@@ -111,8 +117,12 @@ def workflow_jobs(raw):
 
 
 class FastAgentShardWorkflowTests(unittest.TestCase):
+    maxDiff = None
+    workflow_raw = None
+
     def workflow(self):
-        return {'jobs': workflow_jobs((ROOT / '.github/workflows/fast-checks.yml').read_bytes())}
+        raw = self.workflow_raw if self.workflow_raw is not None else (ROOT / '.github/workflows/fast-checks.yml').read_bytes()
+        return {'jobs': workflow_jobs(raw)}
 
     def named(self, job, name):
         steps = [step for step in job['steps'] if step.get('name') == name]
@@ -120,8 +130,12 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
         return steps[0]
 
     def test_both_fresh_hosted_jobs_have_identical_admission_and_unchanged_limits(self):
+        # Every hosted shard job (all CI_SHARD_COUNT of them, not only two).
         jobs = self.workflow()['jobs']
-        agent = [jobs['fast-checks'], jobs['agent-tests-shard-1']]
+        hosted = [key for key, job in jobs.items() if any(step.get('name') == 'Test affected agent tools' for step in job['steps'])]
+        self.assertEqual(hosted_job_keys(), hosted)
+        self.assertEqual(fixture.selector.CI_SHARD_COUNT, fixture.public.SHARD_COUNT)
+        agent = [jobs[key] for key in hosted]
         phases = []
         for index, job in enumerate(agent):
             self.assertEqual('ubuntu-latest', job['runs-on'])
@@ -147,11 +161,18 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
             audit, affected = commands
             self.assertEqual(['python', 'agent_tools/affected_agent_tests.py', '--baseline', '$AGENT_TEST_BASELINE', '--audit', '--run'], audit[:6])
             self.assertEqual(['python', 'agent_tools/affected_agent_tests.py', '--run'], affected[:3])
-            tail = ['--shard-index', str(index), '--shard-count', '2', '--ci-evidence-dir', '.rag_index/agent-ci-evidence-%d' % index]
+            tail = ['--shard-index', str(index), '--shard-count', str(fixture.selector.CI_SHARD_COUNT),
+                    '--ci-evidence-dir', '.rag_index/agent-ci-evidence-%d' % index]
             self.assertEqual(tail, audit[6:])
             self.assertEqual(tail, affected[3:])
             self.assertNotIn('--include', phase['run'])
-        self.assertEqual(phases[0]['env'], phases[1]['env'])
+            if index:
+                self.assertEqual('Agent Tools Shard %d' % (index + 1), job['name'])
+                self.assertEqual(['Checkout', 'Set up Python 3.12', 'Install agent tool dependencies',
+                                  'Install qemu-img for agent fixtures', 'Test affected agent tools',
+                                  'Retain public agent shard evidence'], [step['name'] for step in steps])
+        for phase in phases[1:]:
+            self.assertEqual(phases[0]['env'], phase['env'])
         self.assertEqual("${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}", phases[0]['env']['AGENT_TEST_BASELINE'])
         self.assertEqual("${{ inputs.audit_agent_tests && '1' || '' }}", phases[0]['env']['AUDIT_AGENT_TESTS'])
 
@@ -178,8 +199,10 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
 
     def test_uploads_only_fixed_public_files_from_this_run_and_attempt(self):
         jobs = self.workflow()['jobs']
+        self.assertEqual(hosted_job_keys(), [key for key, job in jobs.items() if any(
+            step.get('name') == 'Retain public agent shard evidence' for step in job['steps'])])
         names = []
-        for index, key in enumerate(('fast-checks', 'agent-tests-shard-1')):
+        for index, key in enumerate(hosted_job_keys()):
             step = self.named(jobs[key], 'Retain public agent shard evidence')
             self.assertEqual('always()', step['if'])
             self.assertEqual('actions/upload-artifact@v4', step['uses'])
@@ -197,20 +220,24 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
             self.assertEqual(7, options['retention-days'])
         coverage = jobs['agent-test-coverage']
         self.assertEqual('always()', coverage['if'])
-        self.assertEqual({'fast-checks', 'agent-tests-shard-1'}, set(coverage['needs']))
+        self.assertEqual(hosted_job_keys(), coverage['needs'])
         downloads = [step for step in coverage['steps'] if step.get('uses') == 'actions/download-artifact@v4']
         self.assertEqual(names, [step['with']['name'] for step in downloads])
-        self.assertEqual(['.rag_index/agent-ci-evidence-0', '.rag_index/agent-ci-evidence-1'], [step['with']['path'] for step in downloads])
+        self.assertEqual(['.rag_index/agent-ci-evidence-%d' % index for index in range(len(names))],
+                         [step['with']['path'] for step in downloads])
+        self.assertEqual(['Fetch %s current-attempt public receipt' % ORDINALS[index].lower() for index in range(len(names))],
+                         [step['name'] for step in downloads])
 
     def test_coverage_verifier_requires_actual_parents_and_current_invocation(self):
         job = self.workflow()['jobs']['agent-test-coverage']
         step = self.named(job, 'Require actual complete disjoint shard coverage')
-        self.assertEqual({'FIRST_SHARD_RESULT': '${{ needs.fast-checks.result }}',
-                          'SECOND_SHARD_RESULT': '${{ needs.agent-tests-shard-1.result }}'}, step['env'])
+        keys = hosted_job_keys()
+        results = ['%s_SHARD_RESULT' % ORDINALS[index] for index in range(len(keys))]
+        self.assertEqual({name: '${{ needs.%s.result }}' % key for name, key in zip(results, keys)}, step['env'])
         argv = shlex.split(step['run'])
         self.assertEqual(['python', 'agent_tools/agent_ci_evidence.py', '--verify',
-                          '.rag_index/agent-ci-evidence-0', '.rag_index/agent-ci-evidence-1',
-                          '--parent-results', '$FIRST_SHARD_RESULT', '$SECOND_SHARD_RESULT',
+                          *('.rag_index/agent-ci-evidence-%d' % index for index in range(len(keys))),
+                          '--parent-results', *('$' + name for name in results),
                           '--run-id', '${{ github.run_id }}', '--run-attempt', '${{ github.run_attempt }}',
                           '--head', '${{ github.sha }}'], argv)
         self.assertFalse(any(step.get('continue-on-error') for step in job['steps']))
@@ -224,6 +251,29 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
             with self.subTest(source=source):
                 with self.assertRaises(ValueError):
                     workflow_jobs(source)
+
+    def test_whole_two_shard_workflow_fails_the_same_hosted_wiring_positives(self):
+        # RED on the whole cc2873b5 workflow: two hosted jobs and a two-receipt
+        # coverage job cannot run or prove the hosted shard count; GREEN now.
+        names = ('test_both_fresh_hosted_jobs_have_identical_admission_and_unchanged_limits',
+                 'test_uploads_only_fixed_public_files_from_this_run_and_attempt',
+                 'test_coverage_verifier_requires_actual_parents_and_current_invocation')
+        records = {}
+        for name in names:
+            for label, raw in (('before', fixture.preserved('workflow.before.yml')), ('current', None)):
+                case = type(self)(name)
+                case.workflow_raw = raw
+                result = unittest.TestResult()
+                case.run(result)
+                records[label + ':' + name] = {'testsRun': result.testsRun,
+                                               'failures': [text for unused, text in result.failures],
+                                               'errors': [text for unused, text in result.errors]}
+        print(json.dumps({'event': 'hosted-wiring-causal', 'records': records}, sort_keys=True))
+        for name in names:
+            self.assertEqual((1, 1, []), (records['before:' + name]['testsRun'], len(records['before:' + name]['failures']),
+                                          records['before:' + name]['errors']), records)
+            self.assertEqual((1, [], []), (records['current:' + name]['testsRun'], records['current:' + name]['failures'],
+                                           records['current:' + name]['errors']), records)
 
     def test_saved_isolated_stdlib_child_runs_the_same_positive_without_yaml(self):
         before = fixture.retained('wiring.before.source')

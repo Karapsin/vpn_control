@@ -36,6 +36,8 @@ PROFILE_FUNCTIONS = {
     "ssh_transport.py": "_reject_duplicate_keys",
     "ssh_automatic_program.py": "command_bytes",
 }
+# Shard 0 stays in the Fast Checks job; the other hosted shards have their own jobs.
+AGENT_JOBS = ("fast-checks",) + tuple("agent-tests-shard-%d" % index for index in range(1, 6))
 
 
 def steps(source, job="fast-checks"):
@@ -66,7 +68,7 @@ def position(source, name, job="fast-checks"):
 
 
 def original_agent_step(body):
-    suffix = " --shard-index 0 --shard-count 2 --ci-evidence-dir .rag_index/agent-ci-evidence-0"
+    suffix = " --shard-index 0 --shard-count 6 --ci-evidence-dir .rag_index/agent-ci-evidence-0"
     original = []
     commands = 0
     for line in body.splitlines(keepends=True):
@@ -190,6 +192,7 @@ def actual_guard_for_order(workflow):
 
 
 class WorkflowInterpreterOrderTests(unittest.TestCase):
+    maxDiff = None
     workflow = WORKFLOW
 
     def test_reordering_retains_every_original_action_and_check(self):
@@ -213,7 +216,7 @@ class WorkflowInterpreterOrderTests(unittest.TestCase):
 
     def test_prepared_runtime_and_dependencies_precede_all_python_hygiene(self):
         source = self.workflow.read_text()
-        for job in ("fast-checks", "agent-tests-shard-1"):
+        for job in AGENT_JOBS:
             prepared = position(source, "Set up Python 3.12", job)
             installed = position(source, "Install agent tool dependencies", job)
             self.assertLess(prepared, installed)
@@ -233,7 +236,7 @@ class WorkflowInterpreterOrderTests(unittest.TestCase):
     def test_qemu_img_is_installed_before_actual_agent_fixture_selection(self):
         source = self.workflow.read_text()
         name = "Install qemu-img for agent fixtures"
-        for job in ("fast-checks", "agent-tests-shard-1"):
+        for job in AGENT_JOBS:
             self.assertLess(position(source, name, job), position(source, "Test affected agent tools", job))
             self.assertIn("sudo apt-get install -y --no-install-recommends qemu-utils", dict(steps(source, job))[name])
 

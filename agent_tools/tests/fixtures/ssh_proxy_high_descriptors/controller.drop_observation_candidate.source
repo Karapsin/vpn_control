@@ -1,0 +1,307 @@
+"""Unstaged readiness-only qualification; no counter or remote mutation job.
+
+This fixed controller requires a separately reviewed public epoch and explicit
+native GO. It is never a replacement for prior operation fc338 or local9e3.
+"""
+from pathlib import Path
+from contextlib import ExitStack
+import hashlib,json,math,os,select,selectors,socket,stat,subprocess,sys,threading,time,uuid
+HERE=Path(__file__).resolve().parent;CHECKOUT=HERE.parents[3]
+CRITICAL={'agent_tools/ssh_automatic_program.py': '6add7cba90f5e92be5ee128b5781c90270ec904e5549b93b3346318b1508e558', 'agent_tools/ssh_tmux_mcp_adapter.py': 'fe6c4345611f330868dbec06405765a14c101a144eeb8b006ad17e08b31c1b16', 'agent_tools/durable_remote_job.py': 'f3b4707528c16f176b80781dd86208c324c1e10d6eb2c14451dcf4be08d0e734', 'agent_tools/ssh_program_execution.py': '653d0494477a9dcfb086d45ba450710da6062868adc9998a802e97c0e44ac07d', 'agent_tools/ssh_program_execution_remote.py': 'b4bb3a52a0d4aa0c425bfe94043d704bfba428ad6f781e12bbdea8f1db9a38f1', 'agent_tools/ssh_program_mcp_client.py': 'f8a083e3f9b6462d9b4c4c4a89bf16c9ac4272658f7aa3a1c901d3518cefd469', 'agent_tools/ssh_transport.py': '257e53420212d6c7f4476e5caa5d9cc766b852c218cae19cdc32587b619a9ce8'}
+NEW_OPERATIONS={'direct': '0ff96af9-db2e-4322-8474-e103cd0e9631'}
+RETENTION_SHA='2c5f60321c667a9db4ae27f04103609318fbaff26c47fc140ea986c2fa9a426f'
+SHARED_CORR='3ec9cdaeb1314b44851e0304eb0b3908';SHARED_CONNECTION='465c42139b7a97c2f6e6c9ee24940c858c0a98a81e628a9b188e51618dc3916e'
+def fingerprint(s):return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+
+def save(path,value):
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w')as f:json.dump(value,f,sort_keys=True,indent=2);f.flush();os.fsync(f.fileno())
+
+def read(path):return json.loads(Path(path).read_bytes())
+
+def until(predicate,deadline,reason):
+ while time.monotonic()<deadline:
+  value=predicate()
+  if value:return value
+  time.sleep(.15)
+ raise ValueError(reason)
+
+class SourceHold:
+ def __init__(self,path):
+  self.path=Path(path);self.fd=os.open(self.path,os.O_RDONLY|os.O_NOFOLLOW)
+  try:
+   self.info=os.fstat(self.fd);self.raw=os.read(self.fd,self.info.st_size+1)
+   if not stat.S_ISREG(self.info.st_mode)or self.info.st_uid!=os.getuid()or self.info.st_nlink!=1 or self.info.st_mode&0o022:raise ValueError('acceptance_public_source_shape')
+   self.guard()
+  except BaseException:os.close(self.fd);raise
+ def guard(self):
+  if len(self.raw)!=self.info.st_size or fingerprint(self.info)!=fingerprint(os.fstat(self.fd))or fingerprint(self.info)!=fingerprint(os.lstat(self.path))or os.pread(self.fd,len(self.raw)+1,0)!=self.raw:raise ValueError('acceptance_source_changed')
+ def close(self):os.close(self.fd)
+
+class Proxy:
+ # Diagnostic receipts contain only bounded phases/counts/numeric errno. Raw
+ # forwarded bytes and error strings are never retained by this observer.
+ DIAGNOSTIC_LIMIT=32
+ def __init__(self,host,port):
+  self.upstream=(host,port);self.server=socket.socket();self.server.bind(('127.0.0.1',0));self.server.listen();self.server.settimeout(.1);self.port=self.server.getsockname()[1];self.pairs=[];self.lock=threading.Lock();self.stopped=False
+  self.attempt_count=0;self.attempts=[];self.diagnostic_overflow=False
+  self.threads=[];self.thread=threading.Thread(target=self.accept,daemon=True);self.thread.start()
+ def _attempt(self):
+  with self.lock:
+   self.attempt_count+=1
+   row={'index':self.attempt_count,'connectPhase':'connecting','connectErrno':None,'forwardPhase':'not-started','forwardErrno':None,'direction':None,'eofDirection':None,'clientReads':0,'upstreamReads':0,'clientReadBytes':0,'upstreamReadBytes':0,'forwardErrorClass':None,'clientToUpstreamBytes':0,'upstreamToClientBytes':0,'closed':False}
+   if len(self.attempts)<self.DIAGNOSTIC_LIMIT:self.attempts.append(row)
+   else:self.diagnostic_overflow=True
+   return row
+ def _update(self,row,**values):
+  with self.lock:row.update(values)
+ @staticmethod
+ def _errno(error):
+  value=getattr(error,'errno',None)
+  return value if type(value)is int and 0<=value<=2147483647 else None
+ def diagnostic_snapshot(self):
+  with self.lock:
+   rows=[dict(row)for row in self.attempts]
+   return {'schemaVersion':1,'attemptCount':self.attempt_count,'attempts':rows,'capped':self.diagnostic_overflow,'stopped':self.stopped,'listenerClosed':self.server.fileno()==-1,'acceptThreadClosed':not self.thread.is_alive(),'forwardThreadCount':len(self.threads),'liveForwardThreadCount':sum(thread.is_alive()for thread in self.threads),'trafficRetained':False,'forwardedByteCountMeaning':'completed-sendall-only'}
+ def accept(self):
+  while not self.stopped:
+   try:client,_=self.server.accept()
+   except socket.timeout:continue
+   except OSError:return
+   diagnostic=self._attempt()
+   try:upstream=socket.create_connection(self.upstream,timeout=10);upstream.settimeout(None)
+   except OSError as error:
+    self._update(diagnostic,connectPhase='failed',connectErrno=self._errno(error),closed=True);client.close();continue
+   self._update(diagnostic,connectPhase='connected')
+   pair={'client':client,'upstream':upstream,'closed':False,'peer':list(client.getpeername()),'local':list(client.getsockname()),'diagnostic':diagnostic}
+   with self.lock:self.pairs.append(pair)
+   thread=threading.Thread(target=self.forward,args=(pair,),daemon=True);self.threads.append(thread);thread.start()
+ def forward(self,pair):
+  diagnostic=pair['diagnostic'];direction=None;phase='register';selector=None;self._update(diagnostic,forwardPhase=phase)
+  try:
+   selector=selectors.DefaultSelector()
+   selector.register(pair['client'],selectors.EVENT_READ)
+   selector.register(pair['upstream'],selectors.EVENT_READ)
+   while not self.stopped:
+    phase='select';direction=None;self._update(diagnostic,forwardPhase=phase,direction=direction)
+    ready=selector.select(.1)
+    for key,_ in ready:
+     s=key.fileobj
+     direction='client-to-upstream'if s is pair['client']else'upstream-to-client';phase='read';self._update(diagnostic,forwardPhase=phase,direction=direction)
+     raw=s.recv(65536)
+     with self.lock:
+      key='clientReads'if s is pair['client']else'upstreamReads';diagnostic[key]+=1
+      key='clientReadBytes'if s is pair['client']else'upstreamReadBytes';diagnostic[key]+=len(raw)
+     if not raw:self._update(diagnostic,forwardPhase='eof',eofDirection=direction);return
+     phase='write';self._update(diagnostic,forwardPhase=phase,direction=direction)
+     (pair['upstream']if s is pair['client']else pair['client']).sendall(raw)
+     with self.lock:
+      key='clientToUpstreamBytes'if s is pair['client']else'upstreamToClientBytes';diagnostic[key]+=len(raw)
+  except (OSError,ValueError)as error:self._update(diagnostic,forwardPhase=phase,direction=direction,forwardErrno=self._errno(error),forwardErrorClass='os-error'if isinstance(error,OSError)else'value-error')
+  finally:
+   if selector is not None:selector.close()
+   pair['closed']=True
+   for s in (pair['client'],pair['upstream']):
+    try:s.close()
+    except OSError:pass
+   self._update(diagnostic,closed=True)
+ def drop_once(self,path,master):
+  with self.lock:live=[p for p in self.pairs if not p['closed']]
+  if len(live)!=1:raise ValueError('private_proxy_original_pair_unresolved')
+  pair=live[0]
+  save(path,{'mode':'direct','masterRecoveryId':master['recoveryId'],'masterActor':master['child']['actor'],'socketPath':master['socketPath'],'proxyLocal':pair['local'],'proxyPeer':pair['peer'],'faultCount':1,'remoteJobSignalAllowed':False})
+  # Shut down only. The forward thread owns these selector-registered sockets and
+  # closes them once it reads the drop; closing them here removes them from its
+  # selector, and a drop not yet read is then never seen and the pair stays live.
+  for s in (pair['client'],pair['upstream']):
+   try:s.shutdown(socket.SHUT_RDWR)
+   except OSError:pass
+ def close_owned_route(self):
+  self.stopped=True;self.server.close()
+  for pair in self.pairs:
+   for s in (pair['client'],pair['upstream']):
+    try:s.close()
+    except OSError:pass
+  self.thread.join(timeout=1)
+  for thread in self.threads:thread.join(timeout=1)
+
+def finish_local_scope(root,scope):
+ """Always seal facts about owned local actors/streams, never infer job death."""
+ report={'operationId':scope.get('operation'),'sourceClosing':False,'clients':[],'servers':[],'localObservers':[],'proxy':None,'remoteOwnerSignalled':False,'sharedMasterSignalled':False,'targetReplayAllowed':False}
+ keeper=scope.get('keeper');producer=scope.get('producer_actor')
+ def state(expected,producer_format=False):
+  try:
+   actual=(producer if producer_format else keeper.actor)(expected['pid'])
+   return 'present-original'if actual==expected else 'foreign-generation'
+  except (OSError,ValueError,subprocess.SubprocessError):
+   check=subprocess.run(['/bin/ps','-p',str(expected['pid']),'-o','pid='],stdin=subprocess.DEVNULL,capture_output=True,timeout=3)
+   return 'absent-positive'if check.returncode==1 and check.stdout==check.stderr==b''else'unknown'
+ try:
+  guard=scope.get('guard')
+  if guard is not None:guard();report['sourceClosing']=True
+  consumers=scope.get('current_consumers')
+  manifest=scope.get('manifest',{})
+  report['consumedSources']={}if consumers is None else{relative:manifest[relative]for relative in sorted(consumers())}
+  report['capsulePublicFilesHeld']=len(scope.get('capsule_holders',{}))
+ except BaseException:report['sourceClosing']=False;report['sourceClosingReason']='held-custody-refused'
+ # Parent closes only its own retained log descriptors. A live client/server is
+ # recorded UNKNOWN and preserved; this function never signals such actors.
+ for process,out,err,label in scope.get('clients',[]):
+  row={'label':label,'pid':process.pid,'returnCode':process.poll(),'state':'terminal-reaped'if process.poll()is not None else'live-original-unknown','parentStreamsClosed':False}
+  for stream in(out,err):
+   if not stream.closed:stream.flush();os.fsync(stream.fileno());stream.close()
+  row['parentStreamsClosed']=out.closed and err.closed;report['clients'].append(row)
+ for file in sorted(root.glob('*/server-intent.json'))+sorted(root.glob('*/relay-recovery-*/server-intent.json')):
+  try:
+   value=read(file)
+   for role in('serverActor','relayActor'):
+    expected=value[role];report['servers'].append({'record':str(file),'role':role,'actor':expected,'state':state(expected,True)})
+  except BaseException:report['servers'].append({'record':str(file),'state':'unknown'})
+ operation=scope.get('operation');directory=scope.get('directory')
+ if directory is not None and(directory/'owner.json').exists():
+  try:
+   value=read(directory/'owner.json')
+   if value['operationId']!=operation:raise ValueError('owner_binding')
+   expected=value['actor'];report['localObservers'].append({'record':str(directory/'owner.json'),'actor':expected,'state':state(expected)})
+  except BaseException:report['localObservers'].append({'state':'unknown'})
+ proxy=scope.get('proxy')
+ if proxy is not None:
+  # Closing this owned route after success or a failed controller assertion is
+  # itself recorded; a failed sentinel remains UNKNOWN, never re-submitted.
+  proxy.close_owned_route();report['proxy']={'listenerAddress':['127.0.0.1',proxy.port],'listenerClosed':proxy.server.fileno()==-1,'acceptThreadClosed':not proxy.thread.is_alive(),'forwardThreadsClosed':all(not t.is_alive()for t in proxy.threads),'pairs':[{'local':pair['local'],'peer':pair['peer'],'clientSocketClosed':pair['client'].fileno()==-1,'upstreamSocketClosed':pair['upstream'].fileno()==-1}for pair in proxy.pairs],'originalJobState':'terminal-verified'if(root/'result.json').exists()else'unknown-preserved','routeEndedDoesNotProveJobEnded':True,'diagnostics':proxy.diagnostic_snapshot()}
+ if(root/'cli-terminal.json').exists():
+  try:report['cli']=read(root/'cli-terminal.json')
+  except BaseException:report['cli']={'state':'unknown'}
+ elif(root/'cli-intent.json').exists():report['cli']={'state':'unknown-original-client','intentRetained':True}
+ try:
+  own_master=scope.get('master')
+  if own_master is not None and(root/'.vm-hosts.local.json').exists():
+   observed=own_master.status(root,'gateway');report['ownGatewayMaster']={k:observed.get(k)for k in('state','recoveryId','child','socketPath')}
+  if scope.get('mode')=='nested':
+   pointer=root/'.rag_index/readiness-nested-channel/archlinux/current.json'
+   if pointer.exists():report['ownNestedSelectedReceipt']={'state':'local-receipt-only','pointer':read(pointer),'remoteActorState':'not-probed-during-finally'}
+ except BaseException:report['ownMasterState']='unknown-preserved'
+ try:
+  if scope.get('guard')is not None:scope['guard']()
+ except BaseException:report['sourceClosing']=False;report['sourceClosingReason']='final-held-custody-refused'
+ for h in reversed(scope.get('secret_holders',[])):
+  try:h.close()
+  except BaseException:report['privateCustodyCloseFailed']=True
+ for h in reversed(scope.get('holders',[])):
+  try:h.close()
+  except BaseException:report['publicCustodyCloseFailed']=True
+ report['allParentDescriptorsClosed']=not report.get('privateCustodyCloseFailed',False)and not report.get('publicCustodyCloseFailed',False)
+ # This journal is append-only and finite even if every original outcome remains
+ # UNKNOWN. It has no raw exception, private bytes, private length or digest.
+ save(root/'final-closure.json',report)
+
+def phase(name,**metadata):
+ allowed={'source-admitted','proxy-ready','dispatching','ready','failed','closed'}
+ if name not in allowed or any(type(v)not in(bool,int,str,type(None))or(type(v)is str and len(v)>256)for v in metadata.values()):raise ValueError('readiness_phase_schema')
+ save(HERE/'direct'/('phase-'+name+'.json'),{'schemaVersion':1,'operationId':NEW_OPERATIONS['direct'],'phase':name,**metadata})
+
+def main(args,*,absolute_deadline=None):
+ if args.mode!='direct' or type(args.budget)is not int or args.budget!=180:raise ValueError('readiness_fixed_plan_invalid')
+ mode='direct';root=HERE/'direct';host='gateway';operation=NEW_OPERATIONS['direct'];started=time.monotonic();deadline=started+180
+ if absolute_deadline is not None:
+  if type(absolute_deadline)not in(int,float)or not math.isfinite(absolute_deadline)or absolute_deadline<=0:raise ValueError('local_owner_absolute_deadline_invalid')
+  deadline=min(deadline,absolute_deadline)
+ if deadline<=time.monotonic():raise ValueError('local_owner_absolute_deadline_exhausted')
+ if not args.native_go:raise ValueError('native_go_not_given')
+ sys.path.insert(0,str(root))
+ from agent_tools import ssh_transport as t,readiness_workflow as rw,readiness_ssh_master as master,readiness_nested_channel as nested,ssh_fresh_nested_channel as channel,private_config_custody as private,ssh_channel_keeper_entry as keeper
+ from agent_tools.ssh_keeper_sdk_custody import producer_actor
+ manifest=read(HERE/'public-source-manifest.json')['sources'];holders=[];secret_holders=[];clients=[];proxy=None;capsule_holders={};checkout_holders={};explicit_consumers=set(CRITICAL)|{'agent_tools/mcp_server.py','agent_tools/ssh_keeper_mcp_relay.py','agent_tools/ssh_keeper_mcp_delivery.py','agent_tools/tool_action_policy.py','agent_tools/tool_action_policy.json'}
+ try:
+  for p in (Path(__file__),HERE/'ordinary_retention.py',HERE/'public-source-manifest.json',root/'route-template.private.json',root/'planned-operation.json'):
+   holders.append(SourceHold(p))
+  helper_hold=next(h for h in holders if h.path==HERE/'ordinary_retention.py')
+  if hashlib.sha256(helper_hold.raw).hexdigest()!=RETENTION_SHA:raise ValueError('reviewed_retention_helper_changed')
+  import types
+  retention=types.ModuleType('_current_ordinary_retention');retention.__file__=str(helper_hold.path);sys.modules[retention.__name__]=retention
+  exec(compile(helper_hold.raw,retention.__file__,'exec'),retention.__dict__);helper_hold.guard()
+  def current_consumers():
+   values=set(explicit_consumers)
+   for module in tuple(sys.modules.values()):
+    name=getattr(module,'__file__',None)
+    if not isinstance(name,str):continue
+    try:relative=str(Path(name).resolve().relative_to(root))
+    except ValueError:continue
+    if relative in manifest:values.add(relative)
+   for intent_path in (root/'.rag_index/ssh-program-execution').glob('*/intent.json'):
+    try:value=read(intent_path)
+    except (FileNotFoundError,json.JSONDecodeError):continue
+    for relative in value.get('sourcePins',{}):
+     if relative not in manifest:raise ValueError('actual_consumer_outside_manifest')
+     values.add(relative)
+   return values
+  for relative,digest in manifest.items():
+   held=SourceHold(root/relative)
+   if hashlib.sha256(held.raw).hexdigest()!=digest:raise ValueError('capsule_source_manifest_changed')
+   capsule_holders[relative]=held;holders.append(held)
+  def guard():
+   for h in holders:h.guard()
+   for h in secret_holders:h.check()
+   for relative in current_consumers():
+    if relative not in checkout_holders:
+     counterpart=SourceHold(CHECKOUT/relative)
+     if hashlib.sha256(counterpart.raw).hexdigest()!=manifest[relative]or counterpart.raw!=capsule_holders[relative].raw:raise ValueError('consumed_source_counterpart_changed')
+     checkout_holders[relative]=counterpart;holders.append(counterpart)
+    checkout_holders[relative].guard()
+   for rel,digest in CRITICAL.items():
+    if manifest[rel]!=digest:raise ValueError('reviewed_production_source_changed')
+  def guarded():guard();return True
+  original=private.PrivateConfigCustody(CHECKOUT/'.vm-hosts.local.json');secret_holders.append(original)
+  original_config=json.loads(bytes(original._raw));template=read(root/'route-template.private.json');gateway=template['hosts']['gateway']
+  # Exact public transport identity must still join the originally configured
+  # trusted targets; only the independent control selector and proxy alias vary.
+  fields=('host','port','user','identityFile','knownHostsFile')
+  if any(gateway[k]!=original_config['hosts']['gateway'][k]for k in fields)or original_config['hosts']['gateway'].get('transport','direct')!='direct'or original_config['hosts']['gateway'].get('proxyJump')is not None or original_config['hosts']['gateway'].get('password')is not None:raise ValueError('configured_gateway_changed')
+  trust_holder=SourceHold(Path(gateway['knownHostsFile']));holders.append(trust_holder)
+  for path in {gateway['identityFile']}:
+   held=private.PrivateConfigCustody(Path(path));secret_holders.append(held)
+  for rel in ('.rag_index/readiness-transport/archlinux/current.json','.rag_index/readiness-transport/archlinux/e385088e4d6554b33579efc3e8bde1f0a2efa31e190afd919cd469d1228234b9.intent.json','.rag_index/readiness-transport-v2/archlinux/current.json','.rag_index/readiness-nested-channel/archlinux/current.json'):
+   secret_holders.append(private.PrivateConfigCustody(CHECKOUT/rel))
+  planned=read(root/'planned-operation.json')
+  if planned!={'operationId':operation,'mode':'direct','purpose':'readiness-only','budgetSeconds':180,'stage':'unsubmitted-source-only'}:raise ValueError('readiness_original_plan_changed')
+  save(root/'operation.json',{'operationId':operation,'purpose':'readiness-only','mode':'direct','host':'gateway','budgetSeconds':180,'sourcePins':CRITICAL,'protectedSharedCorrelation':SHARED_CORR,'protectedSharedConnection':SHARED_CONNECTION,'noRemoteMutationJob':True,'noVMOrLifecycleActions':True})
+  os.environ['PYTHONDONTWRITEBYTECODE']='1'
+  save(root/'ssh-boundary.json',{'schemaVersion':1,'realSsh':'/usr/bin/ssh','realSshGeneration':list(fingerprint(os.stat('/usr/bin/ssh'))),'faultInjection':False})
+  inventory=json.loads(json.dumps(template))
+  if mode=='direct':
+   proxy=Proxy(gateway['host'],gateway['port']);lookup=gateway['host']if gateway['port']==22 else '['+gateway['host']+']:'+str(gateway['port'])
+   trust_holder.guard()
+   trust=subprocess.run(['/usr/bin/ssh-keygen','-F',lookup,'-f',gateway['knownHostsFile']],stdin=subprocess.DEVNULL,capture_output=True,timeout=5)
+   trust_holder.guard()
+   if trust.returncode:raise ValueError('trusted_gateway_keys_unavailable')
+   lines=[]
+   for line in trust.stdout.decode().splitlines():
+    if not line or line.startswith('#'):continue
+    fields_=line.split()
+    if len(fields_)<3 or fields_[0].startswith('@'):raise ValueError('trusted_gateway_key_schema')
+    lines.append('[127.0.0.1]:'+str(proxy.port)+' '+' '.join(fields_[1:3]))
+   if not lines:raise ValueError('trusted_gateway_keys_empty')
+   fd=os.open(root/'known_hosts',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+   with os.fdopen(fd,'w')as f:f.write('\n'.join(lines)+'\n');f.flush();os.fsync(f.fileno())
+   created_trust=SourceHold(root/'known_hosts');holders.append(created_trust);trust_holder.guard();created_trust.guard()
+   inventory['hosts']['gateway'].update(host='127.0.0.1',port=proxy.port,knownHostsFile=str(root/'known_hosts'))
+  save(root/'.vm-hosts.local.json',inventory);secret_holders.append(private.PrivateConfigCustody(root/'.vm-hosts.local.json'))
+  config=t.load_config(root);guard();save(root/'source-admission.json',{'operationId':operation,'capsulePublicFilesHeld':len(capsule_holders),'consumedSources':{relative:manifest[relative]for relative in sorted(current_consumers())},'allPublicSourceDescriptorsHeld':True,'privateConfigAndKeyContentHashed':False})
+  phase('source-admitted',sourceClosing=True)
+  phase('proxy-ready',pairCount=len(proxy.pairs),listenerPort=proxy.port)
+  guard()
+  if time.monotonic()>=deadline:raise ValueError('readiness_deadline_exhausted_before_dispatch')
+  phase('dispatching')
+  _,ready=rw.ensure_ssh(root,host,operation,deadline=min(deadline,time.monotonic()+180))
+  guard();selected=master.status(root,'gateway')
+  if selected.get('state')!='ready':raise ValueError('readiness_original_master_not_ready')
+  phase('ready',connection=ready.connection,masterState=selected['state'],pairCount=len(proxy.pairs))
+  save(root/'readiness-result.json',{'schemaVersion':1,'operationId':operation,'state':'ready','purpose':'readiness-only','identities':list(ready.identities()),'master':{k:selected.get(k)for k in('state','recoveryId','child','socketPath')},'noRemoteMutationJob':True,'replayAllowed':False})
+ except BaseException:
+  phase('failed',phaseReason='controller-ended-before-ready')
+  raise
+ finally:
+  finish_local_scope(root,locals())
+  closed=read(root/'final-closure.json')
+  phase('closed',sourceClosing=closed.get('sourceClosing')is True,parentDescriptorsClosed=closed.get('allParentDescriptorsClosed')is True,listenerClosed=closed.get('proxy',{}).get('listenerClosed')is True,acceptThreadClosed=closed.get('proxy',{}).get('acceptThreadClosed')is True,forwardThreadsClosed=closed.get('proxy',{}).get('forwardThreadsClosed')is True)
+
